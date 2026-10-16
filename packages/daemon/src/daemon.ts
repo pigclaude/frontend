@@ -279,8 +279,8 @@ async function writeUpstream(
     }
   } finally {
     await reader.cancel().catch(() => undefined)
-    endOrIgnore(response)
   }
+  endOrIgnore(response)
 }
 
 function forwardHeaders(
@@ -304,10 +304,9 @@ function forwardHeaders(
 function readChunk(
   reader: ReadableStreamDefaultReader<Uint8Array>,
 ): Promise<{ type: "chunk"; value: Uint8Array } | { type: "done" }> {
-  return reader.read().then(
-    (result) => (result.done ? { type: "done" } : { type: "chunk", value: result.value }),
-    () => ({ type: "done" }),
-  )
+  return reader
+    .read()
+    .then((result) => (result.done ? { type: "done" } : { type: "chunk", value: result.value }))
 }
 
 function clientGone(response: ServerResponse): Promise<void> {

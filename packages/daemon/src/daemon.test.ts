@@ -160,6 +160,26 @@ describe("LocalDaemon", () => {
     }
   })
 
+  it("does not complete the client response when the upstream body errors", async () => {
+    const seen: Array<{ path: string; authorization: string | undefined }> = []
+    const proxy = await startRecordingProxy(seen, { brokenGzip: true })
+    const daemon = new LocalDaemon({
+      port: 0,
+      choose: () => ({ id: "a", authorization: "pool-token", proxyUrl: proxy.url }),
+    })
+    await daemon.start()
+    try {
+      const outcome = await readUntilClose(daemon.port, "/v1/models")
+      expect(outcome.complete).toBe(false)
+    } finally {
+      try {
+        await daemon.stop()
+      } finally {
+        await proxy.stop()
+      }
+    }
+  })
+
   it("returns proxy_unavailable when choose returns null", async () => {
     const daemon = new LocalDaemon({
       port: 0,
@@ -177,13 +197,12 @@ describe("LocalDaemon", () => {
 })
 
 type TunnelEvent = "open" | "close"
-
 type RecordingOptions = {
   gzipPlain?: string
+  brokenGzip?: boolean
   holdBody?: boolean
   onTunnel?: (event: TunnelEvent) => void
 }
-
 // 记录 CONNECT 隧道里的 HTTPS 请求。undici ProxyAgent 不把路径放在代理的请求行上。
 function startRecordingProxy(
   seen: Array<{ path: string; authorization: string | undefined }>,
@@ -208,6 +227,11 @@ function startRecordingProxy(
           connection: "close",
         })
         response.end(encoded)
+        return
+      }
+      if (options?.brokenGzip) {
+        response.writeHead(200, { "content-encoding": "gzip", connection: "close" })
+        response.end("not-gzip")
         return
       }
       if (options?.holdBody) {
@@ -248,7 +272,6 @@ function startRecordingProxy(
       throw error
     })
 }
-
 function tunnel(clientSocket: Socket, head: Buffer, upstream: Server): void {
   const address = upstream.address()
   if (address === null || typeof address === "string") {
@@ -268,7 +291,6 @@ function tunnel(clientSocket: Socket, head: Buffer, upstream: Server): void {
   upstreamSocket.on("error", closeBoth)
   clientSocket.on("error", closeBoth)
 }
-
 function readHttp(
   port: number,
   path: string,
@@ -297,7 +319,26 @@ function readHttp(
     req.end()
   })
 }
-
+function readUntilClose(port: number, path: string): Promise<{ complete: boolean }> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timed out")), 1000)
+    let sawResponse = false
+    const finish = (complete: boolean): void => {
+      clearTimeout(timer)
+      resolve({ complete })
+    }
+    const req = request({ hostname: "127.0.0.1", port, path, method: "GET" }, (response) => {
+      sawResponse = true
+      response.on("data", () => undefined)
+      response.on("error", () => undefined)
+      response.on("close", () => finish(response.complete))
+    })
+    req.on("error", () => {
+      if (!sawResponse) finish(false)
+    })
+    req.end()
+  })
+}
 function readFirstChunk(
   port: number,
   path: string,
@@ -318,7 +359,6 @@ function readFirstChunk(
     req.end()
   })
 }
-
 function abortPartialPost(port: number): Promise<void> {
   return new Promise((resolve) => {
     const req = request(
@@ -339,13 +379,11 @@ function abortPartialPost(port: number): Promise<void> {
     }, 30)
   })
 }
-
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms)
   })
 }
-
 async function waitUntil(ready: () => boolean): Promise<void> {
   const deadline = Date.now() + 1000
   while (!ready()) {
@@ -353,12 +391,10 @@ async function waitUntil(ready: () => boolean): Promise<void> {
     await delay(10)
   }
 }
-
 function authorizationHeader(request: IncomingMessage): string | undefined {
   const value = request.headers.authorization
   return Array.isArray(value) ? value[0] : value
 }
-
 function makeCertificate(): { cert: string; key: string; ca: string } {
   const dir = mkdtempSync(join(tmpdir(), "pigclaude-daemon-"))
   const caKey = join(dir, "ca.key")
@@ -434,7 +470,6 @@ function makeCertificate(): { cert: string; key: string; ca: string } {
   rmSync(dir, { recursive: true, force: true })
   return material
 }
-
 function listen(server: Server): Promise<number> {
   return new Promise((resolve, reject) => {
     const onError = (error: Error): void => {
@@ -452,7 +487,6 @@ function listen(server: Server): Promise<number> {
     })
   })
 }
-
 function closeServer(server: Server): Promise<void> {
   if (!server.listening) return Promise.resolve()
   server.closeAllConnections()

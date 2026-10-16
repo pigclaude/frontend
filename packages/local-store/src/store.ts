@@ -31,25 +31,30 @@ export type AccountRecord = {
   exhaustedUntil: string | null
 }
 
-/** 读写本机 proxies.json 与 accounts.json。保证按 id 覆盖，凭据不加密，文件留在本机。 */
+/** 读写本机 proxies.json 与 accounts.json。保证按 id 覆盖，同一文件的保存排队，凭据不加密，文件留在本机。 */
 export class LocalStore {
   readonly #dataDir: string
+  readonly #writes = new Map<string, Promise<void>>()
 
   /** 保证后续读写都落在这个数据目录。 */
   constructor(dataDir: string) {
     this.#dataDir = dataDir
   }
 
-  /** 按 id 保存或覆盖一条代理。保证 proxies.json 被完整替换，而不是留下半截内容。 */
+  /** 按 id 保存或覆盖一条代理。保证同一文件里交错的保存不会丢掉另一条，并且文件被完整替换。 */
   async saveProxy(proxy: IpProxy): Promise<void> {
-    const proxies = replaceById(await readProxies(this.proxiesPath()), proxy)
-    await writeJson(this.proxiesPath(), proxies)
+    await this.enqueue(this.proxiesPath(), async () => {
+      const proxies = replaceById(await readProxies(this.proxiesPath()), proxy)
+      await writeJson(this.proxiesPath(), proxies)
+    })
   }
 
-  /** 按 id 保存或覆盖一条账号。保证 credential 按传入明文写入，指纹原样保留。 */
+  /** 按 id 保存或覆盖一条账号。保证明文写入 credential，保留指纹，同一文件里交错的保存不会丢掉另一条。 */
   async saveAccount(account: AccountRecord): Promise<void> {
-    const accounts = replaceById(await readAccounts(this.accountsPath()), account)
-    await writeJson(this.accountsPath(), accounts)
+    await this.enqueue(this.accountsPath(), async () => {
+      const accounts = replaceById(await readAccounts(this.accountsPath()), account)
+      await writeJson(this.accountsPath(), accounts)
+    })
   }
 
   /** 按 id 读取账号。保证没有这条记录时返回 null。 */
@@ -69,6 +74,20 @@ export class LocalStore {
 
   private proxiesPath(): string {
     return join(this.#dataDir, "proxies.json")
+  }
+
+  // 同一路径的写入排队。后一次要等前一次 rename 完成后再读，避免用旧快照盖掉刚写入的记录。
+  private enqueue(path: string, write: () => Promise<void>): Promise<void> {
+    const previous = this.#writes.get(path) ?? Promise.resolve()
+    const run = previous.then(write, write)
+    this.#writes.set(
+      path,
+      run.then(
+        () => undefined,
+        () => undefined,
+      ),
+    )
+    return run
   }
 }
 

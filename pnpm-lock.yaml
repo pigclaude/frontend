@@ -27,6 +27,10 @@ importers:
   apps/home: {}
 
   packages/daemon:
+    dependencies:
+      undici:
+        specifier: 6.21.2
+        version: 6.21.2
     devDependencies:
       vitest:
         specifier: 3.2.4
@@ -1549,6 +1553,13 @@ packages:
     engines: { node: ">=14.17" }
     hasBin: true
 
+  undici@6.21.2:
+    resolution:
+      {
+        integrity: sha512-uROZWze0R0itiAKVPsYhFov9LxrPMHLMEQFszeI2gCN6bnIIZ8twzBCJcN2LJrBBLfrP0t1FW0g+JmKVl8Vk1g==,
+      }
+    engines: { node: ">=18.17" }
+
   uri-js@4.4.1:
     resolution:
       {
@@ -2461,6 +2472,8 @@ snapshots:
       - supports-color
 
   typescript@5.9.3: {}
+
+  undici@6.21.2: {}
 
   uri-js@4.4.1:
     dependencies:

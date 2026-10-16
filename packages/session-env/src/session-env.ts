@@ -1,10 +1,19 @@
-// 组装这次会话的环境变量，并把时区写进 Intl 预加载脚本。不读文件，不访问网络。
+// 组装这次会话的环境变量，并把时区写进 Intl 预加载脚本。不读文件，不访问网络。用户设置里的路由、代理、云厂商开关和凭据不会进入这次会话。
 
 const ignoredSettingsKeys = new Set([
-  "ANTHROPIC_BASE_URL",
-  "ANTHROPIC_AUTH_TOKEN",
+  "ALL_PROXY",
   "ANTHROPIC_API_KEY",
+  "ANTHROPIC_AUTH_TOKEN",
+  "ANTHROPIC_BASE_URL",
+  "ANTHROPIC_CUSTOM_HEADERS",
   "CLAUDE_CODE_OAUTH_TOKEN",
+  "CLAUDE_CODE_USE_BEDROCK",
+  "CLAUDE_CODE_USE_VERTEX",
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "all_proxy",
+  "http_proxy",
+  "https_proxy",
 ])
 
 type SessionEnvInput = {
@@ -14,7 +23,7 @@ type SessionEnvInput = {
   userSettingsEnv: Record<string, string>
 }
 
-/** 返回新的会话环境。保证地址、时区和语言来自这次会话，并丢掉用户设置里的路由和凭据键。 */
+/** 返回新的会话环境。保证地址、时区和语言来自这次会话，并丢掉用户设置里的路由、代理、云厂商开关和凭据键。 */
 export function buildSessionEnv(input: SessionEnvInput): {
   env: Record<string, string>
   preloadSource: string

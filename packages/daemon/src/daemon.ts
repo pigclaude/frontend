@@ -1,40 +1,15 @@
 // 本机转发 daemon。只监听 127.0.0.1，把请求经账号代理送到 Anthropic，并且只在消息接口替换凭据。
 // 额度用尽且尚未向调用方写出响应体时，用下一个账号重试同一条消息请求。
+// 已经保存额度用尽响应后，代理抛错会拒绝这个账号并继续选号；还没有保存的 429 时，代理抛错仍返回 proxy_unavailable。
 
 import { once } from "node:events"
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import { ProxyAgent, fetch as undiciFetch } from "undici"
+import { forwardHeaders, requestHeaders } from "./daemon-headers.ts"
 
 const upstreamOrigin = "https://api.anthropic.com"
 // 超过 32 MiB 的消息请求体直接返回这次 429，不再为换号重发。
 const maxRetryBodyBytes = 32 * 1024 * 1024
-
-const skipRequestHeader = new Set([
-  "connection",
-  "content-length",
-  "host",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "proxy-connection",
-  "te",
-  "trailer",
-  "trailers",
-  "transfer-encoding",
-  "upgrade",
-])
-
-const skipResponseHeader = new Set([
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "trailers",
-  "transfer-encoding",
-  "upgrade",
-])
 
 type ChosenAccount = {
   id: string
@@ -50,7 +25,7 @@ type BufferedUpstream = {
   body: Buffer
 }
 
-/** 本机 Anthropic 转发。保证只听 127.0.0.1，上游都走账号代理，代理不可用时返回 proxy_unavailable。消息接口在写出响应体前遇到额度用尽时换下一个账号。 */
+/** 本机 Anthropic 转发。保证只听 127.0.0.1，上游都走账号代理，代理不可用时返回 proxy_unavailable。消息接口在写出响应体前遇到额度用尽时换下一个账号；此时如果下一个代理抛错，就拒绝该账号并继续选号。 */
 export class LocalDaemon {
   /** 监听端口。start 完成之后保证是 127.0.0.1 上的实际端口。 */
   port: number
@@ -144,36 +119,68 @@ export class LocalDaemon {
       }
       const headers = new Headers(clientHeaders)
       if (messagePost) headers.set("authorization", `Bearer ${chosen.authorization}`)
-      const agent = new ProxyAgent(chosen.proxyUrl)
       const abort = new AbortController()
       const stopWatching = watchClient(request, response, abort)
+      let agent: ProxyAgent | undefined
+      let continueWithNext = false
       try {
-        const upstream = await fetchThroughProxy(agent, {
-          url: upstreamUrl,
-          method,
-          headers,
-          body: method === "GET" || method === "HEAD" || body.length === 0 ? undefined : body,
-          signal: abort.signal,
-        })
-        if (abort.signal.aborted || response.destroyed || response.headersSent) {
-          await upstream.body?.cancel().catch(() => undefined)
-          return
-        }
-        if (canSwitchBeforeBody(messagePost, body.length, upstream, response)) {
-          const switched = await takeQuotaResponse(response, upstream, method)
-          if (switched === null) return
+        let upstream: Awaited<ReturnType<typeof undiciFetch>> | undefined
+        try {
+          agent = new ProxyAgent(chosen.proxyUrl)
+          upstream = await fetchThroughProxy(agent, {
+            url: upstreamUrl,
+            method,
+            headers,
+            body: method === "GET" || method === "HEAD" || body.length === 0 ? undefined : body,
+            signal: abort.signal,
+          })
+        } catch (error) {
+          if (!continueAfterThrownProxy(savedQuota !== null, request, response, abort.signal)) {
+            throw error
+          }
           rejectedIds.push(chosen.id)
-          savedQuota = switched
           switchAccount = true
-          continue
+          continueWithNext = true
         }
-        await writeUpstream(response, upstream, method)
+        if (upstream !== undefined) {
+          if (abort.signal.aborted || response.destroyed || response.headersSent) {
+            await upstream.body?.cancel().catch(() => undefined)
+            return
+          }
+          if (canSwitchBeforeBody(messagePost, body.length, upstream, response)) {
+            const switched = await takeQuotaResponse(response, upstream, method)
+            if (switched === null) return
+            rejectedIds.push(chosen.id)
+            savedQuota = switched
+            switchAccount = true
+            continue
+          }
+          await writeUpstream(response, upstream, method)
+        }
       } finally {
         stopWatching()
-        await agent.close()
+        if (agent !== undefined) {
+          const closing = agent.close()
+          if (continueWithNext) await closing.catch(() => undefined)
+          else await closing
+        }
       }
+      if (continueWithNext) continue
     }
   }
+}
+
+// 已经记下额度用尽响应、并且调用方还在等时，这次代理抛错才换下一个账号。
+function continueAfterThrownProxy(
+  hasSavedQuota: boolean,
+  request: IncomingMessage,
+  response: ServerResponse,
+  signal: AbortSignal,
+): boolean {
+  if (!hasSavedQuota) return false
+  if (signal.aborted || request.aborted) return false
+  if (response.destroyed || response.headersSent || response.writableEnded) return false
+  return true
 }
 
 // 只有带上代理 dispatcher 才会发出上游请求。没有 proxyUrl 时调用方直接返回 503。
@@ -208,19 +215,6 @@ function upstreamUrlFor(requestUrl: string | undefined): URL | null {
   const upstream = new URL(incoming.pathname + incoming.search, upstreamOrigin)
   if (upstream.protocol !== "https:" || upstream.host !== "api.anthropic.com") return null
   return upstream
-}
-
-function requestHeaders(request: IncomingMessage): Headers {
-  const headers = new Headers()
-  for (const [name, value] of Object.entries(request.headers)) {
-    if (value === undefined || skipRequestHeader.has(name)) continue
-    if (Array.isArray(value)) {
-      for (const item of value) headers.append(name, item)
-    } else {
-      headers.set(name, value)
-    }
-  }
-  return headers
 }
 
 function readBody(request: IncomingMessage): Promise<Buffer> {
@@ -260,21 +254,6 @@ function readBody(request: IncomingMessage): Promise<Buffer> {
     request.on("aborted", onAbort)
     request.on("close", onClose)
   })
-}
-
-// undici 会解开 gzip、x-gzip、deflate 和 br，但留下压缩时的 content-encoding 与 content-length。
-const decodedByUndici = new Set(["gzip", "x-gzip", "deflate", "br"])
-const nullBodyStatus = new Set([101, 204, 205, 304])
-
-function undiciDecodedBody(status: number, method: string, encoding: string | null): boolean {
-  if (method === "HEAD" || method === "CONNECT" || nullBodyStatus.has(status)) return false
-  if (encoding === null) return false
-  const codings = encoding
-    .toLowerCase()
-    .split(",")
-    .map((coding) => coding.trim())
-    .filter((coding) => coding.length > 0)
-  return codings.length > 0 && codings.every((coding) => decodedByUndici.has(coding))
 }
 
 function canSwitchBeforeBody(
@@ -390,24 +369,6 @@ async function writeUpstream(
     await reader.cancel().catch(() => undefined)
   }
   endOrIgnore(response)
-}
-
-function forwardHeaders(
-  upstream: Awaited<ReturnType<typeof undiciFetch>>,
-  method: string,
-): Record<string, string> {
-  const decoded = undiciDecodedBody(
-    upstream.status,
-    method,
-    upstream.headers.get("content-encoding"),
-  )
-  const headers: Record<string, string> = {}
-  upstream.headers.forEach((value, key) => {
-    if (skipResponseHeader.has(key)) return
-    if (decoded && (key === "content-encoding" || key === "content-length")) return
-    headers[key] = value
-  })
-  return headers
 }
 
 function readChunk(

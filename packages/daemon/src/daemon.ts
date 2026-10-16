@@ -54,7 +54,9 @@ export class LocalDaemon {
     this.port = options.port
     this.#choose = options.choose
     this.#server = createServer((request, response) => {
-      void this.#handle(request, response)
+      response.on("error", () => undefined)
+      request.on("error", () => undefined)
+      void this.#handle(request, response).catch(() => undefined)
     })
   }
 
@@ -112,16 +114,25 @@ export class LocalDaemon {
       headers.set("authorization", `Bearer ${chosen.authorization}`)
     }
     const body = await readBody(request)
+    if (request.aborted || response.destroyed) return
     const agent = new ProxyAgent(chosen.proxyUrl)
+    const abort = new AbortController()
+    const stopWatching = watchClient(request, response, abort)
     try {
       const upstream = await fetchThroughProxy(agent, {
         url: upstreamUrl,
         method,
         headers,
         body: method === "GET" || method === "HEAD" || body.length === 0 ? undefined : body,
+        signal: abort.signal,
       })
-      await writeUpstream(response, upstream)
+      if (abort.signal.aborted || response.destroyed) {
+        await upstream.body?.cancel().catch(() => undefined)
+        return
+      }
+      await writeUpstream(response, upstream, method)
     } finally {
+      stopWatching()
       await agent.close()
     }
   }
@@ -130,7 +141,13 @@ export class LocalDaemon {
 // 只有带上代理 dispatcher 才会发出上游请求。没有 proxyUrl 时调用方直接返回 503。
 function fetchThroughProxy(
   agent: ProxyAgent,
-  input: { url: URL; method: string; headers: Headers; body: Buffer | undefined },
+  input: {
+    url: URL
+    method: string
+    headers: Headers
+    body: Buffer | undefined
+    signal: AbortSignal
+  },
 ): ReturnType<typeof undiciFetch> {
   return undiciFetch(input.url, {
     method: input.method,
@@ -138,6 +155,7 @@ function fetchThroughProxy(
     body: input.body,
     dispatcher: agent,
     redirect: "manual",
+    signal: input.signal,
   })
 }
 
@@ -168,46 +186,203 @@ function requestHeaders(request: IncomingMessage): Headers {
 }
 
 function readBody(request: IncomingMessage): Promise<Buffer> {
+  if (request.aborted || request.destroyed) return Promise.reject(new Error("client aborted"))
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
-    request.on("data", (chunk: Buffer | string) => {
+    let settled = false
+    const finish = (error?: Error): void => {
+      if (settled) return
+      settled = true
+      request.off("data", onData)
+      request.off("end", onEnd)
+      request.off("error", onError)
+      request.off("aborted", onAbort)
+      request.off("close", onClose)
+      if (error) reject(error)
+      else resolve(Buffer.concat(chunks))
+    }
+    const onData = (chunk: Buffer | string): void => {
       chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk)
-    })
-    request.on("end", () => {
-      resolve(Buffer.concat(chunks))
-    })
-    request.on("error", reject)
+    }
+    const onEnd = (): void => {
+      finish()
+    }
+    const onError = (error: Error): void => {
+      finish(error)
+    }
+    const onAbort = (): void => {
+      finish(new Error("client aborted"))
+    }
+    const onClose = (): void => {
+      if (!request.complete) finish(new Error("client aborted"))
+    }
+    request.on("data", onData)
+    request.on("end", onEnd)
+    request.on("error", onError)
+    request.on("aborted", onAbort)
+    request.on("close", onClose)
   })
+}
+
+// undici 会解开 gzip、x-gzip、deflate 和 br，但留下压缩时的 content-encoding 与 content-length。
+const decodedByUndici = new Set(["gzip", "x-gzip", "deflate", "br"])
+const nullBodyStatus = new Set([101, 204, 205, 304])
+
+function undiciDecodedBody(status: number, method: string, encoding: string | null): boolean {
+  if (method === "HEAD" || method === "CONNECT" || nullBodyStatus.has(status)) return false
+  if (encoding === null) return false
+  const codings = encoding
+    .toLowerCase()
+    .split(",")
+    .map((coding) => coding.trim())
+    .filter((coding) => coding.length > 0)
+  return codings.length > 0 && codings.every((coding) => decodedByUndici.has(coding))
 }
 
 async function writeUpstream(
   response: ServerResponse,
   upstream: Awaited<ReturnType<typeof undiciFetch>>,
+  method: string,
 ): Promise<void> {
-  const headers: Record<string, string> = {}
-  upstream.headers.forEach((value, key) => {
-    if (!skipResponseHeader.has(key)) headers[key] = value
-  })
-  response.writeHead(upstream.status, headers)
-  if (upstream.body === null) {
-    response.end()
+  const headers = forwardHeaders(upstream, method)
+  const body = upstream.body
+  if (body === null) {
+    writeHeadOrIgnore(response, upstream.status, headers)
+    endOrIgnore(response)
     return
   }
-  const reader = upstream.body.getReader()
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    if (!response.write(value)) await once(response, "drain")
+  const reader = body.getReader()
+  const gone = clientGone(response)
+  try {
+    if (!response.destroyed) writeHeadOrIgnore(response, upstream.status, headers)
+    while (!response.destroyed && !response.writableEnded) {
+      const outcome = await Promise.race([
+        readChunk(reader),
+        gone.then(() => ({ type: "gone" as const })),
+      ])
+      if (outcome.type !== "chunk") break
+      let wrote = true
+      try {
+        wrote = response.write(outcome.value)
+      } catch {
+        break
+      }
+      if (wrote) continue
+      const drained = await Promise.race([
+        once(response, "drain").then(
+          () => true,
+          () => false,
+        ),
+        gone.then(() => false),
+      ])
+      if (!drained || response.destroyed) break
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined)
+    endOrIgnore(response)
   }
-  response.end()
+}
+
+function forwardHeaders(
+  upstream: Awaited<ReturnType<typeof undiciFetch>>,
+  method: string,
+): Record<string, string> {
+  const decoded = undiciDecodedBody(
+    upstream.status,
+    method,
+    upstream.headers.get("content-encoding"),
+  )
+  const headers: Record<string, string> = {}
+  upstream.headers.forEach((value, key) => {
+    if (skipResponseHeader.has(key)) return
+    if (decoded && (key === "content-encoding" || key === "content-length")) return
+    headers[key] = value
+  })
+  return headers
+}
+
+function readChunk(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): Promise<{ type: "chunk"; value: Uint8Array } | { type: "done" }> {
+  return reader.read().then(
+    (result) => (result.done ? { type: "done" } : { type: "chunk", value: result.value }),
+    () => ({ type: "done" }),
+  )
+}
+
+function clientGone(response: ServerResponse): Promise<void> {
+  if (response.destroyed) return Promise.resolve()
+  return new Promise((resolve) => {
+    const done = (): void => {
+      response.off("close", done)
+      response.off("error", done)
+      resolve()
+    }
+    response.on("close", done)
+    response.on("error", done)
+  })
+}
+
+function watchClient(
+  request: IncomingMessage,
+  response: ServerResponse,
+  abort: AbortController,
+): () => void {
+  const stop = (): void => {
+    if (!abort.signal.aborted) abort.abort()
+  }
+  const onAbort = (): void => {
+    stop()
+  }
+  const onRequestClose = (): void => {
+    if (!request.complete) stop()
+  }
+  const onResponseClose = (): void => {
+    if (!response.writableEnded) stop()
+  }
+  request.on("aborted", onAbort)
+  request.on("close", onRequestClose)
+  response.on("close", onResponseClose)
+  return () => {
+    request.off("aborted", onAbort)
+    request.off("close", onRequestClose)
+    response.off("close", onResponseClose)
+  }
+}
+
+function writeHeadOrIgnore(
+  response: ServerResponse,
+  status: number,
+  headers: Record<string, string>,
+): void {
+  if (response.destroyed || response.headersSent || response.writableEnded) return
+  try {
+    response.writeHead(status, headers)
+  } catch {
+    // The client socket is already gone.
+  }
+}
+
+function endOrIgnore(response: ServerResponse): void {
+  if (response.destroyed || response.writableEnded) return
+  try {
+    response.end()
+  } catch {
+    // The client socket is already gone.
+  }
 }
 
 function writeUnavailable(response: ServerResponse): void {
-  if (response.writableEnded) return
+  response.on("error", () => undefined)
+  if (response.writableEnded || response.destroyed) return
   if (response.headersSent) {
     response.destroy()
     return
   }
-  response.writeHead(503, { "content-type": "application/json" })
-  response.end(JSON.stringify({ error: "proxy_unavailable" }))
+  try {
+    response.writeHead(503, { "content-type": "application/json" })
+    response.end(JSON.stringify({ error: "proxy_unavailable" }))
+  } catch {
+    // writeHead throws ERR_STREAM_DESTROYED once the socket is gone.
+  }
 }

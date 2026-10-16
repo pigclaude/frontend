@@ -1,0 +1,11 @@
+{
+  "apps": ["admin", "desktop", "home"],
+  "packages": [
+    "daemon",
+    "local-store",
+    "login-gate",
+    "permission-client",
+    "session-env",
+    "switcher"
+  ]
+}

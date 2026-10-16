@@ -1,0 +1,14 @@
+{
+  "name": "@pigclaude/session-env",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/session-env.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "3.2.4"
+  }
+}

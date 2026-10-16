@@ -1,0 +1,14 @@
+{
+  "name": "@pigclaude/local-store",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/store.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "3.2.4"
+  }
+}

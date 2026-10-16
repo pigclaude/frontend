@@ -1,0 +1,14 @@
+{
+  "name": "@pigclaude/login-gate",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/login-gate.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "3.2.4"
+  }
+}

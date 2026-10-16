@@ -1,0 +1,14 @@
+{
+  "name": "@pigclaude/daemon",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/daemon.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "3.2.4"
+  }
+}

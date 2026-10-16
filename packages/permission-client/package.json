@@ -1,0 +1,14 @@
+{
+  "name": "@pigclaude/permission-client",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/permission.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "3.2.4"
+  }
+}

@@ -1,3 +1,4 @@
+// 负责核对前端 apps、packages 与 layout.json 是否一致，并检查包源码的依赖和写法。
 import { readdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
 

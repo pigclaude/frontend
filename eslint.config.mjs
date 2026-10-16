@@ -1,3 +1,4 @@
+// 负责前端的 ESLint 规则：检查 TypeScript 文件的 any、ts 注释和行数上限。
 import tseslint from "typescript-eslint"
 
 export default tseslint.config(

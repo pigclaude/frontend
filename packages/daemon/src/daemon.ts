@@ -1,10 +1,13 @@
 // 本机转发 daemon。只监听 127.0.0.1，把请求经账号代理送到 Anthropic，并且只在消息接口替换凭据。
+// 额度用尽且尚未向调用方写出响应体时，用下一个账号重试同一条消息请求。
 
 import { once } from "node:events"
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import { ProxyAgent, fetch as undiciFetch } from "undici"
 
 const upstreamOrigin = "https://api.anthropic.com"
+// 超过 32 MiB 的消息请求体直接返回这次 429，不再为换号重发。
+const maxRetryBodyBytes = 32 * 1024 * 1024
 
 const skipRequestHeader = new Set([
   "connection",
@@ -41,7 +44,13 @@ type ChosenAccount = {
 
 type ChooseAccount = (attempt: { rejectedIds: string[] }) => ChosenAccount | null
 
-/** 本机 Anthropic 转发。保证只听 127.0.0.1，上游都走账号代理，代理不可用时返回 proxy_unavailable。 */
+type BufferedUpstream = {
+  status: number
+  headers: Record<string, string>
+  body: Buffer
+}
+
+/** 本机 Anthropic 转发。保证只听 127.0.0.1，上游都走账号代理，代理不可用时返回 proxy_unavailable。消息接口在写出响应体前遇到额度用尽时换下一个账号。 */
 export class LocalDaemon {
   /** 监听端口。start 完成之后保证是 127.0.0.1 上的实际端口。 */
   port: number
@@ -101,39 +110,68 @@ export class LocalDaemon {
   }
 
   async #forward(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    const chosen = this.#choose({ rejectedIds: [] })
     const upstreamUrl = upstreamUrlFor(request.url)
-    if (chosen === null || chosen.proxyUrl === "" || upstreamUrl === null) {
+    if (upstreamUrl === null) {
       request.resume()
       writeUnavailable(response)
       return
     }
     const method = request.method ?? "GET"
-    const headers = requestHeaders(request)
-    if (method === "POST" && upstreamUrl.pathname === "/v1/messages") {
-      headers.set("authorization", `Bearer ${chosen.authorization}`)
-    }
-    const body = await readBody(request)
-    if (request.aborted || response.destroyed) return
-    const agent = new ProxyAgent(chosen.proxyUrl)
-    const abort = new AbortController()
-    const stopWatching = watchClient(request, response, abort)
-    try {
-      const upstream = await fetchThroughProxy(agent, {
-        url: upstreamUrl,
-        method,
-        headers,
-        body: method === "GET" || method === "HEAD" || body.length === 0 ? undefined : body,
-        signal: abort.signal,
-      })
-      if (abort.signal.aborted || response.destroyed) {
-        await upstream.body?.cancel().catch(() => undefined)
+    const clientHeaders = requestHeaders(request)
+    const messagePost = method === "POST" && upstreamUrl.pathname === "/v1/messages"
+    const rejectedIds: string[] = []
+    let body: Buffer | null = null
+    let savedQuota: BufferedUpstream | null = null
+    let switchAccount = true
+
+    while (switchAccount) {
+      switchAccount = false
+      if (request.aborted || response.destroyed || response.headersSent || response.writableEnded) {
         return
       }
-      await writeUpstream(response, upstream, method)
-    } finally {
-      stopWatching()
-      await agent.close()
+      const chosen = this.#choose({ rejectedIds: rejectedIds.slice() })
+      if (chosen === null || chosen.proxyUrl === "" || rejectedIds.includes(chosen.id)) {
+        if (savedQuota !== null) writeBuffered(response, savedQuota)
+        else {
+          request.resume()
+          writeUnavailable(response)
+        }
+        return
+      }
+      if (body === null) {
+        body = await readBody(request)
+        if (request.aborted || response.destroyed || response.headersSent) return
+      }
+      const headers = new Headers(clientHeaders)
+      if (messagePost) headers.set("authorization", `Bearer ${chosen.authorization}`)
+      const agent = new ProxyAgent(chosen.proxyUrl)
+      const abort = new AbortController()
+      const stopWatching = watchClient(request, response, abort)
+      try {
+        const upstream = await fetchThroughProxy(agent, {
+          url: upstreamUrl,
+          method,
+          headers,
+          body: method === "GET" || method === "HEAD" || body.length === 0 ? undefined : body,
+          signal: abort.signal,
+        })
+        if (abort.signal.aborted || response.destroyed || response.headersSent) {
+          await upstream.body?.cancel().catch(() => undefined)
+          return
+        }
+        if (canSwitchBeforeBody(messagePost, body.length, upstream, response)) {
+          const switched = await takeQuotaResponse(response, upstream, method)
+          if (switched === null) return
+          rejectedIds.push(chosen.id)
+          savedQuota = switched
+          switchAccount = true
+          continue
+        }
+        await writeUpstream(response, upstream, method)
+      } finally {
+        stopWatching()
+        await agent.close()
+      }
     }
   }
 }
@@ -237,6 +275,77 @@ function undiciDecodedBody(status: number, method: string, encoding: string | nu
     .map((coding) => coding.trim())
     .filter((coding) => coding.length > 0)
   return codings.length > 0 && codings.every((coding) => decodedByUndici.has(coding))
+}
+
+function canSwitchBeforeBody(
+  messagePost: boolean,
+  bodyLength: number,
+  upstream: Awaited<ReturnType<typeof undiciFetch>>,
+  response: ServerResponse,
+): boolean {
+  return (
+    messagePost &&
+    bodyLength <= maxRetryBodyBytes &&
+    upstream.status === 429 &&
+    upstream.headers.get("x-quota-exhausted") === "1" &&
+    !response.headersSent &&
+    !response.writableEnded &&
+    !response.destroyed
+  )
+}
+
+async function takeQuotaResponse(
+  response: ServerResponse,
+  upstream: Awaited<ReturnType<typeof undiciFetch>>,
+  method: string,
+): Promise<BufferedUpstream | null> {
+  try {
+    const buffered = await bufferUpstream(upstream, method)
+    if (response.destroyed || response.headersSent || response.writableEnded) return null
+    return buffered
+  } catch {
+    if (!response.headersSent && !response.destroyed) {
+      writeHeadOrIgnore(response, upstream.status, forwardHeaders(upstream, method))
+    }
+    if (!response.destroyed) response.destroy()
+    return null
+  }
+}
+
+async function bufferUpstream(
+  upstream: Awaited<ReturnType<typeof undiciFetch>>,
+  method: string,
+): Promise<BufferedUpstream> {
+  const headers = forwardHeaders(upstream, method)
+  const chunks: Buffer[] = []
+  const body = upstream.body
+  if (body !== null) {
+    const reader = body.getReader()
+    try {
+      let result = await reader.read()
+      while (!result.done) {
+        chunks.push(Buffer.from(result.value))
+        result = await reader.read()
+      }
+    } finally {
+      await reader.cancel().catch(() => undefined)
+    }
+  }
+  return { status: upstream.status, headers, body: Buffer.concat(chunks) }
+}
+
+function writeBuffered(response: ServerResponse, buffered: BufferedUpstream): void {
+  if (response.destroyed || response.writableEnded) return
+  if (response.headersSent) {
+    response.destroy()
+    return
+  }
+  try {
+    response.writeHead(buffered.status, buffered.headers)
+    response.end(buffered.body)
+  } catch {
+    // The client socket is already gone.
+  }
 }
 
 async function writeUpstream(

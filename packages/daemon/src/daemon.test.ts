@@ -1,24 +1,9 @@
-// 本机 daemon 测试。消息请求换成号池凭据，其它路径保留调用方凭据，代理不可用时关闭失败。
+// 本机 daemon 测试。消息请求换成号池凭据，其它路径保留调用方凭据，代理不可用时关闭失败。额度用尽且响应体尚未写出时改用下一个账号。
 
-import { execFileSync } from "node:child_process"
-import { mkdtempSync, readFileSync, rmSync } from "node:fs"
-import {
-  createServer,
-  request,
-  type IncomingHttpHeaders,
-  type IncomingMessage,
-  type Server,
-} from "node:http"
-import { createServer as createHttpsServer } from "node:https"
-import { connect as connectTcp, type Socket } from "node:net"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
-import { getCACertificates, setDefaultCACertificates } from "node:tls"
-import { gzipSync } from "node:zlib"
+import { request, type IncomingHttpHeaders } from "node:http"
 import { describe, expect, it } from "vitest"
 import { LocalDaemon } from "./daemon.ts"
-
-const upstreamHost = "api.anthropic.com:443"
+import { startRecordingProxy, startScriptedProxy } from "./daemon-proxy-fixture.test.ts"
 
 describe("LocalDaemon", () => {
   it("replaces authorization only for message requests and fails closed when the proxy is down", async () => {
@@ -194,103 +179,150 @@ describe("LocalDaemon", () => {
       await daemon.stop()
     }
   })
+
+  it("retries the same message request with the next credential before any body byte is written", async () => {
+    let calls = 0
+    const proxy = await startRecordingProxy([], async () => {
+      calls += 1
+      return calls === 1
+        ? { status: 429, headers: { "x-quota-exhausted": "1" }, body: "" }
+        : { status: 200, body: "ok" }
+    })
+    const daemon = new LocalDaemon({
+      port: 0,
+      choose: ({ rejectedIds }) =>
+        rejectedIds.includes("a")
+          ? { id: "b", authorization: "token-b", proxyUrl: proxy.url }
+          : { id: "a", authorization: "token-a", proxyUrl: proxy.url },
+    })
+    await daemon.start()
+    try {
+      const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/messages`, {
+        method: "POST",
+        body: "{}",
+      })
+      expect(response.status).toBe(200)
+      expect(await response.text()).toBe("ok")
+      expect(calls).toBe(2)
+    } finally {
+      try {
+        await daemon.stop()
+      } finally {
+        await proxy.stop()
+      }
+    }
+  })
+
+  it("does not send a second upstream request after the body has started", async () => {
+    let calls = 0
+    const proxy = await startScriptedProxy(async () => {
+      calls += 1
+      return { status: 200, body: "hello", trickle: true }
+    })
+    const daemon = new LocalDaemon({
+      port: 0,
+      choose: () => ({ id: "a", authorization: "token-a", proxyUrl: proxy.url }),
+    })
+    await daemon.start()
+    try {
+      const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/messages`, {
+        method: "POST",
+        body: "{}",
+      })
+      const reader = response.body!.getReader()
+      try {
+        const first = await reader.read()
+        expect(first.value?.byteLength).toBeGreaterThan(0)
+        expect(calls).toBe(1)
+      } finally {
+        await reader.cancel()
+      }
+    } finally {
+      try {
+        await daemon.stop()
+      } finally {
+        await proxy.stop()
+      }
+    }
+  })
+
+  it("returns the last quota response when the next account is unavailable", async () => {
+    let calls = 0
+    const attempts: string[][] = []
+    const proxy = await startRecordingProxy([], async () => {
+      calls += 1
+      return {
+        status: 429,
+        headers: { "x-quota-exhausted": "1", "content-type": "application/json" },
+        body: '{"error":"exhausted"}',
+      }
+    })
+    const daemon = new LocalDaemon({
+      port: 0,
+      choose: ({ rejectedIds }) => {
+        attempts.push([...rejectedIds])
+        return rejectedIds.includes("a")
+          ? null
+          : { id: "a", authorization: "token-a", proxyUrl: proxy.url }
+      },
+    })
+    await daemon.start()
+    try {
+      const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/messages`, {
+        method: "POST",
+        body: "{}",
+      })
+      expect(response.status).toBe(429)
+      expect(response.headers.get("x-quota-exhausted")).toBe("1")
+      expect(await response.text()).toBe('{"error":"exhausted"}')
+      expect(calls).toBe(1)
+      expect(attempts).toEqual([[], ["a"]])
+    } finally {
+      try {
+        await daemon.stop()
+      } finally {
+        await proxy.stop()
+      }
+    }
+  })
+
+  it("does not retry a quota response when the request body exceeds 32 MiB", async () => {
+    let calls = 0
+    const attempts: string[][] = []
+    const proxy = await startRecordingProxy([], async () => {
+      calls += 1
+      return { status: 429, headers: { "x-quota-exhausted": "1" }, body: "full" }
+    })
+    const daemon = new LocalDaemon({
+      port: 0,
+      choose: ({ rejectedIds }) => {
+        attempts.push([...rejectedIds])
+        return rejectedIds.includes("a")
+          ? { id: "b", authorization: "token-b", proxyUrl: proxy.url }
+          : { id: "a", authorization: "token-a", proxyUrl: proxy.url }
+      },
+    })
+    await daemon.start()
+    try {
+      const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/messages`, {
+        method: "POST",
+        body: Buffer.alloc(32 * 1024 * 1024 + 1),
+        headers: { "content-type": "application/json" },
+      })
+      expect(response.status).toBe(429)
+      expect(await response.text()).toBe("full")
+      expect(calls).toBe(1)
+      expect(attempts).toEqual([[]])
+    } finally {
+      try {
+        await daemon.stop()
+      } finally {
+        await proxy.stop()
+      }
+    }
+  })
 })
 
-type TunnelEvent = "open" | "close"
-type RecordingOptions = {
-  gzipPlain?: string
-  brokenGzip?: boolean
-  holdBody?: boolean
-  onTunnel?: (event: TunnelEvent) => void
-}
-// 记录 CONNECT 隧道里的 HTTPS 请求。undici ProxyAgent 不把路径放在代理的请求行上。
-function startRecordingProxy(
-  seen: Array<{ path: string; authorization: string | undefined }>,
-  options?: RecordingOptions,
-): Promise<{ url: string; stop: () => Promise<void> }> {
-  const material = makeCertificate()
-  const previous = getCACertificates("default")
-  setDefaultCACertificates([...previous, material.ca])
-  const upstream = createHttpsServer(
-    { cert: material.cert, key: material.key },
-    (request, response) => {
-      seen.push({
-        path: request.url ?? "",
-        authorization: authorizationHeader(request),
-      })
-      request.resume()
-      if (options?.gzipPlain !== undefined) {
-        const encoded = gzipSync(options.gzipPlain)
-        response.writeHead(200, {
-          "content-encoding": "gzip",
-          "content-length": String(encoded.length),
-          connection: "close",
-        })
-        response.end(encoded)
-        return
-      }
-      if (options?.brokenGzip) {
-        response.writeHead(200, { "content-encoding": "gzip", connection: "close" })
-        response.end("not-gzip")
-        return
-      }
-      if (options?.holdBody) {
-        response.writeHead(200, { "content-type": "text/plain" })
-        response.socket?.setNoDelay(true)
-        response.write("hello-held")
-        response.socket?.uncork()
-        return
-      }
-      response.writeHead(200, { connection: "close" })
-      response.end("ok")
-    },
-  )
-  const proxy = createServer()
-  proxy.on("connect", (request, clientSocket, head) => {
-    options?.onTunnel?.("open")
-    clientSocket.on("close", () => options?.onTunnel?.("close"))
-    if ((request.url ?? "") !== upstreamHost) {
-      clientSocket.end("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
-      return
-    }
-    tunnel(clientSocket, head, upstream)
-  })
-  return listen(upstream)
-    .then(() => listen(proxy))
-    .then((port) => ({
-      url: `http://127.0.0.1:${port}`,
-      stop: async () => {
-        setDefaultCACertificates(previous)
-        await closeServer(proxy)
-        await closeServer(upstream)
-      },
-    }))
-    .catch(async (error: unknown) => {
-      setDefaultCACertificates(previous)
-      await closeServer(proxy)
-      await closeServer(upstream)
-      throw error
-    })
-}
-function tunnel(clientSocket: Socket, head: Buffer, upstream: Server): void {
-  const address = upstream.address()
-  if (address === null || typeof address === "string") {
-    clientSocket.destroy()
-    return
-  }
-  const upstreamSocket = connectTcp(address.port, "127.0.0.1", () => {
-    clientSocket.write("HTTP/1.1 200 Connection Established\r\n\r\n")
-    if (head.length > 0) upstreamSocket.write(head)
-    upstreamSocket.pipe(clientSocket)
-    clientSocket.pipe(upstreamSocket)
-  })
-  const closeBoth = (): void => {
-    clientSocket.destroy()
-    upstreamSocket.destroy()
-  }
-  upstreamSocket.on("error", closeBoth)
-  clientSocket.on("error", closeBoth)
-}
 function readHttp(
   port: number,
   path: string,
@@ -390,110 +422,4 @@ async function waitUntil(ready: () => boolean): Promise<void> {
     if (Date.now() > deadline) throw new Error("timed out")
     await delay(10)
   }
-}
-function authorizationHeader(request: IncomingMessage): string | undefined {
-  const value = request.headers.authorization
-  return Array.isArray(value) ? value[0] : value
-}
-function makeCertificate(): { cert: string; key: string; ca: string } {
-  const dir = mkdtempSync(join(tmpdir(), "pigclaude-daemon-"))
-  const caKey = join(dir, "ca.key")
-  const caPem = join(dir, "ca.pem")
-  const leafKey = join(dir, "leaf.key")
-  const csr = join(dir, "leaf.csr")
-  const leafPem = join(dir, "leaf.pem")
-  execFileSync(
-    "openssl",
-    [
-      "req",
-      "-x509",
-      "-newkey",
-      "rsa:2048",
-      "-keyout",
-      caKey,
-      "-out",
-      caPem,
-      "-days",
-      "1",
-      "-nodes",
-      "-subj",
-      "/CN=pigclaude-test-ca",
-      "-addext",
-      "basicConstraints=critical,CA:TRUE",
-    ],
-    { stdio: "ignore" },
-  )
-  execFileSync(
-    "openssl",
-    [
-      "req",
-      "-newkey",
-      "rsa:2048",
-      "-keyout",
-      leafKey,
-      "-out",
-      csr,
-      "-nodes",
-      "-subj",
-      "/CN=api.anthropic.com",
-      "-addext",
-      "subjectAltName=DNS:api.anthropic.com",
-    ],
-    { stdio: "ignore" },
-  )
-  execFileSync(
-    "openssl",
-    [
-      "x509",
-      "-req",
-      "-in",
-      csr,
-      "-CA",
-      caPem,
-      "-CAkey",
-      caKey,
-      "-CAcreateserial",
-      "-out",
-      leafPem,
-      "-days",
-      "1",
-      "-copy_extensions",
-      "copy",
-    ],
-    { stdio: "ignore" },
-  )
-  const material = {
-    cert: readFileSync(leafPem, "utf8"),
-    key: readFileSync(leafKey, "utf8"),
-    ca: readFileSync(caPem, "utf8"),
-  }
-  rmSync(dir, { recursive: true, force: true })
-  return material
-}
-function listen(server: Server): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const onError = (error: Error): void => {
-      reject(error)
-    }
-    server.once("error", onError)
-    server.listen(0, "127.0.0.1", () => {
-      server.off("error", onError)
-      const address = server.address()
-      if (address === null || typeof address === "string") {
-        reject(new Error("proxy did not bind a port"))
-        return
-      }
-      resolve(address.port)
-    })
-  })
-}
-function closeServer(server: Server): Promise<void> {
-  if (!server.listening) return Promise.resolve()
-  server.closeAllConnections()
-  return new Promise((resolve, reject) => {
-    server.close((error) => {
-      if (error) reject(error)
-      else resolve()
-    })
-  })
 }

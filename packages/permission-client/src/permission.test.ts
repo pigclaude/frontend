@@ -65,4 +65,29 @@ describe("permission", () => {
     expect(decision.source).toBe("cache")
     expect(decision.allowed).toBe(false)
   })
+
+  it("does not replay a cached allow when a success response is not an allow", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "perm-"))
+    const cachePath = join(dir, "permission.json")
+    await checkPermission({
+      endpoint: "http://license.test",
+      license: "lic-ok",
+      cachePath,
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ allowed: true, checkedAt: "2026-10-17T01:00:00Z" })),
+    })
+    const decision = await checkPermission({
+      endpoint: "http://license.test",
+      license: "lic-ok",
+      cachePath,
+      now: () => new Date("2026-10-17T02:00:00Z"),
+      fetchImpl: async () => new Response(JSON.stringify({ allowed: false }), { status: 200 }),
+    })
+    expect(decision).toEqual({
+      allowed: false,
+      checkedAt: "2026-10-17T02:00:00.000Z",
+      source: "remote",
+    })
+    expect(mayStartSession(decision)).toBe(false)
+  })
 })

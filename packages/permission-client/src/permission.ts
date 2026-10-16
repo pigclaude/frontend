@@ -1,4 +1,4 @@
-// 向权限服务确认许可证能否使用。远程允许时记下结果，失败时只沿用同一许可证的上次允许。
+// 向权限服务确认许可证能否使用。远程允许时记下结果；连不上时只沿用同一许可证的上次允许。已经到达的成功响应如果不是带核对时间的允许，就拒绝并且不读缓存。
 
 import { readFile, writeFile } from "node:fs/promises"
 
@@ -28,19 +28,22 @@ type CachedAllow = {
   checkedAt: string
 }
 
-/** 请求权限接口。远程允许时写入缓存；网络失败或非成功响应时，只有同一许可证的允许缓存可以放行。 */
+/** 请求权限接口。只有带核对时间的远程允许会写入缓存。网络失败或非成功响应才读缓存；已到达的 2xx 若不是这种允许，则拒绝并且不读缓存。 */
 export async function checkPermission(input: PermissionCheckInput): Promise<PermissionDecision> {
   const now = input.now ?? (() => new Date())
   const remote = await requestRemote(input.endpoint, input.license, input.fetchImpl ?? fetch)
-  if (!remote) return cachedDecision(input.cachePath, input.license, now)
-  if (remote.allowed) {
+  if (remote.outcome === "unreachable") return cachedDecision(input.cachePath, input.license, now)
+  if (remote.outcome === "closed") {
+    return { allowed: false, checkedAt: now().toISOString(), source: "remote" }
+  }
+  if (remote.body.allowed) {
     await writeFile(
       input.cachePath,
-      JSON.stringify({ license: input.license, allowed: true, checkedAt: remote.checkedAt }),
+      JSON.stringify({ license: input.license, allowed: true, checkedAt: remote.body.checkedAt }),
       "utf8",
     )
   }
-  return { allowed: remote.allowed, checkedAt: remote.checkedAt, source: "remote" }
+  return { allowed: remote.body.allowed, checkedAt: remote.body.checkedAt, source: "remote" }
 }
 
 /** 保证只有允许使用时才能开始会话。 */
@@ -48,23 +51,32 @@ export function mayStartSession(decision: PermissionDecision): boolean {
   return decision.allowed
 }
 
+type RemoteResult =
+  { outcome: "unreachable" } | { outcome: "decision"; body: RemoteBody } | { outcome: "closed" }
+
 async function requestRemote(
   endpoint: string,
   license: string,
   fetchImpl: typeof fetch,
-): Promise<RemoteBody | undefined> {
+): Promise<RemoteResult> {
+  let response: Response
   try {
-    const response = await fetchImpl(`${endpoint}/v1/permission/check`, {
+    response = await fetchImpl(`${endpoint}/v1/permission/check`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ license }),
     })
-    if (!response.ok) return undefined
-    const body: unknown = await response.json()
-    return isRemoteBody(body) ? body : undefined
   } catch {
-    return undefined
+    return { outcome: "unreachable" }
   }
+  if (!response.ok) return { outcome: "unreachable" }
+  try {
+    const body: unknown = await response.json()
+    if (isRemoteBody(body)) return { outcome: "decision", body }
+  } catch {
+    // 2xx 但不是 JSON 时拒绝，不能当成网络失败去读缓存。
+  }
+  return { outcome: "closed" }
 }
 
 function isRemoteBody(body: unknown): body is RemoteBody {

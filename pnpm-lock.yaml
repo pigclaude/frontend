@@ -43,6 +43,10 @@ importers:
         version: 3.2.4
 
   packages/login-gate:
+    dependencies:
+      "@pigclaude/local-store":
+        specifier: workspace:*
+        version: link:../local-store
     devDependencies:
       vitest:
         specifier: 3.2.4

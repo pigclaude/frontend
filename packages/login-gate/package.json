@@ -8,6 +8,9 @@
   "scripts": {
     "test": "vitest run"
   },
+  "dependencies": {
+    "@pigclaude/local-store": "workspace:*"
+  },
   "devDependencies": {
     "vitest": "3.2.4"
   }

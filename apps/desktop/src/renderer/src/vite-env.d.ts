@@ -15,6 +15,23 @@ interface PigclaudeBridge {
   onAuthorizationState?: (
     listener: (event: import("../../main/authorization/types").AuthorizationStateEvent) => void,
   ) => () => void
+  authorization?: {
+    start: (
+      request: import("../../main/authorization/types").AuthorizationRequest,
+    ) => Promise<import("../../main/authorization/types").AuthorizationStartResult>
+    cancel: (
+      sessionId: string,
+    ) => Promise<import("../../main/authorization/types").AuthorizationStateEvent>
+    subscribe: (
+      listener: (event: import("../../main/authorization/types").AuthorizationStateEvent) => void,
+    ) => () => void
+  }
+  membership?: {
+    inspect: () => Promise<import("@pigclaude/contracts/membership").MembershipView | null>
+    subscribe: (
+      listener: (view: import("@pigclaude/contracts/membership").MembershipView) => void,
+    ) => () => void
+  }
 }
 
 interface Window {

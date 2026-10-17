@@ -15,6 +15,8 @@ export type SecretVault = {
   set(key: string, value: string): Promise<void>
   get(key: string): Promise<string | null>
   delete(key: string): Promise<void>
+  /** 删除同一安全命名空间的全部材料，供撤销设备时原子清理。 */
+  deletePrefix?: (prefix: string) => Promise<void>
 }
 
 /** 使用 safeStorage 写入加密秘密，保证 JSON 文件不包含明文 token。 */
@@ -57,6 +59,21 @@ export class FileSecretVault implements SecretVault {
       if (!(key in secrets)) return
       delete secrets[key]
       await this.writeSecrets(secrets)
+    })
+  }
+
+  /** 删除指定前缀的全部加密材料，保证撤销不会遗漏旧授权记录。 */
+  async deletePrefix(prefix: string): Promise<void> {
+    this.assertAvailable()
+    await this.enqueue(async () => {
+      const secrets = await this.readSecrets()
+      let changed = false
+      for (const key of Object.keys(secrets)) {
+        if (!key.startsWith(prefix)) continue
+        delete secrets[key]
+        changed = true
+      }
+      if (changed) await this.writeSecrets(secrets)
     })
   }
 

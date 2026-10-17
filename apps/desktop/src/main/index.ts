@@ -1,15 +1,16 @@
 // 负责创建桌面窗口、承接浏览器授权回调并保存主进程秘密。
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, safeStorage, shell } from "electron"
 import { join } from "node:path"
+import type { MembershipView } from "@pigclaude/contracts/membership"
 import { createCallbackServer } from "./authorization/callback-server"
 import { AuthorizationStartError, AuthorizationService } from "./authorization/service"
 import type {
   AuthorizationRequest,
   AuthorizationStartResult,
   AuthorizationStateEvent,
-  AuthorizationToken,
 } from "./authorization/types"
 import { isAllowedAuthorizationUrl } from "./authorization/url-policy"
+import { createDesktopComposition, type DesktopComposition } from "./composition"
 import { FileSecretVault } from "./secret-vault"
 import {
   createMainWindowOptions,
@@ -18,11 +19,13 @@ import {
   readThemeSource,
 } from "./window-options"
 
-const authOrigin = process.env["PIGCLAUDE_AUTH_ORIGIN"] ?? "http://localhost:5173"
+const rustBaseUrl = process.env["PIGCLAUDE_RUST_BASE_URL"] ?? "http://127.0.0.1:8788"
+const authOrigin = process.env["PIGCLAUDE_AUTH_ORIGIN"] ?? "http://127.0.0.1:3000"
 const packagedRedirectUri = "pigclaude://authorize/callback"
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
 let mainWindow: BrowserWindow | null = null
 let authorizationService: AuthorizationService | null = null
+let desktopComposition: DesktopComposition | null = null
 let callbackServer: Awaited<ReturnType<typeof createCallbackServer>> | null = null
 let pendingCallbackUrls: string[] = []
 
@@ -60,6 +63,11 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit()
 })
 
+app.on("before-quit", () => {
+  void desktopComposition?.dispose()
+  void callbackServer?.close()
+})
+
 function registerIpcHandlers(): void {
   ipcMain.handle("pigclaude:pick-folder", async () => {
     const options: Electron.OpenDialogOptions = {
@@ -80,6 +88,14 @@ function registerIpcHandlers(): void {
   ipcMain.handle("pigclaude:open-external", async (_event, value: unknown) => {
     if (typeof value !== "string" || !isAllowedAuthorizationUrl(value, authOrigin)) return
     await shell.openExternal(value)
+  })
+
+  ipcMain.handle("pigclaude:membership-inspect", async () => {
+    if (!desktopComposition) return null
+    return desktopComposition.membershipGate.inspect()
+  })
+  ipcMain.handle("pigclaude:membership-subscribe", async () => {
+    return desktopComposition?.membershipGate.view() ?? null
   })
 
   ipcMain.handle("pigclaude:authorization-start", async (event, value: unknown) => {
@@ -104,6 +120,9 @@ function registerIpcHandlers(): void {
         expiresAt: started.expiresAt,
       }
       event.sender.send("pigclaude:authorization-state", browserEvent)
+      if (!isAllowedAuthorizationUrl(started.authorizationUrl, authOrigin)) {
+        throw new Error("授权地址不在 Rust 服务 allowlist 内")
+      }
       await shell.openExternal(started.authorizationUrl)
       return { ok: true, ...started } satisfies AuthorizationStartResult
     } catch (error: unknown) {
@@ -142,34 +161,17 @@ async function setupAuthorization(): Promise<void> {
     safeStorage,
   )
   callbackServer = await createCallbackServer(handleCallbackUrl)
-  authorizationService = new AuthorizationService({
+  desktopComposition = createDesktopComposition({
     authOrigin,
+    apiOptions: { baseUrl: rustBaseUrl, authorizationOrigin: authOrigin },
     vault,
-    exchangeCode: exchangeAuthorizationCode,
+    deviceId: process.env["PIGCLAUDE_DEVICE_ID"] ?? "pigclaude-desktop",
+    deviceFingerprintHash: process.env["PIGCLAUDE_DEVICE_FINGERPRINT_HASH"] ?? "pigclaude-desktop",
+    onMembershipView: sendMembershipView,
   })
+  authorizationService = desktopComposition.authorizationService
+  await desktopComposition.membershipGate.inspect()
   if (app.isPackaged) app.setAsDefaultProtocolClient("pigclaude")
-}
-
-async function exchangeAuthorizationCode(input: {
-  code: string
-  codeVerifier: string
-  redirectUri: string
-  clientId: string
-  session: AuthorizationService["getActiveSession"] extends () => infer T ? Exclude<T, null> : never
-}): Promise<AuthorizationToken> {
-  const response = await fetch(`${authOrigin}/authorize/token`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      code: input.code,
-      codeVerifier: input.codeVerifier,
-      redirectUri: input.redirectUri,
-      clientId: input.clientId,
-    }),
-  })
-  const body: unknown = await response.json().catch(() => undefined)
-  if (!response.ok) throw new Error(readError(body) ?? "授权码交换失败")
-  return readAuthorizationToken(body, input.session)
 }
 
 async function handleCallbackUrl(url: string): Promise<void> {
@@ -196,6 +198,12 @@ async function handleCallbackUrl(url: string): Promise<void> {
 function sendAuthorizationState(event: AuthorizationStateEvent): void {
   for (const window of BrowserWindow.getAllWindows()) {
     window.webContents.send("pigclaude:authorization-state", event)
+  }
+}
+
+function sendMembershipView(view: MembershipView): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send("pigclaude:membership-state", view)
   }
 }
 
@@ -247,40 +255,8 @@ function readAuthorizationRequest(value: unknown): AuthorizationRequest | null {
   }
 }
 
-function readAuthorizationToken(
-  value: unknown,
-  session: NonNullable<ReturnType<AuthorizationService["getActiveSession"]>>,
-): AuthorizationToken {
-  if (!isRecord(value)) throw new Error("授权响应格式无效")
-  const accessToken = readString(value.accessToken ?? value.access_token)
-  const refreshToken = readString(value.refreshToken ?? value.refresh_token)
-  const accountId = readString(value.accountId ?? value.account_id)
-  const displayName = readString(value.displayName ?? value.display_name)
-  const expiresAt = typeof value.expiresAt === "number" ? value.expiresAt : Date.now() + 3_600_000
-  const credential = readOptionalString(value.credential)
-  return {
-    accessToken,
-    refreshToken,
-    accountId,
-    displayName,
-    expiresAt,
-    credential,
-    purpose: session.request.purpose,
-    mode: session.request.mode,
-  }
-}
-
-function readString(value: unknown): string {
-  if (typeof value !== "string" || value.length === 0) throw new Error("授权响应缺少字段")
-  return value
-}
-
 function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined
-}
-
-function readError(value: unknown): string | null {
-  return isRecord(value) && typeof value.error === "string" ? value.error : null
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

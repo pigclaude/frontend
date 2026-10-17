@@ -20,6 +20,8 @@ export type AuthorizationRequest = {
 /** 一次待完成的授权会话。保证 verifier 只留在主进程内。 */
 export type AuthorizationSession = {
   sessionId: string
+  /** Rust desktop flow id；本地 fixture 模式下为空。 */
+  flowId?: string
   state: string
   codeVerifier: string
   codeChallenge: string
@@ -39,14 +41,20 @@ export type AuthorizationCallback = {
 
 /** 授权服务交换出的秘密和脱敏身份信息。保证秘密只进入主进程的 vault。 */
 export type AuthorizationToken = {
-  accessToken: string
-  refreshToken: string
+  accessToken?: string
+  refreshToken?: string
   credential?: string
   accountId: string
   displayName: string
   expiresAt: number
   purpose: AuthorizationPurpose
   mode: AuthorizationMode
+  /** Rust exchange 返回的脱敏设备信息。 */
+  deviceId?: string
+  bindingEpoch?: string
+  userId?: string
+  /** Rust exchange 返回的可选 session cookie，只留在主进程 vault。 */
+  sessionCookie?: string
 }
 
 /** 授权状态机的可见状态。保证 renderer 不需要知道 token 细节。 */

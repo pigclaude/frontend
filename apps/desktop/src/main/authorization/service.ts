@@ -12,6 +12,10 @@ import type {
   AuthorizationToken,
 } from "./types"
 import type { SecretVault } from "../secret-vault"
+import type {
+  DesktopAuthorizationStartRequest,
+  DesktopAuthorizationStartResponse,
+} from "@pigclaude/contracts/desktop-membership"
 
 /** 授权码交换所需的主进程参数，保证 verifier 不离开主进程。 */
 export type AuthorizationExchange = {
@@ -22,11 +26,26 @@ export type AuthorizationExchange = {
   session: AuthorizationSession
 }
 
+/** Rust desktop flow 启动端口，保证 verifier 和 state 只在主进程组装。 */
+export type AuthorizationStart = (
+  input: DesktopAuthorizationStartRequest,
+) => Promise<DesktopAuthorizationStartResponse>
+
 /** 授权服务依赖，保证网络和秘密存储可在测试中替换。 */
 export type AuthorizationServiceOptions = {
   authOrigin: string
   vault: SecretVault
   exchangeCode: (input: AuthorizationExchange) => Promise<AuthorizationToken>
+  /** 配置后使用 Rust flow；未配置时保留测试夹具协议。 */
+  startAuthorization?: AuthorizationStart
+  /** 设备身份由 composition 注入，不从 renderer 读取。 */
+  deviceId?: () => string
+  deviceFingerprintHash?: () => string
+  /** Rust exchange 完成后把脱敏设备元数据交给会员 gate。 */
+  onCompleted?: (input: {
+    session: AuthorizationSession
+    token: AuthorizationToken
+  }) => Promise<void>
   now?: () => number
 }
 
@@ -47,6 +66,10 @@ export class AuthorizationService {
   readonly #authOrigin: string
   readonly #vault: SecretVault
   readonly #exchangeCode: AuthorizationServiceOptions["exchangeCode"]
+  readonly #startAuthorization: AuthorizationServiceOptions["startAuthorization"]
+  readonly #deviceId: () => string
+  readonly #deviceFingerprintHash: () => string
+  readonly #onCompleted: NonNullable<AuthorizationServiceOptions["onCompleted"]>
   readonly #now: () => number
   #activeSession: AuthorizationSession | null = null
 
@@ -55,6 +78,10 @@ export class AuthorizationService {
     this.#authOrigin = options.authOrigin
     this.#vault = options.vault
     this.#exchangeCode = options.exchangeCode
+    this.#startAuthorization = options.startAuthorization
+    this.#deviceId = options.deviceId ?? (() => "pigclaude-desktop")
+    this.#deviceFingerprintHash = options.deviceFingerprintHash ?? (() => "pigclaude-desktop")
+    this.#onCompleted = options.onCompleted ?? (async () => undefined)
     this.#now = options.now ?? Date.now
   }
 
@@ -70,6 +97,25 @@ export class AuthorizationService {
       throw new AuthorizationStartError("proxy-mismatch", "登录桥和 daemon 的出口不一致")
     }
     const session = createAuthorizationSession({ request, redirectUri, now: this.#now() })
+    if (this.#startAuthorization) {
+      const started = await this.#startAuthorization({
+        deviceId: this.#deviceId(),
+        deviceFingerprintHash: this.#deviceFingerprintHash(),
+        codeChallenge: session.codeChallenge,
+        state: session.state,
+        clientId: "pigclaude-desktop",
+        callbackUrl: redirectUri,
+        redirectUri,
+        purpose: request.purpose,
+      })
+      session.flowId = started.flowId
+      this.#activeSession = session
+      return {
+        sessionId: session.sessionId,
+        authorizationUrl: started.authorizationUrl,
+        expiresAt: parseExpiration(started.expiresAt, session.expiresAt),
+      }
+    }
     this.#activeSession = session
     return {
       sessionId: session.sessionId,
@@ -110,15 +156,15 @@ export class AuthorizationService {
         clientId: "pigclaude-desktop",
         session,
       })
-      await this.#vault.set(
-        secretKey(token),
-        JSON.stringify({
-          accessToken: token.accessToken,
-          refreshToken: token.refreshToken,
-          credential: token.credential,
-          expiresAt: token.expiresAt,
-        }),
-      )
+      const secret = {
+        ...(token.accessToken ? { accessToken: token.accessToken } : {}),
+        ...(token.refreshToken ? { refreshToken: token.refreshToken } : {}),
+        ...(token.credential ? { credential: token.credential } : {}),
+        expiresAt: token.expiresAt,
+      }
+      if (Object.keys(secret).length > 1)
+        await this.#vault.set(secretKey(token), JSON.stringify(secret))
+      await this.#onCompleted({ session, token })
       return {
         sessionId: session.sessionId,
         purpose: session.request.purpose,
@@ -190,6 +236,14 @@ function matchesRedirect(url: URL, redirectUri: string): boolean {
 
 function secretKey(token: AuthorizationToken): string {
   return `authorization:${token.purpose}:${token.accountId}`
+}
+
+function parseExpiration(value: string | number, fallback: number): number {
+  if (typeof value === "number") return Number.isFinite(value) && value > 0 ? value : fallback
+  const parsed = Date.parse(value)
+  if (Number.isFinite(parsed)) return parsed
+  const numeric = Number(value)
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback
 }
 
 function unknownSessionEvent(

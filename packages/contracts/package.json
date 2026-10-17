@@ -6,6 +6,7 @@
   "exports": {
     "./membership": "./src/membership.ts",
     "./device-authorization": "./src/device-authorization.ts",
+    "./desktop-membership": "./src/desktop-membership.ts",
     "./fixtures/phase1-contract-fixtures": "./src/fixtures/phase1-contract-fixtures.ts"
   },
   "scripts": {

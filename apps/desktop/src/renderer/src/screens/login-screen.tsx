@@ -8,6 +8,7 @@ import type { LoginIntent, LoginState } from "../models/login-model"
 /** 浏览器授权登录页面 props。 */
 export type LoginScreenProps = {
   state: LoginState
+  gateMessage?: string
   onAuthorize: (intent: LoginIntent) => void
   onCancel: () => void
   onReset: () => void
@@ -17,6 +18,7 @@ export type LoginScreenProps = {
 /** 绘制登录/注册两个浏览器授权入口和回调等待态。 */
 export function LoginScreen({
   state,
+  gateMessage,
   onAuthorize,
   onCancel,
   onReset,
@@ -117,6 +119,7 @@ export function LoginScreen({
         </div>
         <h1>{title}</h1>
         <p className="sub">使用系统浏览器授权，桌面端不会保存你的密码。</p>
+        {gateMessage ? <p className="muted login-note">{gateMessage}</p> : null}
         <div className="col login-form">
           <Button variant="primary" size="block" onClick={() => onAuthorize("login")}>
             登录

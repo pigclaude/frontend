@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     "./membership": "./src/membership.ts",
-    "./device-authorization": "./src/device-authorization.ts"
+    "./device-authorization": "./src/device-authorization.ts",
+    "./fixtures/phase1-contract-fixtures": "./src/fixtures/phase1-contract-fixtures.ts"
   },
   "scripts": {
     "lint": "eslint .",

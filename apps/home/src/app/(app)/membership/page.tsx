@@ -1,9 +1,7 @@
 // 负责展示 PigClaude 会员权益和套餐，过期状态明确阻断授权入口。
 "use client"
 
-import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
-import { Button } from "@pigclaude/web-ui/components/button"
 import { homeApi } from "@/lib/api"
 import { QueryError, QueryLoading } from "@/components/query-state"
 
@@ -53,9 +51,10 @@ export default function MembershipPage() {
             <p>请先激活会员，再从桌面客户端发起授权。</p>
           </div>
         ) : (
-          <Button asChild>
-            <Link href="/authorize/pending">授权设备</Link>
-          </Button>
+          <div className="status-gate" role="status">
+            <strong>等待桌面客户端发起授权</strong>
+            <p>请从 PigClaude 桌面客户端发起设备授权，再打开客户端提供的合法授权链接。</p>
+          </div>
         )}
       </section>
       <section className="home-card" aria-labelledby="plans-title">

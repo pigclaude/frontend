@@ -6,6 +6,11 @@ export const ENTITLEMENT_QUERY_KEY = ["entitlement"] as const
 export const HOME_SESSION_REVALIDATE_EVENT = "pigclaude:home-session-revalidate"
 
 export type UnauthorizedQueryAction = "ignore" | "redirect" | "revalidate"
+export type HomeSessionRevalidationEvent = Event & {
+  queryHash?: string
+  onSessionValid?: () => void | Promise<void>
+  onSettled?: () => void
+}
 
 /** 判断无需登录即可访问的 home 路径。 */
 export function isPublicHomePath(pathname: string): boolean {
@@ -24,8 +29,16 @@ export function unauthorizedQueryAction(
 }
 
 /** 请求 app shell 重新验证会话，返回是否成功派发浏览器事件。 */
-export function requestHomeSessionRevalidation(): boolean {
-  if (typeof window === "undefined" || window.location.pathname === "/login") return false
-  window.dispatchEvent(new Event(HOME_SESSION_REVALIDATE_EVENT))
+export function requestHomeSessionRevalidation(
+  queryHash?: string,
+  onSessionValid?: () => void | Promise<void>,
+  onSettled?: () => void,
+): boolean {
+  if (typeof window === "undefined" || isPublicHomePath(window.location.pathname)) return false
+  const event = new Event(HOME_SESSION_REVALIDATE_EVENT) as HomeSessionRevalidationEvent
+  event.queryHash = queryHash
+  event.onSessionValid = onSessionValid
+  event.onSettled = onSettled
+  window.dispatchEvent(event)
   return true
 }

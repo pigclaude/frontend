@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { createHomeApi } from "@pigclaude/api/home"
 import type { HttpClient } from "@pigclaude/api"
+import { deviceAuthorizationFixture } from "@pigclaude/contracts/fixtures/phase1-contract-fixtures"
 import { maskDeviceValue } from "@/lib/device-mask"
 
 function fixtureClient(): HttpClient {
@@ -34,6 +35,12 @@ describe("home device authorization flow", () => {
       replaceExisting: true,
     })
     expect(result.bindingEpoch).toBe("9")
+  })
+
+  it("matches the shared nullable contract fixture", () => {
+    expect(deviceAuthorizationFixture.status).toBe("pending")
+    expect(deviceAuthorizationFixture.existingDeviceId).toBeNull()
+    expect(deviceAuthorizationFixture.existingBindingEpoch).toBeNull()
   })
 
   it("only exposes a masked device value in the UI helper", () => {

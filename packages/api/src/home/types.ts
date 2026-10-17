@@ -1,4 +1,5 @@
 // 负责定义第一阶段 home 登录、会员和设备授权 API 的类型契约。
+import type { DeviceAuthorizationStatus } from "@pigclaude/contracts/device-authorization"
 
 /** 注册请求。 */
 export interface RegisterRequest {
@@ -12,16 +13,6 @@ export interface LoginRequest {
   email: string
   password: string
   captchaToken?: string
-}
-/** 忘记密码请求。 */
-export interface ForgotPasswordRequest {
-  email: string
-  captchaToken?: string
-}
-/** 重置密码请求。 */
-export interface ResetPasswordRequest {
-  token: string
-  newPassword: string
 }
 /** 当前用户和会员摘要。 */
 export interface MeResponse {
@@ -72,9 +63,9 @@ export interface AuthorizationResponse {
   flowId: string
   deviceId: string
   deviceFingerprintHash: string
-  status: string
-  existingDeviceId: string
-  existingBindingEpoch: string
+  status: DeviceAuthorizationStatus
+  existingDeviceId: string | null
+  existingBindingEpoch: string | null
   requiresReplace: boolean
   expiresAt: string | null
 }

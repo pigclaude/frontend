@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@pigclaude/web-ui/components/button"
 import { homeApi } from "@/lib/api"
+import { maskEmail, maskUserId } from "@/lib/identity-mask"
 import { QueryEmpty, QueryError, QueryLoading } from "@/components/query-state"
 
 /** 读取 user/me 与 entitlement，并保留 loading、empty、error、retry 语义。 */
@@ -45,11 +46,11 @@ export default function DashboardPage() {
       <div className="card-grid">
         <section className="home-card">
           <h2>{me.data.nickname || "PigClaude 用户"}</h2>
-          <p className="muted">{me.data.email}</p>
+          <p className="muted">{maskEmail(me.data.email)}</p>
           <dl className="data-list">
             <div>
               <dt>用户 ID</dt>
-              <dd>{me.data.id}</dd>
+              <dd>{maskUserId(me.data.id)}</dd>
             </div>
             <div>
               <dt>产品</dt>

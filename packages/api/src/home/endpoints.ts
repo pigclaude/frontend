@@ -9,13 +9,6 @@ export function createHomeApi(c: HttpClient) {
       register: (body: T.RegisterRequest) =>
         c.post<Record<string, never>>("/v1/auth/register", body),
       login: (body: T.LoginRequest) => c.post<Record<string, never>>("/v1/auth/login", body),
-      logout: () => c.post<Record<string, never>>("/v1/auth/logout"),
-      forgotPassword: (body: T.ForgotPasswordRequest) =>
-        c.post<Record<string, never>>("/v1/auth/password/forgot", body),
-      resetPassword: (body: T.ResetPasswordRequest) =>
-        c.post<Record<string, never>>("/v1/auth/password/reset", body),
-      githubLoginUrl: (redirect: string) =>
-        `/v1/auth/github/login?redirect=${encodeURIComponent(redirect)}`,
     },
     user: { me: () => c.get<T.MeResponse>("/v1/user/me") },
     membership: {

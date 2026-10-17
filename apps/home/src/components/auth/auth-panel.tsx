@@ -3,7 +3,7 @@
 
 import { useState, type FormEvent } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@pigclaude/web-ui/components/button"
 import { Input } from "@pigclaude/web-ui/components/input"
 import { ApiError } from "@pigclaude/api"
@@ -24,32 +24,33 @@ export function AuthPanel({ initialMode }: { initialMode?: AuthMode } = {}) {
   const [password, setPassword] = useState("")
   const [nickname, setNickname] = useState("")
   const [error, setError] = useState<string | null>(null)
-  const [pending, setPending] = useState(false)
 
-  async function refreshSession() {
-    await Promise.all([
-      queryClient.fetchQuery({ queryKey: ["me"], queryFn: homeApi.user.me }),
-      queryClient.fetchQuery({
-        queryKey: ["entitlement"],
-        queryFn: homeApi.membership.entitlement,
-      }),
-    ])
-  }
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setPending(true)
-    setError(null)
-    try {
-      if (mode === "login") await homeApi.auth.login({ email, password })
-      else await homeApi.auth.register({ email, password, nickname })
-      await refreshSession()
+  const authMutation = useMutation({
+    mutationFn: async (values: { email: string; password: string; nickname: string }) => {
+      if (mode === "login")
+        return homeApi.auth.login({ email: values.email, password: values.password })
+      return homeApi.auth.register(values)
+    },
+    onSuccess: async () => {
+      setError(null)
+      await Promise.all([
+        queryClient.fetchQuery({ queryKey: ["me"], queryFn: homeApi.user.me }),
+        queryClient.fetchQuery({
+          queryKey: ["entitlement"],
+          queryFn: homeApi.membership.entitlement,
+        }),
+      ])
       router.push("/dashboard")
-    } catch (reason) {
+    },
+    onError: (reason) => {
       setError(reason instanceof ApiError ? reason.message : "请求失败，请稍后重试")
-    } finally {
-      setPending(false)
-    }
+    },
+  })
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError(null)
+    authMutation.mutate({ email, password, nickname })
   }
 
   return (
@@ -62,6 +63,7 @@ export function AuthPanel({ initialMode }: { initialMode?: AuthMode } = {}) {
           role="tab"
           aria-selected={mode === "login"}
           onClick={() => setMode("login")}
+          disabled={authMutation.isPending}
         >
           登录
         </button>
@@ -70,6 +72,7 @@ export function AuthPanel({ initialMode }: { initialMode?: AuthMode } = {}) {
           role="tab"
           aria-selected={mode === "register"}
           onClick={() => setMode("register")}
+          disabled={authMutation.isPending}
         >
           注册
         </button>
@@ -114,8 +117,8 @@ export function AuthPanel({ initialMode }: { initialMode?: AuthMode } = {}) {
             {error}
           </p>
         )}
-        <Button type="submit" disabled={pending}>
-          {pending ? "提交中…" : mode === "login" ? "登录" : "创建账号"}
+        <Button type="submit" disabled={authMutation.isPending}>
+          {authMutation.isPending ? "提交中…" : mode === "login" ? "登录" : "创建账号"}
         </Button>
       </form>
     </section>

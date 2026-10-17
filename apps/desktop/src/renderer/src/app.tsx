@@ -2,12 +2,9 @@
 import { useEffect, useState } from "react"
 import { Sidebar } from "./components/shell"
 import { TooltipProvider } from "./components/ui/tooltip"
-import {
-  AccountsScreen,
-  EnvironmentScreen,
-  ProxiesScreen,
-  UsageScreen,
-} from "./screens/pool-screens"
+import { EnvironmentScreen, UsageScreen } from "./screens/pool-screens"
+import { AccountsScreen } from "./screens/accounts-screen"
+import { ProxiesScreen } from "./screens/proxies-screen"
 import { TrayScreen } from "./screens/extra-screens"
 import { AuthorizeScreen } from "./screens/authorize-screen"
 import { OnboardingScreen } from "./screens/onboarding-screen"
@@ -15,6 +12,7 @@ import { ChatScreen } from "./screens/chat-screen"
 import { LoginScreen } from "./screens/login-screen"
 import { SettingsScreen } from "./screens/settings-screen"
 import { sessionFixture } from "./fixtures/chat-fixtures"
+import { createPoolState } from "./models/pool-model"
 import { createAuthorizationState, reduceAuthorizationState } from "./models/authorization-model"
 import { createLoginState, reduceLoginState } from "./models/login-model"
 import type { ProjectNavigationState } from "./models/navigation-model"
@@ -30,6 +28,7 @@ export function DesktopApp() {
   const [navigation, setNavigation] = useState<ProjectNavigationState>({
     expandedProjects: { frontend: true, "permission-api": true, cchelper: true },
   })
+  const [poolState] = useState(createPoolState)
   useEffect(() => {
     document.documentElement.dataset.theme = theme
   }, [theme])
@@ -99,8 +98,17 @@ export function DesktopApp() {
             />
           ) : null}
           {screen === "tray" ? <TrayScreen onOpenAccounts={() => setScreen("accounts")} /> : null}
-          {screen === "accounts" ? <AccountsScreen onNavigate={setScreen} /> : null}
-          {screen === "proxies" ? <ProxiesScreen /> : null}
+          {screen === "accounts" ? (
+            <AccountsScreen
+              accounts={poolState.accounts}
+              proxies={poolState.proxies}
+              onOpenAuthorize={() => {
+                setAuthorizationState(createAuthorizationState())
+                setScreen("authorize")
+              }}
+            />
+          ) : null}
+          {screen === "proxies" ? <ProxiesScreen proxies={poolState.proxies} /> : null}
           {screen === "usage" ? <UsageScreen /> : null}
           {screen === "environment" ? <EnvironmentScreen /> : null}
           {bare ? null : <SettingsScreen screen={screen} onNavigate={setScreen} />}

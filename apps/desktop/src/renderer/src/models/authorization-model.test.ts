@@ -1,4 +1,4 @@
-// 验证 Claude 账号授权的出口核对和外部等待流程。
+// 验证 Claude 账号授权的出口核对、外部等待、失败恢复和完成流程。
 import { describe, expect, it } from "vitest"
 import { createAuthorizationState, reduceAuthorizationState } from "./authorization-model"
 
@@ -22,33 +22,38 @@ describe("authorization model", () => {
     state = reduceAuthorizationState(state, { type: "check-exit" })
     state = reduceAuthorizationState(state, {
       type: "start",
+      sessionId: "session-1",
       url: "http://localhost:5173/authorize",
     })
     expect(state).toMatchObject({ step: "exit", canLaunch: false, authorizationUrl: null })
   })
 
-  it("出口一致后进入外部等待，重置会清除批准状态", () => {
+  it("出口一致后进入外部等待，失败可重试，批准后完成", () => {
     let state = reduceAuthorizationState(createAuthorizationState(), {
       type: "set-exits",
       bridgeExit: "203.0.113.10",
       daemonExit: "203.0.113.10",
     })
     state = reduceAuthorizationState(state, { type: "check-exit" })
-    expect(state.canLaunch).toBe(true)
     state = reduceAuthorizationState(state, {
       type: "start",
+      sessionId: "session-1",
       url: "http://localhost:5173/authorize",
     })
     expect(state).toMatchObject({
       step: "waiting",
       authorizationUrl: "http://localhost:5173/authorize",
+      sessionId: "session-1",
     })
+    state = reduceAuthorizationState(state, { type: "failed", error: "授权链接已过期" })
+    expect(state).toMatchObject({ step: "waiting", error: "授权链接已过期", approved: false })
     state = reduceAuthorizationState(state, { type: "approved" })
     expect(state.step).toBe("completed")
     expect(reduceAuthorizationState(state, { type: "reset" })).toMatchObject({
       step: "exit",
       approved: false,
       authorizationUrl: null,
+      sessionId: null,
     })
   })
 })

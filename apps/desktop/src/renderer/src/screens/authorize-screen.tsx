@@ -1,5 +1,5 @@
 // 负责添加或重新授权 Claude 账号，并把确认交给外部浏览器。
-import { useEffect, useState, type ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Icon } from "../components/icon"
@@ -10,38 +10,36 @@ import type { AuthorizationEvent, AuthorizationState } from "../models/authoriza
 export type AuthorizeScreenProps = {
   state: AuthorizationState
   onEvent: (event: AuthorizationEvent) => void
+  onStartBrowserAuthorization: (input: {
+    accountName: string
+    proxyId: string | null
+    fingerprintSeed: string | null
+    bridgeExit: string
+    daemonExit: string
+  }) => void
   onCancel: () => void
 }
 
 /** 绘制六步账号授权向导和外部浏览器等待态。 */
-export function AuthorizeScreen({ state, onEvent, onCancel }: AuthorizeScreenProps) {
+export function AuthorizeScreen({
+  state,
+  onEvent,
+  onStartBrowserAuthorization,
+  onCancel,
+}: AuthorizeScreenProps) {
   const [name, setName] = useState(state.accountName || "主力 Max")
   const [fingerprint, setFingerprint] = useState(state.fingerprintSeed || "fp_4d18…73aa")
   const [copied, setCopied] = useState(false)
-  const authorizationUrl =
-    state.authorizationUrl ?? new URL("/authorize", window.location.origin).toString()
+  const authorizationUrl = state.authorizationUrl ?? ""
 
-  useEffect(() => {
-    if (state.step !== "waiting") return
-    const timer = window.setInterval(() => {
-      void fetch("/authorize/status")
-        .then((response) => response.json() as Promise<{ approved?: boolean }>)
-        .then((body) => {
-          if (body.approved) onEvent({ type: "approved" })
-        })
-        .catch(() => undefined)
-    }, 800)
-    return () => window.clearInterval(timer)
-  }, [onEvent, state.step])
-
-  async function startExternalAuthorization() {
-    await fetch("/authorize/reset", { method: "POST" }).catch(() => undefined)
-    onEvent({ type: "start", url: authorizationUrl })
-    if (window.pigclaude?.openExternal) {
-      await window.pigclaude.openExternal(authorizationUrl)
-    } else {
-      window.open(authorizationUrl, "_blank", "noopener")
-    }
+  function startBrowserAuthorization() {
+    onStartBrowserAuthorization({
+      accountName: name,
+      proxyId: state.proxyId,
+      fingerprintSeed: fingerprint,
+      bridgeExit: state.bridgeExit,
+      daemonExit: state.daemonExit,
+    })
   }
 
   async function copyLink() {
@@ -211,6 +209,7 @@ export function AuthorizeScreen({ state, onEvent, onCancel }: AuthorizeScreenPro
                   <Icon name="x" small /> 请勿登录：先完成出口核对
                 </div>
               )}
+              {state.error ? <p className="error-text">{state.error}</p> : null}
               <div className="wizard-foot">
                 <Button
                   variant="ghost"
@@ -241,7 +240,7 @@ export function AuthorizeScreen({ state, onEvent, onCancel }: AuthorizeScreenPro
                 <Button
                   variant="primary"
                   disabled={!state.canLaunch}
-                  onClick={() => void startExternalAuthorization()}
+                  onClick={startBrowserAuthorization}
                 >
                   打开浏览器授权
                 </Button>
@@ -258,12 +257,13 @@ export function AuthorizeScreen({ state, onEvent, onCancel }: AuthorizeScreenPro
                 <b>等待浏览器确认</b>
                 <span>浏览器配置目录独立 · 出口持续核对</span>
                 <span className="mono">{authorizationUrl}</span>
+                {state.error ? <span className="error-text">{state.error}</span> : null}
               </div>
               <div className="wizard-foot">
                 <Button variant="secondary" onClick={() => void copyLink()}>
                   {copied ? "已复制" : "复制登录链接"}
                 </Button>
-                <Button variant="ghost" onClick={() => void startExternalAuthorization()}>
+                <Button variant="ghost" onClick={startBrowserAuthorization}>
                   重新发起
                 </Button>
               </div>

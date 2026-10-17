@@ -1,4 +1,4 @@
-// 负责描述 Claude 账号授权向导、出口核对和外部等待状态。
+// 负责描述 Claude 账号授权向导、出口核对和浏览器回调状态。
 
 /** Claude 账号授权向导当前步骤。 */
 export type AuthorizationStep = "name" | "proxy" | "fingerprint" | "exit" | "waiting" | "completed"
@@ -13,7 +13,9 @@ export type AuthorizationState = {
   daemonExit: string
   canLaunch: boolean
   approved: boolean
+  sessionId: string | null
   authorizationUrl: string | null
+  error: string | null
 }
 
 /** Claude 账号授权状态变化事件。 */
@@ -24,8 +26,9 @@ export type AuthorizationEvent =
   | { type: "advance" }
   | { type: "set-exits"; bridgeExit: string; daemonExit: string }
   | { type: "check-exit" }
-  | { type: "start"; url: string }
+  | { type: "start"; sessionId: string; url: string }
   | { type: "approved" }
+  | { type: "failed"; error: string }
   | { type: "reset" }
 
 /** 创建初始的 Claude 账号授权状态。 */
@@ -39,7 +42,9 @@ export function createAuthorizationState(): AuthorizationState {
     daemonExit: "",
     canLaunch: false,
     approved: false,
+    sessionId: null,
     authorizationUrl: null,
+    error: null,
   }
 }
 
@@ -48,9 +53,11 @@ export function reduceAuthorizationState(
   state: AuthorizationState,
   event: AuthorizationEvent,
 ): AuthorizationState {
-  if (event.type === "set-name") return { ...state, accountName: event.accountName }
-  if (event.type === "set-proxy") return { ...state, proxyId: event.proxyId }
-  if (event.type === "set-fingerprint") return { ...state, fingerprintSeed: event.fingerprintSeed }
+  if (event.type === "set-name") return { ...state, accountName: event.accountName, error: null }
+  if (event.type === "set-proxy") return { ...state, proxyId: event.proxyId, error: null }
+  if (event.type === "set-fingerprint") {
+    return { ...state, fingerprintSeed: event.fingerprintSeed, error: null }
+  }
   if (event.type === "advance") {
     const next: Record<AuthorizationStep, AuthorizationStep> = {
       name: "proxy",
@@ -60,10 +67,16 @@ export function reduceAuthorizationState(
       waiting: "waiting",
       completed: "completed",
     }
-    return { ...state, step: next[state.step] }
+    return { ...state, step: next[state.step], error: null }
   }
   if (event.type === "set-exits") {
-    return { ...state, step: "exit", bridgeExit: event.bridgeExit, daemonExit: event.daemonExit }
+    return {
+      ...state,
+      step: "exit",
+      bridgeExit: event.bridgeExit,
+      daemonExit: event.daemonExit,
+      error: null,
+    }
   }
   if (event.type === "check-exit") {
     const canLaunch = state.bridgeExit !== "" && state.bridgeExit === state.daemonExit
@@ -72,21 +85,32 @@ export function reduceAuthorizationState(
       step: "exit",
       canLaunch,
       authorizationUrl: canLaunch ? state.authorizationUrl : null,
+      error: null,
     }
   }
   if (event.type === "start" && state.canLaunch) {
-    return { ...state, step: "waiting", approved: false, authorizationUrl: event.url }
+    return {
+      ...state,
+      step: "waiting",
+      approved: false,
+      sessionId: event.sessionId,
+      authorizationUrl: event.url,
+      error: null,
+    }
   }
   if (event.type === "approved" && state.step === "waiting") {
-    return { ...state, step: "completed", approved: true }
+    return { ...state, step: "completed", approved: true, error: null }
   }
+  if (event.type === "failed") return { ...state, error: event.error, approved: false }
   if (event.type === "reset") {
     return {
       ...state,
       step: "exit",
       canLaunch: false,
       approved: false,
+      sessionId: null,
       authorizationUrl: null,
+      error: null,
     }
   }
   return state

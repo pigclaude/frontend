@@ -42,42 +42,70 @@ export function DesktopApp() {
 
   useEffect(() => {
     const unsubscribe = window.pigclaude?.onAuthorizationState?.((event) => {
-      if (event.purpose !== "pigclaude-login") return
-      const intent: LoginIntent = event.mode === "register" ? "register" : "login"
-      const authorizationUrl = event.authorizationUrl
-      const expiresAt = event.expiresAt
-      const displayName = event.displayName
-      if (event.status === "browser-open" && authorizationUrl && typeof expiresAt === "number") {
-        setLoginState((current) =>
-          reduceLoginState(current, {
-            type: "started",
-            intent,
-            sessionId: event.sessionId,
-            authorizationUrl,
-            expiresAt,
-          }),
-        )
+      if (event.purpose === "pigclaude-login") {
+        const intent: LoginIntent = event.mode === "register" ? "register" : "login"
+        const authorizationUrl = event.authorizationUrl
+        const expiresAt = event.expiresAt
+        const displayName = event.displayName
+        if (event.status === "browser-open" && authorizationUrl && typeof expiresAt === "number") {
+          setLoginState((current) =>
+            reduceLoginState(current, {
+              type: "started",
+              intent,
+              sessionId: event.sessionId,
+              authorizationUrl,
+              expiresAt,
+            }),
+          )
+          return
+        }
+        if (event.status === "completed" && displayName && typeof expiresAt === "number") {
+          setLoginState((current) =>
+            reduceLoginState(current, {
+              type: "completed",
+              intent,
+              sessionId: event.sessionId,
+              displayName,
+              expiresAt,
+            }),
+          )
+          return
+        }
+        if (isAuthorizationFailure(event)) {
+          setLoginState((current) =>
+            reduceLoginState(current, {
+              type: "failed",
+              error: event.error ?? statusText(event.status),
+            }),
+          )
+        }
         return
       }
-      if (event.status === "completed" && displayName && typeof expiresAt === "number") {
-        setLoginState((current) =>
-          reduceLoginState(current, {
-            type: "completed",
-            intent,
-            sessionId: event.sessionId,
-            displayName,
-            expiresAt,
-          }),
-        )
-        return
-      }
-      if (isAuthorizationFailure(event)) {
-        setLoginState((current) =>
-          reduceLoginState(current, {
-            type: "failed",
-            error: event.error ?? statusText(event.status),
-          }),
-        )
+      if (event.purpose === "claude-account") {
+        if (event.status === "browser-open" && event.authorizationUrl) {
+          setAuthorizationState((current) =>
+            reduceAuthorizationState(current, {
+              type: "start",
+              sessionId: event.sessionId,
+              url: event.authorizationUrl ?? "",
+            }),
+          )
+          return
+        }
+        if (event.status === "completed") {
+          setAuthorizationState((current) =>
+            reduceAuthorizationState(current, { type: "approved" }),
+          )
+          return
+        }
+        if (isAuthorizationFailure(event)) {
+          setAuthorizationState((current) =>
+            reduceAuthorizationState(current, {
+              type: "failed",
+              error: event.error ?? statusText(event.status),
+            }),
+          )
+        }
       }
     })
     return () => unsubscribe?.()
@@ -122,6 +150,57 @@ export function DesktopApp() {
     setLoginState((current) => reduceLoginState(current, { type: "cancelled" }))
   }
 
+  async function startClaudeAuthorization(input: {
+    accountName: string
+    proxyId: string | null
+    fingerprintSeed: string | null
+    bridgeExit: string
+    daemonExit: string
+  }): Promise<void> {
+    const bridge = window.pigclaude
+    if (!bridge?.startAuthorization) {
+      setAuthorizationState((current) =>
+        reduceAuthorizationState(current, { type: "failed", error: "桌面授权桥不可用" }),
+      )
+      return
+    }
+    try {
+      const result = await bridge.startAuthorization({
+        purpose: "claude-account",
+        mode: "authorize",
+        accountName: input.accountName,
+        proxyId: input.proxyId ?? undefined,
+        fingerprintSeed: input.fingerprintSeed ?? undefined,
+        bridgeExit: input.bridgeExit,
+        daemonExit: input.daemonExit,
+      })
+      if (!result.ok) {
+        setAuthorizationState((current) =>
+          reduceAuthorizationState(current, { type: "failed", error: result.error }),
+        )
+        return
+      }
+      setAuthorizationState((current) =>
+        reduceAuthorizationState(current, {
+          type: "start",
+          sessionId: result.sessionId,
+          url: result.authorizationUrl,
+        }),
+      )
+    } catch (error: unknown) {
+      setAuthorizationState((current) =>
+        reduceAuthorizationState(current, { type: "failed", error: errorMessage(error) }),
+      )
+    }
+  }
+
+  async function cancelClaudeAuthorization(): Promise<void> {
+    const sessionId = authorizationState.sessionId
+    if (sessionId) await window.pigclaude?.cancelAuthorization?.(sessionId)
+    setAuthorizationState(createAuthorizationState())
+    setScreen("accounts")
+  }
+
   if (!authed || screen === "login") {
     return (
       <LoginScreen
@@ -143,7 +222,8 @@ export function DesktopApp() {
         onEvent={(event) =>
           setAuthorizationState((current) => reduceAuthorizationState(current, event))
         }
-        onCancel={() => setScreen("accounts")}
+        onStartBrowserAuthorization={(input) => void startClaudeAuthorization(input)}
+        onCancel={() => void cancelClaudeAuthorization()}
       />
     )
   }

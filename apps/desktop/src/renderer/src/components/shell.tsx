@@ -8,6 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu"
 import { Icon } from "./icon"
+import { TrafficLights } from "./traffic-lights"
 import { SettingsSidebar } from "./settings-sidebar"
 import { WorkspaceSidebar } from "./workspace-sidebar"
 import type { ProjectNavigationState } from "../models/navigation-model"
@@ -55,11 +56,7 @@ export function Sidebar({
   return (
     <aside className="sidebar" aria-label={inSettings ? "设置导航" : "侧栏"}>
       <div className="side-top">
-        <div className="traffic" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-        </div>
+        <TrafficLights />
         <button className="icon-btn" type="button" aria-label="收起侧栏">
           <Icon name="sidebar" />
         </button>

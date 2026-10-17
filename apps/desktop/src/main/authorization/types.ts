@@ -76,3 +76,8 @@ export type AuthorizationStateEvent = {
   expiresAt?: number
   error?: string
 }
+
+/** 主进程启动授权的结果，保证 renderer 只得到会话地址而不是秘密。 */
+export type AuthorizationStartResult =
+  | { ok: true; sessionId: string; authorizationUrl: string; expiresAt: number }
+  | { ok: false; status: "proxy-mismatch" | "network-error"; error: string }

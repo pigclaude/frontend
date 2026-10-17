@@ -1,6 +1,7 @@
 // 负责 pigclaude 软件使用权限登录，不启动 Claude 账号授权。
 import { useEffect, useState, type ReactNode } from "react"
 import { Icon } from "../components/icon"
+import { TrafficLights } from "../components/traffic-lights"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import type { LoginEvent, LoginMode, LoginState } from "../models/login-model"
@@ -237,11 +238,7 @@ function AuthWindow({ children }: { children: ReactNode }) {
   return (
     <div className="win">
       <div className="win-top">
-        <div className="traffic" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-        </div>
+        <TrafficLights />
       </div>
       <main className="win-body">{children}</main>
     </div>

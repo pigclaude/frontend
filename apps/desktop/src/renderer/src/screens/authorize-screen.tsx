@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from "react"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Icon } from "../components/icon"
+import { TrafficLights } from "../components/traffic-lights"
 import type { AuthorizationEvent, AuthorizationState } from "../models/authorization-model"
 
 /** Claude 授权向导 props。 */
@@ -56,11 +57,7 @@ export function AuthorizeScreen({ state, onEvent, onCancel }: AuthorizeScreenPro
   return (
     <div className="win">
       <div className="win-top">
-        <div className="traffic" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-        </div>
+        <TrafficLights />
         <Button className="wizard-cancel" variant="ghost" size="sm" onClick={onCancel}>
           取消
         </Button>

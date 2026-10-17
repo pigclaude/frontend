@@ -44,7 +44,9 @@ export class FileSecretVault implements SecretVault {
     this.assertAvailable()
     const secrets = await this.readSecrets()
     const encoded = secrets[key]
-    return encoded === undefined ? null : this.#safeStorage.decryptString(Buffer.from(encoded, "base64"))
+    return encoded === undefined
+      ? null
+      : this.#safeStorage.decryptString(Buffer.from(encoded, "base64"))
   }
 
   /** 删除一个秘密，保证删除后磁盘文件不再包含该 key。 */

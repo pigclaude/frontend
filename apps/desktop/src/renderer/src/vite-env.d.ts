@@ -4,6 +4,15 @@
 interface PigclaudeBridge {
   platform: string
   openExternal?: (url: string) => Promise<void>
+  startAuthorization?: (
+    request: import("../../main/authorization/types").AuthorizationRequest,
+  ) => Promise<import("../../main/authorization/types").AuthorizationStartResult>
+  cancelAuthorization?: (
+    sessionId: string,
+  ) => Promise<import("../../main/authorization/types").AuthorizationStateEvent>
+  onAuthorizationState?: (
+    listener: (event: import("../../main/authorization/types").AuthorizationStateEvent) => void,
+  ) => () => void
 }
 
 interface Window {

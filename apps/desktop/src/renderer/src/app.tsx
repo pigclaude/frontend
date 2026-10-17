@@ -201,6 +201,12 @@ export function DesktopApp() {
     setScreen("accounts")
   }
 
+  function logout(): void {
+    setAuthed(false)
+    setLoginState(createLoginState())
+    setScreen("login")
+  }
+
   if (!authed || screen === "login") {
     return (
       <LoginScreen
@@ -253,11 +259,7 @@ export function DesktopApp() {
             }))
           }
           onNewSession={() => setScreen("chat-new")}
-          onLogout={() => {
-            setAuthed(false)
-            setLoginState(createLoginState())
-            setScreen("login")
-          }}
+          onLogout={logout}
           theme={theme}
           onToggleTheme={() => setTheme((value) => (value === "light" ? "dark" : "light"))}
         />
@@ -294,7 +296,9 @@ export function DesktopApp() {
           {screen === "environment" ? (
             <EnvironmentScreen fixture={operationsEnvironmentFixture} />
           ) : null}
-          {bare || !settingsPage ? null : <SettingsScreen screen={screen} onNavigate={setScreen} />}
+          {bare || !settingsPage ? null : (
+            <SettingsScreen screen={screen} onNavigate={setScreen} onLogout={logout} />
+          )}
         </main>
       </div>
     </TooltipProvider>

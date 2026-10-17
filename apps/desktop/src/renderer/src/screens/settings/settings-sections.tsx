@@ -9,10 +9,14 @@ import type { Screen } from "../screen"
 import { SettingPage, SettingRow, SettingSection } from "./setting-page"
 
 /** 设置页面 props。 */
-export type SettingsScreenProps = { screen: Screen; onNavigate: (screen: Screen) => void }
+export type SettingsScreenProps = {
+  screen: Screen
+  onNavigate: (screen: Screen) => void
+  onLogout: () => void
+}
 
 /** 根据当前设置子页绘制原型对应的设置内容。 */
-export function SettingsScreen({ screen, onNavigate }: SettingsScreenProps) {
+export function SettingsScreen({ screen, onNavigate, onLogout }: SettingsScreenProps) {
   const [privacy, setPrivacy] = useState({ open: false, cleared: false })
   const [port, setPort] = useState<string>(settingsFixture.relayPort)
   if (screen === "profile")
@@ -31,7 +35,7 @@ export function SettingsScreen({ screen, onNavigate }: SettingsScreenProps) {
           />
         </SettingSection>
         <div className="setup-actions">
-          <Button variant="secondary" onClick={() => onNavigate("login")}>
+          <Button variant="secondary" onClick={onLogout}>
             退出登录
           </Button>
         </div>

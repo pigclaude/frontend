@@ -89,11 +89,12 @@ export async function startPhaseOneLauncher(env = process.env) {
           "pnpm",
           [
             "--dir",
-            "frontend",
-            "--filter",
-            "@pigclaude/home",
-            "dev:loopback",
-            "--",
+            "frontend/apps/home",
+            "exec",
+            "next",
+            "dev",
+            "--hostname",
+            "127.0.0.1",
             "--port",
             String(ports.home),
           ],
@@ -105,11 +106,11 @@ export async function startPhaseOneLauncher(env = process.env) {
           "pnpm",
           [
             "--dir",
-            "frontend",
-            "--filter",
-            "@pigclaude/admin",
-            "dev:loopback",
-            "--",
+            "frontend/apps/admin",
+            "exec",
+            "vite",
+            "--host",
+            "127.0.0.1",
             "--port",
             String(ports.admin),
           ],
@@ -149,17 +150,17 @@ export async function startPhaseOneLauncher(env = process.env) {
 }
 
 function spawnService(name, command, args, cwd, env) {
-  const child = spawn(command, args, { cwd, env, stdio: "inherit" })
+  const child = spawn(command, args, { cwd, env, detached: true, stdio: "inherit" })
   child.once("error", (error) => console.error(`${name} process failed: ${error.message}`))
   return { name, child }
 }
 
 async function stopService(service) {
   if (service.child.exitCode !== null) return
-  service.child.kill("SIGTERM")
+  signalProcessGroup(service.child, "SIGTERM")
   await new Promise((resolveStop) => {
     const timer = setTimeout(() => {
-      service.child.kill("SIGKILL")
+      signalProcessGroup(service.child, "SIGKILL")
       resolveStop()
     }, shutdownTimeoutMs)
     service.child.once("exit", () => {
@@ -167,6 +168,15 @@ async function stopService(service) {
       resolveStop()
     })
   })
+}
+
+function signalProcessGroup(child, signal) {
+  try {
+    if (child.pid) process.kill(-child.pid, signal)
+    else child.kill(signal)
+  } catch {
+    child.kill(signal)
+  }
 }
 
 async function waitForHttp(url, timeoutMs = 30_000) {
@@ -202,7 +212,13 @@ function connectTcp(host, port, timeoutMs) {
   })
 }
 
-function isPortAvailable(port) {
+async function isPortAvailable(port) {
+  try {
+    await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(200) })
+    return false
+  } catch {
+    // 没有可用 HTTP 服务时继续用 TCP bind 检查端口占用。
+  }
   return new Promise((resolveAvailable) => {
     const server = net.createServer()
     server.once("error", () => resolveAvailable(false))

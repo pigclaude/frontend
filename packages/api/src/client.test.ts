@@ -1,6 +1,6 @@
 // 负责验证共享 HTTP client 对管理员 204 退出响应和 401 回调的协议处理。
 import { describe, expect, it, vi } from "vitest"
-import { ApiError, createClient } from "./client"
+import { createClient } from "./client"
 
 describe("createClient", () => {
   it("accepts an empty 204 response for admin logout", async () => {
@@ -21,7 +21,7 @@ describe("createClient", () => {
     )
     const onUnauthorized = vi.fn()
     const client = createClient({ fetch: fetcher, onUnauthorized })
-    await expect(client.get("/admin/v1/me")).rejects.toMatchObject<ApiError>({
+    await expect(client.get("/admin/v1/me")).rejects.toMatchObject({
       status: 401,
       reason: "expired",
     })

@@ -1,6 +1,7 @@
 // 负责绘制设置页面的搜索框和分组导航。
 import { useState } from "react"
 import { Icon } from "./icon"
+import { Input } from "./ui/input"
 import { filterSettingsNav, settingsNav } from "../models/settings-nav"
 import type { Screen } from "../screens/screen"
 
@@ -24,7 +25,7 @@ export function SettingsSidebar({
       </button>
       <label className="side-search">
         <Icon name="search" small />
-        <input
+        <Input
           type="search"
           placeholder="搜索设置"
           aria-label="搜索设置"

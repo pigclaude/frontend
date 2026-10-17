@@ -3,11 +3,12 @@ import * as SliderPrimitive from "@radix-ui/react-slider"
 import type { ComponentProps } from "react"
 import { cn } from "../../lib/cn"
 
-/** 渲染单滑块或区间滑块，每个取值对应一个圆钮。 */
+/** 渲染单滑块或区间滑块，每个取值对应一个圆钮；aria-label 落在圆钮上，供读屏器读出。 */
 export function Slider({
   className,
   value,
   defaultValue,
+  "aria-label": ariaLabel,
   ...props
 }: ComponentProps<typeof SliderPrimitive.Root>) {
   const thumbs = value ?? defaultValue ?? [0]
@@ -22,7 +23,7 @@ export function Slider({
         <SliderPrimitive.Range className="slider-range" />
       </SliderPrimitive.Track>
       {thumbs.map((_, index) => (
-        <SliderPrimitive.Thumb key={index} className="slider-thumb" />
+        <SliderPrimitive.Thumb key={index} className="slider-thumb" aria-label={ariaLabel} />
       ))}
     </SliderPrimitive.Root>
   )

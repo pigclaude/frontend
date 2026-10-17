@@ -1,6 +1,14 @@
 // 负责设置行右侧的分段选择、滑块、下拉和锁定值控件。
-import type { CSSProperties } from "react"
 import { Icon } from "../../components/icon"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select"
+import { Slider } from "../../components/ui/slider"
+import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group"
 
 /** 分段选择：选中项高亮，点击已选中项不触发变化。 */
 export function Segmented<T extends string>({
@@ -15,20 +23,18 @@ export function Segmented<T extends string>({
   onChange: (value: T) => void
 }) {
   return (
-    <div className="seg" role="radiogroup" aria-label={label}>
+    <ToggleGroup
+      type="single"
+      aria-label={label}
+      value={value}
+      onValueChange={(next) => next && next !== value && onChange(next as T)}
+    >
       {options.map((option) => (
-        <button
-          key={option.value}
-          className={option.value === value ? "is-active" : undefined}
-          type="button"
-          role="radio"
-          aria-checked={option.value === value}
-          onClick={() => option.value !== value && onChange(option.value)}
-        >
+        <ToggleGroupItem key={option.value} value={option.value}>
           {option.label}
-        </button>
+        </ToggleGroupItem>
       ))}
-    </div>
+    </ToggleGroup>
   )
 }
 
@@ -48,26 +54,22 @@ export function RangeControl({
   step: number
   onChange: (value: number) => void
 }) {
-  const fill = `${((value - min) / (max - min)) * 100}%`
   return (
     <div className="range-row">
-      <input
-        className="range"
-        type="range"
+      <Slider
         min={min}
         max={max}
         step={step}
-        value={value}
+        value={[value]}
         aria-label={label}
-        style={{ "--v": fill } as CSSProperties}
-        onChange={(event) => onChange(Number(event.target.value))}
+        onValueChange={(next) => next[0] !== undefined && onChange(next[0])}
       />
       <span className="num">{value}%</span>
     </div>
   )
 }
 
-/** 原生下拉，外观沿用设计稿的 select。 */
+/** 下拉选择，触发器外观沿用设计稿的 select。 */
 export function SelectControl({
   label,
   value,
@@ -83,17 +85,18 @@ export function SelectControl({
 }) {
   return (
     <div className="select-wrap">
-      <select
-        className="select"
-        style={{ width }}
-        aria-label={label}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {options.map((option) => (
-          <option key={option}>{option}</option>
-        ))}
-      </select>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger style={{ width }} aria-label={label}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option} value={option}>
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   )
 }

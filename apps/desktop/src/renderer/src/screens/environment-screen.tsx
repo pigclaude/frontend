@@ -1,6 +1,13 @@
 // 负责逐项展示会话环境和网络路径检测结果。
 import { useState } from "react"
 import { Button } from "../components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select"
 import { environmentFixtures } from "../fixtures/renderer-fixtures"
 
 /** 环境检测页面 props。 */
@@ -22,15 +29,16 @@ export function EnvironmentScreen({ fixture = environmentFixtures }: Environment
           <p className="sub">会话进程环境逐项核对与网络路径</p>
         </div>
         <div className="actions">
-          <select
-            className="select"
-            value={account}
-            onChange={(event) => setAccount(event.target.value)}
-          >
-            <option value="primary">主力 Max</option>
-            <option value="work">工作 Max</option>
-            <option value="backup">备用 Pro</option>
-          </select>
+          <Select value={account} onValueChange={setAccount}>
+            <SelectTrigger aria-label="账号" style={{ width: 140 }}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="primary">主力 Max</SelectItem>
+              <SelectItem value="work">工作 Max</SelectItem>
+              <SelectItem value="backup">备用 Pro</SelectItem>
+            </SelectContent>
+          </Select>
           <Button variant="primary" onClick={rerun} disabled={running}>
             {running ? "检测中…" : "重新检测"}
           </Button>

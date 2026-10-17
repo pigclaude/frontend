@@ -491,9 +491,12 @@ a.item,
   appearance: none;
   flex: 1;
   min-width: 0;
+  width: auto;
   height: 100%;
+  padding: 0;
   border: 0;
   background: none;
+  box-shadow: none;
   outline: none;
   font-size: var(--fs-md);
   color: var(--fg);

@@ -2,6 +2,7 @@
 import { useState } from "react"
 import { useToast } from "../../components/toast"
 import { Button } from "../../components/ui/button"
+import { Kbd } from "../../components/ui/kbd"
 import { Switch } from "../../components/ui/switch"
 import type { ThemePreference } from "../../models/theme-model"
 import type { Screen } from "../screen"
@@ -23,7 +24,7 @@ export function GeneralSettings() {
       </SettingSection>
       <SettingSection title="快捷键">
         <SettingRow title="呼出托盘面板" description="在任何应用里都能用">
-          <kbd>⌥ ⌘ P</kbd>
+          <Kbd>⌥ ⌘ P</Kbd>
           <Button size="sm" onClick={() => toast("请按下新的组合键", "pencil")}>
             修改
           </Button>

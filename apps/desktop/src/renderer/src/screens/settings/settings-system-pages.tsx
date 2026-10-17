@@ -4,6 +4,7 @@ import { Icon } from "../../components/icon"
 import { useToast } from "../../components/toast"
 import { Button } from "../../components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../components/ui/dialog"
+import { Input } from "../../components/ui/input"
 import { settingsFixture } from "../../fixtures/operations-fixtures"
 import { reducePrivacyState, validateRelayPort } from "../../models/operations-model"
 import { LockedValue, SelectControl } from "./setting-controls"
@@ -30,7 +31,7 @@ export function NetworkSettings() {
             )
           }
         >
-          <input
+          <Input
             className={portValid ? "input mono port-input" : "input mono port-input is-error"}
             value={port}
             inputMode="numeric"

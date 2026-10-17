@@ -6,6 +6,7 @@
   "private": true,
   "scripts": {
     "dev": "electron-vite dev",
+    "e2e:phase1": "pnpm build",
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "test": "vitest run",

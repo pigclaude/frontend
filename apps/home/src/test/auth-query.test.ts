@@ -1,6 +1,6 @@
 // 负责验证 home 的会话 401 分类和 revalidate 事件行为。
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { ApiError } from "@pigclaude/api"
+import { ApiError } from "@pigclaude/api/client"
 import {
   HOME_SESSION_REVALIDATE_EVENT,
   isPublicHomePath,

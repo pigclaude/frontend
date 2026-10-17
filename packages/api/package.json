@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
     "./client": "./src/client.ts",
     "./home": "./src/home/endpoints.ts",
     "./admin": "./src/admin/endpoints.ts",

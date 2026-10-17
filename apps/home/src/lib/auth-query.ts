@@ -1,5 +1,5 @@
 // 负责 home 会话查询键和 401 恢复策略，避免业务接口抖动误登出。
-import { ApiError } from "@pigclaude/api"
+import { ApiError } from "@pigclaude/api/client"
 
 export const ME_QUERY_KEY = ["me"] as const
 export const ENTITLEMENT_QUERY_KEY = ["entitlement"] as const

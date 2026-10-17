@@ -1,6 +1,6 @@
 // 负责组装管理后台共享 QueryClient，并让 query 与 mutation 的 401 走同一回跳策略。
 import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query"
-import { ApiError } from "@pigclaude/api"
+import { ApiError } from "@pigclaude/api/client"
 import { redirectToLogin } from "@/lib/navigation"
 
 function handleAuthError(error: unknown): void {

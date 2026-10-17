@@ -1,7 +1,7 @@
 // 负责验证 home 登录、会话刷新所需的 API 路径和会员状态读取。
 import { describe, expect, it, vi } from "vitest"
 import { createHomeApi } from "@pigclaude/api/home"
-import type { HttpClient } from "@pigclaude/api"
+import type { HttpClient } from "@pigclaude/api/client"
 import type { AuthUserView } from "@pigclaude/api/home/types"
 
 function fixtureClient(): HttpClient {

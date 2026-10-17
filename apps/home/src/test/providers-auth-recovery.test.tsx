@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { ApiError } from "@pigclaude/api"
+import { ApiError } from "@pigclaude/api/client"
 import { Providers } from "@/components/providers"
 
 const mocks = vi.hoisted(() => ({

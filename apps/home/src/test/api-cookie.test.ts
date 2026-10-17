@@ -1,6 +1,6 @@
 // 负责验证 home client 使用 cookie，并在 401 时触发统一会话恢复回调。
 import { describe, expect, it, vi } from "vitest"
-import { createClient } from "@pigclaude/api"
+import { createClient } from "@pigclaude/api/client"
 
 describe("home HTTP client options", () => {
   it("sends include credentials and invokes unauthorized recovery", async () => {

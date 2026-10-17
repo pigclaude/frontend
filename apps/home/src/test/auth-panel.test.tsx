@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { ApiError } from "@pigclaude/api"
+import { ApiError } from "@pigclaude/api/client"
 import { AuthPanel } from "@/components/auth/auth-panel"
 import { QueryError } from "@/components/query-state"
 

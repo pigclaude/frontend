@@ -1,5 +1,6 @@
 // 负责创建 home 使用的带 cookie HTTP client 和 Rust API facade。
-import { createClient, createHomeApi } from "@pigclaude/api"
+import { createClient } from "@pigclaude/api/client"
+import { createHomeApi } from "@pigclaude/api/home"
 import { requestHomeSessionRevalidation } from "@/lib/auth-query"
 
 const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? ""

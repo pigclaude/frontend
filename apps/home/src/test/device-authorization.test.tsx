@@ -1,7 +1,7 @@
 // 负责验证 home 设备授权读取、replace flag、approve 请求和脱敏展示。
 import { describe, expect, it, vi } from "vitest"
 import { createHomeApi } from "@pigclaude/api/home"
-import type { HttpClient } from "@pigclaude/api"
+import type { HttpClient } from "@pigclaude/api/client"
 import { deviceAuthorizationFixture } from "@pigclaude/contracts/fixtures/phase1-contract-fixtures"
 import { maskDeviceValue } from "@/lib/device-mask"
 

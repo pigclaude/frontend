@@ -60,9 +60,11 @@ for (const name of layout.packages) {
   } catch (error) {
     if (error.code !== "ENOENT") throw error
   }
+  const fragments = bannedFragments[name]
+  if (!fragments) continue
   for (const file of files) {
     const source = await readFile(file, "utf8")
-    for (const fragment of bannedFragments[name]) {
+    for (const fragment of fragments) {
       if (!source.includes(fragment)) continue
       const allowed = allowedWorkspaceImport[name]
       if (fragment === "@pigclaude/" && allowed) {
@@ -87,9 +89,12 @@ async function typescriptFiles(directory) {
   for (const entry of entries) {
     const path = join(directory, entry.name)
     if (entry.isDirectory()) {
-      if (entry.name === "node_modules" || entry.name === "dist") continue
+      if ([".next", "dist", "out", "node_modules"].includes(entry.name)) continue
       files.push(...(await typescriptFiles(path)))
-    } else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) {
+    } else if (
+      (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) &&
+      entry.name !== "next-env.d.ts"
+    ) {
       files.push(path)
     }
   }

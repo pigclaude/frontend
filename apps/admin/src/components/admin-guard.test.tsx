@@ -2,7 +2,7 @@
 import { MemoryRouter, Route, Routes } from "react-router"
 import { render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { ApiError } from "@pigclaude/api"
+import { ApiError } from "@pigclaude/api/client"
 import { AdminGuard } from "@/components/admin-guard"
 
 const state = vi.hoisted(() => ({

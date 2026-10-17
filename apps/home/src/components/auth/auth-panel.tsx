@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@pigclaude/web-ui/components/button"
 import { Input } from "@pigclaude/web-ui/components/input"
-import { ApiError } from "@pigclaude/api"
+import { ApiError } from "@pigclaude/api/client"
 import { homeApi } from "@/lib/api"
 
 /** 登录和注册表单所需的模式。 */

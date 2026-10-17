@@ -1,6 +1,6 @@
 // 负责验证 QueryClient 的 query 和 mutation 401 recovery 都触发管理员登录回跳。
 import { describe, expect, it, vi } from "vitest"
-import { ApiError } from "@pigclaude/api"
+import { ApiError } from "@pigclaude/api/client"
 
 const redirectToLogin = vi.hoisted(() => vi.fn())
 vi.mock("@/lib/navigation", () => ({ redirectToLogin }))

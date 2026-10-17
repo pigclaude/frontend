@@ -6,6 +6,9 @@
     "login-gate",
     "permission-client",
     "session-env",
-    "switcher"
+    "switcher",
+    "web-ui",
+    "api",
+    "contracts"
   ]
 }

@@ -1,14 +1,16 @@
 // 负责管理员账号登录，登录成功后由服务端 cookie 和 me query 确认身份。
 import { FormEvent, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { useNavigate } from "react-router"
+import { useLocation, useNavigate } from "react-router"
 import { toast } from "sonner"
 import { adminApi } from "@/lib/api"
 import { toastApiError } from "@/lib/errors"
+import { safeLoginRedirect } from "@/lib/navigation"
 
 /** 渲染管理员登录表单，密码只进入 API body，不进入 URL 或页面状态展示。 */
 export default function LoginPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
   const [account, setAccount] = useState("")
   const [password, setPassword] = useState("")
@@ -25,7 +27,9 @@ export default function LoginPage() {
       await adminApi.auth.login({ account: account.trim(), password })
       await queryClient.invalidateQueries({ queryKey: ["admin-me"], refetchType: "all" })
       toast.success("登录成功")
-      navigate("/users", { replace: true })
+      navigate(safeLoginRedirect(new URLSearchParams(location.search).get("redirect")), {
+        replace: true,
+      })
     } catch (error) {
       toastApiError(error)
     } finally {

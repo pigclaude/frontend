@@ -3,6 +3,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
+import { DEFAULT_RUST_API_TARGET } from "./src/lib/runtime-config"
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -14,7 +15,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/admin/v1": {
-        target: process.env.API_PROXY_TARGET ?? "http://127.0.0.1:8081",
+        target: process.env.API_PROXY_TARGET ?? DEFAULT_RUST_API_TARGET,
         changeOrigin: true,
       },
     },

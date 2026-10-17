@@ -6,8 +6,14 @@ import { AuthorizeWeb } from "./authorize-web"
 import "./styles/tokens.css"
 import "./styles/app.css"
 import "./styles/screens.css"
+import "./styles/glass.css"
 
-if (window.pigclaude) document.documentElement.dataset.shell = "electron"
+if (window.pigclaude) {
+  document.documentElement.dataset.shell = "electron"
+  document.documentElement.dataset.platform = window.pigclaude.platform
+  const glass = window.pigclaude.platform === "darwin" || window.pigclaude.platform === "win32"
+  if (glass) document.documentElement.dataset.glass = "true"
+}
 
 const root = document.getElementById("root")
 const page = window.location.pathname.startsWith("/authorize") ? <AuthorizeWeb /> : <DesktopApp />

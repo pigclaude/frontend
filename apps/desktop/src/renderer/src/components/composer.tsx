@@ -1,6 +1,6 @@
 // 负责会话输入区：TipTap 正文、权限模式、账号、模型和思考深度菜单。
 import { Placeholder } from "@tiptap/extension-placeholder"
-import { EditorContent, useEditor } from "@tiptap/react"
+import { EditorContent, useEditor, useEditorState } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import { useRef } from "react"
 import { Icon } from "./icon"
@@ -84,21 +84,24 @@ export function Composer({
 
   const modeLabel = permissionModes.find(([id]) => id === permissionMode)?.[1] ?? "每次询问"
   const depthLabel = thinkingDepths.find(([id]) => id === depth)?.[1] ?? "中"
-  const empty = !editor || editor.isEmpty
+  const empty = useEditorState({
+    editor,
+    selector: ({ editor: current }) => !current || current.isEmpty,
+  })
 
   return (
     <div className={tall ? "composer is-tall" : "composer"}>
       <EditorContent editor={editor} />
       <div className="composer-bar">
         <div className="composer-side">
-          <button className="icon-btn" type="button" aria-label="添加附件">
+          <button className="icon-btn" type="button" aria-label="添加附件" title="添加附件">
             <Icon name="plus" />
           </button>
           <DropdownMenu>
             <DropdownMenuTrigger className="chip-btn">
               <Icon name="hand" small />
               {modeLabel}
-              <Icon name="down" small />
+              <Icon name="down" className="chip-caret" />
             </DropdownMenuTrigger>
             <DropdownMenuContent side={menuSide} align="start">
               {permissionModes.map(([id, label, description]) => (
@@ -115,13 +118,13 @@ export function Composer({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <div className="composer-side">
+        <div className="composer-side end">
           {showAccount ? (
             <DropdownMenu>
               <DropdownMenuTrigger className="chip-btn">
                 <span className="dot ok" />
-                {account}
-                <Icon name="down" small />
+                <span className="chip-label-optional">{account}</span>
+                <Icon name="down" className="chip-caret" />
               </DropdownMenuTrigger>
               <DropdownMenuContent side={menuSide} align="end">
                 {accounts.map((item) => (
@@ -132,10 +135,11 @@ export function Composer({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
+          {showAccount ? <span className="composer-sep" aria-hidden="true" /> : null}
           <DropdownMenu>
             <DropdownMenuTrigger className="chip-btn">
               {model}
-              <Icon name="down" small />
+              <Icon name="down" className="chip-caret" />
             </DropdownMenuTrigger>
             <DropdownMenuContent side={menuSide} align="end">
               {composerModels.map((item) => (
@@ -149,8 +153,9 @@ export function Composer({
           <DropdownMenu>
             <DropdownMenuTrigger className="chip-btn">
               <Icon name="clock" small />
+              <span className="chip-label-optional">思考</span>
               {depthLabel}
-              <Icon name="down" small />
+              <Icon name="down" className="chip-caret" />
             </DropdownMenuTrigger>
             <DropdownMenuContent side={menuSide} align="end">
               {thinkingDepths.map(([id, label]) => (
@@ -165,6 +170,7 @@ export function Composer({
             className="send"
             type="button"
             aria-label="发送"
+            title="发送 ↩"
             aria-disabled={empty ? true : undefined}
             onClick={() => {
               const text = editor?.getText().trim() ?? ""

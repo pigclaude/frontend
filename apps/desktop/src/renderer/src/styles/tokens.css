@@ -75,6 +75,10 @@
     0 0 0 0.5px oklch(0% 0 0 / 0.06), 0 2px 6px oklch(0% 0 0 / 0.03),
     0 8px 28px oklch(0% 0 0 / 0.05);
   --shadow-pop: 0 0 0 0.5px oklch(0% 0 0 / 0.1), 0 10px 32px oklch(0% 0 0 / 0.13);
+  --composer-ring: oklch(20% 0.01 270 / 0.13);
+  --composer-ring-focus: oklch(20% 0.01 270 / 0.22);
+  --shadow-composer: 0 1px 2px oklch(0% 0 0 / 0.03), 0 6px 20px oklch(0% 0 0 / 0.04);
+  --shadow-composer-focus: 0 1px 2px oklch(0% 0 0 / 0.04), 0 8px 26px oklch(0% 0 0 / 0.07);
 }
 
 [data-theme="dark"] {
@@ -135,6 +139,10 @@
   --shadow-btn: 0 0.5px 1px oklch(0% 0 0 / 0.3);
   --shadow-soft: 0 0 0 0.5px oklch(100% 0 0 / 0.08), 0 8px 28px oklch(0% 0 0 / 0.3);
   --shadow-pop: 0 0 0 0.5px oklch(100% 0 0 / 0.1), 0 12px 36px oklch(0% 0 0 / 0.45);
+  --composer-ring: oklch(100% 0 0 / 0.1);
+  --composer-ring-focus: oklch(100% 0 0 / 0.18);
+  --shadow-composer: 0 6px 22px oklch(0% 0 0 / 0.25);
+  --shadow-composer-focus: 0 8px 28px oklch(0% 0 0 / 0.32);
 }
 
 :root {

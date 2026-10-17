@@ -1,63 +1,68 @@
-// 负责绘制设置页面的分组导航。
+// 负责绘制设置页面的搜索框和分组导航。
+import { useState } from "react"
 import { Icon } from "./icon"
+import { filterSettingsNav, settingsNav } from "../models/settings-nav"
 import type { Screen } from "../screens/screen"
 
-const settingsNav: Array<[string, Array<[Screen, string, string]>]> = [
-  ["用户", [["profile", "user", "我的账户"]]],
-  [
-    "号池",
-    [
-      ["accounts", "users", "Claude 账号"],
-      ["proxies", "globe", "代理"],
-      ["switching", "swap", "切换规则"],
-    ],
-  ],
-  [
-    "数据",
-    [
-      ["usage", "bars", "用量"],
-      ["environment", "shield", "环境检测"],
-    ],
-  ],
-  [
-    "应用",
-    [
-      ["general", "toggle", "通用"],
-      ["appearance", "contrast", "外观"],
-      ["session", "terminal", "会话"],
-      ["network", "server", "中继与网络"],
-      ["data", "database", "数据与隐私"],
-      ["about", "info", "关于"],
-    ],
-  ],
-]
-
-/** 绘制设置侧栏并提供返回会话入口。 */
+/** 绘制设置侧栏，搜索只过滤导航，不改变当前页面。 */
 export function SettingsSidebar({
   screen,
   onNavigate,
+  onExit,
 }: {
   screen: Screen
   onNavigate: (screen: Screen) => void
+  onExit: () => void
 }) {
+  const [query, setQuery] = useState("")
+  const groups = filterSettingsNav(settingsNav, query)
   return (
     <>
-      <button className="nav-item back" type="button" onClick={() => onNavigate("chat")}>
+      <button className="nav-item back" type="button" onClick={onExit}>
         <Icon name="left" />
-        返回
+        返回应用
       </button>
-      {settingsNav.map(([group, items]) => (
-        <div key={group}>
-          <div className="side-group">{group}</div>
-          {items.map(([id, icon, label]) => (
+      <label className="side-search">
+        <Icon name="search" small />
+        <input
+          type="search"
+          placeholder="搜索设置"
+          aria-label="搜索设置"
+          autoComplete="off"
+          spellCheck={false}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setQuery("")
+            const first = groups[0]?.items[0]
+            if (event.key === "Enter" && first) onNavigate(first.screen)
+          }}
+        />
+        {query ? (
+          <button
+            className="side-search-clear"
+            type="button"
+            aria-label="清除搜索"
+            onClick={() => setQuery("")}
+          >
+            <Icon name="x" small />
+          </button>
+        ) : null}
+      </label>
+      {groups.length === 0 ? <p className="side-empty-hit">没有匹配的设置</p> : null}
+      {groups.map((group) => (
+        <div key={group.label} role="group" aria-label={group.label}>
+          <div className="side-group">{group.label}</div>
+          {group.items.map((item) => (
             <button
-              key={id}
-              className={screen === id ? "nav-item is-active" : "nav-item"}
+              key={item.screen}
+              className={screen === item.screen ? "nav-item is-active" : "nav-item"}
               type="button"
-              onClick={() => onNavigate(id)}
+              aria-current={screen === item.screen ? "page" : undefined}
+              onClick={() => onNavigate(item.screen)}
             >
-              <Icon name={icon} />
-              {label}
+              <Icon name={item.icon} />
+              {item.label}
             </button>
           ))}
         </div>

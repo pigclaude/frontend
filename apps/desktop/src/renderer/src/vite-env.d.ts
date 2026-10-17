@@ -4,6 +4,8 @@
 interface PigclaudeBridge {
   platform: string
   openExternal?: (url: string) => Promise<void>
+  setTheme?: (source: "light" | "dark" | "system") => Promise<void>
+  pickFolder?: () => Promise<string | null>
   startAuthorization?: (
     request: import("../../main/authorization/types").AuthorizationRequest,
   ) => Promise<import("../../main/authorization/types").AuthorizationStartResult>

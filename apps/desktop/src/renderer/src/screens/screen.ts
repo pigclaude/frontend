@@ -16,6 +16,7 @@ export type Screen =
   | "appearance"
   | "session"
   | "tray"
+  | "menubar"
   | "network"
   | "data"
   | "about"

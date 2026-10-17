@@ -1,44 +1,64 @@
 // 负责把设计稿里的页面串成可切换的桌面界面，并承接主进程授权事件。
 import { useEffect, useState } from "react"
 import type { AuthorizationStateEvent } from "../../main/authorization/types"
-import { AccountsScreen } from "./screens/accounts-screen"
 import { AuthorizeScreen } from "./screens/authorize-screen"
-import { ChatScreen } from "./screens/chat-screen"
-import { EnvironmentScreen } from "./screens/environment-screen"
 import { LoginScreen } from "./screens/login-screen"
-import { OnboardingScreen } from "./screens/onboarding-screen"
-import { ProxiesScreen } from "./screens/proxies-screen"
-import { SettingsScreen } from "./screens/settings/settings-sections"
-import { TrayScreen } from "./screens/tray-screen"
-import { UsageScreen } from "./screens/usage-screen"
-import { Sidebar } from "./components/shell"
+import { MainWindow } from "./main-window"
+import { ToastProvider } from "./components/toast"
 import { TooltipProvider } from "./components/ui/tooltip"
-import { sessionFixture } from "./fixtures/chat-fixtures"
-import {
-  operationsEnvironmentFixture,
-  operationsUsageFixture,
-} from "./fixtures/operations-fixtures"
 import { createAuthorizationState, reduceAuthorizationState } from "./models/authorization-model"
 import { createLoginState, reduceLoginState, type LoginIntent } from "./models/login-model"
-import { createPoolState } from "./models/pool-model"
-import type { ProjectNavigationState } from "./models/navigation-model"
+import {
+  canGoBack,
+  canGoForward,
+  createScreenHistory,
+  currentScreen,
+  goBack,
+  goForward,
+  pushScreen,
+} from "./models/screen-history"
+import { parseThemePreference, resolveTheme, type ThemePreference } from "./models/theme-model"
 import type { Screen } from "./screens/screen"
+
+const themeStorageKey = "pigclaude-theme"
+const darkQuery = "(prefers-color-scheme: dark)"
 
 /** 按登录状态和当前页面画出整窗。 */
 export function DesktopApp() {
   const [authed, setAuthed] = useState(false)
   const [loginState, setLoginState] = useState(createLoginState)
   const [authorizationState, setAuthorizationState] = useState(createAuthorizationState)
-  const [screen, setScreen] = useState<Screen>("chat")
-  const [theme, setTheme] = useState<"light" | "dark">("light")
-  const [navigation, setNavigation] = useState<ProjectNavigationState>({
-    expandedProjects: { frontend: true, "permission-api": true, cchelper: true },
-  })
-  const [poolState] = useState(createPoolState)
+  const [history, setHistory] = useState(() => createScreenHistory("chat"))
+  const screen = currentScreen(history)
+  const [themePreference, setThemePreference] = useState<ThemePreference>(() =>
+    parseThemePreference(window.localStorage.getItem(themeStorageKey)),
+  )
+  const [systemDark, setSystemDark] = useState(() => window.matchMedia(darkQuery).matches)
+  const theme = resolveTheme(themePreference, systemDark)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
   }, [theme])
+
+  useEffect(() => {
+    void window.pigclaude?.setTheme?.(themePreference)
+  }, [themePreference])
+
+  useEffect(() => {
+    const query = window.matchMedia(darkQuery)
+    const onChange = (event: MediaQueryListEvent) => setSystemDark(event.matches)
+    query.addEventListener("change", onChange)
+    return () => query.removeEventListener("change", onChange)
+  }, [])
+
+  function setScreen(next: Screen): void {
+    setHistory((current) => pushScreen(current, next))
+  }
+
+  function changeThemePreference(preference: ThemePreference): void {
+    setThemePreference(preference)
+    window.localStorage.setItem(themeStorageKey, preference)
+  }
 
   useEffect(() => {
     const unsubscribe = window.pigclaude?.onAuthorizationState?.((event) => {
@@ -198,13 +218,15 @@ export function DesktopApp() {
     const sessionId = authorizationState.sessionId
     if (sessionId) await window.pigclaude?.cancelAuthorization?.(sessionId)
     setAuthorizationState(createAuthorizationState())
-    setScreen("accounts")
+    setHistory((current) =>
+      canGoBack(current) ? goBack(current) : pushScreen(current, "accounts"),
+    )
   }
 
   function logout(): void {
     setAuthed(false)
     setLoginState(createLoginState())
-    setScreen("login")
+    setHistory(createScreenHistory("login"))
   }
 
   if (!authed || screen === "login") {
@@ -216,7 +238,7 @@ export function DesktopApp() {
         onReset={() => setLoginState((current) => reduceLoginState(current, { type: "reset" }))}
         onSuccess={() => {
           setAuthed(true)
-          setScreen("onboarding")
+          setHistory(createScreenHistory("onboarding"))
         }}
       />
     )
@@ -234,73 +256,26 @@ export function DesktopApp() {
     )
   }
 
-  const bare =
-    screen === "onboarding" || screen === "tray" || screen === "chat" || screen === "chat-new"
-  const settingsPage = [
-    "profile",
-    "switching",
-    "general",
-    "appearance",
-    "session",
-    "network",
-    "data",
-    "about",
-  ].includes(screen)
   return (
     <TooltipProvider>
-      <div className="app">
-        <Sidebar
+      <ToastProvider>
+        <MainWindow
           screen={screen}
-          navigation={navigation}
+          canGoBack={canGoBack(history)}
+          canGoForward={canGoForward(history)}
           onNavigate={setScreen}
-          onToggleProject={(projectId, expanded) =>
-            setNavigation((current) => ({
-              expandedProjects: { ...current.expandedProjects, [projectId]: expanded },
-            }))
-          }
-          onNewSession={() => setScreen("chat-new")}
+          onBack={() => setHistory(goBack)}
+          onForward={() => setHistory(goForward)}
+          onOpenAuthorize={() => {
+            setAuthorizationState(createAuthorizationState())
+            setScreen("authorize")
+          }}
           onLogout={logout}
           theme={theme}
-          onToggleTheme={() => setTheme((value) => (value === "light" ? "dark" : "light"))}
+          themePreference={themePreference}
+          onThemePreference={changeThemePreference}
         />
-        <main className="panel">
-          {screen === "chat" || screen === "chat-new" ? (
-            <ChatScreen
-              fresh={screen === "chat-new"}
-              sessionFixture={sessionFixture}
-              onOpen={setScreen}
-            />
-          ) : null}
-          {screen === "onboarding" ? (
-            <OnboardingScreen
-              onDone={() => setScreen("chat-new")}
-              onOpenAuthorize={() => {
-                setAuthorizationState(createAuthorizationState())
-                setScreen("authorize")
-              }}
-            />
-          ) : null}
-          {screen === "tray" ? <TrayScreen onOpenAccounts={() => setScreen("accounts")} /> : null}
-          {screen === "accounts" ? (
-            <AccountsScreen
-              accounts={poolState.accounts}
-              proxies={poolState.proxies}
-              onOpenAuthorize={() => {
-                setAuthorizationState(createAuthorizationState())
-                setScreen("authorize")
-              }}
-            />
-          ) : null}
-          {screen === "proxies" ? <ProxiesScreen proxies={poolState.proxies} /> : null}
-          {screen === "usage" ? <UsageScreen usageFixture={operationsUsageFixture} /> : null}
-          {screen === "environment" ? (
-            <EnvironmentScreen fixture={operationsEnvironmentFixture} />
-          ) : null}
-          {bare || !settingsPage ? null : (
-            <SettingsScreen screen={screen} onNavigate={setScreen} onLogout={logout} />
-          )}
-        </main>
-      </div>
+      </ToastProvider>
     </TooltipProvider>
   )
 }

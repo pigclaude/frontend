@@ -1,5 +1,5 @@
 // 负责创建桌面窗口、承接浏览器授权回调并保存主进程秘密。
-import { app, BrowserWindow, ipcMain, safeStorage, shell } from "electron"
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, safeStorage, shell } from "electron"
 import { join } from "node:path"
 import { createCallbackServer } from "./authorization/callback-server"
 import { AuthorizationStartError, AuthorizationService } from "./authorization/service"
@@ -11,7 +11,12 @@ import type {
 } from "./authorization/types"
 import { isAllowedAuthorizationUrl } from "./authorization/url-policy"
 import { FileSecretVault } from "./secret-vault"
-import { createMainWindowOptions, developmentRendererUrl } from "./window-options"
+import {
+  createMainWindowOptions,
+  developmentRendererUrl,
+  glassBackgroundColor,
+  readThemeSource,
+} from "./window-options"
 
 const authOrigin = process.env["PIGCLAUDE_AUTH_ORIGIN"] ?? "http://localhost:5173"
 const packagedRedirectUri = "pigclaude://authorize/callback"
@@ -56,6 +61,22 @@ app.on("window-all-closed", () => {
 })
 
 function registerIpcHandlers(): void {
+  ipcMain.handle("pigclaude:pick-folder", async () => {
+    const options: Electron.OpenDialogOptions = {
+      title: "选择项目文件夹",
+      buttonLabel: "添加项目",
+      properties: ["openDirectory", "createDirectory"],
+    }
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options)
+    return result.canceled ? null : (result.filePaths[0] ?? null)
+  })
+  ipcMain.handle("pigclaude:set-theme", (_event, value: unknown) => {
+    const source = readThemeSource(value)
+    if (source) nativeTheme.themeSource = source
+  })
+  nativeTheme.on("updated", applyGlassBackground)
   ipcMain.handle("pigclaude:open-external", async (_event, value: unknown) => {
     if (typeof value !== "string" || !isAllowedAuthorizationUrl(value, authOrigin)) return
     await shell.openExternal(value)
@@ -195,7 +216,14 @@ function createWindow(): void {
   } else {
     void mainWindow.loadFile(join(__dirname, "../renderer/index.html"))
   }
+  applyGlassBackground()
   mainWindow.once("ready-to-show", () => mainWindow?.show())
+}
+
+/** 外观变化时同步磨砂窗口的底色，深色下压暗系统材质。 */
+function applyGlassBackground(): void {
+  const color = glassBackgroundColor(process.platform, nativeTheme.shouldUseDarkColors)
+  if (color) mainWindow?.setBackgroundColor(color)
 }
 
 function readAuthorizationRequest(value: unknown): AuthorizationRequest | null {

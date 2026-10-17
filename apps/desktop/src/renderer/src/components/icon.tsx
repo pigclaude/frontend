@@ -32,6 +32,8 @@ const marks: Record<string, string> = {
   clip: '<path d="M20 11.5l-8.2 8.2a5 5 0 0 1-7.1-7.1l8.6-8.6a3.4 3.4 0 0 1 4.8 4.8l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"/>',
   folder:
     '<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>',
+  "folder-plus":
+    '<path d="M20.5 12V10a2 2 0 0 0-2-2h-7l-2-2.5h-4a2 2 0 0 0-2 2V17a2 2 0 0 0 2 2H12"/><path d="M18 15v6M15 18h6"/>',
   file: '<path d="M7 3.5h6.5L18 8v12.5H7z"/><path d="M13 3.5V8h5"/>',
   terminal:
     '<rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M7.5 9.5l3 2.5-3 2.5M12.5 15h4"/>',

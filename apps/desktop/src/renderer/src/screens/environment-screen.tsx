@@ -30,7 +30,7 @@ export function EnvironmentScreen({ fixture = environmentFixtures }: Environment
         </div>
         <div className="actions">
           <Select value={account} onValueChange={setAccount}>
-            <SelectTrigger aria-label="账号" style={{ width: 140 }}>
+            <SelectTrigger aria-label="账号" className="select-bare">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

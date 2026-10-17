@@ -50,6 +50,12 @@
   transform: translateY(-70%) rotate(45deg);
   pointer-events: none;
 }
+.select-trigger.select-bare {
+  width: 90px;
+}
+.select-trigger.select-bare::after {
+  display: none;
+}
 .select-trigger-value {
   min-width: 0;
   overflow: hidden;
@@ -195,4 +201,8 @@
 .ui-separator[data-orientation="vertical"] {
   width: var(--hair);
   height: 100%;
+}
+
+.range-row .slider {
+  margin: 0 0 0 2px;
 }

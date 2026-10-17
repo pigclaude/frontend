@@ -2,7 +2,7 @@
 import { expect, test, type Page } from "@playwright/test"
 import { allScreens } from "../src/renderer/src/models/dev-view"
 
-const options = { threshold: 0.1, maxDiffPixelRatio: 0.001, animations: "disabled" } as const
+const options = { threshold: 0.1, maxDiffPixels: 0, animations: "disabled" } as const
 const skipped = new Set(["login", "authorize"])
 
 async function settle(page: Page): Promise<void> {

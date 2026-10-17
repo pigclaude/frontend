@@ -13,7 +13,12 @@ const shutdownTimeoutMs = 5_000
 
 /** 返回 loopback 上一个当前可用的 TCP 端口。 */
 export async function allocateLoopbackPort(preferredPort) {
-  if (preferredPort && (await isPortAvailable(preferredPort))) return preferredPort
+  if (
+    preferredPort &&
+    process.env.PIGCLAUDE_USE_DEFAULT_PORTS === "1" &&
+    (await isPortAvailable(preferredPort))
+  )
+    return preferredPort
   return new Promise((resolvePort, reject) => {
     const server = net.createServer()
     server.once("error", reject)
@@ -71,6 +76,7 @@ export async function startPhaseOneLauncher(env = process.env) {
     PIGCLAUDE_SERVER_ADDR: `127.0.0.1:${ports.rust}`,
     PIGCLAUDE_HOME_URL: `http://127.0.0.1:${ports.home}`,
     PIGCLAUDE_ADMIN_URL: `http://127.0.0.1:${ports.admin}`,
+    API_PROXY_TARGET: `http://127.0.0.1:${ports.rust}`,
   }
   try {
     processes.push(

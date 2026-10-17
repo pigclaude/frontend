@@ -19,7 +19,7 @@ export function SelectValue(props: ComponentProps<typeof SelectPrimitive.Value>)
   return <SelectPrimitive.Value {...props} />
 }
 
-/** 打开选项列表的触发器，右侧带向下箭头。 */
+/** 打开选项列表的触发器，右侧箭头由样式的 ::after 绘制。 */
 export function SelectTrigger({
   className,
   children,
@@ -28,9 +28,6 @@ export function SelectTrigger({
   return (
     <SelectPrimitive.Trigger className={cn("select-trigger", className)} {...props}>
       <span className="select-trigger-value">{children}</span>
-      <SelectPrimitive.Icon asChild>
-        <Icon name="down" small />
-      </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   )
 }

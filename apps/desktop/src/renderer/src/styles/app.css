@@ -1125,21 +1125,6 @@ kbd {
 .select:hover {
   background: var(--hover);
 }
-.select-wrap {
-  position: relative;
-}
-.select-wrap::after {
-  content: "";
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  width: 4.5px;
-  height: 4.5px;
-  border-right: 1.3px solid var(--muted);
-  border-bottom: 1.3px solid var(--muted);
-  transform: translateY(-70%) rotate(45deg);
-  pointer-events: none;
-}
 .input-group {
   display: flex;
   align-items: center;

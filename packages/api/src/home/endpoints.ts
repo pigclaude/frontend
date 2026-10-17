@@ -24,7 +24,7 @@ export function createHomeApi(c: HttpClient) {
             path,
             body,
           )
-          return { ...data, location: location ?? undefined }
+          return { ...data, location: location ?? data.location }
         }
         return c.post<T.ApproveAuthorizationResponse>(path, body)
       },

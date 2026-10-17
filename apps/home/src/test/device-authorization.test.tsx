@@ -19,9 +19,13 @@ function fixtureClient(): HttpClient {
     })),
     post: vi.fn(async () => ({ deviceId: "device-super-secret-1234", bindingEpoch: "9" })),
     postWithResponse: vi.fn(async () => ({
-      data: { deviceId: "device-super-secret-1234", bindingEpoch: "9" },
+      data: {
+        deviceId: "device-super-secret-1234",
+        bindingEpoch: "9",
+        location: "http://127.0.0.1:43123/oauth/callback?code=one&state=flow-state",
+      },
       status: 303,
-      location: "http://127.0.0.1:43123/oauth/callback?code=one&state=flow-state",
+      location: null,
     })),
     postForm: vi.fn(async () => ({})),
     put: vi.fn(async () => ({})),

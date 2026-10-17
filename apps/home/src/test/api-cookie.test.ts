@@ -38,8 +38,33 @@ describe("home HTTP client options", () => {
     })
     expect(requestFetch).toHaveBeenCalledWith(
       "/v1/authorizations/flow-1/approve",
-      expect.objectContaining({ redirect: "manual" }),
+      expect.objectContaining({
+        redirect: "follow",
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
     )
+  })
+
+  it("reads a JSON approval response with Location metadata without a redirect", async () => {
+    const location = "pigclaude://authorize/callback?code=one&state=two"
+    const requestFetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ deviceId: "device-1", bindingEpoch: "2", location }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    )
+    const client = createClient({ fetch: requestFetch })
+    const response = await client.postWithResponse!<{
+      deviceId: string
+      bindingEpoch: string
+      location: string
+    }>("/v1/authorizations/flow-1/approve", { replaceExisting: false, state: "two" })
+    expect(response).toEqual({
+      data: { deviceId: "device-1", bindingEpoch: "2", location },
+      status: 200,
+      location: null,
+    })
   })
 
   it("does not treat a 303 without Location as a successful approval", async () => {

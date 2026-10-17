@@ -93,4 +93,26 @@ describe("AuthorizationPage approve cache", () => {
     expect(screen.getByText("授权链接缺少安全状态")).toBeTruthy()
     expect(mocks.approve).not.toHaveBeenCalled()
   })
+
+  it("passes the encoded state to approve without trimming it", async () => {
+    mocks.searchParams = "state=%20flow-state%20"
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AuthorizationPage />
+      </QueryClientProvider>,
+    )
+    await waitFor(() =>
+      expect((screen.getByRole("button", { name: "确认授权" }) as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    )
+    fireEvent.click(screen.getByRole("button", { name: "确认授权" }))
+    await waitFor(() =>
+      expect(mocks.approve).toHaveBeenCalledWith("flow-1", {
+        replaceExisting: false,
+        state: " flow-state ",
+      }),
+    )
+  })
 })

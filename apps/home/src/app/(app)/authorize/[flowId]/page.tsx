@@ -21,7 +21,7 @@ function DeviceValue({ value }: { value: string }) {
 export default function AuthorizationPage() {
   const params = useParams<{ flowId: string }>()
   const searchParams = useSearchParams()
-  const authorizationState = searchParams.get("state")?.trim() ?? ""
+  const authorizationState = searchParams.get("state") ?? ""
   const queryClient = useQueryClient()
   const authorizationQueryKey = ["authorization", params.flowId] as const
   const [replaceExisting, setReplaceExisting] = useState(false)

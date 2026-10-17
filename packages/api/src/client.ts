@@ -27,7 +27,7 @@ export type Query = Record<string, string | number | boolean | undefined>
 export interface HttpClient {
   get<T>(path: string, query?: Query): Promise<T>
   post<T>(path: string, body?: unknown): Promise<T>
-  /** 以手动重定向模式读取成功 303 的 JSON 和 Location。 */
+  /** 读取授权 JSON 响应及其 Location 元数据，兼容服务端 303 fallback。 */
   postWithResponse?<T>(path: string, body?: unknown): Promise<HttpResponse<T>>
   /** multipart/form-data；浏览器自动生成 boundary，调用方不得手写 Content-Type。 */
   postForm<T>(path: string, body: FormData): Promise<T>
@@ -80,8 +80,9 @@ export function createClient(opts: ClientOptions = {}): HttpClient {
     body?: unknown,
     query?: Query,
     redirect: RequestRedirect = "follow",
+    extraHeaders: Record<string, string> = {},
   ): Promise<HttpResponse<T>> {
-    const headers: Record<string, string> = { ...opts.headers?.() }
+    const headers: Record<string, string> = { ...opts.headers?.(), ...extraHeaders }
     const isForm = typeof FormData !== "undefined" && body instanceof FormData
     if (body !== undefined && !isForm) headers["Content-Type"] = "application/json"
     const init: RequestInit = { method, credentials: opts.credentials ?? "include", redirect }
@@ -123,7 +124,9 @@ export function createClient(opts: ClientOptions = {}): HttpClient {
     get: (path, query) => request("GET", path, undefined, query),
     post: (path, body) => request("POST", path, body ?? {}),
     postWithResponse: (path, body) =>
-      requestResponse("POST", path, body ?? {}, undefined, "manual"),
+      requestResponse("POST", path, body ?? {}, undefined, "follow", {
+        Accept: "application/json",
+      }),
     postForm: (path, body) => request("POST", path, body),
     put: (path, body) => request("PUT", path, body ?? {}),
     delete: (path) => request("DELETE", path),

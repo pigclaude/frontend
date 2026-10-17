@@ -7,6 +7,7 @@ import { parseDevView } from "./models/dev-view"
 import "./styles/tokens.css"
 import "./styles/app.css"
 import "./styles/screens.css"
+import "./styles/ui-controls.css"
 import "./styles/glass.css"
 
 if (window.pigclaude) {

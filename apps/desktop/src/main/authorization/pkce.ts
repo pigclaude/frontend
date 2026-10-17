@@ -1,10 +1,6 @@
 // 负责生成和校验浏览器授权所需的 state、PKCE 对和回调参数。
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
-import type {
-  AuthorizationCallback,
-  AuthorizationRequest,
-  AuthorizationSession,
-} from "./types"
+import type { AuthorizationCallback, AuthorizationRequest, AuthorizationSession } from "./types"
 
 /** 浏览器授权会话的默认有效时间，保证旧会话不会长期可用。 */
 export const AUTHORIZATION_TTL_MS = 10 * 60 * 1000
@@ -62,7 +58,12 @@ export function validateAuthorizationCallback(
   session: AuthorizationSession,
   callback: AuthorizationCallback,
   now = Date.now(),
-): { ok: true } | { ok: false; reason: "denied" | "state-mismatch" | "missing-code" | "expired" | "already-consumed" } {
+):
+  | { ok: true }
+  | {
+      ok: false
+      reason: "denied" | "state-mismatch" | "missing-code" | "expired" | "already-consumed"
+    } {
   if (session.consumed) return { ok: false, reason: "already-consumed" }
   if (callback.error) return { ok: false, reason: "denied" }
   if (callback.state !== session.state) return { ok: false, reason: "state-mismatch" }

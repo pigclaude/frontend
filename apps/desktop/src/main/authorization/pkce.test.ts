@@ -54,21 +54,13 @@ describe("authorization protocol", () => {
     })
 
     expect(
-      validateAuthorizationCallback(
-        session,
-        { code: "code", state: "wrong-state" },
-        2_000,
-      ),
+      validateAuthorizationCallback(session, { code: "code", state: "wrong-state" }, 2_000),
     ).toEqual({ ok: false, reason: "state-mismatch" })
     expect(
       validateAuthorizationCallback(session, { code: "", state: session.state }, 2_000),
     ).toEqual({ ok: false, reason: "missing-code" })
     expect(
-      validateAuthorizationCallback(
-        session,
-        { code: "code", state: session.state },
-        601_001,
-      ),
+      validateAuthorizationCallback(session, { code: "code", state: session.state }, 601_001),
     ).toEqual({ ok: false, reason: "expired" })
   })
 })

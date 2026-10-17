@@ -19,6 +19,10 @@ describe("home Next.js proxy", () => {
         source: "/v1/:path*",
         destination: "http://127.0.0.1:8788/v1/:path*",
       },
+      {
+        source: "/authorize/:flowId/approve",
+        destination: "/authorize/:flowId",
+      },
     ])
   })
 })

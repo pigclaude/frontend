@@ -27,10 +27,10 @@ describe("home HTTP client options", () => {
         }),
     )
     const client = createClient({ fetch: requestFetch })
-    const response = await client.postWithResponse<{ deviceId: string; bindingEpoch: string }>(
-      "/v1/authorizations/flow-1/approve",
-      { replaceExisting: false, state: "two" },
-    )
+    const response = await client.postWithResponse!<{
+      deviceId: string
+      bindingEpoch: string
+    }>("/v1/authorizations/flow-1/approve", { replaceExisting: false, state: "two" })
     expect(response).toEqual({
       data: { deviceId: "device-1", bindingEpoch: "2" },
       status: 303,
@@ -48,7 +48,7 @@ describe("home HTTP client options", () => {
     )
     const client = createClient({ fetch: requestFetch })
     await expect(
-      client.postWithResponse("/v1/authorizations/flow-1/approve", {}),
+      client.postWithResponse!("/v1/authorizations/flow-1/approve", {}),
     ).rejects.toMatchObject({
       status: 303,
     })

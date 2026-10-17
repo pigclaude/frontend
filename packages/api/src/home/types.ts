@@ -75,7 +75,7 @@ export interface AuthorizationResponse {
 /** 浏览器确认设备授权请求。 */
 export interface ApproveAuthorizationRequest {
   replaceExisting: boolean
-  state?: string
+  state: string
 }
 /** 浏览器确认设备授权响应。 */
 export interface ApproveAuthorizationResponse {

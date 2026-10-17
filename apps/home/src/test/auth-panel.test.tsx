@@ -63,22 +63,26 @@ describe("AuthPanel mutation UI", () => {
   })
 
   it("returns to an authorize deep link after login", async () => {
-    mocks.searchParams = new URLSearchParams("redirect=%2Fauthorize%2Fflow-1")
+    mocks.searchParams = new URLSearchParams("redirect=%2Fauthorize%2Fflow-1%3Fstate%3Dflow-state")
     renderPanel()
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
     fireEvent.submit(document.querySelector("form") as HTMLFormElement)
-    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/authorize/flow-1"))
+    await waitFor(() =>
+      expect(mocks.push).toHaveBeenCalledWith("/authorize/flow-1?state=flow-state"),
+    )
   })
 
   it("returns to an authorize deep link after registration", async () => {
-    mocks.searchParams = new URLSearchParams("redirect=%2Fauthorize%2Fflow-2")
+    mocks.searchParams = new URLSearchParams("redirect=%2Fauthorize%2Fflow-2%3Fstate%3Dflow-state")
     renderPanel("register")
     fireEvent.change(screen.getByLabelText("昵称"), { target: { value: "Ada" } })
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
     fireEvent.submit(document.querySelector("form") as HTMLFormElement)
-    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/authorize/flow-2"))
+    await waitFor(() =>
+      expect(mocks.push).toHaveBeenCalledWith("/authorize/flow-2?state=flow-state"),
+    )
   })
 
   it("shows pending state and then an API error", async () => {

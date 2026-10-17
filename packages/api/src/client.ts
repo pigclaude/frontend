@@ -28,7 +28,7 @@ export interface HttpClient {
   get<T>(path: string, query?: Query): Promise<T>
   post<T>(path: string, body?: unknown): Promise<T>
   /** 以手动重定向模式读取成功 303 的 JSON 和 Location。 */
-  postWithResponse<T>(path: string, body?: unknown): Promise<HttpResponse<T>>
+  postWithResponse?<T>(path: string, body?: unknown): Promise<HttpResponse<T>>
   /** multipart/form-data；浏览器自动生成 boundary，调用方不得手写 Content-Type。 */
   postForm<T>(path: string, body: FormData): Promise<T>
   put<T>(path: string, body?: unknown): Promise<T>

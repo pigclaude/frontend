@@ -11,10 +11,11 @@ const mocks = vi.hoisted(() => ({
   entitlement: vi.fn(),
   get: vi.fn(),
   replace: vi.fn(),
+  pathname: "/dashboard",
 }))
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/dashboard",
+  usePathname: () => mocks.pathname,
   useRouter: () => ({ replace: mocks.replace }),
 }))
 vi.mock("@/lib/api", () => ({
@@ -57,6 +58,7 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.pathname = "/dashboard"
   window.history.replaceState({}, "", "/dashboard")
   mocks.me.mockResolvedValue({ id: "u-1" })
   mocks.entitlement.mockRejectedValueOnce(new ApiError(401)).mockResolvedValue({ status: "active" })
@@ -85,5 +87,21 @@ describe("home provider session recovery", () => {
     )
     await waitFor(() => expect(screen.getByText("activepending")).toBeTruthy())
     expect(mocks.me).toHaveBeenCalledOnce()
+  })
+
+  it("preserves the state query when session recovery redirects to login", async () => {
+    mocks.pathname = "/authorize/flow-1"
+    window.history.replaceState({}, "", "/authorize/flow-1?state=flow-state")
+    mocks.me.mockRejectedValue(new ApiError(401))
+    render(
+      <Providers>
+        <RecoveryProbe />
+      </Providers>,
+    )
+    await waitFor(() =>
+      expect(mocks.replace).toHaveBeenCalledWith(
+        "/login?redirect=%2Fauthorize%2Fflow-1%3Fstate%3Dflow-state",
+      ),
+    )
   })
 })

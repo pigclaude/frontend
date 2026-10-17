@@ -8,10 +8,12 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   approve: vi.fn(),
   entitlement: vi.fn(),
+  searchParams: "state=flow-state",
 }))
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ flowId: "flow-1" }),
+  useSearchParams: () => new URLSearchParams(mocks.searchParams),
 }))
 vi.mock("@/lib/api", () => ({
   homeApi: {
@@ -27,6 +29,7 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.searchParams = "state=flow-state"
   mocks.get.mockResolvedValue({
     flowId: "flow-1",
     deviceId: "device-secret-1234",
@@ -38,7 +41,11 @@ beforeEach(() => {
     expiresAt: null,
   })
   mocks.entitlement.mockResolvedValue({ status: "active" })
-  mocks.approve.mockResolvedValue({ deviceId: "device-secret-1234", bindingEpoch: "1" })
+  mocks.approve.mockResolvedValue({
+    deviceId: "device-secret-1234",
+    bindingEpoch: "1",
+    location: "http://127.0.0.1:43123/oauth/callback?code=one&state=flow-state",
+  })
 })
 
 describe("AuthorizationPage approve cache", () => {
@@ -60,9 +67,30 @@ describe("AuthorizationPage approve cache", () => {
     )
     fireEvent.click(screen.getByRole("button", { name: "确认授权" }))
     await waitFor(() => expect(screen.getByText("设备已授权")).toBeTruthy())
+    expect(mocks.approve).toHaveBeenCalledWith("flow-1", {
+      replaceExisting: false,
+      state: "flow-state",
+    })
+    expect(screen.getByRole("link", { name: "返回桌面客户端" }).getAttribute("href")).toBe(
+      "http://127.0.0.1:43123/oauth/callback?code=one&state=flow-state",
+    )
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: ["authorization", "flow-1"],
       refetchType: "none",
     })
+  })
+
+  it("blocks approval when the authorization URL has no state", async () => {
+    mocks.searchParams = ""
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AuthorizationPage />
+      </QueryClientProvider>,
+    )
+    const approveButton = await screen.findByRole("button", { name: "确认授权" })
+    expect((approveButton as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText("授权链接缺少安全状态")).toBeTruthy()
+    expect(mocks.approve).not.toHaveBeenCalled()
   })
 })

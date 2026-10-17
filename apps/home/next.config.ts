@@ -7,7 +7,10 @@ const apiTarget = process.env.API_PROXY_TARGET ?? "http://127.0.0.1:8788"
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   async rewrites() {
-    return [{ source: "/v1/:path*", destination: `${apiTarget}/v1/:path*` }]
+    return [
+      { source: "/v1/:path*", destination: `${apiTarget}/v1/:path*` },
+      { source: "/authorize/:flowId/approve", destination: "/authorize/:flowId" },
+    ]
   },
 }
 

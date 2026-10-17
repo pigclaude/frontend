@@ -2,7 +2,7 @@
 "use client"
 
 import { useState } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@pigclaude/web-ui/components/button"
@@ -10,7 +10,7 @@ import { homeApi } from "@/lib/api"
 import { maskDeviceValue } from "@/lib/device-mask"
 import { canApproveAuthorization } from "@/lib/authorization-gate"
 import { QueryError, QueryLoading } from "@/components/query-state"
-import type { AuthorizationResponse } from "@pigclaude/api/home/types"
+import type { ApproveAuthorizationResponse, AuthorizationResponse } from "@pigclaude/api/home/types"
 
 /** 将设备标识脱敏后渲染，避免把私密设备材料写入页面。 */
 function DeviceValue({ value }: { value: string }) {
@@ -20,10 +20,12 @@ function DeviceValue({ value }: { value: string }) {
 /** 读取授权 flow 和会员状态，只有 pending 且会员有效时允许 approve。 */
 export default function AuthorizationPage() {
   const params = useParams<{ flowId: string }>()
+  const searchParams = useSearchParams()
+  const authorizationState = searchParams.get("state")?.trim() ?? ""
   const queryClient = useQueryClient()
   const authorizationQueryKey = ["authorization", params.flowId] as const
   const [replaceExisting, setReplaceExisting] = useState(false)
-  const [approved, setApproved] = useState<{ deviceId: string; bindingEpoch: string } | null>(null)
+  const [approved, setApproved] = useState<ApproveAuthorizationResponse | null>(null)
   const authorization = useQuery({
     queryKey: authorizationQueryKey,
     queryFn: () => homeApi.authorizations.get(params.flowId),
@@ -35,7 +37,11 @@ export default function AuthorizationPage() {
     retry: false,
   })
   const approve = useMutation({
-    mutationFn: () => homeApi.authorizations.approve(params.flowId, { replaceExisting }),
+    mutationFn: () =>
+      homeApi.authorizations.approve(params.flowId, {
+        replaceExisting,
+        state: authorizationState,
+      }),
     onSuccess: (result) => {
       setApproved(result)
       queryClient.setQueryData<AuthorizationResponse>(authorizationQueryKey, (current) =>
@@ -80,21 +86,29 @@ export default function AuthorizationPage() {
             </div>
           </dl>
           <p className="muted">返回桌面客户端继续使用 PigClaude。</p>
-          <Button asChild variant="outline">
-            <Link href="/membership">返回会员</Link>
-          </Button>
+          {approved.location ? (
+            <Button asChild>
+              <a href={approved.location}>返回桌面客户端</a>
+            </Button>
+          ) : (
+            <Button asChild variant="outline">
+              <Link href="/membership">返回会员</Link>
+            </Button>
+          )}
         </section>
       </main>
     )
   const flow = authorization.data
   const membershipBlocked = entitlement.data.status !== "active"
   const flowBlocked = flow.status !== "pending"
-  const blocked = !canApproveAuthorization({
-    flowStatus: flow.status,
-    membershipStatus: entitlement.data.status,
-    requiresReplace: flow.requiresReplace,
-    replaceExisting,
-  })
+  const stateBlocked = authorizationState.length === 0
+  const blocked =
+    !canApproveAuthorization({
+      flowStatus: flow.status,
+      membershipStatus: entitlement.data.status,
+      requiresReplace: flow.requiresReplace,
+      replaceExisting,
+    }) || stateBlocked
   const flowStatusMessage = flowBlocked
     ? `此授权请求当前状态为「${flow.status}」，不能重复确认。`
     : null
@@ -131,6 +145,12 @@ export default function AuthorizationPage() {
           <div className="status-gate" role="alert">
             <strong>授权请求已结束</strong>
             <p>{flowStatusMessage}</p>
+          </div>
+        )}
+        {stateBlocked && (
+          <div className="status-gate" role="alert">
+            <strong>授权链接缺少安全状态</strong>
+            <p>请从桌面客户端重新打开授权链接。</p>
           </div>
         )}
         {flow.requiresReplace && (

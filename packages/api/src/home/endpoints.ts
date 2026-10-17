@@ -17,13 +17,17 @@ export function createHomeApi(c: HttpClient) {
     authorizations: {
       get: (flowId: string) =>
         c.get<T.AuthorizationResponse>(`/v1/authorizations/${encodeURIComponent(flowId)}`),
-      approve: (flowId: string, body: T.ApproveAuthorizationRequest) =>
-        c
-          .postWithResponse<T.ApproveAuthorizationResponse>(
-            `/v1/authorizations/${encodeURIComponent(flowId)}/approve`,
+      approve: async (flowId: string, body: T.ApproveAuthorizationRequest) => {
+        const path = `/v1/authorizations/${encodeURIComponent(flowId)}/approve`
+        if (c.postWithResponse) {
+          const { data, location } = await c.postWithResponse<T.ApproveAuthorizationResponse>(
+            path,
             body,
           )
-          .then(({ data, location }) => ({ ...data, location: location ?? undefined })),
+          return { ...data, location: location ?? undefined }
+        }
+        return c.post<T.ApproveAuthorizationResponse>(path, body)
+      },
     },
   }
 }

@@ -14,6 +14,11 @@ import {
   type HomeSessionRevalidationEvent,
 } from "@/lib/auth-query"
 
+function currentRoute(pathname: string): string {
+  if (typeof window === "undefined") return pathname
+  return `${window.location.pathname}${window.location.search}`
+}
+
 /** 为 home 树提供稳定查询缓存，并把失效 session 统一恢复到登录页。 */
 export function Providers({ children }: { children: ReactNode }) {
   const router = useRouter()
@@ -32,7 +37,9 @@ export function Providers({ children }: { children: ReactNode }) {
             const currentPath = pathnameRef.current
             const action = unauthorizedQueryAction(error, query.queryKey, currentPath)
             if (action === "redirect") {
-              routerRef.current.replace(`/login?redirect=${encodeURIComponent(currentPath)}`)
+              routerRef.current.replace(
+                `/login?redirect=${encodeURIComponent(currentRoute(currentPath))}`,
+              )
             } else if (action === "revalidate" && !recoveryHashesRef.current.has(query.queryHash)) {
               recoveryHashesRef.current.add(query.queryHash)
               const requested = requestHomeSessionRevalidation(
@@ -64,7 +71,9 @@ export function Providers({ children }: { children: ReactNode }) {
           })
           return true
         } catch {
-          routerRef.current.replace(`/login?redirect=${encodeURIComponent(pathnameRef.current)}`)
+          routerRef.current.replace(
+            `/login?redirect=${encodeURIComponent(currentRoute(pathnameRef.current))}`,
+          )
           return false
         }
       })()

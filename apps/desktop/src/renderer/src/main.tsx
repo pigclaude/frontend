@@ -3,6 +3,7 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { DesktopApp } from "./app"
 import { AuthorizeWeb } from "./authorize-web"
+import { parseDevView } from "./models/dev-view"
 import "./styles/tokens.css"
 import "./styles/app.css"
 import "./styles/screens.css"
@@ -13,6 +14,10 @@ if (window.pigclaude) {
   document.documentElement.dataset.platform = window.pigclaude.platform
   const glass = window.pigclaude.platform === "darwin" || window.pigclaude.platform === "win32"
   if (glass) document.documentElement.dataset.glass = "true"
+}
+
+if (parseDevView(window.location.search, import.meta.env.DEV)?.glass) {
+  document.documentElement.dataset.glass = "true"
 }
 
 const root = document.getElementById("root")

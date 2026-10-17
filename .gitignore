@@ -1,3 +1,5 @@
 node_modules/
 out/
 .superpowers/
+apps/desktop/test-results/
+apps/desktop/playwright-report/

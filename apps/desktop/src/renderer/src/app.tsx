@@ -7,6 +7,7 @@ import { MainWindow } from "./main-window"
 import { ToastProvider } from "./components/toast"
 import { TooltipProvider } from "./components/ui/tooltip"
 import { createAuthorizationState, reduceAuthorizationState } from "./models/authorization-model"
+import { parseDevView } from "./models/dev-view"
 import { createLoginState, reduceLoginState, type LoginIntent } from "./models/login-model"
 import {
   canGoBack,
@@ -25,16 +26,17 @@ const darkQuery = "(prefers-color-scheme: dark)"
 
 /** 按登录状态和当前页面画出整窗。 */
 export function DesktopApp() {
-  const [authed, setAuthed] = useState(false)
+  const [devView] = useState(() => parseDevView(window.location.search, import.meta.env.DEV))
+  const [authed, setAuthed] = useState(devView !== null)
   const [loginState, setLoginState] = useState(createLoginState)
   const [authorizationState, setAuthorizationState] = useState(createAuthorizationState)
-  const [history, setHistory] = useState(() => createScreenHistory("chat"))
+  const [history, setHistory] = useState(() => createScreenHistory(devView?.screen ?? "chat"))
   const screen = currentScreen(history)
   const [themePreference, setThemePreference] = useState<ThemePreference>(() =>
     parseThemePreference(window.localStorage.getItem(themeStorageKey)),
   )
   const [systemDark, setSystemDark] = useState(() => window.matchMedia(darkQuery).matches)
-  const theme = resolveTheme(themePreference, systemDark)
+  const theme = devView?.theme ?? resolveTheme(themePreference, systemDark)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme

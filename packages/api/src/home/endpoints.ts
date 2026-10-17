@@ -6,9 +6,8 @@ import type * as T from "./types"
 export function createHomeApi(c: HttpClient) {
   return {
     auth: {
-      register: (body: T.RegisterRequest) =>
-        c.post<Record<string, never>>("/v1/auth/register", body),
-      login: (body: T.LoginRequest) => c.post<Record<string, never>>("/v1/auth/login", body),
+      register: (body: T.RegisterRequest) => c.post<T.AuthUserView>("/v1/auth/register", body),
+      login: (body: T.LoginRequest) => c.post<T.AuthUserView>("/v1/auth/login", body),
     },
     user: { me: () => c.get<T.MeResponse>("/v1/user/me") },
     membership: {

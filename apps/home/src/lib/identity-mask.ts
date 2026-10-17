@@ -6,7 +6,7 @@ export function maskEmail(email: string): string {
   if (at <= 0) return "••••"
   const local = email.slice(0, at)
   const domain = email.slice(at)
-  return `${local.slice(0, 1)}${local.length > 1 ? "•••" : ""}${domain}`
+  return `${local.slice(0, 1)}•••${domain}`
 }
 
 /** 只保留用户 ID 的首尾片段，避免页面泄漏完整账号标识。 */

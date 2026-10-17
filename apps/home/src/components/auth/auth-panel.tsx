@@ -12,6 +12,11 @@ import { homeApi } from "@/lib/api"
 /** 登录和注册表单所需的模式。 */
 export type AuthMode = "login" | "register"
 
+function safeRedirect(value: string | null): string {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/dashboard"
+  return value
+}
+
 /** 渲染登录/注册切换，并在成功后刷新 user/me 与 entitlement。 */
 export function AuthPanel({ initialMode }: { initialMode?: AuthMode } = {}) {
   const params = useSearchParams()
@@ -40,7 +45,7 @@ export function AuthPanel({ initialMode }: { initialMode?: AuthMode } = {}) {
           queryFn: homeApi.membership.entitlement,
         }),
       ])
-      router.push("/dashboard")
+      router.push(safeRedirect(params.get("redirect")))
     },
     onError: (reason) => {
       setError(reason instanceof ApiError ? reason.message : "请求失败，请稍后重试")

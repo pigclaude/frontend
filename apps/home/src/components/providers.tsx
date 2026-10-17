@@ -20,7 +20,7 @@ export function Providers({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const routerRef = useRef(router)
   const pathnameRef = useRef(pathname)
-  const recoveringRef = useRef(false)
+  const sessionRecoveryRef = useRef<Promise<boolean> | null>(null)
   const recoveryHashesRef = useRef(new Set<string>())
   routerRef.current = router
   pathnameRef.current = pathname
@@ -53,22 +53,38 @@ export function Providers({ children }: { children: ReactNode }) {
   )
 
   useEffect(() => {
+    function startSessionRecovery(): Promise<boolean> {
+      if (sessionRecoveryRef.current) return sessionRecoveryRef.current
+      const recovery = (async () => {
+        try {
+          await queryClient.fetchQuery({ queryKey: ME_QUERY_KEY, queryFn: homeApi.user.me })
+          return true
+        } catch {
+          routerRef.current.replace(`/login?redirect=${encodeURIComponent(pathnameRef.current)}`)
+          return false
+        }
+      })()
+      sessionRecoveryRef.current = recovery
+      void recovery.finally(() => {
+        if (sessionRecoveryRef.current === recovery) sessionRecoveryRef.current = null
+      })
+      return recovery
+    }
+
     async function recoverSession(event?: HomeSessionRevalidationEvent) {
       const currentPath = pathnameRef.current
-      if (isPublicHomePath(currentPath) || recoveringRef.current) {
+      if (isPublicHomePath(currentPath)) {
         event?.onSettled?.()
         return
       }
-      recoveringRef.current = true
       try {
-        await queryClient.fetchQuery({ queryKey: ME_QUERY_KEY, queryFn: homeApi.user.me })
-        await event?.onSessionValid?.()
+        if (!(await startSessionRecovery())) return
+        if (event?.onSessionValid) await event.onSessionValid()
+        else if (!event?.queryHash) await queryClient.refetchQueries({ type: "active" })
       } catch {
-        routerRef.current.replace(`/login?redirect=${encodeURIComponent(currentPath)}`)
+        // query.fetch() 已将错误写入查询状态，交给页面的 QueryError 展示。
       } finally {
-        recoveringRef.current = false
         event?.onSettled?.()
-        if (!event?.queryHash) await queryClient.refetchQueries({ type: "active" })
       }
     }
     function onSessionRevalidate(rawEvent: Event) {

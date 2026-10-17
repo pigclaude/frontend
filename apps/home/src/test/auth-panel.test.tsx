@@ -12,11 +12,12 @@ const mocks = vi.hoisted(() => ({
   me: vi.fn(),
   entitlement: vi.fn(),
   push: vi.fn(),
+  searchParams: new URLSearchParams(),
 }))
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mocks.push, replace: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => mocks.searchParams,
 }))
 vi.mock("@/lib/api", () => ({
   homeApi: {
@@ -26,19 +27,23 @@ vi.mock("@/lib/api", () => ({
   },
 }))
 
-function renderPanel() {
+function renderPanel(initialMode?: "login" | "register") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
-      <AuthPanel />
+      <AuthPanel initialMode={initialMode} />
     </QueryClientProvider>,
   )
 }
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.searchParams = new URLSearchParams()
   mocks.login.mockResolvedValue({})
   mocks.register.mockResolvedValue({})
   mocks.me.mockResolvedValue({ id: "u-1" })
@@ -55,6 +60,25 @@ describe("AuthPanel mutation UI", () => {
     expect(mocks.login).toHaveBeenCalledWith({ email: "ada@example.com", password: "password" })
     expect(mocks.me).toHaveBeenCalled()
     expect(mocks.entitlement).toHaveBeenCalled()
+  })
+
+  it("returns to an authorize deep link after login", async () => {
+    mocks.searchParams = new URLSearchParams("redirect=%2Fauthorize%2Fflow-1")
+    renderPanel()
+    fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
+    fireEvent.submit(document.querySelector("form") as HTMLFormElement)
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/authorize/flow-1"))
+  })
+
+  it("returns to an authorize deep link after registration", async () => {
+    mocks.searchParams = new URLSearchParams("redirect=%2Fauthorize%2Fflow-2")
+    renderPanel("register")
+    fireEvent.change(screen.getByLabelText("昵称"), { target: { value: "Ada" } })
+    fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
+    fireEvent.submit(document.querySelector("form") as HTMLFormElement)
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/authorize/flow-2"))
   })
 
   it("shows pending state and then an API error", async () => {

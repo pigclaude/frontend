@@ -14,8 +14,8 @@ export interface LoginRequest {
   password: string
   captchaToken?: string
 }
-/** 当前用户和会员摘要。 */
-export interface MeResponse {
+/** Rust AuthUserView 返回的当前用户身份摘要。 */
+export interface AuthUserView {
   id: string
   nickname: string
   avatar: string
@@ -27,6 +27,9 @@ export interface MeResponse {
   membershipStatus: string
   validUntil: string | null
 }
+
+/** user/me 端点返回的当前用户身份摘要，保持与 AuthUserView 同一 DTO。 */
+export type MeResponse = AuthUserView
 /** 会员套餐周期。 */
 export type PlanKind = "day" | "week" | "lifetime"
 /** 可购买会员套餐。 */

@@ -4,12 +4,13 @@
 import { useState } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@pigclaude/web-ui/components/button"
 import { homeApi } from "@/lib/api"
 import { maskDeviceValue } from "@/lib/device-mask"
 import { canApproveAuthorization } from "@/lib/authorization-gate"
 import { QueryError, QueryLoading } from "@/components/query-state"
+import type { AuthorizationResponse } from "@pigclaude/api/home/types"
 
 /** 将设备标识脱敏后渲染，避免把私密设备材料写入页面。 */
 function DeviceValue({ value }: { value: string }) {
@@ -19,10 +20,12 @@ function DeviceValue({ value }: { value: string }) {
 /** 读取授权 flow 和会员状态，只有 pending 且会员有效时允许 approve。 */
 export default function AuthorizationPage() {
   const params = useParams<{ flowId: string }>()
+  const queryClient = useQueryClient()
+  const authorizationQueryKey = ["authorization", params.flowId] as const
   const [replaceExisting, setReplaceExisting] = useState(false)
   const [approved, setApproved] = useState<{ deviceId: string; bindingEpoch: string } | null>(null)
   const authorization = useQuery({
-    queryKey: ["authorization", params.flowId],
+    queryKey: authorizationQueryKey,
     queryFn: () => homeApi.authorizations.get(params.flowId),
     retry: false,
   })
@@ -33,7 +36,13 @@ export default function AuthorizationPage() {
   })
   const approve = useMutation({
     mutationFn: () => homeApi.authorizations.approve(params.flowId, { replaceExisting }),
-    onSuccess: (result) => setApproved(result),
+    onSuccess: (result) => {
+      setApproved(result)
+      queryClient.setQueryData<AuthorizationResponse>(authorizationQueryKey, (current) =>
+        current ? { ...current, status: "approved" } : current,
+      )
+      void queryClient.invalidateQueries({ queryKey: authorizationQueryKey, refetchType: "none" })
+    },
   })
   if (authorization.isPending || entitlement.isPending)
     return (

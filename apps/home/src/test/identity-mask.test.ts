@@ -5,6 +5,7 @@ import { maskEmail, maskUserId } from "@/lib/identity-mask"
 describe("identity masking", () => {
   it("masks the local part while retaining the email domain", () => {
     expect(maskEmail("ada.lovelace@example.com")).toBe("a•••@example.com")
+    expect(maskEmail("a@example.com")).toBe("a•••@example.com")
     expect(maskEmail("@example.com")).toBe("••••")
   })
 

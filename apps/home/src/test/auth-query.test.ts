@@ -19,6 +19,8 @@ describe("home auth query recovery", () => {
     expect(unauthorizedQueryAction(unauthorized, ["me"], "/dashboard")).toBe("redirect")
     expect(unauthorizedQueryAction(unauthorized, ["entitlement"], "/dashboard")).toBe("revalidate")
     expect(unauthorizedQueryAction(unauthorized, ["me"], "/login")).toBe("ignore")
+    expect(unauthorizedQueryAction(unauthorized, ["me"], "/")).toBe("ignore")
+    expect(unauthorizedQueryAction(unauthorized, ["me"], "/register")).toBe("ignore")
   })
 
   it("dispatches revalidation callbacks only on private paths", () => {
@@ -35,6 +37,8 @@ describe("home auth query recovery", () => {
     expect(requestHomeSessionRevalidation("query-hash", onValid, onSettled)).toBe(true)
     expect(received?.queryHash).toBe("query-hash")
     expect(isPublicHomePath("/login")).toBe(true)
+    expect(isPublicHomePath("/")).toBe(true)
+    expect(isPublicHomePath("/register")).toBe(true)
     window.history.replaceState({}, "", "/login")
     expect(requestHomeSessionRevalidation()).toBe(false)
   })

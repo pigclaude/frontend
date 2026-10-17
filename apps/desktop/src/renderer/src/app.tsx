@@ -8,16 +8,22 @@ import {
   ProxiesScreen,
   UsageScreen,
 } from "./screens/pool-screens"
-import { AuthorizeScreen, OnboardingScreen, TrayScreen } from "./screens/extra-screens"
+import { TrayScreen } from "./screens/extra-screens"
+import { AuthorizeScreen } from "./screens/authorize-screen"
+import { OnboardingScreen } from "./screens/onboarding-screen"
 import { ChatScreen } from "./screens/chat-screen"
 import { LoginScreen } from "./screens/login-screen"
 import { SettingsScreen } from "./screens/settings-screen"
+import { createAuthorizationState, reduceAuthorizationState } from "./models/authorization-model"
+import { createLoginState, reduceLoginState } from "./models/login-model"
 import type { ProjectNavigationState } from "./models/navigation-model"
 import type { Screen } from "./screens/screen"
 
 /** 按登录状态和当前页面画出整窗。 */
 export function DesktopApp() {
   const [authed, setAuthed] = useState(false)
+  const [loginState, setLoginState] = useState(createLoginState)
+  const [authorizationState, setAuthorizationState] = useState(createAuthorizationState)
   const [screen, setScreen] = useState<Screen>("chat")
   const [theme, setTheme] = useState<"light" | "dark">("light")
   const [navigation, setNavigation] = useState<ProjectNavigationState>({
@@ -30,7 +36,9 @@ export function DesktopApp() {
   if (!authed || screen === "login") {
     return (
       <LoginScreen
-        onEnter={() => {
+        state={loginState}
+        onEvent={(event) => setLoginState((current) => reduceLoginState(current, event))}
+        onSuccess={() => {
           setAuthed(true)
           setScreen("onboarding")
         }}
@@ -38,7 +46,15 @@ export function DesktopApp() {
     )
   }
   if (screen === "authorize") {
-    return <AuthorizeScreen onCancel={() => setScreen("accounts")} />
+    return (
+      <AuthorizeScreen
+        state={authorizationState}
+        onEvent={(event) =>
+          setAuthorizationState((current) => reduceAuthorizationState(current, event))
+        }
+        onCancel={() => setScreen("accounts")}
+      />
+    )
   }
 
   const bare =
@@ -58,6 +74,7 @@ export function DesktopApp() {
           onNewSession={() => setScreen("chat-new")}
           onLogout={() => {
             setAuthed(false)
+            setLoginState(createLoginState())
             setScreen("login")
           }}
           theme={theme}
@@ -68,7 +85,13 @@ export function DesktopApp() {
             <ChatScreen fresh={screen === "chat-new"} onOpen={setScreen} />
           ) : null}
           {screen === "onboarding" ? (
-            <OnboardingScreen onDone={() => setScreen("chat-new")} />
+            <OnboardingScreen
+              onDone={() => setScreen("chat-new")}
+              onOpenAuthorize={() => {
+                setAuthorizationState(createAuthorizationState())
+                setScreen("authorize")
+              }}
+            />
           ) : null}
           {screen === "tray" ? <TrayScreen onOpenAccounts={() => setScreen("accounts")} /> : null}
           {screen === "accounts" ? <AccountsScreen onNavigate={setScreen} /> : null}

@@ -6,7 +6,14 @@
     "test": "pnpm -r --if-present test",
     "layout": "node scripts/assert-layout.mjs",
     "lint": "eslint .",
-    "format": "prettier --check ."
+    "format": "prettier --check .",
+    "dev:desktop": "pnpm --filter @pigclaude/desktop dev"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
   },
   "devDependencies": {
     "eslint": "9.39.5",

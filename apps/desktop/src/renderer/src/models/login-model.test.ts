@@ -19,6 +19,22 @@ describe("login model", () => {
     expect(state.error).toBe("请输入邮箱")
   })
 
+  it("验证码模式必须填写验证码并在允许后进入成功态", () => {
+    let state = reduceLoginState(createLoginState(), { type: "set-mode", mode: "code" })
+    state = reduceLoginState(state, { type: "submit", email: "lin@example.com" })
+    expect(state).toMatchObject({ view: "form", error: "请输入验证码" })
+    state = reduceLoginState(state, {
+      type: "submit",
+      email: "lin@example.com",
+      code: "123456",
+    })
+    expect(state.view).toBe("checking")
+    expect(reduceLoginState(state, { type: "remote-allowed", checkedAt: "今天 09:00" })).toMatchObject({
+      view: "success",
+      checkedAt: "今天 09:00",
+    })
+  })
+
   it("远程拒绝和离线缓存分别进入拒绝与离线状态", () => {
     const checking = reduceLoginState(createLoginState(), {
       type: "submit",

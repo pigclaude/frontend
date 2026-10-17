@@ -38,6 +38,9 @@ export function reduceLoginState(state: LoginState, event: LoginEvent): LoginSta
   if (event.type === "submit") {
     const email = event.email.trim()
     if (!email) return { ...state, view: "form", email, error: "请输入邮箱" }
+    if (state.mode === "code" && !event.code?.trim()) {
+      return { ...state, view: "form", email, error: "请输入验证码" }
+    }
     return { ...state, view: "checking", email, error: null }
   }
   if (event.type === "remote-denied") return { ...state, view: "denied", error: null }

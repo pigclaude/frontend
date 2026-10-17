@@ -3,6 +3,10 @@ import { readdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
 
 const root = join(import.meta.dirname, "..")
+const electronEntries = new Set([
+  join(root, "apps/desktop/src/main/index.ts"),
+  join(root, "apps/desktop/src/preload/index.ts"),
+])
 const layout = JSON.parse(await readFile(join(root, "layout.json"), "utf8"))
 
 async function directoryNames(relative) {
@@ -107,7 +111,7 @@ for (const relative of ["apps", "packages"]) {
       console.error(`${file} has ${lines} lines; limit is 500`)
       process.exitCode = 1
     }
-    if (file.endsWith("/index.ts") || file.endsWith("/index.tsx")) {
+    if ((file.endsWith("/index.ts") || file.endsWith("/index.tsx")) && !electronEntries.has(file)) {
       console.error(`${file} barrel is not allowed`)
       process.exitCode = 1
     }

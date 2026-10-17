@@ -13,6 +13,17 @@ describe("authorization model", () => {
     expect(state).toMatchObject({ step: "exit", canLaunch: false, authorizationUrl: null })
   })
 
+  it("出口为空时即使尝试启动也不能进入等待", () => {
+    let state = reduceAuthorizationState(createAuthorizationState(), {
+      type: "set-exits",
+      bridgeExit: "",
+      daemonExit: "",
+    })
+    state = reduceAuthorizationState(state, { type: "check-exit" })
+    state = reduceAuthorizationState(state, { type: "start", url: "http://localhost:5173/authorize" })
+    expect(state).toMatchObject({ step: "exit", canLaunch: false, authorizationUrl: null })
+  })
+
   it("出口一致后进入外部等待，重置会清除批准状态", () => {
     let state = reduceAuthorizationState(createAuthorizationState(), {
       type: "set-exits",

@@ -14,6 +14,7 @@ import { OnboardingScreen } from "./screens/onboarding-screen"
 import { ChatScreen } from "./screens/chat-screen"
 import { LoginScreen } from "./screens/login-screen"
 import { SettingsScreen } from "./screens/settings-screen"
+import { sessionFixture } from "./fixtures/chat-fixtures"
 import { createAuthorizationState, reduceAuthorizationState } from "./models/authorization-model"
 import { createLoginState, reduceLoginState } from "./models/login-model"
 import type { ProjectNavigationState } from "./models/navigation-model"
@@ -82,7 +83,11 @@ export function DesktopApp() {
         />
         <main className="panel">
           {screen === "chat" || screen === "chat-new" ? (
-            <ChatScreen fresh={screen === "chat-new"} onOpen={setScreen} />
+            <ChatScreen
+              fresh={screen === "chat-new"}
+              sessionFixture={sessionFixture}
+              onOpen={setScreen}
+            />
           ) : null}
           {screen === "onboarding" ? (
             <OnboardingScreen

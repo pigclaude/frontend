@@ -88,6 +88,12 @@ const marks: Record<string, string> = {
   wifi: '<path d="M4 9.5a12 12 0 0 1 16 0M7 12.8a7.5 7.5 0 0 1 10 0M10 16a3 3 0 0 1 4 0M12 19.2h.01"/>',
   user: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 19.5c.8-3.3 3.6-5 7-5s6.2 1.7 7 5"/>',
   book: '<path d="M5 5.5A2 2 0 0 1 7 3.5h12v14H7a2 2 0 0 0-2 2zM5 19.5a2 2 0 0 0 2 2h12v-4"/>',
+  palette:
+    '<path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.2-1-1.5-1-2.6 0-1 .8-1.7 1.8-1.7h2.2a3.7 3.7 0 0 0 3.7-3.7c0-4.1-3.8-7.3-8.5-7.3z"/><path d="M7.5 11.5h.01M9.5 7.5h.01M14.5 7.5h.01" stroke-width="2.4"/>',
+  updown: '<path d="M8 9.5l4-4 4 4M8 14.5l4 4 4-4"/>',
+  undo: '<path d="M8.5 5L4.5 9l4 4"/><path d="M4.5 9h9.5a5.5 5.5 0 0 1 0 11H9"/>',
+  pipette:
+    '<path d="M14.5 6.5l3-3a2.1 2.1 0 0 1 3 3l-3 3"/><path d="M12.5 7.5l4 4M14.5 9.5L7 17l-2.5.5.5-2.5L12.5 7.5"/>',
 }
 
 type IconProps = SVGProps<SVGSVGElement> & { name: keyof typeof marks | string; small?: boolean }

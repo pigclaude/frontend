@@ -94,9 +94,14 @@ export function SwitchingSettings({ onNavigate }: { onNavigate: (screen: Screen)
         <Icon name="info" small />
         <span>
           响应体开始写出后不再换号；请求体超过 32 MiB 不重放。顺序在{" "}
-          <button className="link" type="button" onClick={() => onNavigate("accounts")}>
+          <Button
+            variant="plain"
+            className="link"
+            type="button"
+            onClick={() => onNavigate("accounts")}
+          >
             Claude 账号
-          </button>{" "}
+          </Button>{" "}
           里拖动调整。
         </span>
       </p>

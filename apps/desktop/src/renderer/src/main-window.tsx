@@ -23,6 +23,7 @@ import { createPoolState } from "./models/pool-model"
 import { settingsScreens } from "./models/settings-nav"
 import type { ResolvedTheme, ThemePreference } from "./models/theme-model"
 import type { Screen } from "./screens/screen"
+import { Button } from "./components/ui/button"
 
 const narrowQuery = "(max-width: 960px)"
 
@@ -155,7 +156,8 @@ export function MainWindow({
           toast(`已添加项目 ${next[0]?.name ?? ""}`, "folder")
         }}
       />
-      <button
+      <Button
+        variant="plain"
         className="drawer-scrim"
         type="button"
         aria-label="关闭侧栏"

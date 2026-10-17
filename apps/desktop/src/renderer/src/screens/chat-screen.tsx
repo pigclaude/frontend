@@ -30,27 +30,27 @@ export function ChatScreen({ fresh, sessionFixture, onOpen }: ChatScreenProps) {
       <section className="view">
         <div className="panel-top">
           <span className="spacer" />
-          <button className="icon-btn" type="button" aria-label="搜索">
+          <Button variant="plain" className="icon-btn" type="button" aria-label="搜索">
             <Icon name="search" />
-          </button>
+          </Button>
         </div>
         <div className="hero">
           <div className="hero-inner">
             <div className="ctx-row">
-              <button className="chip-btn" type="button">
+              <Button variant="plain" className="chip-btn" type="button">
                 <Icon name="folder" small />
                 {sessionFixture.project}
                 <Icon name="down" small />
-              </button>
-              <button className="chip-btn" type="button">
+              </Button>
+              <Button variant="plain" className="chip-btn" type="button">
                 <span className="dot ok" />
                 {account}
                 <Icon name="down" small />
-              </button>
-              <button className="chip-btn" type="button">
+              </Button>
+              <Button variant="plain" className="chip-btn" type="button">
                 <Icon name="globe" small />
                 {sessionFixture.proxy}
-              </button>
+              </Button>
             </div>
             <Composer
               placeholder="让 Claude 做点什么，@ 引用文件，/ 使用命令"
@@ -69,7 +69,8 @@ export function ChatScreen({ fresh, sessionFixture, onOpen }: ChatScreenProps) {
             />
             <div className="suggest">
               {sessionFixture.suggestions.map((suggestion) => (
-                <button
+                <Button
+                  variant="plain"
                   key={suggestion.title}
                   className="sg"
                   type="button"
@@ -80,7 +81,7 @@ export function ChatScreen({ fresh, sessionFixture, onOpen }: ChatScreenProps) {
                   </span>
                   <b>{suggestion.title}</b>
                   <span className="truncate">{suggestion.description}</span>
-                </button>
+                </Button>
               ))}
             </div>
           </div>
@@ -96,19 +97,20 @@ export function ChatScreen({ fresh, sessionFixture, onOpen }: ChatScreenProps) {
           <Icon name="folder" className="muted" />
           <span className="truncate">流开始后不再换号</span>
         </div>
-        <button className="icon-btn" type="button" aria-label="更多操作">
+        <Button variant="plain" className="icon-btn" type="button" aria-label="更多操作">
           <Icon name="more" />
-        </button>
+        </Button>
         <span className="spacer" />
         <span className="status warn">{allowed ? "运行中" : "等待许可"}</span>
-        <button
+        <Button
+          variant="plain"
           className="icon-btn"
           type="button"
           aria-label="会话环境"
           onClick={() => setDrawerOpen((value) => !value)}
         >
           <Icon name="sidebar" />
-        </button>
+        </Button>
       </div>
       <div className="thread">
         <div className="msgs">
@@ -116,7 +118,8 @@ export function ChatScreen({ fresh, sessionFixture, onOpen }: ChatScreenProps) {
           <div className="msg-ai">
             <p>{sessionFixture.assistantParagraphs[0]}</p>
             <div>
-              <button
+              <Button
+                variant="plain"
                 className="steps-line"
                 type="button"
                 aria-expanded={stepsOpen}
@@ -124,7 +127,7 @@ export function ChatScreen({ fresh, sessionFixture, onOpen }: ChatScreenProps) {
               >
                 <Icon name="right" small className="chev" />
                 读取 {sessionFixture.steps.length} 个文件，搜索 1 次
-              </button>
+              </Button>
               {stepsOpen ? (
                 <div className="steps-list">
                   {sessionFixture.steps.map((step) => (
@@ -144,7 +147,8 @@ export function ChatScreen({ fresh, sessionFixture, onOpen }: ChatScreenProps) {
               {sessionFixture.relayEvent.text}
             </div>
             <div className={diffOpen ? "result is-open" : "result"}>
-              <button
+              <Button
+                variant="plain"
                 className="result-head"
                 type="button"
                 onClick={() => setDiffOpen((value) => !value)}
@@ -155,7 +159,7 @@ export function ChatScreen({ fresh, sessionFixture, onOpen }: ChatScreenProps) {
                 <span className="num t-bad">−{sessionFixture.diff.deletions}</span>
                 <span className="grow" />
                 <span className="muted">查看</span>
-              </button>
+              </Button>
               {diffOpen ? (
                 <div className="result-body">
                   <div className="diff">

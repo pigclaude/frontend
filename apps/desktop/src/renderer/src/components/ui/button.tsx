@@ -4,15 +4,15 @@ import { cva, type VariantProps } from "class-variance-authority"
 import type { ButtonHTMLAttributes } from "react"
 import { cn } from "../../lib/cn"
 
-const buttonVariants = cva("btn", {
+const buttonVariants = cva("", {
   variants: {
     variant: {
-      primary: "btn-primary",
-      secondary: "btn-secondary",
-      ghost: "btn-ghost",
-      danger: "btn-danger",
-      solidDanger: "btn-solid-danger",
-      plain: "btn-plain",
+      primary: "btn btn-primary",
+      secondary: "btn btn-secondary",
+      ghost: "btn btn-ghost",
+      danger: "btn btn-danger",
+      solidDanger: "btn btn-solid-danger",
+      plain: "",
     },
     size: {
       sm: "btn-sm",

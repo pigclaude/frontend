@@ -3,6 +3,7 @@ import { Icon } from "./icon"
 import type { ProjectNavigationState } from "../models/navigation-model"
 import type { Project } from "../models/project-model"
 import type { Screen } from "../screens/screen"
+import { Button } from "./ui/button"
 
 /** 工作区侧栏所需的事件和状态。 */
 export type WorkspaceSidebarProps = {
@@ -28,7 +29,8 @@ export function WorkspaceSidebar({
   return (
     <>
       <nav aria-label="主导航">
-        <button
+        <Button
+          variant="plain"
           className={screen === "chat-new" ? "nav-item is-active" : "nav-item"}
           type="button"
           onClick={() => onNewSession()}
@@ -36,19 +38,26 @@ export function WorkspaceSidebar({
           <Icon name="pencil" />
           新会话
           <span className="nav-kbd">⌘N</span>
-        </button>
-        <button className="nav-item" type="button">
+        </Button>
+        <Button variant="plain" className="nav-item" type="button">
           <Icon name="search" />
           搜索
           <span className="nav-kbd">⌘K</span>
-        </button>
+        </Button>
       </nav>
       <div className="side-label">
         <span>项目</span>
-        <button className="icon-btn" type="button" aria-label="排序与筛选" title="排序与筛选">
+        <Button
+          variant="plain"
+          className="icon-btn"
+          type="button"
+          aria-label="排序与筛选"
+          title="排序与筛选"
+        >
           <Icon name="filter" small />
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="plain"
           className="icon-btn"
           type="button"
           aria-label="添加项目"
@@ -56,20 +65,26 @@ export function WorkspaceSidebar({
           onClick={onAddProject}
         >
           <Icon name="folder-plus" small />
-        </button>
+        </Button>
       </div>
       {projects.length === 0 ? (
-        <button className="nav-item muted-item" type="button" onClick={onAddProject}>
+        <Button
+          variant="plain"
+          className="nav-item muted-item"
+          type="button"
+          onClick={onAddProject}
+        >
           <Icon name="plus" />
           添加项目
-        </button>
+        </Button>
       ) : null}
       {projects.map(({ id, name, sessions }) => {
         const open = navigation.expandedProjects[id] ?? true
         return (
           <div key={id} className="proj-block">
             <div className="proj-row">
-              <button
+              <Button
+                variant="plain"
                 className="proj"
                 type="button"
                 aria-expanded={open}
@@ -80,21 +95,23 @@ export function WorkspaceSidebar({
                   <Icon name={open ? "down" : "right"} small className="proj-caret" />
                 </span>
                 <span className="truncate">{name}</span>
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="plain"
                 className="icon-btn proj-add"
                 type="button"
                 aria-label={`在 ${name} 新建会话`}
                 onClick={() => onNewSession(name)}
               >
                 <Icon name="plus" small />
-              </button>
+              </Button>
             </div>
             {open ? (
               <div className="proj-sessions">
                 {sessions.length === 0 ? <p className="side-empty">还没有会话</p> : null}
                 {sessions.map(({ id, title, time, live }) => (
-                  <button
+                  <Button
+                    variant="plain"
                     key={id}
                     className={screen === "chat" && id === "s-daemon" ? "sess is-active" : "sess"}
                     type="button"
@@ -104,7 +121,7 @@ export function WorkspaceSidebar({
                     <span className={live ? "sess-dot live" : "sess-dot"} />
                     <span className="truncate">{title}</span>
                     <time>{live ? "回复中" : time}</time>
-                  </button>
+                  </Button>
                 ))}
               </div>
             ) : null}

@@ -18,6 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu"
+import { Button } from "./ui/button"
 
 const accounts = ["主力 Max", "备用 Pro"] as const
 
@@ -94,9 +95,15 @@ export function Composer({
       <EditorContent editor={editor} />
       <div className="composer-bar">
         <div className="composer-side">
-          <button className="icon-btn" type="button" aria-label="添加附件" title="添加附件">
+          <Button
+            variant="plain"
+            className="icon-btn"
+            type="button"
+            aria-label="添加附件"
+            title="添加附件"
+          >
             <Icon name="plus" />
-          </button>
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger className="chip-btn">
               <Icon name="hand" small />
@@ -166,7 +173,8 @@ export function Composer({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          <button
+          <Button
+            variant="plain"
             className="send"
             type="button"
             aria-label="发送"
@@ -178,7 +186,7 @@ export function Composer({
             }}
           >
             <Icon name="send" />
-          </button>
+          </Button>
         </div>
       </div>
     </div>

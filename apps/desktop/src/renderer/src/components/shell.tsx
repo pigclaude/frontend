@@ -16,6 +16,7 @@ import type { Project } from "../models/project-model"
 import { settingsScreens } from "../models/settings-nav"
 import type { ResolvedTheme } from "../models/theme-model"
 import type { Screen } from "../screens/screen"
+import { Button } from "./ui/button"
 
 /** 侧栏需要的状态与事件。 */
 export type SidebarProps = {
@@ -68,21 +69,27 @@ export function Sidebar({
       </div>
       {!inSettings && noticeVisible ? (
         <div className="side-notice">
-          <button className="side-notice-main" type="button" onClick={() => onNavigate("accounts")}>
+          <Button
+            variant="plain"
+            className="side-notice-main"
+            type="button"
+            onClick={() => onNavigate("accounts")}
+          >
             <span className="dot warn" />
             <span className="grow">
               <span className="side-notice-title">旧号 Pro 需要重新授权</span>
               <span className="side-notice-desc">已暂停参与自动切换</span>
             </span>
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="plain"
             className="icon-btn side-notice-close"
             type="button"
             aria-label="隐藏提醒"
             onClick={() => setNoticeVisible(false)}
           >
             <Icon name="x" small />
-          </button>
+          </Button>
         </div>
       ) : null}
       <div className="side-foot">
@@ -124,7 +131,8 @@ export function Sidebar({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <button
+        <Button
+          variant="plain"
           className={inSettings ? "icon-btn foot-gear is-active" : "icon-btn foot-gear"}
           type="button"
           aria-label="设置"
@@ -132,7 +140,7 @@ export function Sidebar({
           onClick={() => (inSettings ? onExitSettings() : onNavigate("general"))}
         >
           <Icon name="gear" />
-        </button>
+        </Button>
       </div>
     </aside>
   )
@@ -160,7 +168,8 @@ export function WindowControls({
   return (
     <div className="window-controls">
       <TrafficLights />
-      <button
+      <Button
+        variant="plain"
         className="icon-btn"
         type="button"
         aria-label={sidebarOpen ? "收起侧栏" : "展开侧栏"}
@@ -169,8 +178,9 @@ export function WindowControls({
         onClick={onToggleSidebar}
       >
         <Icon name="sidebar" />
-      </button>
-      <button
+      </Button>
+      <Button
+        variant="plain"
         className="icon-btn"
         type="button"
         aria-label="后退"
@@ -179,8 +189,9 @@ export function WindowControls({
         onClick={onBack}
       >
         <Icon name="left" />
-      </button>
-      <button
+      </Button>
+      <Button
+        variant="plain"
         className="icon-btn"
         type="button"
         aria-label="前进"
@@ -189,7 +200,7 @@ export function WindowControls({
         onClick={onForward}
       >
         <Icon name="right" />
-      </button>
+      </Button>
     </div>
   )
 }

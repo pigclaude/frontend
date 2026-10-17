@@ -61,7 +61,8 @@ export function AccountsScreen({
           </div>
           <div className="group">
             {attention.map((account) => (
-              <button
+              <Button
+                variant="plain"
                 className="item"
                 type="button"
                 key={account.id}
@@ -73,7 +74,7 @@ export function AccountsScreen({
                   <div className="desc">{account.status} · 不参与自动切换</div>
                 </div>
                 <span className="status info">需重新授权</span>
-              </button>
+              </Button>
             ))}
           </div>
         </section>
@@ -85,7 +86,8 @@ export function AccountsScreen({
         </div>
         <div className="group">
           {ordered.map((account) => (
-            <button
+            <Button
+              variant="plain"
               className="item"
               type="button"
               key={account.id}
@@ -108,7 +110,7 @@ export function AccountsScreen({
               <span className="chev">
                 <span>›</span>
               </span>
-            </button>
+            </Button>
           ))}
         </div>
         <p className="note">响应体开始写出后不再换号；请求体超过 32 MiB 不重放。</p>

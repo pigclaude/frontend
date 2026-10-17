@@ -40,7 +40,8 @@ export function ProxiesScreen({ proxies, onTestAll, onAdd, onOpenProxy }: Proxie
       </header>
       <div className="group">
         {rows.map((proxy) => (
-          <button
+          <Button
+            variant="plain"
             className="item"
             type="button"
             key={proxy.id}
@@ -61,7 +62,7 @@ export function ProxiesScreen({ proxies, onTestAll, onAdd, onOpenProxy }: Proxie
               </span>
               <span className="chev">›</span>
             </span>
-          </button>
+          </Button>
         ))}
       </div>
       <p className="note">代理不可用时请求以 503 结束，不会从本机网络直接发出。</p>

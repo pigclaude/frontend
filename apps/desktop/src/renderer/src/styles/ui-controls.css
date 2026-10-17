@@ -1,18 +1,5 @@
 /* 新增 shadcn 控件的样式。只引用 tokens.css 和 glass.css 里的变量。 */
 
-.btn-plain {
-  height: auto;
-  padding: 0;
-  border-radius: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  box-shadow: none;
-}
-.btn-plain:focus-visible {
-  outline: 1px solid var(--border-focus);
-  outline-offset: 1px;
-}
 .btn-icon {
   width: 28px;
   height: 28px;

@@ -18,22 +18,23 @@ export function TrayScreen({ onOpenAccounts, onOpenSettings }: TrayScreenProps) 
             <Icon name="snout" />
           </span>
           <b>{paused ? "已暂停" : `${trayFixture.percent} · ${trayFixture.account}`}</b>
-          <button
+          <Button
+            variant="plain"
             className="icon-btn"
             type="button"
             aria-label={paused ? "恢复自动切换" : "暂停自动切换"}
             onClick={() => setPaused((value) => !value)}
           >
             <Icon name={paused ? "play" : "pause"} />
-          </button>
+          </Button>
         </div>
-        <button className="item" type="button" onClick={onOpenAccounts}>
+        <Button variant="plain" className="item" type="button" onClick={onOpenAccounts}>
           <span className="dot warn" />
           <div className="main">
             <div className="ttl">{trayFixture.attention}</div>
           </div>
           <Icon name="right" small />
-        </button>
+        </Button>
         <div className="group">
           {trayFixture.accounts.map((account) => (
             <div className="item" key={account.name}>

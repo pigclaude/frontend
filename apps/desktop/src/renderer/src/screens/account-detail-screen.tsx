@@ -23,9 +23,9 @@ export function AccountDetailScreen({
 }: AccountDetailScreenProps) {
   return (
     <div className="page narrow">
-      <button className="back" type="button" onClick={onBack}>
+      <Button variant="plain" className="back" type="button" onClick={onBack}>
         ‹ 账号
-      </button>
+      </Button>
       <header className="page-head who-head">
         <div className="row">
           <span className="avatar lg">{account.mark}</span>
@@ -88,9 +88,9 @@ export function AccountDetailScreen({
       <section className="section">
         <div className="section-head">
           <h2>指纹</h2>
-          <button className="link" type="button" onClick={onEditFingerprint}>
+          <Button variant="plain" className="link" type="button" onClick={onEditFingerprint}>
             编辑
-          </button>
+          </Button>
         </div>
         <div className="group">
           <div className="item">

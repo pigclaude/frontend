@@ -64,7 +64,8 @@ export function AccountProxyDialog({
         <div className="dialog-body">
           <div className="group">
             {proxies.map((proxy) => (
-              <button
+              <Button
+                variant="plain"
                 key={proxy.id}
                 className={selected === proxy.id ? "choice is-selected" : "choice"}
                 type="button"
@@ -80,7 +81,7 @@ export function AccountProxyDialog({
                 <span className={proxy.available ? "status ok" : "status bad"}>
                   {proxy.available ? `${proxy.latency} ms` : "不可用"}
                 </span>
-              </button>
+              </Button>
             ))}
           </div>
         </div>

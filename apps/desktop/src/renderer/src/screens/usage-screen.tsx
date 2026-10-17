@@ -29,14 +29,15 @@ export function UsageScreen({ usageFixture = operationsUsageFixture }: UsageScre
         </div>
         <div className="seg">
           {["today", "7d", "30d"].map((item) => (
-            <button
+            <Button
+              variant="plain"
               key={item}
               className={range === item ? "is-active" : ""}
               type="button"
               onClick={() => setRange(item)}
             >
               {item === "today" ? "今天" : item === "7d" ? "7 天" : "30 天"}
-            </button>
+            </Button>
           ))}
         </div>
       </header>
@@ -53,20 +54,22 @@ export function UsageScreen({ usageFixture = operationsUsageFixture }: UsageScre
         <div className="section-head">
           <h2>每日 Token</h2>
           <div className="seg">
-            <button
+            <Button
+              variant="plain"
               className={split === "account" ? "is-active" : ""}
               type="button"
               onClick={() => setSplit("account")}
             >
               按账号
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="plain"
               className={split === "model" ? "is-active" : ""}
               type="button"
               onClick={() => setSplit("model")}
             >
               按模型
-            </button>
+            </Button>
           </div>
         </div>
         <div className="group chart-box">
@@ -134,14 +137,15 @@ export function UsageScreen({ usageFixture = operationsUsageFixture }: UsageScre
                 ["error", "错误"],
               ] as const
             ).map(([id, label]) => (
-              <button
+              <Button
+                variant="plain"
                 key={id}
                 className={filter === id ? "is-active" : ""}
                 type="button"
                 onClick={() => setFilter(id)}
               >
                 {label}
-              </button>
+              </Button>
             ))}
           </div>
         </div>

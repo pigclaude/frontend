@@ -15,6 +15,33 @@ export interface AdminMeResponse {
   id: string
   account: string
   status: string
+  permissions?: string[]
+}
+
+/** 管理员用户列表项，字段保持服务端脱敏摘要语义。 */
+export interface AdminUserItem {
+  id: string
+  nickname: string
+  email: string
+  avatar: string
+  githubLogin: string
+  status: string
+  balance: string
+  createdAt: string
+  lastLoginAt: string | null
+}
+
+/** 管理员用户列表查询，游标始终按 decimal string 传输。 */
+export interface ListUsersQuery {
+  cursor?: string
+  limit?: number
+  [key: string]: string | number | undefined
+}
+
+/** 管理员用户分页响应。 */
+export interface ListUsersResponse {
+  items: AdminUserItem[]
+  nextCursor: string
 }
 /** 会员状态。 */
 export type MembershipStatus = "active" | "expired" | "revoked"

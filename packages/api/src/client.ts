@@ -92,6 +92,9 @@ export function createClient(opts: ClientOptions = {}): HttpClient {
     const res = await requestFetch(base + path + qs(query), init)
     const location = res.headers.get("location")
     if (res.ok || (res.status === 303 && location !== null)) {
+      if (res.status === 204) {
+        return { data: {} as T, status: res.status, location }
+      }
       try {
         return { data: (await res.json()) as T, status: res.status, location }
       } catch {

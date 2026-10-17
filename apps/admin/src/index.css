@@ -1,0 +1,231 @@
+/* 负责管理后台的基础颜色、布局和可访问焦点样式。 */
+@import "@pigclaude/web-ui/styles/globals.css";
+
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color: #1d2025;
+  background: #f7f8fa;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+.admin-layout {
+  display: flex;
+  min-height: 100vh;
+}
+.admin-sidebar {
+  width: 220px;
+  flex: 0 0 220px;
+  border-right: 1px solid #e5e7eb;
+  background: #fff;
+  padding: 20px 14px;
+}
+.admin-main {
+  min-width: 0;
+  flex: 1;
+}
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+  padding: 14px 24px;
+}
+.admin-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 28px 24px 48px;
+}
+.admin-nav {
+  display: grid;
+  gap: 4px;
+  margin-top: 24px;
+}
+.admin-nav a {
+  border-radius: 8px;
+  padding: 9px 11px;
+  color: #64748b;
+  font-size: 14px;
+}
+.admin-nav a[aria-current="page"],
+.admin-nav a:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.admin-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+}
+.admin-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid #eef0f3;
+}
+.admin-card-body {
+  padding: 18px;
+}
+.admin-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+}
+.admin-field {
+  display: grid;
+  gap: 5px;
+  min-width: 150px;
+}
+.admin-field label {
+  font-size: 12px;
+  color: #64748b;
+}
+.admin-field input,
+.admin-field textarea,
+.admin-field select {
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  padding: 8px 10px;
+  color: #1e293b;
+  background: #fff;
+}
+.admin-button {
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #fff;
+  padding: 8px 13px;
+  cursor: pointer;
+}
+.admin-button.primary {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+.admin-button.danger {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+.admin-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+.admin-table-wrap {
+  overflow-x: auto;
+}
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.admin-table th,
+.admin-table td {
+  border-bottom: 1px solid #eef0f3;
+  padding: 11px 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+.admin-table th {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+.admin-table td {
+  color: #334155;
+}
+.admin-muted {
+  color: #64748b;
+  font-size: 13px;
+}
+.admin-state {
+  padding: 28px;
+  color: #64748b;
+  text-align: center;
+}
+.admin-error {
+  border-radius: 8px;
+  background: #fff1f2;
+  padding: 12px 14px;
+  color: #be123c;
+}
+.admin-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 14px;
+}
+.admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+.admin-tabs a {
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #64748b;
+}
+.admin-tabs a[aria-current="page"] {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.admin-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(15 23 42 / 35%);
+  padding: 20px;
+}
+.admin-dialog {
+  width: min(440px, 100%);
+  border-radius: 12px;
+  background: #fff;
+  padding: 20px;
+  box-shadow: 0 20px 60px rgb(15 23 42 / 25%);
+}
+.admin-dialog form {
+  display: grid;
+  gap: 12px;
+}
+@media (max-width: 760px) {
+  .admin-sidebar {
+    display: none;
+  }
+  .admin-content {
+    padding: 20px 14px 36px;
+  }
+  .admin-header {
+    padding: 12px 14px;
+  }
+}

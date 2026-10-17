@@ -11,6 +11,9 @@ export function createAdminApi(c: HttpClient) {
       logout: () => c.post<Record<string, never>>("/admin/v1/auth/logout"),
     },
     me: () => c.get<T.AdminMeResponse>("/admin/v1/me"),
+    users: {
+      list: (query: T.ListUsersQuery = {}) => c.get<T.ListUsersResponse>("/admin/v1/users", query),
+    },
     membership: {
       list: (query: T.ListMembershipsQuery = {}) =>
         c.get<T.ListMembershipsResponse>("/admin/v1/memberships", query),

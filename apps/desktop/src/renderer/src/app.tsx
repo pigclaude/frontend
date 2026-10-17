@@ -2,7 +2,8 @@
 import { useEffect, useState } from "react"
 import { Sidebar } from "./components/shell"
 import { TooltipProvider } from "./components/ui/tooltip"
-import { EnvironmentScreen, UsageScreen } from "./screens/pool-screens"
+import { EnvironmentScreen } from "./screens/environment-screen"
+import { UsageScreen } from "./screens/usage-screen"
 import { AccountsScreen } from "./screens/accounts-screen"
 import { ProxiesScreen } from "./screens/proxies-screen"
 import { TrayScreen } from "./screens/extra-screens"
@@ -12,6 +13,10 @@ import { ChatScreen } from "./screens/chat-screen"
 import { LoginScreen } from "./screens/login-screen"
 import { SettingsScreen } from "./screens/settings-screen"
 import { sessionFixture } from "./fixtures/chat-fixtures"
+import {
+  operationsEnvironmentFixture,
+  operationsUsageFixture,
+} from "./fixtures/operations-fixtures"
 import { createPoolState } from "./models/pool-model"
 import { createAuthorizationState, reduceAuthorizationState } from "./models/authorization-model"
 import { createLoginState, reduceLoginState } from "./models/login-model"
@@ -109,8 +114,10 @@ export function DesktopApp() {
             />
           ) : null}
           {screen === "proxies" ? <ProxiesScreen proxies={poolState.proxies} /> : null}
-          {screen === "usage" ? <UsageScreen /> : null}
-          {screen === "environment" ? <EnvironmentScreen /> : null}
+          {screen === "usage" ? <UsageScreen usageFixture={operationsUsageFixture} /> : null}
+          {screen === "environment" ? (
+            <EnvironmentScreen fixture={operationsEnvironmentFixture} />
+          ) : null}
           {bare ? null : <SettingsScreen screen={screen} onNavigate={setScreen} />}
         </main>
       </div>

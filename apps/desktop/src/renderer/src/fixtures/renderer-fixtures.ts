@@ -77,6 +77,7 @@ export const usageFixtures = {
   ],
   requests: [
     {
+      id: "usage-1",
       time: "14:32",
       account: "主力 Max",
       model: "Opus 5.5",
@@ -86,6 +87,7 @@ export const usageFixtures = {
       kind: "all",
     },
     {
+      id: "usage-2",
       time: "14:31",
       account: "工作 Max",
       model: "Opus 5.5",
@@ -95,6 +97,7 @@ export const usageFixtures = {
       kind: "switch",
     },
     {
+      id: "usage-3",
       time: "14:28",
       account: "备用 Pro",
       model: "Sonnet 5.5",

@@ -36,6 +36,8 @@ export async function checkExternalDependency(name, value, timeoutMs = 1_500) {
   }
   const defaultPort = name === "postgres" ? 5432 : 6379
   const host = url.hostname || "127.0.0.1"
+  if (!isLoopbackHost(host))
+    return { name, status: "FAILED", host, reason: "non-loopback dependency host is not allowed" }
   const port = Number(url.port) || defaultPort
   try {
     await connectTcp(host, port, timeoutMs)
@@ -226,6 +228,10 @@ async function isPortAvailable(port) {
       server.close(() => resolveAvailable(true))
     })
   })
+}
+
+function isLoopbackHost(host) {
+  return host === "127.0.0.1" || host === "localhost" || host === "::1"
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

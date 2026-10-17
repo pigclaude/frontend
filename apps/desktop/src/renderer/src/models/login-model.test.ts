@@ -1,59 +1,58 @@
-// 验证 pigclaude 使用权限登录的状态边界。
+// 负责验证登录/注册浏览器授权状态机的意图、等待、完成和失败恢复。
 import { describe, expect, it } from "vitest"
 import { createLoginState, reduceLoginState } from "./login-model"
 
-describe("login model", () => {
-  it("可以从密码登录切换到验证码登录", () => {
-    const state = reduceLoginState(createLoginState(), { type: "set-mode", mode: "code" })
-    expect(state.mode).toBe("code")
-    expect(state.view).toBe("form")
+describe("browser login model", () => {
+  it("keeps login and register as separate browser intents", () => {
+    const login = reduceLoginState(createLoginState(), { type: "start-request", intent: "login" })
+    const register = reduceLoginState(createLoginState(), {
+      type: "start-request",
+      intent: "register",
+    })
+
+    expect(login).toMatchObject({ view: "starting", intent: "login" })
+    expect(register).toMatchObject({ view: "starting", intent: "register" })
   })
 
-  it("空邮箱提交时停留在表单并给出错误", () => {
-    const state = reduceLoginState(createLoginState(), {
-      type: "submit",
-      email: "",
-      password: "secret",
+  it("shows a waiting URL and completes without exposing any secret", () => {
+    const started = reduceLoginState(createLoginState(), {
+      type: "started",
+      intent: "login",
+      sessionId: "session-1",
+      authorizationUrl: "http://localhost:5173/authorize?state=one",
+      expiresAt: 601_000,
     })
-    expect(state.view).toBe("form")
-    expect(state.error).toBe("请输入邮箱")
+    const completed = reduceLoginState(started, {
+      type: "completed",
+      intent: "login",
+      sessionId: "session-1",
+      displayName: "林舟",
+      expiresAt: 2_000_000,
+    })
+
+    expect(started).toMatchObject({
+      view: "waiting",
+      authorizationUrl: expect.stringContaining("state=one"),
+    })
+    expect(completed).toMatchObject({ view: "success", displayName: "林舟" })
+    expect(completed).not.toHaveProperty("accessToken")
+    expect(completed).not.toHaveProperty("refreshToken")
   })
 
-  it("验证码模式必须填写验证码并在允许后进入成功态", () => {
-    let state = reduceLoginState(createLoginState(), { type: "set-mode", mode: "code" })
-    state = reduceLoginState(state, { type: "submit", email: "lin@example.com" })
-    expect(state).toMatchObject({ view: "form", error: "请输入验证码" })
-    state = reduceLoginState(state, {
-      type: "submit",
-      email: "lin@example.com",
-      code: "123456",
+  it("returns to a retryable idle state after cancel or failure", () => {
+    const waiting = reduceLoginState(createLoginState(), {
+      type: "started",
+      intent: "register",
+      sessionId: "session-2",
+      authorizationUrl: "http://localhost:5173/authorize",
+      expiresAt: 601_000,
     })
-    expect(state.view).toBe("checking")
-    expect(
-      reduceLoginState(state, { type: "remote-allowed", checkedAt: "今天 09:00" }),
-    ).toMatchObject({
-      view: "success",
-      checkedAt: "今天 09:00",
-    })
-  })
 
-  it("远程拒绝和离线缓存分别进入拒绝与离线状态", () => {
-    const checking = reduceLoginState(createLoginState(), {
-      type: "submit",
-      email: "lin@example.com",
-      password: "secret",
+    expect(reduceLoginState(waiting, { type: "cancelled" })).toMatchObject({ view: "idle" })
+    expect(reduceLoginState(waiting, { type: "failed", error: "授权已过期" })).toMatchObject({
+      view: "error",
+      error: "授权已过期",
+      intent: "register",
     })
-    expect(checking.view).toBe("checking")
-    expect(reduceLoginState(checking, { type: "remote-denied" }).view).toBe("denied")
-    expect(
-      reduceLoginState(checking, {
-        type: "offline",
-        hasCachedAllow: true,
-        checkedAt: "今天 09:00",
-      }),
-    ).toMatchObject({ view: "offline-allow", checkedAt: "今天 09:00" })
-    expect(
-      reduceLoginState(checking, { type: "offline", hasCachedAllow: false, checkedAt: null }).view,
-    ).toBe("offline-none")
   })
 })

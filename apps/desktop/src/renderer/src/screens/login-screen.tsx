@@ -1,124 +1,38 @@
-// 负责 pigclaude 软件使用权限登录，不启动 Claude 账号授权。
-import { useEffect, useState, type ReactNode } from "react"
+// 负责展示 pigclaude 登录/注册浏览器授权入口和等待状态。
+import { useState, type ReactNode } from "react"
 import { Icon } from "../components/icon"
 import { TrafficLights } from "../components/traffic-lights"
 import { Button } from "../components/ui/button"
-import { Input } from "../components/ui/input"
-import type { LoginEvent, LoginMode, LoginState } from "../models/login-model"
+import type { LoginIntent, LoginState } from "../models/login-model"
 
-/** 权限登录页面 props。 */
+/** 浏览器授权登录页面 props。 */
 export type LoginScreenProps = {
   state: LoginState
-  onEvent: (event: LoginEvent) => void
+  onAuthorize: (intent: LoginIntent) => void
+  onCancel: () => void
+  onReset: () => void
   onSuccess: () => void
 }
 
-/** 绘制原型里的邮箱密码/验证码登录和离线结果状态。 */
-export function LoginScreen({ state, onEvent, onSuccess }: LoginScreenProps) {
-  const [email, setEmail] = useState(state.email)
-  const [password, setPassword] = useState("")
-  const [code, setCode] = useState("")
-  const [showPassword, setShowPassword] = useState(false)
-  const [countdown, setCountdown] = useState(0)
-
-  useEffect(() => {
-    if (state.view !== "checking") return
-    const timer = window.setTimeout(() => {
-      onEvent(
-        email.includes("deny")
-          ? { type: "remote-denied" }
-          : { type: "remote-allowed", checkedAt: "今天 09:00" },
-      )
-    }, 450)
-    return () => window.clearTimeout(timer)
-  }, [email, onEvent, state.view])
-
-  function chooseMode(mode: LoginMode) {
-    onEvent({ type: "set-mode", mode })
-  }
-
-  function submit() {
-    onEvent({ type: "submit", email, password, code })
-  }
-
-  function sendCode() {
-    if (!email.trim() || countdown > 0) return
-    setCountdown(60)
-    const timer = window.setInterval(() => {
-      setCountdown((value) => {
-        if (value <= 1) {
-          window.clearInterval(timer)
-          return 0
-        }
-        return value - 1
-      })
-    }, 1000)
-  }
-
-  if (state.view === "denied") {
-    return (
-      <AuthWindow>
-        <ResultState
-          icon="lock"
-          title="暂未开通"
-          description="这个账户还没有 pigclaude 使用权限，请联系提供方开通后再试。"
-          action={<Button onClick={submit}>重新检查</Button>}
-          secondary={
-            <Button variant="ghost" onClick={() => onEvent({ type: "reset" })}>
-              切换账户
-            </Button>
-          }
-        />
-      </AuthWindow>
-    )
-  }
-
-  if (state.view === "offline-allow") {
-    return (
-      <AuthWindow>
-        <ResultState
-          icon="wifi"
-          title="暂时连不上服务"
-          description={`沿用上次已开通的结果：${state.checkedAt ?? "最近一次"}。联网后会自动重新校验。`}
-          action={
-            <Button variant="primary" onClick={onSuccess}>
-              继续使用
-            </Button>
-          }
-          secondary={
-            <Button variant="ghost" onClick={submit}>
-              重试
-            </Button>
-          }
-        />
-      </AuthWindow>
-    )
-  }
-
-  if (state.view === "offline-none") {
-    return (
-      <AuthWindow>
-        <ResultState
-          icon="wifi"
-          title="需要联网登录"
-          description="这台电脑还没有可沿用的权限记录，联网完成一次校验后才能使用。"
-          action={
-            <Button variant="primary" onClick={submit}>
-              重试
-            </Button>
-          }
-        />
-      </AuthWindow>
-    )
-  }
+/** 绘制登录/注册两个浏览器授权入口和回调等待态。 */
+export function LoginScreen({
+  state,
+  onAuthorize,
+  onCancel,
+  onReset,
+  onSuccess,
+}: LoginScreenProps) {
+  const [copied, setCopied] = useState(false)
+  const intent = state.intent ?? "login"
+  const title = intent === "register" ? "注册 pigclaude" : "登录 pigclaude"
 
   if (state.view === "success") {
     return (
       <AuthWindow>
         <ResultState
           icon="check"
-          title="已确认使用权限"
-          description="接下来配置本机代理和 Claude 账号。"
+          title={intent === "register" ? "注册并授权完成" : "已确认使用权限"}
+          description={`${state.displayName ?? "当前账户"} 已连接这台设备，接下来配置本机代理和 Claude 账号。`}
           action={
             <Button variant="primary" onClick={onSuccess}>
               开始使用
@@ -129,106 +43,89 @@ export function LoginScreen({ state, onEvent, onSuccess }: LoginScreenProps) {
     )
   }
 
-  const checking = state.view === "checking"
+  if (state.view === "error") {
+    return (
+      <AuthWindow>
+        <ResultState
+          icon="alert"
+          title="浏览器授权未完成"
+          description={state.error ?? "请重新打开浏览器授权页面。"}
+          action={<Button onClick={() => onAuthorize(intent)}>重新授权</Button>}
+          secondary={
+            <Button variant="ghost" onClick={onReset}>
+              返回
+            </Button>
+          }
+        />
+      </AuthWindow>
+    )
+  }
+
+  if (state.view === "starting" || state.view === "waiting") {
+    async function copyLink() {
+      if (!state.authorizationUrl) return
+      try {
+        await navigator.clipboard.writeText(state.authorizationUrl)
+        setCopied(true)
+        window.setTimeout(() => setCopied(false), 1800)
+      } catch {
+        setCopied(false)
+      }
+    }
+
+    return (
+      <AuthWindow>
+        <div className="result auth-result">
+          <div className="r-title">
+            <Icon name="browser" small />
+            等待浏览器确认
+          </div>
+          <p>
+            {intent === "register"
+              ? "请在刚打开的浏览器中完成注册并确认授权。"
+              : "请在刚打开的浏览器中登录并确认这台设备。"}
+          </p>
+          <div className="browser-wait">
+            <Icon name="browser" />
+            <b>{state.view === "starting" ? "正在打开系统浏览器…" : "浏览器配置目录独立"}</b>
+            <span>桌面端不会接收你的密码或验证码</span>
+            {state.authorizationUrl ? <span className="mono">{state.authorizationUrl}</span> : null}
+          </div>
+          <div className="row">
+            {state.authorizationUrl ? (
+              <Button variant="secondary" onClick={() => void copyLink()}>
+                {copied ? "已复制" : "复制授权链接"}
+              </Button>
+            ) : null}
+            <Button variant="ghost" onClick={() => onAuthorize(intent)}>
+              重新打开
+            </Button>
+            <Button variant="ghost" onClick={onCancel}>
+              取消
+            </Button>
+          </div>
+        </div>
+      </AuthWindow>
+    )
+  }
+
   return (
     <AuthWindow>
       <div className="login">
         <div className="mark" aria-hidden="true">
           <Icon name="snout" />
         </div>
-        <h1>登录 pigclaude</h1>
-        <p className="sub">登录后会确认你的账户是否已开通。</p>
-        <form
-          className="col login-form"
-          onSubmit={(event) => {
-            event.preventDefault()
-            submit()
-          }}
-        >
-          <div className="seg" role="group" aria-label="登录方式">
-            <button
-              className={state.mode === "password" ? "is-active" : ""}
-              type="button"
-              onClick={() => chooseMode("password")}
-            >
-              邮箱与密码
-            </button>
-            <button
-              className={state.mode === "code" ? "is-active" : ""}
-              type="button"
-              onClick={() => chooseMode("code")}
-            >
-              邮箱验证码
-            </button>
-          </div>
-          <div className="field">
-            <label htmlFor="login-email">邮箱</label>
-            <Input
-              id="login-email"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              autoComplete="email"
-            />
-          </div>
-          {state.mode === "password" ? (
-            <div className="field">
-              <label htmlFor="login-password">密码</label>
-              <div className="pw">
-                <Input
-                  id="login-password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  autoComplete="current-password"
-                />
-                <button
-                  type="button"
-                  className="icon-btn"
-                  aria-label={showPassword ? "隐藏密码" : "显示密码"}
-                  onClick={() => setShowPassword((value) => !value)}
-                >
-                  <Icon name={showPassword ? "x" : "eye"} small />
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="field">
-              <label htmlFor="login-code">验证码</label>
-              <div className="code-row">
-                <Input
-                  id="login-code"
-                  value={code}
-                  onChange={(event) => setCode(event.target.value)}
-                  inputMode="numeric"
-                />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={sendCode}
-                  disabled={countdown > 0}
-                >
-                  {countdown > 0 ? `${countdown}s` : "发送验证码"}
-                </Button>
-              </div>
-            </div>
-          )}
-          {state.error ? (
-            <p className="error-text">
-              <Icon name="alert" small />
-              {state.error}
-            </p>
-          ) : null}
-          <Button type="submit" variant="primary" size="block" disabled={checking}>
-            {checking ? "检查中…" : "登录"}
+        <h1>{title}</h1>
+        <p className="sub">使用系统浏览器授权，桌面端不会保存你的密码。</p>
+        <div className="col login-form">
+          <Button variant="primary" size="block" onClick={() => onAuthorize("login")}>
+            登录
           </Button>
-          <div className="alt">
-            <button className="link" type="button">
-              忘记密码
-            </button>
-            <span className="muted">没有账户？向提供方申请开通</span>
-          </div>
-        </form>
+          <Button variant="secondary" size="block" onClick={() => onAuthorize("register")}>
+            注册
+          </Button>
+          <p className="muted login-note">登录和注册都会在浏览器中完成，不会在这里输入凭据。</p>
+        </div>
       </div>
     </AuthWindow>
   )

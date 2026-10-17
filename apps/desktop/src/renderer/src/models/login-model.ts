@@ -1,59 +1,93 @@
-// 负责描述 pigclaude 使用权限登录的表单和结果状态。
+// 负责描述 pigclaude 登录/注册浏览器授权的纯状态机。
 
-/** 使用权限登录方式。 */
-export type LoginMode = "password" | "code"
+/** pigclaude 浏览器授权意图。保证登录和注册显示不同的浏览器文案。 */
+export type LoginIntent = "login" | "register"
 
-/** 使用权限登录页面状态。 */
-export type LoginView =
-  "form" | "checking" | "denied" | "offline-allow" | "offline-none" | "success"
+/** 浏览器授权登录页面状态。保证 renderer 只保存脱敏授权结果。 */
+export type LoginView = "idle" | "starting" | "waiting" | "success" | "error"
 
-/** 使用权限登录状态。 */
+/** pigclaude 登录/注册状态。保证 token 不进入 React 状态。 */
 export type LoginState = {
-  mode: LoginMode
   view: LoginView
-  email: string
+  intent: LoginIntent | null
+  sessionId: string | null
+  authorizationUrl: string | null
+  expiresAt: number | null
+  displayName: string | null
   error: string | null
-  checkedAt: string | null
 }
 
-/** 使用权限登录状态变化事件。 */
+/** 浏览器授权登录状态变化事件。 */
 export type LoginEvent =
-  | { type: "set-mode"; mode: LoginMode }
-  | { type: "submit"; email: string; password?: string; code?: string }
-  | { type: "remote-denied" }
-  | { type: "remote-allowed"; checkedAt: string }
-  | { type: "offline"; hasCachedAllow: boolean; checkedAt: string | null }
+  | { type: "start-request"; intent: LoginIntent }
+  | {
+      type: "started"
+      intent: LoginIntent
+      sessionId: string
+      authorizationUrl: string
+      expiresAt: number
+    }
+  | {
+      type: "completed"
+      intent: LoginIntent
+      sessionId: string
+      displayName: string
+      expiresAt: number
+    }
+  | { type: "failed"; error: string }
+  | { type: "cancelled" }
   | { type: "reset" }
 
-/** 创建初始的权限登录状态。 */
+/** 创建空闲的浏览器授权登录状态。 */
 export function createLoginState(): LoginState {
-  return { mode: "password", view: "form", email: "", error: null, checkedAt: null }
+  return {
+    view: "idle",
+    intent: null,
+    sessionId: null,
+    authorizationUrl: null,
+    expiresAt: null,
+    displayName: null,
+    error: null,
+  }
 }
 
-/** 按事件推进权限登录状态，不产生外部副作用。 */
+/** 按事件推进浏览器授权状态，不产生外部副作用。 */
 export function reduceLoginState(state: LoginState, event: LoginEvent): LoginState {
-  if (event.type === "set-mode") {
-    return { ...state, mode: event.mode, error: null }
-  }
-  if (event.type === "submit") {
-    const email = event.email.trim()
-    if (!email) return { ...state, view: "form", email, error: "请输入邮箱" }
-    if (state.mode === "code" && !event.code?.trim()) {
-      return { ...state, view: "form", email, error: "请输入验证码" }
-    }
-    return { ...state, view: "checking", email, error: null }
-  }
-  if (event.type === "remote-denied") return { ...state, view: "denied", error: null }
-  if (event.type === "remote-allowed") {
-    return { ...state, view: "success", checkedAt: event.checkedAt, error: null }
-  }
-  if (event.type === "offline") {
+  if (event.type === "start-request") {
     return {
       ...state,
-      view: event.hasCachedAllow ? "offline-allow" : "offline-none",
-      checkedAt: event.checkedAt,
+      view: "starting",
+      intent: event.intent,
+      sessionId: null,
+      authorizationUrl: null,
+      expiresAt: null,
+      displayName: null,
       error: null,
     }
   }
-  return createLoginState()
+  if (event.type === "started") {
+    return {
+      ...state,
+      view: "waiting",
+      intent: event.intent,
+      sessionId: event.sessionId,
+      authorizationUrl: event.authorizationUrl,
+      expiresAt: event.expiresAt,
+      error: null,
+    }
+  }
+  if (event.type === "completed") {
+    return {
+      ...state,
+      view: "success",
+      intent: event.intent,
+      sessionId: event.sessionId,
+      displayName: event.displayName,
+      expiresAt: event.expiresAt,
+      error: null,
+    }
+  }
+  if (event.type === "failed") return { ...state, view: "error", error: event.error }
+  if (event.type === "cancelled" || event.type === "reset") return createLoginState()
+  return state
 }

@@ -1,0 +1,93 @@
+// 负责描述 Claude 账号授权向导、出口核对和外部等待状态。
+
+/** Claude 账号授权向导当前步骤。 */
+export type AuthorizationStep = "name" | "proxy" | "fingerprint" | "exit" | "waiting" | "completed"
+
+/** Claude 账号授权向导状态。 */
+export type AuthorizationState = {
+  step: AuthorizationStep
+  accountName: string
+  proxyId: string | null
+  fingerprintSeed: string | null
+  bridgeExit: string
+  daemonExit: string
+  canLaunch: boolean
+  approved: boolean
+  authorizationUrl: string | null
+}
+
+/** Claude 账号授权状态变化事件。 */
+export type AuthorizationEvent =
+  | { type: "set-name"; accountName: string }
+  | { type: "set-proxy"; proxyId: string }
+  | { type: "set-fingerprint"; fingerprintSeed: string }
+  | { type: "advance" }
+  | { type: "set-exits"; bridgeExit: string; daemonExit: string }
+  | { type: "check-exit" }
+  | { type: "start"; url: string }
+  | { type: "approved" }
+  | { type: "reset" }
+
+/** 创建初始的 Claude 账号授权状态。 */
+export function createAuthorizationState(): AuthorizationState {
+  return {
+    step: "name",
+    accountName: "",
+    proxyId: null,
+    fingerprintSeed: null,
+    bridgeExit: "",
+    daemonExit: "",
+    canLaunch: false,
+    approved: false,
+    authorizationUrl: null,
+  }
+}
+
+/** 按事件推进授权状态，不打开浏览器或写入凭据。 */
+export function reduceAuthorizationState(
+  state: AuthorizationState,
+  event: AuthorizationEvent,
+): AuthorizationState {
+  if (event.type === "set-name") return { ...state, accountName: event.accountName }
+  if (event.type === "set-proxy") return { ...state, proxyId: event.proxyId }
+  if (event.type === "set-fingerprint") return { ...state, fingerprintSeed: event.fingerprintSeed }
+  if (event.type === "advance") {
+    const next: Record<AuthorizationStep, AuthorizationStep> = {
+      name: "proxy",
+      proxy: "fingerprint",
+      fingerprint: "exit",
+      exit: "exit",
+      waiting: "waiting",
+      completed: "completed",
+    }
+    return { ...state, step: next[state.step] }
+  }
+  if (event.type === "set-exits") {
+    return { ...state, step: "exit", bridgeExit: event.bridgeExit, daemonExit: event.daemonExit }
+  }
+  if (event.type === "check-exit") {
+    const canLaunch = state.bridgeExit !== "" && state.bridgeExit === state.daemonExit
+    return {
+      ...state,
+      step: "exit",
+      canLaunch,
+      authorizationUrl: canLaunch ? state.authorizationUrl : null,
+    }
+  }
+  if (event.type === "start" && state.canLaunch) {
+    return { ...state, step: "waiting", approved: false, authorizationUrl: event.url }
+  }
+  if (event.type === "approved" && state.step === "waiting") {
+    return { ...state, step: "completed", approved: true }
+  }
+  if (event.type === "reset") {
+    return {
+      ...state,
+      step: "exit",
+      canLaunch: false,
+      approved: false,
+      authorizationUrl: null,
+    }
+  }
+  return state
+}

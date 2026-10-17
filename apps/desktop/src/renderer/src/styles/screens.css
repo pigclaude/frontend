@@ -1,0 +1,366 @@
+/* 负责 renderer 各页面的局部布局、会话内容和登录/授权窗口样式。 */
+
+.view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.thread {
+  flex: 1;
+  overflow: auto;
+  padding: 8px 28px 24px;
+}
+
+.msgs {
+  display: flex;
+  max-width: 680px;
+  margin: 0 auto;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.msg-user {
+  align-self: flex-end;
+  max-width: 82%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--panel);
+  font-size: var(--fs-lg);
+  line-height: 1.65;
+}
+
+.msg-ai {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  font-size: var(--fs-lg);
+  line-height: 1.72;
+}
+
+.msg-ai code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--hover);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.composer-wrap {
+  padding: 0 28px 14px;
+}
+
+.composer {
+  position: relative;
+  max-width: 680px;
+  margin: 0 auto;
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.composer:focus-within {
+  box-shadow:
+    inset 0 0 0 1px var(--border-focus),
+    var(--shadow-soft);
+}
+
+.composer .tiptap {
+  min-height: 48px;
+  max-height: 200px;
+  overflow: auto;
+  padding: 12px 14px 2px;
+  outline: none;
+  background: none;
+  font-size: var(--fs-lg);
+  line-height: 1.6;
+}
+
+.composer.is-tall .tiptap {
+  min-height: 66px;
+}
+
+.composer .tiptap p {
+  margin: 0;
+}
+
+.composer .tiptap p.is-editor-empty:first-child::before {
+  float: left;
+  height: 0;
+  color: var(--faint);
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
+
+.composer-bar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 6px 8px 8px 6px;
+}
+
+.composer-bar .icon-btn {
+  width: 24px;
+  height: 24px;
+}
+
+.composer-side {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 1px;
+}
+
+.chip-btn {
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px;
+  border-radius: var(--r-md);
+  color: var(--fg-2);
+  font-size: var(--fs-sm);
+}
+
+.chip-btn:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.send {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  margin-left: 6px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.send[aria-disabled="true"] {
+  background: var(--active);
+  color: var(--faint);
+  pointer-events: none;
+}
+
+.hero {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 0 28px 10vh;
+}
+
+.hero-inner {
+  width: min(560px, 100%);
+}
+
+.ctx-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 0 0 6px 2px;
+}
+
+.suggest {
+  margin-top: 14px;
+}
+
+.sg {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 6px;
+  border-radius: 6px;
+  font-size: var(--fs-sm);
+  text-align: left;
+}
+
+.sg + .sg {
+  border-radius: 0;
+  box-shadow: inset 0 1px 0 var(--divider);
+}
+
+.sg:hover {
+  border-radius: 6px;
+  background: var(--hover);
+  box-shadow: none;
+}
+
+.sg .tile {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  place-items: center;
+  border-radius: 5px;
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.sg b {
+  font-weight: 500;
+}
+
+.sg span {
+  color: var(--muted);
+}
+
+.drawer {
+  position: absolute;
+  top: 40px;
+  right: 0;
+  bottom: 0;
+  width: 300px;
+  overflow: auto;
+  padding: 4px 14px 24px;
+  background: var(--bg);
+  box-shadow: inset var(--hair) 0 0 var(--border-strong);
+}
+
+.perm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow:
+    inset 0 0 0 var(--hair) var(--border-strong),
+    var(--shadow-btn);
+}
+
+.perm .q {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 500;
+}
+
+.perm pre {
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  border-radius: var(--r-md);
+  background: var(--panel);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.perm .acts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.perm-done {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.win {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg);
+}
+
+.win-top {
+  display: flex;
+  height: 52px;
+  align-items: center;
+  padding: 0 18px;
+}
+
+.win-body {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  overflow: auto;
+  padding: 24px 24px 12vh;
+}
+
+.gate,
+.login,
+.wiz {
+  width: min(420px, 100%);
+}
+
+.gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.gate h1 {
+  margin: 16px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.gate-actions {
+  display: flex;
+  width: 220px;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.web-auth {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  background: var(--bg);
+  text-align: center;
+}
+
+.setup {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  place-items: center;
+  padding: 48px 28px;
+}
+
+.setup .page {
+  width: min(440px, 100%);
+  margin: 0;
+  padding: 0;
+}
+
+.setup-actions {
+  margin-top: 20px;
+}
+
+.tray-stage {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  padding: 28px;
+}
+
+.tray {
+  width: min(360px, 100%);
+}
+
+@media (max-width: 640px) {
+  .thread {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .composer-wrap {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+}

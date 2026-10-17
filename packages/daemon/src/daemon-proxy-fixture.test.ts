@@ -2,7 +2,7 @@
 
 import { execFileSync } from "node:child_process"
 import { once } from "node:events"
-import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import { createServer as createHttpsServer } from "node:https"
 import { connect as connectTcp, type Socket } from "node:net"
@@ -181,6 +181,7 @@ function makeCertificate(): { cert: string; key: string; ca: string } {
   const leafKey = join(dir, "leaf.key")
   const csr = join(dir, "leaf.csr")
   const leafPem = join(dir, "leaf.pem")
+  const leafExtensions = join(dir, "leaf.ext")
   execFileSync(
     "openssl",
     [
@@ -202,6 +203,7 @@ function makeCertificate(): { cert: string; key: string; ca: string } {
     ],
     { stdio: "ignore" },
   )
+  writeFileSync(leafExtensions, "subjectAltName=DNS:api.anthropic.com\n", "utf8")
   execFileSync(
     "openssl",
     [
@@ -236,8 +238,8 @@ function makeCertificate(): { cert: string; key: string; ca: string } {
       leafPem,
       "-days",
       "1",
-      "-copy_extensions",
-      "copy",
+      "-extfile",
+      leafExtensions,
     ],
     { stdio: "ignore" },
   )

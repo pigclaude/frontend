@@ -12,9 +12,5 @@ if (window.pigclaude) document.documentElement.dataset.shell = "electron"
 const root = document.getElementById("root")
 const page = window.location.pathname.startsWith("/authorize") ? <AuthorizeWeb /> : <DesktopApp />
 if (root) {
-  createRoot(root).render(
-    <StrictMode>
-      {page}
-    </StrictMode>,
-  )
+  createRoot(root).render(<StrictMode>{page}</StrictMode>)
 }

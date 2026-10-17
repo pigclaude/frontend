@@ -1,5 +1,5 @@
 // 负责 pigclaude 软件使用权限登录，不启动 Claude 账号授权。
-import { useState, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { Icon } from "../components/icon"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -19,6 +19,18 @@ export function LoginScreen({ state, onEvent, onSuccess }: LoginScreenProps) {
   const [code, setCode] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [countdown, setCountdown] = useState(0)
+
+  useEffect(() => {
+    if (state.view !== "checking") return
+    const timer = window.setTimeout(() => {
+      onEvent(
+        email.includes("deny")
+          ? { type: "remote-denied" }
+          : { type: "remote-allowed", checkedAt: "今天 09:00" },
+      )
+    }, 450)
+    return () => window.clearTimeout(timer)
+  }, [email, onEvent, state.view])
 
   function chooseMode(mode: LoginMode) {
     onEvent({ type: "set-mode", mode })

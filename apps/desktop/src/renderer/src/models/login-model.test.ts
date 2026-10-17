@@ -29,7 +29,9 @@ describe("login model", () => {
       code: "123456",
     })
     expect(state.view).toBe("checking")
-    expect(reduceLoginState(state, { type: "remote-allowed", checkedAt: "今天 09:00" })).toMatchObject({
+    expect(
+      reduceLoginState(state, { type: "remote-allowed", checkedAt: "今天 09:00" }),
+    ).toMatchObject({
       view: "success",
       checkedAt: "今天 09:00",
     })

@@ -6,12 +6,12 @@ import { EnvironmentScreen } from "./screens/environment-screen"
 import { UsageScreen } from "./screens/usage-screen"
 import { AccountsScreen } from "./screens/accounts-screen"
 import { ProxiesScreen } from "./screens/proxies-screen"
-import { TrayScreen } from "./screens/extra-screens"
+import { TrayScreen } from "./screens/tray-screen"
 import { AuthorizeScreen } from "./screens/authorize-screen"
 import { OnboardingScreen } from "./screens/onboarding-screen"
 import { ChatScreen } from "./screens/chat-screen"
 import { LoginScreen } from "./screens/login-screen"
-import { SettingsScreen } from "./screens/settings-screen"
+import { SettingsScreen } from "./screens/settings/settings-sections"
 import { sessionFixture } from "./fixtures/chat-fixtures"
 import {
   operationsEnvironmentFixture,
@@ -64,6 +64,16 @@ export function DesktopApp() {
 
   const bare =
     screen === "onboarding" || screen === "tray" || screen === "chat" || screen === "chat-new"
+  const settingsPage = [
+    "profile",
+    "switching",
+    "general",
+    "appearance",
+    "session",
+    "network",
+    "data",
+    "about",
+  ].includes(screen)
   return (
     <TooltipProvider>
       <div className="app">
@@ -118,7 +128,7 @@ export function DesktopApp() {
           {screen === "environment" ? (
             <EnvironmentScreen fixture={operationsEnvironmentFixture} />
           ) : null}
-          {bare ? null : <SettingsScreen screen={screen} onNavigate={setScreen} />}
+          {bare || !settingsPage ? null : <SettingsScreen screen={screen} onNavigate={setScreen} />}
         </main>
       </div>
     </TooltipProvider>

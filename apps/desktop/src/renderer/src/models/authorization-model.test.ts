@@ -20,7 +20,10 @@ describe("authorization model", () => {
       daemonExit: "",
     })
     state = reduceAuthorizationState(state, { type: "check-exit" })
-    state = reduceAuthorizationState(state, { type: "start", url: "http://localhost:5173/authorize" })
+    state = reduceAuthorizationState(state, {
+      type: "start",
+      url: "http://localhost:5173/authorize",
+    })
     expect(state).toMatchObject({ step: "exit", canLaunch: false, authorizationUrl: null })
   })
 

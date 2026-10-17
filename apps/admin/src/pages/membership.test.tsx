@@ -18,11 +18,16 @@ vi.mock("sonner", () => ({ toast }))
 
 function renderSection() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={client}>
-      <MembersSection />
-    </QueryClientProvider>,
-  )
+  const invalidateQueries = vi.spyOn(client, "invalidateQueries")
+  return {
+    client,
+    invalidateQueries,
+    ...render(
+      <QueryClientProvider client={client}>
+        <MembersSection />
+      </QueryClientProvider>,
+    ),
+  }
 }
 
 describe("MembersSection", () => {
@@ -60,7 +65,7 @@ describe("MembersSection", () => {
   })
 
   it("renders server membership data and sends grant input through the API facade", async () => {
-    renderSection()
+    const { invalidateQueries } = renderSection()
     expect(await screen.findByText("u1")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "人工授予" }))
     fireEvent.change(screen.getByLabelText("用户 ID"), { target: { value: "u2" } })
@@ -75,6 +80,8 @@ describe("MembersSection", () => {
         remark: "manual",
       }),
     )
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["admin-memberships"] })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["admin-audits"] })
   })
 
   it("reports a failed grant and does not show a success toast", async () => {

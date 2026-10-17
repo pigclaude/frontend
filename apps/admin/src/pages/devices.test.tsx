@@ -11,11 +11,16 @@ vi.mock("sonner", () => ({ toast }))
 
 function renderSection() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={client}>
-      <DevicesSection />
-    </QueryClientProvider>,
-  )
+  const invalidateQueries = vi.spyOn(client, "invalidateQueries")
+  return {
+    client,
+    invalidateQueries,
+    ...render(
+      <QueryClientProvider client={client}>
+        <DevicesSection />
+      </QueryClientProvider>,
+    ),
+  }
 }
 
 describe("DevicesSection", () => {
@@ -39,7 +44,7 @@ describe("DevicesSection", () => {
 
   it("requires a reason before sending unbind and uses the user id path payload", async () => {
     api.unbind.mockResolvedValue({})
-    renderSection()
+    const { invalidateQueries } = renderSection()
     expect(await screen.findByText("u1")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "解绑" }))
     fireEvent.change(screen.getByLabelText("解绑原因"), { target: { value: "rotation" } })
@@ -47,6 +52,8 @@ describe("DevicesSection", () => {
     await waitFor(() =>
       expect(api.unbind).toHaveBeenCalledWith({ userId: "u1", reason: "rotation" }),
     )
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["admin-devices"] })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["admin-audits"] })
   })
 
   it("keeps the dialog open and reports failure when unbind is rejected", async () => {

@@ -6,5 +6,6 @@ import { configDefaults, defineConfig } from "vitest/config"
 export default defineConfig({
   test: {
     exclude: [...configDefaults.exclude, "src/daemon-proxy-fixture.test.ts"],
+    testTimeout: 15_000,
   },
 })

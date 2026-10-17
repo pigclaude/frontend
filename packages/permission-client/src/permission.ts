@@ -93,7 +93,8 @@ async function readRemote(
   fetchImpl: typeof fetch,
   signal: AbortSignal,
 ): Promise<RemoteResult> {
-  const response = await fetchImpl(`${endpoint}/v1/permission/check`, {
+  const baseUrl = endpoint.replace(/\/+$/, "")
+  const response = await fetchImpl(`${baseUrl}/v1/permission/check`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ license }),

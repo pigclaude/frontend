@@ -223,4 +223,18 @@ describe("permission", () => {
       vi.useRealTimers()
     }
   })
+  it("normalizes a trailing slash before appending the permission path", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "perm-"))
+    const fetchImpl = vi.fn(async (url: string) => {
+      expect(url).toBe("http://license.test/v1/permission/check")
+      return new Response(JSON.stringify({ allowed: false, checkedAt: "2026-10-17T04:00:00Z" }))
+    })
+    await checkPermission({
+      endpoint: "http://license.test///",
+      license: "nope",
+      cachePath: join(dir, "permission.json"),
+      fetchImpl,
+    })
+    expect(fetchImpl).toHaveBeenCalledOnce()
+  })
 })

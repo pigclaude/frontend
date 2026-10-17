@@ -1,4 +1,31 @@
 {
-  "name": "home",
-  "private": true
+  "name": "@pigclaude/home",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@pigclaude/api": "workspace:*",
+    "@pigclaude/contracts": "workspace:*",
+    "@pigclaude/web-ui": "workspace:*",
+    "@tanstack/react-query": "^5.103.1",
+    "next": "^15.5.7",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.12",
+    "@tailwindcss/postcss": "^4.3.3",
+    "tailwindcss": "^4.3.3"
+  }
 }

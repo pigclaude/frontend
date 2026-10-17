@@ -1,6 +1,7 @@
 // 负责验证 home 业务查询 401 恢复只执行一次会话校验并重试全部失败查询。
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useEffect, useState } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiError } from "@pigclaude/api"
 import { Providers } from "@/components/providers"
@@ -39,6 +40,16 @@ function RecoveryProbe() {
   return <output>{status}</output>
 }
 
+function FreshSessionRecoveryProbe() {
+  const queryClient = useQueryClient()
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    queryClient.setQueryData(["me"], { id: "cached-user" })
+    setReady(true)
+  }, [queryClient])
+  return ready ? <RecoveryProbe /> : null
+}
+
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
@@ -64,5 +75,15 @@ describe("home provider session recovery", () => {
     expect(mocks.replace).not.toHaveBeenCalled()
     expect(mocks.entitlement).toHaveBeenCalledTimes(2)
     expect(mocks.get).toHaveBeenCalledTimes(2)
+  })
+
+  it("forces a network me request when a fresh cache entry already exists", async () => {
+    render(
+      <Providers>
+        <FreshSessionRecoveryProbe />
+      </Providers>,
+    )
+    await waitFor(() => expect(screen.getByText("activepending")).toBeTruthy())
+    expect(mocks.me).toHaveBeenCalledOnce()
   })
 })

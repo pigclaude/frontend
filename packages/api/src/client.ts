@@ -27,11 +27,20 @@ export type Query = Record<string, string | number | boolean | undefined>
 export interface HttpClient {
   get<T>(path: string, query?: Query): Promise<T>
   post<T>(path: string, body?: unknown): Promise<T>
+  /** 以手动重定向模式读取成功 303 的 JSON 和 Location。 */
+  postWithResponse<T>(path: string, body?: unknown): Promise<HttpResponse<T>>
   /** multipart/form-data；浏览器自动生成 boundary，调用方不得手写 Content-Type。 */
   postForm<T>(path: string, body: FormData): Promise<T>
   put<T>(path: string, body?: unknown): Promise<T>
   /** DELETE 无请求体（path 参数承载资源标识，如 /v1/sms/favorites/{serviceCode}）。 */
   delete<T>(path: string): Promise<T>
+}
+
+/** HTTP client 返回的状态和 Location 元数据，供需要处理 303 的 endpoint 使用。 */
+export interface HttpResponse<T> {
+  data: T
+  status: number
+  location: string | null
 }
 
 function qs(query?: Query): string {
@@ -65,21 +74,32 @@ export function createClient(opts: ClientOptions = {}): HttpClient {
   const base = opts.baseUrl ?? ""
   const requestFetch = opts.fetch ?? globalThis.fetch
 
-  async function request<T>(
+  async function requestResponse<T>(
     method: string,
     path: string,
     body?: unknown,
     query?: Query,
-  ): Promise<T> {
+    redirect: RequestRedirect = "follow",
+  ): Promise<HttpResponse<T>> {
     const headers: Record<string, string> = { ...opts.headers?.() }
     const isForm = typeof FormData !== "undefined" && body instanceof FormData
     if (body !== undefined && !isForm) headers["Content-Type"] = "application/json"
-    const init: RequestInit = { method, credentials: opts.credentials ?? "include" }
+    const init: RequestInit = { method, credentials: opts.credentials ?? "include", redirect }
     if (Object.keys(headers).length > 0) init.headers = headers
     if (isForm) init.body = body
     else if (body !== undefined) init.body = JSON.stringify(body)
     const res = await requestFetch(base + path + qs(query), init)
-    if (res.ok) return (await res.json()) as T
+    const location = res.headers.get("location")
+    if (res.ok || (res.status === 303 && location !== null)) {
+      try {
+        return { data: (await res.json()) as T, status: res.status, location }
+      } catch {
+        if (res.status === 303) {
+          throw new ApiError(303, { message: "授权回调响应无效" })
+        }
+        throw new Error("响应 JSON 无效")
+      }
+    }
     let parsed: Partial<ApiErrorBody> | undefined
     try {
       parsed = (await res.json()) as Partial<ApiErrorBody>
@@ -90,9 +110,20 @@ export function createClient(opts: ClientOptions = {}): HttpClient {
     throw new ApiError(res.status, parsed)
   }
 
+  async function request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    query?: Query,
+  ): Promise<T> {
+    return (await requestResponse<T>(method, path, body, query)).data
+  }
+
   return {
     get: (path, query) => request("GET", path, undefined, query),
     post: (path, body) => request("POST", path, body ?? {}),
+    postWithResponse: (path, body) =>
+      requestResponse("POST", path, body ?? {}, undefined, "manual"),
     postForm: (path, body) => request("POST", path, body),
     put: (path, body) => request("PUT", path, body ?? {}),
     delete: (path) => request("DELETE", path),

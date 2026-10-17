@@ -16,4 +16,41 @@ describe("home HTTP client options", () => {
     )
     expect(onUnauthorized).toHaveBeenCalledOnce()
   })
+
+  it("exposes a 303 JSON body and Location through the explicit response boundary", async () => {
+    const location = "http://127.0.0.1:43123/oauth/callback?code=one&state=two"
+    const requestFetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ deviceId: "device-1", bindingEpoch: "2" }), {
+          status: 303,
+          headers: { "content-type": "application/json", location },
+        }),
+    )
+    const client = createClient({ fetch: requestFetch })
+    const response = await client.postWithResponse<{ deviceId: string; bindingEpoch: string }>(
+      "/v1/authorizations/flow-1/approve",
+      { replaceExisting: false, state: "two" },
+    )
+    expect(response).toEqual({
+      data: { deviceId: "device-1", bindingEpoch: "2" },
+      status: 303,
+      location,
+    })
+    expect(requestFetch).toHaveBeenCalledWith(
+      "/v1/authorizations/flow-1/approve",
+      expect.objectContaining({ redirect: "manual" }),
+    )
+  })
+
+  it("does not treat a 303 without Location as a successful approval", async () => {
+    const requestFetch = vi.fn(
+      async () => new Response(JSON.stringify({ deviceId: "device-1" }), { status: 303 }),
+    )
+    const client = createClient({ fetch: requestFetch })
+    await expect(
+      client.postWithResponse("/v1/authorizations/flow-1/approve", {}),
+    ).rejects.toMatchObject({
+      status: 303,
+    })
+  })
 })

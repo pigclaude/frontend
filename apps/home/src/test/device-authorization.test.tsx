@@ -18,6 +18,11 @@ function fixtureClient(): HttpClient {
       expiresAt: null,
     })),
     post: vi.fn(async () => ({ deviceId: "device-super-secret-1234", bindingEpoch: "9" })),
+    postWithResponse: vi.fn(async () => ({
+      data: { deviceId: "device-super-secret-1234", bindingEpoch: "9" },
+      status: 303,
+      location: "http://127.0.0.1:43123/oauth/callback?code=one&state=flow-state",
+    })),
     postForm: vi.fn(async () => ({})),
     put: vi.fn(async () => ({})),
     delete: vi.fn(async () => ({})),
@@ -29,12 +34,17 @@ describe("home device authorization flow", () => {
     const client = fixtureClient()
     const api = createHomeApi(client)
     const flow = await api.authorizations.get("flow-1")
-    const result = await api.authorizations.approve("flow-1", { replaceExisting: true })
-    expect(flow.requiresReplace).toBe(true)
-    expect(client.post).toHaveBeenCalledWith("/v1/authorizations/flow-1/approve", {
+    const result = await api.authorizations.approve("flow-1", {
       replaceExisting: true,
+      state: "flow-state",
+    })
+    expect(flow.requiresReplace).toBe(true)
+    expect(client.postWithResponse).toHaveBeenCalledWith("/v1/authorizations/flow-1/approve", {
+      replaceExisting: true,
+      state: "flow-state",
     })
     expect(result.bindingEpoch).toBe("9")
+    expect(result.location).toContain("state=flow-state")
   })
 
   it("matches the shared nullable contract fixture", () => {

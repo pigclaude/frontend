@@ -18,10 +18,12 @@ export function createHomeApi(c: HttpClient) {
       get: (flowId: string) =>
         c.get<T.AuthorizationResponse>(`/v1/authorizations/${encodeURIComponent(flowId)}`),
       approve: (flowId: string, body: T.ApproveAuthorizationRequest) =>
-        c.post<T.ApproveAuthorizationResponse>(
-          `/v1/authorizations/${encodeURIComponent(flowId)}/approve`,
-          body,
-        ),
+        c
+          .postWithResponse<T.ApproveAuthorizationResponse>(
+            `/v1/authorizations/${encodeURIComponent(flowId)}/approve`,
+            body,
+          )
+          .then(({ data, location }) => ({ ...data, location: location ?? undefined })),
     },
   }
 }

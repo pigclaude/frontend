@@ -57,7 +57,11 @@ export function Providers({ children }: { children: ReactNode }) {
       if (sessionRecoveryRef.current) return sessionRecoveryRef.current
       const recovery = (async () => {
         try {
-          await queryClient.fetchQuery({ queryKey: ME_QUERY_KEY, queryFn: homeApi.user.me })
+          await queryClient.fetchQuery({
+            queryKey: ME_QUERY_KEY,
+            queryFn: homeApi.user.me,
+            staleTime: 0,
+          })
           return true
         } catch {
           routerRef.current.replace(`/login?redirect=${encodeURIComponent(pathnameRef.current)}`)

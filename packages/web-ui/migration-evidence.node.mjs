@@ -9,12 +9,34 @@ import { test } from "node:test"
 const frontend = resolve(import.meta.dirname, "../..")
 const guard = join(frontend, "scripts/assert-pigcursor-migration.mjs")
 
-for (const [file, before, after, shouldPass] of [
-  ["styles/tokens.css", "--bg: #08090a", "--bg: #ff0000", false],
-  ["components/button.tsx", "inline-flex", "inline-grid", false],
-  ["components/button.tsx", "import * as React", "/* 额外中文说明 */\nimport   * as React", true],
+for (const [file, before, after, shouldPass, caseName] of [
+  ["styles/tokens.css", "--bg: #08090a", "--bg: #ff0000", false, "拒绝背景色漂移"],
+  [
+    "styles/tokens.css",
+    ".theme-toggle .i-sun",
+    ".theme-toggle/**/.i-sun",
+    false,
+    "拒绝选择器后代关系被注释吞掉",
+  ],
+  ["styles/tokens.css", "--space-1: 4px", "--space-1: 4/**/px", false, "拒绝相邻 CSS token 漂移"],
+  ["styles/tokens.css", '\"Inter\"', '\"In/**/ter\"', false, "拒绝字符串中的注释形文本漂移"],
+  [
+    "styles/tokens.css",
+    ":root {",
+    "/* 临时中文说明 */\n:root  {",
+    true,
+    "允许独立 CSS 注释与格式变化",
+  ],
+  ["components/button.tsx", "inline-flex", "inline-grid", false, "拒绝 Button 结构漂移"],
+  [
+    "components/button.tsx",
+    "import * as React",
+    "/* 额外中文说明 */\nimport   * as React",
+    true,
+    "允许 TS 注释与格式变化",
+  ],
 ]) {
-  test(`迁移证据${shouldPass ? "允许注释与格式转换" : `拒绝目标 ${file} 的真实漂移`}`, async () => {
+  test(`迁移证据${caseName}`, async () => {
     const target = await mkdtemp(join(tmpdir(), "pigclaude-migration-"))
     try {
       await cp(join(frontend, "packages"), join(target, "packages"), {

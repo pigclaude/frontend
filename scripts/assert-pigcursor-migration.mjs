@@ -4,6 +4,7 @@ import { createHash } from "node:crypto"
 import { readdir, readFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import prettier from "prettier"
+import * as postcssPlugin from "prettier/plugins/postcss"
 import ts from "typescript"
 
 const targetIndex = process.argv.indexOf("--target-root")
@@ -148,33 +149,32 @@ const migrationPairs = [
   target: `packages/web-ui/src/${source.replaceAll("pigcursor-", "pigclaude-")}`,
 }))
 
-function stripCssComments(source) {
-  let result = ""
-  let quote = ""
-  for (let index = 0; index < source.length; index += 1) {
-    const char = source[index]
-    if (quote) {
-      result += char
-      if (char === "\\") result += source[++index] ?? ""
-      else if (char === quote) quote = ""
-    } else if (char === '"' || char === "'") {
-      quote = char
-      result += char
-    } else if (char === "/" && source[index + 1] === "*") {
-      const end = source.indexOf("*/", index + 2)
-      if (end === -1) throw new Error("unterminated CSS comment")
-      index = end + 1
-      result += " "
-    } else {
-      result += char
-    }
-  }
-  return result
+// 只移除 CSS parser 识别的独立注释节点；选择器、值和字符串内的 token 不做替换。
+function removeStandaloneCssComments(node) {
+  if (!Array.isArray(node.nodes)) return
+  node.nodes = node.nodes.filter((child) => child.type !== "css-comment")
+  for (const child of node.nodes) removeStandaloneCssComments(child)
+}
+
+const cssEvidencePlugin = {
+  parsers: {
+    css: {
+      ...postcssPlugin.parsers.css,
+      async parse(source, options) {
+        const ast = await postcssPlugin.parsers.css.parse(source, options)
+        removeStandaloneCssComments(ast)
+        return ast
+      },
+    },
+  },
 }
 
 async function canonicalSource(source, file, transformBrand = false) {
   if (file.endsWith(".css")) {
-    return prettier.format(stripCssComments(source), { parser: "css" })
+    return prettier.format(source, {
+      parser: "css",
+      plugins: [postcssPlugin, cssEvidencePlugin],
+    })
   }
   // 仅放行明确的品牌 scope、组件名/路径和隐藏品牌文本替换。
   const branded = transformBrand

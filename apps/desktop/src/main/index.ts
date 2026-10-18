@@ -1,5 +1,14 @@
 // 负责创建桌面窗口、承接浏览器授权回调并保存主进程秘密。
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, safeStorage, shell } from "electron"
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  nativeImage,
+  nativeTheme,
+  safeStorage,
+  shell,
+} from "electron"
 import { join } from "node:path"
 import { createCallbackServer } from "./authorization/callback-server"
 import { AuthorizationStartError, AuthorizationService } from "./authorization/service"
@@ -10,6 +19,7 @@ import type {
   AuthorizationToken,
 } from "./authorization/types"
 import { isAllowedAuthorizationUrl } from "./authorization/url-policy"
+import { readDockIconDataUrl } from "./dock-icon"
 import { FileSecretVault } from "./secret-vault"
 import {
   createMainWindowOptions,
@@ -77,6 +87,17 @@ function registerIpcHandlers(): void {
     if (source) nativeTheme.themeSource = source
   })
   nativeTheme.on("updated", applyGlassBackground)
+  ipcMain.handle("pigclaude:set-dock-icon", (_event, value: unknown) => {
+    if (process.platform !== "darwin") return
+    const dataUrl = readDockIconDataUrl(value)
+    if (!dataUrl) return
+    try {
+      const image = nativeImage.createFromDataURL(dataUrl)
+      if (!image.isEmpty()) app.dock?.setIcon(image)
+    } catch (error: unknown) {
+      console.error(errorMessage(error))
+    }
+  })
   ipcMain.handle("pigclaude:open-external", async (_event, value: unknown) => {
     if (typeof value !== "string" || !isAllowedAuthorizationUrl(value, authOrigin)) return
     await shell.openExternal(value)

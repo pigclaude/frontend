@@ -11,6 +11,7 @@ export type PigclaudeBridge = {
   platform: string
   openExternal: (url: string) => Promise<void>
   setTheme: (source: "light" | "dark" | "system") => Promise<void>
+  setDockIcon: (dataUrl: string) => Promise<void>
   pickFolder: () => Promise<string | null>
   startAuthorization: (request: AuthorizationRequest) => Promise<AuthorizationStartResult>
   cancelAuthorization: (sessionId: string) => Promise<AuthorizationStateEvent>
@@ -21,6 +22,7 @@ const bridge: PigclaudeBridge = {
   platform: process.platform,
   openExternal: (url) => ipcRenderer.invoke("pigclaude:open-external", url),
   setTheme: (source) => ipcRenderer.invoke("pigclaude:set-theme", source),
+  setDockIcon: (dataUrl) => ipcRenderer.invoke("pigclaude:set-dock-icon", dataUrl),
   pickFolder: () => ipcRenderer.invoke("pigclaude:pick-folder"),
   startAuthorization: (request) => ipcRenderer.invoke("pigclaude:authorization-start", request),
   cancelAuthorization: (sessionId) =>

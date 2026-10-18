@@ -1,5 +1,6 @@
 // 负责持有外观设置：读写本机存储，推导并写到根元素，并跟随系统深色与减少动态偏好。
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { renderDockIcon } from "../lib/dock-icon-image"
 import { applyAppearance } from "../lib/apply-appearance"
 import { loadAppearance, saveAppearance, saveCustomThemes } from "../lib/appearance-storage"
 import type { AppearanceSettings } from "../models/appearance-settings"
@@ -68,6 +69,22 @@ export function useAppearance() {
   useEffect(() => {
     void window.pigclaude?.setTheme?.(settings.mode)
   }, [settings.mode])
+
+  const dockApplied = useRef(false)
+  useEffect(() => {
+    if (settings.dockIcon === "classic" && !dockApplied.current) return
+    let cancelled = false
+    void renderDockIcon(settings.dockIcon)
+      .then((dataUrl) => {
+        if (cancelled) return
+        dockApplied.current = settings.dockIcon !== "classic"
+        return window.pigclaude?.setDockIcon?.(dataUrl)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [settings.dockIcon])
 
   const saveCustomTheme = useCallback((theme: ThemeDefinition) => {
     setCustomThemes((current) =>

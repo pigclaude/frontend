@@ -1,17 +1,17 @@
-// 负责「通用」「外观」「会话」「托盘与菜单栏」四个应用设置页。
+// 负责「通用」「会话」「托盘与菜单栏」三个应用设置页；「外观」见 appearance/appearance-page.tsx。
 import { useState } from "react"
 import { useToast } from "../../components/toast"
 import { Button } from "../../components/ui/button"
 import { Kbd } from "../../components/ui/kbd"
 import { Switch } from "../../components/ui/switch"
-import type { AppearanceSettings as Appearance } from "../../models/appearance-settings"
 import type { Screen } from "../screen"
 import { LockedValue, Segmented, SelectControl } from "./setting-controls"
 import { SettingPage, SettingRow, SettingSection } from "./setting-page"
 
-/** 通用：启动、Dock、快捷键和更新。 */
+/** 通用：启动、Dock、快捷键、更新和侧栏会话分组。 */
 export function GeneralSettings() {
   const toast = useToast()
+  const [grouping, setGrouping] = useState<"project" | "time">("project")
   return (
     <SettingPage title="通用">
       <SettingSection title="启动">
@@ -35,34 +35,7 @@ export function GeneralSettings() {
           <Switch defaultChecked aria-label="自动检查更新" />
         </SettingRow>
       </SettingSection>
-    </SettingPage>
-  )
-}
-
-/** 外观：主题立即生效，侧栏会话分组只影响侧栏。 */
-export function AppearanceSettings({
-  appearance,
-  onAppearance,
-}: {
-  appearance: Appearance
-  onAppearance: (next: Appearance) => void
-}) {
-  const [grouping, setGrouping] = useState<"project" | "time">("project")
-  return (
-    <SettingPage title="外观">
-      <SettingSection>
-        <SettingRow title="主题" description="跟随系统时随 macOS 外观自动切换">
-          <Segmented
-            label="主题"
-            value={appearance.mode}
-            onChange={(mode) => onAppearance({ ...appearance, mode })}
-            options={[
-              { value: "light", label: "浅色" },
-              { value: "dark", label: "深色" },
-              { value: "system", label: "跟随系统" },
-            ]}
-          />
-        </SettingRow>
+      <SettingSection title="侧栏">
         <SettingRow title="侧栏会话">
           <Segmented
             label="侧栏会话分组"

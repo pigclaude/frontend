@@ -247,8 +247,7 @@ export function DesktopApp() {
           }}
           onLogout={logout}
           theme={appearance.resolved}
-          appearance={appearance.settings}
-          onAppearance={appearance.update}
+          appearance={appearance}
         />
       </ToastProvider>
     </TooltipProvider>

@@ -8,6 +8,7 @@ import "./styles/tokens.css"
 import "./styles/app.css"
 import "./styles/screens.css"
 import "./styles/ui-controls.css"
+import "./styles/appearance-page.css"
 import "./styles/glass.css"
 import "./styles/appearance.css"
 

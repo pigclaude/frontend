@@ -30,18 +30,20 @@ export function SettingPage({
   )
 }
 
-/** 设置页分组；不给标题时作为页面的第一组直接显示。 */
+/** 设置页分组；不给标题时作为页面的第一组直接显示。className 追加到 section 上。 */
 export function SettingSection({
   title,
   end,
+  className,
   children,
 }: {
   title?: string
   end?: ReactNode
+  className?: string
   children: ReactNode
 }) {
   return (
-    <section className="section">
+    <section className={className ? `section ${className}` : "section"}>
       {title ? (
         <div className="section-head">
           <h2>{title}</h2>

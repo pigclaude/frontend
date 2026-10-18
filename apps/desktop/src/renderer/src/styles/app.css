@@ -1480,7 +1480,8 @@ input[type="range"].range::-webkit-slider-thumb {
 /* ─── 浮层 ─────────────────────────────────────────────── */
 .popover {
   position: fixed;
-  z-index: 60;
+  /* 高于对话框（蒙层 80、卡片 81），对话框里打开的下拉和弹层不会被蒙层盖住；低于提示 90 */
+  z-index: 85;
   min-width: 200px;
   padding: 4px;
   border-radius: var(--r-lg);

@@ -22,3 +22,11 @@ export function RadioGroupItem({
     </RadioGroupPrimitive.Item>
   )
 }
+
+/** 卡片式单选项：不画圆点，内容由调用方放入，选中态由 data-state=checked 表示。 */
+export function RadioGroupCard({
+  className,
+  ...props
+}: ComponentProps<typeof RadioGroupPrimitive.Item>) {
+  return <RadioGroupPrimitive.Item className={cn("radio-card", className)} {...props} />
+}

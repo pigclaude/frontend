@@ -1,0 +1,256 @@
+/* 外观设置页的专用样式：模式卡片、主题下拉、高级折叠栏、字号输入、Dock 图标卡片和导入对话框。只用 tokens.css 和 glass.css 的变量。 */
+
+.settings-page .section.tight {
+  margin-top: 12px;
+}
+
+/* 模式：三张缩略卡片，选中时外圈 2px 强调色加一圈淡色光晕 */
+.radio-group.mode-cards,
+.radio-group.dock-cards {
+  flex-direction: row;
+}
+.mode-cards {
+  gap: 12px;
+  padding: 4px 0;
+}
+.radio-card {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+.radio-card:focus-visible {
+  outline: none;
+}
+.mode-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.mode-card[data-state="checked"] {
+  color: var(--fg);
+}
+.mode-thumb {
+  display: flex;
+  width: 92px;
+  height: 58px;
+  overflow: hidden;
+  border-radius: 9px;
+  box-shadow: 0 0 0 var(--hair) var(--border-strong);
+  transition: box-shadow var(--t-fast);
+}
+.mode-card[data-state="checked"] .mode-thumb,
+.dock-card[data-state="checked"] {
+  box-shadow:
+    0 0 0 2px var(--switch-on),
+    0 0 0 5px color-mix(in oklab, var(--switch-on) 22%, transparent);
+}
+.mode-card:focus-visible .mode-thumb,
+.dock-card:focus-visible {
+  outline: 1px solid var(--border-focus);
+  outline-offset: 6px;
+}
+.mode-half {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 7px;
+}
+.mode-half i {
+  display: block;
+  height: 3px;
+  border-radius: 2px;
+}
+
+/* 主题行：导入、复制两个图标按钮，加主题下拉触发器 */
+.theme-actions {
+  display: flex;
+  gap: 2px;
+}
+.theme-trigger {
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 176px;
+  max-width: 260px;
+  padding: 0 8px 0 10px;
+}
+.theme-aa {
+  flex: none;
+  font-size: calc(var(--ui-scale) * 12px);
+  font-weight: 650;
+}
+.theme-trigger-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+}
+.theme-modified {
+  color: var(--muted);
+}
+.theme-trigger .chev {
+  color: var(--muted);
+}
+.popover.theme-menu {
+  min-width: 236px;
+  max-width: 300px;
+}
+.theme-chip {
+  display: flex;
+  flex: none;
+  width: 28px;
+  height: 18px;
+  overflow: hidden;
+  border-radius: 5px;
+  box-shadow: 0 0 0 var(--hair) var(--border-strong);
+}
+.theme-chip span {
+  flex: 1;
+}
+.theme-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.theme-item-actions {
+  display: none;
+  gap: 2px;
+}
+.theme-item:hover .theme-item-actions,
+.theme-item[data-highlighted] .theme-item-actions {
+  display: flex;
+}
+.theme-item .theme-item-action {
+  width: 22px;
+  height: 22px;
+}
+.theme-item + .menu-label {
+  margin-top: 4px;
+}
+
+/* 分别设置时主题组顶部的「浅色主题 / 深色主题」分段 */
+.settings-page .item.theme-tone-row {
+  min-height: 0;
+  padding: 10px 12px 6px;
+}
+.seg .seg-icon-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* 高级栏：左边「高级 ›」，右边灰字「重置为默认设置」 */
+.settings-page .adv-bar {
+  margin: 26px 2px 8px;
+}
+.adv-toggle,
+.adv-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  transition: color var(--t-fast);
+}
+.adv-toggle:hover,
+.adv-reset:hover {
+  color: var(--fg);
+}
+.adv-toggle:focus-visible,
+.adv-reset:focus-visible {
+  outline: 1px solid var(--border-focus);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* 字号输入：右对齐数字加「px」 */
+.num-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.num-field .num-input {
+  width: 66px;
+  height: 26px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.num-unit {
+  width: 16px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+/* Dock 图标：三张 44px 圆角卡片 */
+.dock-cards {
+  gap: 8px;
+}
+.dock-card {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  border-radius: 11px;
+  box-shadow: 0 0 0 var(--hair) var(--border);
+  transition: box-shadow var(--t-fast);
+}
+.dock-card img {
+  display: block;
+  width: 44px;
+  height: 44px;
+}
+
+/* 导入主题对话框 */
+.import-text.textarea {
+  min-height: 150px;
+  font-size: var(--fs-sm);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.import-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.import-error {
+  color: var(--bad-text);
+  font-size: var(--fs-sm);
+}
+.import-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--r-lg);
+  background: var(--panel);
+}
+.import-swatches {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: var(--fs-sm);
+}
+.import-swatches-label {
+  width: 30px;
+  color: var(--muted);
+}
+.import-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--fg-2);
+}
+.cp-dot.is-default {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}

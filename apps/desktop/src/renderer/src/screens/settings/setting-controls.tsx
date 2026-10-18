@@ -38,13 +38,15 @@ export function Segmented<T extends string>({
   )
 }
 
-/** 百分比滑块：右侧同步显示当前值，轨道填充到当前位置。 */
+/** 滑块：右侧同步显示当前值和单位（默认 %），轨道填充到当前位置；label 作为圆钮的读屏名称。 */
 export function RangeControl({
   label,
   value,
   min,
   max,
   step,
+  unit = "%",
+  disabled,
   onChange,
 }: {
   label: string
@@ -52,6 +54,8 @@ export function RangeControl({
   min: number
   max: number
   step: number
+  unit?: string
+  disabled?: boolean
   onChange: (value: number) => void
 }) {
   return (
@@ -62,9 +66,14 @@ export function RangeControl({
         step={step}
         value={[value]}
         aria-label={label}
+        disabled={disabled}
         onValueChange={(next) => next[0] !== undefined && onChange(next[0])}
       />
-      <span className="num">{value}%</span>
+      {/* 数值和单位保持为两个文本节点，与改动前 {value}% 的渲染逐像素一致 */}
+      <span className="num">
+        {value}
+        {unit}
+      </span>
     </div>
   )
 }

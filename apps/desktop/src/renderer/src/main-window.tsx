@@ -21,7 +21,7 @@ import type { ProjectNavigationState } from "./models/navigation-model"
 import { addProject } from "./models/project-model"
 import { createPoolState } from "./models/pool-model"
 import { settingsScreens } from "./models/settings-nav"
-import type { AppearanceSettings } from "./models/appearance-settings"
+import type { AppearanceController } from "./hooks/use-appearance"
 import type { ResolvedTheme } from "./models/theme-model"
 import type { Screen } from "./screens/screen"
 import { Button } from "./components/ui/button"
@@ -39,8 +39,7 @@ export type MainWindowProps = {
   onOpenAuthorize: () => void
   onLogout: () => void
   theme: ResolvedTheme
-  appearance: AppearanceSettings
-  onAppearance: (next: AppearanceSettings) => void
+  appearance: AppearanceController
 }
 
 /** 画出侧栏和内容区；窄窗口里侧栏变成可开合的抽屉。 */
@@ -55,7 +54,6 @@ export function MainWindow({
   onLogout,
   theme,
   appearance,
-  onAppearance,
 }: MainWindowProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -143,7 +141,10 @@ export function MainWindow({
         onLogout={onLogout}
         theme={theme}
         onToggleTheme={() =>
-          onAppearance({ ...appearance, mode: theme === "light" ? "dark" : "light" })
+          appearance.update((current) => ({
+            ...current,
+            mode: theme === "light" ? "dark" : "light",
+          }))
         }
       />
       <AddProjectDialog
@@ -213,7 +214,6 @@ export function MainWindow({
             key={screen}
             screen={screen}
             appearance={appearance}
-            onAppearance={onAppearance}
             onNavigate={onNavigate}
             onLogout={onLogout}
           />

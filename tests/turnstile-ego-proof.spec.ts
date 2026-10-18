@@ -35,6 +35,31 @@ test("过期 proof 306 秒之前不消耗，过期回调不删除首个 proof", 
   expect((await page.evaluate(proofPage, { ...expiry, operation: "consume" })).ageMs).toBe(306_000)
 })
 
+test("非expiry消费最多240000ms，旧proof拒绝后保留首个proof和owned实例", async () => {
+  for (const caseName of ["replay", "wrong-action", "hostname"] as const) {
+    for (const ageMs of [240_000, 240_001, 306_000]) {
+      const page = proofFixture()
+      const input = { ...command, case: caseName }
+      await page.evaluate(proofPage, input)
+      page.callbacks[0]("local-fixed-first-proof")
+      page.advance(ageMs)
+      page.callbacks[0]("local-replacement-must-be-ignored")
+      if (ageMs === 240_000) {
+        expect(
+          (await page.evaluate(proofPage, { ...input, operation: "consume" })).proof ===
+            "local-fixed-first-proof",
+        ).toBe(true)
+      } else {
+        await expect(page.evaluate(proofPage, { ...input, operation: "consume" })).rejects.toThrow()
+        const facts = await page.evaluate(proofPage, { ...input, operation: "facts" })
+        expect(facts.status).toBe("ready")
+        expect(facts.ageMs).toBe(ageMs)
+        expect(page.removed).toEqual([])
+      }
+    }
+  }
+})
+
 test("未知来源/场景/nonce 在 DOM 或配置请求前拒绝，dispose 只移除自有实例", async () => {
   const wrong = proofFixture("https://www.pigclaude.com")
   await expect(wrong.evaluate(proofPage, command)).rejects.toThrow()

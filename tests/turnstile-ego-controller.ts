@@ -18,6 +18,14 @@ export interface AdminPagePort {
   evaluate(fn: typeof adminPage, command: AdminCommand): Promise<AdminFacts>
 }
 
+function freshAge(browserAgeMs: number | null, started: number): number {
+  const age =
+    browserAgeMs === null ? Infinity : Math.ceil(browserAgeMs + performance.now() - started)
+  if (!Number.isSafeInteger(age) || age < 0 || age > 240_000)
+    throw new Error("proof 新鲜度预算不足；未重新生成 proof")
+  return age
+}
+
 function adminFacts(value: AdminFacts): AdminFacts {
   const revision = (item: unknown) =>
     typeof item === "string" &&
@@ -78,23 +86,31 @@ export async function runHostname(
   adminNonce: string,
 ) {
   const command = { case: "hostname", nonce: proofNonce } as const
+  const started = performance.now()
   const before = await readProofFacts(home, command)
   if (before.status !== "ready") throw new Error("hostname proof 尚未就绪")
+  freshAge(before.ageMs, started)
   let proof: string | undefined
-  let consumed = false
+  let completed = false
   try {
     const taken = await home.evaluate(proofPage, { ...command, operation: "consume" })
-    consumed = true
     proof = taken.proof
     delete taken.proof
     const checked = facts(taken, { ...command, operation: "consume" })
     if (checked.status !== "consumed" || typeof proof !== "string" || !proof || proof.length > 2048)
       throw new Error("hostname proof 协议无效")
+    const dispatchAgeMs = freshAge(
+      Math.max(before.ageMs ?? Infinity, checked.ageMs ?? Infinity),
+      started,
+    )
+    // 绝对 deadline 覆盖 Node→admin RPC 传输；页面内另用单调计时覆盖 GET/audits 等待。
+    const proofDeadlineEpochMs = Date.now() + (240_000 - dispatchAgeMs)
     const result = adminFacts(
       await admin.evaluate(adminPage, {
         operation: "reject-hostname",
         nonce: adminNonce,
         proof,
+        proofDeadlineEpochMs,
       }),
     )
     if (
@@ -103,16 +119,20 @@ export async function runHostname(
       !result.auditsUnchanged
     )
       throw new Error("hostname 结果无效")
+    freshAge(Math.max(before.ageMs ?? Infinity, checked.ageMs ?? Infinity), started)
+    completed = true
     return {
       ...result,
       action: "admin_login" as const,
       requestedHostname: "pigclaude.com" as const,
+      ageMs: checked.ageMs,
+      dispatchAgeMs,
     }
   } catch {
     throw new Error("真实 hostname 拒绝失败；该项尚未验证")
   } finally {
     proof = undefined
-    if (consumed) await disposeProof(home, command)
+    if (completed) await disposeProof(home, command)
   }
 }
 
@@ -171,6 +191,7 @@ export async function runNegative(
   transport: LoginTransport = fetch,
 ) {
   if (!["replay", "wrong-action", "expiry"].includes(command.case)) throw new Error("拒绝场景无效")
+  const started = performance.now()
   const before = await readProofFacts(page, command)
   if (
     before.status !== "ready" ||
@@ -178,11 +199,11 @@ export async function runNegative(
     (command.case === "expiry" && before.ageMs < 306_000)
   )
     throw new Error("proof 尚未满足提交条件；未消费且未发送请求")
+  if (command.case !== "expiry") freshAge(before.ageMs, started)
   let proof: string | undefined
-  let consumed = false
+  let requested = false
   try {
     const taken = await page.evaluate(proofPage, { ...command, operation: "consume" })
-    consumed = true
     proof = taken.proof
     delete taken.proof
     const checked = facts(taken, { ...command, operation: "consume" })
@@ -194,7 +215,11 @@ export async function runNegative(
       (command.case === "expiry" && (checked.ageMs === null || checked.ageMs < 306_000))
     )
       throw new Error("proof 消费协议无效")
+    const browserAgeMs = Math.max(before.ageMs ?? Infinity, checked.ageMs ?? Infinity)
+    let dispatchAgeMs = checked.ageMs
     const post = async () => {
+      if (command.case !== "expiry") dispatchAgeMs = freshAge(browserAgeMs, started)
+      requested = true
       const response = await transport("https://pigclaude.com/v1/auth/login", {
         method: "POST",
         redirect: "error",
@@ -223,6 +248,7 @@ export async function runNegative(
       action: before.action,
       requestedHostname: before.requestedHostname,
       ageMs: checked.ageMs,
+      dispatchAgeMs,
       firstStatus: first.status,
       firstNoSetCookie: first.noSetCookie,
       ...(second ? { replayStatus: second.status, replayNoSetCookie: second.noSetCookie } : {}),
@@ -231,6 +257,6 @@ export async function runNegative(
     throw new Error("真实拒绝场景失败；该项尚未验证")
   } finally {
     proof = undefined
-    if (consumed) await disposeProof(page, command)
+    if (requested) await disposeProof(page, command)
   }
 }

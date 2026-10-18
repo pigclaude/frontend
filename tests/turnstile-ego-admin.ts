@@ -5,6 +5,7 @@ export interface AdminCommand {
     "summary" | "owner-rejections" | "prepare-hostname" | "reject-hostname" | "readonly-rejection"
   nonce: string
   proof?: string
+  proofDeadlineEpochMs?: number
 }
 /** 允许 root 保存的有限管理员事实。 */
 export interface AdminFacts {
@@ -20,6 +21,7 @@ export interface AdminFacts {
 }
 /** 自包含页面入口；所有 fetch 使用当前真实后台 session 和浏览器自然 Origin。 */
 export async function adminPage(command: AdminCommand): Promise<AdminFacts> {
+  const enteredAt = performance.now()
   type Summary = {
     revision: string
     enabled: boolean
@@ -74,7 +76,9 @@ export async function adminPage(command: AdminCommand): Promise<AdminFacts> {
     ].includes(command.operation) ||
     !keys(
       command,
-      command.operation === "reject-hostname" ? "nonce,operation,proof" : "nonce,operation",
+      command.operation === "reject-hostname"
+        ? "nonce,operation,proof,proofDeadlineEpochMs"
+        : "nonce,operation",
     )
   )
     return fail()
@@ -83,9 +87,22 @@ export async function adminPage(command: AdminCommand): Promise<AdminFacts> {
     (typeof command.proof !== "string" ||
       command.proof.length === 0 ||
       command.proof.length > 2048 ||
+      !Number.isSafeInteger(command.proofDeadlineEpochMs) ||
       win.__pigclaudeTask7Admin?.nonce !== command.nonce)
   )
     return fail()
+  const budget =
+    command.operation === "reject-hostname" ? (command.proofDeadlineEpochMs ?? 0) - Date.now() : 0
+  const fresh = () => {
+    if (
+      budget <= 0 ||
+      budget > 240_000 ||
+      performance.now() - enteredAt > budget ||
+      Date.now() > (command.proofDeadlineEpochMs ?? 0)
+    )
+      return fail()
+  }
+  if (command.operation === "reject-hostname") fresh()
   if (command.operation === "prepare-hostname" && win.__pigclaudeTask7Admin) return fail()
   const path = "/admin/v1/settings/turnstile"
   const request = async (suffix = "", method = "GET", body?: object) => {
@@ -211,6 +228,7 @@ export async function adminPage(command: AdminCommand): Promise<AdminFacts> {
       before.draft?.hostnames.join(",") !== "admin.pigclaude.com"
     )
       return fail()
+    fresh()
     const response = await request("/activate", "POST", {
       expectedRevision: before.revision,
       captchaToken: command.proof,

@@ -21,13 +21,17 @@ function fixture(readonly = false) {
   const window = {}
   let mutateRejected = false
   const calls: { path: string; init: RequestInit }[] = []
+  let readDelayMs = 0
   const evaluate = async (fn: typeof adminPage, argument: AdminCommand): Promise<AdminFacts> =>
     runInNewContext(`(${fn.toString()})(argument)`, {
       argument,
       window,
       location: { origin: "https://admin.pigclaude.com" },
       AbortSignal,
+      performance,
       fetch: async (path: string, init: RequestInit = {}) => {
+        if (init.method === "GET" && readDelayMs)
+          await new Promise((resolve) => setTimeout(resolve, readDelayMs))
         calls.push({ path, init })
         const body = JSON.parse(String(init.body ?? "{}")) as Record<string, unknown>
         let status = 200
@@ -51,6 +55,9 @@ function fixture(readonly = false) {
     evaluate,
     calls,
     state,
+    delayReads: (milliseconds: number) => {
+      readDelayMs = milliseconds
+    },
     mutate: () => {
       mutateRejected = true
     },
@@ -79,6 +86,7 @@ test("admin-only草稿保留旧active，错误hostname的400必须不改变版�
     operation: "reject-hostname",
     nonce,
     proof: "local-home-admin-action",
+    proofDeadlineEpochMs: Date.now() + 240_000,
   })
   expect(result.statuses).toEqual([400])
   expect(result.revision).toBe("4")
@@ -91,6 +99,7 @@ test("admin-only草稿保留旧active，错误hostname的400必须不改变版�
       operation: "reject-hostname",
       nonce,
       proof: "local-home-admin-action",
+      proofDeadlineEpochMs: Date.now() + 240_000,
     }),
   ).rejects.toThrow()
 })
@@ -129,4 +138,62 @@ test("hostname controller只在内存转交proof，拒绝后清理owned widget�
   expect(result.requestedHostname).toBe("pigclaude.com")
   expect(JSON.stringify(result)).not.toMatch(/local-home-admin-action|local-site-key/)
   expect(home.removed).toEqual(["owned-widget-1"])
+  expect(result.ageMs).toBe(0)
+  expect(result.dispatchAgeMs).toBeLessThanOrEqual(240_000)
+})
+
+test("hostname超过240000ms含306000ms旧proof不消费且没有admin调用", async () => {
+  for (const ageMs of [240_001, 306_000]) {
+    const admin = fixture()
+    await runAdmin(admin, "prepare-hostname", nonce)
+    const home = proofFixture()
+    const { installProof, readProofFacts } = await import("./turnstile-ego-controller")
+    await installProof(home, { case: "hostname", nonce })
+    home.callbacks[0]("local-stale-hostname-proof")
+    home.advance(ageMs)
+    const calls = admin.calls.length
+    await expect(runHostname(home, admin, nonce, nonce)).rejects.toThrow()
+    expect(admin.calls.length).toBe(calls)
+    expect((await readProofFacts(home, { case: "hostname", nonce })).status).toBe("ready")
+    expect(home.removed).toEqual([])
+  }
+})
+
+test("hostname的consume回包/跨页RPC/页面GET/回程延迟均不能形成新鲜400证据", async () => {
+  for (const stage of ["consume", "outbound", "reads", "return"] as const) {
+    const admin = fixture()
+    await runAdmin(admin, "prepare-hostname", nonce)
+    const home = proofFixture()
+    const { installProof, readProofFacts } = await import("./turnstile-ego-controller")
+    await installProof(home, { case: "hostname", nonce })
+    home.callbacks[0]("local-fixed-age-hostname-proof")
+    home.advance(239_900)
+    if (stage === "reads") admin.delayReads(150)
+    const homePort = {
+      evaluate: async (
+        fn: Parameters<typeof home.evaluate>[0],
+        command: Parameters<typeof home.evaluate>[1],
+      ) => {
+        const result = await home.evaluate(fn, command)
+        if (stage === "consume" && command.operation === "consume")
+          await new Promise((resolve) => setTimeout(resolve, 150))
+        return result
+      },
+    }
+    const adminPort = {
+      evaluate: async (fn: typeof adminPage, command: AdminCommand) => {
+        if (stage === "outbound") await new Promise((resolve) => setTimeout(resolve, 150))
+        const result = await admin.evaluate(fn, command)
+        if (stage === "return") await new Promise((resolve) => setTimeout(resolve, 150))
+        return result
+      },
+    }
+    const beforeCalls = admin.calls.length
+    await expect(runHostname(homePort, adminPort, nonce, nonce)).rejects.toThrow()
+    const posts = admin.calls.slice(beforeCalls).filter((call) => call.path.endsWith("/activate"))
+    expect(posts.length).toBe(stage === "return" ? 1 : 0)
+    if (stage === "consume" || stage === "outbound") expect(admin.calls.length).toBe(beforeCalls)
+    expect((await readProofFacts(home, { case: "hostname", nonce })).status).toBe("consumed")
+    expect(home.removed).toEqual([])
+  }
 })

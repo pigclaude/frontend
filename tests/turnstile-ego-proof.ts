@@ -65,7 +65,7 @@ export async function proofPage(command: ProofCommand): Promise<ProofReply> {
     case: command.case,
     status: owned.status,
     ageMs:
-      owned.created === null ? null : Math.max(0, Math.floor(performance.now() - owned.created)),
+      owned.created === null ? null : Math.max(0, Math.ceil(performance.now() - owned.created)),
     action,
     requestedHostname,
   })
@@ -77,7 +77,8 @@ export async function proofPage(command: ProofCommand): Promise<ProofReply> {
       if (
         owned.status !== "ready" ||
         !owned.proof ||
-        (command.case === "expiry" && (age === null || age < 306_000))
+        age === null ||
+        (command.case === "expiry" ? age < 306_000 : age > 240_000)
       )
         fail()
       const proof = owned.proof

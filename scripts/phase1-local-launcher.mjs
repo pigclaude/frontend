@@ -78,6 +78,9 @@ export async function startPhaseOneLauncher(env = process.env) {
     PIGCLAUDE_ADMIN_URL: `http://127.0.0.1:${ports.admin}`,
     API_PROXY_TARGET: `http://127.0.0.1:${ports.rust}`,
   }
+  // Turnstile Secret仅交给Rust，web进程只通过公开配置读取Site Key。
+  const webEnv = { ...commonEnv }
+  delete webEnv.PIGCLAUDE_TURNSTILE_SECRET_KEY
   try {
     processes.push(
       spawnService(
@@ -107,7 +110,7 @@ export async function startPhaseOneLauncher(env = process.env) {
             String(ports.home),
           ],
           repositoryRoot,
-          commonEnv,
+          webEnv,
         ),
         spawnService(
           "admin",
@@ -123,7 +126,7 @@ export async function startPhaseOneLauncher(env = process.env) {
             String(ports.admin),
           ],
           repositoryRoot,
-          commonEnv,
+          webEnv,
         ),
       )
       await waitForHttp(`http://127.0.0.1:${ports.home}/`)

@@ -1,6 +1,6 @@
 // 负责已安装 app.asar 的真实私有协议、PKCE、系统加密、重启和设备代次验收。
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { MembershipSessionRecord } from "../packages/contracts/src/desktop-membership"
@@ -23,6 +23,12 @@ import {
   registerPackagedUser,
   unbindPackagedDevice,
 } from "./phase1-packaged-web"
+
+import {
+  OwnedProcess,
+  cleanupOwnedProcesses,
+  removeProfileWhenStopped,
+} from "./phase1-owned-process"
 
 type Milestone = { step: string; state: string; epoch?: string }
 
@@ -149,6 +155,8 @@ test("安装版私有协议真实 OS 派发、PKCE、重启、epoch 与解绑门
   for (const url of [homeUrl, adminUrl, rustUrl]) expect(new URL(url).hostname).toBe("127.0.0.1")
   const endpoints = { rustBaseUrl: rustUrl, authOrigin: homeUrl }
   const profileRoot = await mkdtemp(join(tmpdir(), "pigclaude-packaged-acceptance-"))
+  const coldOwner = new OwnedProcess(join(installedApp, "Contents/MacOS/PigClaude"))
+  const owners = new Set([coldOwner])
   const desktops: DesktopHarness[] = []
   const adminContext = await browser.newContext()
   const admin = await adminContext.newPage()
@@ -169,9 +177,9 @@ test("安装版私有协议真实 OS 派发、PKCE、重启、epoch 与解绑门
     const userId = await registerPackagedUser(page, homeUrl)
     await grantPackagedMembership(page, admin, homeUrl, adminUrl, userId)
     record("web.register-logout-login-admin-ui-grant", "active")
-    await verifyColdProtocolRejection(installedApp, join(profileRoot, "cold"))
+    await verifyColdProtocolRejection(installedApp, join(profileRoot, "cold"), coldOwner)
     record("os-url.cold-start-installed-handler-no-active-session", "signed_out")
-    let desktop = await launchInstalled(installedApp, join(profileRoot, "first"), endpoints)
+    let desktop = await launchInstalled(installedApp, join(profileRoot, "first"), endpoints, owners)
     desktops.push(desktop)
     record(
       "installed.package",
@@ -182,7 +190,7 @@ test("安装版私有协议真实 OS 派发、PKCE、重启、epoch 与解绑门
     const initial = await readDesktopSession(desktop)
     record("installed.callback-exchange", "active", initial.bindingEpoch)
     await closeDesktop(desktop)
-    desktop = await launchInstalled(installedApp, join(profileRoot, "first"), endpoints)
+    desktop = await launchInstalled(installedApp, join(profileRoot, "first"), endpoints, owners)
     desktops.push(desktop)
     await expectDesktopState(desktop, "active")
     const restored = await readDesktopSession(desktop)
@@ -201,7 +209,7 @@ test("安装版私有协议真实 OS 派发、PKCE、重启、epoch 与解绑门
     record("installed.same-device-renewal", "active", renewed.bindingEpoch)
     record("old-epoch.inspect", "409 AUTHORIZATION_BINDING_STALE", initial.bindingEpoch)
     await closeDesktop(desktop)
-    desktop = await launchInstalled(installedApp, join(profileRoot, "second"), endpoints)
+    desktop = await launchInstalled(installedApp, join(profileRoot, "second"), endpoints, owners)
     desktops.push(desktop)
     record(
       "protocol.other-device",
@@ -226,7 +234,7 @@ test("安装版私有协议真实 OS 派发、PKCE、重启、epoch 与解绑门
     expect(BigInt(rebound.bindingEpoch) > BigInt(replacement.bindingEpoch)).toBe(true)
     record("installed.rebind", "active", rebound.bindingEpoch)
     await closeDesktop(desktop)
-    desktop = await launchInstalled(installedApp, join(profileRoot, "first"), endpoints)
+    desktop = await launchInstalled(installedApp, join(profileRoot, "first"), endpoints, owners)
     desktops.push(desktop)
     await rejectsColdRevokedProfile(desktop)
     record(
@@ -242,8 +250,21 @@ test("安装版私有协议真实 OS 派发、PKCE、重启、epoch 与解绑门
     for (const desktop of desktops.reverse())
       await closeDesktop(desktop).catch(() => failures.push("app"))
     await adminContext.close().catch(() => failures.push("admin-context"))
-    await rm(profileRoot, { recursive: true, force: true }).catch(() => failures.push("profile"))
-    record("runtime.cleanup", failures.length === 0 ? "closed-and-removed" : "failed")
+    const confirmed = await cleanupOwnedProcesses(owners)
+    const removed = await removeProfileWhenStopped(profileRoot, confirmed).catch(() => {
+      failures.push("profile")
+      return false
+    })
+    if (!confirmed) failures.push("process-exit-unconfirmed")
+    record(
+      "runtime.cleanup",
+      removed
+        ? failures.length === 0
+          ? "closed-and-removed"
+          : "failed"
+        : "failed;profile-retained",
+    )
+    if (!removed) record("runtime.retained-profile", profileRoot)
     await testInfo
       .attach("packaged-protocol-milestones", {
         body: JSON.stringify(milestones, null, 2),

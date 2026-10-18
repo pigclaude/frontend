@@ -8,7 +8,7 @@ import { join, resolve } from "node:path"
 import { promisify } from "node:util"
 import type { PigclaudeBridge } from "../apps/desktop/src/preload"
 import type { DesktopHarness } from "./phase1-electron-harness"
-import { closeDesktop } from "./phase1-electron-harness"
+import { OwnedProcess, cleanupFailedLaunch } from "./phase1-owned-process"
 
 const execute = promisify(execFile)
 type ObservedGlobal = typeof globalThis & { pigclaudeProtocolEvents?: number }
@@ -50,25 +50,30 @@ export async function launchInstalled(
   installedApp: string,
   userData: string,
   endpoints: PackagedEndpoints,
+  owners: Set<OwnedProcess>,
 ): Promise<DesktopHarness> {
-  const application = await _electron.launch({
-    executablePath: join(installedApp, "Contents/MacOS/PigClaude"),
-    env: installedEnvironment(userData),
-    timeout: 30_000,
-  })
-  const desktop: DesktopHarness = {
-    application,
-    window: await application.firstWindow().catch(async (error: unknown) => {
-      await application.close().catch(() => {
-        const child = application.process()
-        if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL")
-      })
+  const owner = new OwnedProcess(join(installedApp, "Contents/MacOS/PigClaude"))
+  owners.add(owner)
+  owner.beginLaunch()
+  const application = await _electron
+    .launch({
+      executablePath: join(installedApp, "Contents/MacOS/PigClaude"),
+      env: installedEnvironment(userData),
+      args: [owner.marker],
+      timeout: 30_000,
+    })
+    .catch(async (error: unknown) => {
+      await owner.cleanup()
       throw error
-    }),
-    child: application.process(),
-    closed: false,
-  }
+    })
   try {
+    await owner.capture()
+    const desktop: DesktopHarness = {
+      application,
+      window: await application.firstWindow(),
+      child: application.process(),
+      closed: false,
+    }
     const runtime = await application.evaluate(({ app, safeStorage }) => ({
       packaged: app.isPackaged,
       appPath: app.getAppPath(),
@@ -118,7 +123,9 @@ export async function launchInstalled(
     )
     return desktop
   } catch (error: unknown) {
-    await closeDesktop(desktop)
+    if (!(await cleanupFailedLaunch(owner, () => application.close()))) {
+      throw new Error("安装 app 退出未确认；保留本次验收 profile")
+    }
     throw error
   }
 }
@@ -164,14 +171,15 @@ async function installedProcessIds(installedApp: string): Promise<number[]> {
 export async function verifyColdProtocolRejection(
   installedApp: string,
   userData: string,
+  owner: OwnedProcess,
 ): Promise<void> {
   expect(await installedProcessIds(installedApp)).toEqual([])
   const port = await unusedPort()
   const callback =
     "pigclaude://authorize/callback?flow_id=cold-probe&code=cold-probe&state=cold-probe"
-  let processId: number | undefined
   let browser: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined
   try {
+    owner.beginLaunch()
     await execute(
       "/usr/bin/open",
       [
@@ -181,11 +189,11 @@ export async function verifyColdProtocolRejection(
         "--args",
         `--remote-debugging-port=${port}`,
         "--remote-debugging-address=127.0.0.1",
+        owner.marker,
       ],
       { env: installedEnvironment("") },
     )
-    await expect.poll(async () => (await installedProcessIds(installedApp)).length).toBe(1)
-    processId = (await installedProcessIds(installedApp))[0]
+    await expect.poll(async () => (await owner.capture()).length).toBe(1)
     await expect
       .poll(async () => {
         const response = await fetch(`http://127.0.0.1:${port}/json/version`).catch(() => null)
@@ -222,9 +230,8 @@ export async function verifyColdProtocolRejection(
     expect(Object.hasOwn(secrets, "membership:session")).toBe(false)
   } finally {
     await browser?.close().catch(() => undefined)
-    if (processId && (await installedProcessIds(installedApp)).includes(processId)) {
-      process.kill(processId, "SIGTERM")
+    if (!(await owner.cleanup())) {
+      throw new Error("冷启动进程退出未确认；保留本次验收 profile")
     }
-    await expect.poll(async () => (await installedProcessIds(installedApp)).length).toBe(0)
   }
 }

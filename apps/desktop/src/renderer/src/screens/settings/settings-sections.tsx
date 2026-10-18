@@ -1,5 +1,5 @@
 // 负责按当前设置子页选出对应的设置页面。
-import type { ThemePreference } from "../../models/theme-model"
+import type { AppearanceSettings as Appearance } from "../../models/appearance-settings"
 import type { Screen } from "../screen"
 import { ProfileSettings, SwitchingSettings } from "./settings-account-pages"
 import {
@@ -13,8 +13,8 @@ import { AboutSettings, DataSettings, NetworkSettings } from "./settings-system-
 /** 设置页面 props。 */
 export type SettingsScreenProps = {
   screen: Screen
-  themePreference: ThemePreference
-  onThemePreference: (preference: ThemePreference) => void
+  appearance: Appearance
+  onAppearance: (next: Appearance) => void
   onNavigate: (screen: Screen) => void
   onLogout: () => void
 }
@@ -22,8 +22,8 @@ export type SettingsScreenProps = {
 /** 根据当前设置子页绘制原型对应的设置内容；未知子页显示关于。 */
 export function SettingsScreen({
   screen,
-  themePreference,
-  onThemePreference,
+  appearance,
+  onAppearance,
   onNavigate,
   onLogout,
 }: SettingsScreenProps) {
@@ -31,9 +31,7 @@ export function SettingsScreen({
   if (screen === "switching") return <SwitchingSettings onNavigate={onNavigate} />
   if (screen === "general") return <GeneralSettings />
   if (screen === "appearance")
-    return (
-      <AppearanceSettings themePreference={themePreference} onThemePreference={onThemePreference} />
-    )
+    return <AppearanceSettings appearance={appearance} onAppearance={onAppearance} />
   if (screen === "session") return <SessionSettings />
   if (screen === "menubar") return <MenubarSettings onNavigate={onNavigate} />
   if (screen === "network") return <NetworkSettings />

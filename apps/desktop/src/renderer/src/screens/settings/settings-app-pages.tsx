@@ -4,7 +4,7 @@ import { useToast } from "../../components/toast"
 import { Button } from "../../components/ui/button"
 import { Kbd } from "../../components/ui/kbd"
 import { Switch } from "../../components/ui/switch"
-import type { ThemePreference } from "../../models/theme-model"
+import type { AppearanceSettings as Appearance } from "../../models/appearance-settings"
 import type { Screen } from "../screen"
 import { LockedValue, Segmented, SelectControl } from "./setting-controls"
 import { SettingPage, SettingRow, SettingSection } from "./setting-page"
@@ -41,11 +41,11 @@ export function GeneralSettings() {
 
 /** 外观：主题立即生效，侧栏会话分组只影响侧栏。 */
 export function AppearanceSettings({
-  themePreference,
-  onThemePreference,
+  appearance,
+  onAppearance,
 }: {
-  themePreference: ThemePreference
-  onThemePreference: (preference: ThemePreference) => void
+  appearance: Appearance
+  onAppearance: (next: Appearance) => void
 }) {
   const [grouping, setGrouping] = useState<"project" | "time">("project")
   return (
@@ -54,8 +54,8 @@ export function AppearanceSettings({
         <SettingRow title="主题" description="跟随系统时随 macOS 外观自动切换">
           <Segmented
             label="主题"
-            value={themePreference}
-            onChange={onThemePreference}
+            value={appearance.mode}
+            onChange={(mode) => onAppearance({ ...appearance, mode })}
             options={[
               { value: "light", label: "浅色" },
               { value: "dark", label: "深色" },

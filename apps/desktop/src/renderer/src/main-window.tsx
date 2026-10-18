@@ -21,7 +21,8 @@ import type { ProjectNavigationState } from "./models/navigation-model"
 import { addProject } from "./models/project-model"
 import { createPoolState } from "./models/pool-model"
 import { settingsScreens } from "./models/settings-nav"
-import type { ResolvedTheme, ThemePreference } from "./models/theme-model"
+import type { AppearanceSettings } from "./models/appearance-settings"
+import type { ResolvedTheme } from "./models/theme-model"
 import type { Screen } from "./screens/screen"
 import { Button } from "./components/ui/button"
 
@@ -38,8 +39,8 @@ export type MainWindowProps = {
   onOpenAuthorize: () => void
   onLogout: () => void
   theme: ResolvedTheme
-  themePreference: ThemePreference
-  onThemePreference: (preference: ThemePreference) => void
+  appearance: AppearanceSettings
+  onAppearance: (next: AppearanceSettings) => void
 }
 
 /** 画出侧栏和内容区；窄窗口里侧栏变成可开合的抽屉。 */
@@ -53,8 +54,8 @@ export function MainWindow({
   onOpenAuthorize,
   onLogout,
   theme,
-  themePreference,
-  onThemePreference,
+  appearance,
+  onAppearance,
 }: MainWindowProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -141,7 +142,9 @@ export function MainWindow({
         onNewSession={() => onNavigate("chat-new")}
         onLogout={onLogout}
         theme={theme}
-        onToggleTheme={() => onThemePreference(theme === "light" ? "dark" : "light")}
+        onToggleTheme={() =>
+          onAppearance({ ...appearance, mode: theme === "light" ? "dark" : "light" })
+        }
       />
       <AddProjectDialog
         open={addingProject}
@@ -209,8 +212,8 @@ export function MainWindow({
           <SettingsScreen
             key={screen}
             screen={screen}
-            themePreference={themePreference}
-            onThemePreference={onThemePreference}
+            appearance={appearance}
+            onAppearance={onAppearance}
             onNavigate={onNavigate}
             onLogout={onLogout}
           />

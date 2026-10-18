@@ -6,6 +6,7 @@ import { LoginScreen } from "./screens/login-screen"
 import { MainWindow } from "./main-window"
 import { ToastProvider } from "./components/toast"
 import { TooltipProvider } from "./components/ui/tooltip"
+import { useAppearance } from "./hooks/use-appearance"
 import { createAuthorizationState, reduceAuthorizationState } from "./models/authorization-model"
 import { parseDevView } from "./models/dev-view"
 import { createLoginState, reduceLoginState, type LoginIntent } from "./models/login-model"
@@ -18,11 +19,7 @@ import {
   goForward,
   pushScreen,
 } from "./models/screen-history"
-import { parseThemePreference, resolveTheme, type ThemePreference } from "./models/theme-model"
 import type { Screen } from "./screens/screen"
-
-const themeStorageKey = "pigclaude-theme"
-const darkQuery = "(prefers-color-scheme: dark)"
 
 /** 按登录状态和当前页面画出整窗。 */
 export function DesktopApp() {
@@ -32,34 +29,10 @@ export function DesktopApp() {
   const [authorizationState, setAuthorizationState] = useState(createAuthorizationState)
   const [history, setHistory] = useState(() => createScreenHistory(devView?.screen ?? "chat"))
   const screen = currentScreen(history)
-  const [themePreference, setThemePreference] = useState<ThemePreference>(() =>
-    parseThemePreference(window.localStorage.getItem(themeStorageKey)),
-  )
-  const [systemDark, setSystemDark] = useState(() => window.matchMedia(darkQuery).matches)
-  const theme = devView?.theme ?? resolveTheme(themePreference, systemDark)
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme
-  }, [theme])
-
-  useEffect(() => {
-    void window.pigclaude?.setTheme?.(themePreference)
-  }, [themePreference])
-
-  useEffect(() => {
-    const query = window.matchMedia(darkQuery)
-    const onChange = (event: MediaQueryListEvent) => setSystemDark(event.matches)
-    query.addEventListener("change", onChange)
-    return () => query.removeEventListener("change", onChange)
-  }, [])
+  const appearance = useAppearance()
 
   function setScreen(next: Screen): void {
     setHistory((current) => pushScreen(current, next))
-  }
-
-  function changeThemePreference(preference: ThemePreference): void {
-    setThemePreference(preference)
-    window.localStorage.setItem(themeStorageKey, preference)
   }
 
   useEffect(() => {
@@ -273,9 +246,9 @@ export function DesktopApp() {
             setScreen("authorize")
           }}
           onLogout={logout}
-          theme={theme}
-          themePreference={themePreference}
-          onThemePreference={changeThemePreference}
+          theme={appearance.resolved}
+          appearance={appearance.settings}
+          onAppearance={appearance.update}
         />
       </ToastProvider>
     </TooltipProvider>

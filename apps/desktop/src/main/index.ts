@@ -1,6 +1,7 @@
 // 负责创建桌面窗口、承接浏览器授权回调并保存主进程秘密。
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, safeStorage, shell } from "electron"
 import { join } from "node:path"
+import { readFileSync } from "node:fs"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import { createCallbackServer } from "./authorization/callback-server"
 import { AuthorizationStartError, AuthorizationService } from "./authorization/service"
@@ -13,6 +14,7 @@ import { isAllowedAuthorizationUrl } from "./authorization/url-policy"
 import { createDesktopComposition, type DesktopComposition } from "./composition"
 import { readOrCreateDeviceIdentity } from "./device-identity"
 import { configureRuntimeProfile } from "./runtime-profile"
+import { readDesktopRuntimeEndpoints } from "./runtime-endpoints"
 import { FileSecretVault } from "./secret-vault"
 import {
   createMainWindowOptions,
@@ -21,8 +23,10 @@ import {
   readThemeSource,
 } from "./window-options"
 
-const rustBaseUrl = process.env["PIGCLAUDE_RUST_BASE_URL"] ?? "http://127.0.0.1:8788"
-const authOrigin = process.env["PIGCLAUDE_AUTH_ORIGIN"] ?? "http://127.0.0.1:3000"
+const bundleMetadata: unknown = app.isPackaged
+  ? JSON.parse(readFileSync(join(app.getAppPath(), "package.json"), "utf8"))
+  : undefined
+const { rustBaseUrl, authOrigin } = readDesktopRuntimeEndpoints(process.env, bundleMetadata)
 const packagedRedirectUri = "pigclaude://authorize/callback"
 const hasSingleInstanceLock = configureRuntimeProfile(app, process.env["PIGCLAUDE_USER_DATA"])
 let mainWindow: BrowserWindow | null = null

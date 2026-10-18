@@ -113,13 +113,31 @@ test("固定脚本仅点击核实的 loopback callback，登录和真人验证�
   await fake.bridge.approve({ replace: true })
   const script = fake.input()
   for (const [snapshot, href, expected] of [
-    ["确认授权", "http://127.0.0.1:43123/oauth/callback?code=fixture&state=fixture", "authorized"],
-    ["确认授权", "https://evil.test/oauth/callback?code=fixture&state=fixture", "unavailable"],
     [
       "确认授权",
-      "http://127.0.0.1:43123/oauth/callback?code=fixture&state=fixture&extra=x",
+      "http://127.0.0.1:43123/oauth/callback?flow_id=fixture-id&code=fixture&state=fixture%2Bstate",
+      "authorized",
+    ],
+    [
+      "确认授权",
+      "https://evil.test/oauth/callback?flow_id=fixture-id&code=fixture&state=fixture%2Bstate",
       "unavailable",
     ],
+    [
+      "确认授权",
+      "http://127.0.0.1:43123/oauth/callback?flow_id=fixture-id&code=fixture&state=fixture%2Bstate&extra=x",
+      "unavailable",
+    ],
+    ...[
+      "flow_id=wrong&code=x&state=fixture%2Bstate",
+      "flow_id=fixture-id&code=x&state=wrong",
+      "flow_id=fixture-id&code=&state=fixture%2Bstate",
+      "flow_id=fixture-id&flow_id=fixture-id&code=x&state=fixture%2Bstate",
+      "code=x&state=fixture%2Bstate",
+      "flow_id=&code=x&state=fixture%2Bstate",
+      "flow_id=fixture-id&code=x&state=",
+      "flow_id=fixture-id&code=x&code=x&state=fixture%2Bstate",
+    ].map((query) => ["确认授权", `http://127.0.0.1:43123/oauth/callback?${query}`, "unavailable"]),
     ["登录", "", "login-required"],
     ["Verify you are human", "", "human-required"],
   ]) {

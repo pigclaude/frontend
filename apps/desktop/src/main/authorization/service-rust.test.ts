@@ -45,6 +45,7 @@ describe("AuthorizationService Rust adapter", () => {
       vault,
       now: () => 1_000,
       startAuthorization: async (input) => {
+        expect(input).toMatchObject({ mode: "register" })
         calls.push(`start:${input.deviceId}:${input.codeChallenge}`)
         return {
           flowId: "flow-1",
@@ -61,7 +62,10 @@ describe("AuthorizationService Rust adapter", () => {
       },
     })
 
-    const started = await service.start(loginRequest, "http://127.0.0.1:43123/oauth/callback")
+    const started = await service.start(
+      { ...loginRequest, mode: "register" },
+      "http://127.0.0.1:43123/oauth/callback",
+    )
     const state = new URL(started.authorizationUrl).searchParams.get("state")
     const result = await service.handleCallback(
       `http://127.0.0.1:43123/oauth/callback?code=one-time-code&state=${state}`,

@@ -12,6 +12,7 @@ export type MembershipInspectRequest = {
 
 /** Rust desktop start 请求，保证 verifier 只由主进程保留。 */
 export type DesktopAuthorizationStartRequest = {
+  mode?: "login" | "register" | "authorize"
   deviceId: string
   deviceFingerprintHash: string
   codeChallenge: string

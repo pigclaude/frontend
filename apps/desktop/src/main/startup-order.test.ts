@@ -1,0 +1,64 @@
+// 负责执行真实主进程入口，以 Electron 边界替身验证远程检查不会阻止窗口出现。
+import { expect, it, vi } from "vitest"
+const fixture = vi.hoisted(() => ({
+  windows: 0,
+  inspect: vi.fn(() => new Promise<void>(() => {})),
+}))
+vi.mock("electron", () => ({
+  app: {
+    isPackaged: false,
+    whenReady: () => Promise.resolve(),
+    on: vi.fn(),
+    getPath: () => "/fixture",
+    quit: vi.fn(),
+  },
+  BrowserWindow: Object.assign(
+    class {
+      webContents = { send: vi.fn() }
+      constructor() {
+        fixture.windows++
+      }
+      loadFile() {}
+      once() {}
+      setBackgroundColor() {}
+    },
+    { getAllWindows: () => [] },
+  ),
+  dialog: {},
+  ipcMain: { handle: vi.fn() },
+  nativeTheme: { on: vi.fn() },
+  safeStorage: {},
+  shell: {},
+}))
+vi.mock("./runtime-profile", () => ({ configureRuntimeProfile: () => true }))
+vi.mock("./runtime-endpoints", () => ({
+  readDesktopRuntimeEndpoints: () => ({
+    rustBaseUrl: "https://api.pigclaude.com",
+    authOrigin: "https://pigclaude.com",
+  }),
+}))
+vi.mock("./device-identity", () => ({
+  readOrCreateDeviceIdentity: async () => ({ deviceId: "fixture" }),
+}))
+vi.mock("./secret-vault", () => ({ FileSecretVault: class {} }))
+vi.mock("./authorization/callback-server", () => ({
+  createCallbackServer: async () => ({ close: vi.fn() }),
+}))
+vi.mock("./composition", () => ({
+  createDesktopComposition: () => ({
+    authorizationService: {},
+    membershipGate: { inspect: fixture.inspect },
+  }),
+}))
+vi.mock("./window-options", () => ({
+  createMainWindowOptions: () => ({}),
+  developmentRendererUrl: () => undefined,
+  glassBackgroundColor: () => undefined,
+  readThemeSource: () => undefined,
+}))
+it("creates checking window before an existing profile's remote inspect settles", async () => {
+  await import("./index")
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(fixture.inspect).toHaveBeenCalledOnce()
+  expect(fixture.windows).toBe(1)
+})

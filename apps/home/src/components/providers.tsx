@@ -8,6 +8,7 @@ import { initTheme } from "@pigclaude/web-ui/lib/theme"
 import { HomeSessionContext } from "@/components/home-session-context"
 import { homeApi } from "@/lib/api"
 import {
+  homeLoginRedirect,
   HOME_SESSION_REVALIDATE_EVENT,
   ME_QUERY_KEY,
   isPublicHomePath,
@@ -43,9 +44,7 @@ export function Providers({ children }: { children: ReactNode }) {
             const currentPath = pathnameRef.current
             const action = unauthorizedQueryAction(error, query.queryKey, currentPath)
             if (action === "redirect") {
-              routerRef.current.replace(
-                `/login?redirect=${encodeURIComponent(currentRoute(currentPath))}`,
-              )
+              routerRef.current.replace(homeLoginRedirect(currentRoute(currentPath)))
             } else if (action === "revalidate" && !recoveryHashesRef.current.has(query.queryHash)) {
               recoveryHashesRef.current.add(query.queryHash)
               const requested = requestHomeSessionRevalidation(
@@ -95,9 +94,7 @@ export function Providers({ children }: { children: ReactNode }) {
           return true
         } catch {
           if (sessionEndedRef.current) return false
-          routerRef.current.replace(
-            `/login?redirect=${encodeURIComponent(currentRoute(pathnameRef.current))}`,
-          )
+          routerRef.current.replace(homeLoginRedirect(currentRoute(pathnameRef.current)))
           return false
         }
       })()

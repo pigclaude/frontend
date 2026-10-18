@@ -1,4 +1,5 @@
 // 负责验证 home 的会话 401 分类和 revalidate 事件行为。
+import { homeLoginRedirect } from "../lib/auth-query"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiError } from "@pigclaude/api/client"
 import {
@@ -42,4 +43,13 @@ describe("home auth query recovery", () => {
     window.history.replaceState({}, "", "/login")
     expect(requestHomeSessionRevalidation()).toBe(false)
   })
+})
+
+// 未登录授权页的模式与 state 回跳字节由同一恢复入口保留。
+it("preserves registration mode in authorization recovery", () => {
+  const route = "/authorize/f/approve?mode=register&state=a%2Bb%2520"
+  expect(homeLoginRedirect(route)).toBe(`/register?redirect=${encodeURIComponent(route)}`)
+  expect(homeLoginRedirect(route.replace("register", "unknown"))).toBe(
+    `/login?redirect=${encodeURIComponent(route.replace("register", "unknown"))}`,
+  )
 })

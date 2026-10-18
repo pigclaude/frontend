@@ -29,6 +29,9 @@ export class MembershipGate {
   #record: MembershipSessionRecord | null = null
   #view: MembershipView = initialView()
   #revision = 0
+  #generation = 0
+  #disposed = false
+  #mutation: Promise<void> = Promise.resolve()
 
   /** 创建只依赖 API、时钟和安全仓库的会员门禁。 */
   constructor(options: MembershipGateOptions) {
@@ -39,14 +42,24 @@ export class MembershipGate {
 
   /** 从 safeStorage 恢复设备材料并重新向 Rust 检查会员状态。 */
   async inspect(): Promise<MembershipView> {
+    // 本地材料写入/撤销按序完成后才读取；每次请求只能发布自己的当前代次。
+    for (;;) {
+      const mutation = this.#mutation
+      await mutation
+      if (mutation === this.#mutation) break
+    }
+    if (this.#disposed) return this.view()
+    const generation = ++this.#generation
     let raw: string | null
     try {
       raw = await this.#vault.get("membership:session")
     } catch {
+      if (!this.isCurrent(generation)) return this.view()
       return this.publish(
         this.withState(initialView(), "configuration_error", "SAFE_STORAGE_UNAVAILABLE"),
       )
     }
+    if (!this.isCurrent(generation)) return this.view()
     const record = parseRecord(raw)
     this.#record = record
     if (!record) return this.publish(signedOutView())
@@ -55,6 +68,7 @@ export class MembershipGate {
         deviceId: record.deviceId,
         bindingEpoch: record.bindingEpoch,
       })
+      if (!this.isCurrent(generation)) return this.view()
       if (
         remote.bindingEpoch !== null &&
         record.bindingEpoch !== "" &&
@@ -64,6 +78,7 @@ export class MembershipGate {
       }
       return this.publish(this.normalizeRemote(remote))
     } catch (error: unknown) {
+      if (!this.isCurrent(generation)) return this.view()
       const errorCode = errorCodeOf(error, "SERVER_UNAVAILABLE")
       const state =
         errorCode === "AUTHORIZATION_DEVICE_REVOKED" || errorCode === "AUTHORIZATION_BINDING_STALE"
@@ -90,13 +105,16 @@ export class MembershipGate {
 
   /** 撤销服务端设备后清理本机授权材料并广播 signed_out。 */
   async revoke(): Promise<MembershipView> {
-    const record = this.#record ?? parseRecord(await this.#vault.get("membership:session"))
-    if (record) {
-      await this.#api.revokeDevice({ deviceId: record.deviceId })
-      await this.#deleteLocalSecrets(record.accountId)
-    }
-    this.#record = null
-    return this.publish(signedOutView())
+    return this.mutate(async () => {
+      if (this.#disposed) return this.view()
+      const record = this.#record ?? parseRecord(await this.#vault.get("membership:session"))
+      if (record) {
+        await this.#api.revokeDevice({ deviceId: record.deviceId })
+        await this.#deleteLocalSecrets(record.accountId)
+      }
+      this.#record = null
+      return this.publish(signedOutView())
+    })
   }
 
   /** 授权交换完成后写入仅供主进程恢复使用的设备元数据。 */
@@ -118,13 +136,38 @@ export class MembershipGate {
       ...(input.credential ? { credential: input.credential } : {}),
       ...(input.sessionCookie ? { sessionCookie: input.sessionCookie } : {}),
     }
-    await this.#vault.set("membership:session", JSON.stringify(record))
-    this.#record = record
+    await this.mutate(async () => {
+      if (this.#disposed) return
+      await this.#vault.set("membership:session", JSON.stringify(record))
+      if (!this.#disposed) this.#record = record
+    })
   }
 
   /** 释放 gate 订阅，供 composition 的 ordered cleanup 使用。 */
   dispose(): void {
+    this.#disposed = true
+    this.#generation++
     this.#listeners.clear()
+  }
+
+  private isCurrent(generation: number): boolean {
+    return !this.#disposed && this.#generation === generation
+  }
+
+  private mutate<T>(operation: () => Promise<T>): Promise<T> {
+    this.#generation++
+    const pending = this.#mutation.then(async () => {
+      try {
+        return await operation()
+      } finally {
+        this.#generation++
+      }
+    })
+    this.#mutation = pending.then(
+      () => undefined,
+      () => undefined,
+    )
+    return pending
   }
 
   private normalizeRemote(view: MembershipView): MembershipView {
@@ -148,6 +191,7 @@ export class MembershipGate {
   }
 
   private publish(view: MembershipView): MembershipView {
+    if (this.#disposed) return this.view()
     this.#revision = Math.max(this.#revision + 1, view.revision)
     this.#view = { ...view, revision: this.#revision, startupPhase: "settled" }
     const safe = this.view()

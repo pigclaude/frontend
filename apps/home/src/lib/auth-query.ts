@@ -42,3 +42,13 @@ export function requestHomeSessionRevalidation(
   window.dispatchEvent(event)
   return true
 }
+
+/** 为授权页选择受控表单；回跳路径完全保留编码和 state 原字节。 */
+export function homeLoginRedirect(route: string): string {
+  const parsed = new URL(route, "https://home.invalid")
+  const register =
+    /^\/authorize\/[A-Za-z0-9_-]+\/approve$/.test(parsed.pathname) &&
+    parsed.searchParams.getAll("mode").length === 1 &&
+    parsed.searchParams.get("mode") === "register"
+  return `/${register ? "register" : "login"}?redirect=${encodeURIComponent(route)}`
+}

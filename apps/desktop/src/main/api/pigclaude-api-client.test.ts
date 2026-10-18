@@ -178,3 +178,37 @@ describe("PigclaudeApiClient", () => {
     })
   })
 })
+
+// 超时覆盖完整 fetch/body 生命周期，恢复时重用同一客户端。
+it.each(["headers", "body"])("aborts stalled %s and recovers on retry", async (phase) => {
+  vi.useFakeTimers()
+  try {
+    let signal: AbortSignal | null | undefined
+    let recover = false
+    const client = new PigclaudeApiClient({
+      baseUrl: "http://127.0.0.1:8788",
+      fetcher: async (_input, init) => {
+        signal = init?.signal
+        if (recover) return new Response(JSON.stringify(activeMembership))
+        if (phase === "headers") return new Promise<Response>(() => {})
+        return new Response(new ReadableStream({ start() {} }))
+      },
+    })
+    let code = "pending"
+    const request = client
+      .inspectMembership({ deviceId: "device-1", bindingEpoch: "2" })
+      .catch((error: unknown) => {
+        code = (error as PigclaudeApiError).code
+      })
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(code).toBe("SERVER_UNAVAILABLE")
+    expect(signal?.aborted).toBe(true)
+    await request
+    recover = true
+    await expect(
+      client.inspectMembership({ deviceId: "device-1", bindingEpoch: "2" }),
+    ).resolves.toMatchObject({ state: "active" })
+  } finally {
+    vi.useRealTimers()
+  }
+})

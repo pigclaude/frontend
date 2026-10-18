@@ -108,8 +108,27 @@ describe("AuthPanel mutation UI", () => {
     expect(mocks.entitlement).toHaveBeenCalled()
   })
 
+  it.each(["/\\example.invalid", "//example.invalid", "/safe\npath", "/safe\u007fpath"])(
+    "rejects unsafe login redirect %j",
+    async (redirect) => {
+      mocks.searchParams = new URLSearchParams({ redirect })
+      renderPanel()
+      fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
+      fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
+      await waitFor(() =>
+        expect((document.querySelector("button[type=submit]") as HTMLButtonElement).disabled).toBe(
+          false,
+        ),
+      )
+      fireEvent.submit(document.querySelector("form") as HTMLFormElement)
+      await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/dashboard"))
+    },
+  )
+
   it("returns to an authorize deep link after login", async () => {
-    mocks.searchParams = new URLSearchParams("redirect=%2Fauthorize%2Fflow-1%3Fstate%3Dflow-state")
+    mocks.searchParams = new URLSearchParams(
+      "redirect=%2Fauthorize%2Fflow-1%3Fstate%3Da%252Bb%252520%26code_challenge%3Dx_Y-1",
+    )
     renderPanel()
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
@@ -120,7 +139,9 @@ describe("AuthPanel mutation UI", () => {
     )
     fireEvent.submit(document.querySelector("form") as HTMLFormElement)
     await waitFor(() =>
-      expect(mocks.push).toHaveBeenCalledWith("/authorize/flow-1?state=flow-state"),
+      expect(mocks.push).toHaveBeenCalledWith(
+        "/authorize/flow-1?state=a%2Bb%2520&code_challenge=x_Y-1",
+      ),
     )
   })
 

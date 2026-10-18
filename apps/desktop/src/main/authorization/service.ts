@@ -107,6 +107,7 @@ export class AuthorizationService {
         callbackUrl: redirectUri,
         redirectUri,
         purpose: request.purpose,
+        mode: request.mode,
       })
       session.flowId = started.flowId
       this.#activeSession = session

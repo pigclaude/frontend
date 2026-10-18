@@ -24,9 +24,11 @@ function validAuthorization(value: string): boolean {
       !url.password &&
       !url.hash &&
       /^\/authorize\/[A-Za-z0-9_-]+\/approve$/.test(url.pathname) &&
-      keys.every((key) => ["client_id", "purpose", "state"].includes(key)) &&
+      keys.every((key) => ["client_id", "purpose", "state", "mode"].includes(key)) &&
       new Set(keys).size === keys.length &&
       Boolean(url.searchParams.get("state")) &&
+      (!url.searchParams.has("mode") ||
+        ["login", "register", "authorize"].includes(url.searchParams.get("mode")!)) &&
       (!url.searchParams.has("client_id") ||
         url.searchParams.get("client_id") === "pigclaude-desktop") &&
       (!url.searchParams.has("purpose") || url.searchParams.get("purpose") === "pigclaude-login")
@@ -64,7 +66,7 @@ try {
       });
       const callback = new URL(href);
       const keys = [...callback.searchParams.keys()];
-      if (callback.protocol !== "http:" || callback.hostname !== "127.0.0.1" || !callback.port || callback.username || callback.password || callback.hash || callback.pathname !== "/oauth/callback" || keys.length !== 2 || !keys.includes("code") || !keys.includes("state") || !callback.searchParams.get("code") || !callback.searchParams.get("state")) throw new Error("unavailable");
+      if (callback.protocol !== "http:" || callback.hostname !== "127.0.0.1" || !callback.port || callback.username || callback.password || callback.hash || callback.pathname !== "/oauth/callback" || keys.length !== 3 || new Set(keys).size !== 3 || !keys.every(key => ["flow_id", "code", "state"].includes(key)) || !callback.searchParams.get("code") || callback.searchParams.get("flow_id") !== current.pathname.split("/")[2] || callback.searchParams.get("state") !== current.searchParams.get("state")) throw new Error("unavailable");
       await page.click('loc=role:link[name="返回桌面客户端"]');
       await page.waitForSelector('text="授权完成"', { timeout: 15000 });
       const final = new URL(await page.url());

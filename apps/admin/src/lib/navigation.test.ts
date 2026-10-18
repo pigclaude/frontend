@@ -12,6 +12,18 @@ describe("admin login recovery navigation", () => {
   it("rejects external and missing redirect values", () => {
     expect(safeLoginRedirect("https://example.com")).toBe("/users")
     expect(safeLoginRedirect("//example.com")).toBe("/users")
+    for (const path of [
+      "/\\example.invalid",
+      "//example.invalid",
+      "/ok\n/x",
+      "/ok\t/x",
+      "/ok\u007f/x",
+    ]) {
+      expect(safeLoginRedirect(path)).toBe("/users")
+    }
+    expect(safeLoginRedirect("/authorize/id/approve?state=a%2Bb%2520&code_challenge=x_Y-1")).toBe(
+      "/authorize/id/approve?state=a%2Bb%2520&code_challenge=x_Y-1",
+    )
     expect(safeLoginRedirect(null)).toBe("/users")
     expect(safeLoginRedirect("/audits?event=device.unbound")).toBe("/audits?event=device.unbound")
   })

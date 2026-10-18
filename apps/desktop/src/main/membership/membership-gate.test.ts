@@ -144,3 +144,100 @@ describe("MembershipGate", () => {
     expect(vault.values.has("authorization:pigclaude-login:user-1")).toBe(false)
   })
 })
+
+it("keeps safeStorage material after unavailable inspect and recovers with the same session", async () => {
+  const vault = new MemoryVault()
+  const raw = JSON.stringify(sessionRecord())
+  await vault.set("membership:session", raw)
+  let online = false
+  const gate = new MembershipGate({
+    vault,
+    api: api({
+      inspectMembership: async () => {
+        if (!online) throw Object.assign(new Error("unavailable"), { code: "SERVER_UNAVAILABLE" })
+        return view("active")
+      },
+    }),
+  })
+  expect(gate.view().startupPhase).toBe("checking")
+  expect(await gate.inspect()).toMatchObject({ state: "error", errorCode: "SERVER_UNAVAILABLE" })
+  expect(await vault.get("membership:session")).toBe(raw)
+  online = true
+  expect(await gate.inspect()).toMatchObject({ state: "active" })
+  expect(await vault.get("membership:session")).toBe(raw)
+})
+
+function deferred<T>() {
+  let resolve: (value: T) => void = () => undefined
+  let reject: (error: Error) => void = () => undefined
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes
+    reject = no
+  })
+  return { promise, resolve, reject }
+}
+
+it.each(["result", "timeout"])(
+  "ignores old startup inspect %s after a new authorization succeeds",
+  async (outcome) => {
+    const vault = new MemoryVault()
+    await vault.set("membership:session", JSON.stringify(sessionRecord()))
+    const old = deferred<MembershipView>()
+    let count = 0
+    const entered = deferred<void>()
+    const gate = new MembershipGate({
+      vault,
+      api: api({
+        inspectMembership: async () => {
+          if (++count === 1) {
+            entered.resolve(undefined)
+            return old.promise
+          }
+          return view("active", "3")
+        },
+      }),
+    })
+    const startup = gate.inspect()
+    await entered.promise
+    await gate.acceptAuthorization({
+      deviceId: "device-1",
+      bindingEpoch: "3",
+      sessionCookie: "new-fixture",
+    })
+    await gate.inspect()
+    if (outcome === "timeout")
+      old.reject(Object.assign(new Error("unavailable"), { code: "SERVER_UNAVAILABLE" }))
+    else old.resolve(view("expired", "2"))
+    await startup
+    expect(gate.view()).toMatchObject({ state: "active", bindingEpoch: "3", errorCode: null })
+    expect(await vault.get("membership:session")).toContain('"bindingEpoch":"3"')
+  },
+)
+
+it.each(["revoke", "dispose"])("ignores an inspect that completes after %s", async (action) => {
+  const vault = new MemoryVault()
+  await vault.set("membership:session", JSON.stringify(sessionRecord()))
+  const pending = deferred<MembershipView>()
+  const entered = deferred<void>()
+  const gate = new MembershipGate({
+    vault,
+    api: api({
+      inspectMembership: async () => {
+        entered.resolve(undefined)
+        return pending.promise
+      },
+    }),
+  })
+  const events: MembershipView[] = []
+  gate.subscribe((value) => events.push(value))
+  const inspection = gate.inspect()
+  await entered.promise
+  if (action === "revoke") await gate.revoke()
+  else gate.dispose()
+  const before = gate.view()
+  const count = events.length
+  pending.resolve(view("active"))
+  await inspection
+  expect(gate.view()).toEqual(before)
+  expect(events).toHaveLength(count)
+})

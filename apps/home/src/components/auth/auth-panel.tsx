@@ -13,15 +13,11 @@ import { ApiError } from "@pigclaude/api/client"
 import { TurnstileCaptcha } from "@pigclaude/web-ui/components/turnstile-captcha"
 import { useTurnstileCaptcha } from "@pigclaude/web-ui/hooks/use-turnstile-captcha"
 import { captchaErrorMessage } from "@pigclaude/web-ui/lib/captcha-errors"
+import { safeRedirectPath } from "@pigclaude/web-ui/lib/safe-redirect"
 import { homeApi } from "@/lib/api"
 
 /** 登录和注册表单所需的模式。 */
 export type AuthMode = "login" | "register"
-
-function safeRedirect(value: string | null): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/dashboard"
-  return value
-}
 
 /** 渲染登录/注册切换，并在成功后刷新 user/me 与 entitlement。 */
 export function AuthPanel({ initialMode }: { initialMode?: AuthMode } = {}) {
@@ -71,7 +67,7 @@ export function AuthPanel({ initialMode }: { initialMode?: AuthMode } = {}) {
           queryFn: homeApi.membership.entitlement,
         }),
       ])
-      router.push(safeRedirect(params.get("redirect")))
+      router.push(safeRedirectPath(params.get("redirect"), "/dashboard"))
     },
     onError: (reason) => {
       const message = captchaErrorMessage(reason)

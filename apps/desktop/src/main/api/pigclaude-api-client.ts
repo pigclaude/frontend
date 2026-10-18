@@ -142,22 +142,36 @@ export class PigclaudeApiClient {
     if (accessToken) headers.authorization = `Bearer ${accessToken}`
     const sessionCookie = await this.#sessionCookie?.()
     if (sessionCookie) headers.cookie = formatSessionCookie(sessionCookie)
-    let response: Response
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        controller.abort()
+        reject(new PigclaudeApiError("SERVER_UNAVAILABLE", null))
+      }, 10_000)
+    })
     try {
-      response = await this.#fetcher(resolveUrl(path, this.#baseUrl), {
-        method: options.method,
-        headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      })
-    } catch {
+      return await Promise.race([
+        deadline,
+        (async () => {
+          const response = await this.#fetcher(resolveUrl(path, this.#baseUrl), {
+            method: options.method,
+            headers,
+            signal: controller.signal,
+            body: options.body === undefined ? undefined : JSON.stringify(options.body),
+          })
+          const body = await readJson(response)
+          if (!response.ok) throw new PigclaudeApiError(readErrorCode(body), response.status)
+          if (response.status === 204 || body === undefined) return undefined as T
+          return body as T
+        })(),
+      ])
+    } catch (error: unknown) {
+      if (error instanceof PigclaudeApiError) throw error
       throw new PigclaudeApiError("SERVER_UNAVAILABLE", null, "Rust 授权服务不可用")
+    } finally {
+      clearTimeout(timer)
     }
-    const body = await readJson(response)
-    if (!response.ok) {
-      throw new PigclaudeApiError(readErrorCode(body), response.status, readErrorCode(body))
-    }
-    if (response.status === 204 || body === undefined) return undefined as T
-    return body as T
   }
 }
 

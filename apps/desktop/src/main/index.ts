@@ -56,6 +56,7 @@ if (!hasSingleInstanceLock) {
       console.error(errorMessage(error))
     }
     createWindow()
+    void desktopComposition?.membershipGate.inspect()
     const callbacks = pendingCallbackUrls
     pendingCallbackUrls = []
     for (const url of callbacks) await handleCallbackUrl(url)
@@ -176,7 +177,6 @@ async function setupAuthorization(): Promise<void> {
     onMembershipView: sendMembershipView,
   })
   authorizationService = desktopComposition.authorizationService
-  await desktopComposition.membershipGate.inspect()
   if (app.isPackaged) app.setAsDefaultProtocolClient("pigclaude")
 }
 

@@ -127,7 +127,7 @@
   border-radius: 5px;
   color: var(--fg-2);
   font-size: var(--fs-sm);
-  font-weight: 400;
+  font-weight: var(--font-weight-ui);
 }
 .seg .seg-item:hover {
   color: var(--fg);

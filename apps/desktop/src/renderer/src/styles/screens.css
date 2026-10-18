@@ -48,7 +48,7 @@
   border-radius: 4px;
   background: var(--hover);
   font-family: var(--font-mono);
-  font-size: calc(var(--ui-scale) * 12px);
+  font-size: calc(var(--fs-code) + 0.5px);
   font-weight: var(--font-weight-code);
 }
 
@@ -314,7 +314,8 @@
   border-radius: var(--r-md);
   background: var(--panel);
   font-family: var(--font-mono);
-  font-size: calc(var(--ui-scale) * 11.5px);
+  font-size: var(--fs-code);
+  font-weight: var(--font-weight-code);
 }
 
 .perm .acts {
@@ -741,7 +742,7 @@
 .lane strong {
   font-family: var(--font-mono);
   font-size: var(--fs-sm);
-  font-weight: 400;
+  font-weight: var(--font-weight-code);
 }
 
 .verdict {

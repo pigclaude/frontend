@@ -7,6 +7,7 @@ import type {
 } from "@pigclaude/contracts/security-settings"
 import { adminApi } from "@/lib/api"
 import { useAdminMe } from "./use-admin-me"
+import { securitySettingsErrorMessage } from "@/lib/security-settings-errors"
 import { canAdminPermission } from "@/lib/admin-permissions"
 /** 在权限门禁后加载设置，仅将验证过的服务端脱敏结果写入缓存。 */
 export function useSecuritySettings() {
@@ -48,7 +49,7 @@ export function useSecuritySettings() {
         void client.invalidateQueries({ queryKey: ["security-settings-audits"] })
         return view
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "设置操作失败")
+        setError(securitySettingsErrorMessage(cause))
         throw cause
       } finally {
         pending.current = false

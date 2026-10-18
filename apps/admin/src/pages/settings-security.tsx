@@ -15,6 +15,7 @@ import { PageHead } from "@/components/shell/page-head"
 import { SettingsNav } from "@/components/settings/settings-nav"
 import { TurnstileSettingsForm } from "@/components/settings/turnstile-settings-form"
 import { TurnstileSettingsHistory } from "@/components/settings/turnstile-settings-history"
+import { securitySettingsErrorMessage } from "@/lib/security-settings-errors"
 import { useSecuritySettings } from "@/hooks/use-security-settings"
 /** 拒绝无读权限页面与加载失败空默认值，路由跳转使用 data router blocker。 */
 export default function SettingsSecurityPage() {
@@ -64,7 +65,9 @@ export default function SettingsSecurityPage() {
         ) : !query.data ? (
           <section className="rounded-xl border border-border bg-[var(--card-bg)] p-5">
             <h2>设置加载失败</h2>
-            <p className="mt-2 text-xs text-meta">请重试后再编辑，避免以空值覆盖配置。</p>
+            <p role="alert" className="mt-2 text-xs text-meta">
+              {securitySettingsErrorMessage(query.error)}。请重试后再编辑，避免以空值覆盖配置。
+            </p>
             <Button className="mt-3" variant="outline" onClick={() => void query.refetch()}>
               重试
             </Button>
@@ -73,7 +76,7 @@ export default function SettingsSecurityPage() {
           <div className="min-w-0 space-y-4">
             {query.isError && (
               <div role="alert">
-                配置刷新失败，当前输入已保留。
+                配置刷新失败，当前输入已保留。{securitySettingsErrorMessage(query.error)}
                 <Button
                   variant="outline"
                   disabled={dirty || settings.busy}
@@ -105,6 +108,9 @@ export default function SettingsSecurityPage() {
             <TurnstileSettingsHistory
               data={history.data}
               error={history.isError}
+              errorMessage={
+                history.isError ? securitySettingsErrorMessage(history.error) : undefined
+              }
               onNext={settings.setCursor}
               onRetry={() => void history.refetch()}
             />

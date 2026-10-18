@@ -5,11 +5,13 @@ import { Button } from "@/components/ui/button"
 export function TurnstileSettingsHistory({
   data,
   error,
+  errorMessage,
   onNext,
   onRetry,
 }: {
   data?: SettingsAuditPage
   error: boolean
+  errorMessage?: string
   onNext: (cursor?: string) => void
   onRetry: () => void
 }) {
@@ -18,7 +20,7 @@ export function TurnstileSettingsHistory({
       <h2 className="text-sm font-medium">变更历史</h2>
       {error ? (
         <div role="alert">
-          历史加载失败{" "}
+          历史加载失败{errorMessage && `：${errorMessage}`}{" "}
           <Button variant="outline" size="sm" onClick={onRetry}>
             重试历史
           </Button>

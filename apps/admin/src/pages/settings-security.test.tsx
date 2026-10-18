@@ -81,7 +81,7 @@ beforeEach(() => {
     if (init?.method === "PUT") {
       writes.push(JSON.parse(String(init.body)) as unknown)
       if (failSave) {
-        body = { message: "保存失败" }
+        body = { code: "SETTINGS_UNAVAILABLE", message: "保存失败" }
         status = 503
       } else body = { revision: "3", active: summary, draft: { ...summary, revision: "3" } }
     } else if (init?.method === "POST" && path.endsWith("/activate") && failActivation) {
@@ -132,7 +132,7 @@ it("failed save retains form for retry without cached secrets", async () => {
     target: { value: "retry-secret" },
   })
   fireEvent.click(screen.getByRole("button", { name: "保存草稿" }))
-  await screen.findByText("保存失败")
+  await screen.findByText("安全设置暂时不可用，请稍后刷新，或联系管理员检查服务配置")
   expect((screen.getByLabelText("Secret Key") as HTMLInputElement).value).toBe("retry-secret")
   expect(JSON.stringify(client.getMutationCache().getAll())).not.toContain("retry-secret")
   failSave = false
@@ -212,7 +212,7 @@ it("failed activation keeps draft and requires a fresh proof for retry", async (
   await waitFor(() => expect(widgets).toHaveLength(1))
   act(() => widgets[0].callback("failed-proof"))
   fireEvent.click(screen.getByRole("button", { name: "验证并启用" }))
-  await screen.findByText("草稿验证失败")
+  await screen.findByText("草稿验证码无效或已过期，请重新验证")
   await waitFor(() => expect(widgets.length).toBeGreaterThan(1))
   expect((screen.getByRole("button", { name: "验证并启用" }) as HTMLButtonElement).disabled).toBe(
     true,
@@ -222,4 +222,73 @@ it("failed activation keeps draft and requires a fresh proof for retry", async (
     true,
   )
   expect((screen.getByLabelText("Site Key") as HTMLInputElement).value).toBe("candidate-site")
+})
+
+it.each([
+  [
+    "INVALID_INPUT",
+    400,
+    "设置输入不合法，请检查 Site Key、Secret Key 和允许主机名；管理设置不能使用测试 key",
+  ],
+  [
+    "SETTINGS_REVISION_CONFLICT",
+    409,
+    "设置已被其他管理员修改，请保留当前输入，撤销修改后刷新配置再重试",
+  ],
+  ["FORBIDDEN", 403, "没有管理设置的权限，或请求来源不受信任，请从管理后台重新登录后重试"],
+  ["SETTINGS_UNAVAILABLE", 503, "安全设置暂时不可用，请稍后刷新，或联系管理员检查服务配置"],
+  ["CAPTCHA_UNAVAILABLE", 503, "验证码服务暂时不可用，请稍后重新验证草稿"],
+  ["UNKNOWN_CODE", 500, "安全设置操作失败，请稍后重试"],
+])("shows safe Chinese write feedback for %s", async (code, status, message) => {
+  const normal = mocks.fetch.getMockImplementation()!
+  mocks.fetch.mockImplementation(async (url, init) =>
+    init?.method === "PUT"
+      ? new Response(
+          JSON.stringify({
+            code,
+            message: "SQL private-key-sentinel",
+            reason: "raw-internal-detail",
+          }),
+          { status },
+        )
+      : normal(url, init),
+  )
+  mount()
+  fireEvent.change(await screen.findByLabelText("Secret Key"), {
+    target: { value: "local-form-secret" },
+  })
+  fireEvent.click(screen.getByRole("button", { name: "保存草稿" }))
+  expect((await screen.findByRole("alert")).textContent).toBe(message)
+  expect(document.body.textContent).not.toContain("private-key-sentinel")
+  expect(document.body.textContent).not.toContain("raw-internal-detail")
+  expect((screen.getByLabelText("Secret Key") as HTMLInputElement).value).toBe("local-form-secret")
+})
+it("explains initial load failure using the stable code", async () => {
+  mocks.fetch.mockResolvedValue(
+    new Response(
+      JSON.stringify({ code: "SETTINGS_UNAVAILABLE", message: "SQL private-key-sentinel" }),
+      { status: 503 },
+    ),
+  )
+  mount()
+  expect((await screen.findByRole("alert")).textContent).toContain(
+    "安全设置暂时不可用，请稍后刷新，或联系管理员检查服务配置",
+  )
+  expect(screen.queryByLabelText("Site Key")).toBeNull()
+  expect(document.body.textContent).not.toContain("private-key-sentinel")
+})
+it("explains refresh failure while retaining the loaded view", async () => {
+  mount()
+  await screen.findByLabelText("Site Key")
+  mocks.fetch.mockResolvedValue(
+    new Response(JSON.stringify({ code: "FORBIDDEN", message: "SQL private-key-sentinel" }), {
+      status: 403,
+    }),
+  )
+  fireEvent.click(screen.getByRole("button", { name: "刷新配置" }))
+  expect((await screen.findByRole("alert")).textContent).toContain(
+    "没有管理设置的权限，或请求来源不受信任",
+  )
+  expect((screen.getByLabelText("Site Key") as HTMLInputElement).value).toBe("saved-site")
+  expect(document.body.textContent).not.toContain("private-key-sentinel")
 })

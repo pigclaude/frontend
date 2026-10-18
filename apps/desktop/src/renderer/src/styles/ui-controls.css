@@ -206,3 +206,165 @@
 .range-row .slider {
   margin: 0 0 0 2px;
 }
+
+/* 颜色选择器：触发按钮是圆色块加等宽 HEX；弹层宽 248px，从上到下是方块、色相条、输入行、常用色、说明 */
+.cp-trigger {
+  gap: 7px;
+  padding: 0 9px 0 7px;
+}
+.cp-trigger .mono {
+  color: var(--fg-2);
+  letter-spacing: 0.02em;
+}
+.cp-dot {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 var(--hair) var(--border-strong);
+}
+
+.popover.cp {
+  width: 248px;
+  padding: 10px;
+}
+.cp-sv,
+.cp-hue {
+  position: relative;
+  touch-action: none;
+  outline: none;
+}
+.cp-sv {
+  height: 150px;
+  border-radius: var(--r-md);
+  cursor: crosshair;
+}
+.cp-sv::before,
+.cp-sv::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.cp-sv::before {
+  background: linear-gradient(to right, var(--picker-white), transparent);
+}
+.cp-sv::after {
+  background: linear-gradient(to top, var(--picker-black), transparent);
+  box-shadow: inset 0 0 0 var(--hair) var(--picker-edge);
+}
+.cp-hue {
+  height: 12px;
+  margin: 12px 0 10px;
+  border-radius: var(--r-full);
+  background: var(--picker-hue);
+  box-shadow: inset 0 0 0 var(--hair) var(--picker-edge);
+}
+.cp-knob {
+  position: absolute;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  box-shadow: var(--picker-knob-shadow);
+  pointer-events: none;
+  transition: transform var(--t-fast) var(--ease);
+}
+.cp-hue .cp-knob {
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+}
+.cp-sv:active .cp-knob,
+.cp-hue:active .cp-knob {
+  transform: scale(1.12);
+}
+.cp-sv:focus-visible .cp-knob,
+.cp-hue:focus-visible .cp-knob {
+  box-shadow:
+    var(--picker-knob-shadow),
+    0 0 0 5px var(--border-focus);
+}
+
+.cp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cp-preview {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-md);
+  box-shadow: inset 0 0 0 var(--hair) var(--border-strong);
+}
+.cp-row .cp-hex {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.cp-row .btn-icon {
+  flex: none;
+}
+
+.cp-swatches {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 7px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: var(--hair) solid var(--divider);
+}
+.cp-swatch {
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 var(--hair) var(--border-strong);
+  transition: transform var(--t-fast) var(--ease);
+}
+.cp-swatch:hover {
+  transform: scale(1.08);
+}
+.cp-swatch[aria-pressed="true"] {
+  box-shadow:
+    0 0 0 2px var(--popover),
+    0 0 0 3.5px var(--fg);
+}
+.cp-swatch:focus-visible {
+  outline: 1px solid var(--border-focus);
+  outline-offset: 3px;
+}
+
+.cp-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+}
+.cp-note {
+  min-width: 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.cp-note.is-low {
+  color: var(--warn-text);
+}
+.cp-foot .btn-sm {
+  flex: none;
+  gap: 4px;
+  padding: 0 7px 0 6px;
+}
+.cp-foot .btn-sm .ic {
+  width: 13px;
+  height: 13px;
+}

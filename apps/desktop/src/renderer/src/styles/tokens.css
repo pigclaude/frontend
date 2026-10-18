@@ -184,6 +184,23 @@
   --col-narrow: 620px;
   --gap: 0px;
 
+  /* 颜色选择器的色域：白到透明、黑到透明、色相彩虹和拖柄白圈，与主题无关 */
+  --picker-white: oklch(100% 0 0);
+  --picker-black: oklch(0% 0 0);
+  --picker-edge: oklch(0% 0 0 / 0.14);
+  --picker-hue: linear-gradient(
+    to right,
+    #ff0000,
+    #ffff00,
+    #00ff00,
+    #00ffff,
+    #0000ff,
+    #ff00ff,
+    #ff0000
+  );
+  --picker-knob-shadow:
+    0 0 0 2px var(--picker-white), 0 0 0 2.5px oklch(0% 0 0 / 0.18), 0 1px 4px oklch(0% 0 0 / 0.3);
+
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   --t-fast: 90ms;
   --t-med: 150ms;

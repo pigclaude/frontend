@@ -1,6 +1,7 @@
 // 负责迁入 Pigcursor 成熟后台的admin-shell组件与交互，保持原有布局和语义。
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Outlet, useLocation, useNavigate } from "react-router"
+import { ApiError } from "@pigclaude/api/client"
 import { useQueryClient } from "@tanstack/react-query"
 import { PanelLeft, Search } from "lucide-react"
 import { cn } from "@pigclaude/web-ui/lib/utils"
@@ -14,6 +15,7 @@ import { ThemeButton } from "../theme-button"
 import { Cmdk } from "./cmdk"
 import { Crumbs } from "./crumbs"
 import { SideNav } from "./side-nav"
+import { useMobileNavigation } from "./use-mobile-navigation"
 import "./admin-shell.css"
 
 const RAIL_KEY = "pigclaude-admin-sidebar"
@@ -36,15 +38,24 @@ function readRail(): boolean {
  */
 /** AdminShell 保持后台组件的样式、可访问语义和交互契约。 */
 export function AdminShell() {
-  const [sideOpen, setSideOpen] = useState(false)
   const [rail, setRail] = useState(readRail)
   const [cmdkOpen, setCmdkOpen] = useState(false)
   const isMobile = useMediaQuery("(max-width: 768px)")
+  const {
+    sideOpen,
+    setSideOpen,
+    mobileOpen,
+    closeSide,
+    sideRef,
+    toggleRef,
+    onSideKeyDown,
+    restoreToggleFocus,
+  } = useMobileNavigation(isMobile)
+  const logoutLock = useRef(false)
+  const [logoutPending, setLogoutPending] = useState(false)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { pathname } = useLocation()
-
-  const closeSide = () => setSideOpen(false)
 
   function toggleSidebar() {
     if (isMobile) {
@@ -60,15 +71,6 @@ export function AdminShell() {
       return !v
     })
   }
-
-  useEffect(() => {
-    if (!sideOpen) return
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") closeSide()
-    }
-    document.addEventListener("keydown", onKeyDown)
-    return () => document.removeEventListener("keydown", onKeyDown)
-  }, [sideOpen])
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -87,26 +89,45 @@ export function AdminShell() {
   })
 
   async function handleLogout() {
+    if (logoutLock.current) return
+    logoutLock.current = true
+    setLogoutPending(true)
     try {
-      await adminApi.auth.logout()
-    } catch (e) {
-      toastApiError(e)
-    } finally {
+      try {
+        await adminApi.auth.logout()
+      } catch (error) {
+        if (!(error instanceof ApiError && error.status === 401)) {
+          toastApiError(error)
+          return
+        }
+      }
+      await queryClient.cancelQueries()
       queryClient.clear()
       navigate("/login", { replace: true })
+    } finally {
+      logoutLock.current = false
+      setLogoutPending(false)
     }
   }
 
   return (
     <TooltipProvider>
-      <div className={cn("admin-shell flex min-h-dvh", sideOpen && "side-open")}>
+      <div className={cn("admin-shell flex min-h-dvh", mobileOpen && "side-open")}>
         <SideNav
+          navigationRef={sideRef}
+          onInactiveMenuClose={restoreToggleFocus}
+          inactive={isMobile && !sideOpen}
+          onNavigationKeyDown={onSideKeyDown}
+          logoutPending={logoutPending}
           rail={rail && !isMobile}
           onNavigate={closeSide}
           onLogout={handleLogout}
-          onOpenCmdk={() => setCmdkOpen(true)}
+          onOpenCmdk={() => {
+            closeSide()
+            setCmdkOpen(true)
+          }}
         />
-        {sideOpen && (
+        {mobileOpen && (
           <div
             className="fixed inset-0 z-[74] hidden animate-in bg-[var(--backdrop-soft)] backdrop-blur-[2px] fade-in-0 [@media(max-width:768px)]:block"
             onClick={closeSide}
@@ -114,11 +135,16 @@ export function AdminShell() {
           />
         )}
 
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div
+          className="flex min-w-0 flex-1 flex-col"
+          inert={mobileOpen}
+          aria-hidden={mobileOpen || undefined}
+        >
           <header className="sticky top-0 z-[60] flex h-14 shrink-0 items-center gap-3 border-b border-border-soft bg-[var(--topbar-bg)] px-4 backdrop-blur-[12px] backdrop-saturate-150 md:px-6">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
+                  ref={toggleRef}
                   type="button"
                   variant="ghost"
                   size="icon-sm"

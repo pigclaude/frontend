@@ -1,4 +1,5 @@
 // 负责迁入 Pigcursor 成熟后台的side-nav组件与交互，保持原有布局和语义。
+import { useEffect, useState, type KeyboardEventHandler, type Ref } from "react"
 import { Link, useLocation } from "react-router"
 import { ChevronsUpDown, LogOut, Search, SunMoon } from "lucide-react"
 import { cn } from "@pigclaude/web-ui/lib/utils"
@@ -19,6 +20,13 @@ import { BrandMark } from "./brand-mark"
 import { NAV_ICONS } from "./nav-icons"
 
 interface SideNavProps {
+  /** 移动关闭时使整棵导航不可交互，并提供可见焦点边界。 */
+  inactive: boolean
+  navigationRef: Ref<HTMLElement>
+  onInactiveMenuClose: () => void
+  onNavigationKeyDown: KeyboardEventHandler<HTMLElement>
+  /** 退出未完成前保持禁用，避免重复撤销。 */
+  logoutPending: boolean
   /** 桌面端折叠为 64px 图标轨（移动端抽屉始终展开）。 */
   rail: boolean
   /** 点击品牌区或菜单链接后触发——移动端抽屉用它关闭自身。 */
@@ -28,11 +36,25 @@ interface SideNavProps {
 }
 
 /** SideNav 保持后台组件的样式、可访问语义和交互契约。 */
-export function SideNav({ rail, onNavigate, onLogout, onOpenCmdk }: SideNavProps) {
+export function SideNav({
+  rail,
+  onNavigate,
+  onLogout,
+  onOpenCmdk,
+  inactive,
+  navigationRef,
+  onInactiveMenuClose,
+  onNavigationKeyDown,
+  logoutPending,
+}: SideNavProps) {
   const { pathname } = useLocation()
 
   return (
     <aside
+      ref={navigationRef}
+      inert={inactive}
+      aria-hidden={inactive || undefined}
+      onKeyDown={onNavigationKeyDown}
       aria-label="管理后台导航"
       data-rail={rail}
       className="admin-side flex flex-col border-r border-border-soft bg-panel"
@@ -89,7 +111,14 @@ export function SideNav({ rail, onNavigate, onLogout, onOpenCmdk }: SideNavProps
       </nav>
 
       <div className={cn("shrink-0 border-t border-border-soft p-3", rail && "px-0")}>
-        <UserMenu rail={rail} onLogout={onLogout} onOpenCmdk={onOpenCmdk} />
+        <UserMenu
+          rail={rail}
+          inactive={inactive}
+          onInactiveMenuClose={onInactiveMenuClose}
+          logoutPending={logoutPending}
+          onLogout={onLogout}
+          onOpenCmdk={onOpenCmdk}
+        />
       </div>
     </aside>
   )
@@ -153,19 +182,29 @@ function NavEntry({
 /** UserMenu 保持后台组件的样式、可访问语义和交互契约。 */
 function UserMenu({
   rail,
+  onInactiveMenuClose,
+  inactive,
+  logoutPending,
   onLogout,
   onOpenCmdk,
 }: {
   rail: boolean
+  inactive: boolean
+  onInactiveMenuClose: () => void
+  logoutPending: boolean
   onLogout: () => void
   onOpenCmdk: () => void
 }) {
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (inactive) setOpen(false)
+  }, [inactive])
   const { data: me } = useAdminMe()
   const account = me?.account ?? ""
   const initial = (account || "?").slice(0, 1).toUpperCase()
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={!inactive && open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
@@ -192,6 +231,13 @@ function UserMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
+        onCloseAutoFocus={(event) => {
+          // 抽屉已关闭时，焦点由外壳归还可见开关，不能再回到屏外账号按钮。
+          if (inactive) {
+            event.preventDefault()
+            onInactiveMenuClose()
+          }
+        }}
         side={rail ? "right" : "top"}
         align={rail ? "end" : "start"}
         className={rail ? undefined : "w-(--radix-dropdown-menu-trigger-width)"}
@@ -211,7 +257,7 @@ function UserMenu({
           切换明暗主题
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onSelect={onLogout}>
+        <DropdownMenuItem variant="destructive" disabled={logoutPending} onSelect={onLogout}>
           <LogOut />
           退出登录
         </DropdownMenuItem>

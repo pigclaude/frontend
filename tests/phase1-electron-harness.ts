@@ -6,6 +6,8 @@ import { createRequire } from "node:module"
 import { join, resolve } from "node:path"
 import type { MembershipSessionRecord } from "../packages/contracts/src/desktop-membership"
 import type { MembershipView } from "../packages/contracts/src/membership"
+import { OwnedProcess, cleanupFailedLaunch } from "./phase1-owned-process"
+import { desktopEnvironment } from "./phase1-production-desktop-support"
 import type { PigclaudeBridge } from "../apps/desktop/src/preload"
 
 type BridgeWindow = Window & { pigclaude: PigclaudeBridge }
@@ -15,6 +17,7 @@ export type DesktopHarness = {
   application: ElectronApplication
   window: Page
   child: ChildProcess
+  owner: OwnedProcess
   closed: boolean
 }
 
@@ -23,27 +26,22 @@ export async function launchDesktop(
   userData: string,
   rustUrl: string,
   homeUrl: string,
+  owners?: Set<OwnedProcess>,
 ): Promise<DesktopHarness> {
   const requireDesktop = createRequire(resolve("apps/desktop/package.json"))
-  const environment: Record<string, string> = {}
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined && key !== "ELECTRON_RUN_AS_NODE" && key !== "ELECTRON_RENDERER_URL") {
-      environment[key] = value
-    }
-  }
+  const executablePath = requireDesktop("electron") as string
+  const owner = new OwnedProcess(executablePath)
+  owners?.add(owner)
+  owner.beginLaunch()
   const application = await _electron.launch({
-    executablePath: requireDesktop("electron") as string,
-    args: [resolve("apps/desktop")],
-    env: {
-      ...environment,
-      PIGCLAUDE_USER_DATA: userData,
-      PIGCLAUDE_RUST_BASE_URL: rustUrl,
-      PIGCLAUDE_AUTH_ORIGIN: homeUrl,
-    },
+    executablePath,
+    args: [resolve("apps/desktop"), owner.marker],
+    env: desktopEnvironment(process.env, userData, rustUrl, homeUrl),
     timeout: 30_000,
   })
   const child = application.process()
   try {
+    await owner.capture()
     expect(await application.evaluate(({ app }) => app.getPath("userData"))).toBe(userData)
     expect(
       await application.evaluate(({ safeStorage }) => safeStorage.isEncryptionAvailable()),
@@ -52,9 +50,9 @@ export async function launchDesktop(
     await renderer.waitForFunction(() =>
       Boolean((window as unknown as BridgeWindow).pigclaude?.authorization),
     )
-    return { application, window: renderer, child, closed: false }
+    return { application, window: renderer, child, owner, closed: false }
   } catch (error: unknown) {
-    await application.close().catch(() => undefined)
+    await cleanupFailedLaunch(owner, () => application.close())
     throw error
   }
 }
@@ -62,20 +60,8 @@ export async function launchDesktop(
 /** 幂等关闭本次启动的真实进程；异常时只终止已保存的该进程，不访问失效 transport。 */
 export async function closeDesktop(desktop: DesktopHarness): Promise<void> {
   if (desktop.closed) return
-  try {
-    await desktop.application.close()
-  } catch {
-    if (desktop.child.exitCode === null && desktop.child.signalCode === null) {
-      await new Promise<void>((resolveExit, rejectExit) => {
-        const timer = setTimeout(() => rejectExit(new Error("验收 Electron 未退出")), 5_000)
-        desktop.child.once("exit", () => {
-          clearTimeout(timer)
-          resolveExit()
-        })
-        desktop.child.kill("SIGKILL")
-      })
-    }
-  }
+  if (!(await cleanupFailedLaunch(desktop.owner, () => desktop.application.close())))
+    throw new Error("验收 Electron 归属进程退出未确认")
   desktop.closed = true
 }
 

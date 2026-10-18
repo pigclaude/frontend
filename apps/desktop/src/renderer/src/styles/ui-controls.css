@@ -50,6 +50,7 @@
   transform: translateY(-70%) rotate(45deg);
   pointer-events: none;
 }
+/* 90px 是改用 Radix 之前原生 select 按当前选项撑开的宽度，保持像素一致；选项变了要重量 */
 .select-trigger.select-bare {
   width: 90px;
 }
@@ -203,6 +204,7 @@
   height: 100%;
 }
 
+/* 原生 range 自带 2px 外边距，轨道和滑块整体右移 2px；保留它让像素与改动前一致 */
 .range-row .slider {
   margin: 0 0 0 2px;
 }

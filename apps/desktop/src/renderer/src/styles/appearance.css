@@ -32,7 +32,6 @@
 [data-pointer="true"] [role="option"],
 [data-pointer="true"] [role="menuitem"],
 [data-pointer="true"] [role="radio"],
-[data-pointer="true"] .seg button,
 [data-pointer="true"] a {
   cursor: pointer;
 }

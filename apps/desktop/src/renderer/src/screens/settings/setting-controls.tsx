@@ -93,20 +93,18 @@ export function SelectControl({
   onChange: (value: string) => void
 }) {
   return (
-    <div className="select-wrap">
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger style={{ width }} aria-label={label}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option} value={option}>
-              {option}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger style={{ width }} aria-label={label}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option} value={option}>
+            {option}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 

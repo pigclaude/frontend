@@ -6,6 +6,7 @@ const port = 5273
 export default defineConfig({
   testDir: "./visual",
   testMatch: "*.visual.ts",
+  // 路径里没有 {platform}：基线是在 macOS 本机按本机字体截的，只能在 macOS 上比对，Linux CI 会失败
   snapshotPathTemplate: "{testDir}/__screenshots__/{arg}{ext}",
   fullyParallel: true,
   reporter: "list",

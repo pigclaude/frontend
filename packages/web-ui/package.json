@@ -12,7 +12,7 @@
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run && node --test migration-evidence.node.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

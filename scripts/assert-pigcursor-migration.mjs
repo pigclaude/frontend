@@ -1,10 +1,16 @@
-// 负责验证 pigcursor 固定 Git 来源、迁移源码清单、包 scope 和运行时路径边界。
+// 负责审计固定 Pigcursor 来源与目标共享源码的一致性；不宣称页面视觉或业务验收。
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readdir, readFile } from "node:fs/promises"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
+import prettier from "prettier"
+import ts from "typescript"
 
-const root = join(import.meta.dirname, "..")
+const targetIndex = process.argv.indexOf("--target-root")
+const root =
+  targetIndex === -1
+    ? join(import.meta.dirname, "..")
+    : resolve(process.argv[targetIndex + 1] ?? "")
 const sourceRoot = "/Users/liuqin/Documents/workspace/typescript/pigcursor/frontend"
 const sourceCommit = "f6ff3383a2119d7030ea2cd21b0544671ad676bd"
 const sourceManifest = {
@@ -99,4 +105,131 @@ for (const name of ["web-ui", "api", "contracts"]) {
     if (source.includes(sourceRoot)) throw new Error(`${file} imports pigcursor checkout path`)
   }
 }
-console.log(`pigcursor migration ${sourceCommit} verified for ${expected.join(", ")}`)
+// 此清单比较实际目标源码，不把源 blob 的存在误当作目标迁移完成。
+const sharedStyles = ["globals.css", "tokens.css", "shadcn-bridge.css"]
+const sharedComponents = [
+  "alert",
+  "badge",
+  "button",
+  "card",
+  "checkbox",
+  "collapsible",
+  "command",
+  "dialog",
+  "dropdown-menu",
+  "empty",
+  "form",
+  "input",
+  "label",
+  "radio-group",
+  "scroll-area",
+  "select",
+  "separator",
+  "sheet",
+  "skeleton",
+  "slider-captcha",
+  "sonner",
+  "spinner",
+  "switch",
+  "table",
+  "tabs",
+  "textarea",
+  "toggle-group",
+  "toggle",
+  "tooltip",
+  "pigcursor-mark",
+  "pigcursor-wordmark",
+]
+const migrationPairs = [
+  ...sharedStyles.map((name) => `styles/${name}`),
+  ...sharedComponents.map((name) => `components/${name}.tsx`),
+].map((source) => ({
+  source: `packages/web-ui/src/${source}`,
+  target: `packages/web-ui/src/${source.replaceAll("pigcursor-", "pigclaude-")}`,
+}))
+
+function stripCssComments(source) {
+  let result = ""
+  let quote = ""
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index]
+    if (quote) {
+      result += char
+      if (char === "\\") result += source[++index] ?? ""
+      else if (char === quote) quote = ""
+    } else if (char === '"' || char === "'") {
+      quote = char
+      result += char
+    } else if (char === "/" && source[index + 1] === "*") {
+      const end = source.indexOf("*/", index + 2)
+      if (end === -1) throw new Error("unterminated CSS comment")
+      index = end + 1
+      result += " "
+    } else {
+      result += char
+    }
+  }
+  return result
+}
+
+async function canonicalSource(source, file, transformBrand = false) {
+  if (file.endsWith(".css")) {
+    return prettier.format(stripCssComments(source), { parser: "css" })
+  }
+  // 仅放行明确的品牌 scope、组件名/路径和隐藏品牌文本替换。
+  const branded = transformBrand
+    ? source
+        .replaceAll("@pigcursor/", "@pigclaude/")
+        .replaceAll("Pigcursor", "Pigclaude")
+        .replaceAll("pigcursor-wordmark", "pigclaude-wordmark")
+        .replaceAll(">pigcursor<", ">pigclaude<")
+    : source
+  const formatted = await prettier.format(branded, {
+    parser: "typescript",
+    printWidth: 100,
+    semi: false,
+    singleQuote: false,
+    trailingComma: "all",
+    arrowParens: "always",
+  })
+  const syntax = ts.createSourceFile(
+    file,
+    formatted,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  )
+  return ts.createPrinter({ removeComments: true }).printFile(syntax)
+}
+
+// 批量读取固定提交的 blob，避免逐组件启动 Git 进程。
+const batch = execFileSync("git", ["-C", sourceRoot, "cat-file", "--batch"], {
+  input: migrationPairs.map((pair) => `${sourceCommit}:${pair.source}\n`).join(""),
+})
+let batchOffset = 0
+for (const pair of migrationPairs) {
+  const headerEnd = batch.indexOf(10, batchOffset)
+  const header = batch.subarray(batchOffset, headerEnd).toString("utf8")
+  const match = /^\S+ blob (\d+)$/.exec(header)
+  if (!match) throw new Error(`source blob unavailable: ${pair.source}: ${header}`)
+  const sourceStart = headerEnd + 1
+  const sourceEnd = sourceStart + Number(match[1])
+  const source = batch.subarray(sourceStart, sourceEnd).toString("utf8")
+  batchOffset = sourceEnd + 1
+  const target = await readFile(join(root, pair.target), "utf8")
+  const sourceCanonical = await canonicalSource(source, pair.source, true)
+  const targetCanonical = await canonicalSource(target, pair.target)
+  if (sourceCanonical !== targetCanonical) {
+    throw new Error(`target migration mismatch: ${pair.source} -> ${pair.target}`)
+  }
+  const sourceHash = createHash("sha256").update(source).digest("hex")
+  const targetHash = createHash("sha256").update(target).digest("hex")
+  console.log(
+    `shared-source ${pair.source} sha256=${sourceHash} -> ${pair.target} sha256=${targetHash}`,
+  )
+}
+console.log(
+  `Source provenance/package boundaries verified for ${expected.join(", ")}; ` +
+    `${migrationPairs.length} shared CSS/component source pairs match ${sourceCommit} ` +
+    "after documented scope/comment/format transformations. Page appearance and runtime behavior require separate acceptance.",
+)

@@ -28,6 +28,34 @@ for (const [file, before, after, shouldPass, caseName] of [
     "允许独立 CSS 注释与格式变化",
   ],
   ["components/button.tsx", "inline-flex", "inline-grid", false, "拒绝 Button 结构漂移"],
+  [
+    "ui/card.tsx",
+    "flex min-w-0 flex-col",
+    "flex min-w-0 flex-col gap-6 py-6",
+    false,
+    "拒绝后台卡片额外留白",
+  ],
+  [
+    "ui/switch.tsx",
+    "rounded-full bg-white",
+    "rounded-full bg-background",
+    false,
+    "拒绝后台开关滑块颜色漂移",
+  ],
+  [
+    "settings/turnstile-settings-form.tsx",
+    'from "@/components/ui/card"',
+    'from "@pigclaude/web-ui/components/card"',
+    false,
+    "拒绝设置引用共享 Card 替代实体",
+  ],
+  [
+    "settings/turnstile-settings-form.tsx",
+    'from "@/components/ui/switch"',
+    'from "@pigclaude/web-ui/components/switch"',
+    false,
+    "拒绝设置引用共享 Switch 替代实体",
+  ],
   ["settings/setting-row.tsx", "xl:grid-cols-", "lg:grid-cols-", false, "拒绝设置行断点漂移"],
   [
     "settings/secret-field.tsx",
@@ -56,10 +84,16 @@ for (const [file, before, after, shouldPass, caseName] of [
         join(target, "apps/admin/src/components/settings"),
         { recursive: true },
       )
+      await cp(
+        join(frontend, "apps/admin/src/components/ui"),
+        join(target, "apps/admin/src/components/ui"),
+        { recursive: true },
+      )
       await cp(join(frontend, "layout.json"), join(target, "layout.json"))
-      const path = file.startsWith("settings/")
-        ? join(target, "apps/admin/src/components", file)
-        : join(target, "packages/web-ui/src", file)
+      const path =
+        file.startsWith("settings/") || file.startsWith("ui/")
+          ? join(target, "apps/admin/src/components", file)
+          : join(target, "packages/web-ui/src", file)
       const source = await readFile(path, "utf8")
       assert.ok(source.includes(before), "负对照必须实际改变目标文件")
       await writeFile(path, source.replace(before, after))

@@ -155,6 +155,13 @@ migrationPairs.push(
   })),
 )
 
+migrationPairs.push(
+  ...["card", "switch"].map((name) => ({
+    source: `apps/admin/src/components/ui/${name}.tsx`,
+    target: `apps/admin/src/components/ui/${name}.tsx`,
+  })),
+)
+
 // 只移除 CSS parser 识别的独立注释节点；选择器、值和字符串内的 token 不做替换。
 function removeStandaloneCssComments(node) {
   if (!Array.isArray(node.nodes)) return
@@ -207,6 +214,36 @@ async function canonicalSource(source, file, transformBrand = false) {
   )
   return ts.createPrinter({ removeComments: true }).printFile(syntax)
 }
+
+// 设置面板必须消费固定来源的 admin 实体，存在同名共享组件不能作为替代。
+const settingsFormPath = "apps/admin/src/components/settings/turnstile-settings-form.tsx"
+const settingsForm = ts.createSourceFile(
+  settingsFormPath,
+  await readFile(join(root, settingsFormPath), "utf8"),
+  ts.ScriptTarget.Latest,
+  true,
+  ts.ScriptKind.TSX,
+)
+const requiredSettingsImports = new Map([
+  ["Card", "@/components/ui/card"],
+  ["CardHeader", "@/components/ui/card"],
+  ["CardFooter", "@/components/ui/card"],
+  ["CardDescription", "@/components/ui/card"],
+  ["CardTitle", "@/components/ui/card"],
+  ["Switch", "@/components/ui/switch"],
+])
+for (const statement of settingsForm.statements) {
+  if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue
+  const bindings = statement.importClause?.namedBindings
+  if (!bindings || !ts.isNamedImports(bindings)) continue
+  for (const item of bindings.elements) {
+    const name = item.propertyName?.text ?? item.name.text
+    if (requiredSettingsImports.get(name) === statement.moduleSpecifier.text)
+      requiredSettingsImports.delete(name)
+  }
+}
+if (requiredSettingsImports.size)
+  throw new Error("target migration mismatch: settings must use fixed admin Card/Switch entities")
 
 // 批量读取固定提交的 blob，避免逐组件启动 Git 进程。
 const batch = execFileSync("git", ["-C", sourceRoot, "cat-file", "--batch"], {

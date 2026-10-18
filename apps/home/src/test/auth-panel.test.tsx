@@ -1,5 +1,5 @@
 // 负责验证登录 mutation 的缓存刷新、pending、错误和查询重试 UI。
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiError } from "@pigclaude/api/client"
@@ -142,6 +142,19 @@ describe("AuthPanel mutation UI", () => {
   })
 
   it("shows pending state and then an API error", async () => {
+    const config = {
+      enabled: false,
+      provider: "turnstile",
+      siteKey: null,
+      mode: "disabled",
+    } as const
+    let resolveConfig: (value: typeof config) => void = () => undefined
+    mocks.captcha.mockResolvedValueOnce(config).mockImplementationOnce(
+      () =>
+        new Promise<typeof config>((resolve) => {
+          resolveConfig = resolve
+        }),
+    )
     let resolveLogin: (value: Record<string, never>) => void = () => undefined
     mocks.login.mockImplementation(
       () =>
@@ -167,9 +180,19 @@ describe("AuthPanel mutation UI", () => {
     resolveLogin({})
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/dashboard"))
 
+    await waitFor(() => expect(mocks.captcha).toHaveBeenCalledTimes(2))
+    expect((submit.querySelector("button[type=submit]") as HTMLButtonElement).disabled).toBe(true)
+    expect(mocks.login).toHaveBeenCalledTimes(1)
     mocks.login.mockRejectedValueOnce(new ApiError(401, { message: "凭据错误" }))
+    await act(async () => resolveConfig(config))
+    await waitFor(() =>
+      expect((submit.querySelector("button[type=submit]") as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    )
     fireEvent.submit(submit)
     expect((await screen.findByRole("alert")).textContent).toContain("凭据错误")
+    expect(mocks.login).toHaveBeenCalledTimes(2)
   })
 
   it("keeps an explicit retry action for query errors", () => {

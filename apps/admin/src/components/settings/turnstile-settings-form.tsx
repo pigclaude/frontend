@@ -9,15 +9,9 @@ import type {
 import { useTurnstileCaptcha } from "@pigclaude/web-ui/hooks/use-turnstile-captcha"
 import { TurnstileCaptcha } from "@pigclaude/web-ui/components/turnstile-captcha"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@pigclaude/web-ui/components/card"
+import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Switch } from "@pigclaude/web-ui/components/switch"
+import { Switch } from "@/components/ui/switch"
 import {
   Dialog,
   DialogContent,

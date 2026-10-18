@@ -154,13 +154,22 @@
     "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
   --font-mono:
     "SF Mono", ui-monospace, "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  /* 对话正文字体，默认与界面字体相同；字重由外观设置覆盖 */
+  --font-content: var(--font-ui);
+  --font-weight-ui: 400;
+  --font-weight-content: 400;
+  --font-weight-code: 400;
 
-  /* 字号：说明 11.5 / 次要 12 / 界面 13 / 对话 13.5 / 页面标题 15 */
-  --fs-xs: 11.5px;
-  --fs-sm: 12px;
-  --fs-md: 13px;
-  --fs-lg: 13.5px;
-  --fs-title: 15px;
+  /* 字号：说明 11.5 / 次要 12 / 界面 13 / 对话 13.5 / 页面标题 15，随「界面字号」整体缩放 */
+  --ui-scale: 1;
+  --fs-xs: calc(var(--ui-scale) * 11.5px);
+  --fs-sm: calc(var(--ui-scale) * 12px);
+  --fs-md: calc(var(--ui-scale) * 13px);
+  --fs-lg: calc(var(--ui-scale) * 13.5px);
+  --fs-title: calc(var(--ui-scale) * 15px);
+  /* 对话正文与代码的字号由外观设置直接给出，不随界面字号缩放 */
+  --fs-content: 13.5px;
+  --fs-code: 11.5px;
 
   /* 圆角：控件 6 / 分组与卡片 9 / 输入区与对话框 12 */
   --r-sm: 5px;

@@ -1,0 +1,65 @@
+/*
+  pigclaude 设计系统 · 外观设置开关
+  只响应 models/appearance-tokens.ts 写到 <html> 上的 data-* 属性；默认设置下不写属性，这里的规则都不生效。
+  颜色和字号走内联 CSS 变量，不在本文件定义。
+*/
+
+/* 减少动态效果：过渡时长归零，弹层不做位移和入场动画 */
+[data-motion="reduce"] {
+  --t-fast: 0ms;
+  --t-med: 0ms;
+}
+[data-motion="reduce"] .popover,
+[data-motion="reduce"] .dialog,
+[data-motion="reduce"] .toast,
+[data-motion="reduce"] .pop {
+  animation: none;
+  transform: none;
+}
+
+/* 差异标记用 +/−：去掉增删行底色，行首符号照常显示 */
+[data-diff="sign"] .diff .add,
+[data-diff="sign"] .diff .del {
+  background: none;
+}
+[data-diff="sign"] .diff .sg {
+  visibility: visible;
+}
+
+/* 使用指针光标 */
+[data-pointer="true"] button,
+[data-pointer="true"] [role="switch"],
+[data-pointer="true"] [role="option"],
+[data-pointer="true"] [role="menuitem"],
+[data-pointer="true"] [role="radio"],
+[data-pointer="true"] .seg button,
+[data-pointer="true"] a {
+  cursor: pointer;
+}
+
+/* 关闭字体平滑 */
+[data-smoothing="off"] body {
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+
+/* 页面全宽显示：内容列不设上限 */
+[data-fullwidth="true"] {
+  --col: 100%;
+  --col-narrow: 100%;
+}
+
+/* 自定义强调色：滑块填充用强调色，焦点加一圈淡色光晕 */
+[data-accent="custom"] .slider-range {
+  background: var(--primary);
+}
+[data-accent="custom"] .slider-thumb:focus-visible,
+[data-accent="custom"] .seg .seg-item:focus-visible,
+[data-accent="custom"] .radio:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+[data-accent="custom"] .select-trigger:focus-visible {
+  box-shadow:
+    inset 0 0 0 1px var(--border-focus),
+    0 0 0 3px var(--accent-ring);
+}

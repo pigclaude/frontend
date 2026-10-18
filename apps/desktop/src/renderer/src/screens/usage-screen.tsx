@@ -1,8 +1,21 @@
 // 负责展示只包含元数据的用量统计、图表和请求记录。
 import { useMemo, useState } from "react"
 import { Button } from "../components/ui/button"
+import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group"
 import { filterUsageRows, type UsageFilter } from "../models/operations-model"
 import { operationsUsageFixture } from "../fixtures/operations-fixtures"
+
+const ranges = [
+  ["today", "今天"],
+  ["7d", "7 天"],
+  ["30d", "30 天"],
+] as const
+
+const filters = [
+  ["all", "全部"],
+  ["switch", "换号"],
+  ["error", "错误"],
+] as const satisfies readonly (readonly [UsageFilter, string])[]
 
 /** 用量页面 props。 */
 export type UsageScreenProps = { usageFixture?: typeof operationsUsageFixture }
@@ -27,19 +40,18 @@ export function UsageScreen({ usageFixture = operationsUsageFixture }: UsageScre
           </div>
           <p className="sub">时间、账号、模型、状态码、耗时和 Token 数；不含提示词和回复</p>
         </div>
-        <div className="seg">
-          {["today", "7d", "30d"].map((item) => (
-            <Button
-              variant="plain"
-              key={item}
-              className={range === item ? "is-active" : ""}
-              type="button"
-              onClick={() => setRange(item)}
-            >
-              {item === "today" ? "今天" : item === "7d" ? "7 天" : "30 天"}
-            </Button>
+        <ToggleGroup
+          type="single"
+          aria-label="时间范围"
+          value={range}
+          onValueChange={(next) => next && setRange(next)}
+        >
+          {ranges.map(([id, label]) => (
+            <ToggleGroupItem key={id} value={id}>
+              {label}
+            </ToggleGroupItem>
           ))}
-        </div>
+        </ToggleGroup>
       </header>
       <div className="stats">
         {usageFixture.stats.map(([label, value, detail]) => (
@@ -53,24 +65,15 @@ export function UsageScreen({ usageFixture = operationsUsageFixture }: UsageScre
       <section className="section">
         <div className="section-head">
           <h2>每日 Token</h2>
-          <div className="seg">
-            <Button
-              variant="plain"
-              className={split === "account" ? "is-active" : ""}
-              type="button"
-              onClick={() => setSplit("account")}
-            >
-              按账号
-            </Button>
-            <Button
-              variant="plain"
-              className={split === "model" ? "is-active" : ""}
-              type="button"
-              onClick={() => setSplit("model")}
-            >
-              按模型
-            </Button>
-          </div>
+          <ToggleGroup
+            type="single"
+            aria-label="图表分组"
+            value={split}
+            onValueChange={(next) => next && setSplit(next)}
+          >
+            <ToggleGroupItem value="account">按账号</ToggleGroupItem>
+            <ToggleGroupItem value="model">按模型</ToggleGroupItem>
+          </ToggleGroup>
         </div>
         <div className="group chart-box">
           <svg
@@ -129,25 +132,21 @@ export function UsageScreen({ usageFixture = operationsUsageFixture }: UsageScre
       <section className="section">
         <div className="section-head">
           <h2>请求记录</h2>
-          <div className="seg">
-            {(
-              [
-                ["all", "全部"],
-                ["switch", "换号"],
-                ["error", "错误"],
-              ] as const
-            ).map(([id, label]) => (
-              <Button
-                variant="plain"
-                key={id}
-                className={filter === id ? "is-active" : ""}
-                type="button"
-                onClick={() => setFilter(id)}
-              >
+          <ToggleGroup
+            type="single"
+            aria-label="请求筛选"
+            value={filter}
+            onValueChange={(next) => {
+              const picked = filters.find(([id]) => id === next)
+              if (picked) setFilter(picked[0])
+            }}
+          >
+            {filters.map(([id, label]) => (
+              <ToggleGroupItem key={id} value={id}>
                 {label}
-              </Button>
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
         </div>
         <div className="group">
           <table className="dtable">

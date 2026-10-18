@@ -6,7 +6,6 @@ import { Button } from "../../../components/ui/button"
 import { ToggleGroup, ToggleGroupItem } from "../../../components/ui/toggle-group"
 import type { AppearanceController } from "../../../hooks/use-appearance"
 import { isFontInstalled } from "../../../lib/font-detect"
-import { setOverride } from "../../../models/appearance-settings"
 import { accentSwatches } from "../../../models/color-picker-model"
 import { installedFontOptions, uiFontOptions } from "../../../models/font-options"
 import {
@@ -15,6 +14,7 @@ import {
   selectTheme,
   selectUiFont,
   setAccentMode,
+  setThemeColor,
   shownColors,
   type Tone,
 } from "../../../models/theme-editing"
@@ -59,7 +59,7 @@ export function ThemeGroup({
     [slot.uiFont],
   )
   const setColor = (key: "bg" | "fg" | "accent") => (hex: `#${string}`) =>
-    update((current) => setOverride(current, tone, key, hex))
+    update((current) => setThemeColor(current, customThemes, tone, key, hex))
 
   return (
     <SettingSection className="tight">

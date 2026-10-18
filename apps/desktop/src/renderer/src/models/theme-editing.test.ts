@@ -13,6 +13,7 @@ import {
   selectTheme,
   setAccentMode,
   setSplitModes,
+  setThemeColor,
   shownColors,
   pigclaudeColors,
 } from "./theme-editing"
@@ -253,5 +254,33 @@ describe("exportTheme", () => {
     expect(json.schema).toBe("pigclaude-theme/1")
     expect(json.light.accent).toBe(pigclaudeColors.light.accent)
     expect(json.dark.bg).toBe("#101010")
+  })
+})
+
+describe("setThemeColor", () => {
+  it("写入与主题原值不同的颜色", () => {
+    const next = setThemeColor(base, [], "light", "bg", "#ABCDEF")
+    expect(next.overrides.pigclaude?.light?.bg).toBe("#ABCDEF")
+    expect(isThemeModified(next, "light")).toBe(true)
+  })
+  it("颜色等于主题原值时清掉修改，pigclaude 回到原始 tokens（大小写不敏感）", () => {
+    const changed = setThemeColor(base, [], "light", "bg", "#ABCDEF")
+    const next = setThemeColor(changed, [], "light", "bg", "#f4f4f5")
+    expect(next.overrides.pigclaude).toBeUndefined()
+    expect(isThemeModified(next, "light")).toBe(false)
+  })
+  it("内置主题按自己的原值判断", () => {
+    let settings = setAccentMode(selectTheme(base, "light", "chatgpt"), [], "light", "custom")
+    settings = setThemeColor(settings, [], "light", "accent", "#FF0000")
+    expect(isThemeModified(settings, "light")).toBe(true)
+    settings = setThemeColor(settings, [], "light", "accent", "#339cff")
+    expect(settings.overrides.chatgpt).toBeUndefined()
+    expect(isThemeModified(settings, "light")).toBe(false)
+  })
+  it("只清掉这一项，保留同模式的其它修改", () => {
+    let settings = setThemeColor(base, [], "dark", "fg", "#111111")
+    settings = setThemeColor(settings, [], "dark", "bg", "#000000")
+    settings = setThemeColor(settings, [], "dark", "bg", "#232325")
+    expect(settings.overrides.pigclaude).toEqual({ dark: { fg: "#111111" } })
   })
 })

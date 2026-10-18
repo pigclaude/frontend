@@ -61,6 +61,26 @@ export function isThemeModified(settings: AppearanceSettings, tone: Tone): boole
   return Boolean(changed.bg || changed.fg || (slot.accentMode === "custom" && changed.accent))
 }
 
+/** 两个 hex 是否是同一个颜色（不区分大小写）。 */
+export function sameHex(a: Hex, b: Hex): boolean {
+  return a.toLowerCase() === b.toLowerCase()
+}
+
+/**
+ * 在 tone 模式下把当前主题的 key 设为 hex。hex 等于主题原值时清掉这项修改而不是写入，
+ * 这样「默认」真正还原主题：pigclaude 回到 tokens.css 原值，「已修改」也随之消失。
+ */
+export function setThemeColor(
+  settings: AppearanceSettings,
+  custom: readonly ThemeDefinition[],
+  tone: Tone,
+  key: keyof ShownColors,
+  hex: Hex,
+): AppearanceSettings {
+  const { base } = shownColors(settings, custom, tone)
+  return setOverride(settings, tone, key, sameHex(hex, base[key]) ? null : hex)
+}
+
 /** 改回默认强调色时要清的模式：分别设置时只清 tone，共用一个槽时两个模式都清。 */
 function clearAccent(settings: AppearanceSettings, tone: Tone): AppearanceSettings {
   const tones: Tone[] = settings.splitModes ? [tone] : ["light", "dark"]

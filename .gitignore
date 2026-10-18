@@ -3,3 +3,6 @@ out/
 .superpowers/
 .next/
 *.tsbuildinfo
+
+test-results/
+playwright-report/

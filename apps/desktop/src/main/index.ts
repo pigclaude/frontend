@@ -11,6 +11,8 @@ import type {
 } from "./authorization/types"
 import { isAllowedAuthorizationUrl } from "./authorization/url-policy"
 import { createDesktopComposition, type DesktopComposition } from "./composition"
+import { readOrCreateDeviceIdentity } from "./device-identity"
+import { configureRuntimeProfile } from "./runtime-profile"
 import { FileSecretVault } from "./secret-vault"
 import {
   createMainWindowOptions,
@@ -22,7 +24,7 @@ import {
 const rustBaseUrl = process.env["PIGCLAUDE_RUST_BASE_URL"] ?? "http://127.0.0.1:8788"
 const authOrigin = process.env["PIGCLAUDE_AUTH_ORIGIN"] ?? "http://127.0.0.1:3000"
 const packagedRedirectUri = "pigclaude://authorize/callback"
-const hasSingleInstanceLock = app.requestSingleInstanceLock()
+const hasSingleInstanceLock = configureRuntimeProfile(app, process.env["PIGCLAUDE_USER_DATA"])
 let mainWindow: BrowserWindow | null = null
 let authorizationService: AuthorizationService | null = null
 let desktopComposition: DesktopComposition | null = null
@@ -160,13 +162,13 @@ async function setupAuthorization(): Promise<void> {
     join(app.getPath("userData"), "authorization-secrets.json"),
     safeStorage,
   )
+  const identity = await readOrCreateDeviceIdentity(vault)
   callbackServer = await createCallbackServer(handleCallbackUrl)
   desktopComposition = createDesktopComposition({
     authOrigin,
     apiOptions: { baseUrl: rustBaseUrl, authorizationOrigin: authOrigin },
     vault,
-    deviceId: process.env["PIGCLAUDE_DEVICE_ID"] ?? "pigclaude-desktop",
-    deviceFingerprintHash: process.env["PIGCLAUDE_DEVICE_FINGERPRINT_HASH"] ?? "pigclaude-desktop",
+    ...identity,
     onMembershipView: sendMembershipView,
   })
   authorizationService = desktopComposition.authorizationService

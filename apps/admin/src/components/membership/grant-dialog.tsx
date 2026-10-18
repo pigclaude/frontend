@@ -39,7 +39,7 @@ export function GrantDialog({
       void queryClient.invalidateQueries({ queryKey: ["admin-memberships"] })
       void queryClient.invalidateQueries({ queryKey: ["admin-audits"] })
       window.dispatchEvent(new CustomEvent("pigclaude:admin-membership", { detail: membership }))
-      toast.success(`会员 ${membership.userId} 已由服务端确认`)
+      toast.success(`已为用户 ${membership.userId} 授予会员`)
       onGranted()
       onOpenChange(false)
     },

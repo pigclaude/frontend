@@ -42,8 +42,8 @@ export function UserTable({ items, isPending, onDetail }: UserTableProps) {
           <TableEmptyRow
             columns={6}
             icon={SearchX}
-            title="没有匹配的用户"
-            description="换个关键词或状态筛选再试试。"
+            title="暂无用户"
+            description="稍后点击刷新，查看最新用户列表。"
           />
         ) : (
           items.map((u) => (

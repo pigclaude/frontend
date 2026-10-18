@@ -8,6 +8,8 @@ export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   test: {
     environment: "jsdom",
+    // pnpm -r 会同时启动多个应用测试，限制每个 jsdom 应用的文件并发预算。
+    maxWorkers: 2,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
   },

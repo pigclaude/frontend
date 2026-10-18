@@ -1,6 +1,6 @@
 // 负责提供带 cookie、错误解析和可注入 fetch 的共享 HTTP client。
 export interface ApiErrorBody {
-  code: number
+  code: number | string
   reason: string
   message: string
   metadata: Record<string, string>
@@ -8,12 +8,15 @@ export interface ApiErrorBody {
 
 /** 对外导出该模块能力，保证调用方使用稳定的类型或函数契约。 */
 export class ApiError extends Error {
+  /** 保留 Rust 的结构化错误码，页面可只翻译自己负责的错误。 */
+  readonly code: number | string | undefined
   readonly status: number
   readonly reason: string
   readonly metadata: Record<string, string>
   constructor(status: number, body?: Partial<ApiErrorBody>) {
     super(body?.message || `请求失败（${status}）`)
     this.name = "ApiError"
+    this.code = body?.code
     this.status = status
     this.reason = body?.reason || `HTTP_${status}`
     this.metadata = body?.metadata ?? {}

@@ -1,9 +1,12 @@
 // 负责管理员账号登录，登录成功后由服务端 cookie 和 me query 确认身份。
-import { FormEvent, useState } from "react"
+import { FormEvent, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useLocation, useNavigate } from "react-router"
 import { toast } from "sonner"
 import { ArrowLeft, LoaderCircle, LockKeyhole, UserRound } from "lucide-react"
+import { TurnstileCaptcha } from "@pigclaude/web-ui/components/turnstile-captcha"
+import { useTurnstileCaptcha } from "@pigclaude/web-ui/hooks/use-turnstile-captcha"
+import { captchaErrorMessage } from "@pigclaude/web-ui/lib/captcha-errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ThemeButton } from "@/components/theme-button"
@@ -21,24 +24,44 @@ export default function LoginPage() {
   const [account, setAccount] = useState("")
   const [password, setPassword] = useState("")
   const [pending, setPending] = useState(false)
+  const [captchaError, setCaptchaError] = useState<string | null>(null)
+  const submitting = useRef(false)
+  const captcha = useTurnstileCaptcha({
+    loadConfig: adminApi.auth.captcha,
+    action: "admin_login",
+  })
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (submitting.current || !captcha.ready) return
     if (account.trim().length < 3 || password.length < 8) {
       toast.error("请输入有效的账号和至少 8 位密码")
       return
     }
+    submitting.current = true
     setPending(true)
+    setCaptchaError(null)
     try {
-      await adminApi.auth.login({ account: account.trim(), password })
+      await captcha.run((captchaToken) =>
+        adminApi.auth.login({
+          account: account.trim(),
+          password,
+          ...(captchaToken ? { captchaToken } : {}),
+        }),
+      )
       await queryClient.invalidateQueries({ queryKey: ["admin-me"], refetchType: "all" })
       toast.success("登录成功")
       navigate(safeLoginRedirect(new URLSearchParams(location.search).get("redirect")), {
         replace: true,
       })
     } catch (error) {
-      toastApiError(error)
+      const message = captchaErrorMessage(error)
+      if (message) {
+        setCaptchaError(message)
+        captcha.retry()
+      } else toastApiError(error)
     } finally {
+      submitting.current = false
       setPending(false)
     }
   }
@@ -99,7 +122,18 @@ export default function LoginPage() {
               />
             </div>
           </div>
-          <Button type="submit" size="lg" className="mt-1 h-10 w-full" disabled={pending}>
+          <TurnstileCaptcha {...captcha.field} />
+          {captchaError && (
+            <p role="alert" className="text-sm text-destructive">
+              {captchaError}
+            </p>
+          )}
+          <Button
+            type="submit"
+            size="lg"
+            className="mt-1 h-10 w-full"
+            disabled={pending || !captcha.ready}
+          >
             {pending && <LoaderCircle className="animate-spin" />}
             {pending ? "登录中…" : "登录"}
           </Button>

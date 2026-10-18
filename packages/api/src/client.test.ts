@@ -3,6 +3,29 @@ import { describe, expect, it, vi } from "vitest"
 import { createClient } from "./client"
 
 describe("createClient", () => {
+  it("keeps numeric legacy envelopes and explicit reason/message/metadata unchanged", async () => {
+    const client = createClient({
+      fetch: vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            code: 1007,
+            reason: "OLD_AUTH_REASON",
+            message: "原凭据错误",
+            metadata: { field: "password" },
+          }),
+          { status: 400 },
+        ),
+      ),
+    })
+    await expect(client.post("/legacy/login")).rejects.toMatchObject({
+      status: 400,
+      code: 1007,
+      reason: "OLD_AUTH_REASON",
+      message: "原凭据错误",
+      metadata: { field: "password" },
+    })
+  })
+
   it("accepts an empty 204 response for admin logout", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }))
     const client = createClient({ fetch: fetcher })

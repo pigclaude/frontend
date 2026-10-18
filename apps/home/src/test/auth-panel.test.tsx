@@ -8,6 +8,7 @@ import { QueryError } from "@/components/query-state"
 
 const mocks = vi.hoisted(() => ({
   login: vi.fn(),
+  captcha: vi.fn(),
   register: vi.fn(),
   me: vi.fn(),
   entitlement: vi.fn(),
@@ -21,7 +22,7 @@ vi.mock("next/navigation", () => ({
 }))
 vi.mock("@/lib/api", () => ({
   homeApi: {
-    auth: { login: mocks.login, register: mocks.register },
+    auth: { login: mocks.login, register: mocks.register, captcha: mocks.captcha },
     user: { me: mocks.me },
     membership: { entitlement: mocks.entitlement },
   },
@@ -45,6 +46,12 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.searchParams = new URLSearchParams()
   mocks.login.mockResolvedValue({})
+  mocks.captcha.mockResolvedValue({
+    enabled: false,
+    provider: "turnstile",
+    siteKey: null,
+    mode: "disabled",
+  })
   mocks.register.mockResolvedValue({})
   mocks.me.mockResolvedValue({ id: "u-1" })
   mocks.entitlement.mockResolvedValue({ status: "active" })
@@ -89,6 +96,11 @@ describe("AuthPanel mutation UI", () => {
     renderPanel()
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
+    await waitFor(() =>
+      expect((document.querySelector("button[type=submit]") as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    )
     fireEvent.submit(document.querySelector("form") as HTMLFormElement)
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/dashboard"))
     expect(mocks.login).toHaveBeenCalledWith({ email: "ada@example.com", password: "password" })
@@ -101,6 +113,11 @@ describe("AuthPanel mutation UI", () => {
     renderPanel()
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
+    await waitFor(() =>
+      expect((document.querySelector("button[type=submit]") as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    )
     fireEvent.submit(document.querySelector("form") as HTMLFormElement)
     await waitFor(() =>
       expect(mocks.push).toHaveBeenCalledWith("/authorize/flow-1?state=flow-state"),
@@ -113,6 +130,11 @@ describe("AuthPanel mutation UI", () => {
     fireEvent.change(screen.getByLabelText("昵称"), { target: { value: "Ada" } })
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
+    await waitFor(() =>
+      expect((document.querySelector("button[type=submit]") as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    )
     fireEvent.submit(document.querySelector("form") as HTMLFormElement)
     await waitFor(() =>
       expect(mocks.push).toHaveBeenCalledWith("/authorize/flow-2?state=flow-state"),
@@ -131,6 +153,11 @@ describe("AuthPanel mutation UI", () => {
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
     const submit = document.querySelector("form") as HTMLFormElement
+    await waitFor(() =>
+      expect((submit.querySelector("button[type=submit]") as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    )
     fireEvent.submit(submit)
     await waitFor(() => {
       expect(

@@ -2,8 +2,21 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
 import { MemoryRouter } from "react-router"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import LoginPage from "./login"
+
+vi.mock("@/lib/api", () => ({
+  adminApi: {
+    auth: {
+      captcha: async () => ({
+        enabled: false,
+        provider: "turnstile",
+        siteKey: null,
+        mode: "disabled",
+      }),
+    },
+  },
+}))
 
 describe("LoginPage home link", () => {
   it("points to the public home origin by default", () => {

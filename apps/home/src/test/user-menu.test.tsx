@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   me: vi.fn(),
   logout: vi.fn(),
   login: vi.fn(),
+  captcha: vi.fn(),
   entitlement: vi.fn(),
   replace: vi.fn(),
   push: vi.fn(),
@@ -29,7 +30,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/api", () => ({
   homeApi: {
     user: { me: mocks.me },
-    auth: { logout: mocks.logout, login: mocks.login },
+    auth: { logout: mocks.logout, login: mocks.login, captcha: mocks.captcha },
     membership: { entitlement: mocks.entitlement },
   },
 }))
@@ -88,6 +89,12 @@ beforeEach(() => {
   mocks.me.mockResolvedValue(user)
   mocks.logout.mockResolvedValue(undefined)
   mocks.login.mockResolvedValue(user)
+  mocks.captcha.mockResolvedValue({
+    enabled: false,
+    provider: "turnstile",
+    siteKey: null,
+    mode: "disabled",
+  })
   mocks.entitlement.mockResolvedValue({ status: "active" })
 })
 afterEach(() => {
@@ -204,6 +211,11 @@ describe("home user menu lifecycle", () => {
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
     const nextUser = { ...user, id: "new-user-5678", nickname: "Grace", email: "new@example.com" }
     mocks.me.mockResolvedValue(nextUser)
+    await waitFor(() =>
+      expect((document.querySelector("button[type=submit]") as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    )
     fireEvent.submit(document.querySelector("form") as HTMLFormElement)
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/dashboard"))
     expect(client.getQueryData(["me"])).toEqual(nextUser)

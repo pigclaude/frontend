@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./captcha": "./src/captcha.ts",
     "./membership": "./src/membership.ts",
     "./device-authorization": "./src/device-authorization.ts",
     "./desktop-membership": "./src/desktop-membership.ts",

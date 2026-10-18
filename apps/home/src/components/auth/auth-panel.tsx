@@ -1,7 +1,7 @@
 // 负责登录和注册表单，提交只通过 homeApi 并刷新权威会话查询。
 "use client"
 
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@pigclaude/web-ui/components/button"
@@ -10,6 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@pigclaude/web-ui/comp
 import { Label } from "@pigclaude/web-ui/components/label"
 import { Input } from "@pigclaude/web-ui/components/input"
 import { ApiError } from "@pigclaude/api/client"
+import { TurnstileCaptcha } from "@pigclaude/web-ui/components/turnstile-captcha"
+import { useTurnstileCaptcha } from "@pigclaude/web-ui/hooks/use-turnstile-captcha"
+import { captchaErrorMessage } from "@pigclaude/web-ui/lib/captcha-errors"
 import { homeApi } from "@/lib/api"
 
 /** 登录和注册表单所需的模式。 */
@@ -36,13 +39,29 @@ export function AuthPanel({ initialMode }: { initialMode?: AuthMode } = {}) {
   const [password, setPassword] = useState("")
   const [nickname, setNickname] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const submitting = useRef(false)
+  const captcha = useTurnstileCaptcha({
+    loadConfig: homeApi.auth.captcha,
+    action: mode === "login" ? "home_login" : "home_register",
+  })
 
   const authMutation = useMutation({
-    mutationFn: async (values: { email: string; password: string; nickname: string }) => {
-      if (mode === "login")
-        return homeApi.auth.login({ email: values.email, password: values.password })
-      return homeApi.auth.register(values)
-    },
+    mutationFn: async (values: {
+      email: string
+      password: string
+      nickname: string
+      mode: AuthMode
+    }) =>
+      captcha.run((captchaToken) => {
+        const body = {
+          email: values.email,
+          password: values.password,
+          ...(captchaToken ? { captchaToken } : {}),
+        }
+        return values.mode === "login"
+          ? homeApi.auth.login(body)
+          : homeApi.auth.register({ ...body, nickname: values.nickname })
+      }),
     onSuccess: async () => {
       setError(null)
       await Promise.all([
@@ -55,14 +74,21 @@ export function AuthPanel({ initialMode }: { initialMode?: AuthMode } = {}) {
       router.push(safeRedirect(params.get("redirect")))
     },
     onError: (reason) => {
-      setError(reason instanceof ApiError ? reason.message : "请求失败，请稍后重试")
+      const message = captchaErrorMessage(reason)
+      setError(message ?? (reason instanceof ApiError ? reason.message : "请求失败，请稍后重试"))
+      if (message) captcha.retry()
+    },
+    onSettled: () => {
+      submitting.current = false
     },
   })
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (submitting.current || authMutation.isPending || !captcha.ready) return
+    submitting.current = true
     setError(null)
-    authMutation.mutate({ email, password, nickname })
+    authMutation.mutate({ email, password, nickname, mode })
   }
 
   return (
@@ -159,12 +185,17 @@ export function AuthPanel({ initialMode }: { initialMode?: AuthMode } = {}) {
                 </Button>
               </div>
             </div>
+            <TurnstileCaptcha {...captcha.field} />
             {error && (
               <p role="alert" className="query-error">
                 {error}
               </p>
             )}
-            <Button className="w-full" type="submit" disabled={authMutation.isPending}>
+            <Button
+              className="w-full"
+              type="submit"
+              disabled={authMutation.isPending || !captcha.ready}
+            >
               {authMutation.isPending ? "提交中…" : mode === "login" ? "登录" : "创建账号"}
             </Button>
           </form>

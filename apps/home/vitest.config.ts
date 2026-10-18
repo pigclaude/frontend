@@ -7,6 +7,7 @@ export default defineConfig({
   esbuild: { jsx: "automatic" },
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   test: {
+    maxWorkers: 2,
     environment: "jsdom",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
   },

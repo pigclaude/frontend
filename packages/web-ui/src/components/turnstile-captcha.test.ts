@@ -84,6 +84,42 @@ afterEach(() => {
 })
 
 describe("Turnstile challenge lifecycle", () => {
+  it("requests interaction-only display without accepting a proof before the SDK callback", async () => {
+    render(createElement(Harness))
+    await waitFor(() => expect(widgets).toHaveLength(1))
+    expect(latest().options).toMatchObject({ appearance: "interaction-only" })
+    expect(blocked()).toBe(true)
+    fireEvent.submit(document.querySelector("form") as HTMLFormElement)
+    expect(results).toEqual([])
+    act(() => latest().options.callback("verified-token"))
+    expect(blocked()).toBe(false)
+  })
+
+  it("shows completion only for the active proof and replaces it after expiry and retry", async () => {
+    render(createElement(Harness))
+    await waitFor(() => expect(widgets).toHaveLength(1))
+    expect(screen.queryByText("验证已完成")).toBeNull()
+    const old = latest()
+    act(() => old.options.callback(""))
+    expect(screen.queryByText("验证已完成")).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "重试验证码" }))
+    await waitFor(() => expect(widgets).toHaveLength(2))
+    const active = latest()
+    act(() => active.options.callback("fresh-token"))
+    expect(screen.getByRole("status").textContent).toContain("验证已完成")
+    act(() => active.options["expired-callback"]())
+    expect(screen.queryByText("验证已完成")).toBeNull()
+    expect(screen.getByRole("alert").textContent).toContain("验证码已过期")
+    expect(blocked()).toBe(true)
+    fireEvent.click(screen.getByRole("button", { name: "重试验证码" }))
+    await waitFor(() => expect(widgets).toHaveLength(3))
+    act(() => active.options.callback("late-token"))
+    expect(screen.queryByText("验证已完成")).toBeNull()
+    expect(blocked()).toBe(true)
+    act(() => latest().options.callback("new-token"))
+    expect(screen.getByRole("status").textContent).toContain("验证已完成")
+  })
+
   it("contains a synchronously failing config reader and keeps the form retryable", async () => {
     loadConfig.mockImplementationOnce(() => {
       throw new Error("reader unavailable")

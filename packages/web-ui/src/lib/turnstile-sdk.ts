@@ -7,6 +7,7 @@ export interface TurnstileOptions {
   action: CaptchaAction
   theme: "light" | "dark"
   size: "flexible" | "compact"
+  appearance: "interaction-only"
   language: "zh-cn"
   "response-field": false
   retry: "never"

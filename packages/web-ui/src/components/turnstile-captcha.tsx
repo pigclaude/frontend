@@ -1,8 +1,10 @@
 // 负责验证码配置反馈与官方 widget 生命周期，主题、尺寸或重置时销毁旧回调作用域。
 "use client"
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
+import { Shield } from "lucide-react"
 import type { CaptchaAction, CaptchaConfig } from "@pigclaude/contracts/captcha"
+import { Button } from "./button"
 import { useIsLightTheme } from "../lib/theme-hook"
 import { loadTurnstileSdk, type TurnstileSdk } from "../lib/turnstile-sdk"
 
@@ -21,7 +23,9 @@ export interface TurnstileCaptchaProps {
 /** 在原认证表单内展示验证码；失败与过期均保留明确重试入口。 */
 export function TurnstileCaptcha(props: TurnstileCaptchaProps) {
   if (props.config?.enabled === false) return null
-  if (props.error) return <CaptchaFeedback message={props.error} onRetry={props.onRetry} error />
+  if (props.error) {
+    return <CaptchaFeedback message={props.error} onRetry={props.onRetry} busy={props.busy} error />
+  }
   if (!props.config) return <CaptchaFeedback message="正在加载验证码…" />
   return (
     <TurnstileWidget
@@ -36,22 +40,45 @@ function CaptchaFeedback({
   message,
   onRetry,
   error = false,
+  busy = false,
+  children,
 }: {
   message: string
   onRetry?: () => void
   error?: boolean
+  busy?: boolean
+  children?: ReactNode
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-2 text-sm text-muted-foreground">
-      <p role={error ? "alert" : "status"}>{message}</p>
+    <div
+      className="min-w-0 w-full rounded-md border border-border bg-[var(--input-bg)] p-3"
+      aria-label="安全验证"
+      aria-busy={busy}
+    >
+      <div className="flex items-start gap-2.5">
+        <Shield aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0">
+          <p className="text-[13px] leading-5 font-medium text-[var(--fg-2)]">安全验证</p>
+          <p
+            role={error ? "alert" : "status"}
+            className={`break-words text-xs leading-5 ${error ? "text-[var(--danger-ink)]" : "text-muted-foreground"}`}
+          >
+            {message}
+          </p>
+        </div>
+      </div>
+      {children}
       {onRetry && (
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="xs"
+          disabled={busy}
           onClick={onRetry}
-          className="self-start underline underline-offset-4 hover:text-foreground"
+          className="mt-3 text-muted-foreground"
         >
           重试验证码
-        </button>
+        </Button>
       )}
     </div>
   )
@@ -68,7 +95,7 @@ function TurnstileWidget({
   const [compact, setCompact] = useState(true)
   const [measured, setMeasured] = useState(false)
   const [revision, setRevision] = useState(0)
-  const [message, setMessage] = useState<string | null>("正在加载验证码…")
+  const [message, setMessage] = useState("正在加载验证码…")
   const [failed, setFailed] = useState(false)
   const isLight = useIsLightTheme()
 
@@ -116,12 +143,14 @@ function TurnstileWidget({
         if (!active) return
         sdk = loaded
         try {
-          setMessage("请完成验证码验证")
+          setMessage("正在验证，请稍候…")
           widgetId = loaded.render(element, {
             sitekey: siteKey,
             action,
             theme: isLight ? "light" : "dark",
             size: compact ? "compact" : "flexible",
+            // 仅调整官方组件的展示时机，仍在 render 时执行验证并等待真实 token。
+            appearance: "interaction-only",
             language: "zh-cn",
             "response-field": false,
             retry: "never",
@@ -131,7 +160,7 @@ function TurnstileWidget({
               if (!active || !accepting) return
               if (!token) return invalidate("验证码验证失败，请重试")
               onVerified(token)
-              setMessage(null)
+              setMessage("验证已完成")
             },
             "expired-callback": () => invalidate("验证码已过期，请重新验证"),
             "error-callback": () => invalidate("验证码验证失败，请重试"),
@@ -153,19 +182,13 @@ function TurnstileWidget({
   }, [action, compact, isLight, measured, onInvalidate, onVerified, revision, siteKey])
 
   return (
-    <div className="flex min-w-0 w-full flex-col gap-2" aria-label="安全验证" aria-busy={busy}>
-      <div ref={container} className="min-w-0 w-full" />
-      {message && <CaptchaFeedback message={message} error={failed} />}
-      {failed && (
-        <button
-          type="button"
-          disabled={busy}
-          className="self-start text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
-          onClick={() => setRevision((value) => value + 1)}
-        >
-          重试验证码
-        </button>
-      )}
-    </div>
+    <CaptchaFeedback
+      message={message}
+      error={failed}
+      busy={busy}
+      onRetry={failed ? () => setRevision((value) => value + 1) : undefined}
+    >
+      <div ref={container} className="min-w-0 w-full [&:not(:empty)]:mt-3" />
+    </CaptchaFeedback>
   )
 }

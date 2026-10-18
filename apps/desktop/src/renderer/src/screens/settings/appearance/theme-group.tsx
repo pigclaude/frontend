@@ -58,6 +58,8 @@ export function ThemeGroup({
     () => installedFontOptions(uiFontOptions, slot.uiFont, isFontInstalled),
     [slot.uiFont],
   )
+  const setMode = (mode: typeof slot.accentMode) =>
+    update((current) => setAccentMode(current, customThemes, tone, mode))
   const setColor = (key: "bg" | "fg" | "accent") => (hex: `#${string}`) =>
     update((current) => setThemeColor(current, customThemes, tone, key, hex))
 
@@ -125,7 +127,7 @@ export function ThemeGroup({
           value={slot.accentMode}
           options={accentChoices}
           width={96}
-          onChange={(mode) => update((current) => setAccentMode(current, customThemes, tone, mode))}
+          onChange={setMode}
         />
         {slot.accentMode === "custom" ? (
           <ColorPicker
@@ -136,6 +138,7 @@ export function ThemeGroup({
             swatches={accentSwatches}
             defaultValue={base.accent}
             onChange={setColor("accent")}
+            onReset={() => setMode("default")}
           />
         ) : null}
       </SettingRow>

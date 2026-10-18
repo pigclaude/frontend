@@ -23,7 +23,10 @@ function eyeDropper(): EyeDropperConstructor | null {
   return (window as Window & { EyeDropper?: EyeDropperConstructor }).EyeDropper ?? null
 }
 
-/** ColorPicker 的参数。against 是计算对比度用的另一侧颜色，低于 minContrast 时提示偏低。 */
+/**
+ * ColorPicker 的参数。against 是计算对比度用的另一侧颜色，低于 minContrast 时提示偏低。
+ * 给了 onReset 时，「默认」按钮调用它，不再把 defaultValue 传给 onChange。
+ */
 export type ColorPickerProps = {
   label: string
   value: Hex
@@ -32,6 +35,7 @@ export type ColorPickerProps = {
   swatches?: readonly Hex[]
   defaultValue: Hex
   onChange: (value: Hex) => void
+  onReset?: () => void
 }
 
 /**
@@ -47,6 +51,7 @@ export function ColorPicker({
   swatches,
   defaultValue,
   onChange,
+  onReset,
 }: ColorPickerProps) {
   const fallback = parseHex(defaultValue) ?? "#000000"
   const current = parseHex(value) ?? fallback
@@ -149,7 +154,7 @@ export function ColorPicker({
         )}
         <div className="cp-foot">
           <span className={note.low ? "cp-note is-low" : "cp-note"}>{note.text}</span>
-          <Button type="button" size="sm" onClick={() => applyHex(fallback)}>
+          <Button type="button" size="sm" onClick={onReset ?? (() => applyHex(fallback))}>
             <Icon name="undo" />
             默认
           </Button>

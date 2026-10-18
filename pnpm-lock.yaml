@@ -69,6 +69,9 @@ importers:
       "@tiptap/extension-placeholder":
         specifier: ^3.32.0
         version: 3.32.0(@tiptap/extensions@3.32.0(@tiptap/core@3.32.0(@tiptap/pm@3.32.0))(@tiptap/pm@3.32.0))
+      "@tiptap/extension-typography":
+        specifier: ^3.32.0
+        version: 3.32.0(@tiptap/core@3.32.0(@tiptap/pm@3.32.0))
       "@tiptap/react":
         specifier: ^3.32.0
         version: 3.32.0(@floating-ui/dom@1.8.0)(@tiptap/core@3.32.0(@tiptap/pm@3.32.0))(@tiptap/pm@3.32.0)(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -1743,6 +1746,14 @@ packages:
     resolution:
       {
         integrity: sha512-sF0jIK67IHdZMnzv2mz5vPTyK7R0ui6/YZgFg+/bLnFCNmweVAoYcHZLlC7ISRnwu0mqJr+epNtzJepY1ZDCjg==,
+      }
+    peerDependencies:
+      "@tiptap/core": 3.32.0
+
+  "@tiptap/extension-typography@3.32.0":
+    resolution:
+      {
+        integrity: sha512-Qad+yXoZuYpfOg3A/1GHwwp1lq4q6+9VhHOG/ESuccRLibUdrorZ4Xi16yddCCZtS8GO+0ABJw5y7Uko5nYagQ==,
       }
     peerDependencies:
       "@tiptap/core": 3.32.0
@@ -4318,6 +4329,10 @@ snapshots:
       "@tiptap/core": 3.32.0(@tiptap/pm@3.32.0)
 
   "@tiptap/extension-text@3.32.0(@tiptap/core@3.32.0(@tiptap/pm@3.32.0))":
+    dependencies:
+      "@tiptap/core": 3.32.0(@tiptap/pm@3.32.0)
+
+  "@tiptap/extension-typography@3.32.0(@tiptap/core@3.32.0(@tiptap/pm@3.32.0))":
     dependencies:
       "@tiptap/core": 3.32.0(@tiptap/pm@3.32.0)
 

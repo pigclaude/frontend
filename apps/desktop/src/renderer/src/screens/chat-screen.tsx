@@ -12,10 +12,11 @@ export type ChatScreenProps = {
   fresh: boolean
   sessionFixture: SessionFixture
   onOpen: (screen: Screen) => void
+  smartPunctuation: boolean
 }
 
 /** 绘制新会话或进行中的会话页面。 */
-export function ChatScreen({ fresh, sessionFixture, onOpen }: ChatScreenProps) {
+export function ChatScreen({ fresh, sessionFixture, onOpen, smartPunctuation }: ChatScreenProps) {
   const [model, setModel] = useState("Sonnet 5.5")
   const [account, setAccount] = useState(sessionFixture.account)
   const [depth, setDepth] = useState<ThinkingDepth>("medium")
@@ -65,6 +66,7 @@ export function ChatScreen({ fresh, sessionFixture, onOpen }: ChatScreenProps) {
               onDepth={setDepth}
               permissionMode={permissionMode}
               onPermissionMode={setPermissionMode}
+              smartPunctuation={smartPunctuation}
               onSubmit={() => onOpen("chat")}
             />
             <div className="suggest">
@@ -222,6 +224,7 @@ export function ChatScreen({ fresh, sessionFixture, onOpen }: ChatScreenProps) {
           onDepth={setDepth}
           permissionMode={permissionMode}
           onPermissionMode={setPermissionMode}
+          smartPunctuation={smartPunctuation}
           onSubmit={() => undefined}
         />
         <p className="composer-meta">

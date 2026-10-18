@@ -2,8 +2,9 @@
 import { Placeholder } from "@tiptap/extension-placeholder"
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
-import { useRef } from "react"
+import { useMemo, useRef } from "react"
 import { Icon } from "./icon"
+import { createSmartPunctuation } from "./smart-punctuation"
 import {
   composerModels,
   getComposerKeyAction,
@@ -37,6 +38,7 @@ export type ComposerProps = {
   permissionMode?: PermissionMode
   onPermissionMode?: (mode: PermissionMode) => void
   onSubmit: (text: string) => void
+  smartPunctuation: boolean
 }
 
 /** 绘制 TipTap 输入区并保证空内容不可提交。 */
@@ -54,9 +56,13 @@ export function Composer({
   permissionMode = "ask",
   onPermissionMode,
   onSubmit,
+  smartPunctuation,
 }: ComposerProps) {
   const submitRef = useRef(onSubmit)
   submitRef.current = onSubmit
+  const smartRef = useRef(smartPunctuation)
+  smartRef.current = smartPunctuation
+  const smartExtension = useMemo(() => createSmartPunctuation(() => smartRef.current), [])
   const editor = useEditor({
     immediatelyRender: true,
     extensions: [
@@ -69,6 +75,7 @@ export function Composer({
         horizontalRule: false,
       }),
       Placeholder.configure({ placeholder }),
+      smartExtension,
     ],
     editorProps: {
       attributes: { class: "tiptap", "aria-label": "给 Claude 的消息" },

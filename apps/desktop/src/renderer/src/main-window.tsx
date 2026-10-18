@@ -174,6 +174,7 @@ export function MainWindow({
             fresh={screen === "chat-new"}
             sessionFixture={sessionFixture}
             onOpen={onNavigate}
+            smartPunctuation={appearance.settings.smartPunctuation}
           />
         ) : null}
         {screen === "onboarding" ? (

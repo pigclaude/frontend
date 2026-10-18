@@ -3,8 +3,15 @@ import type { Hex } from "./color-math"
 import { mixHex, readableOn } from "./color-math"
 import type { AppearanceSettings } from "./appearance-settings"
 import { activeSlot } from "./appearance-settings"
-import type { GlassTint } from "./appearance-glass"
-import { defaultGlass, deriveGlassVars, withAlpha } from "./appearance-glass"
+import type { GlassTint, Paint } from "./appearance-glass"
+import {
+  blendPaint,
+  defaultGlass,
+  deriveGlassVars,
+  paint,
+  pigclaudeOpaque,
+  withAlpha,
+} from "./appearance-glass"
 import type { ThemeDefinition } from "./theme-presets"
 import { findTheme } from "./theme-presets"
 
@@ -66,6 +73,8 @@ type OverlayName = (typeof overlayVars)[number]
 
 // 叠色用的黑与白，取自 tokens.css（浅色是带一点冷调的深灰，不是纯黑）
 const ink: Record<Tone, string> = { light: "oklch(20% 0.01 270", dark: "oklch(100% 0 0" }
+// 上面两种叠色的近似 sRGB，只用于插值
+const inkHex: Record<Tone, Hex> = { light: "#14161B", dark: "#FFFFFF" }
 
 // tokens.css 中叠色变量的 alpha；磨砂下 glass.css 改了其中三项
 const overlayBases: Record<Tone, Record<OverlayName, number>> = {
@@ -133,6 +142,12 @@ const round3 = (value: number): number => Number(value.toFixed(3))
 
 const overlay = (tone: Tone, alpha: number): string => `${ink[tone]} / ${round3(alpha)})`
 
+const overlayPaint = (tone: Tone, alpha: number): Paint =>
+  paint(inkHex[tone], alpha, overlay(tone, alpha))
+
+const cssOf = (paints: Record<string, Paint>): Vars =>
+  Object.fromEntries(Object.entries(paints).map(([name, value]) => [name, value.css]))
+
 /** 背景是浅色还是深色：在其上黑字更清楚就算浅色。 */
 const toneOf = (bg: Hex): Tone => (readableOn(bg) === black ? "light" : "dark")
 
@@ -182,32 +197,32 @@ function accentGroup(accent: Hex): Vars {
 }
 
 // 比例取自 tokens.css 中 pigclaude 各表面相对 --bg 的明暗差
-function surfaceGroup(bg: Hex, tone: Tone): Vars {
+function surfacePaints(bg: Hex, tone: Tone): Record<string, Paint> {
   if (tone === "light") {
     return {
-      "--window": mixHex(bg, black, 0.015),
-      "--wall-1": withAlpha(mixHex(bg, black, 0.06), 0.85),
-      "--wall-2": withAlpha(mixHex(bg, white, 0.8), 0.9),
-      "--sidebar": withAlpha(mixHex(bg, black, 0.025), 0.62),
-      "--bg": bg,
-      "--surface": mixHex(bg, white, 0.7),
-      "--panel": overlay(tone, 0.042),
-      "--popover": mixHex(bg, white, 0.6),
-      "--popover-glass": withAlpha(mixHex(bg, white, 0.5), 0.84),
-      "--avatar": mixHex(bg, black, 0.09),
+      "--window": paint(mixHex(bg, black, 0.015)),
+      "--wall-1": paint(mixHex(bg, black, 0.06), 0.85),
+      "--wall-2": paint(mixHex(bg, white, 0.8), 0.9),
+      "--sidebar": paint(mixHex(bg, black, 0.025), 0.62),
+      "--bg": paint(bg),
+      "--surface": paint(mixHex(bg, white, 0.7)),
+      "--panel": overlayPaint(tone, 0.042),
+      "--popover": paint(mixHex(bg, white, 0.6)),
+      "--popover-glass": paint(mixHex(bg, white, 0.5), 0.84),
+      "--avatar": paint(mixHex(bg, black, 0.09)),
     }
   }
   return {
-    "--window": mixHex(bg, black, 0.08),
-    "--wall-1": withAlpha(mixHex(bg, white, 0.06), 0.85),
-    "--wall-2": withAlpha(mixHex(bg, black, 0.3), 0.9),
-    "--sidebar": withAlpha(mixHex(bg, white, 0.02), 0.55),
-    "--bg": bg,
-    "--surface": mixHex(bg, white, 0.04),
-    "--panel": overlay(tone, 0.035),
-    "--popover": mixHex(bg, white, 0.055),
-    "--popover-glass": withAlpha(mixHex(bg, white, 0.065), 0.84),
-    "--avatar": mixHex(bg, white, 0.12),
+    "--window": paint(mixHex(bg, black, 0.08)),
+    "--wall-1": paint(mixHex(bg, white, 0.06), 0.85),
+    "--wall-2": paint(mixHex(bg, black, 0.3), 0.9),
+    "--sidebar": paint(mixHex(bg, white, 0.02), 0.55),
+    "--bg": paint(bg),
+    "--surface": paint(mixHex(bg, white, 0.04)),
+    "--panel": overlayPaint(tone, 0.035),
+    "--popover": paint(mixHex(bg, white, 0.055)),
+    "--popover-glass": paint(mixHex(bg, white, 0.065), 0.84),
+    "--avatar": paint(mixHex(bg, white, 0.12)),
   }
 }
 
@@ -226,11 +241,38 @@ function textGroup(fg: Hex, ground: Hex): Vars {
   }
 }
 
-function overlayGroup(tone: Tone, glass: boolean, contrast: number): Vars {
+/** glassMix 为 0 时取 tokens.css 的叠色基准，为 1 时取 glass.css 的（磨砂 g 从 0 到 60）。 */
+function overlayGroup(tone: Tone, glassMix: number, contrast: number): Vars {
   const k = contrastFactor(contrast)
-  const bases = { ...overlayBases[tone], ...(glass ? glassOverlayBases[tone] : {}) }
+  const glassy = glassOverlayBases[tone]
   const vars: Vars = {}
-  for (const name of overlayVars) vars[name] = overlay(tone, Math.min(1, bases[name] * k))
+  for (const name of overlayVars) {
+    const opaque = overlayBases[tone][name]
+    const base = opaque + ((glassy[name] ?? opaque) - opaque) * glassMix
+    vars[name] = overlay(tone, Math.min(1, base * k))
+  }
+  return vars
+}
+
+/**
+ * 磨砂下的表面：g=0 时等于同一主题的不透明配色（层次与关闭磨砂时相同），
+ * 0–60 过渡到 glass.css，60 以上继续变透。侧栏、头像底、输入高光同样从不透明值过渡。
+ */
+function glassGroup(bg: Hex | null, tone: Tone, env: AppearanceEnvironment, g: number): Vars {
+  const opaque = bg ? surfacePaints(bg, tone) : pigclaudeOpaque[tone]
+  const tint = bg ? glassTint(bg, tone) : null
+  const vars = deriveGlassVars(tone, tint, g, opaque)
+  const avatar = overlayPaint(tone, glassAvatarAlpha[tone])
+  if (g < defaultGlass) {
+    const s = g / defaultGlass
+    const sidebar = opaque["--sidebar"]
+    const fieldHl = pigclaudeOpaque[env.resolved]["--field-hl"]
+    vars["--sidebar"] = blendPaint(sidebar, paint(sidebar.color, 0, "transparent"), s)
+    vars["--field-hl"] = blendPaint(fieldHl, paint(fieldHl.color, 0, "transparent"), s)
+    vars["--avatar"] = blendPaint(opaque["--avatar"], avatar, s)
+  } else if (bg) {
+    vars["--avatar"] = avatar.css
+  }
   return vars
 }
 
@@ -243,15 +285,14 @@ function colorVars(
   const tone = bg ? toneOf(bg) : env.resolved
   const vars: Vars = {}
   if (accent) Object.assign(vars, accentGroup(accent))
-  if (bg && env.glass) vars["--avatar"] = overlay(tone, glassAvatarAlpha[tone])
-  else if (bg) Object.assign(vars, surfaceGroup(bg, tone))
+  if (bg && !env.glass) Object.assign(vars, cssOf(surfacePaints(bg, tone)))
   if (fg) Object.assign(vars, textGroup(fg, bg ?? pigclaudeBg[env.resolved]))
-  if (bg || settings.contrast !== defaultContrast) {
-    Object.assign(vars, overlayGroup(tone, env.glass, settings.contrast))
+  const g = settings.glass
+  const glassMix = env.glass ? Math.min(1, g / defaultGlass) : 0
+  if (bg || settings.contrast !== defaultContrast || (glassMix < 1 && env.glass)) {
+    Object.assign(vars, overlayGroup(tone, glassMix, settings.contrast))
   }
-  if (env.glass && (bg || settings.glass !== defaultGlass)) {
-    Object.assign(vars, deriveGlassVars(tone, bg ? glassTint(bg, tone) : null, settings.glass))
-  }
+  if (env.glass && (bg || g !== defaultGlass)) Object.assign(vars, glassGroup(bg, tone, env, g))
   return vars
 }
 

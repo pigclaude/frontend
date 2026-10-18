@@ -51,13 +51,17 @@ describe("磨砂", () => {
     deriveAppearance(withSettings({ glass: g }), [], env(tone, true)).vars
 
   for (const tone of ["light", "dark"] as const) {
-    it(`${tone}：g=0 时所有磨砂变量 alpha 为 1`, () => {
+    it(`${tone}：g=0 时底层与抬起的表面不透明`, () => {
       const vars = at(0, tone)
-      for (const name of names(tone)) expect(alphaOf(vars[name])).toBe(1)
+      for (const name of names(tone)) {
+        if (name === "--panel" || name === "--popover-glass") continue
+        expect(alphaOf(vars[name])).toBe(1)
+      }
     })
 
-    it(`${tone}：g 从 0 到 100 每个磨砂变量 alpha 单调不增`, () => {
-      for (const { name, alpha } of glassBases[tone]) {
+    it(`${tone}：g 从 0 到 100 每个面对桌面的磨砂变量 alpha 单调不增`, () => {
+      // --panel 是叠在 bg/surface 上的层，不直接面对桌面：g=0 时是 tokens.css 的淡叠色，不在此列
+      for (const { name, alpha } of glassBases[tone].filter((item) => item.name !== "--panel")) {
         let last = Infinity
         for (let g = 0; g <= 100; g += 10) {
           const value = at(g, tone)[name]
@@ -100,7 +104,7 @@ describe("磨砂", () => {
   })
 
   it("pigclaude 未改 bg 时保持白色调；改了 bg 用 bg 的 RGB", () => {
-    expect(at(0, "light")["--bg"]).toBe("rgb(255 255 255 / 1)")
+    expect(at(100, "light")["--bg"]).toBe("rgb(255 255 255 / 0.105)")
     const tinted = setOverride(withSettings({ glass: 60 }), "light", "bg", "#FAF0E6")
     const vars = deriveAppearance(tinted, [], env("light", true)).vars
     expect(vars["--bg"]).toBe("rgb(250 240 230 / 0.3)")

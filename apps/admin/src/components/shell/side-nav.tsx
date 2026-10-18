@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useAdminMe } from "@/hooks/use-admin-me"
+import { canAdminPermission } from "@/lib/admin-permissions"
 import { GROUPS, isNavParent, NAV, type NavItem } from "@/lib/nav"
 import { toggleTheme } from "@pigclaude/web-ui/lib/theme"
 import { BrandMark } from "./brand-mark"
@@ -48,6 +49,7 @@ export function SideNav({
   logoutPending,
 }: SideNavProps) {
   const { pathname } = useLocation()
+  const { data: me } = useAdminMe()
 
   return (
     <aside
@@ -93,7 +95,13 @@ export function SideNav({
                 {group}
               </span>
             )}
-            {NAV.filter((item) => item.group === group).map((item) => (
+            {NAV.filter(
+              (item) =>
+                item.group === group &&
+                (!item.permission ||
+                  (me?.status === "active" &&
+                    canAdminPermission(me.permissions ?? [], item.permission))),
+            ).map((item) => (
               <NavEntry
                 key={item.href}
                 item={item}

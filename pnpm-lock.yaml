@@ -32,6 +32,9 @@ importers:
       '@pigclaude/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@pigclaude/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@pigclaude/web-ui':
         specifier: workspace:*
         version: link:../../packages/web-ui

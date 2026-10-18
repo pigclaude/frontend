@@ -28,6 +28,14 @@ for (const [file, before, after, shouldPass, caseName] of [
     "允许独立 CSS 注释与格式变化",
   ],
   ["components/button.tsx", "inline-flex", "inline-grid", false, "拒绝 Button 结构漂移"],
+  ["settings/setting-row.tsx", "xl:grid-cols-", "lg:grid-cols-", false, "拒绝设置行断点漂移"],
+  [
+    "settings/secret-field.tsx",
+    "new-password",
+    "current-password",
+    false,
+    "拒绝秘密输入自动填充语义漂移",
+  ],
   [
     "components/button.tsx",
     "import * as React",
@@ -43,8 +51,15 @@ for (const [file, before, after, shouldPass, caseName] of [
         recursive: true,
         filter: (path) => !["node_modules", "dist"].includes(basename(path)),
       })
+      await cp(
+        join(frontend, "apps/admin/src/components/settings"),
+        join(target, "apps/admin/src/components/settings"),
+        { recursive: true },
+      )
       await cp(join(frontend, "layout.json"), join(target, "layout.json"))
-      const path = join(target, "packages/web-ui/src", file)
+      const path = file.startsWith("settings/")
+        ? join(target, "apps/admin/src/components", file)
+        : join(target, "packages/web-ui/src", file)
       const source = await readFile(path, "utf8")
       assert.ok(source.includes(before), "负对照必须实际改变目标文件")
       await writeFile(path, source.replace(before, after))

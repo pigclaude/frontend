@@ -82,6 +82,30 @@ afterEach(() => {
 })
 
 describe("admin Turnstile authentication", () => {
+  it("settled_auth_reloads_changed_site_key", async () => {
+    let reads = 0
+    mocks.fetch.mockImplementation(async (_url, init) =>
+      init?.method === "POST"
+        ? response({ code: "INVALID_CREDENTIALS" }, 401)
+        : response({
+            enabled: true,
+            provider: "turnstile",
+            siteKey: ++reads === 1 ? "first-key" : "changed-key",
+            mode: "required",
+          }),
+    )
+    mount("/membership?cursor=a%2Bb")
+    await waitFor(() => expect(widgets).toHaveLength(1))
+    act(() => widgets[0].options.callback("first-proof"))
+    submit()
+    await waitFor(() => expect(widgets.at(-1)?.options.sitekey).toBe("changed-key"))
+    act(() => widgets[0].options.callback("late-proof"))
+    submit()
+    expect(posts()).toHaveLength(1)
+    expect(screen.getByLabelText("当前路径").textContent).toBe(
+      "/login?redirect=%2Fmembership%3Fcursor%3Da%252Bb",
+    )
+  })
   it("refuses pending config and then requires an admin action token for every credential attempt", async () => {
     mount()
     submit()

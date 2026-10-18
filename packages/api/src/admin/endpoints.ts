@@ -1,4 +1,5 @@
 // 负责封装第一阶段管理员登录、会员、设备和审计 HTTP endpoint。
+import { createSecuritySettingsApi } from "./security-settings"
 import type { HttpClient } from "../client"
 import type { CaptchaConfig } from "@pigclaude/contracts/captcha"
 import type * as T from "./types"
@@ -6,6 +7,7 @@ import type * as T from "./types"
 /** 创建管理员 API，统一保留 cookie 和 cursor 分页语义。 */
 export function createAdminApi(c: HttpClient) {
   return {
+    settings: { turnstile: createSecuritySettingsApi(c) },
     auth: {
       /** 读取管理员登录的公开验证码配置，不依赖管理员会话。 */
       captcha: () => c.get<CaptchaConfig>("/admin/v1/auth/captcha"),

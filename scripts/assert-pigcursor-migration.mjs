@@ -148,6 +148,12 @@ const migrationPairs = [
   source: `packages/web-ui/src/${source}`,
   target: `packages/web-ui/src/${source.replaceAll("pigcursor-", "pigclaude-")}`,
 }))
+migrationPairs.push(
+  ...["setting-row", "secret-field"].map((name) => ({
+    source: `apps/admin/src/components/settings/${name}.tsx`,
+    target: `apps/admin/src/components/settings/${name}.tsx`,
+  })),
+)
 
 // 只移除 CSS parser 识别的独立注释节点；选择器、值和字符串内的 token 不做替换。
 function removeStandaloneCssComments(node) {

@@ -6,6 +6,8 @@ import { CornerDownLeft, Search, type LucideIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Kbd } from "@/components/ui/kbd"
+import { useAdminMe } from "@/hooks/use-admin-me"
+import { canAdminPermission } from "@/lib/admin-permissions"
 import { GROUPS, NAV } from "@/lib/nav"
 import { NAV_ICONS } from "./nav-icons"
 
@@ -35,7 +37,12 @@ export function Cmdk({ open, onOpenChange }: CmdkProps) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
 
-  const pages: CmdkPage[] = NAV.map((item) => ({ ...item, icon: NAV_ICONS[item.href] }))
+  const { data: me } = useAdminMe()
+  const pages: CmdkPage[] = NAV.filter(
+    (item) =>
+      !item.permission ||
+      (me?.status === "active" && canAdminPermission(me.permissions ?? [], item.permission)),
+  ).map((item) => ({ ...item, icon: NAV_ICONS[item.href] }))
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {

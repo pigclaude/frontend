@@ -58,7 +58,6 @@ export default function LoginPage() {
       const message = captchaErrorMessage(error)
       if (message) {
         setCaptchaError(message)
-        captcha.retry()
       } else toastApiError(error)
     } finally {
       submitting.current = false

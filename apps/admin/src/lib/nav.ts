@@ -6,9 +6,18 @@ export interface NavItem {
   label: string
   group: string
   kw: string
+  permission?: string
 }
 /** 后台仅展示已经实现的四项业务。 */
 export const NAV: NavItem[] = [
+  {
+    href: "/settings",
+    name: "系统设置",
+    label: "系统设置",
+    group: "安全管理",
+    kw: "settings shezhi security",
+    permission: "settings:read",
+  },
   { href: "/users", name: "用户", label: "用户", group: "运营管理", kw: "user yonghu" },
   { href: "/membership", name: "会员", label: "会员", group: "运营管理", kw: "membership huiyuan" },
   { href: "/devices", name: "设备绑定", label: "设备绑定", group: "安全管理", kw: "device shebei" },

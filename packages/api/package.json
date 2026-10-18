@@ -8,7 +8,8 @@
     "./home": "./src/home/endpoints.ts",
     "./admin": "./src/admin/endpoints.ts",
     "./home/types": "./src/home/types.ts",
-    "./admin/types": "./src/admin/types.ts"
+    "./admin/types": "./src/admin/types.ts",
+    "./admin/security-settings": "./src/admin/security-settings.ts"
   },
   "scripts": {
     "lint": "eslint .",

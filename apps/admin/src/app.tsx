@@ -6,6 +6,7 @@ import LoginPage from "@/pages/login"
 import UsersPage from "@/pages/users"
 import MembershipPage from "@/pages/membership"
 import DevicesPage from "@/pages/devices"
+import SettingsSecurityPage from "@/pages/settings-security"
 import AuditsPage from "@/pages/audits"
 
 /** 管理后台路由树，所有业务页面都挂在 AdminGuard 和 AdminShell 之下。 */
@@ -23,6 +24,7 @@ export const router = createBrowserRouter([
           { path: "membership", element: <MembershipPage /> },
           { path: "devices", element: <DevicesPage /> },
           { path: "audits", element: <AuditsPage /> },
+          { path: "settings", element: <SettingsSecurityPage /> },
         ],
       },
     ],

@@ -76,7 +76,6 @@ export function AuthPanel({ initialMode }: { initialMode?: AuthMode } = {}) {
     onError: (reason) => {
       const message = captchaErrorMessage(reason)
       setError(message ?? (reason instanceof ApiError ? reason.message : "请求失败，请稍后重试"))
-      if (message) captcha.retry()
     },
     onSettled: () => {
       submitting.current = false

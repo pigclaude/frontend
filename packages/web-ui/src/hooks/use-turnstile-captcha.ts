@@ -40,20 +40,28 @@ export function useTurnstileCaptcha({ loadConfig, action }: TurnstileCaptchaInpu
     reset()
     setConfig(null)
     setError(null)
+    const timeout = setTimeout(() => {
+      if (!active) return
+      active = false
+      setError("验证码配置加载超时，请重试")
+    }, 10_000)
     void Promise.resolve()
       .then(loadConfig)
       .then(
         (value) => {
           if (!active) return
+          clearTimeout(timeout)
           if (isCaptchaConfig(value)) setConfig(value)
           else setError("验证码配置暂时无法加载，请重试")
         },
         () => {
+          clearTimeout(timeout)
           if (active) setError("验证码配置暂时无法加载，请重试")
         },
       )
     return () => {
       active = false
+      clearTimeout(timeout)
       token.current = null
     }
   }, [loadConfig, reload, reset])
@@ -96,12 +104,12 @@ export function useTurnstileCaptcha({ loadConfig, action }: TurnstileCaptchaInpu
       try {
         return await request(captchaToken)
       } finally {
-        reset()
+        retry()
         pending.current = false
         setBusy(false)
       }
     },
-    [config, ready, reset],
+    [config, ready, retry],
   )
 
   return {

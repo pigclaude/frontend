@@ -85,6 +85,33 @@ afterEach(() => {
 })
 
 describe("home Turnstile auth boundary", () => {
+  it("settled_auth_reloads_changed_site_key", async () => {
+    let reads = 0
+    mocks.params = new URLSearchParams("redirect=%2Faccount%3Fcursor%3Da%252Bb&state=byte%2Bexact")
+    mocks.fetch.mockImplementation(async (_url, init) =>
+      init?.method === "POST"
+        ? response({ code: "INVALID_CREDENTIALS" }, 401)
+        : response({
+            enabled: true,
+            provider: "turnstile",
+            siteKey: ++reads === 1 ? "first-key" : "changed-key",
+            mode: "required",
+          }),
+    )
+    mount()
+    fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "test@example.com" } })
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
+    await waitFor(() => expect(widgets).toHaveLength(1))
+    act(() => widgets[0].callback("first-proof"))
+    submit()
+    await waitFor(() => expect(widgets.at(-1)?.sitekey).toBe("changed-key"))
+    act(() => widgets[0].callback("late-proof"))
+    submit()
+    expect(posts()).toHaveLength(1)
+    expect(mocks.params.toString()).toBe(
+      "redirect=%2Faccount%3Fcursor%3Da%252Bb&state=byte%2Bexact",
+    )
+  })
   it("keeps a failed config closed and retries the actual public endpoint", async () => {
     mocks.fetch.mockResolvedValueOnce(response({ code: "CAPTCHA_UNAVAILABLE" }, 503))
     mount()

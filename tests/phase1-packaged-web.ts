@@ -12,7 +12,7 @@ export async function registerPackagedUser(page: Page, homeUrl: string): Promise
   await page.getByLabel("昵称").fill("安装版协议验收")
   await page.getByLabel("邮箱").fill(email)
   await page
-    .getByLabel("密码")
+    .getByLabel("密码", { exact: true })
     .fill(password)
     .catch(() => {
       throw new Error("注册页密码字段填写失败")
@@ -39,7 +39,7 @@ export async function registerPackagedUser(page: Page, homeUrl: string): Promise
   ).toBe(false)
   await page.getByLabel("邮箱").fill(email)
   await page
-    .getByLabel("密码")
+    .getByLabel("密码", { exact: true })
     .fill(password)
     .catch(() => {
       throw new Error("登录页密码字段填写失败")
@@ -71,7 +71,7 @@ export async function grantPackagedMembership(
   await admin.goto(`${adminUrl}/login`)
   await admin.getByLabel("账号").fill(requiredEnvironment("PIGCLAUDE_ACCEPTANCE_ADMIN_ACCOUNT"))
   await admin
-    .getByLabel("密码")
+    .getByLabel("密码", { exact: true })
     .fill(requiredEnvironment("PIGCLAUDE_ACCEPTANCE_ADMIN_PASSWORD"))
     .catch(() => {
       throw new Error("管理员密码字段填写失败")
@@ -87,16 +87,21 @@ export async function grantPackagedMembership(
   await grant.getByLabel("操作备注").fill("安装版协议真实验收授予")
   await grant.getByRole("button", { name: "确认授予" }).click()
   await expect(grant).not.toBeVisible()
-  await expect(await packagedMembershipRow(admin, userId)).toContainText("active")
+  await expect(
+    (await packagedMembershipRow(admin, userId)).getByRole("cell", { name: "有效", exact: true }),
+  ).toBeVisible()
 }
 
 /** 分页定位本次独立账号，避免列表增长使验收错误命中其他用户。 */
 export async function packagedMembershipRow(page: Page, userId: string): Promise<Locator> {
   const row = page.getByRole("row").filter({ hasText: userId })
-  const next = page.locator(".admin-pager button")
+  const next = page.getByRole("button", { name: "下一页", exact: true })
   while (true) {
     await expect(next).toHaveText("下一页")
-    if ((await row.count()) > 0) return row
+    if ((await row.count()) > 0) {
+      await expect(row).toHaveCount(1)
+      return row
+    }
     if (await next.isDisabled()) throw new Error("会员列表中未找到安装版验收用户")
     const previous = await page.locator("tbody").innerText()
     await next.click()

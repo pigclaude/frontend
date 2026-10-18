@@ -51,9 +51,13 @@ async function assertOldSessionDenied(
   const cookie = record.sessionCookie.startsWith("pigclaude_session=")
     ? record.sessionCookie
     : `pigclaude_session=${record.sessionCookie}`
-  const response = await request.get(`${rustUrl}/v1/desktop/membership/inspect?${query}`, {
-    headers: { cookie },
-  })
+  const response = await request
+    .get(`${rustUrl}/v1/desktop/membership/inspect?${query}`, {
+      headers: { cookie },
+    })
+    .catch(() => {
+      throw new Error("读取旧会话失败；不记录含 Cookie 的请求错误")
+    })
   expect(response.status()).toBe(409)
   const result = (await response.json()) as { code: string }
   expect(result.code).toBe(code)
@@ -61,10 +65,13 @@ async function assertOldSessionDenied(
 
 async function membershipRow(page: Page, userId: string): Promise<Locator> {
   const row = page.getByRole("row").filter({ hasText: userId })
-  const next = page.locator(".admin-pager button")
+  const next = page.getByRole("button", { name: "下一页", exact: true })
   while (true) {
     await expect(next).toHaveText("下一页")
-    if ((await row.count()) > 0) return row
+    if ((await row.count()) > 0) {
+      await expect(row).toHaveCount(1)
+      return row
+    }
     if (await next.isDisabled()) throw new Error("真实会员列表中未找到本次验收用户")
     const previous = await page.locator("tbody").innerText()
     const response = page.waitForResponse(
@@ -121,11 +128,18 @@ test("真实 Web/Admin/Electron 注册登录、授权、重启、替换、解绑
     await page.goto(`${homeUrl}/register`)
     await page.getByLabel("昵称").fill("真实验收用户")
     await page.getByLabel("邮箱").fill(email)
-    await page.getByLabel("密码").fill(password)
+    await page
+      .getByLabel("密码", { exact: true })
+      .fill(password)
+      .catch(() => {
+        throw new Error("用户密码字段填写失败")
+      })
     await page.getByRole("button", { name: "创建账号" }).click()
     await expect(page).toHaveURL(/\/dashboard$/)
     await expect(page.getByRole("heading", { name: "账户概览" })).toBeVisible()
-    const me = await page.request.get(`${homeUrl}/v1/user/me`)
+    const me = await page.request.get(`${homeUrl}/v1/user/me`).catch(() => {
+      throw new Error("读取真实用户失败；不记录含 Cookie 的请求错误")
+    })
     expect(me.ok()).toBe(true)
     const user = (await me.json()) as { id: string }
     const registeredCookies = await page.context().cookies(homeUrl)
@@ -143,7 +157,12 @@ test("真实 Web/Admin/Electron 注册登录、授权、重启、替换、解绑
     ).toBe(false)
     record("home.logout", "cookie-cleared")
     await page.getByLabel("邮箱").fill(email)
-    await page.getByLabel("密码").fill(password)
+    await page
+      .getByLabel("密码", { exact: true })
+      .fill(password)
+      .catch(() => {
+        throw new Error("用户密码字段填写失败")
+      })
     await page.getByRole("button", { name: "登录", exact: true }).click()
     await expect(page).toHaveURL(/\/dashboard$/)
     expect(
@@ -153,7 +172,9 @@ test("真实 Web/Admin/Electron 注册登录、授权、重启、替换、解绑
     await page.goto(`${homeUrl}/membership`)
     await expect(page.getByText("需要有效会员才能授权设备")).toBeVisible()
     record("home.membership.initial", "blocked")
-    const plansResponse = await page.request.get(`${homeUrl}/v1/plans`)
+    const plansResponse = await page.request.get(`${homeUrl}/v1/plans`).catch(() => {
+      throw new Error("读取真实套餐失败；不记录含 Cookie 的请求错误")
+    })
     expect(plansResponse.ok()).toBe(true)
     const plans = (await plansResponse.json()) as ListPlansResponse
     const plan = plans.items.find((item) => item.id === planId)
@@ -161,7 +182,12 @@ test("真实 Web/Admin/Electron 注册登录、授权、重启、替换、解绑
 
     await admin.goto(`${adminUrl}/login`)
     await admin.getByLabel("账号").fill(adminAccount)
-    await admin.getByLabel("密码").fill(adminPassword)
+    await admin
+      .getByLabel("密码", { exact: true })
+      .fill(adminPassword)
+      .catch(() => {
+        throw new Error("管理员密码字段填写失败")
+      })
     await admin.getByRole("button", { name: "登录", exact: true }).click()
     await expect(admin).toHaveURL(/\/users$/)
     record("admin.login", "authenticated")
@@ -174,7 +200,9 @@ test("真实 Web/Admin/Electron 注册登录、授权、重启、替换、解绑
     await grant.getByLabel("操作备注").fill("真实验收授予")
     await grant.getByRole("button", { name: "确认授予" }).click()
     await expect(grant).not.toBeVisible()
-    await expect(await membershipRow(admin, user.id)).toContainText("active")
+    await expect(
+      (await membershipRow(admin, user.id)).getByRole("cell", { name: "有效", exact: true }),
+    ).toBeVisible()
     await page.reload()
     await expect(page.getByText("等待桌面客户端发起授权", { exact: true })).toBeVisible()
     record("admin.grant-and-home-membership", "active")
@@ -250,7 +278,9 @@ test("真实 Web/Admin/Electron 注册登录、授权、重启、替换、解绑
     await revoke.getByLabel("原因", { exact: true }).fill("真实验收撤销")
     await revoke.getByRole("button", { name: "确认", exact: true }).click()
     await expect(revoke).not.toBeVisible()
-    await expect(await membershipRow(admin, user.id)).toContainText("revoked")
+    await expect(
+      (await membershipRow(admin, user.id)).getByRole("cell", { name: "已撤销", exact: true }),
+    ).toBeVisible()
     await assertRendererGateRejectsStart(second, "verification_required")
     record("admin.membership-revoke-and-start-gate", "verification_required", rebound.bindingEpoch)
     await page.goto(`${homeUrl}/membership`)

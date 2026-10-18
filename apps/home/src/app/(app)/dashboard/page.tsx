@@ -4,7 +4,7 @@
 import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
 import { Laptop, ShieldCheck, UserRound } from "lucide-react"
-import { formatFen } from "@pigclaude/web-ui/lib/format"
+import { formatTime } from "@pigclaude/web-ui/lib/format"
 import { Button } from "@pigclaude/web-ui/components/button"
 import { homeApi } from "@/lib/api"
 import { maskEmail, maskUserId } from "@/lib/identity-mask"
@@ -42,6 +42,7 @@ export default function DashboardPage() {
       </main>
     )
   const membership = entitlement.data
+  const productCode = membership.productCode.trim()
   return (
     <main className="page-shell">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -69,10 +70,10 @@ export default function DashboardPage() {
           </div>
           <div className="relative">
             <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
-              账户余额
+              登录状态
             </p>
             <p className="mt-3 font-mono text-[40px] leading-[1.1] font-medium tracking-[-1px] tabular-nums">
-              {formatFen(me.data.balance)}
+              已登录
             </p>
           </div>
           <dl className="data-list relative">
@@ -80,10 +81,20 @@ export default function DashboardPage() {
               <dt>用户 ID</dt>
               <dd>{maskUserId(me.data.id)}</dd>
             </div>
-            <div>
-              <dt>产品</dt>
-              <dd>{me.data.productCode}</dd>
-            </div>
+            {me.data.createdAt && (
+              <div>
+                <dt>注册时间</dt>
+                <dd>
+                  <time dateTime={me.data.createdAt}>{formatTime(me.data.createdAt)}</time>
+                </dd>
+              </div>
+            )}
+            {productCode && (
+              <div>
+                <dt>产品</dt>
+                <dd>{productCode}</dd>
+              </div>
+            )}
           </dl>
         </section>
         <section className="home-card">

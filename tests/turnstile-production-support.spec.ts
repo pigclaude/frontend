@@ -35,3 +35,17 @@ test("证据采用固定allowlist并拒绝未知字段", () => {
   ).toEqual({ status: 400, action: "admin_login", hostname: "admin.pigclaude.com", revision: "8" })
   expect(() => safeEvidence({ token: "private" })).toThrow("证据包含未授权字段")
 })
+
+test("证据拒绝允许字段中的任意字符串、对象与越界值", () => {
+  for (const value of [
+    { step: "private-material" },
+    { status: { private: true } },
+    { status: 999 },
+    { hostname: "elsewhere.test" },
+    { action: "private-material" },
+    { passed: "true" },
+    { revision: "-1" },
+    { revision: "9223372036854775808" },
+  ])
+    expect(() => safeEvidence(value)).toThrow("证据字段值无效")
+})

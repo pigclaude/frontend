@@ -19,12 +19,36 @@ export function validatePublicConfig(value: unknown): boolean {
     !/^[123]x0{10,}/.test(config.siteKey)
   )
 }
-/** 只允许记录不含认证材料的实际事实。 */
-export function safeEvidence(value: Record<string, unknown>): Record<string, unknown> {
-  const allowed = ["status", "action", "hostname", "revision", "passed", "step"]
-  if (Object.keys(value).some((key) => !allowed.includes(key)))
-    throw new Error("证据包含未授权字段")
-  return value
+/** 脱敏证据仅接受固定动作、来源、路径和有界原始事实。 */
+export interface ProductionEvidence {
+  status?: number
+  action?: "home_register" | "home_login" | "admin_login"
+  hostname?: "pigclaude.com" | "admin.pigclaude.com"
+  revision?: string
+  passed?: boolean
+  step?: SubmissionPath
+}
+/** 同时校验字段名和值，拒绝把任意秘密装入合法字段。 */
+export function safeEvidence(value: Record<string, unknown>): ProductionEvidence {
+  const validators: Record<string, (item: unknown) => boolean> = {
+    status: (item) =>
+      typeof item === "number" && Number.isInteger(item) && item >= 100 && item <= 599,
+    action: (item) =>
+      typeof item === "string" && ["home_register", "home_login", "admin_login"].includes(item),
+    hostname: (item) => item === "pigclaude.com" || item === "admin.pigclaude.com",
+    revision: (item) =>
+      typeof item === "string" &&
+      /^(0|[1-9][0-9]*)$/.test(item) &&
+      item.length <= 19 &&
+      BigInt(item) <= 9223372036854775807n,
+    passed: (item) => typeof item === "boolean",
+    step: (item) => typeof item === "string" && submissionPaths.includes(item),
+  }
+  for (const [key, item] of Object.entries(value)) {
+    if (!Object.hasOwn(validators, key)) throw new Error("证据包含未授权字段")
+    if (!validators[key](item)) throw new Error("证据字段值无效")
+  }
+  return { ...value } as ProductionEvidence
 }
 /** 读取显式输入，缺失时只报告变量名。 */
 export function acceptanceInput(name: string): string {
@@ -55,38 +79,100 @@ export async function readProductionConfig(
   expect(validatePublicConfig(config)).toBe(true)
   return (config as { siteKey: string }).siteKey
 }
+/** 仅暴露提交编排所需交互，浏览器适配器和本地传输夹具共享同一路径。 */
+export interface SubmissionPort {
+  /** 等待真实提交控件就绪。 */
+  ready(): Promise<void>
+  /** 点击前安装响应筛选器，不返回秘密日志。 */
+  observe(
+    matches: (url: string, method: string) => boolean,
+  ): Promise<{ status: number; body: unknown }>
+  /** 触发当前表单的真实提交。 */
+  click(): Promise<void>
+}
+const submissionPaths = [
+  "/v1/auth/register",
+  "/v1/auth/login",
+  "/admin/v1/auth/login",
+  "/admin/v1/settings/turnstile/draft",
+  "/admin/v1/settings/turnstile/activate",
+]
+/** 固定真实页面允许发出的认证和设置提交路径。 */
+export type SubmissionPath =
+  | "/v1/auth/register"
+  | "/v1/auth/login"
+  | "/admin/v1/auth/login"
+  | "/admin/v1/settings/turnstile/draft"
+  | "/admin/v1/settings/turnstile/activate"
+/** 在点击前安装监听器，并按实际命令检查响应与证明边界。 */
+export async function performSubmission(
+  port: SubmissionPort,
+  origin: string,
+  path: SubmissionPath,
+  status: number,
+  previousProof?: string,
+): Promise<string | undefined> {
+  await port.ready()
+  const draft = path === "/admin/v1/settings/turnstile/draft"
+  const responsePromise = port.observe(
+    (url, method) =>
+      new URL(url).origin === origin &&
+      new URL(url).pathname === path &&
+      method === (draft ? "PUT" : "POST"),
+  )
+  await port.click()
+  const response = await responsePromise
+  const body = response.body
+  const proof =
+    typeof body === "object" && body !== null && "captchaToken" in body
+      ? body.captchaToken
+      : undefined
+  const hasProofField = typeof body === "object" && body !== null && "captchaToken" in body
+  if (
+    draft
+      ? hasProofField
+      : !(typeof proof === "string" && proof.length > 0 && proof !== previousProof)
+  )
+    throw new Error("提交证明边界无效")
+  expect(response.status).toBe(status)
+  return typeof proof === "string" ? proof : undefined
+}
 const lastProof = new WeakMap<Page, string>()
 
 /** 等待真实组件可提交并只保留响应状态；不输出请求、proof 或正文。 */
 export async function submit(
   page: Page,
   name: string,
-  path: string,
+  path: SubmissionPath,
   status: number,
 ): Promise<void> {
   const button = page.getByRole("button", { name, exact: true })
-  await expect(button).toBeEnabled({ timeout: proofTimeout() })
-  const responsePromise = page.waitForResponse(
-    (response) =>
-      new URL(response.url()).origin === new URL(page.url()).origin &&
-      new URL(response.url()).pathname === path &&
-      response.request().method() === "POST",
+  const proof = await performSubmission(
+    {
+      ready: async () => {
+        await expect(button).toBeEnabled({ timeout: proofTimeout() })
+      },
+      observe: async (matches) => {
+        const response = await page.waitForResponse((response) =>
+          matches(response.url(), response.request().method()),
+        )
+        return { status: response.status(), body: response.request().postDataJSON() as unknown }
+      },
+      click: async () => {
+        await button.click()
+      },
+    },
+    new URL(page.url()).origin,
+    path,
+    status,
+    lastProof.get(page),
   )
-  await button.click()
-  const response = await responsePromise
-  const body: unknown = response.request().postDataJSON()
-  const proof =
-    typeof body === "object" && body !== null && "captchaToken" in body
-      ? body.captchaToken
-      : undefined
-  expect(typeof proof === "string" && proof.length > 0 && proof !== lastProof.get(page)).toBe(true)
-  if (typeof proof === "string") lastProof.set(page, proof)
-  expect(response.status()).toBe(status)
+  if (proof) lastProof.set(page, proof)
   console.log(
     JSON.stringify(
       safeEvidence({
         step: path,
-        status: response.status(),
+        status,
         hostname: new URL(page.url()).hostname,
         passed: true,
       }),

@@ -44,17 +44,20 @@ a {
   grid-template-columns: 1.4fr 1fr;
   gap: var(--space-4);
 }
-.home-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  min-width: 0;
-  padding: var(--space-6);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--card-bg);
-  box-shadow: var(--card-shadow);
+/* 卡片默认布局置于组件层，页面工具类可按原站覆盖内边距等默认值。 */
+@layer components {
+  .home-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 0;
+    padding: var(--space-6);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card-bg);
+    box-shadow: var(--card-shadow);
+  }
 }
 .home-card h2 {
   font-size: 17px;

@@ -80,6 +80,7 @@ export function AuthPanel({ initialMode }: { initialMode?: AuthMode } = {}) {
         value={mode}
         onValueChange={(value) => setMode(value === "register" ? "register" : "login")}
         activationMode="manual"
+        className="gap-6"
       >
         <TabsList
           aria-label="登录或注册"

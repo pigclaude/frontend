@@ -6,6 +6,7 @@ import {
   bakeTheme,
   editTone,
   adoptSavedTheme,
+  exportTheme,
   forgetTheme,
   isThemeModified,
   restoreTheme,
@@ -86,6 +87,24 @@ describe("restoreTheme", () => {
   })
 })
 
+describe("restoreTheme 与强调色", () => {
+  it("还原时把该槽的强调色方式改回默认", () => {
+    const custom = setAccentMode(base, [], "light", "custom")
+    const restored = restoreTheme(custom, "light")
+    expect(restored.light.accentMode).toBe("default")
+    expect(restored.overrides).toEqual({})
+  })
+  it("分别设置时只改被还原的那个槽", () => {
+    let settings = setSplitModes(base, true)
+    settings = setAccentMode(settings, [], "dark", "custom")
+    settings = setAccentMode(settings, [], "light", "custom")
+    const restored = restoreTheme(settings, "light")
+    expect(restored.light.accentMode).toBe("default")
+    expect(restored.dark.accentMode).toBe("custom")
+    expect(restored.overrides.pigclaude?.dark?.accent).toBe(pigclaudeColors.dark.accent)
+  })
+})
+
 describe("selectTheme", () => {
   it("不分别设置时写 light 槽", () => {
     const next = selectTheme(base, "dark", "nord")
@@ -127,6 +146,20 @@ describe("setAccentMode", () => {
   it("没有强调色的自定义主题切到自定义时也写入起始强调色", () => {
     const next = setAccentMode(selectTheme(base, "light", "custom-1"), [mine], "light", "custom")
     expect(next.overrides["custom-1"]?.light?.accent).toBe(pigclaudeColors.light.accent)
+  })
+  it("不分别设置时切回默认，两个模式的强调色修改都清掉", () => {
+    let settings = setAccentMode(base, [], "light", "custom")
+    settings = setOverride(settings, "dark", "accent", "#123456")
+    const next = setAccentMode(settings, [], "dark", "default")
+    expect(next.overrides).toEqual({})
+  })
+  it("分别设置时切回默认只清该模式", () => {
+    let settings = setSplitModes(base, true)
+    settings = setAccentMode(settings, [], "light", "custom")
+    settings = setAccentMode(settings, [], "dark", "custom")
+    const next = setAccentMode(settings, [], "dark", "default")
+    expect(next.overrides.pigclaude?.light?.accent).toBe(pigclaudeColors.light.accent)
+    expect(next.overrides.pigclaude?.dark).toBeUndefined()
   })
   it("切回默认时清掉强调色修改", () => {
     const custom = setAccentMode(base, [], "light", "custom")
@@ -171,5 +204,54 @@ describe("adoptSavedTheme", () => {
     const next = adoptSavedTheme(settings, "light", "custom-9")
     expect(next.light.themeId).toBe("custom-9")
     expect(next.overrides.nord).toBeUndefined()
+  })
+})
+
+describe("adoptSavedTheme 分别设置", () => {
+  it("两个槽都用原主题时一起切到新主题，深色的修改经新主题保留", () => {
+    let settings = selectTheme(setSplitModes(base, true), "light", "nord")
+    settings = selectTheme(settings, "dark", "nord")
+    settings = setOverride(settings, "dark", "bg", "#101820")
+    const baked = bakeTheme(settings, [], "light")
+    const saved: ThemeDefinition = { id: "custom-9", name: "新", builtIn: false, ...baked }
+    const next = adoptSavedTheme(settings, "light", "custom-9")
+    expect(next.light.themeId).toBe("custom-9")
+    expect(next.dark.themeId).toBe("custom-9")
+    expect(shownColors(next, [saved], "dark").colors.bg).toBe("#101820")
+    expect(next.overrides.nord).toBeUndefined()
+  })
+  it("另一个槽用别的主题时不动它，也不删原主题另一模式的修改", () => {
+    let settings = selectTheme(setSplitModes(base, true), "light", "nord")
+    settings = setOverride(settings, "light", "bg", "#ABCDEF")
+    settings = selectTheme(settings, "dark", "claude")
+    settings = selectTheme(settings, "dark", "nord")
+    settings = setOverride(settings, "dark", "fg", "#FEDCBA")
+    settings = selectTheme(settings, "dark", "claude")
+    const next = adoptSavedTheme(settings, "light", "custom-9")
+    expect(next.light.themeId).toBe("custom-9")
+    expect(next.dark.themeId).toBe("claude")
+    expect(next.overrides.nord).toEqual({ dark: { fg: "#FEDCBA" } })
+  })
+})
+
+describe("exportTheme", () => {
+  it("强调色为默认时不导出隐藏的强调色修改", () => {
+    const settings = setOverride(
+      selectTheme(base, "light", "chatgpt"),
+      "light",
+      "accent",
+      "#FF0000",
+    )
+    const json = JSON.parse(exportTheme(settings, [], "light"))
+    expect(json.light.accent).toBe("#339CFF")
+    expect(json.name).toBe("ChatGPT")
+  })
+  it("导出当前主题含两个模式的修改", () => {
+    let settings = setAccentMode(base, [], "light", "custom")
+    settings = setOverride(settings, "dark", "bg", "#101010")
+    const json = JSON.parse(exportTheme(settings, [], "light"))
+    expect(json.schema).toBe("pigclaude-theme/1")
+    expect(json.light.accent).toBe(pigclaudeColors.light.accent)
+    expect(json.dark.bg).toBe("#101010")
   })
 })

@@ -1,5 +1,5 @@
 // 负责主题下拉：触发器显示强调色「Aa」、主题名和「· 已修改」；菜单里是内置主题、我的主题和导入/另存/还原。
-import type { MouseEvent } from "react"
+import type { KeyboardEvent, MouseEvent } from "react"
 import { Icon } from "../../../components/icon"
 import { Button } from "../../../components/ui/button"
 import {
@@ -59,18 +59,36 @@ function ThemeItem({
     event.stopPropagation()
     run()
   }
+  // 键盘：高亮「我的主题」某项时按 F2 重命名、按 Delete 或 Backspace 删除（先弹确认）
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (!actions) return
+    if (event.key === "F2") {
+      event.preventDefault()
+      actions.onRename()
+    } else if (event.key === "Delete" || event.key === "Backspace") {
+      event.preventDefault()
+      actions.onRemove()
+    }
+  }
   return (
-    <DropdownMenuItem className="theme-item" onSelect={() => onSelect(theme.id)}>
+    <DropdownMenuItem
+      className="theme-item"
+      aria-keyshortcuts={actions ? "F2 Delete" : undefined}
+      onKeyDown={onKeyDown}
+      onSelect={() => onSelect(theme.id)}
+    >
       <Chip theme={theme} tone={tone} />
       <span className="theme-item-name">{theme.name}</span>
       {actions ? (
-        <span className="theme-item-actions">
+        // 只给鼠标用的快捷按钮：不进 Tab 顺序、对读屏隐藏，键盘走菜单项上的 F2 / Delete
+        <span className="theme-item-actions" aria-hidden="true">
           <Button
             variant="ghost"
             size="icon"
             className="theme-item-action"
+            tabIndex={-1}
             aria-label={`重命名 ${theme.name}`}
-            title="重命名"
+            title="重命名（F2）"
             onClick={stop(actions.onRename)}
           >
             <Icon name="pencil" small />
@@ -79,8 +97,9 @@ function ThemeItem({
             variant="ghost"
             size="icon"
             className="theme-item-action"
+            tabIndex={-1}
             aria-label={`删除 ${theme.name}`}
-            title="删除"
+            title="删除（Delete）"
             onClick={stop(actions.onRemove)}
           >
             <Icon name="trash" small />

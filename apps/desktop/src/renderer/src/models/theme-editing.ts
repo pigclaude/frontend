@@ -3,6 +3,7 @@ import type { Hex } from "./color-math"
 import type { AppearanceSettings, ModeOverrides, ThemeSlot } from "./appearance-settings"
 import { activeSlot, setOverride } from "./appearance-settings"
 import type { ThemeColors, ThemeDefinition } from "./theme-presets"
+import { serializeTheme } from "./theme-file"
 import { findTheme } from "./theme-presets"
 
 /** 浅色或深色。 */
@@ -60,11 +61,20 @@ export function isThemeModified(settings: AppearanceSettings, tone: Tone): boole
   return Boolean(changed.bg || changed.fg || (slot.accentMode === "custom" && changed.accent))
 }
 
-/** 清掉当前主题在 tone 模式下的全部修改，另一个模式不变。 */
+/** 改回默认强调色时要清的模式：分别设置时只清 tone，共用一个槽时两个模式都清。 */
+function clearAccent(settings: AppearanceSettings, tone: Tone): AppearanceSettings {
+  const tones: Tone[] = settings.splitModes ? [tone] : ["light", "dark"]
+  return tones.reduce((next, side) => setOverride(next, side, "accent", null), settings)
+}
+
+/**
+ * 「还原为 {主题}」：清掉当前主题在 tone 模式下的背景和前景修改，该槽的强调色方式回到默认
+ * 并清掉对应的强调色修改；另一个模式的背景和前景不变。
+ */
 export function restoreTheme(settings: AppearanceSettings, tone: Tone): AppearanceSettings {
-  let next = settings
-  for (const key of ["bg", "fg", "accent"] as const) next = setOverride(next, tone, key, null)
-  return next
+  let next = updateSlot(settings, tone, { accentMode: "default" })
+  for (const key of ["bg", "fg"] as const) next = setOverride(next, tone, key, null)
+  return clearAccent(next, tone)
 }
 
 function updateSlot(
@@ -104,7 +114,7 @@ export function setSplitModes(settings: AppearanceSettings, on: boolean): Appear
 
 /**
  * 切换强调色方式。切到自定义时，若主题没有自己的强调色（如 pigclaude），写入一个起始强调色，
- * 让变化立即可见；切回默认时清掉强调色修改。
+ * 让变化立即可见；切回默认时清掉强调色修改（共用一个槽时两个模式都清）。
  */
 export function setAccentMode(
   settings: AppearanceSettings,
@@ -113,7 +123,7 @@ export function setAccentMode(
   mode: ThemeSlot["accentMode"],
 ): AppearanceSettings {
   const next = updateSlot(settings, tone, { accentMode: mode })
-  if (mode === "default") return setOverride(next, tone, "accent", null)
+  if (mode === "default") return clearAccent(next, tone)
   const { theme } = shownColors(next, custom, tone)
   if (theme[tone]?.accent || next.overrides[theme.id]?.[tone]?.accent) return next
   return setOverride(next, tone, "accent", pigclaudeColors[tone].accent)
@@ -132,7 +142,10 @@ function merged(
   }
 }
 
-/** 把编辑中主题的两个模式连同修改合成一组颜色，供「另存为自定义主题」使用。 */
+/**
+ * 把编辑中主题的两个模式连同修改合成一组颜色，供另存和导出使用。某个模式的强调色修改
+ * 只在该模式实际用这个主题且强调色为自定义时才合入（否则看编辑中的槽），不会带出看不见的颜色。
+ */
 export function bakeTheme(
   settings: AppearanceSettings,
   custom: readonly ThemeDefinition[],
@@ -141,11 +154,28 @@ export function bakeTheme(
   const slot = activeSlot(settings, tone)
   const theme = findTheme(slot.themeId, custom)
   const overrides = settings.overrides[theme.id]
-  const customAccent = slot.accentMode === "custom"
-  return {
-    light: merged(theme.light ?? pigclaudeFallback.light, overrides?.light, customAccent),
-    dark: merged(theme.dark ?? pigclaudeFallback.dark, overrides?.dark, customAccent),
+  const customAccent = (side: Tone) => {
+    const own = activeSlot(settings, side)
+    return (own.themeId === theme.id ? own : slot).accentMode === "custom"
   }
+  return {
+    light: merged(theme.light ?? pigclaudeFallback.light, overrides?.light, customAccent("light")),
+    dark: merged(theme.dark ?? pigclaudeFallback.dark, overrides?.dark, customAccent("dark")),
+  }
+}
+
+/** 把编辑中的主题（含看得见的修改）输出成主题 JSON，供「复制」使用。 */
+export function exportTheme(
+  settings: AppearanceSettings,
+  custom: readonly ThemeDefinition[],
+  tone: Tone,
+): string {
+  const theme = findTheme(activeSlot(settings, tone).themeId, custom)
+  return serializeTheme(
+    { ...theme, ...bakeTheme(settings, custom, tone) },
+    undefined,
+    pigclaudeFallback,
+  )
 }
 
 /** 主题被删除后：用到它的槽回到 pigclaude 和默认强调色，并删掉它的修改记录。 */
@@ -157,14 +187,25 @@ export function forgetTheme(settings: AppearanceSettings, themeId: string): Appe
   return { ...settings, light: reset(settings.light), dark: reset(settings.dark), overrides }
 }
 
-/** 另存为自定义主题之后：tone 模式切到新主题，原主题的修改已合进新主题，一并清掉。 */
+/**
+ * 另存为自定义主题之后：所有用原主题的模式都切到新主题（新主题已含两个模式的修改），
+ * 只删掉被切走的模式的原主题修改；仍在用别的主题的模式和它们的记录不动。
+ */
 export function adoptSavedTheme(
   settings: AppearanceSettings,
   tone: Tone,
   savedId: string,
 ): AppearanceSettings {
   const source = activeSlot(settings, tone).themeId
+  const moved: Tone[] = settings.splitModes
+    ? (["light", "dark"] as const).filter((side) => settings[side].themeId === source)
+    : ["light", "dark"]
+  const entry: ModeOverrides = { ...settings.overrides[source] }
+  for (const side of moved) delete entry[side]
   const overrides = { ...settings.overrides }
-  delete overrides[source]
-  return selectTheme({ ...settings, overrides }, tone, savedId)
+  if (Object.keys(entry).length > 0) overrides[source] = entry
+  else delete overrides[source]
+  let next: AppearanceSettings = { ...settings, overrides }
+  for (const side of moved) next = selectTheme(next, side, savedId)
+  return next
 }

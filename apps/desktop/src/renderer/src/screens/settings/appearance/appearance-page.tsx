@@ -2,8 +2,7 @@
 import { useState } from "react"
 import { useToast } from "../../../components/toast"
 import type { AppearanceController } from "../../../hooks/use-appearance"
-import { serializeTheme } from "../../../models/theme-file"
-import { editTone, pigclaudeFallback, shownColors, type Tone } from "../../../models/theme-editing"
+import { editTone, exportTheme, shownColors, type Tone } from "../../../models/theme-editing"
 import { SettingPage, SettingRow, SettingSection } from "../setting-page"
 import { AdvancedSettings } from "./advanced-settings"
 import { ModePicker } from "./mode-picker"
@@ -21,10 +20,10 @@ export function AppearancePage({ appearance }: { appearance: AppearanceControlle
   const platform = window.pigclaude?.platform ?? ""
 
   const copyTheme = () => {
-    const { theme } = shownColors(settings, customThemes, tone)
-    const text = serializeTheme(theme, settings.overrides[theme.id], pigclaudeFallback)
-    navigator.clipboard
-      .writeText(text)
+    const text = exportTheme(settings, customThemes, tone)
+    // 包进 then：剪贴板不可用（navigator.clipboard 为 undefined）时同步抛出的错误也进 catch
+    Promise.resolve()
+      .then(() => navigator.clipboard.writeText(text))
       .then(() => toast("已复制主题", "copy"))
       .catch(() => toast("复制失败，请重试", "alert"))
   }

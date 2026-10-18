@@ -1,5 +1,5 @@
 // 负责导入主题对话框：粘贴 JSON 或选择 .json 文件，实时校验并预览浅色、深色两组色卡，确认后交给调用方保存。
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Button } from "../../../components/ui/button"
 import {
   Dialog,
@@ -10,6 +10,9 @@ import {
 import { Textarea } from "../../../components/ui/textarea"
 import { parseThemeFile } from "../../../models/theme-file"
 import type { ThemeColors, ThemeDefinition } from "../../../models/theme-presets"
+
+/** 主题文件大小上限：正常主题不到 1 KB，超过 64 KB 直接拒绝，不塞进输入框。 */
+const maxFileBytes = 64 * 1024
 
 const placeholder = `{
   "schema": "pigclaude-theme/1",
@@ -55,6 +58,11 @@ export function ThemeImportDialog({
   const [text, setText] = useState("")
   const [fileError, setFileError] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  // 每次开关对话框换一代；读文件回来时代数变了就丢掉结果，旧文件不会出现在下次打开的对话框里
+  const generation = useRef(0)
+  useEffect(() => {
+    generation.current += 1
+  }, [open])
   const result = text.trim() ? parseThemeFile(text, existingNames) : null
   const close = (next: boolean) => {
     if (!next) {
@@ -65,13 +73,21 @@ export function ThemeImportDialog({
   }
   const readFile = (file: File | undefined) => {
     if (!file) return
+    if (file.size > maxFileBytes) {
+      setFileError("文件太大，主题文件不应超过 64 KB")
+      return
+    }
+    const started = generation.current
     file
       .text()
       .then((content) => {
+        if (generation.current !== started) return
         setFileError(null)
         setText(content)
       })
-      .catch(() => setFileError("读不了这个文件"))
+      .catch(() => {
+        if (generation.current === started) setFileError("读不了这个文件")
+      })
   }
 
   return (
@@ -90,7 +106,10 @@ export function ThemeImportDialog({
             placeholder={placeholder}
             spellCheck={false}
             value={text}
-            onChange={(event) => setText(event.target.value)}
+            onChange={(event) => {
+              setFileError(null)
+              setText(event.target.value)
+            }}
           />
           <div className="import-file-row">
             <Button size="sm" onClick={() => fileInput.current?.click()}>

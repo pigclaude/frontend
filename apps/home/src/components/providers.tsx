@@ -4,6 +4,7 @@
 import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-query"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useRef, useState, type ReactNode } from "react"
+import { initTheme } from "@pigclaude/web-ui/lib/theme"
 import { homeApi } from "@/lib/api"
 import {
   HOME_SESSION_REVALIDATE_EVENT,
@@ -21,6 +22,7 @@ function currentRoute(pathname: string): string {
 
 /** 为 home 树提供稳定查询缓存，并把失效 session 统一恢复到登录页。 */
 export function Providers({ children }: { children: ReactNode }) {
+  useEffect(() => initTheme(), [])
   const router = useRouter()
   const pathname = usePathname()
   const routerRef = useRef(router)

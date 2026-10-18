@@ -1,6 +1,8 @@
 // 负责展示 PigClaude 会员权益和套餐，过期状态明确阻断授权入口。
 "use client"
 
+import { ShieldCheck } from "lucide-react"
+import { PlanCards } from "@/components/membership/plan-cards"
 import { useQuery } from "@tanstack/react-query"
 import { homeApi } from "@/lib/api"
 import { QueryError, QueryLoading } from "@/components/query-state"
@@ -36,9 +38,22 @@ export default function MembershipPage() {
     entitlement.data.status === "revoked"
   return (
     <main className="page-shell">
-      <h1 className="page-title">会员</h1>
+      <div>
+        <h1 className="page-title">会员</h1>
+        <p className="mt-2 text-sm text-[var(--meta)]">查看你的会员状态、有效期和可用套餐。</p>
+      </div>
       <section className="home-card" aria-labelledby="membership-status">
-        <h2 id="membership-status">当前权益</h2>
+        <div className="flex items-center gap-3">
+          <span className="grid size-11 place-items-center rounded-[var(--radius-md)] bg-[var(--raise-2)] text-[var(--accent-ink)]">
+            <ShieldCheck className="size-5" aria-hidden />
+          </span>
+          <div>
+            <h2 id="membership-status">当前权益</h2>
+            <p className="mt-1 text-xs text-[var(--meta)]">
+              会员权益版本 {entitlement.data.entitlementVersion}
+            </p>
+          </div>
+        </div>
         <p>
           {expired ? "会员已过期或未激活" : entitlement.data.lifetime ? "永久会员" : "会员有效"}
         </p>
@@ -57,21 +72,11 @@ export default function MembershipPage() {
           </div>
         )}
       </section>
-      <section className="home-card" aria-labelledby="plans-title">
-        <h2 id="plans-title">可用套餐</h2>
-        {plans.data.items.length === 0 ? (
-          <p className="muted">暂无可用套餐</p>
-        ) : (
-          <div className="card-grid">
-            {plans.data.items.map((plan) => (
-              <article key={plan.id}>
-                <h3>{plan.name}</h3>
-                <p className="muted">{plan.description}</p>
-                <p>{plan.priceFen} 分</p>
-              </article>
-            ))}
-          </div>
-        )}
+      <section aria-labelledby="plans-title" className="flex flex-col gap-4">
+        <h2 id="plans-title" className="text-[17px] font-semibold">
+          可用套餐
+        </h2>
+        <PlanCards plans={plans.data.items} />
       </section>
     </main>
   )

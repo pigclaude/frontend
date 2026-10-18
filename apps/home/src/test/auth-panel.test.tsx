@@ -51,6 +51,40 @@ beforeEach(() => {
 })
 
 describe("AuthPanel mutation UI", () => {
+  it("lets users reveal their password without submitting", () => {
+    renderPanel()
+    const input = screen.getByLabelText("密码") as HTMLInputElement
+    expect(input.type).toBe("password")
+    fireEvent.click(screen.getByRole("button", { name: "显示密码" }))
+    expect(input.type).toBe("text")
+    fireEvent.click(screen.getByRole("button", { name: "隐藏密码" }))
+    expect(input.type).toBe("password")
+    expect(mocks.login).not.toHaveBeenCalled()
+  })
+
+  it("updates the selected panel when soft navigation changes tab", () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const view = render(
+      <QueryClientProvider client={client}>
+        <AuthPanel />
+      </QueryClientProvider>,
+    )
+    mocks.searchParams = new URLSearchParams("tab=register")
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <AuthPanel />
+      </QueryClientProvider>,
+    )
+    expect(screen.getByLabelText("昵称")).toBeTruthy()
+    mocks.searchParams = new URLSearchParams()
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <AuthPanel />
+      </QueryClientProvider>,
+    )
+    expect(screen.queryByLabelText("昵称")).toBeNull()
+  })
+
   it("refreshes me and entitlement cache after login", async () => {
     renderPanel()
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })

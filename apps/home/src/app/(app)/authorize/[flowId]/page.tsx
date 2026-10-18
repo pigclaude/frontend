@@ -1,6 +1,7 @@
 // 负责读取和批准桌面客户端设备授权，只展示脱敏设备绑定结果。
 "use client"
 
+import { CheckCircle2, Laptop } from "lucide-react"
 import { useState } from "react"
 import { useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
@@ -71,9 +72,10 @@ export default function AuthorizationPage() {
   if (approved)
     return (
       <main className="page-shell narrow">
-        <section className="home-card">
+        <section className="home-card items-center p-8 text-center">
+          <CheckCircle2 className="size-10 text-[var(--success-ink)]" aria-hidden />
           <h1 className="page-title">设备已授权</h1>
-          <dl className="data-list">
+          <dl className="grid w-full gap-3 rounded-[var(--radius-md)] border border-border bg-[var(--raise-1)] p-4 sm:grid-cols-2 [&_dt]:text-xs [&_dt]:text-[var(--meta)] [&_dd]:mt-1 [&_dd]:font-mono [&_dd]:text-sm">
             <div>
               <dt>设备</dt>
               <dd>
@@ -114,10 +116,23 @@ export default function AuthorizationPage() {
     : null
   return (
     <main className="page-shell narrow">
-      <section className="home-card">
+      <div className="text-center">
+        <span className="mx-auto mb-4 grid size-14 place-items-center rounded-[var(--radius-lg)] border border-border bg-[var(--raise-2)] text-[var(--accent-ink)] shadow-[var(--card-shadow)]">
+          <Laptop className="size-7" aria-hidden />
+        </span>
         <h1 className="page-title">确认设备授权</h1>
-        <p className="muted">请确认这是你当前使用的 PigClaude 桌面客户端。</p>
-        <dl className="data-list">
+        <p className="mt-2 text-sm text-[var(--meta)]">
+          请确认这是你当前使用的 PigClaude 桌面客户端。
+        </p>
+      </div>
+      <section className="home-card">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2>待确认设备</h2>
+          {flow.expiresAt && (
+            <span className="text-xs text-[var(--meta)]">有效期至 {flow.expiresAt}</span>
+          )}
+        </div>
+        <dl className="grid gap-3 rounded-[var(--radius-md)] border border-border bg-[var(--raise-1)] p-4 sm:grid-cols-2 [&_dt]:text-xs [&_dt]:text-[var(--meta)] [&_dd]:mt-1 [&_dd]:font-mono [&_dd]:text-sm">
           <div>
             <dt>设备 ID</dt>
             <dd>
@@ -179,7 +194,7 @@ export default function AuthorizationPage() {
             授权失败，请确认会员状态和授权请求状态后重试。
           </p>
         )}
-        <div className="button-row">
+        <div className="button-row justify-end">
           <Button
             type="button"
             onClick={() => approve.mutate()}

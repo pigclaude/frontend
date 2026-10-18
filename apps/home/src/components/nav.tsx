@@ -11,6 +11,7 @@ import { Button } from "@pigclaude/web-ui/components/button"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@pigclaude/web-ui/components/sheet"
 import { cn } from "@pigclaude/web-ui/lib/utils"
 import { BrandMark } from "@/components/brand-mark"
+import { UserMenu } from "@/components/user-menu"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 const accountLinks = [
@@ -91,17 +92,7 @@ export function Nav({ variant = "app" }: { variant?: "marketing" | "app" | "auth
                   className="h-8 w-20 animate-pulse rounded-md bg-muted"
                 />
               ) : session.data ? (
-                <Button asChild variant="outline" size="sm">
-                  <Link href="/dashboard">
-                    <span
-                      aria-hidden
-                      className="grid size-5 place-items-center rounded-full bg-[var(--raise-2)] text-[10px]"
-                    >
-                      {session.data.nickname?.slice(0, 1) || "P"}
-                    </span>
-                    我的账户
-                  </Link>
-                </Button>
+                <UserMenu user={session.data} />
               ) : (
                 <>
                   <Button asChild variant="outline" size="sm" className="hidden md:inline-flex">

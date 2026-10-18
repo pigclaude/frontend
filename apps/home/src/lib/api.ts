@@ -14,5 +14,14 @@ export const homeClient = createClient({
   },
 })
 
-/** home 页面唯一可用的 API facade，页面不直接调用 fetch。 */
-export const homeApi = createHomeApi(homeClient)
+const api = createHomeApi(homeClient)
+
+/** home 页面唯一 API facade；退出复用既有 cookie client 与 Rust 端点。 */
+export const homeApi = {
+  ...api,
+  auth: {
+    ...api.auth,
+    /** 撤销当前服务器会话，并接受既有端点的无内容成功响应。 */
+    logout: () => homeClient.post<void>("/v1/auth/logout"),
+  },
+}

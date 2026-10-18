@@ -3,8 +3,9 @@
 
 import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-query"
 import { usePathname, useRouter } from "next/navigation"
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { initTheme } from "@pigclaude/web-ui/lib/theme"
+import { HomeSessionContext } from "@/components/home-session-context"
 import { homeApi } from "@/lib/api"
 import {
   HOME_SESSION_REVALIDATE_EVENT,
@@ -23,6 +24,8 @@ function currentRoute(pathname: string): string {
 /** 为 home 树提供稳定查询缓存，并把失效 session 统一恢复到登录页。 */
 export function Providers({ children }: { children: ReactNode }) {
   useEffect(() => initTheme(), [])
+  const [sessionEnded, setSessionEnded] = useState(false)
+  const sessionEndedRef = useRef(false)
   const router = useRouter()
   const pathname = usePathname()
   const routerRef = useRef(router)
@@ -36,6 +39,7 @@ export function Providers({ children }: { children: ReactNode }) {
       new QueryClient({
         queryCache: new QueryCache({
           onError: (error, query) => {
+            if (sessionEndedRef.current) return
             const currentPath = pathnameRef.current
             const action = unauthorizedQueryAction(error, query.queryKey, currentPath)
             if (action === "redirect") {
@@ -61,6 +65,23 @@ export function Providers({ children }: { children: ReactNode }) {
       }),
   )
 
+  const completeLogout = useCallback(async () => {
+    sessionEndedRef.current = true
+    setSessionEnded(true)
+    await queryClient.cancelQueries()
+    queryClient.clear()
+    recoveryHashesRef.current.clear()
+    sessionRecoveryRef.current = null
+    routerRef.current.replace("/login")
+  }, [queryClient])
+
+  useEffect(() => {
+    if (isPublicHomePath(pathname)) {
+      sessionEndedRef.current = false
+      setSessionEnded(false)
+    }
+  }, [pathname])
+
   useEffect(() => {
     function startSessionRecovery(): Promise<boolean> {
       if (sessionRecoveryRef.current) return sessionRecoveryRef.current
@@ -73,6 +94,7 @@ export function Providers({ children }: { children: ReactNode }) {
           })
           return true
         } catch {
+          if (sessionEndedRef.current) return false
           routerRef.current.replace(
             `/login?redirect=${encodeURIComponent(currentRoute(pathnameRef.current))}`,
           )
@@ -88,12 +110,12 @@ export function Providers({ children }: { children: ReactNode }) {
 
     async function recoverSession(event?: HomeSessionRevalidationEvent) {
       const currentPath = pathnameRef.current
-      if (isPublicHomePath(currentPath)) {
+      if (sessionEndedRef.current || isPublicHomePath(currentPath)) {
         event?.onSettled?.()
         return
       }
       try {
-        if (!(await startSessionRecovery())) return
+        if (!(await startSessionRecovery()) || sessionEndedRef.current) return
         if (event?.onSessionValid) await event.onSessionValid()
         else if (!event?.queryHash) await queryClient.refetchQueries({ type: "active" })
       } catch {
@@ -109,5 +131,17 @@ export function Providers({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(HOME_SESSION_REVALIDATE_EVENT, onSessionRevalidate)
   }, [queryClient])
 
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={queryClient}>
+      <HomeSessionContext.Provider value={{ completeLogout }}>
+        {sessionEnded ? (
+          <p role="status" className="query-state">
+            正在退出登录…
+          </p>
+        ) : (
+          children
+        )}
+      </HomeSessionContext.Provider>
+    </QueryClientProvider>
+  )
 }

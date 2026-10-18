@@ -1,5 +1,6 @@
 // 负责生产桌面启动的最小环境、真实门禁与私密输入隔离，不启动任何真实进程。
 import { readFile, stat } from "node:fs/promises"
+import { readFileSync, lstatSync } from "node:fs"
 
 const osKeys = [
   "PATH",
@@ -30,6 +31,11 @@ export function desktopEnvironment(
   rustUrl: string,
   homeUrl: string,
 ): Record<string, string> {
+  if (
+    [rustUrl, homeUrl].some((value) => new URL(value).hostname.endsWith("pigclaude.com")) &&
+    (rustUrl !== "https://api.pigclaude.com" || homeUrl !== "https://pigclaude.com")
+  )
+    throw new Error("生产桌面端点必须是api服务与root授权来源")
   const environment: Record<string, string> = {}
   for (const key of osKeys) {
     const value = source[key]
@@ -43,13 +49,25 @@ export function desktopEnvironment(
   }
 }
 
-/** 要求 root 明确提供 Task7 放行及最终镜像来源，缺少时禁止进入真实运行。 */
+/** 要求 root 明确提供 Task7 放行及实际公网镜像来源，缺少时禁止进入真实运行。 */
 export function requireProductionDesktopGate(): void {
   if (
     process.env["PIGCLAUDE_TASK7_GATE"] !== "PASS" ||
     !/^[a-f0-9]{40}$/.test(process.env["PIGCLAUDE_PUBLIC_SOURCE_SHA"] ?? "")
   )
     throw new Error("Task7真实放行及公网source checkpoint尚未提供")
+  try {
+    const file = process.env["PIGCLAUDE_TASK7_GATE_FILE"]
+    if (!file) throw new Error("missing")
+    const metadata = lstatSync(file)
+    if (!metadata.isFile() || (metadata.mode & 0o7777) !== 0o600 || metadata.size > 4096)
+      throw new Error("invalid")
+    const gate: unknown = JSON.parse(readFileSync(file, "utf8"))
+    if (!validateTask7Gate(gate, process.env["PIGCLAUDE_PUBLIC_SOURCE_SHA"] ?? ""))
+      throw new Error("invalid")
+  } catch {
+    throw new Error("Task7四域名真实gate文件无效")
+  }
 }
 
 /** 只在验收控制进程读取独立权限受限文件，不把路径或内容传给 Electron。 */
@@ -79,4 +97,24 @@ export async function desktopPrivateInputs(): Promise<{
       throw new Error("桌面验收输入字段不完整")
   }
   return input as Awaited<ReturnType<typeof desktopPrivateInputs>>
+}
+
+/** 真实放行必须绑定同一公网源码与四个精确来源，候选配置来源不冒充镜像源码。 */
+export function validateTask7Gate(value: unknown, source: string): boolean {
+  if (typeof value !== "object" || value === null) return false
+  const gate = value as Record<string, unknown>
+  return (
+    Object.keys(gate).sort().join(",") === "origins,source,status" &&
+    gate.status === "PASS" &&
+    gate.source === source &&
+    /^[a-f0-9]{40}$/.test(source) &&
+    Array.isArray(gate.origins) &&
+    JSON.stringify(gate.origins) ===
+      JSON.stringify([
+        "https://pigclaude.com",
+        "https://www.pigclaude.com",
+        "https://admin.pigclaude.com",
+        "https://api.pigclaude.com",
+      ])
+  )
 }

@@ -32,7 +32,7 @@ test.use({
     env: desktopEnvironment(
       process.env,
       "unused-browser-profile",
-      "https://pigclaude.com",
+      "https://api.pigclaude.com",
       "https://pigclaude.com",
     ),
   },
@@ -123,7 +123,7 @@ test("真实 Web/Admin/Electron 注册登录、授权、重启、替换、解绑
   requireProductionDesktopGate()
   const homeUrl = "https://pigclaude.com"
   const adminUrl = "https://admin.pigclaude.com"
-  const rustUrl = homeUrl
+  const rustUrl = "https://api.pigclaude.com"
   const { email, password, adminAccount, adminPassword, planId } = await desktopPrivateInputs()
   await readProductionConfig(request, "home")
   await readProductionConfig(request, "admin")
@@ -201,7 +201,7 @@ test("真实 Web/Admin/Electron 注册登录、授权、重启、替换、解绑
     desktops.push(first)
     const runtime = await first.application.evaluate(({ app }) => ({
       packaged: app.isPackaged,
-      rust: process.env["PIGCLAUDE_RUST_BASE_URL"] === "https://pigclaude.com",
+      rust: process.env["PIGCLAUDE_RUST_BASE_URL"] === "https://api.pigclaude.com",
       home: process.env["PIGCLAUDE_AUTH_ORIGIN"] === "https://pigclaude.com",
       secretsAbsent: Object.keys(process.env).every(
         (key) => !/SECRET|PASSWORD|DATABASE|REDIS|SETTINGS_KEY|INPUT_FILE|ACCEPTANCE/.test(key),

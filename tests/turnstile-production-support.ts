@@ -2,8 +2,9 @@
 import { expect, type APIRequestContext, type Page } from "@playwright/test"
 
 /** 返回唯一获准的生产 HTTPS 来源。 */
-export function productionOrigin(surface: "home" | "admin"): string {
-  return surface === "home" ? "https://pigclaude.com" : "https://admin.pigclaude.com"
+export function productionOrigin(surface: "home" | "www" | "admin" | "api"): string {
+  const host = surface === "home" ? "pigclaude.com" : `${surface}.pigclaude.com`
+  return `https://${host}`
 }
 /** 严格校验四字段正式配置，拒绝 Cloudflare 官方测试 key。 */
 export function validatePublicConfig(value: unknown): boolean {
@@ -23,7 +24,10 @@ export function validatePublicConfig(value: unknown): boolean {
 export interface ProductionEvidence {
   status?: number
   action?: "home_register" | "home_login" | "admin_login"
-  hostname?: "pigclaude.com" | "admin.pigclaude.com"
+  hostname?: "pigclaude.com" | "www.pigclaude.com" | "admin.pigclaude.com"
+  cookieSecure?: boolean
+  cookieHttpOnly?: boolean
+  cookieHostOnly?: boolean
   revision?: string
   passed?: boolean
   step?: SubmissionPath
@@ -35,7 +39,11 @@ export function safeEvidence(value: Record<string, unknown>): ProductionEvidence
       typeof item === "number" && Number.isInteger(item) && item >= 100 && item <= 599,
     action: (item) =>
       typeof item === "string" && ["home_register", "home_login", "admin_login"].includes(item),
-    hostname: (item) => item === "pigclaude.com" || item === "admin.pigclaude.com",
+    hostname: (item) =>
+      item === "pigclaude.com" || item === "www.pigclaude.com" || item === "admin.pigclaude.com",
+    cookieSecure: (item) => typeof item === "boolean",
+    cookieHttpOnly: (item) => typeof item === "boolean",
+    cookieHostOnly: (item) => typeof item === "boolean",
     revision: (item) =>
       typeof item === "string" &&
       /^(0|[1-9][0-9]*)$/.test(item) &&
@@ -66,9 +74,9 @@ export function proofTimeout(): number {
 /** 从真实 HTTPS 读取配置，错误不回显响应正文。 */
 export async function readProductionConfig(
   request: APIRequestContext,
-  surface: "home" | "admin",
+  surface: "home" | "www" | "admin" | "api",
 ): Promise<string> {
-  const prefix = surface === "home" ? "/v1" : "/admin/v1"
+  const prefix = surface === "admin" ? "/admin/v1" : "/v1"
   const response = await request
     .get(`${productionOrigin(surface)}${prefix}/auth/captcha`)
     .catch(() => {
@@ -190,4 +198,15 @@ export async function adminLogin(page: Page, readonly = false): Promise<void> {
     .fill(acceptanceInput(readonly ? "READONLY_PASSWORD" : "ADMIN_PASSWORD"))
   await submit(page, "登录", "/admin/v1/auth/login", 200)
   await expect(page).toHaveURL(/\/users$/)
+  const session = (await page.context().cookies(productionOrigin("admin"))).find(
+    (cookie) => cookie.name === "pigclaude_admin_session",
+  )
+  const facts = {
+    hostname: "admin.pigclaude.com",
+    cookieSecure: session?.secure === true,
+    cookieHttpOnly: session?.httpOnly === true,
+    cookieHostOnly: session?.domain === "admin.pigclaude.com",
+  }
+  expect(facts.cookieSecure && facts.cookieHttpOnly && facts.cookieHostOnly).toBe(true)
+  console.log(JSON.stringify(safeEvidence(facts)))
 }

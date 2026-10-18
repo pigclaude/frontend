@@ -6,6 +6,7 @@ import {
   productionOrigin,
   readProductionConfig,
   submit,
+  safeEvidence,
 } from "./turnstile-production-support"
 import {
   rejectMalformedProofs,
@@ -28,6 +29,15 @@ test("真实四字段正式配置与三路无效证明拒绝", async ({ request 
   await privateStep(async () => {
     await readProductionConfig(request, "home")
     await readProductionConfig(request, "admin")
+    await readProductionConfig(request, "www")
+    await readProductionConfig(request, "api")
+    const health = await request.get(`${productionOrigin("api")}/healthz`)
+    expect(health.status()).toBe(200)
+    expect(health.headers()["content-type"]?.includes("application/json")).toBe(true)
+    expect(typeof (await health.json())).toBe("object")
+    const root = await request.get(`${productionOrigin("api")}/`)
+    expect(root.status()).toBe(404)
+    expect(root.headers()["content-type"]?.includes("text/html")).toBe(false)
     await rejectMalformedProofs(request)
   })
 })
@@ -37,7 +47,9 @@ test("后台真实保存启用、审计、Secret不回显及边界", async ({ pa
     await adminLogin(page)
     await page.goto(`${productionOrigin("admin")}/settings`)
     await page.getByLabel("Site Key", { exact: true }).fill(acceptanceInput("SITE_KEY"))
-    await page.getByLabel("允许主机名", { exact: true }).fill("pigclaude.com\nadmin.pigclaude.com")
+    await page
+      .getByLabel("允许主机名", { exact: true })
+      .fill("pigclaude.com\nwww.pigclaude.com\nadmin.pigclaude.com")
     await page.getByLabel("Secret Key", { exact: true }).fill(acceptanceInput("SECRET_KEY"))
     const enabled = page.getByRole("switch", { name: "草稿启用验证" })
     if ((await enabled.getAttribute("aria-checked")) !== "true") await enabled.click()
@@ -51,12 +63,17 @@ test("后台真实保存启用、审计、Secret不回显及边界", async ({ pa
       expect(text.includes(acceptanceInput("SECRET_KEY"))).toBe(false)
       return JSON.parse(text) as {
         revision: string
-        active: { revision: string; enabled: boolean }
+        active: { revision: string; enabled: boolean; hostnames: string[] }
         draft: unknown
       }
     }
     const before = await readView()
     expect(before.active.enabled).toBe(true)
+    expect([...before.active.hostnames].sort()).toEqual([
+      "admin.pigclaude.com",
+      "pigclaude.com",
+      "www.pigclaude.com",
+    ])
     await expect(page.getByRole("heading", { name: "变更历史" })).toBeVisible()
     const audits = await page.request.get(`${endpoint}/audits`)
     expect(audits.status()).toBe(200)
@@ -103,9 +120,11 @@ test("后台真实保存启用、审计、Secret不回显及边界", async ({ pa
     expect(
       after.revision === candidate.revision && after.active.revision === before.active.revision,
     ).toBe(true)
-    // 将允许两域名的合法草稿恢复并真实验证，始终保持 active required。
+    // 将允许三个浏览器域名的合法草稿恢复并真实验证，始终保持 active required。
     await page.goto(`${productionOrigin("admin")}/settings`)
-    await page.getByLabel("允许主机名", { exact: true }).fill("pigclaude.com\nadmin.pigclaude.com")
+    await page
+      .getByLabel("允许主机名", { exact: true })
+      .fill("pigclaude.com\nwww.pigclaude.com\nadmin.pigclaude.com")
     await submit(page, "保存草稿", "/admin/v1/settings/turnstile/draft", 200)
     await submit(page, "验证并启用", "/admin/v1/settings/turnstile/activate", 200)
     const readonlyContext = await browser.newContext()
@@ -142,6 +161,44 @@ test("独立用户真实注册退出、错误密码后新proof重登及新admin�
     await page.getByLabel("密码", { exact: true }).fill(acceptanceInput("USER_PASSWORD"))
     await submit(page, "登录", "/v1/auth/login", 200)
     await expect(page).toHaveURL(/\/dashboard$/)
+    const rootCookies = await page.context().cookies(home)
+    const rootSession = rootCookies.find((cookie) => cookie.name === "pigclaude_session")
+    expect(
+      Boolean(
+        rootSession?.secure && rootSession.httpOnly && rootSession.domain === "pigclaude.com",
+      ),
+    ).toBe(true)
+    const wwwContext = await browser.newContext()
+    try {
+      const www = productionOrigin("www")
+      const wwwPage = await wwwContext.newPage()
+      expect((await wwwContext.cookies(www)).length === 0).toBe(true)
+      await wwwPage.goto(`${www}/login`)
+      await wwwPage.getByLabel("邮箱").fill(acceptanceInput("USER_EMAIL"))
+      await wwwPage.getByLabel("密码", { exact: true }).fill(acceptanceInput("USER_PASSWORD"))
+      await submit(wwwPage, "登录", "/v1/auth/login", 200)
+      await expect(wwwPage).toHaveURL(`${www}/dashboard`)
+      const session = (await wwwContext.cookies(www)).find(
+        (cookie) => cookie.name === "pigclaude_session",
+      )
+      const facts = {
+        hostname: "www.pigclaude.com",
+        cookieSecure: session?.secure === true,
+        cookieHttpOnly: session?.httpOnly === true,
+        cookieHostOnly: session?.domain === "www.pigclaude.com",
+      }
+      expect(facts.cookieSecure && facts.cookieHttpOnly && facts.cookieHostOnly).toBe(true)
+      expect(
+        (await wwwContext.cookies([home, productionOrigin("api"), productionOrigin("admin")])).some(
+          (cookie) => cookie.name === "pigclaude_session",
+        ),
+      ).toBe(false)
+      console.log(JSON.stringify(safeEvidence(facts)))
+      await wwwPage.getByRole("button", { name: "用户菜单", exact: true }).click()
+      await wwwPage.getByRole("menuitem", { name: "退出登录", exact: true }).click()
+    } finally {
+      await wwwContext.close()
+    }
     const context = await browser.newContext()
     try {
       const admin = await context.newPage()

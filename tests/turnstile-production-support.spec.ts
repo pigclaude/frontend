@@ -6,8 +6,10 @@ import {
   safeEvidence,
 } from "./turnstile-production-support"
 
-test("生产来源必须精确匹配 HTTPS 两域名", () => {
+test("生产来源必须精确匹配 HTTPS 四域名", () => {
   expect(productionOrigin("home")).toBe("https://pigclaude.com")
+  expect(productionOrigin("www")).toBe("https://www.pigclaude.com")
+  expect(productionOrigin("api")).toBe("https://api.pigclaude.com")
   expect(productionOrigin("admin")).toBe("https://admin.pigclaude.com")
 })
 test("公开配置严格四字段且拒绝测试key及额外字段", () => {
@@ -48,4 +50,22 @@ test("证据拒绝允许字段中的任意字符串、对象与越界值", () =>
     { revision: "9223372036854775808" },
   ])
     expect(() => safeEvidence(value)).toThrow("证据字段值无效")
+})
+
+test("WWW布尔Cookie证据可审计但拒绝秘密字符串", () => {
+  expect(
+    safeEvidence({
+      hostname: "www.pigclaude.com",
+      cookieSecure: true,
+      cookieHttpOnly: true,
+      cookieHostOnly: true,
+    }),
+  ).toEqual({
+    hostname: "www.pigclaude.com",
+    cookieSecure: true,
+    cookieHttpOnly: true,
+    cookieHostOnly: true,
+  })
+  expect(() => safeEvidence({ cookieSecure: "private" })).toThrow("证据字段值无效")
+  expect(() => safeEvidence({ hostname: "api.pigclaude.com" })).toThrow("证据字段值无效")
 })

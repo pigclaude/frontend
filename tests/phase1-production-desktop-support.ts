@@ -1,5 +1,5 @@
 // 负责生产桌面启动的最小环境、真实门禁与私密输入隔离，不启动任何真实进程。
-import { readFile, stat } from "node:fs/promises"
+import { readFile, lstat } from "node:fs/promises"
 import { readFileSync, lstatSync } from "node:fs"
 
 const osKeys = [
@@ -80,8 +80,8 @@ export async function desktopPrivateInputs(): Promise<{
 }> {
   const path = process.env["PIGCLAUDE_DESKTOP_INPUT_FILE"]
   if (!path) throw new Error("缺少桌面验收独立私密输入文件")
-  const metadata = await stat(path)
-  if (!metadata.isFile() || (metadata.mode & 0o077) !== 0)
+  const metadata = await lstat(path)
+  if (!metadata.isFile() || (metadata.mode & 0o7777) !== 0o600 || metadata.size > 65536)
     throw new Error("桌面验收输入必须为权限0600的普通文件")
   let value: unknown
   try {

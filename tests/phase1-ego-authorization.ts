@@ -40,9 +40,6 @@ function validAuthorization(value: string): boolean {
 const script =
   `const validAuthorization = ${validAuthorization.toString()};\n` +
   String.raw`
-const chunks = [];
-for await (const chunk of process.stdin) chunks.push(chunk);
-const input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
 let status = "unavailable";
 try {
   const task = await taskSpace(18);
@@ -122,7 +119,7 @@ export function createEgoAuthorizationBridge(
         if (source[key] !== undefined) env[key] = source[key]
       }
       return await new Promise<EgoAuthorizationStatus>((resolve, reject) => {
-        const child = (options.launch ?? spawn)("ego-browser", ["nodejs", "-e", script], {
+        const child = (options.launch ?? spawn)("ego-browser", ["nodejs"], {
           env,
           shell: false,
           stdio: "pipe",
@@ -179,8 +176,8 @@ export function createEgoAuthorizationBridge(
           if (settled) return
           settled = true
           try {
-            if (failed || code !== 0 || protocolLines(stderr).length) throw new Error()
-            const markers = protocolLines(stdout)
+            if (failed || code !== 0) throw new Error()
+            const markers = [...protocolLines(stdout), ...protocolLines(stderr)]
             if (markers.length !== 1 || !markers[0]!.startsWith("PIGCLAUDE_EGO_RESULT="))
               throw new Error()
             const result: unknown = JSON.parse(markers[0]!.slice("PIGCLAUDE_EGO_RESULT=".length))
@@ -198,7 +195,7 @@ export function createEgoAuthorizationBridge(
           }
         })
         try {
-          child.stdin.end(JSON.stringify(input))
+          child.stdin.end(`const input = ${JSON.stringify(input)};\n${script}`)
         } catch {
           fail()
         }

@@ -62,7 +62,10 @@ test("URL 仅经 stdin，固定命令、OS环境与有限结果", async () => {
   expect(await fake.bridge.open(url)).toBe("ready-for-approval")
   expect(fake.calls[0]?.[0]).toBe("ego-browser")
   expect(JSON.stringify(fake.calls)).not.toContain(url)
-  expect(JSON.parse(fake.input())).toEqual({ operation: "open", url })
+  expect(runInNewContext(fake.input().split("\n")[0] + "\n input")).toEqual({
+    operation: "open",
+    url,
+  })
   expect((fake.calls[0]?.[2] as { env: unknown }).env).toEqual({ PATH: "/bin", HOME: "/fixture" })
 })
 test("拒绝非精确来源、路径与未知重复query且零spawn", async () => {
@@ -99,13 +102,16 @@ test("子进程失败与恶意输出不回显", async () => {
 test("批准只发送有限 operation 与布尔替换字段", async () => {
   const fake = fixture('PIGCLAUDE_EGO_RESULT={"status":"authorized"}\n')
   expect(await fake.bridge.approve({ replace: true })).toBe("authorized")
-  expect(JSON.parse(fake.input())).toEqual({ operation: "approve", replace: true })
+  expect(runInNewContext(fake.input().split("\n")[0] + "\n input")).toEqual({
+    operation: "approve",
+    replace: true,
+  })
 })
 
 test("固定脚本仅点击核实的 loopback callback，登录和真人验证交回 root", async () => {
   const fake = fixture()
-  await fake.bridge.open(url)
-  const script = (fake.calls[0]?.[1] as string[])[2]
+  await fake.bridge.approve({ replace: true })
+  const script = fake.input()
   for (const [snapshot, href, expected] of [
     ["确认授权", "http://127.0.0.1:43123/oauth/callback?code=fixture&state=fixture", "authorized"],
     ["确认授权", "https://evil.test/oauth/callback?code=fixture&state=fixture", "unavailable"],
@@ -132,9 +138,7 @@ test("固定脚本仅点击核实的 loopback callback，登录和真人验证�
     }
     await (runInNewContext(`(async () => {${script}})()`, {
       process: {
-        stdin: Readable.from([
-          Buffer.from(JSON.stringify({ operation: "approve", replace: true })),
-        ]),
+        stdin: Readable.from([]),
       },
       Buffer,
       URL,
@@ -175,8 +179,8 @@ test("未知 stdout/stderr 与合法 marker 混合仍拒绝", async () => {
 
 test("approve 拒绝完整 URL 反例及非 agent ownership，零页面动作", async () => {
   const fake = fixture()
-  await fake.bridge.open(url)
-  const script = (fake.calls[0]?.[1] as string[])[2]
+  await fake.bridge.approve({ replace: true })
+  const script = fake.input()
   for (const [current, ownership] of [
     [url + "&unknown=x", "agent"],
     [url + "&state=x", "agent"],
@@ -192,9 +196,7 @@ test("approve 拒绝完整 URL 反例及非 agent ownership，零页面动作", 
     let pages = 0
     await (runInNewContext(`(async () => {${script}})()`, {
       process: {
-        stdin: Readable.from([
-          Buffer.from(JSON.stringify({ operation: "approve", replace: true })),
-        ]),
+        stdin: Readable.from([]),
       },
       Buffer,
       URL,
@@ -313,4 +315,50 @@ test("超时后close即使携带合法输出也只返回失败；同步spawn失�
   })
   await expect(bridge.open(url)).rejects.toThrow(/^Ego授权委托失败$/)
   expect(await fixture().bridge.open(url)).toBe("ready-for-approval")
+})
+
+test("真实CLI形态：完整stdin源码独立执行，URL字节安全保留且不读额外stdin", async () => {
+  const sensitiveFixture =
+    'https://pigclaude.com/authorize/fixture-id/approve?state=fixture";globalThis.fixtureInjected=true;//\\end\u2028line'
+  const fake = fixture()
+  await fake.bridge.open(sensitiveFixture)
+  expect(fake.calls[0]?.[1]).toEqual(["nodejs"])
+  const observed: string[] = []
+  const output: string[] = []
+  const context = {
+    URL,
+    process: { stdin: Readable.from([]) },
+    console: { log: (text: string) => output.push(text) },
+    taskSpace: async () => ({
+      ownership: "agent",
+      page: () => ({
+        goto: async (value: string) => {
+          observed.push(value)
+        },
+        url: async () => sensitiveFixture,
+        snapshot: async () => "确认授权",
+      }),
+    }),
+    fixtureInjected: false,
+  }
+  await (runInNewContext(`(async () => {${fake.input()}})()`, context) as Promise<void>)
+  expect(observed).toEqual([sensitiveFixture])
+  expect(context.fixtureInjected).toBe(false)
+  expect(output).toEqual(['PIGCLAUDE_EGO_RESULT={"status":"ready-for-approval"}'])
+  expect(JSON.stringify(fake.calls)).not.toContain(sensitiveFixture)
+})
+
+test("真实stderr marker加notice接受，两流重复或未知文本拒绝", async () => {
+  const notice =
+    "[ego-browser:notice] Ego Lite update is available (current 0.5.1.13). Finish the current browser task, then ask the user before running `ego-browser upgrade`; re-read the ego-browser Skill afterward."
+  const marker = 'PIGCLAUDE_EGO_RESULT={"status":"ready-for-approval"}\n'
+  expect(await fixture("", 0, marker + notice + "\n").bridge.open(url)).toBe("ready-for-approval")
+  for (const [stdout, stderr] of [
+    [marker, marker],
+    ["fixture-secret\n", marker],
+    [marker, "fixture-secret\n"],
+    ["", marker + "fixture-secret\n"],
+  ]) {
+    await expect(fixture(stdout, 0, stderr).bridge.open(url)).rejects.toThrow(/^Ego授权委托失败$/)
+  }
 })

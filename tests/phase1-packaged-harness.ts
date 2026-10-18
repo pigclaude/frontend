@@ -70,6 +70,7 @@ export async function launchInstalled(
     await owner.capture()
     const desktop: DesktopHarness = {
       application,
+      owner,
       window: await application.firstWindow(),
       child: application.process(),
       closed: false,

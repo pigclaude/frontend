@@ -27,13 +27,18 @@ export async function registerPackagedUser(page: Page, homeUrl: string): Promise
   expect(
     (await page.context().cookies(homeUrl)).some((cookie) => cookie.name === "pigclaude_session"),
   ).toBe(true)
-  const status = await page.evaluate(async () => {
-    const logout = await fetch("/v1/auth/logout", { method: "POST", credentials: "include" })
-    return logout.status
-  })
-  expect(status).toBe(204)
-  await page.reload()
-  await expect(page).toHaveURL(/\/login\?redirect=/)
+  await page.getByRole("button", { name: "用户菜单", exact: true }).click()
+  const [logout] = await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/v1/auth/logout" &&
+        new URL(response.url()).origin === new URL(homeUrl).origin &&
+        response.request().method() === "POST",
+    ),
+    page.getByRole("menuitem", { name: "退出登录", exact: true }).click(),
+  ])
+  expect(logout.status()).toBe(204)
+  await expect(page).toHaveURL(/\/login$/)
   expect(
     (await page.context().cookies(homeUrl)).some((cookie) => cookie.name === "pigclaude_session"),
   ).toBe(false)
@@ -46,6 +51,7 @@ export async function registerPackagedUser(page: Page, homeUrl: string): Promise
     })
   await page.getByRole("button", { name: "登录", exact: true }).click()
   await expect(page).toHaveURL(/\/dashboard$/)
+  await expect(page.getByRole("heading", { name: "账户概览" })).toBeVisible()
   expect(
     (await page.context().cookies(homeUrl)).some((cookie) => cookie.name === "pigclaude_session"),
   ).toBe(true)

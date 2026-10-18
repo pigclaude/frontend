@@ -145,13 +145,18 @@ test("真实 Web/Admin/Electron 注册登录、授权、重启、替换、解绑
     const registeredCookies = await page.context().cookies(homeUrl)
     expect(registeredCookies.some((cookie) => cookie.name === "pigclaude_session")).toBe(true)
     record("home.register", "authenticated")
-    const logout = await page.evaluate(async () => {
-      const response = await fetch("/v1/auth/logout", { method: "POST", credentials: "include" })
-      return response.status
-    })
-    expect(logout).toBe(204)
-    await page.reload()
-    await expect(page).toHaveURL(/\/login\?redirect=/)
+    await page.getByRole("button", { name: "用户菜单", exact: true }).click()
+    const [logout] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === "/v1/auth/logout" &&
+          new URL(response.url()).origin === new URL(homeUrl).origin &&
+          response.request().method() === "POST",
+      ),
+      page.getByRole("menuitem", { name: "退出登录", exact: true }).click(),
+    ])
+    expect(logout.status()).toBe(204)
+    await expect(page).toHaveURL(/\/login$/)
     expect(
       (await page.context().cookies(homeUrl)).some((cookie) => cookie.name === "pigclaude_session"),
     ).toBe(false)
@@ -165,6 +170,7 @@ test("真实 Web/Admin/Electron 注册登录、授权、重启、替换、解绑
       })
     await page.getByRole("button", { name: "登录", exact: true }).click()
     await expect(page).toHaveURL(/\/dashboard$/)
+    await expect(page.getByRole("heading", { name: "账户概览" })).toBeVisible()
     expect(
       (await page.context().cookies(homeUrl)).some((cookie) => cookie.name === "pigclaude_session"),
     ).toBe(true)

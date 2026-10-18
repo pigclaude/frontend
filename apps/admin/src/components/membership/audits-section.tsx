@@ -1,102 +1,123 @@
-// 负责展示不可变安全审计记录，并把筛选和分页交给 Admin API。
+// 负责迁入成熟后台的audits-section布局和交互，使用本项目真实 API。
 import { useState } from "react"
-import { adminApi } from "@/lib/api"
+import type { MembershipAuditItem } from "@pigclaude/api/admin/types"
+import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { formatTime } from "@/lib/format"
+import { TableCard } from "@/components/shell/table-card"
 import { useCursorPager } from "@/hooks/use-cursor-pager"
-import { formatTime, maskIdentifier } from "@/lib/format"
-import { Pager } from "@/components/shell/pager"
+import { adminApi } from "@/lib/api"
+import {
+  EmptyRow,
+  FilterToolbar,
+  InlineLoadError,
+  LoadingRows,
+  PagerFooter,
+  maskIdentifier,
+  normalizeUserId,
+} from "./table-parts"
 
-/** 渲染授予、撤销和设备解绑审计，保持服务端记录的操作人和原因。 */
+/** AuditsSection 保持列表、表单或分页的既有交互契约。 */
 export function AuditsSection() {
-  const [userFilter, setUserFilter] = useState("")
-  const [eventFilter, setEventFilter] = useState("")
-  const [applied, setApplied] = useState({ userId: "", eventType: "" })
-  const pager = useCursorPager(["admin-audits", applied.userId, applied.eventType], (cursor) =>
+  const [userInput, setUserInput] = useState("")
+  const [userId, setUserId] = useState("")
+  const [eventInput, setEventInput] = useState("")
+  const [eventType, setEventType] = useState("")
+  const pager = useCursorPager(["admin-audits", userId, eventType], (cursor) =>
     adminApi.audits.list({
-      userId: applied.userId || undefined,
-      eventType: applied.eventType || undefined,
-      cursor: cursor || undefined,
+      userId: userId || undefined,
+      eventType: eventType || undefined,
+      cursor,
       limit: 20,
     }),
   )
+
   return (
-    <>
-      <div className="admin-form-row" style={{ marginBottom: 14 }}>
-        <label className="admin-field">
-          <span>用户 ID</span>
-          <input
-            aria-label="审计用户筛选"
-            value={userFilter}
-            onChange={(event) => setUserFilter(event.target.value)}
-          />
-        </label>
-        <label className="admin-field">
-          <span>事件类型</span>
-          <input
-            aria-label="审计事件筛选"
-            value={eventFilter}
-            onChange={(event) => setEventFilter(event.target.value)}
-          />
-        </label>
-        <button
-          className="admin-button"
-          type="button"
-          onClick={() => {
-            setApplied({ userId: userFilter.trim(), eventType: eventFilter.trim() })
-            pager.reset()
+    <TableCard
+      toolbar={
+        <FilterToolbar
+          title="安全审计"
+          userLabel="审计用户筛选"
+          userInput={userInput}
+          onUserInput={setUserInput}
+          onApply={() => {
+            setUserId(normalizeUserId(userInput))
+            setEventType(eventInput.trim())
           }}
         >
-          筛选
-        </button>
-      </div>
-      {pager.isError ? (
-        <div className="admin-error" role="alert">
-          审计列表加载失败，请重试。
-        </div>
-      ) : pager.isPending && pager.items.length === 0 ? (
-        <div className="admin-state">正在加载审计…</div>
-      ) : pager.items.length === 0 ? (
-        <div className="admin-state">暂无安全审计记录</div>
+          <Input
+            value={eventInput}
+            onChange={(event) => setEventInput(event.target.value)}
+            placeholder="事件类型"
+            aria-label="审计事件筛选"
+          />
+        </FilterToolbar>
+      }
+      footer={<PagerFooter pager={pager} noun="条审计" />}
+    >
+      {pager.isError && pager.items.length === 0 ? (
+        <InlineLoadError message="审计列表加载失败" onRetry={pager.retry} />
       ) : (
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>时间</th>
-              <th>用户 / 操作人</th>
-              <th>事件 / 结果</th>
-              <th>设备 / epoch</th>
-              <th>原因</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pager.items.map((item) => (
-              <tr key={item.id}>
-                <td>{formatTime(item.createdAt)}</td>
-                <td>
-                  {item.userId}
-                  <div className="admin-muted">
-                    {item.operatorType} · {item.operatorId || "—"}
-                  </div>
-                </td>
-                <td>
-                  {item.eventType}
-                  <div className="admin-muted">结果：{item.result || "—"}</div>
-                </td>
-                <td>
-                  {item.deviceId ? maskIdentifier(item.deviceId) : "—"}
-                  <div className="admin-muted">{item.bindingEpoch || "—"}</div>
-                </td>
-                <td>
-                  {item.reason || "—"}
-                  <div className="admin-muted">
-                    {[item.clientIp, item.userAgent].filter(Boolean).join(" · ")}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>时间</TableHead>
+              <TableHead>用户 / 操作人</TableHead>
+              <TableHead>事件 / 结果</TableHead>
+              <TableHead>设备 / Epoch</TableHead>
+              <TableHead>原因 / 客户端</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {pager.isPending ? (
+              <LoadingRows columns={5} />
+            ) : pager.items.length === 0 ? (
+              <EmptyRow columns={5} message="暂无安全审计记录" />
+            ) : (
+              pager.items.map((item) => <AuditRow key={item.id} item={item} />)
+            )}
+          </TableBody>
+        </Table>
       )}
-      <Pager hasNext={pager.hasNext} isFetching={pager.isFetching} onNext={pager.goNext} />
-    </>
+    </TableCard>
+  )
+}
+
+/** AuditRow 保持列表、表单或分页的既有交互契约。 */
+function AuditRow({ item }: { item: MembershipAuditItem }) {
+  return (
+    <TableRow>
+      <TableCell className="whitespace-nowrap">
+        {item.createdAt ? formatTime(item.createdAt) : "—"}
+      </TableCell>
+      <TableCell>
+        <p className="font-mono text-foreground">{item.userId}</p>
+        <p className="mt-0.5 text-xs text-meta">
+          {item.operatorType} · {item.operatorId || "—"}
+        </p>
+      </TableCell>
+      <TableCell>
+        <Badge variant="outline">{item.eventType}</Badge>
+        <p className="mt-1 text-xs text-meta">结果：{item.result || "—"}</p>
+      </TableCell>
+      <TableCell className="font-mono text-xs">
+        <p>{item.deviceId ? maskIdentifier(item.deviceId) : "—"}</p>
+        <p className="mt-0.5 text-meta">epoch {item.bindingEpoch}</p>
+      </TableCell>
+      <TableCell className="max-w-[420px] whitespace-normal">
+        <p>{item.reason || "—"}</p>
+        <p className="mt-0.5 text-xs text-meta">
+          {[item.clientIp, item.userAgent].filter(Boolean).join(" · ") || "无客户端信息"}
+        </p>
+      </TableCell>
+    </TableRow>
   )
 }

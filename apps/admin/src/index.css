@@ -1,231 +1,127 @@
-/* 负责管理后台的基础颜色、布局和可访问焦点样式。 */
+/* 负责后台语义色、字体、主题派生变量与共享组件扫描。 */
 @import "@pigclaude/web-ui/styles/globals.css";
+@import "tw-animate-css";
+@source "../../../packages/web-ui/src";
 
+/* 后台专用的语义色工具类（text-meta / bg-raise-2 / border-border-soft …），
+   全部映射到 tokens.css 的变量，随 data-theme 自动切换。 */
+@theme inline {
+  --color-fg-2: var(--fg-2);
+  --color-meta: var(--meta);
+  --color-panel: var(--panel);
+  --color-surface: var(--surface);
+  --color-raise-1: var(--raise-1);
+  --color-raise-2: var(--raise-2);
+  --color-raise-3: var(--raise-3);
+  --color-border-soft: var(--border-soft);
+  --color-border-strong: var(--border-strong);
+  --color-danger: var(--danger);
+  --color-brand: var(--accent);
+
+  /* 后台圆角刻度（覆盖 web-ui 里 lg=xl=12px 的映射）：
+     sm 5px 菜单项 / md 7px 按钮与输入 / lg 10px 下拉、提示条 / xl 12px 卡片与弹窗 / 2xl 16px 登录卡 */
+  --radius-sm: 5px;
+  --radius-md: 7px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+}
+
+/* 后台派生变量：只在 admin 里生效，不影响官网。暗色为默认，亮色块覆盖。 */
 :root {
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-  color: #1d2025;
-  background: #f7f8fa;
-  font-synthesis: none;
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --field-border: rgba(255, 255, 255, 0.09);
+  --switch-off: rgba(255, 255, 255, 0.14);
+  --seg-active: rgba(255, 255, 255, 0.09);
+  --seg-active-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --nav-active: rgba(255, 255, 255, 0.06);
+  --nav-active-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --dialog-shadow: 0 32px 80px -20px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --menu-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.02);
+  --table-head: #111214; /* 表头用不透明底，避免半透明色在单元格拼接处出现缝 */
+  --card-elevated: #0d0e0f; /* = --bg 叠加 --raise-1 的实色，用于需要不透明底的卡片内块 */
+  --brand-from: #8590f0;
+  --brand-to: #4c58cc;
 }
 
-* {
-  box-sizing: border-box;
+:root[data-theme="light"] {
+  --border-strong: #d0d6e0;
+  --field-border: #dcdfe4;
+  --switch-off: rgba(9, 10, 12, 0.16);
+  --seg-active: #ffffff;
+  --seg-active-shadow: 0 1px 2px rgba(9, 10, 12, 0.08), 0 0 0 1px rgba(9, 10, 12, 0.06);
+  --nav-active: #ffffff;
+  --nav-active-shadow: 0 1px 2px rgba(9, 10, 12, 0.06), 0 0 0 1px rgba(9, 10, 12, 0.05);
+  --dialog-shadow: 0 32px 80px -20px rgba(9, 10, 12, 0.28), 0 0 0 1px rgba(9, 10, 12, 0.05);
+  --menu-shadow: 0 16px 40px -12px rgba(9, 10, 12, 0.2), 0 0 0 1px rgba(9, 10, 12, 0.05);
+  --table-head: #f8f9fa;
+  --card-elevated: #ffffff;
+  --brand-from: #7c87ec;
+  --brand-to: #4a55c8;
 }
-body {
-  margin: 0;
-  min-width: 320px;
-}
-a {
-  color: inherit;
-  text-decoration: none;
-}
-button,
-input,
-textarea,
-select {
-  font: inherit;
-}
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
-  outline: 2px solid #2563eb;
-  outline-offset: 2px;
-}
-.admin-layout {
-  display: flex;
-  min-height: 100vh;
-}
-.admin-sidebar {
-  width: 220px;
-  flex: 0 0 220px;
-  border-right: 1px solid #e5e7eb;
-  background: #fff;
-  padding: 20px 14px;
-}
-.admin-main {
-  min-width: 0;
-  flex: 1;
-}
-.admin-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid #e5e7eb;
-  background: #fff;
-  padding: 14px 24px;
-}
-.admin-content {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 28px 24px 48px;
-}
-.admin-nav {
-  display: grid;
-  gap: 4px;
-  margin-top: 24px;
-}
-.admin-nav a {
-  border-radius: 8px;
-  padding: 9px 11px;
-  color: #64748b;
-  font-size: 14px;
-}
-.admin-nav a[aria-current="page"],
-.admin-nav a:hover {
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-.admin-card {
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
-}
-.admin-card-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 16px 18px;
-  border-bottom: 1px solid #eef0f3;
-}
-.admin-card-body {
-  padding: 18px;
-}
-.admin-form-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: end;
-}
-.admin-field {
-  display: grid;
-  gap: 5px;
-  min-width: 150px;
-}
-.admin-field label {
-  font-size: 12px;
-  color: #64748b;
-}
-.admin-field input,
-.admin-field textarea,
-.admin-field select {
-  border: 1px solid #cbd5e1;
-  border-radius: 7px;
-  padding: 8px 10px;
-  color: #1e293b;
-  background: #fff;
-}
-.admin-button {
-  border: 1px solid #cbd5e1;
-  border-radius: 7px;
-  background: #fff;
-  padding: 8px 13px;
-  cursor: pointer;
-}
-.admin-button.primary {
-  border-color: #2563eb;
-  background: #2563eb;
-  color: #fff;
-}
-.admin-button.danger {
-  border-color: #fecaca;
-  color: #b91c1c;
-}
-.admin-button:disabled {
-  cursor: wait;
-  opacity: 0.55;
-}
-.admin-table-wrap {
-  overflow-x: auto;
-}
-.admin-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-.admin-table th,
-.admin-table td {
-  border-bottom: 1px solid #eef0f3;
-  padding: 11px 12px;
-  text-align: left;
-  white-space: nowrap;
-}
-.admin-table th {
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 600;
-}
-.admin-table td {
-  color: #334155;
-}
-.admin-muted {
-  color: #64748b;
-  font-size: 13px;
-}
-.admin-state {
-  padding: 28px;
-  color: #64748b;
-  text-align: center;
-}
-.admin-error {
-  border-radius: 8px;
-  background: #fff1f2;
-  padding: 12px 14px;
-  color: #be123c;
-}
-.admin-pager {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-top: 14px;
-}
-.admin-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 18px;
-}
-.admin-tabs a {
-  border-radius: 8px;
-  padding: 8px 12px;
-  color: #64748b;
-}
-.admin-tabs a[aria-current="page"] {
-  background: #dbeafe;
-  color: #1d4ed8;
-}
-.admin-dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgb(15 23 42 / 35%);
-  padding: 20px;
-}
-.admin-dialog {
-  width: min(440px, 100%);
-  border-radius: 12px;
-  background: #fff;
-  padding: 20px;
-  box-shadow: 0 20px 60px rgb(15 23 42 / 25%);
-}
-.admin-dialog form {
-  display: grid;
-  gap: 12px;
-}
-@media (max-width: 760px) {
-  .admin-sidebar {
-    display: none;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv11", "ss03";
   }
-  .admin-content {
-    padding: 20px 14px 36px;
+
+  ::selection {
+    background: color-mix(in oklab, var(--accent), transparent 62%);
   }
-  .admin-header {
-    padding: 12px 14px;
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--fg), transparent 84%) transparent;
+  }
+
+  /* 数字输入统一去掉浏览器自带的上下箭头（金额/ID 输入用 inputMode 足够）。 */
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="search"]::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+  }
+  input::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 150ms;
+  }
+  input::-webkit-calendar-picker-indicator:hover {
+    opacity: 0.95;
+  }
+}
+
+/* sonner：图标按语义着色，与徽章同一套 ink 色。 */
+[data-sonner-toast] {
+  font-family: var(--font-body);
+}
+[data-sonner-toast][data-type="success"] [data-icon] {
+  color: var(--success-ink);
+}
+[data-sonner-toast][data-type="error"] [data-icon] {
+  color: var(--danger-ink);
+}
+[data-sonner-toast][data-type="warning"] [data-icon] {
+  color: var(--warn-ink);
+}
+[data-sonner-toast][data-type="info"] [data-icon] {
+  color: var(--accent-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
   }
 }

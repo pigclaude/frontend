@@ -1,22 +1,16 @@
-// 负责承载会员列表页面，并链接到设备和安全审计管理页。
-import { NavLink } from "react-router"
+// 负责承载会员页面，复用成熟后台的页头、分区导航和数据卡片。
+import { MembershipSections } from "@/components/membership/membership-sections"
 import { PageHead } from "@/components/shell/page-head"
-import { TableCard } from "@/components/shell/table-card"
 import { MembersSection } from "@/components/membership/members-section"
 
-/** 管理会员授予、撤销和服务端状态查询。 */
+/** 展示会员的真实业务操作与状态。 */
 export default function MembershipPage() {
   return (
-    <>
-      <PageHead title="会员" subtitle="授予和撤销会员时必须经过服务端权限与审计事务。" />
-      <div className="admin-tabs" aria-label="会员管理分区">
-        <NavLink to="/membership">会员列表</NavLink>
-        <NavLink to="/devices">设备绑定</NavLink>
-        <NavLink to="/audits">安全审计</NavLink>
-      </div>
-      <TableCard title="会员列表">
+    <div className="flex flex-col gap-6">
+      <PageHead title="会员" subtitle="查看会员状态与授权期限，处理人工授予和撤销。" />
+      <MembershipSections>
         <MembersSection />
-      </TableCard>
-    </>
+      </MembershipSections>
+    </div>
   )
 }

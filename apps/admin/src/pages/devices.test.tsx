@@ -56,6 +56,15 @@ describe("DevicesSection", () => {
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["admin-audits"] })
   })
 
+  it("closes the confirmation with Escape without unbinding", async () => {
+    renderSection()
+    fireEvent.click(await screen.findByRole("button", { name: "解绑" }))
+    expect(screen.getByRole("dialog", { name: "解绑设备" })).toBeTruthy()
+    fireEvent.keyDown(document, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "解绑设备" })).toBeNull())
+    expect(api.unbind).not.toHaveBeenCalled()
+  })
+
   it("keeps the dialog open and reports failure when unbind is rejected", async () => {
     api.unbind.mockRejectedValueOnce(new Error("failed"))
     renderSection()

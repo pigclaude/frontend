@@ -1,25 +1,16 @@
-// 负责承载设备绑定管理页面。
-import { NavLink } from "react-router"
+// 负责承载设备绑定页面，复用成熟后台的页头、分区导航和数据卡片。
+import { MembershipSections } from "@/components/membership/membership-sections"
 import { PageHead } from "@/components/shell/page-head"
-import { TableCard } from "@/components/shell/table-card"
 import { DevicesSection } from "@/components/membership/devices-section"
 
-/** 展示当前设备绑定并提供带原因的解绑操作。 */
+/** 展示设备绑定的真实业务操作与状态。 */
 export default function DevicesPage() {
   return (
-    <>
-      <PageHead
-        title="设备绑定"
-        subtitle="解绑会递增 binding epoch，旧客户端由服务端在下一次校验时拒绝。"
-      />
-      <div className="admin-tabs">
-        <NavLink to="/membership">会员列表</NavLink>
-        <NavLink to="/devices">设备绑定</NavLink>
-        <NavLink to="/audits">安全审计</NavLink>
-      </div>
-      <TableCard title="设备绑定">
+    <div className="flex flex-col gap-6">
+      <PageHead title="设备绑定" subtitle="查看已绑定设备，并在需要时解除当前绑定。" />
+      <MembershipSections>
         <DevicesSection />
-      </TableCard>
-    </>
+      </MembershipSections>
+    </div>
   )
 }

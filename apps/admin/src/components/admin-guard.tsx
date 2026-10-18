@@ -6,7 +6,10 @@ import { loginRedirectPath } from "@/lib/navigation"
 /** 显示最小加载态，避免未确认身份时闪出受保护的后台数据。 */
 function GuardLoading() {
   return (
-    <main className="admin-state" aria-busy="true">
+    <main
+      className="flex min-h-dvh items-center justify-center text-[13px] text-muted-foreground"
+      aria-busy="true"
+    >
       正在验证管理员会话…
     </main>
   )

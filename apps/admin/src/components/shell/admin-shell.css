@@ -1,0 +1,48 @@
+/* AdminShell 布局骨架：侧栏宽度断点 + 桌面折叠图标轨 + ≤768px 抽屉化。
+   240px（默认）/ 224px（≤1024px）/ 64px（桌面折叠）/ 272px 固定抽屉（≤768px）。
+   用真实 @media 而非 Tailwind 任意断点变体，避免两条 max-width 规则在生成的
+   工具类样式表里出现顺序不确定、互相覆盖的问题——这里用真实 CSS 级联顺序
+   （后声明的 ≤768 规则天然覆盖 ≤1024 规则）保证行为和字面断点数值精确对应。 */
+
+.admin-side {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  width: 240px;
+  flex: none;
+  transition: width 220ms var(--ease-standard);
+}
+
+.admin-side[data-rail="true"] {
+  width: 64px;
+}
+
+@media (max-width: 1024px) {
+  .admin-side[data-rail="false"] {
+    width: 224px;
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-side,
+  .admin-side[data-rail="false"] {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 75;
+    width: 272px;
+    height: 100dvh;
+    transform: translateX(-100%);
+    transition: transform 260ms var(--ease-standard);
+  }
+
+  .admin-shell.side-open .admin-side {
+    transform: none;
+    box-shadow: var(--dialog-shadow);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-side {
+    transition: none;
+  }
+}

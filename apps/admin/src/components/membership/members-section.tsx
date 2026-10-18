@@ -1,233 +1,229 @@
-// 负责展示会员列表并处理服务端授予、撤销和查询失效流程。
-import { FormEvent, useState } from "react"
+// 负责迁入成熟后台的members-section布局和交互，使用本项目真实 API。
+import { GrantDialog } from "./grant-dialog"
+import { useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import type { MembershipItem, MembershipStatus } from "@pigclaude/api/admin/types"
-import { adminApi } from "@/lib/api"
-import { useCursorPager } from "@/hooks/use-cursor-pager"
-import { toastApiError } from "@/lib/errors"
+import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { formatTime } from "@/lib/format"
-import { Pager } from "@/components/shell/pager"
+import { TableCard } from "@/components/shell/table-card"
+import { useCursorPager } from "@/hooks/use-cursor-pager"
+import { adminApi } from "@/lib/api"
+import { toastApiError } from "@/lib/errors"
+import { ReasonDialog } from "./reason-dialog"
+import {
+  EmptyRow,
+  FilterToolbar,
+  InlineLoadError,
+  LoadingRows,
+  PagerFooter,
+  PLAN_KIND,
+  StatusBadge,
+  normalizeUserId,
+} from "./table-parts"
 
-/** 会员列表、人工授予和撤销表单，mutation 只使用服务端返回快照。 */
+// 会员列表：合并后一个用户一条会员记录。可按用户 ID / 状态筛选；
+// 行内「撤销」是安全停权（ReasonDialog 收必填原因，写不可变审计）。
+/** MembersSection 保持列表、表单或分页的既有交互契约。 */
 export function MembersSection() {
-  const queryClient = useQueryClient()
-  const [status, setStatus] = useState<MembershipStatus | "">("")
   const [showGrant, setShowGrant] = useState(false)
+  const queryClient = useQueryClient()
+  const [userInput, setUserInput] = useState("")
+  const [userId, setUserId] = useState("")
+  const [status, setStatus] = useState<MembershipStatus | "">("")
   const [revokeTarget, setRevokeTarget] = useState<MembershipItem | null>(null)
-  const pager = useCursorPager(["admin-memberships", status], (cursor) =>
-    adminApi.membership.list({ status, cursor: cursor || undefined, limit: 20 }),
+  const pager = useCursorPager(["admin-memberships", userId, status], (cursor) =>
+    adminApi.membership.list({
+      userId: userId || undefined,
+      status,
+      cursor,
+      limit: 20,
+    }),
   )
-  const grant = useMutation({
-    mutationFn: (value: Parameters<typeof adminApi.membership.grant>[0]) =>
-      adminApi.membership.grant(value),
-    onSuccess: (membership) => {
+  const revokeMutation = useMutation({
+    mutationFn: ({ userId: targetUserId, reason }: { userId: string; reason: string }) =>
+      adminApi.membership.revoke({ userId: targetUserId, reason }),
+    onSuccess: (membership, variables) => {
       void queryClient.invalidateQueries({ queryKey: ["admin-memberships"] })
       void queryClient.invalidateQueries({ queryKey: ["admin-audits"] })
-      setShowGrant(false)
-      setRevokeTarget(null)
+      toast.success(`已撤销用户 ${variables.userId} 的会员`)
       pager.reset()
       window.dispatchEvent(new CustomEvent("pigclaude:admin-membership", { detail: membership }))
-      toast.success(`会员 ${membership.userId} 已由服务端确认`)
-    },
-    onError: toastApiError,
-  })
-  const revoke = useMutation({
-    mutationFn: (value: Parameters<typeof adminApi.membership.revoke>[0]) =>
-      adminApi.membership.revoke(value),
-    onSuccess: (membership) => {
-      void queryClient.invalidateQueries({ queryKey: ["admin-memberships"] })
-      void queryClient.invalidateQueries({ queryKey: ["admin-audits"] })
       setRevokeTarget(null)
-      pager.reset()
-      window.dispatchEvent(new CustomEvent("pigclaude:admin-membership", { detail: membership }))
-      toast.success(`会员 ${membership.userId} 已撤销`)
     },
     onError: toastApiError,
   })
 
   return (
     <>
-      <div className="admin-form-row" style={{ marginBottom: 14 }}>
-        <label className="admin-field">
-          <span>状态筛选</span>
-          <select
-            aria-label="会员状态"
-            value={status}
-            onChange={(event) => {
-              setStatus(event.target.value as MembershipStatus | "")
-              pager.reset()
-            }}
-          >
-            <option value="">全部状态</option>
-            <option value="active">有效</option>
-            <option value="expired">已过期</option>
-            <option value="revoked">已撤销</option>
-          </select>
-        </label>
-        <button className="admin-button primary" type="button" onClick={() => setShowGrant(true)}>
-          人工授予
-        </button>
-      </div>
-      {showGrant ? (
-        <GrantForm
-          pending={grant.isPending}
-          onCancel={() => setShowGrant(false)}
-          onSubmit={(value) => grant.mutate(value)}
-        />
-      ) : null}
-      {revokeTarget ? (
-        <ReasonForm
-          title={`撤销用户 ${revokeTarget.userId} 的会员`}
-          pending={revoke.isPending}
-          onCancel={() => setRevokeTarget(null)}
-          onSubmit={(reason) => revoke.mutate({ userId: revokeTarget.userId, reason })}
-        />
-      ) : null}
-      {pager.isError ? (
-        <div className="admin-error" role="alert">
-          会员列表加载失败，请重试。
-        </div>
-      ) : pager.isPending && pager.items.length === 0 ? (
-        <div className="admin-state">正在加载会员…</div>
-      ) : pager.items.length === 0 ? (
-        <div className="admin-state">暂无会员记录</div>
-      ) : (
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>用户</th>
-              <th>套餐</th>
-              <th>状态</th>
-              <th>有效期</th>
-              <th>版本</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pager.items.map((item) => (
-              <tr key={`${item.userId}-${item.entitlementVersion}`}>
-                <td>{item.userId}</td>
-                <td>
-                  {item.planId} · {item.planKind}
-                </td>
-                <td>{item.status}</td>
-                <td>{item.lifetime ? "产品生命周期永久授权" : formatTime(item.validUntil)}</td>
-                <td>{item.entitlementVersion}</td>
-                <td>
-                  <button
-                    className="admin-button danger"
-                    type="button"
-                    disabled={item.status === "revoked" || revoke.isPending}
-                    onClick={() => setRevokeTarget(item)}
-                  >
-                    撤销
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {showGrant && (
+        <GrantDialog open={showGrant} onOpenChange={setShowGrant} onGranted={pager.reset} />
       )}
-      <Pager hasNext={pager.hasNext} isFetching={pager.isFetching} onNext={pager.goNext} />
+      <TableCardContent
+        pager={pager}
+        userInput={userInput}
+        status={status}
+        onUserInput={setUserInput}
+        onApply={() => setUserId(normalizeUserId(userInput))}
+        onStatus={setStatus}
+        onRevoke={setRevokeTarget}
+        onGrant={() => setShowGrant(true)}
+      />
+      <ReasonDialog
+        open={revokeTarget !== null}
+        title={`撤销用户 ${revokeTarget?.userId ?? ""} 的会员`}
+        description={`撤销用户 ${revokeTarget?.userId ?? ""} 的会员后，该用户将无法继续使用会员权限。请填写撤销原因。`}
+        confirmLabel="确认"
+        pending={revokeMutation.isPending}
+        onOpenChange={(open) => !open && setRevokeTarget(null)}
+        onConfirm={(reason) =>
+          revokeTarget && revokeMutation.mutate({ userId: revokeTarget.userId, reason })
+        }
+      />
     </>
   )
 }
 
-interface GrantFormProps {
-  pending: boolean
-  onCancel: () => void
-  onSubmit: (value: {
-    userId: string
-    planId: string
-    termsVersion: string
-    remark: string
-  }) => void
-}
-
-function GrantForm({ pending, onCancel, onSubmit }: GrantFormProps) {
-  const [userId, setUserId] = useState("")
-  const [planId, setPlanId] = useState("")
-  const [termsVersion, setTermsVersion] = useState("v1")
-  const [remark, setRemark] = useState("")
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!userId.trim() || !planId.trim() || !termsVersion.trim() || !remark.trim()) return
-    onSubmit({
-      userId: userId.trim(),
-      planId: planId.trim(),
-      termsVersion: termsVersion.trim(),
-      remark: remark.trim(),
-    })
-  }
+/** TableCardContent 保持列表、表单或分页的既有交互契约。 */
+function TableCardContent({
+  pager,
+  userInput,
+  status,
+  onUserInput,
+  onApply,
+  onStatus,
+  onRevoke,
+  onGrant,
+}: {
+  pager: ReturnType<typeof useCursorPager<MembershipItem>>
+  userInput: string
+  status: MembershipStatus | ""
+  onUserInput: (value: string) => void
+  onApply: () => void
+  onStatus: (value: MembershipStatus | "") => void
+  onRevoke: (item: MembershipItem) => void
+  onGrant: () => void
+}) {
   return (
-    <div className="admin-dialog-backdrop" role="dialog" aria-label="人工授予会员">
-      <div className="admin-dialog">
-        <h2 style={{ marginTop: 0 }}>人工授予会员</h2>
-        <form onSubmit={submit}>
-          <label className="admin-field">
-            <span>用户 ID</span>
-            <input value={userId} onChange={(event) => setUserId(event.target.value)} />
-          </label>
-          <label className="admin-field">
-            <span>套餐 ID</span>
-            <input value={planId} onChange={(event) => setPlanId(event.target.value)} />
-          </label>
-          <label className="admin-field">
-            <span>条款版本</span>
-            <input value={termsVersion} onChange={(event) => setTermsVersion(event.target.value)} />
-          </label>
-          <label className="admin-field">
-            <span>操作备注</span>
-            <textarea value={remark} onChange={(event) => setRemark(event.target.value)} />
-          </label>
-          <div className="admin-form-row">
-            <button className="admin-button" type="button" onClick={onCancel}>
-              取消
-            </button>
-            <button className="admin-button primary" type="submit" disabled={pending}>
-              {pending ? "提交中…" : "确认授予"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <TableCard
+      toolbar={
+        <FilterToolbar
+          title="会员列表"
+          userLabel="会员用户筛选"
+          userInput={userInput}
+          onUserInput={onUserInput}
+          onApply={onApply}
+        >
+          <Select
+            value={status || "all"}
+            onValueChange={(value) => onStatus(value === "all" ? "" : (value as MembershipStatus))}
+          >
+            <SelectTrigger aria-label="会员状态">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部状态</SelectItem>
+              <SelectItem value="active">有效</SelectItem>
+              <SelectItem value="expired">已过期</SelectItem>
+              <SelectItem value="revoked">已撤销</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button type="button" variant="outline" onClick={onGrant}>
+            人工授予
+          </Button>
+        </FilterToolbar>
+      }
+      footer={<PagerFooter pager={pager} noun="条会员" />}
+    >
+      {pager.isError && pager.items.length === 0 ? (
+        <InlineLoadError message="会员列表加载失败" onRetry={pager.retry} />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>用户</TableHead>
+              <TableHead>档位</TableHead>
+              <TableHead>状态</TableHead>
+              <TableHead>授权期限</TableHead>
+              <TableHead>条款 / 版本</TableHead>
+              <TableHead className="text-right">操作</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {pager.isPending ? (
+              <LoadingRows columns={6} />
+            ) : pager.items.length === 0 ? (
+              <EmptyRow columns={6} message="暂无会员记录" />
+            ) : (
+              pager.items.map((item) => (
+                <MembershipRow
+                  key={`${item.userId}-${item.entitlementVersion}`}
+                  item={item}
+                  onRevoke={onRevoke}
+                />
+              ))
+            )}
+          </TableBody>
+        </Table>
+      )}
+    </TableCard>
   )
 }
 
-interface ReasonFormProps {
-  title: string
-  pending: boolean
-  onCancel: () => void
-  onSubmit: (reason: string) => void
-}
-
-function ReasonForm({ title, pending, onCancel, onSubmit }: ReasonFormProps) {
-  const [reason, setReason] = useState("")
+/** MembershipRow 保持列表、表单或分页的既有交互契约。 */
+function MembershipRow({
+  item,
+  onRevoke,
+}: {
+  item: MembershipItem
+  onRevoke: (item: MembershipItem) => void
+}) {
   return (
-    <div className="admin-dialog-backdrop" role="dialog" aria-label={title}>
-      <div className="admin-dialog">
-        <h2 style={{ marginTop: 0 }}>{title}</h2>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (reason.trim()) onSubmit(reason.trim())
-          }}
+    <TableRow>
+      <TableCell className="font-mono text-foreground">{item.userId}</TableCell>
+      <TableCell>
+        <p className="font-mono text-xs text-foreground">#{item.planId}</p>
+        <p className="text-xs text-meta">{PLAN_KIND[item.planKind]}</p>
+      </TableCell>
+      <TableCell>
+        <StatusBadge status={item.status} />
+      </TableCell>
+      <TableCell>
+        {item.lifetime
+          ? "产品生命周期永久授权"
+          : item.validUntil
+            ? formatTime(item.validUntil)
+            : "—"}
+      </TableCell>
+      <TableCell>
+        <p className="font-mono text-xs text-foreground">{item.termsVersion || "短卡无条款"}</p>
+        <p className="mt-0.5 text-xs text-meta">版本 {item.entitlementVersion}</p>
+      </TableCell>
+      <TableCell className="text-right">
+        <Button
+          size="sm"
+          variant="danger"
+          disabled={item.status === "revoked"}
+          onClick={() => onRevoke(item)}
         >
-          <label className="admin-field">
-            <span>原因</span>
-            <textarea value={reason} onChange={(event) => setReason(event.target.value)} />
-          </label>
-          <div className="admin-form-row">
-            <button className="admin-button" type="button" onClick={onCancel}>
-              取消
-            </button>
-            <button className="admin-button danger" type="submit" disabled={pending}>
-              {pending ? "提交中…" : "确认"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+          撤销
+        </Button>
+      </TableCell>
+    </TableRow>
   )
 }

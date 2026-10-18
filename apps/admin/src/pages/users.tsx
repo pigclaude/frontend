@@ -1,67 +1,47 @@
-// 负责展示服务端管理员用户列表和 decimal string 游标分页。
+// 负责以原后台用户表格和详情抽屉展示真实用户摘要。
+import { useState } from "react"
 import type { AdminUserItem } from "@pigclaude/api/admin/types"
+import { Button } from "@/components/ui/button"
+import { PageHead } from "@/components/shell/page-head"
+import { PagerFooter } from "@/components/shell/pager"
+import { TableCard, ToolbarTitle } from "@/components/shell/table-card"
+import { InlineLoadError } from "@/components/membership/table-parts"
+import { UserTable } from "@/components/users/user-table"
+import { UserDrawer } from "@/components/users/user-drawer"
 import { adminApi } from "@/lib/api"
 import { useCursorPager } from "@/hooks/use-cursor-pager"
-import { formatTime } from "@/lib/format"
-import { PageHead } from "@/components/shell/page-head"
-import { Pager } from "@/components/shell/pager"
-import { TableCard } from "@/components/shell/table-card"
 
-/** 渲染用户列表，任何展示数据都来自 Admin API 的 authoritative response。 */
+/** 用户页只提供现有 API 支持的查询、分页和详情。 */
 export default function UsersPage() {
+  const [detailUser, setDetailUser] = useState<AdminUserItem | null>(null)
   const pager = useCursorPager(["admin-users"], (cursor) =>
     adminApi.users.list({ cursor: cursor || undefined, limit: 20 }),
   )
-
   return (
-    <>
-      <PageHead title="用户" subtitle="查看服务端用户脱敏摘要和账号状态。" />
-      <TableCard title="用户列表" description="用户数据由 Rust Admin bounded context 授权后返回。">
-        {pager.isError ? (
-          <div className="admin-error" role="alert">
-            用户列表加载失败，请重试。
-          </div>
-        ) : pager.isPending && pager.items.length === 0 ? (
-          <div className="admin-state">正在加载用户…</div>
-        ) : pager.items.length === 0 ? (
-          <div className="admin-state">暂无用户</div>
+    <div className="flex flex-col gap-6">
+      <PageHead title="用户" subtitle="查看用户账号摘要、状态和最近登录信息。" />
+      <TableCard
+        toolbar={
+          <>
+            <ToolbarTitle title="用户列表" />
+            <Button variant="outline" onClick={pager.retry}>
+              刷新
+            </Button>
+          </>
+        }
+        footer={<PagerFooter pager={pager} noun="位用户" />}
+      >
+        {pager.isError && pager.items.length === 0 ? (
+          <InlineLoadError message="用户列表加载失败" onRetry={pager.retry} />
         ) : (
-          <UserTable items={pager.items} />
+          <UserTable items={pager.items} isPending={pager.isPending} onDetail={setDetailUser} />
         )}
-        <Pager hasNext={pager.hasNext} isFetching={pager.isFetching} onNext={pager.goNext} />
       </TableCard>
-    </>
-  )
-}
-
-function UserTable({ items }: { items: AdminUserItem[] }) {
-  return (
-    <table className="admin-table">
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>账号</th>
-          <th>状态</th>
-          <th>余额</th>
-          <th>创建时间</th>
-          <th>最近登录</th>
-        </tr>
-      </thead>
-      <tbody>
-        {items.map((item) => (
-          <tr key={item.id}>
-            <td>{item.id}</td>
-            <td>
-              <strong>{item.nickname || "未设置昵称"}</strong>
-              <div className="admin-muted">{item.email}</div>
-            </td>
-            <td>{item.status === "active" ? "正常" : item.status}</td>
-            <td>{item.balance}</td>
-            <td>{formatTime(item.createdAt)}</td>
-            <td>{formatTime(item.lastLoginAt)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+      <UserDrawer
+        user={detailUser}
+        open={detailUser !== null}
+        onOpenChange={(open) => !open && setDetailUser(null)}
+      />
+    </div>
   )
 }

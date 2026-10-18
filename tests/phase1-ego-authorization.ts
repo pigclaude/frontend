@@ -1,5 +1,5 @@
 // 负责把内存授权 URL 经 stdin 委托给已有 Ego 空间；只返回有限安全状态。
-import { spawn } from "node:child_process"
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import { requireProductionDesktopGate } from "./phase1-production-desktop-support"
 
 const statuses = [
@@ -8,6 +8,7 @@ const statuses = [
   "human-required",
   "unavailable",
   "authorized",
+  "cleanup-unconfirmed",
 ] as const
 /** 委托只返回安全枚举，不返回页面、链接或底层错误。 */
 export type EgoAuthorizationStatus = (typeof statuses)[number]
@@ -36,7 +37,9 @@ function validAuthorization(value: string): boolean {
 }
 
 // 固定脚本不含输入；浏览器快照只留在子进程内存，不打印自动操作回执。
-const script = String.raw`
+const script =
+  `const validAuthorization = ${validAuthorization.toString()};\n` +
+  String.raw`
 const chunks = [];
 for await (const chunk of process.stdin) chunks.push(chunk);
 const input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
@@ -46,12 +49,13 @@ try {
   if (task.ownership !== "agent") throw new Error("unavailable");
   const page = task.page("p1");
   if (input.operation === "open") await page.goto(input.url);
-  const current = new URL(await page.url());
+  const currentUrl = await page.url();
+  const current = new URL(currentUrl);
   if (current.origin !== "https://pigclaude.com") throw new Error("unavailable");
   const snapshot = await page.snapshot();
   if (/登录|Sign in/.test(snapshot) && !snapshot.includes("确认授权")) status = "login-required";
   else if (/验证您是真人|Verify you are human|Checking your browser/.test(snapshot)) status = "human-required";
-  else if (/^\/authorize\/[A-Za-z0-9_-]+\/approve$/.test(current.pathname) && snapshot.includes("确认授权")) {
+  else if (validAuthorization(currentUrl) && snapshot.includes("确认授权")) {
     status = "ready-for-approval";
     if (input.operation === "approve") {
       if (input.replace) await page.click('loc=role:checkbox[name="我确认替换现有设备"]');
@@ -75,12 +79,23 @@ try {
 console.log("PIGCLAUDE_EGO_RESULT=" + JSON.stringify({status}));
 `
 
+// 全模块只持有一个子进程；没有 close 收据时跨所有 bridge 阻止再次委托。
+let activeOwner: { child: ChildProcessWithoutNullStreams } | undefined
+const updateNotice =
+  "[ego-browser:notice] Ego Lite update is available (current 0.5.1.13). Finish the current browser task, then ask the user before running `ego-browser upgrade`; re-read the ego-browser Skill afterward."
+
+function protocolLines(output: string): string[] {
+  return output.split(/\r?\n/).filter((line) => line.trim() !== "" && line !== updateNotice)
+}
+
 /** 构造可用假 child 验证的委托；默认必须先验证真实生产门禁。 */
 export function createEgoAuthorizationBridge(
   options: {
     launch?: typeof spawn
     gate?: () => void
     environment?: NodeJS.ProcessEnv
+    timeoutMs?: number
+    cleanupWaitMs?: number
   } = {},
 ) {
   const run = async (
@@ -88,6 +103,7 @@ export function createEgoAuthorizationBridge(
   ): Promise<EgoAuthorizationStatus> => {
     try {
       ;(options.gate ?? requireProductionDesktopGate)()
+      if (activeOwner) return "cleanup-unconfirmed"
       if (input.operation === "open" && !validAuthorization(input.url)) throw new Error()
       const env: Record<string, string> = {}
       const source = options.environment ?? process.env
@@ -111,51 +127,81 @@ export function createEgoAuthorizationBridge(
           shell: false,
           stdio: "pipe",
         })
+        const owner = { child }
+        activeOwner = owner
         let stdout = ""
+        let stderr = ""
         let size = 0
         let failed = false
+        let closed = false
+        let settled = false
+        let exitTimer: ReturnType<typeof setTimeout> | undefined
         const fail = () => {
+          if (failed || closed) return
           failed = true
-          child.kill("SIGKILL")
+          clearTimeout(timer)
+          exitTimer = setTimeout(
+            () => {
+              if (!closed && !settled) {
+                settled = true
+                resolve("cleanup-unconfirmed")
+              }
+            },
+            Math.max(1, Math.min(options.cleanupWaitMs ?? 5000, 5000)),
+          )
+          try {
+            child.kill("SIGKILL")
+          } catch {
+            /* 继续持有 owner，不能把 kill 异常当作退出。 */
+          }
         }
-        const timer = setTimeout(fail, 60_000)
-        const exitTimer = setTimeout(() => {
-          fail()
-          reject(new Error("Ego授权委托失败"))
-        }, 65_000)
-        child.on("error", () => {
-          failed = true
-        })
+        const timer = setTimeout(fail, Math.max(1, Math.min(options.timeoutMs ?? 60_000, 60_000)))
+        child.on("error", fail)
         child.stdin.on("error", fail)
         child.stdout.on("data", (chunk: Buffer) => {
+          if (closed || settled) return
           size += chunk.length
           if (size > 65536) fail()
           else stdout += chunk.toString("utf8")
         })
         child.stderr.on("data", (chunk: Buffer) => {
+          if (closed || settled) return
           size += chunk.length
           if (size > 65536) fail()
+          else stderr += chunk.toString("utf8")
         })
         child.on("close", (code) => {
+          if (closed) return
+          closed = true
           clearTimeout(timer)
           clearTimeout(exitTimer)
+          if (activeOwner === owner) activeOwner = undefined
+          if (settled) return
+          settled = true
           try {
-            if (failed || code !== 0) throw new Error()
-            const markers = stdout
-              .split(/\r?\n/)
-              .filter((line) => line.startsWith("PIGCLAUDE_EGO_RESULT="))
-            if (markers.length !== 1) throw new Error()
+            if (failed || code !== 0 || protocolLines(stderr).length) throw new Error()
+            const markers = protocolLines(stdout)
+            if (markers.length !== 1 || !markers[0]!.startsWith("PIGCLAUDE_EGO_RESULT="))
+              throw new Error()
             const result: unknown = JSON.parse(markers[0]!.slice("PIGCLAUDE_EGO_RESULT=".length))
             if (!result || typeof result !== "object" || Object.keys(result).join() !== "status")
               throw new Error()
             const status = (result as { status: unknown }).status
-            if (!statuses.includes(status as EgoAuthorizationStatus)) throw new Error()
+            if (
+              status === "cleanup-unconfirmed" ||
+              !statuses.includes(status as EgoAuthorizationStatus)
+            )
+              throw new Error()
             resolve(status as EgoAuthorizationStatus)
           } catch {
             reject(new Error("Ego授权委托失败"))
           }
         })
-        child.stdin.end(JSON.stringify(input))
+        try {
+          child.stdin.end(JSON.stringify(input))
+        } catch {
+          fail()
+        }
       })
     } catch {
       throw new Error("Ego授权委托失败")

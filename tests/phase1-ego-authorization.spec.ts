@@ -8,7 +8,11 @@ import { createEgoAuthorizationBridge } from "./phase1-ego-authorization"
 
 const url =
   "https://pigclaude.com/authorize/fixture-id/approve?client_id=pigclaude-desktop&purpose=pigclaude-login&state=fixture%2Bstate"
-function fixture(output = 'PIGCLAUDE_EGO_RESULT={"status":"ready-for-approval"}\n', code = 0) {
+function fixture(
+  output = 'PIGCLAUDE_EGO_RESULT={"status":"ready-for-approval"}\n',
+  code = 0,
+  stderr = "",
+) {
   const child = Object.assign(new EventEmitter(), {
     stdin: new PassThrough(),
     stdout: new PassThrough(),
@@ -24,11 +28,11 @@ function fixture(output = 'PIGCLAUDE_EGO_RESULT={"status":"ready-for-approval"}\
     calls.push(args)
     queueMicrotask(() => {
       child.stdout.write(output)
-      child.stderr.write("fixture-secret")
+      child.stderr.write(stderr)
       child.emit("close", code)
     })
     return child as unknown as ChildProcessWithoutNullStreams
-  }) as typeof spawn
+  }) as unknown as typeof spawn
   const bridge = createEgoAuthorizationBridge({
     launch,
     gate: () => {},
@@ -93,7 +97,7 @@ test("子进程失败与恶意输出不回显", async () => {
   }
 })
 test("批准只发送有限 operation 与布尔替换字段", async () => {
-  const fake = fixture('notice update\nPIGCLAUDE_EGO_RESULT={"status":"authorized"}\n')
+  const fake = fixture('PIGCLAUDE_EGO_RESULT={"status":"authorized"}\n')
   expect(await fake.bridge.approve({ replace: true })).toBe("authorized")
   expect(JSON.parse(fake.input())).toEqual({ operation: "approve", replace: true })
 })
@@ -152,4 +156,161 @@ test("固定脚本仅点击核实的 loopback callback，登录和真人验证�
     )
     if (["login-required", "human-required"].includes(expected!)) expect(clicks).toEqual([])
   }
+})
+
+test("未知 stdout/stderr 与合法 marker 混合仍拒绝", async () => {
+  const marker = 'PIGCLAUDE_EGO_RESULT={"status":"ready-for-approval"}\n'
+  for (const text of [
+    "fixture-secret\n",
+    "notice update\n",
+    "[ego-browser:notice] arbitrary fixture-secret\n",
+  ]) {
+    await expect(fixture(text + marker).bridge.open(url)).rejects.toThrow(/^Ego授权委托失败$/)
+    await expect(fixture(marker + text).bridge.open(url)).rejects.toThrow(/^Ego授权委托失败$/)
+  }
+  await expect(fixture(marker, 0, "fixture-secret").bridge.open(url)).rejects.toThrow(
+    /^Ego授权委托失败$/,
+  )
+})
+
+test("approve 拒绝完整 URL 反例及非 agent ownership，零页面动作", async () => {
+  const fake = fixture()
+  await fake.bridge.open(url)
+  const script = (fake.calls[0]?.[1] as string[])[2]
+  for (const [current, ownership] of [
+    [url + "&unknown=x", "agent"],
+    [url + "&state=x", "agent"],
+    [url + "#x", "agent"],
+    [url.replace("https://", "https://user@"), "agent"],
+    [url.replace("pigclaude-desktop", "wrong"), "agent"],
+    [url.replace("pigclaude-login", "wrong"), "agent"],
+    [url.replace("state=fixture%2Bstate", "state="), "agent"],
+    [url, "user"],
+  ]) {
+    const clicks: string[] = []
+    const output: string[] = []
+    let pages = 0
+    await (runInNewContext(`(async () => {${script}})()`, {
+      process: {
+        stdin: Readable.from([
+          Buffer.from(JSON.stringify({ operation: "approve", replace: true })),
+        ]),
+      },
+      Buffer,
+      URL,
+      console: { log: (text: string) => output.push(text) },
+      taskSpace: async () => ({
+        ownership,
+        page: () => {
+          pages++
+          return {
+            url: async () => current,
+            snapshot: async () => "确认授权",
+            click: async (selector: string) => {
+              clicks.push(selector)
+            },
+            waitForSelector: async () => {},
+            evaluate: async () => "http://127.0.0.1:43123/oauth/callback?code=x&state=y",
+          }
+        },
+      }),
+    }) as Promise<void>)
+    expect(clicks).toEqual([])
+    expect(output).toEqual(['PIGCLAUDE_EGO_RESULT={"status":"unavailable"}'])
+    if (ownership !== "agent") expect(pages).toBe(0)
+  }
+})
+
+function lifecycleFixture(killFails = false) {
+  const child = Object.assign(new EventEmitter(), {
+    stdin: new PassThrough(),
+    stdout: new PassThrough(),
+    stderr: new PassThrough(),
+    kill: () => {
+      kills++
+      if (killFails) throw new Error("fixture-secret")
+      return false
+    },
+  })
+  let kills = 0
+  let spawns = 0
+  const launch = (() => {
+    spawns++
+    return child as unknown as ChildProcessWithoutNullStreams
+  }) as unknown as typeof spawn
+  const bridge = createEgoAuthorizationBridge({
+    launch,
+    gate: () => {},
+    timeoutMs: 5,
+    cleanupWaitMs: 5,
+  })
+  return { child, bridge, launch, kills: () => kills, spawns: () => spawns }
+}
+
+test("超时与kill失败保留owner跨实例锁；迟到close只释放退出确认", async () => {
+  test.setTimeout(1000)
+  for (const killFails of [false, true]) {
+    const fake = lifecycleFixture(killFails)
+    const pending = fake.bridge.open(url)
+    const other = createEgoAuthorizationBridge({ launch: fake.launch, gate: () => {} })
+    expect(await other.approve({ replace: false })).toBe("cleanup-unconfirmed")
+    expect(await pending).toBe("cleanup-unconfirmed")
+    expect(fake.kills()).toBe(1)
+    expect(await other.open(url)).toBe("cleanup-unconfirmed")
+    expect(fake.spawns()).toBe(1)
+    fake.child.stdout.write('PIGCLAUDE_EGO_RESULT={"status":"authorized"}')
+    fake.child.emit("close", 0)
+    expect(await fixture().bridge.open(url)).toBe("ready-for-approval")
+  }
+})
+
+test("spawn error等close确认；错误与超时后的close绝不成功", async () => {
+  test.setTimeout(1000)
+  const fake = lifecycleFixture()
+  const pending = fake.bridge.open(url)
+  fake.child.emit("error", new Error("fixture-secret"))
+  fake.child.stdout.write('PIGCLAUDE_EGO_RESULT={"status":"ready-for-approval"}')
+  fake.child.emit("close", 0)
+  await expect(pending).rejects.toThrow(/^Ego授权委托失败$/)
+  expect(await fixture().bridge.open(url)).toBe("ready-for-approval")
+})
+
+test("只接受已核实的完整更新notice，两输出流均不当作授权事实", async () => {
+  const notice =
+    "[ego-browser:notice] Ego Lite update is available (current 0.5.1.13). Finish the current browser task, then ask the user before running `ego-browser upgrade`; re-read the ego-browser Skill afterward."
+  const marker = 'PIGCLAUDE_EGO_RESULT={"status":"ready-for-approval"}\n'
+  expect(await fixture(notice + "\n" + marker).bridge.open(url)).toBe("ready-for-approval")
+  expect(await fixture(marker, 0, notice + "\n").bridge.open(url)).toBe("ready-for-approval")
+  await expect(fixture(notice + " fixture-secret\n" + marker).bridge.open(url)).rejects.toThrow(
+    /^Ego授权委托失败$/,
+  )
+  await expect(fixture(notice + "\n").bridge.open(url)).rejects.toThrow(/^Ego授权委托失败$/)
+})
+
+test("spawn error无close时保留owner，确认失败close之后才允许新委托", async () => {
+  const fake = lifecycleFixture()
+  const pending = fake.bridge.open(url)
+  fake.child.emit("error", new Error("fixture-secret"))
+  expect(await pending).toBe("cleanup-unconfirmed")
+  expect(await fixture().bridge.open(url)).toBe("cleanup-unconfirmed")
+  fake.child.emit("close", -1)
+  expect(await fixture().bridge.open(url)).toBe("ready-for-approval")
+})
+
+test("超时后close即使携带合法输出也只返回失败；同步spawn失败安全处理", async () => {
+  const fake = lifecycleFixture()
+  const pending = fake.bridge.open(url)
+  setTimeout(() => {
+    fake.child.stdout.write('PIGCLAUDE_EGO_RESULT={"status":"ready-for-approval"}')
+    fake.child.emit("close", 0)
+  }, 7)
+  await expect(pending).rejects.toThrow(/^Ego授权委托失败$/)
+  const bridge = createEgoAuthorizationBridge({
+    gate: () => {},
+    launch: (() => {
+      throw new Error("fixture-secret")
+    }) as typeof spawn,
+  })
+  await expect(bridge.open(url)).rejects.toThrow(/^Ego授权委托失败$/)
+  expect(await fixture().bridge.open(url)).toBe("ready-for-approval")
 })

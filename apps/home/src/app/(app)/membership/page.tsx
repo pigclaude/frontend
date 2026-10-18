@@ -49,9 +49,7 @@ export default function MembershipPage() {
           </span>
           <div>
             <h2 id="membership-status">当前权益</h2>
-            <p className="mt-1 text-xs text-[var(--meta)]">
-              会员权益版本 {entitlement.data.entitlementVersion}
-            </p>
+            <p className="mt-1 text-xs text-[var(--meta)]">账号与桌面客户端共享会员权益</p>
           </div>
         </div>
         <p>

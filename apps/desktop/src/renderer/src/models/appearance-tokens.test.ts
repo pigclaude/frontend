@@ -155,7 +155,23 @@ describe("内置主题", () => {
     expect(out.vars["--on-primary"]).toBe(readableOn("#339CFF"))
     expect(out.vars["--bg"]).toBe("#181818")
     expect(out.vars["--fg"]).toBe("#FFFFFF")
-    expect(out.attrs).toEqual({})
+    expect(out.attrs).toEqual({ "data-accent": "theme" })
+  })
+
+  it("输出强调组时总写 data-accent，让滑块填充和焦点光晕也跟随主题强调色", () => {
+    for (const accentMode of ["default", "custom"] as const) {
+      const slot = { ...defaultAppearance.light, themeId: "nord", accentMode }
+      const out = deriveAppearance(withSettings({ light: slot }), [], env("light"))
+      expect(out.vars["--accent-ring"]).toBeDefined()
+      expect(out.attrs["data-accent"]).toBe(accentMode === "custom" ? "custom" : "theme")
+    }
+  })
+
+  it("pigclaude 默认强调色不输出强调组，也不写 data-accent", () => {
+    for (const glass of [true, false]) {
+      const out = deriveAppearance(defaultAppearance, [], env("dark", glass))
+      expect(out.attrs["data-accent"]).toBeUndefined()
+    }
   })
 
   it("深色背景用白色叠色，浅色背景用深色叠色", () => {
@@ -256,8 +272,17 @@ describe("data-* 属性", () => {
     expect(on.attrs).toEqual({ "data-motion": "reduce" })
     const system = deriveAppearance(defaultAppearance, [], env("light", false, true))
     expect(system.attrs).toEqual({ "data-motion": "reduce" })
-    const off = deriveAppearance(withSettings({ motion: "off" }), [], env("light", false, true))
-    expect(off.attrs).toEqual({})
+  })
+
+  it("减少动态效果关闭时写 data-motion=full，压过系统的减少动态偏好", () => {
+    for (const prefers of [true, false]) {
+      const off = deriveAppearance(
+        withSettings({ motion: "off" }),
+        [],
+        env("light", false, prefers),
+      )
+      expect(off.attrs).toEqual({ "data-motion": "full" })
+    }
   })
 
   it("指针、字体平滑、全宽各自写入属性", () => {

@@ -323,11 +323,14 @@ function attrsFor(
   const reduce =
     settings.motion === "on" || (settings.motion === "system" && env.prefersReducedMotion)
   if (reduce) attrs["data-motion"] = "reduce"
+  // 「关闭」要压过 app.css 里跟随系统的减少动态规则，所以显式写 full
+  if (settings.motion === "off") attrs["data-motion"] = "full"
   if (settings.diffMarker === "sign") attrs["data-diff"] = "sign"
   if (settings.pointerCursor) attrs["data-pointer"] = "true"
   if (!settings.fontSmoothing) attrs["data-smoothing"] = "off"
   if (settings.fullWidth) attrs["data-fullwidth"] = "true"
-  if (colors.custom) attrs["data-accent"] = "custom"
+  // 只要输出了强调组就写 data-accent，滑块填充和焦点光晕随之使用强调色
+  if (colors.accent) attrs["data-accent"] = colors.custom ? "custom" : "theme"
   return attrs
 }
 

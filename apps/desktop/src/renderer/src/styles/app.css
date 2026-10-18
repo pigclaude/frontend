@@ -1895,10 +1895,12 @@ input[type="range"].range::-webkit-slider-thumb {
   color: var(--faint);
 }
 
+/* 外观设置把减少动态效果设为「关闭」时写 data-motion="full"，此时不跟随系统偏好 */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  :root:not([data-motion="full"]),
+  :root:not([data-motion="full"]) *,
+  :root:not([data-motion="full"]) *::before,
+  :root:not([data-motion="full"]) *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

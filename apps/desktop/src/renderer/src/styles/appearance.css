@@ -49,22 +49,22 @@
   --col-narrow: 100%;
 }
 
-/* 自定义强调色：滑块填充用强调色，焦点加一圈淡色光晕 */
-[data-accent="custom"] .slider-range {
+/* 输出了强调组（内置主题的默认强调色或自定义强调色）：滑块填充用强调色，焦点加一圈淡色光晕 */
+[data-accent] .slider-range {
   background: var(--primary);
 }
-[data-accent="custom"] .slider-thumb:focus-visible,
-[data-accent="custom"] .seg .seg-item:focus-visible,
-[data-accent="custom"] .radio:focus-visible {
+[data-accent] .slider-thumb:focus-visible,
+[data-accent] .seg .seg-item:focus-visible,
+[data-accent] .radio:focus-visible {
   box-shadow: 0 0 0 3px var(--accent-ring);
 }
-[data-accent="custom"] .select-trigger:focus-visible {
+[data-accent] .select-trigger:focus-visible {
   box-shadow:
     inset 0 0 0 1px var(--border-focus),
     0 0 0 3px var(--accent-ring);
 }
-[data-accent="custom"] .cp-sv:focus-visible .cp-knob,
-[data-accent="custom"] .cp-hue:focus-visible .cp-knob {
+[data-accent] .cp-sv:focus-visible .cp-knob,
+[data-accent] .cp-hue:focus-visible .cp-knob {
   box-shadow:
     var(--picker-knob-shadow),
     0 0 0 5px var(--accent-ring);

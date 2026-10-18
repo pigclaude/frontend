@@ -3,6 +3,7 @@ import type { AppearanceSettings } from "../models/appearance-settings"
 import {
   parseAppearance,
   parseCustomThemes,
+  parseStoredAppearance,
   serializeAppearance,
 } from "../models/appearance-settings"
 import type { ThemeDefinition } from "../models/theme-presets"
@@ -18,8 +19,8 @@ export const legacyThemeKey = "pigclaude-theme"
 export type AppearanceStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">
 
 /**
- * 读出外观设置和我的主题。保证：只有旧键时迁移成新键的 mode 并写入，
- * 然后删除旧键；新键已存在时直接忽略并清掉旧键。
+ * 读出外观设置和我的主题。保证：新键读不到（没有或损坏）而旧键存在时，迁移成新键的 mode
+ * 并写入，然后删除旧键；新键可读时以新键为准并清掉旧键。
  */
 export function loadAppearance(storage: AppearanceStorage): {
   settings: AppearanceSettings
@@ -27,9 +28,10 @@ export function loadAppearance(storage: AppearanceStorage): {
 } {
   const raw = storage.getItem(appearanceKey)
   const legacy = storage.getItem(legacyThemeKey)
-  const settings = parseAppearance(raw, legacy)
+  const stored = raw === null ? null : parseStoredAppearance(raw)
+  const settings = stored ?? parseAppearance(null, legacy)
   if (legacy !== null) {
-    if (raw === null) storage.setItem(appearanceKey, serializeAppearance(settings))
+    if (stored === null) storage.setItem(appearanceKey, serializeAppearance(settings))
     storage.removeItem(legacyThemeKey)
   }
   return { settings, customThemes: parseCustomThemes(storage.getItem(customThemesKey)) }

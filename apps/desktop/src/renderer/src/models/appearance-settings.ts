@@ -163,27 +163,31 @@ function fromObject(o: Obj): AppearanceSettings {
   }
 }
 
+/** 解析保存的外观设置文本：每个字段单独校验，坏字段用默认值；JSON 损坏或 version 未知时返回 null。 */
+export function parseStoredAppearance(raw: string): AppearanceSettings | null {
+  let data: unknown
+  try {
+    data = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  if (!isRecord(data) || data.version !== 1) return null
+  return fromObject(data)
+}
+
 /**
  * 从本机保存的文本还原外观设置：每个字段单独校验，坏字段用默认值；
- * 读不到或 version 未知时返回默认值；没有新数据但有旧主题键时只迁移 mode。
+ * 新数据读不到（没有、损坏或 version 未知）时，有旧主题键就只迁移 mode，否则返回默认值。
  */
 export function parseAppearance(
   raw: string | null,
   legacyTheme: string | null,
 ): AppearanceSettings {
-  if (raw === null) {
-    return legacyTheme === null
-      ? defaultAppearance
-      : { ...defaultAppearance, mode: parseThemePreference(legacyTheme) }
-  }
-  let data: unknown
-  try {
-    data = JSON.parse(raw)
-  } catch {
-    return defaultAppearance
-  }
-  if (!isRecord(data) || data.version !== 1) return defaultAppearance
-  return fromObject(data)
+  const stored = raw === null ? null : parseStoredAppearance(raw)
+  if (stored !== null) return stored
+  return legacyTheme === null
+    ? defaultAppearance
+    : { ...defaultAppearance, mode: parseThemePreference(legacyTheme) }
 }
 
 /** 把外观设置输出成可存入 localStorage 的 JSON 文本。 */

@@ -1,4 +1,4 @@
-// 测试外观设置的读取、旧主题键迁移和我的主题读写，用内存假 Storage。
+// 测试外观设置的读取、旧主题键迁移（含新键损坏时）和我的主题读写，用内存假 Storage。
 import { describe, expect, it } from "vitest"
 import { defaultAppearance } from "../models/appearance-settings"
 import {
@@ -45,6 +45,21 @@ describe("loadAppearance", () => {
     storage.setItem(legacyThemeKey, "dark")
     expect(loadAppearance(storage).settings.mode).toBe("light")
     expect(storage.data.has(legacyThemeKey)).toBe(false)
+  })
+
+  it("新键损坏而旧键存在时从旧键迁移，不丢掉旧的 mode", () => {
+    for (const corrupt of ["{坏", "[]", JSON.stringify({ version: 99 })]) {
+      const storage = fakeStorage({ [appearanceKey]: corrupt, [legacyThemeKey]: "dark" })
+      expect(loadAppearance(storage).settings.mode).toBe("dark")
+      expect(storage.data.has(legacyThemeKey)).toBe(false)
+      expect(JSON.parse(storage.data.get(appearanceKey) ?? "null")).toMatchObject({ mode: "dark" })
+    }
+  })
+
+  it("新键损坏且没有旧键时返回默认值，不改存储", () => {
+    const storage = fakeStorage({ [appearanceKey]: "{坏" })
+    expect(loadAppearance(storage).settings).toEqual(defaultAppearance)
+    expect(storage.data.get(appearanceKey)).toBe("{坏")
   })
 
   it("读出保存过的我的主题", () => {

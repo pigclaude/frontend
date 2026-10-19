@@ -99,6 +99,8 @@ export type OAuthDesktopSession = {
   accessToken: string
   refreshToken: string
   scope: string
+  /** 原始授权范围上限，刷新降权不会永久缩小此值。 */
+  grantedScope: string
   accessTokenExpiresAt: number
   refreshTokenExpiresAt: number
 }

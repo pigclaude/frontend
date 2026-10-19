@@ -6,6 +6,7 @@ import {
   ipcMain,
   nativeImage,
   nativeTheme,
+  powerMonitor,
   safeStorage,
   shell,
 } from "electron"
@@ -45,6 +46,7 @@ let authorizationSetupError: string | undefined
 let desktopComposition: DesktopComposition | null = null
 let callbackServer: Awaited<ReturnType<typeof createCallbackServer>> | null = null
 let pendingCallbackUrls: string[] = []
+let cleanupLiveEvents = () => {}
 
 if (!hasSingleInstanceLock) {
   app.quit()
@@ -83,6 +85,7 @@ app.on("window-all-closed", () => {
 })
 
 app.on("before-quit", () => {
+  cleanupLiveEvents()
   void desktopComposition?.dispose()
   void callbackServer?.close()
 })
@@ -126,6 +129,17 @@ function registerIpcHandlers(): void {
   })
   ipcMain.handle("pigclaude:membership-subscribe", async () => {
     return desktopComposition?.membershipGate.view() ?? null
+  })
+  ipcMain.handle("pigclaude:membership-withdraw", async (event, value: unknown) => {
+    if (
+      !mainWindow ||
+      event.sender !== mainWindow.webContents ||
+      event.senderFrame !== mainWindow.webContents.mainFrame ||
+      value !== undefined
+    )
+      throw new Error("UNTRUSTED_MEMBERSHIP_REQUEST")
+    if (!desktopComposition) throw new Error("桌面授权服务尚未准备好")
+    return desktopComposition.membershipGate.revoke()
   })
   ipcMain.handle("pigclaude:membership-sign-out", async () => {
     if (!desktopComposition) throw new Error("桌面授权服务尚未准备好")
@@ -209,6 +223,15 @@ async function setupAuthorization(): Promise<void> {
     onMembershipView: sendMembershipView,
   })
   authorizationService = desktopComposition.authorizationService
+  const checkLive = () => {
+    void desktopComposition?.resume()
+  }
+  app.on("browser-window-focus", checkLive)
+  powerMonitor.on("resume", checkLive)
+  cleanupLiveEvents = () => {
+    app.removeListener("browser-window-focus", checkLive)
+    powerMonitor.removeListener("resume", checkLive)
+  }
   if (app.isPackaged) app.setAsDefaultProtocolClient("pigclaude")
 }
 

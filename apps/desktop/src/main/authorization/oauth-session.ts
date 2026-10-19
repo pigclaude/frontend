@@ -18,17 +18,19 @@ export function parseOAuthDesktopSession(raw: string | null): OAuthDesktopSessio
       !record.accessToken ||
       typeof record.refreshToken !== "string" ||
       !record.refreshToken ||
+      typeof record.grantedScope !== "string" ||
+      !validScope(record.grantedScope) ||
       typeof record.scope !== "string" ||
-      !record.scope ||
+      !validScope(record.scope) ||
       record.scope
         .split(" ")
-        .some((scope) => !NATIVE_SCOPES.some((allowed) => allowed === scope)) ||
+        .some((scope) => !String(record.grantedScope).split(" ").includes(scope)) ||
       typeof record.accessTokenExpiresAt !== "number" ||
       !Number.isSafeInteger(record.accessTokenExpiresAt) ||
       record.accessTokenExpiresAt <= 0 ||
       typeof record.refreshTokenExpiresAt !== "number" ||
       !Number.isSafeInteger(record.refreshTokenExpiresAt) ||
-      record.refreshTokenExpiresAt <= record.accessTokenExpiresAt
+      record.refreshTokenExpiresAt <= 0
     )
       return null
     return {
@@ -38,10 +40,20 @@ export function parseOAuthDesktopSession(raw: string | null): OAuthDesktopSessio
       accessToken: record.accessToken,
       refreshToken: record.refreshToken,
       scope: record.scope,
+      grantedScope: record.grantedScope,
       accessTokenExpiresAt: record.accessTokenExpiresAt,
       refreshTokenExpiresAt: record.refreshTokenExpiresAt,
     }
   } catch {
     return null
   }
+}
+
+function validScope(scope: string): boolean {
+  const scopes = scope.split(" ")
+  return (
+    scopes.length > 0 &&
+    new Set(scopes).size === scopes.length &&
+    scopes.every((item) => NATIVE_SCOPES.some((allowed) => allowed === item))
+  )
 }

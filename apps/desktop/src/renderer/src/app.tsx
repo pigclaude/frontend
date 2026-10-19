@@ -40,7 +40,7 @@ export function DesktopApp() {
   const canUseDesktop =
     !signOutState.pending &&
     signOutState.error === null &&
-    (browserPreview || membership.state === "active" || membership.state === "offline_grace")
+    (browserPreview || membership.state === "active")
 
   useEffect(() => {
     const bridge = window.pigclaude?.membership
@@ -297,6 +297,7 @@ export function DesktopApp() {
           (signOutState.pending ? "正在退出登录…" : membershipGateMessage(membership))
         }
         signingOut={signOutState.pending}
+        canWithdraw={membership.account !== null && membership.state !== "device_revoked"}
         onRetrySignOut={signOutState.error ? () => void logout() : undefined}
         onAuthorize={(intent) => void startLoginAuthorization(intent)}
         onCancel={() => void cancelLoginAuthorization()}

@@ -1,4 +1,5 @@
 // 负责展示 pigclaude 登录/注册浏览器授权入口和等待状态。
+import { WithdrawAuthorization } from "../components/withdraw-authorization"
 import { useState, type ReactNode } from "react"
 import { Icon } from "../components/icon"
 import { TrafficLights } from "../components/traffic-lights"
@@ -10,6 +11,7 @@ export type LoginScreenProps = {
   state: LoginState
   gateMessage?: string
   signingOut?: boolean
+  canWithdraw?: boolean
   onRetrySignOut?: () => void
   onAuthorize: (intent: LoginIntent) => void
   onCancel: () => void
@@ -22,6 +24,7 @@ export function LoginScreen({
   state,
   gateMessage,
   signingOut,
+  canWithdraw,
   onRetrySignOut,
   onAuthorize,
   onCancel,
@@ -123,6 +126,7 @@ export function LoginScreen({
         </div>
         <h1>{title}</h1>
         <p className="sub">使用系统浏览器授权，桌面端不会保存你的密码。</p>
+        {canWithdraw && <WithdrawAuthorization />}
         {gateMessage ? <p className="muted login-note">{gateMessage}</p> : null}
         <div className="col login-form">
           {onRetrySignOut ? <Button onClick={onRetrySignOut}>重试退出</Button> : null}

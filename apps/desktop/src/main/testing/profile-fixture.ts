@@ -121,8 +121,9 @@ export function oauthSessionFixture() {
     authVersion: "1",
     accessToken: "new-fixture-access",
     refreshToken: "new-fixture-refresh",
-    accessTokenExpiresAt: 301_000,
-    refreshTokenExpiresAt: 2_592_001_000,
+    accessTokenExpiresAt: 9_000_000_000_000,
+    refreshTokenExpiresAt: 9_000_002_592_000,
     scope: "user:read membership:read device:inspect device:revoke",
+    grantedScope: "user:read membership:read device:inspect device:revoke",
   }
 }

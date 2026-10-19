@@ -209,7 +209,7 @@ describe("DesktopComposition local sign-out", () => {
     const composition = createDesktopComposition({ ...options, vault, api: profileApi() })
     await composition.membershipGate.inspect()
     vault.failCleanup = true
-    await expect(composition.signOut()).rejects.toThrow("fixture disk unavailable")
+    await expect(composition.signOut()).rejects.toMatchObject({ code: "SAFE_STORAGE_UNAVAILABLE" })
     expect(await composition.membershipGate.inspect()).toMatchObject({
       state: "configuration_error",
       errorCode: "LOCAL_SIGN_OUT_FAILED",

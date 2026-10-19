@@ -39,6 +39,7 @@ describe("quota proxy failover", () => {
       return { status: 200, body: "from-c" }
     })
     const daemon = new LocalDaemon({
+      runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
       choose: ({ rejectedIds }) => {
         attempts.push([...rejectedIds])
@@ -74,6 +75,7 @@ describe("quota proxy failover", () => {
   it("returns proxy_unavailable when the first proxy throws and no quota response is saved", async () => {
     const attempts: string[][] = []
     const daemon = new LocalDaemon({
+      runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
       choose: ({ rejectedIds }) => {
         attempts.push([...rejectedIds])

@@ -9,6 +9,7 @@ describe("LocalDaemon", () => {
   it("replaces authorization only for message requests and fails closed when the proxy is down", async () => {
     const seen: string[] = []
     const daemon = new LocalDaemon({
+      runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
       choose: () => ({ id: "a", authorization: "pool-token", proxyUrl: "http://127.0.0.1:1" }),
     })
@@ -31,6 +32,7 @@ describe("LocalDaemon", () => {
     const seen: Array<{ path: string; authorization: string | undefined }> = []
     const proxy = await startRecordingProxy(seen)
     const daemon = new LocalDaemon({
+      runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
       choose: (attempt) => {
         expect(attempt).toEqual({ rejectedIds: [] })
@@ -65,6 +67,7 @@ describe("LocalDaemon", () => {
     const seen: Array<{ path: string; authorization: string | undefined }> = []
     const proxy = await startRecordingProxy(seen, { gzipPlain: plain })
     const daemon = new LocalDaemon({
+      runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
       choose: () => ({ id: "a", authorization: "pool-token", proxyUrl: proxy.url }),
     })
@@ -93,6 +96,7 @@ describe("LocalDaemon", () => {
       },
     })
     const daemon = new LocalDaemon({
+      runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
       choose: () => ({ id: "a", authorization: "pool-token", proxyUrl: proxy.url }),
     })
@@ -122,6 +126,7 @@ describe("LocalDaemon", () => {
     const seen: Array<{ path: string; authorization: string | undefined }> = []
     const proxy = await startRecordingProxy(seen)
     const daemon = new LocalDaemon({
+      runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
       choose: () => ({ id: "a", authorization: "pool-token", proxyUrl: proxy.url }),
     })
@@ -149,6 +154,7 @@ describe("LocalDaemon", () => {
     const seen: Array<{ path: string; authorization: string | undefined }> = []
     const proxy = await startRecordingProxy(seen, { brokenGzip: true })
     const daemon = new LocalDaemon({
+      runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
       choose: () => ({ id: "a", authorization: "pool-token", proxyUrl: proxy.url }),
     })
@@ -167,6 +173,7 @@ describe("LocalDaemon", () => {
 
   it("returns proxy_unavailable when choose returns null", async () => {
     const daemon = new LocalDaemon({
+      runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
       choose: () => null,
     })
@@ -189,6 +196,7 @@ describe("LocalDaemon", () => {
         : { status: 200, body: "ok" }
     })
     const daemon = new LocalDaemon({
+      runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
       choose: ({ rejectedIds }) =>
         rejectedIds.includes("a")
@@ -220,6 +228,7 @@ describe("LocalDaemon", () => {
       return { status: 200, body: "hello", trickle: true }
     })
     const daemon = new LocalDaemon({
+      runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
       choose: () => ({ id: "a", authorization: "token-a", proxyUrl: proxy.url }),
     })
@@ -258,6 +267,7 @@ describe("LocalDaemon", () => {
       }
     })
     const daemon = new LocalDaemon({
+      runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
       choose: ({ rejectedIds }) => {
         attempts.push([...rejectedIds])
@@ -294,6 +304,7 @@ describe("LocalDaemon", () => {
       return { status: 429, headers: { "x-quota-exhausted": "1" }, body: "full" }
     })
     const daemon = new LocalDaemon({
+      runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
       choose: ({ rejectedIds }) => {
         attempts.push([...rejectedIds])

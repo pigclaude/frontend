@@ -13,12 +13,16 @@ const fixture = vi.hoisted(() => ({
   handlers: new Map<
     string,
     (
-      event: { sender: { send: (channel: string, value: unknown) => void } },
+      event: { senderFrame?: object; sender: { send: (channel: string, value: unknown) => void } },
       value?: unknown,
     ) => unknown
   >(),
   listeners: new Map<string, (event: unknown, value: unknown) => void>(),
-  windows: [] as { webContents: { send: (channel: string, value: unknown) => void } }[],
+  windows: [] as {
+    webContents: { mainFrame: object; send: (channel: string, value: unknown) => void }
+  }[],
+  appEvents: new Map<string, () => void>(),
+  powerEvents: new Map<string, () => void>(),
   ready: (): void => undefined,
   callback: async (url: string): Promise<void> => {
     throw new Error(`Callback invoked before setup: ${url}`)
@@ -26,16 +30,22 @@ const fixture = vi.hoisted(() => ({
 }))
 
 vi.mock("electron", () => ({
+  powerMonitor: {
+    on: (name: string, listener: () => void) => fixture.powerEvents.set(name, listener),
+    removeListener: (name: string) => fixture.powerEvents.delete(name),
+  },
   app: {
     isPackaged: false,
     whenReady: () => Promise.resolve(),
-    on: () => {},
+    on: (name: string, listener: () => void) => fixture.appEvents.set(name, listener),
+    removeListener: (name: string) => fixture.appEvents.delete(name),
     getPath: () => fixture.directory,
     quit: () => {},
   },
   BrowserWindow: Object.assign(
     class {
       webContents = {
+        mainFrame: {},
         send: (channel: string, value: unknown) => fixture.listeners.get(channel)?.({}, value),
       }
       constructor() {
@@ -62,7 +72,10 @@ vi.mock("electron", () => ({
       const handler = fixture.handlers.get(channel)
       if (!handler) throw new Error(`Missing IPC handler: ${channel}`)
       return handler(
-        { sender: { send: (event, payload) => fixture.listeners.get(event)?.({}, payload) } },
+        {
+          sender: fixture.windows[0]!.webContents,
+          senderFrame: fixture.windows[0]!.webContents.mainFrame,
+        },
         value,
       )
     },
@@ -113,6 +126,9 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     deviceFingerprintHash: "fingerprint-fixture",
   })
   await vault.set("device:identity", identity)
+  let inactive = false
+  let withdrawals = 0
+  let onSession = () => {}
   vi.stubGlobal("fetch", async (input: string | URL | Request, options?: RequestInit) => {
     const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url)
     const session = {
@@ -122,7 +138,15 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
       authVersion: "1",
     }
     if (url.pathname === "/v1/desktop/membership/inspect")
-      return Response.json({ ...session, status: "active" })
+      return inactive
+        ? Response.json({ error: "insufficient_scope" }, { status: 403 })
+        : Response.json({ ...session, status: "active" })
+    if (url.pathname === "/v1/desktop/devices/revoke") {
+      withdrawals++
+      expect(options?.body).toBe("{}")
+      expect(new Headers(options?.headers).get("authorization")).toBe("Bearer ipc-access")
+      return new Response(null, { status: 204 })
+    }
     if (url.pathname === "/v1/desktop/entitlement")
       return Response.json({
         productCode: "pigclaude",
@@ -134,7 +158,10 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
         termsAcceptedAt: "2026-10-19T00:00:00Z",
         entitlementVersion: "1",
       })
-    if (url.pathname === "/v1/desktop/session") return Response.json(session)
+    if (url.pathname === "/v1/desktop/session") {
+      onSession()
+      return Response.json(session)
+    }
     if (url.pathname === "/v1/desktop/oauth/contexts") {
       const body = JSON.parse(String(options?.body)) as {
         state: string
@@ -195,7 +222,39 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     await fixture.callback(`http://127.0.0.1:43123/oauth/callback?code=fixture&state=${state}`)
     expect(await bridge.membership.inspect()).toMatchObject({ state: "active" })
     expect(await vault.get("membership:session")).toContain("ipc-refresh")
-    await bridge.membership.signOut()
+    for (const event of ["browser-window-focus", "resume"]) {
+      const entered = new Promise<void>((resolve) => {
+        onSession = resolve
+      })
+      const listeners = event === "resume" ? fixture.powerEvents : fixture.appEvents
+      listeners.get(event)?.()
+      await entered
+    }
+    inactive = true
+    expect(await bridge.membership.inspect()).toMatchObject({
+      state: "verification_required",
+      account: { userId: "user-fixture" },
+    })
+    const handler = fixture.handlers.get("pigclaude:membership-withdraw")!
+    await expect(handler({ sender: { send: () => {} } })).rejects.toThrow(
+      "UNTRUSTED_MEMBERSHIP_REQUEST",
+    )
+    await expect(
+      handler(
+        {
+          sender: fixture.windows[0]!.webContents,
+          senderFrame: fixture.windows[0]!.webContents.mainFrame,
+        },
+        { deviceId: "forged" },
+      ),
+    ).rejects.toThrow("UNTRUSTED_MEMBERSHIP_REQUEST")
+    expect(withdrawals).toBe(0)
+    expect(await bridge.membership.withdraw()).toMatchObject({ state: "signed_out" })
+    expect(withdrawals).toBe(1)
+    expect(await vault.get("authorization:claude-account:other-account")).toBe("old-claude-secret")
+    fixture.appEvents.get("before-quit")?.()
+    expect(fixture.powerEvents.has("resume")).toBe(false)
+    expect(fixture.appEvents.has("browser-window-focus")).toBe(false)
     unsubscribe()
   } finally {
     vi.unstubAllGlobals()

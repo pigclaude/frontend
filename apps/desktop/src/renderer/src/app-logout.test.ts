@@ -61,13 +61,18 @@ afterEach(async () => {
 })
 
 describe("DesktopApp local sign-out", () => {
-  it.each(["active", "offline_grace"] as const)(
+  it.each(["active"] as const)(
     "keeps %s users on login after authoritative local sign-out",
     async (state) => {
       const signOut = vi.fn(async () => view("signed_out", 2))
       window.pigclaude = {
         platform: "darwin",
-        membership: { inspect: async () => view(state), subscribe: () => () => {}, signOut },
+        membership: {
+          inspect: async () => view(state),
+          subscribe: () => () => {},
+          signOut,
+          withdraw: async () => view("signed_out", 2),
+        },
       }
       await act(async () => root.render(createElement(DesktopApp)))
       expect(container.querySelector("[data-screen]")?.getAttribute("data-screen")).toBe("chat")
@@ -94,6 +99,7 @@ describe("DesktopApp local sign-out", () => {
       membership: {
         inspect: async () => view("active"),
         subscribe: () => () => {},
+        withdraw: async () => view("signed_out", 3),
         signOut: async () => {
           if (fail) throw new Error("fixture disk unavailable")
           return view("signed_out", 3)
@@ -132,6 +138,7 @@ describe("DesktopApp local sign-out", () => {
           publish = listener
           return () => {}
         },
+        withdraw: async () => view("signed_out", 3),
         signOut: async () => view("signed_out", 3),
       },
     }
@@ -170,6 +177,7 @@ describe("DesktopApp local sign-out", () => {
           publishMembership = listener
           return () => {}
         },
+        withdraw: async () => view("signed_out", 3),
         signOut: async () => view("signed_out", 3),
       },
     }

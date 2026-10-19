@@ -238,14 +238,13 @@ export class OAuthClient {
             body = undefined
           }
           if (!response.ok) {
-            const oauthError =
-              isRecord(body) && typeof body.error === "string" ? body.error : undefined
+            const oauthError = isRecord(body) ? safeRemoteCode(body.error) : undefined
             const appError = isRecord(body) ? body.app_error : undefined
             const code =
               appError === "ACCOUNT_BANNED" || appError === "DEVICE_REVOKED"
                 ? appError
-                : isRecord(body) && nonempty(body.code)
-                  ? body.code
+                : isRecord(body) && safeRemoteCode(body.code)
+                  ? safeRemoteCode(body.code)!
                   : (oauthError ?? "HTTP_ERROR")
             throw new PigclaudeApiError(code, response.status, oauthError)
           }
@@ -338,4 +337,35 @@ function positiveVersion(value: unknown): value is string {
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function safeRemoteCode(value: unknown): string | undefined {
+  const known = [
+    "invalid_request",
+    "invalid_client",
+    "invalid_grant",
+    "unauthorized_client",
+    "unsupported_grant_type",
+    "invalid_scope",
+    "access_denied",
+    "server_error",
+    "temporarily_unavailable",
+    "invalid_token",
+    "insufficient_scope",
+    "ACCOUNT_BANNED",
+    "DEVICE_REVOKED",
+    "MEMBERSHIP_EXPIRED",
+    "MEMBERSHIP_REQUIRED",
+    "SERVER_UNAVAILABLE",
+    "AUTHORIZATION_NOT_FOUND",
+    "AUTHORIZATION_EXPIRED",
+    "AUTHORIZATION_INVALID_STATE",
+    "AUTHORIZATION_ALREADY_APPROVED",
+    "AUTHORIZATION_REPLACE_REQUIRED",
+    "AUTHORIZATION_BINDING_STALE",
+    "AUTHORIZATION_DEVICE_REVOKED",
+    "AUTHORIZATION_UNAUTHORIZED",
+    "AUTHORIZATION_INTERNAL",
+  ]
+  return typeof value === "string" && known.includes(value) ? value : undefined
 }

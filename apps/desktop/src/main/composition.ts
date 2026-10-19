@@ -2,7 +2,7 @@
 import type { SecretVault } from "./secret-vault"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import { AuthorizationService, type ClaudeAuthorizationAdapter } from "./authorization/service"
-import { parseOAuthDesktopSession } from "./authorization/oauth-session"
+import { OAuthTokenManager } from "./authorization/oauth-token-manager"
 import {
   PigclaudeApiClient,
   type PigclaudeApi,
@@ -27,6 +27,11 @@ export type DesktopComposition = {
   api: PigclaudeApi
   membershipGate: MembershipGate
   authorizationService: AuthorizationService
+  tokenManager: OAuthTokenManager
+  /** 每次执行前实时核验会员，不能从 UI 状态授予权限。 */
+  runAuthorized: <T>(operation: (signal: AbortSignal) => Promise<T>) => Promise<T>
+  /** 前台/系统恢复触发实时检查。 */
+  resume: () => Promise<MembershipView>
   /** 本机第一方退出同步失效代次，不等待远端。 */
   signOut: () => Promise<MembershipView>
   /** 按顺序释放本机授权和会员订阅。 */
@@ -41,13 +46,9 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
     new PigclaudeApiClient({
       authorizationOrigin: options.authOrigin,
       ...(options.apiOptions ?? { baseUrl: options.authOrigin }),
-      accessToken:
-        options.apiOptions?.accessToken ??
-        (async () =>
-          parseOAuthDesktopSession(await options.vault.get("membership:session"))?.accessToken ??
-          null),
     })
-  const membershipGate = new MembershipGate({ api, vault: options.vault, now })
+  const tokenManager = new OAuthTokenManager({ api, vault: options.vault, now })
+  const membershipGate = new MembershipGate({ api, vault: options.vault, tokenManager, now })
   const unsubscribe = options.onMembershipView
     ? membershipGate.subscribe(options.onMembershipView)
     : () => undefined
@@ -59,18 +60,53 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
       throw new Error("CLAUDE_AUTHORIZATION_UNAVAILABLE：Claude 账号授权服务尚未配置")
     },
   }
+  const operations = new Set<AbortController>()
+  const stopOperations = () => {
+    for (const controller of operations) controller.abort()
+  }
+  const unsubscribeOperations = membershipGate.subscribe((view) => {
+    if (view.state !== "active") stopOperations()
+  })
+  async function runAuthorized<T>(operation: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const owner = tokenManager.owner
+    const revision = membershipGate.view().revision
+    const view = await membershipGate.inspect()
+    if (!tokenManager.isCurrent(owner) || view.state !== "active" || view.revision <= revision)
+      throw new Error("MEMBERSHIP_REQUIRED")
+    const controller = new AbortController()
+    operations.add(controller)
+    try {
+      const result = await operation(controller.signal)
+      if (controller.signal.aborted || !tokenManager.isCurrent(owner))
+        throw new Error("MEMBERSHIP_REQUIRED")
+      return result
+    } finally {
+      operations.delete(controller)
+    }
+  }
+  const claudeAuthorization = options.claudeAuthorization
+    ? {
+        start: (session: Parameters<ClaudeAuthorizationAdapter["start"]>[0]) =>
+          runAuthorized(() => options.claudeAuthorization!.start(session)),
+        exchangeCode: (input: Parameters<ClaudeAuthorizationAdapter["exchangeCode"]>[0]) =>
+          runAuthorized(() => options.claudeAuthorization!.exchangeCode(input)),
+      }
+    : unavailableClaude
   const authorizationService = new AuthorizationService({
     authOrigin: options.authOrigin,
     vault: options.vault,
     now,
     deviceIdentity: options.deviceIdentity,
-    claudeAuthorization: options.claudeAuthorization ?? unavailableClaude,
+    claudeAuthorization,
     startAuthorization: (input) => api.prepareDeviceAuthorization(input),
     exchangeCode: async (input) => {
       if (input.session.request.purpose !== "pigclaude-login") throw new Error("授权用途不匹配")
+      const oauthOwner = tokenManager.owner
       const issuedAt = now()
       const response = await api.exchangeCode(input)
+      if (!tokenManager.isCurrent(oauthOwner)) throw new Error("AUTHORIZATION_CANCELLED")
       const session = await api.readDesktopSession(response.access_token)
+      if (!tokenManager.isCurrent(oauthOwner)) throw new Error("AUTHORIZATION_CANCELLED")
       const oauthSession = {
         schemaVersion: 1 as const,
         protocol: "oauth2" as const,
@@ -78,6 +114,7 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
         accessToken: response.access_token,
         refreshToken: response.refresh_token,
         scope: response.scope,
+        grantedScope: response.scope,
         accessTokenExpiresAt: issuedAt + response.expires_in * 1_000,
         refreshTokenExpiresAt: issuedAt + 30 * 24 * 60 * 60 * 1_000,
       }
@@ -91,10 +128,14 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
         bindingEpoch: session.bindingEpoch,
         userId: session.userId,
         oauthSession,
+        oauthOwner,
       }
     },
     commitAuthorization: async ({ token, isCurrent }) => {
       if (token.purpose === "pigclaude-login" && token.oauthSession) {
+        if (token.oauthOwner === undefined || !tokenManager.isCurrent(token.oauthOwner))
+          throw new Error("AUTHORIZATION_CANCELLED")
+        stopOperations()
         await membershipGate.acceptAuthorization(token.oauthSession, isCurrent)
       }
     },
@@ -102,15 +143,23 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
       if (token.purpose === "pigclaude-login" && token.oauthSession) await membershipGate.inspect()
     },
   })
+  const heartbeat = setInterval(() => {
+    void membershipGate.inspect()
+  }, 30_000)
+  heartbeat.unref()
   let disposed = false
   let signingOut: Promise<MembershipView> | null = null
   return {
     api,
     membershipGate,
     authorizationService,
+    tokenManager,
+    resume: () => membershipGate.inspect(),
+    runAuthorized,
     signOut: () => {
       if (disposed) return Promise.reject(new Error("桌面授权服务已关闭"))
       if (signingOut) return signingOut
+      stopOperations()
       const writes = authorizationService.suspend()
       const pending = membershipGate.signOut(writes).then((view) => {
         if (!disposed) authorizationService.resume()
@@ -126,7 +175,11 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
     async dispose(): Promise<void> {
       if (disposed) return
       disposed = true
-      await authorizationService.suspend()
+      clearInterval(heartbeat)
+      stopOperations()
+      unsubscribeOperations()
+      const writes = tokenManager.suspend()
+      await Promise.all([authorizationService.suspend(), writes])
       unsubscribe()
       membershipGate.dispose()
     },

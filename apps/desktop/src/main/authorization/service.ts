@@ -248,9 +248,20 @@ export class AuthorizationService {
         displayName: token.displayName,
         expiresAt: token.expiresAt,
       }
-    } catch {
+    } catch (error: unknown) {
       if (!this.isCurrent(generation)) return this.failureEvent(session, "cancelled")
-      return this.failureEvent(session, "exchange-error", "授权码交换失败")
+      const storageFailed =
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "SAFE_STORAGE_UNAVAILABLE"
+      return this.failureEvent(
+        session,
+        "exchange-error",
+        storageFailed
+          ? "SAFE_STORAGE_UNAVAILABLE：系统安全存储不可用，授权未保存"
+          : "授权码交换失败",
+      )
     }
   }
 

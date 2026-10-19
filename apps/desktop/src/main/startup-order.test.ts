@@ -5,6 +5,7 @@ const fixture = vi.hoisted(() => ({
   inspect: vi.fn(() => new Promise<void>(() => {})),
 }))
 vi.mock("electron", () => ({
+  powerMonitor: { on: () => {}, removeListener: () => {} },
   app: {
     isPackaged: false,
     whenReady: () => Promise.resolve(),

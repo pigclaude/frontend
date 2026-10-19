@@ -1,11 +1,13 @@
 // 负责验证独立 Claude adapter 的真实 composition 接线，不触及第一方 grant 或会员。
 import { expect, it } from "vitest"
 import { createDesktopComposition } from "./composition"
-import { profileApi, ProfileVault } from "./testing/profile-fixture"
+import { profileApi, ProfileVault, seedProfile, membershipView } from "./testing/profile-fixture"
 
 it("routes an injected Claude adapter exclusively to its own vault namespace", async () => {
   const vault = new ProfileVault()
+  await seedProfile(vault)
   let network = 0
+  let checks = 0
   const composition = createDesktopComposition({
     vault,
     authOrigin: "http://127.0.0.1:8788",
@@ -15,8 +17,8 @@ it("routes an injected Claude adapter exclusively to its own vault namespace", a
         throw new Error("first-party grant must not receive Claude")
       },
       inspectMembership: async () => {
-        network++
-        throw new Error("Claude must not enter gate")
+        checks++
+        return membershipView()
       },
     }),
     claudeAuthorization: {
@@ -49,7 +51,8 @@ it("routes an injected Claude adapter exclusively to its own vault namespace", a
     ),
   ).toMatchObject({ status: "completed", purpose: "claude-account" })
   expect(network).toBe(0)
-  expect(await vault.get("membership:session")).toBeNull()
+  expect(checks).toBe(2)
+  expect(await vault.get("membership:session")).toContain("new-fixture-refresh")
   const saved = await vault.get("authorization:claude-account:pool")
   expect(saved).toContain("isolated-claude-credential")
   await composition.signOut()

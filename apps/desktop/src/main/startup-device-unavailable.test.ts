@@ -6,6 +6,7 @@ const fixture = vi.hoisted(() => ({
   raw: "01234567-89AB-CDEF-0123-456789ABCDEF",
 }))
 vi.mock("electron", () => ({
+  powerMonitor: { on: () => {}, removeListener: () => {} },
   app: {
     isPackaged: false,
     whenReady: () => Promise.resolve(),

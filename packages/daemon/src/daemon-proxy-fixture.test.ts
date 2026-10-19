@@ -5,7 +5,8 @@ import { once } from "node:events"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import { createServer as createHttpsServer } from "node:https"
-import { connect as connectTcp, type Socket } from "node:net"
+import { connect as connectTcp } from "node:net"
+import type { Duplex } from "node:stream"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { getCACertificates, setDefaultCACertificates } from "node:tls"
@@ -149,7 +150,7 @@ function delay(ms: number): Promise<void> {
   })
 }
 
-function tunnel(clientSocket: Socket, head: Buffer, upstream: Server): void {
+function tunnel(clientSocket: Duplex, head: Buffer, upstream: Server): void {
   const address = upstream.address()
   if (address === null || typeof address === "string") {
     clientSocket.destroy()

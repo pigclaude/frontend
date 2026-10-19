@@ -1,4 +1,5 @@
 // 负责「我的账户」和「切换规则」两个设置页。
+import { WithdrawAuthorization } from "../../components/withdraw-authorization"
 import { useState } from "react"
 import { Icon } from "../../components/icon"
 import { useToast } from "../../components/toast"
@@ -47,6 +48,7 @@ export function ProfileSettings({ onLogout }: { onLogout: () => void }) {
         Claude 账号、凭据、代理和指纹只保存在这台电脑上，不会上传到你的 pigclaude 账户。
       </p>
       <div className="setup-actions">
+        <WithdrawAuthorization />
         <Button onClick={onLogout}>
           <Icon name="exit" />
           退出登录

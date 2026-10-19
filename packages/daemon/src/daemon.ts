@@ -30,13 +30,19 @@ export class LocalDaemon {
   /** 监听端口。start 完成之后保证是 127.0.0.1 上的实际端口。 */
   port: number
 
+  readonly #runAuthorized: <T>(operation: (signal: AbortSignal) => Promise<T>) => Promise<T>
   readonly #choose: ChooseAccount
   readonly #server: Server
 
   /** 保证用给定端口和选号函数准备服务，此时尚未监听。 */
-  constructor(options: { port: number; choose: ChooseAccount }) {
+  constructor(options: {
+    port: number
+    choose: ChooseAccount
+    runAuthorized: <T>(operation: (signal: AbortSignal) => Promise<T>) => Promise<T>
+  }) {
     this.port = options.port
     this.#choose = options.choose
+    this.#runAuthorized = options.runAuthorized
     this.#server = createServer((request, response) => {
       response.on("error", () => undefined)
       request.on("error", () => undefined)
@@ -78,9 +84,22 @@ export class LocalDaemon {
 
   async #handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     try {
-      await this.#forward(request, response)
+      await this.#runAuthorized(async (signal) => {
+        if (signal.aborted) throw new Error("MEMBERSHIP_REQUIRED")
+        const stop = () => response.destroy()
+        signal.addEventListener("abort", stop, { once: true })
+        try {
+          await this.#forward(request, response).catch(() => writeUnavailable(response))
+        } finally {
+          signal.removeEventListener("abort", stop)
+        }
+      })
     } catch {
-      writeUnavailable(response)
+      request.resume()
+      if (!response.headersSent && !response.destroyed) {
+        response.writeHead(403, { "content-type": "application/json" })
+        response.end(JSON.stringify({ error: "membership_required" }))
+      }
     }
   }
 

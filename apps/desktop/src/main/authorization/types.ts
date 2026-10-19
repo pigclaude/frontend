@@ -54,6 +54,8 @@ export type AuthorizationToken = {
   userId?: string
   /** 第一方当前协议材料，只能进入主进程 session 仓库。 */
   oauthSession?: OAuthDesktopSession
+  /** code HTTP 发起时捕获的本机逻辑归属，不能由 renderer 提交。 */
+  oauthOwner?: number
 }
 
 /** 授权状态机的可见状态。保证 renderer 不需要知道 token 细节。 */

@@ -173,3 +173,22 @@ describe("OAuthClient native public protocol", () => {
     })
   })
 })
+
+it("does not expose unknown remote code or error strings as fixed UI errors", async () => {
+  const api = new OAuthClient({
+    baseUrl: "http://127.0.0.1:8788",
+    fetcher: async () =>
+      new Response(
+        JSON.stringify({
+          error: "remote-secret",
+          code: "raw-secret",
+          error_description: "private",
+        }),
+        { status: 401 },
+      ),
+  })
+  await expect(api.refreshToken("fixture-refresh")).rejects.toMatchObject({
+    code: "HTTP_ERROR",
+    oauthError: undefined,
+  })
+})

@@ -1,273 +1,266 @@
-// 负责以 Rust 服务端为权威检查本机会员与设备绑定，并隔离 safeStorage 秘密。
+// 负责以服务端实时授权为会员门禁，使用共享逻辑会话归属隔离迟到请求。
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import type {
-  DesktopMembershipErrorCode,
   MembershipInspectRequest,
   OAuthDesktopSession,
 } from "@pigclaude/contracts/desktop-membership"
 import type { SecretVault } from "../secret-vault"
-import { parseOAuthDesktopSession } from "../authorization/oauth-session"
+import type { PigclaudeApi } from "../api/pigclaude-api-client"
+import { PigclaudeApiError } from "../api/oauth-client"
+import { OAuthTokenManager, codeOf, type OAuthSnapshot } from "../authorization/oauth-token-manager"
 
-/** MembershipGate 调用的最小 API 端口，不允许 gate 依赖 Electron 或 HTTP 实现。 */
+/** 会员端口始终接受原请求捕获的 Bearer；生产同时提供实时身份验证。 */
 export type MembershipGateApi = {
   inspectMembership(input: MembershipInspectRequest, accessToken?: string): Promise<MembershipView>
   revokeDeviceBinding(accessToken?: string): Promise<void>
+  readDesktopSession?: PigclaudeApi["readDesktopSession"]
 }
-
-/** MembershipGate 的依赖，保证时钟和安全仓库可在测试中替换。 */
+/** 门禁与第一方代码提交、刷新、退出共用一个 tokenManager。 */
 export type MembershipGateOptions = {
   api: MembershipGateApi
   vault: SecretVault
+  tokenManager?: OAuthTokenManager
   now?: () => number
 }
-
-/** 主进程会员门禁，保证重启检查服务端而不是 localStorage。 */
+/** 每次检查都访问服务端，不从磁盘或旧 active 视图授予离线能力。 */
 export class MembershipGate {
   readonly #api: MembershipGateApi
-  readonly #vault: SecretVault
+  readonly #tokens: OAuthTokenManager
   readonly #now: () => number
   readonly #listeners = new Set<(view: MembershipView) => void>()
-  #record: OAuthDesktopSession | null = null
   #view: MembershipView = initialView()
   #revision = 0
-  #readGeneration = 0
-  #sessionGeneration = 0
+  #reads = 0
   #disposed = false
-  #locallySignedOut = false
-  #mutation: Promise<void> = Promise.resolve()
+  #visibleOwner: number | null = null
 
-  /** 创建只依赖 API、时钟和安全仓库的会员门禁。 */
+  /** 构建实时会员门禁；独立端口测试不隐式模拟刷新服务。 */
   constructor(options: MembershipGateOptions) {
     this.#api = options.api
-    this.#vault = options.vault
     this.#now = options.now ?? Date.now
+    this.#tokens =
+      options.tokenManager ??
+      new OAuthTokenManager({
+        vault: options.vault,
+        now: this.#now,
+        api: {
+          refreshToken: async () => {
+            throw new PigclaudeApiError("AUTHORIZATION_REQUIRED", 0)
+          },
+        },
+      })
   }
 
-  /** 从 safeStorage 恢复设备材料并重新向 Rust 检查会员状态。 */
+  /** 恢复后与每次受限操作前重新核验原账号、版本、关系及会员。 */
   async inspect(): Promise<MembershipView> {
-    // 本地材料写入/撤销按序完成后才读取；每次请求只能发布自己的当前代次。
-    for (;;) {
-      const mutation = this.#mutation
-      await mutation
-      if (mutation === this.#mutation) break
-    }
+    const read = ++this.#reads
+    const owner = this.#tokens.owner
     if (this.#disposed) return this.view()
-    if (this.#locallySignedOut) return this.view()
-    const generation = ++this.#readGeneration
-    let raw: string | null
+    let identity: OAuthSnapshot | undefined
     try {
-      raw = await this.#vault.get("membership:session")
-    } catch {
-      if (!this.isCurrentRead(generation)) return this.view()
-      return this.publish(
-        this.withState(initialView(), "configuration_error", "SAFE_STORAGE_UNAVAILABLE"),
-      )
-    }
-    if (!this.isCurrentRead(generation)) return this.view()
-    const record = parseOAuthDesktopSession(raw)
-    this.adoptRecord(record)
-    if (!record) return this.publish(signedOutView())
-    const owner = this.#sessionGeneration
-    try {
-      const remote = await this.#api.inspectMembership(
-        {
-          deviceId: record.deviceId,
-          bindingEpoch: record.bindingEpoch,
-        },
-        record.accessToken,
-      )
-      if (!this.isCurrentRead(generation) || !this.isCurrentSession(owner)) return this.view()
-      if (
-        remote.bindingEpoch !== null &&
-        record.bindingEpoch !== "" &&
-        remote.bindingEpoch !== record.bindingEpoch
-      ) {
-        return this.publish(this.withState(remote, "device_revoked", "AUTHORIZATION_BINDING_STALE"))
+      const snapshot = await this.#tokens.snapshot()
+      if (!snapshot) {
+        if (this.current(read, owner)) return this.publish(signedOutView())
+        return this.view()
+      }
+      const remote = await this.#tokens.run(async (current) => {
+        identity = current
+        await this.verifyIdentity(current)
+        const scopes = current.record.scope.split(" ")
+        if (!scopes.includes("membership:read") || !scopes.includes("device:inspect")) {
+          throw new PigclaudeApiError("insufficient_scope", 403)
+        }
+        return this.#api.inspectMembership(
+          {
+            deviceId: current.record.deviceId,
+            bindingEpoch: current.record.bindingEpoch,
+          },
+          current.record.accessToken,
+        )
+      })
+      if (!this.current(read, owner)) return this.view()
+      this.#visibleOwner = owner
+      if (remote.bindingEpoch !== null && remote.bindingEpoch !== identity?.record.bindingEpoch) {
+        return this.clearSession(owner, "DEVICE_REVOKED", "AUTHORIZATION_BINDING_STALE")
       }
       return this.publish(this.normalizeRemote(remote))
     } catch (error: unknown) {
-      if (!this.isCurrentRead(generation) || !this.isCurrentSession(owner)) return this.view()
-      const errorCode = errorCodeOf(error, "SERVER_UNAVAILABLE")
+      const code = codeOf(error)
+      if (
+        !this.#disposed &&
+        this.#tokens.isCurrent(owner) &&
+        (code === "ACCOUNT_BANNED" || code === "DEVICE_REVOKED")
+      )
+        return this.clearSession(owner, code)
+      if (!this.current(read, owner)) return this.view()
+      const view = identity ? this.identityView(identity) : initialView()
       const state =
-        errorCode === "DEVICE_REVOKED" ||
-        errorCode === "AUTHORIZATION_DEVICE_REVOKED" ||
-        errorCode === "AUTHORIZATION_BINDING_STALE"
-          ? "device_revoked"
-          : errorCode === "AUTHORIZATION_EXPIRED"
-            ? "expired"
-            : errorCode === "AUTHORIZATION_UNAUTHORIZED"
-              ? "verification_required"
-              : "error"
-      if (errorCode === "ACCOUNT_BANNED" || errorCode === "DEVICE_REVOKED") {
-        return this.clearSession(owner, record, errorCode)
-      }
-      return this.publish(this.withState(this.#view, state, errorCode))
+        code === "SAFE_STORAGE_UNAVAILABLE"
+          ? "configuration_error"
+          : code === "AUTHORIZATION_REQUIRED" ||
+              code === "invalid_grant" ||
+              code === "invalid_token"
+            ? "verification_required"
+            : code === "AUTHORIZATION_EXPIRED" || code === "MEMBERSHIP_EXPIRED"
+              ? "expired"
+              : code === "insufficient_scope" ||
+                  code === "AUTHORIZATION_UNAUTHORIZED" ||
+                  code === "access_denied"
+                ? "verification_required"
+                : "error"
+      this.#visibleOwner = owner
+      return this.publish({ ...view, state, errorCode: code, serverReason: code })
     }
   }
 
-  /** 订阅脱敏会员快照，返回只移除当前 listener 的清理函数。 */
+  /** 订阅脱敏快照，返回移除当前 listener 的清理函数。 */
   subscribe(listener: (view: MembershipView) => void): () => void {
     this.#listeners.add(listener)
     return () => this.#listeners.delete(listener)
   }
 
-  /** 返回当前脱敏快照；不会读取或返回 safeStorage 中的秘密。 */
+  /** 只返回脱敏业务视图，不返回任何凭据。 */
   view(): MembershipView {
     return { ...this.#view, account: this.#view.account ? { ...this.#view.account } : null }
   }
 
-  /** 捕获原 session/token 撤销关系，普通同会话检查不取消操作，远端等待不占本机队列。 */
+  /** 撤销原逻辑会话的当前关系；同族刷新不取消结果，新 grant 则隔离。 */
   async revoke(): Promise<MembershipView> {
-    const initialOwner = this.#sessionGeneration
-    const initialRecord = this.#record
-    // 只等待本机写队列；等待期间换凭据不能把原可见操作重绑给新 grant。
-    for (;;) {
-      const mutation = this.#mutation
-      await mutation
-      if (!this.isCurrentSession(initialOwner) || this.#locallySignedOut) return this.view()
-      if (mutation === this.#mutation) break
+    const owner = this.#tokens.owner
+    if (this.#visibleOwner !== null && this.#visibleOwner !== owner) return this.view()
+    if (this.#disposed) return this.view()
+    try {
+      const snapshot = await this.#tokens.snapshot()
+      if (!this.#tokens.isCurrent(owner)) return this.view()
+      if (!snapshot) return this.clearSession(owner)
+      await this.#tokens.run(async (current) => {
+        await this.verifyIdentity(current)
+        if (!current.record.scope.split(" ").includes("device:revoke"))
+          throw new PigclaudeApiError("insufficient_scope", 403)
+        if (!this.#tokens.isCurrent(owner))
+          throw new PigclaudeApiError("AUTHORIZATION_CANCELLED", 0)
+        await this.#api.revokeDeviceBinding(current.record.accessToken)
+      })
+      if (!this.#tokens.isCurrent(owner)) return this.view()
+      return this.clearSession(owner)
+    } catch (error: unknown) {
+      if (!this.#tokens.isCurrent(owner)) return this.view()
+      const code = codeOf(error)
+      if (code === "ACCOUNT_BANNED" || code === "DEVICE_REVOKED")
+        return this.clearSession(owner, code)
+      throw error
     }
-    if (initialRecord && !sameSession(initialRecord, this.#record)) return this.view()
-    const record =
-      this.#record ?? parseOAuthDesktopSession(await this.#vault.get("membership:session"))
-    if (!this.isCurrentSession(initialOwner) || this.#locallySignedOut) return this.view()
-    this.adoptRecord(record)
-    const owner = this.#sessionGeneration
-    if (record) {
-      try {
-        await this.#api.revokeDeviceBinding(record.accessToken)
-      } catch (error: unknown) {
-        if (!this.isCurrentSession(owner)) return this.view()
-        const code = errorCodeOf(error, "SERVER_UNAVAILABLE")
-        if (code === "ACCOUNT_BANNED" || code === "DEVICE_REVOKED") {
-          return this.clearSession(owner, record, code)
-        }
-        throw error
-      }
-    }
-    if (!this.isCurrentSession(owner)) return this.view()
-    return this.clearSession(owner, record)
   }
 
-  /** 只退出本机 profile；等待旧写入后清理全部授权，失败时阻止检查恢复旧会话。 */
-  signOut(secretWrites: Promise<void> = Promise.resolve()): Promise<MembershipView> {
-    this.#sessionGeneration++
-    this.#locallySignedOut = true
-    return this.mutate(async () => {
-      if (this.#disposed) throw new Error("会员服务已关闭")
-      try {
-        await secretWrites
-        if (!this.#vault.deletePrefix) throw new Error("安全仓库不支持完整清理授权")
-        await this.#vault.deletePrefix("authorization:pigclaude-login:")
-        await this.#vault.delete("membership:session")
-        this.#record = null
-        this.#locallySignedOut = true
-        return this.publish(signedOutView())
-      } catch (error: unknown) {
-        this.#locallySignedOut = true
-        this.publish(this.withState(initialView(), "configuration_error", "LOCAL_SIGN_OUT_FAILED"))
-        throw error
-      }
-    })
+  /** 同步暂停所有 owner，退出只等待已进入本机秘密写入，不等待网络。 */
+  async signOut(secretWrites: Promise<void> = Promise.resolve()): Promise<MembershipView> {
+    const writes = this.#tokens.suspend()
+    this.#reads++
+    try {
+      await Promise.all([writes, secretWrites])
+      await this.#tokens.clear()
+      this.#visibleOwner = null
+      this.#tokens.resume()
+      return this.publish(signedOutView())
+    } catch (error: unknown) {
+      this.publish({
+        ...initialView(),
+        state: "configuration_error",
+        errorCode: "LOCAL_SIGN_OUT_FAILED",
+      })
+      throw error
+    }
   }
 
-  /** 在本机写入屏障内接收当前 OAuth2 材料，失效代次不能发布或恢复记录。 */
+  /** 显式新授权同步 supersede 原 owner，所有持久写入仍归统一管理器。 */
   async acceptAuthorization(
-    input: OAuthDesktopSession,
+    record: OAuthDesktopSession,
     isCurrent: () => boolean = () => true,
   ): Promise<void> {
-    const record = parseOAuthDesktopSession(JSON.stringify(input))
-    if (!record) throw new Error("INVALID_OAUTH_SESSION")
-    const owner = ++this.#sessionGeneration
-    await this.mutate(async () => {
-      if (!this.isCurrentSession(owner) || !isCurrent()) return
-      await this.#vault.set("membership:session", JSON.stringify(record))
-      if (this.isCurrentSession(owner) && isCurrent()) {
-        this.#record = record
-        this.#locallySignedOut = false
-      }
-    })
+    this.#reads++
+    await this.#tokens.adopt(record, isCurrent)
+    this.#visibleOwner = this.#tokens.owner
   }
 
-  /** 释放 gate 订阅，供 composition 的 ordered cleanup 使用。 */
+  /** 释放监听并同步拒绝迟到网络发布。 */
   dispose(): void {
     this.#disposed = true
-    this.#sessionGeneration++
-    this.#readGeneration++
+    this.#reads++
+    void this.#tokens.suspend()
     this.#listeners.clear()
   }
 
-  private isCurrentRead(generation: number): boolean {
-    return !this.#disposed && this.#readGeneration === generation
+  private async verifyIdentity({ owner, record }: OAuthSnapshot): Promise<void> {
+    if (!this.#api.readDesktopSession) return
+    const actual = await this.#api.readDesktopSession(record.accessToken)
+    if (!this.#tokens.isCurrent(owner)) throw new PigclaudeApiError("AUTHORIZATION_CANCELLED", 0)
+    if (
+      actual.userId !== record.userId ||
+      actual.deviceId !== record.deviceId ||
+      actual.bindingEpoch !== record.bindingEpoch ||
+      actual.authVersion !== record.authVersion
+    ) {
+      throw new PigclaudeApiError("DEVICE_REVOKED", 401)
+    }
   }
 
-  private isCurrentSession(owner: number): boolean {
-    return !this.#disposed && this.#sessionGeneration === owner
+  private current(read: number, owner: number): boolean {
+    return !this.#disposed && read === this.#reads && this.#tokens.isCurrent(owner)
   }
 
-  private adoptRecord(record: OAuthDesktopSession | null): void {
-    // 初次加载不替换已有 owner；同凭据重新 parse 不代表换登录。
-    if (this.#record && !sameSession(this.#record, record)) this.#sessionGeneration++
-    this.#record = record
-  }
-
-  private clearSession(
+  private async clearSession(
     owner: number,
-    record: OAuthDesktopSession | null,
     terminal?: "ACCOUNT_BANNED" | "DEVICE_REVOKED",
+    errorCode: string | undefined = terminal,
   ): Promise<MembershipView> {
-    return this.mutate(async () => {
-      if (!this.isCurrentSession(owner)) return this.view()
-      if (record) await this.#deleteLocalSecrets(record.userId)
-      if (!this.isCurrentSession(owner)) return this.view()
-      this.#record = null
-      this.#sessionGeneration++
-      return this.publish(
-        terminal
-          ? this.withState(
-              initialView(),
-              terminal === "DEVICE_REVOKED" ? "device_revoked" : "verification_required",
-              terminal,
-            )
-          : signedOutView(),
-      )
-    })
+    if (!this.#tokens.isCurrent(owner)) return this.view()
+    const clearing = this.#tokens.clear(owner)
+    const clearedOwner = this.#tokens.owner
+    this.#reads++
+    this.#visibleOwner = null
+    const view = terminal
+      ? {
+          ...initialView(),
+          state:
+            terminal === "DEVICE_REVOKED"
+              ? ("device_revoked" as const)
+              : ("verification_required" as const),
+          errorCode: errorCode ?? null,
+          serverReason: terminal,
+        }
+      : signedOutView()
+    this.publish(view)
+    try {
+      await clearing
+    } catch {
+      if (this.#tokens.isCurrent(clearedOwner))
+        return this.publish({
+          ...view,
+          state: "configuration_error",
+          errorCode: "SAFE_STORAGE_UNAVAILABLE",
+        })
+    }
+    return this.view()
   }
 
-  private mutate<T>(operation: () => Promise<T>): Promise<T> {
-    this.#readGeneration++
-    const pending = this.#mutation.then(async () => {
-      try {
-        return await operation()
-      } finally {
-        this.#readGeneration++
-      }
-    })
-    this.#mutation = pending.then(
-      () => undefined,
-      () => undefined,
-    )
-    return pending
+  private identityView({ record }: OAuthSnapshot): MembershipView {
+    return {
+      ...initialView(),
+      account: { userId: record.userId, nickname: "", email: "", avatar: "" },
+      bindingEpoch: record.bindingEpoch,
+    }
   }
 
   private normalizeRemote(view: MembershipView): MembershipView {
-    const serverState = view.state as string
-    if (serverState === "inactive" || serverState === "revoked") {
-      return this.withState(view, "verification_required", "AUTHORIZATION_UNAUTHORIZED")
-    }
+    const state = view.state as string
+    if (state === "inactive" || state === "revoked")
+      return { ...view, state: "verification_required", errorCode: "AUTHORIZATION_UNAUTHORIZED" }
     return {
       ...view,
-      startupPhase: "settled",
+      offlineValidUntil: null,
       lastVerifiedAt: view.lastVerifiedAt ?? new Date(this.#now()).toISOString(),
+      nextVerificationAt: new Date(this.#now() + 30_000).toISOString(),
     }
-  }
-
-  private withState(
-    view: MembershipView,
-    state: MembershipView["state"],
-    errorCode: DesktopMembershipErrorCode | string,
-  ): MembershipView {
-    return { ...view, state, errorCode, serverReason: view.serverReason ?? errorCode }
   }
 
   private publish(view: MembershipView): MembershipView {
@@ -278,17 +271,7 @@ export class MembershipGate {
     for (const listener of this.#listeners) listener(safe)
     return safe
   }
-
-  async #deleteLocalSecrets(accountId?: string): Promise<void> {
-    if (this.#vault.deletePrefix) {
-      await this.#vault.deletePrefix("authorization:pigclaude-login:")
-    } else if (accountId) {
-      await this.#vault.delete(`authorization:pigclaude-login:${accountId}`)
-    }
-    await this.#vault.delete("membership:session")
-  }
 }
-
 function initialView(): MembershipView {
   return {
     startupPhase: "checking",
@@ -308,30 +291,6 @@ function initialView(): MembershipView {
     authorizationUrl: null,
   }
 }
-
 function signedOutView(): MembershipView {
   return { ...initialView(), startupPhase: "settled", state: "signed_out" }
-}
-
-function sameSession(left: OAuthDesktopSession, right: OAuthDesktopSession | null): boolean {
-  return (
-    right !== null &&
-    left.userId === right.userId &&
-    left.deviceId === right.deviceId &&
-    left.bindingEpoch === right.bindingEpoch &&
-    left.authVersion === right.authVersion &&
-    left.accessToken === right.accessToken &&
-    left.refreshToken === right.refreshToken &&
-    left.scope === right.scope &&
-    left.accessTokenExpiresAt === right.accessTokenExpiresAt &&
-    left.refreshTokenExpiresAt === right.refreshTokenExpiresAt
-  )
-}
-
-function errorCodeOf(error: unknown, fallback: string): string {
-  return isRecord(error) && typeof error.code === "string" ? error.code : fallback
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
 }

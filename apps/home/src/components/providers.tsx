@@ -3,9 +3,10 @@
 
 import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-query"
 import { usePathname, useRouter } from "next/navigation"
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import { initTheme } from "@pigclaude/web-ui/lib/theme"
 import { HomeSessionContext } from "@/components/home-session-context"
+import { homeSessionGeneration } from "@/lib/session-generation"
 import { homeApi } from "@/lib/api"
 import {
   homeLoginRedirect,
@@ -31,6 +32,13 @@ export function Providers({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const routerRef = useRef(router)
   const pathnameRef = useRef(pathname)
+  const routeGeneration = useRef(0)
+  useLayoutEffect(() => {
+    routeGeneration.current++
+    return () => {
+      routeGeneration.current++
+    }
+  }, [pathname])
   const sessionRecoveryRef = useRef<Promise<boolean> | null>(null)
   const recoveryHashesRef = useRef(new Set<string>())
   routerRef.current = router
@@ -65,12 +73,23 @@ export function Providers({ children }: { children: ReactNode }) {
   )
 
   const completeLogout = useCallback(async () => {
+    homeSessionGeneration.invalidate()
+    routeGeneration.current++
+    const currentRouteGeneration = routeGeneration.current
+    const generation = homeSessionGeneration.current()
     sessionEndedRef.current = true
     setSessionEnded(true)
-    await queryClient.cancelQueries()
+    const cancellation = queryClient.cancelQueries()
+    // 同步清掉本次旧会话缓存，异步等待只控制仍属当前页面的导航。
     queryClient.clear()
     recoveryHashesRef.current.clear()
     sessionRecoveryRef.current = null
+    await cancellation
+    if (
+      generation !== homeSessionGeneration.current() ||
+      currentRouteGeneration !== routeGeneration.current
+    )
+      return
     routerRef.current.replace("/login")
   }, [queryClient])
 
@@ -84,6 +103,11 @@ export function Providers({ children }: { children: ReactNode }) {
   useEffect(() => {
     function startSessionRecovery(): Promise<boolean> {
       if (sessionRecoveryRef.current) return sessionRecoveryRef.current
+      const generation = homeSessionGeneration.current()
+      const currentRouteGeneration = routeGeneration.current
+      const ownsRecovery = () =>
+        generation === homeSessionGeneration.current() &&
+        currentRouteGeneration === routeGeneration.current
       const recovery = (async () => {
         try {
           await queryClient.fetchQuery({
@@ -91,9 +115,9 @@ export function Providers({ children }: { children: ReactNode }) {
             queryFn: homeApi.user.me,
             staleTime: 0,
           })
-          return true
+          return ownsRecovery()
         } catch {
-          if (sessionEndedRef.current) return false
+          if (!ownsRecovery() || sessionEndedRef.current) return false
           routerRef.current.replace(homeLoginRedirect(currentRoute(pathnameRef.current)))
           return false
         }
@@ -111,8 +135,13 @@ export function Providers({ children }: { children: ReactNode }) {
         event?.onSettled?.()
         return
       }
+      const generation = homeSessionGeneration.current()
+      const currentRouteGeneration = routeGeneration.current
+      const isCurrent = () =>
+        generation === homeSessionGeneration.current() &&
+        currentRouteGeneration === routeGeneration.current
       try {
-        if (!(await startSessionRecovery()) || sessionEndedRef.current) return
+        if (!(await startSessionRecovery()) || !isCurrent() || sessionEndedRef.current) return
         if (event?.onSessionValid) await event.onSessionValid()
         else if (!event?.queryHash) await queryClient.refetchQueries({ type: "active" })
       } catch {

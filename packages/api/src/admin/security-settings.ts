@@ -7,6 +7,7 @@ import {
   type DisableTurnstile,
 } from "@pigclaude/contracts/security-settings"
 import type { HttpClient } from "../client"
+import { createAdminSessionWriter } from "./session"
 async function view(request: Promise<unknown>) {
   const value = await request
   if (!isSecuritySettingsView(value)) throw new Error("设置响应格式无效")
@@ -14,18 +15,22 @@ async function view(request: Promise<unknown>) {
 }
 /** 创建只返回验证过的公开设置数据的 facade。 */
 export function createSecuritySettingsApi(client: HttpClient) {
+  const write = createAdminSessionWriter(client)
   const path = "/admin/v1/settings/turnstile"
   return {
     /** 读取脱敏配置。 */
     get: () => view(client.get<unknown>(path)),
     /** 空秘密不发送，避免覆盖已保存材料。 */
-    saveDraft: ({ secretKey, ...body }: SaveTurnstileDraft) =>
-      view(client.put<unknown>(`${path}/draft`, { ...body, ...(secretKey ? { secretKey } : {}) })),
+    saveDraft: async ({ secretKey, ...body }: SaveTurnstileDraft) =>
+      view(
+        write<unknown>("PUT", `${path}/draft`, { ...body, ...(secretKey ? { secretKey } : {}) }),
+      ),
     /** 只启用与 proof 对应的同版草稿。 */
-    activate: (body: ActivateTurnstileDraft) =>
-      view(client.post<unknown>(`${path}/activate`, body)),
+    activate: async (body: ActivateTurnstileDraft) =>
+      view(write<unknown>("POST", `${path}/activate`, body)),
     /** 独立确认关闭。 */
-    disable: (body: DisableTurnstile) => view(client.post<unknown>(`${path}/disable`, body)),
+    disable: async (body: DisableTurnstile) =>
+      view(write<unknown>("POST", `${path}/disable`, body)),
     /** 读取已验证的脱敏审计分页。 */
     audits: async (query: { cursor?: string; limit?: number } = {}) => {
       const value = await client.get<unknown>(`${path}/audits`, query)

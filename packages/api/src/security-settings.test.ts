@@ -3,7 +3,7 @@ import { expect, it } from "vitest"
 import { createClient } from "./client"
 import { createAdminApi } from "./admin/endpoints"
 it("uses management routes and refuses secret-bearing responses", async () => {
-  const requests: { path: string; method: string; body: unknown }[] = []
+  const requests: { path: string; method: string; body: unknown; csrf: string | null }[] = []
   const summary = {
     revision: "2",
     enabled: false,
@@ -20,18 +20,21 @@ it("uses management routes and refuses secret-bearing responses", async () => {
       fetch: async (path, init) => {
         requests.push({
           path: String(path),
+          csrf: new Headers(init?.headers).get("X-CSRF-Token"),
           method: init?.method ?? "GET",
           body: init?.body ? (JSON.parse(String(init.body)) as unknown) : null,
         })
         return new Response(
           JSON.stringify(
-            String(path).includes("audits")
-              ? { items: [], nextCursor: null }
-              : {
-                  revision: "2",
-                  active: { ...summary, ...(leak ? { secretKey: "leak" } : {}) },
-                  draft: null,
-                },
+            String(path) === "/admin/v1/session"
+              ? { csrf: "settings-csrf" }
+              : String(path).includes("audits")
+                ? { items: [], nextCursor: null }
+                : {
+                    revision: "2",
+                    active: { ...summary, ...(leak ? { secretKey: "leak" } : {}) },
+                    draft: null,
+                  },
           ),
         )
       },
@@ -50,12 +53,17 @@ it("uses management routes and refuses secret-bearing responses", async () => {
   await api.settings.turnstile.audits({ cursor: "2", limit: 20 })
   expect(requests.map(({ path, method }) => [method, path])).toEqual([
     ["GET", "/admin/v1/settings/turnstile"],
+    ["GET", "/admin/v1/session"],
     ["PUT", "/admin/v1/settings/turnstile/draft"],
+    ["GET", "/admin/v1/session"],
     ["POST", "/admin/v1/settings/turnstile/activate"],
+    ["GET", "/admin/v1/session"],
     ["POST", "/admin/v1/settings/turnstile/disable"],
     ["GET", "/admin/v1/settings/turnstile/audits?cursor=2&limit=20"],
   ])
-  expect(requests[1].body).toEqual({
+  for (const write of requests.filter((item) => item.method !== "GET"))
+    expect(write.csrf).toBe("settings-csrf")
+  expect(requests[2].body).toEqual({
     expectedRevision: "2",
     enabled: true,
     siteKey: "key",

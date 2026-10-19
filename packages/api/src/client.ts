@@ -32,15 +32,17 @@ export type Query = Record<string, string | number | boolean | undefined>
 
 /** 对外导出该模块能力，保证调用方使用稳定的类型或函数契约。 */
 export interface HttpClient {
+  /** 捕获整个多阶段请求链的当前网站会话代次。 */
+  captureSession?: () => () => boolean
   get<T>(path: string, query?: Query): Promise<T>
-  post<T>(path: string, body?: unknown): Promise<T>
+  post<T>(path: string, body?: unknown, headers?: Record<string, string>): Promise<T>
   /** 读取授权 JSON 响应及其 Location 元数据，兼容服务端 303 fallback。 */
   postWithResponse?<T>(path: string, body?: unknown): Promise<HttpResponse<T>>
   /** multipart/form-data；浏览器自动生成 boundary，调用方不得手写 Content-Type。 */
   postForm<T>(path: string, body: FormData): Promise<T>
-  put<T>(path: string, body?: unknown): Promise<T>
-  /** DELETE 无请求体（path 参数承载资源标识，如 /v1/sms/favorites/{serviceCode}）。 */
-  delete<T>(path: string): Promise<T>
+  put<T>(path: string, body?: unknown, headers?: Record<string, string>): Promise<T>
+  /** DELETE 可发送严格 JSON CSRF body；未提供 body 的旧只读参数语义不变。 */
+  delete<T>(path: string, body?: unknown): Promise<T>
 }
 
 /** HTTP client 返回的状态和 Location 元数据，供需要处理 303 的 endpoint 使用。 */
@@ -63,6 +65,8 @@ function qs(query?: Query): string {
 
 /** 对外导出该模块能力，保证调用方使用稳定的类型或函数契约。 */
 export interface ClientOptions {
+  /** 每次请求捕获网站会话代次，退出后的旧结果不能触发恢复或返回身份。 */
+  generation?: () => number
   baseUrl?: string
   credentials?: RequestCredentials
   onUnauthorized?: () => void | Promise<void>
@@ -89,6 +93,10 @@ export function createClient(opts: ClientOptions = {}): HttpClient {
     redirect: RequestRedirect = "follow",
     extraHeaders: Record<string, string> = {},
   ): Promise<HttpResponse<T>> {
+    const generation = opts.generation?.()
+    const checkGeneration = () => {
+      if (generation !== opts.generation?.()) throw new StaleSessionResponse()
+    }
     const headers: Record<string, string> = { ...opts.headers?.(), ...extraHeaders }
     const isForm = typeof FormData !== "undefined" && body instanceof FormData
     if (body !== undefined && !isForm) headers["Content-Type"] = "application/json"
@@ -96,15 +104,26 @@ export function createClient(opts: ClientOptions = {}): HttpClient {
     if (Object.keys(headers).length > 0) init.headers = headers
     if (isForm) init.body = body
     else if (body !== undefined) init.body = JSON.stringify(body)
-    const res = await requestFetch(base + path + qs(query), init)
+    let res: Response
+    try {
+      res = await requestFetch(base + path + qs(query), init)
+    } catch (error) {
+      checkGeneration()
+      throw error
+    }
+    checkGeneration()
     const location = res.headers.get("location")
     if (res.ok || (res.status === 303 && location !== null)) {
       if (res.status === 204) {
         return { data: {} as T, status: res.status, location }
       }
       try {
-        return { data: (await res.json()) as T, status: res.status, location }
-      } catch {
+        const data = (await res.json()) as T
+        checkGeneration()
+        return { data, status: res.status, location }
+      } catch (error) {
+        checkGeneration()
+        if (error instanceof StaleSessionResponse) throw error
         if (res.status === 303) {
           throw new ApiError(303, { message: "授权回调响应无效" })
         }
@@ -117,7 +136,9 @@ export function createClient(opts: ClientOptions = {}): HttpClient {
     } catch {
       /* 纯文本错误（OAuth 等） */
     }
+    checkGeneration()
     if (res.status === 401) await opts.onUnauthorized?.()
+    checkGeneration()
     throw new ApiError(res.status, parsed)
   }
 
@@ -126,20 +147,28 @@ export function createClient(opts: ClientOptions = {}): HttpClient {
     path: string,
     body?: unknown,
     query?: Query,
+    headers?: Record<string, string>,
   ): Promise<T> {
-    return (await requestResponse<T>(method, path, body, query)).data
+    const generation = opts.generation?.()
+    const response = await requestResponse<T>(method, path, body, query, "follow", headers)
+    if (generation !== opts.generation?.()) throw new StaleSessionResponse()
+    return response.data
   }
 
   return {
+    captureSession: () => {
+      const generation = opts.generation?.()
+      return () => generation === opts.generation?.()
+    },
     get: (path, query) => request("GET", path, undefined, query),
-    post: (path, body) => request("POST", path, body ?? {}),
+    post: (path, body, headers) => request("POST", path, body ?? {}, undefined, headers),
     postWithResponse: (path, body) =>
       requestResponse("POST", path, body ?? {}, undefined, "follow", {
         Accept: "application/json",
       }),
     postForm: (path, body) => request("POST", path, body),
-    put: (path, body) => request("PUT", path, body ?? {}),
-    delete: (path) => request("DELETE", path),
+    put: (path, body, headers) => request("PUT", path, body ?? {}, undefined, headers),
+    delete: (path, body) => request("DELETE", path, body),
   }
 }
 
@@ -174,4 +203,12 @@ function knownApplicationError(error: string | undefined): string | undefined {
     ].includes(error)
     ? error
     : undefined
+}
+
+/** 旧网站会话的异步结果必须丢弃，不把它解释为当前会话失败。 */
+export class StaleSessionResponse extends Error {
+  constructor() {
+    super("网站会话已切换")
+    this.name = "StaleSessionResponse"
+  }
 }

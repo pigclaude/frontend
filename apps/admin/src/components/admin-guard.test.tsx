@@ -28,7 +28,7 @@ describe("AdminGuard", () => {
     state.result = {
       isPending: false,
       error: null,
-      data: { id: "a1", account: "ops", status: "active" },
+      data: { id: "a1", account: "ops", status: "active", permissions: ["users:read"] },
     }
   })
 
@@ -48,4 +48,13 @@ describe("AdminGuard", () => {
     renderGuard()
     expect(screen.getByText("protected admin")).toBeTruthy()
   })
+})
+
+it.each([
+  { id: "ordinary-user", nickname: "User", status: "active", permissions: [] },
+  { id: "admin-disabled", account: "ops", status: "disabled", permissions: ["users:read"] },
+])("rejects an invalid current administrator view %j", async (data) => {
+  state.result = { isPending: false, error: null, data }
+  renderGuard()
+  expect(await screen.findByText("login page")).toBeTruthy()
 })

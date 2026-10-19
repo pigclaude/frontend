@@ -1,7 +1,7 @@
 // 负责迁入 Pigcursor 用户头像和磨砂菜单，并连接真实退出及脱敏账户摘要。
 "use client"
 
-import { useRef, useState } from "react"
+import { useLayoutEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { CircleUserRound, LogOut, ShieldCheck } from "lucide-react"
 import type { MeResponse } from "@pigclaude/api/home/types"
@@ -22,17 +22,26 @@ export function UserMenu({ user }: { user: MeResponse }) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState(false)
   const pendingRef = useRef(false)
+  const generation = useRef(0)
+  useLayoutEffect(() => {
+    generation.current++
+    return () => {
+      generation.current++
+    }
+  }, [])
   const initial = user.nickname?.slice(0, 1) || "P"
 
   async function handleLogout() {
     if (pendingRef.current) return
+    const current = generation.current
     pendingRef.current = true
     setPending(true)
     setError(false)
     try {
-      await homeApi.auth.logout()
-      await completeLogout()
+      await homeApi.auth.logout(() => current === generation.current)
+      if (current === generation.current) await completeLogout()
     } catch {
+      if (current !== generation.current) return
       setError(true)
       setPending(false)
       pendingRef.current = false
@@ -79,6 +88,12 @@ export function UserMenu({ user }: { user: MeResponse }) {
           <Link href="/membership">
             <ShieldCheck />
             会员
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild disabled={pending}>
+          <Link href="/settings/security">
+            <ShieldCheck />
+            登录方式
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />

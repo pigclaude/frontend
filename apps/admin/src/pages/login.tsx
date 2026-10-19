@@ -1,70 +1,24 @@
-// 负责管理员账号登录，登录成功后由服务端 cookie 和 me query 确认身份。
-import { FormEvent, useRef, useState } from "react"
-import { useQueryClient } from "@tanstack/react-query"
-import { useLocation, useNavigate } from "react-router"
-import { toast } from "sonner"
-import { ArrowLeft, LoaderCircle, LockKeyhole, UserRound } from "lucide-react"
-import { TurnstileCaptcha } from "@pigclaude/web-ui/components/turnstile-captcha"
-import { useTurnstileCaptcha } from "@pigclaude/web-ui/hooks/use-turnstile-captcha"
-import { captchaErrorMessage } from "@pigclaude/web-ui/lib/captcha-errors"
+// 负责管理员独立 RP 的明确登录入口；所有密码与验证码交互留在中央 Admin 表单。
+import { useLocation } from "react-router"
+import { ArrowLeft } from "lucide-react"
+import { beginWebOidcLogin } from "@pigclaude/api/web-oidc"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { ThemeButton } from "@/components/theme-button"
 import { BrandMark } from "@/components/shell/brand-mark"
-import { adminApi } from "@/lib/api"
-import { toastApiError } from "@/lib/errors"
 import { resolveHomeOrigin } from "@/lib/runtime-config"
 import { safeLoginRedirect } from "@/lib/navigation"
-
-/** 渲染管理员登录表单，密码只进入 API body，不进入 URL 或页面状态展示。 */
+const errors: Record<string, string> = {
+  OIDC_ACCESS_DENIED: "已取消登录，可选择继续登录",
+  OIDC_LOGIN_REQUIRED: "请重新登录后继续",
+  OIDC_FAILED: "登录未完成，请重试",
+  OIDC_UNAVAILABLE: "登录服务暂时不可用，请稍后重试",
+  ACCOUNT_BANNED: "账号不可用，请联系管理员",
+}
+/** 等待明确继续后只启动 Admin RP，回调错误不会自动创建新事务。 */
 export default function LoginPage() {
-  const navigate = useNavigate()
-  const location = useLocation()
-  const queryClient = useQueryClient()
-  const [account, setAccount] = useState("")
-  const [password, setPassword] = useState("")
-  const [pending, setPending] = useState(false)
-  const [captchaError, setCaptchaError] = useState<string | null>(null)
-  const submitting = useRef(false)
-  const captcha = useTurnstileCaptcha({
-    loadConfig: adminApi.auth.captcha,
-    action: "admin_login",
-  })
-
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (submitting.current || !captcha.ready) return
-    if (account.trim().length < 3 || password.length < 8) {
-      toast.error("请输入有效的账号和至少 8 位密码")
-      return
-    }
-    submitting.current = true
-    setPending(true)
-    setCaptchaError(null)
-    try {
-      await captcha.run((captchaToken) =>
-        adminApi.auth.login({
-          account: account.trim(),
-          password,
-          ...(captchaToken ? { captchaToken } : {}),
-        }),
-      )
-      await queryClient.invalidateQueries({ queryKey: ["admin-me"], refetchType: "all" })
-      toast.success("登录成功")
-      navigate(safeLoginRedirect(new URLSearchParams(location.search).get("redirect")), {
-        replace: true,
-      })
-    } catch (error) {
-      const message = captchaErrorMessage(error)
-      if (message) {
-        setCaptchaError(message)
-      } else toastApiError(error)
-    } finally {
-      submitting.current = false
-      setPending(false)
-    }
-  }
-
+  const params = new URLSearchParams(useLocation().search)
+  const code = params.get("oidcError") ?? ""
+  const error = Object.hasOwn(errors, code) ? errors[code] : undefined
   return (
     <main className="relative flex min-h-dvh items-center justify-center overflow-hidden px-4 py-8">
       <div aria-hidden className="pointer-events-none absolute inset-0">
@@ -84,59 +38,24 @@ export default function LoginPage() {
             </p>
           </div>
         </div>
-        <form
-          onSubmit={onSubmit}
-          className="flex flex-col gap-4 rounded-2xl border border-border bg-[var(--card-elevated)]/80 p-6 shadow-[var(--dialog-shadow)] backdrop-blur-xl"
-        >
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="admin-account" className="text-[13px] font-medium text-fg-2">
-              账号
-            </label>
-            <div className="relative">
-              <UserRound className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-meta" />
-              <Input
-                id="admin-account"
-                autoComplete="username"
-                placeholder="admin_ops"
-                className="h-10 pl-9 text-sm"
-                value={account}
-                onChange={(event) => setAccount(event.target.value)}
-              />
-            </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="admin-password" className="text-[13px] font-medium text-fg-2">
-              密码
-            </label>
-            <div className="relative">
-              <LockKeyhole className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-meta" />
-              <Input
-                id="admin-password"
-                type="password"
-                autoComplete="current-password"
-                placeholder="至少 8 位"
-                className="h-10 pl-9 text-sm"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
-            </div>
-          </div>
-          <TurnstileCaptcha {...captcha.field} />
-          {captchaError && (
+        <section className="flex flex-col gap-4 rounded-2xl border border-border bg-[var(--card-elevated)]/80 p-6 shadow-[var(--dialog-shadow)] backdrop-blur-xl">
+          {error && (
             <p role="alert" className="text-sm text-destructive">
-              {captchaError}
+              {error}
             </p>
           )}
           <Button
-            type="submit"
             size="lg"
-            className="mt-1 h-10 w-full"
-            disabled={pending || !captcha.ready}
+            onClick={() =>
+              beginWebOidcLogin({
+                site: "admin",
+                returnTo: safeLoginRedirect(params.get("redirect")),
+              })
+            }
           >
-            {pending && <LoaderCircle className="animate-spin" />}
-            {pending ? "登录中…" : "登录"}
+            继续管理员登录
           </Button>
-        </form>
+        </section>
         <p className="text-center text-xs text-meta">
           <a
             href={resolveHomeOrigin(import.meta.env.VITE_HOME_URL)}

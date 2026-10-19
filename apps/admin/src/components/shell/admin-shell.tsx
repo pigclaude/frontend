@@ -1,5 +1,5 @@
 // 负责迁入 Pigcursor 成熟后台的admin-shell组件与交互，保持原有布局和语义。
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Outlet, useLocation, useNavigate } from "react-router"
 import { ApiError } from "@pigclaude/api/client"
 import { useQueryClient } from "@tanstack/react-query"
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Kbd } from "@/components/ui/kbd"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useMediaQuery } from "@/hooks/use-media-query"
+import { adminSessionGeneration } from "@/lib/session-generation"
 import { adminApi } from "@/lib/api"
 import { toastApiError } from "@/lib/errors"
 import { ThemeButton } from "../theme-button"
@@ -51,6 +52,13 @@ export function AdminShell() {
     onSideKeyDown,
     restoreToggleFocus,
   } = useMobileNavigation(isMobile)
+  const generation = useRef(0)
+  useLayoutEffect(() => {
+    generation.current++
+    return () => {
+      generation.current++
+    }
+  }, [])
   const logoutLock = useRef(false)
   const [logoutPending, setLogoutPending] = useState(false)
   const navigate = useNavigate()
@@ -90,23 +98,31 @@ export function AdminShell() {
 
   async function handleLogout() {
     if (logoutLock.current) return
+    const current = generation.current
     logoutLock.current = true
     setLogoutPending(true)
     try {
       try {
-        await adminApi.auth.logout()
+        await adminApi.auth.logout(() => current === generation.current)
       } catch (error) {
+        if (current !== generation.current) return
         if (!(error instanceof ApiError && error.status === 401)) {
           toastApiError(error)
           return
         }
       }
-      await queryClient.cancelQueries()
+      if (current !== generation.current) return
+      adminSessionGeneration.invalidate()
+      const cancellation = queryClient.cancelQueries()
       queryClient.clear()
+      await cancellation
+      if (current !== generation.current) return
       navigate("/login", { replace: true })
     } finally {
-      logoutLock.current = false
-      setLogoutPending(false)
+      if (current === generation.current) {
+        logoutLock.current = false
+        setLogoutPending(false)
+      }
     }
   }
 

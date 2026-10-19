@@ -62,6 +62,10 @@ beforeEach(() => {
   writes.length = 0
   mocks.fetch.mockReset()
   mocks.fetch.mockImplementation(async (url, init) => {
+    if (String(url) === "/admin/v1/session")
+      return new Response(JSON.stringify({ csrf: "settings-csrf" }))
+    if (init?.method === "PUT" || init?.method === "POST")
+      expect(new Headers(init.headers).get("X-CSRF-Token")).toBe("settings-csrf")
     const path = String(url)
     let body: unknown = path.endsWith("/me")
       ? {

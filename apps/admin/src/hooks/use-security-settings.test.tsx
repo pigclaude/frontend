@@ -23,18 +23,22 @@ it("does not persist write secrets and refuses malformed responses before cachin
   }
   const view = { revision: "2", active: summary, draft: null }
   let malformed = false
-  mocks.fetch.mockImplementation(
-    async (url) =>
-      new Response(
-        JSON.stringify(
-          String(url).includes("audits")
-            ? { items: [], nextCursor: null }
-            : { ...view, ...(malformed ? { encryptedSecret: "leak" } : {}) },
+  mocks.fetch.mockImplementation(async (url) =>
+    String(url) === "/admin/v1/session"
+      ? new Response(JSON.stringify({ csrf: "csrf" }))
+      : new Response(
+          JSON.stringify(
+            String(url).includes("audits")
+              ? { items: [], nextCursor: null }
+              : { ...view, ...(malformed ? { encryptedSecret: "leak" } : {}) },
+          ),
         ),
-      ),
   )
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  client.setQueryData(["admin-me"], { status: "active", permissions: ["*"] })
+  client.setQueryData(["admin-me"], {
+    status: "active",
+    permissions: ["settings:read", "settings:write"],
+  })
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   )

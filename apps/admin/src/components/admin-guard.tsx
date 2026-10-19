@@ -20,7 +20,13 @@ export function AdminGuard() {
   const { isPending, error, data } = useAdminMe()
   const location = useLocation()
   if (isPending) return <GuardLoading />
-  if (error || !data) {
+  if (
+    error ||
+    !data ||
+    data.status !== "active" ||
+    typeof data.account !== "string" ||
+    !Array.isArray(data.permissions)
+  ) {
     return (
       <Navigate to={loginRedirectPath(location.pathname, location.search, location.hash)} replace />
     )

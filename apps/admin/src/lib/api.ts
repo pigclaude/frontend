@@ -1,12 +1,14 @@
 // 负责创建管理后台唯一的 HTTP client 和第一阶段 Admin API facade。
+import { adminSessionGeneration } from "./session-generation"
 import { createClient } from "@pigclaude/api/client"
 import { createAdminApi } from "@pigclaude/api/admin"
 import { redirectToLogin } from "@/lib/navigation"
 
 /** 管理后台 client，默认使用同源 loopback Rust API 并保留管理员 cookie。 */
 export const adminClient = createClient({
-  baseUrl: import.meta.env.VITE_API_BASE ?? "",
+  baseUrl: "",
   credentials: "include",
+  generation: adminSessionGeneration.current,
   onUnauthorized: redirectToLogin,
 })
 

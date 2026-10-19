@@ -22,7 +22,7 @@ beforeEach(() => {
 it.each([
   [[], false],
   [["settings:read"], true],
-  [["read"], true],
+  [["read"], false],
   [["settings:write"], false],
 ])("navigation reflects %j", (permissions, visible) => {
   const client = new QueryClient()

@@ -37,3 +37,24 @@ describe("home logout API facade", () => {
     )
   })
 })
+
+it("does not send the next logout HTTP stage after the initiating UI loses ownership", async () => {
+  vi.resetModules()
+  let complete: (value: Response) => void = () => {}
+  const fetcher = vi.fn<typeof fetch>((_url, init) =>
+    init?.method === "POST"
+      ? Promise.resolve(new Response(null, { status: 204 }))
+      : new Promise((resolve) => {
+          complete = resolve
+        }),
+  )
+  vi.stubGlobal("fetch", fetcher)
+  const { homeApi } = await import("@/lib/api")
+  let current = true
+  const request = homeApi.auth.logout(() => current)
+  const assertion = expect(request).rejects.toMatchObject({ name: "StaleSessionResponse" })
+  current = false
+  complete(new Response(JSON.stringify({ csrf: "previous-session" })))
+  await assertion
+  expect(fetcher).toHaveBeenCalledTimes(1)
+})

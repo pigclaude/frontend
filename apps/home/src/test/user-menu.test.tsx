@@ -226,3 +226,27 @@ describe("home user menu lifecycle", () => {
     expect(screen.queryByText("Ada")).toBeNull()
   })
 })
+
+it("does not let old logout cleanup clear a new route or session after cancelQueries awaits", async () => {
+  const view = renderMenu()
+  await openMenu()
+  const client = currentClient()
+  const cancellation = deferred<void>()
+  const cancel = vi.spyOn(client, "cancelQueries").mockReturnValueOnce(cancellation.promise)
+  fireEvent.click(screen.getByRole("menuitem", { name: "退出登录" }))
+  await waitFor(() => expect(cancel).toHaveBeenCalledOnce())
+  expect(client.getQueryData(["me"])).toBeUndefined()
+  mocks.pathname = "/login"
+  window.history.replaceState({}, "", "/login")
+  view.rerender(
+    <Providers>
+      <AuthPanel />
+      <CacheProbe />
+    </Providers>,
+  )
+  await screen.findByRole("button", { name: "继续登录" })
+  client.setQueryData(["new-session"], { id: "next-user" })
+  await act(async () => cancellation.resolve())
+  expect(client.getQueryData(["new-session"])).toEqual({ id: "next-user" })
+  expect(mocks.replace).not.toHaveBeenCalled()
+})

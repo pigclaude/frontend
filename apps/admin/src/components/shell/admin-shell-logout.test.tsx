@@ -68,6 +68,7 @@ describe("AdminShell logout", () => {
     async (failure) => {
       if (failure === "network") fetcher.mockRejectedValueOnce(new TypeError("Failed to fetch"))
       else fetcher.mockResolvedValueOnce(new Response("{}", { status: 503 }))
+      fetcher.mockResolvedValueOnce(new Response(JSON.stringify({ csrf: "logout-csrf" })))
       fetcher.mockResolvedValueOnce(new Response(null, { status: 204 }))
       const client = renderShell()
       fireEvent.click(await openAccountMenu())
@@ -79,8 +80,9 @@ describe("AdminShell logout", () => {
       expect(client.getMutationCache().getAll()[0]?.state.data).toEqual({ secret: "grant-data" })
       fireEvent.click(await openAccountMenu())
       await screen.findByRole("heading", { name: "管理员登录" })
-      expect(fetcher).toHaveBeenCalledTimes(2)
-      expect(fetcher.mock.calls[1]?.[0]).toContain("/admin/v1/auth/logout")
+      expect(fetcher).toHaveBeenCalledTimes(3)
+      expect(fetcher.mock.calls[2]?.[0]).toBe("/admin/v1/web/oidc/logout")
+      expect(JSON.parse(String(fetcher.mock.calls[2]?.[1]?.body))).toEqual({ csrf: "logout-csrf" })
       expect(client.getQueryCache().getAll()).toEqual([])
       expect(client.getMutationCache().getAll()).toEqual([])
     },
@@ -88,18 +90,19 @@ describe("AdminShell logout", () => {
 
   it("disables repeated logout while the request is pending", async () => {
     let complete: (value: Response) => void = () => {}
-    fetcher.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          complete = resolve
-        }),
+    fetcher.mockImplementation((url) =>
+      String(url).endsWith("/session")
+        ? Promise.resolve(new Response(JSON.stringify({ csrf: "csrf" })))
+        : new Promise((resolve) => {
+            complete = resolve
+          }),
     )
     renderShell()
     fireEvent.click(await openAccountMenu())
     const pending = await openAccountMenu()
     expect(pending.hasAttribute("data-disabled")).toBe(true)
     fireEvent.click(pending)
-    expect(fetcher).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2))
     await act(async () => complete(new Response(null, { status: 204 })))
     await screen.findByRole("heading", { name: "管理员登录" })
   })

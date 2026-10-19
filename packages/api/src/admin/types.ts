@@ -15,7 +15,7 @@ export interface AdminMeResponse {
   id: string
   account: string
   status: string
-  permissions?: string[]
+  permissions: string[]
 }
 
 /** 管理员用户列表项，字段保持服务端脱敏摘要语义。 */

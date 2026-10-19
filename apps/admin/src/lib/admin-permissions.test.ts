@@ -2,9 +2,9 @@
 import { expect, it } from "vitest"
 import { canAdminPermission } from "./admin-permissions"
 it.each([
-  ["*", true, true],
-  ["admin:*", true, true],
-  ["read", true, false],
+  ["*", false, false],
+  ["admin:*", false, false],
+  ["read", false, false],
   ["settings:read", true, false],
   ["settings:write", false, true],
   ["settings:*", false, false],

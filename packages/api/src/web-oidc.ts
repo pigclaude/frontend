@@ -65,3 +65,16 @@ export interface WebSessionBootstrap {
   csrf: string
   permissions: string[]
 }
+
+/** 网站会话代次只在本地退出时递增，用于丢弃旧 HTTP 和 UI 结果。 */
+export function createWebSessionGeneration() {
+  let value = 0
+  return {
+    /** 读取请求开始时的会话代次。 */
+    current: () => value,
+    /** 退出确认后撤销所有已发请求的交付资格。 */
+    invalidate: () => {
+      value += 1
+    },
+  }
+}

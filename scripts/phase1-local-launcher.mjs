@@ -5,6 +5,7 @@ import { join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { spawn } from "node:child_process"
 import net from "node:net"
+import { localOAuthSites, localWebEnvironment } from "./phase1-oauth-config.mjs"
 
 const frontendRoot = resolve(fileURLToPath(new URL("..", import.meta.url)))
 const repositoryRoot = resolve(frontendRoot, "..")
@@ -54,12 +55,15 @@ export async function checkExternalDependency(name, value, timeoutMs = 1_500) {
 
 /** 启动本地 Rust、home 和 admin 进程，并返回可关闭的运行时句柄。 */
 export async function startPhaseOneLauncher(env = process.env) {
+  const sites = await localOAuthSites(env)
+  for (const port of [sites.homePort, sites.adminPort])
+    if (!(await isPortAvailable(port))) throw new Error("LOCAL_OAUTH_SITE_PORT_BUSY")
   const runtimeDirectory = await mkdtemp(join(tmpdir(), "pigclaude-phase1-"))
   const processes = []
   const ports = {
     rust: await allocateLoopbackPort(Number(env.PIGCLAUDE_RUST_PORT) || defaultPorts.rust),
-    home: await allocateLoopbackPort(Number(env.PIGCLAUDE_HOME_PORT) || defaultPorts.home),
-    admin: await allocateLoopbackPort(Number(env.PIGCLAUDE_ADMIN_PORT) || defaultPorts.admin),
+    home: sites.homePort,
+    admin: sites.adminPort,
   }
   const dependencies = await Promise.all([
     checkExternalDependency("postgres", env.DATABASE_URL),
@@ -75,18 +79,26 @@ export async function startPhaseOneLauncher(env = process.env) {
     ...env,
     PIGCLAUDE_SERVER_ADDR: `127.0.0.1:${ports.rust}`,
     PIGCLAUDE_HOME_URL: `http://127.0.0.1:${ports.home}`,
+    PIGCLAUDE_ADMIN_ORIGIN: sites.admin,
     PIGCLAUDE_ADMIN_URL: `http://127.0.0.1:${ports.admin}`,
     API_PROXY_TARGET: `http://127.0.0.1:${ports.rust}`,
   }
-  // Turnstile Secret仅交给Rust，web进程只通过公开配置读取Site Key。
-  const webEnv = { ...commonEnv }
-  delete webEnv.PIGCLAUDE_TURNSTILE_SECRET_KEY
+  const webEnv = localWebEnvironment(env, commonEnv.API_PROXY_TARGET, sites.home)
   try {
     processes.push(
       spawnService(
         "rust",
         "cargo",
-        ["run", "--locked", "--manifest-path", "backend/Cargo.toml", "-p", "pigclaude-server"],
+        [
+          "run",
+          "--locked",
+          "--manifest-path",
+          "backend/Cargo.toml",
+          "-p",
+          "pigclaude-server",
+          "--bin",
+          "pigclaude-server",
+        ],
         repositoryRoot,
         commonEnv,
       ),

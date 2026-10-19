@@ -19,7 +19,8 @@ const errors: Record<string, string> = {
 /** 等待用户明确继续，退出或错误返回后不会自动循环授权。 */
 export function AuthPanel({ initialMode = "login" }: { initialMode?: AuthMode } = {}) {
   const params = useSearchParams()
-  const error = errors[params.get("oidcError") ?? ""]
+  const errorCode = params.get("oidcError") ?? ""
+  const error = Object.hasOwn(errors, errorCode) ? errors[errorCode] : undefined
   const returnTo = params.get("redirect") ?? "/dashboard"
   const alternateQuery = new URLSearchParams({ redirect: returnTo })
   const alternatePath = initialMode === "register" ? "/login" : "/register"

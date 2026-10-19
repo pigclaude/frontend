@@ -95,7 +95,8 @@ export function identityErrorMessage(reason: unknown): string {
       invalid_request: "交互已失效或不可用，请重新发起登录",
       access_denied: "此次操作未获授权，请重新发起登录",
     }
-    const message = messages[String(reason.code)]
+    const code = String(reason.code)
+    const message = Object.hasOwn(messages, code) ? messages[code] : undefined
     if (message) return message
     if (reason.status === 503) return "服务暂时不可用，请稍后重试或使用其他登录方式"
   }

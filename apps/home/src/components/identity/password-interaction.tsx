@@ -12,28 +12,26 @@ import { TurnstileCaptcha } from "@pigclaude/web-ui/components/turnstile-captcha
 import { useTurnstileCaptcha } from "@pigclaude/web-ui/hooks/use-turnstile-captcha"
 import {
   identityApi,
-  identityErrorMessage,
   type IdentityContinuation,
   type IdentityInteraction,
 } from "@/lib/identity-api"
 
-/** 密码认证失败会更新 challenge；注册模式只按服务器开放能力启用。 */
+/** 密码认证复用一次性 challenge；HTTP接续和错误只由父级 mutation owner 管理。 */
 export function PasswordInteraction({
   interaction,
-  onContinue,
+  onMutate,
+  pending = false,
   disabled = false,
 }: {
   interaction: IdentityInteraction
-  onContinue: (result: IdentityContinuation) => void
+  onMutate: (request: () => Promise<IdentityContinuation>) => Promise<void>
+  pending?: boolean
   disabled?: boolean
 }) {
   const [mode, setMode] = useState<"login" | "register">("login")
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [pending, setPending] = useState(false)
-  const submitting = useRef(false)
   const hintRead = useRef(false)
   const register = interaction.realm === "User" && interaction.registrationAllowed
   useEffect(() => {
@@ -50,36 +48,26 @@ export function PasswordInteraction({
           ? "home_register"
           : "home_login",
   })
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (disabled || submitting.current || !captcha.ready) return
-    submitting.current = true
-    setPending(true)
-    setError(null)
-    try {
-      const result = await captcha.run((captchaToken) =>
+    if (disabled || pending || !captcha.ready) return
+    // 父级同步取得当前交互 owner，密码与其他 mutation 共用同一排他门禁。
+    void onMutate(() =>
+      captcha.run((captchaToken) =>
         identityApi.password(interaction, {
           mode,
           email,
           password,
           ...(captchaToken ? { captchaToken } : {}),
         }),
-      )
-      setPassword("")
-      onContinue(result)
-    } catch (reason) {
-      setError(identityErrorMessage(reason))
-    } finally {
-      submitting.current = false
-      setPending(false)
-    }
+      ),
+    )
   }
   return (
     <Tabs
       value={mode}
       onValueChange={(value) => {
         setMode(register && value === "register" ? "register" : "login")
-        setError(null)
       }}
       activationMode="manual"
       className="gap-6"
@@ -135,11 +123,6 @@ export function PasswordInteraction({
             </div>
           </div>
           <TurnstileCaptcha {...captcha.field} />
-          {error && (
-            <p role="alert" className="query-error">
-              {error}
-            </p>
-          )}
           <Button type="submit" disabled={pending || disabled || !captcha.ready}>
             {pending ? "提交中…" : mode === "login" ? "登录" : "创建账号"}
           </Button>

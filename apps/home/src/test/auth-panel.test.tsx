@@ -1,6 +1,8 @@
 // 负责验证 RP 入口保留登录/注册意图、固定错误和已有查询重试 UI。
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { ApiError } from "@pigclaude/api/client"
+import { identityErrorMessage } from "@/lib/identity-api"
 import { AuthPanel } from "@/components/auth/auth-panel"
 import { QueryError } from "@/components/query-state"
 const mocks = vi.hoisted(() => ({ begin: vi.fn(), params: new URLSearchParams() }))
@@ -12,6 +14,32 @@ afterEach(() => {
   mocks.params = new URLSearchParams()
 })
 describe("Home RP login panel", () => {
+  it.each(["__proto__", "constructor", "toString"])(
+    "ignores prototype identity error %s",
+    (code) => {
+      expect(identityErrorMessage(new ApiError(400, { code }))).toBe("请求失败，请稍后重试")
+    },
+  )
+  it.each(["__proto__", "constructor", "toString"])(
+    "ignores prototype query %s without rendering or warnings",
+    (value) => {
+      mocks.params = new URLSearchParams({ oidcError: value })
+      const warning = vi.spyOn(console, "error").mockImplementation(() => undefined)
+      try {
+        expect(() => render(<AuthPanel />)).not.toThrow()
+        expect(screen.queryByRole("alert")).toBeNull()
+        expect(document.body.textContent).not.toContain(value)
+        expect(warning).not.toHaveBeenCalled()
+      } finally {
+        warning.mockRestore()
+      }
+    },
+  )
+  it("keeps known OIDC errors in fixed Chinese", () => {
+    mocks.params = new URLSearchParams({ oidcError: "OIDC_FAILED" })
+    render(<AuthPanel />)
+    expect(screen.getByRole("alert").textContent).toBe("登录未完成，请重试")
+  })
   it("preserves returnTo when switching between login and registration", () => {
     const redirect = "/oauth2/authorize?state=a%2Bb%2520&device_context=x"
     mocks.params = new URLSearchParams({ redirect })

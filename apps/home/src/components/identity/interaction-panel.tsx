@@ -1,6 +1,6 @@
 // 负责按服务器交互阶段呈现中央身份页面，独立于 Home RP 会话。
 "use client"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { ApiError } from "@pigclaude/api/client"
 import { Button } from "@pigclaude/web-ui/components/button"
@@ -21,14 +21,46 @@ export function InteractionPanel() {
   const providerError = params.get("error")
   const id = params.get("interactionId") ?? ""
   const realm = params.get("realm") === "Admin" ? "Admin" : "User"
+  return (
+    <InteractionSession
+      key={JSON.stringify([id, realm, providerError])}
+      id={id}
+      realm={realm}
+      providerError={providerError}
+    />
+  )
+}
+
+// 每个路由交互独立拥有加载、mutation 与清理生命周期，旧 Promise 无法接管新子树。
+function InteractionSession({
+  id,
+  realm,
+  providerError,
+}: {
+  id: string
+  realm: "User" | "Admin"
+  providerError: string | null
+}) {
   const [view, setView] = useState<IdentityInteraction | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [pending, setPending] = useState(false)
+  const [pending, setPending] = useState<"password" | "other" | null>(null)
   const [reload, setReload] = useState(0)
-  const inFlight = useRef(false)
+  const mutationOwner = useRef<symbol | null>(null)
   const generation = useRef(0)
+  const mounted = useRef(false)
+  useLayoutEffect(() => {
+    mounted.current = true
+    return () => {
+      // 在卸载 commit 内撤销归属，不等待 passive cleanup 才阻止旧 Promise。
+      mounted.current = false
+      generation.current += 1
+      mutationOwner.current = null
+    }
+  }, [])
   useEffect(() => {
     const current = ++generation.current
+    mutationOwner.current = null
+    setPending(null)
     setView(null)
     setError(null)
     if (!id) {
@@ -58,6 +90,7 @@ export function InteractionPanel() {
     )
     return () => {
       generation.current += 1
+      mutationOwner.current = null
     }
   }, [id, realm, reload, providerError])
   function continueWith(result: IdentityContinuation) {
@@ -67,20 +100,30 @@ export function InteractionPanel() {
       setError(null)
     }
   }
-  async function act(request: () => Promise<IdentityContinuation>) {
-    if (inFlight.current) return
+  async function act(
+    request: () => Promise<IdentityContinuation>,
+    kind: "password" | "other" = "other",
+  ) {
+    if (!mounted.current || mutationOwner.current !== null) return
+    // 在任何异步验证码/HTTP操作开始前捕获生命周期和唯一 owner。
     const current = generation.current
-    inFlight.current = true
-    setPending(true)
+    const owner = Symbol()
+    mutationOwner.current = owner
+    const ownsMutation = () =>
+      mounted.current && current === generation.current && mutationOwner.current === owner
+    setPending(kind)
     setError(null)
     try {
       const result = await request()
-      if (current === generation.current) continueWith(result)
+      if (ownsMutation()) continueWith(result)
     } catch (reason) {
-      if (current === generation.current) setError(identityErrorMessage(reason))
+      if (ownsMutation()) setError(identityErrorMessage(reason))
     } finally {
-      inFlight.current = false
-      setPending(false)
+      // 旧请求不能清除新交互、新重试或新 mutation 的 pending。
+      if (ownsMutation()) {
+        mutationOwner.current = null
+        setPending(null)
+      }
     }
   }
   const expired = view !== null && view.expiresAt * 1000 <= Date.now()
@@ -120,12 +163,13 @@ export function InteractionPanel() {
               <PasswordInteraction
                 key={view.interactionId}
                 interaction={view}
-                onContinue={continueWith}
-                disabled={pending}
+                onMutate={(request) => act(request, "password")}
+                pending={pending === "password"}
+                disabled={pending !== null}
               />
               <ProviderButtons
                 interaction={view}
-                disabled={pending}
+                disabled={pending !== null}
                 onStart={(provider) => {
                   void act(() => identityApi.provider(view, provider))
                 }}
@@ -136,7 +180,7 @@ export function InteractionPanel() {
             <div className="flex flex-col gap-4">
               <p>是否允许{view.realm === "Admin" ? "管理站" : "用户站"}使用本次登录身份？</p>
               <Button
-                disabled={pending}
+                disabled={pending !== null}
                 onClick={() => {
                   void act(() => identityApi.decide(view, "consent"))
                 }}
@@ -145,7 +189,7 @@ export function InteractionPanel() {
               </Button>
               <Button
                 variant="outline"
-                disabled={pending}
+                disabled={pending !== null}
                 onClick={() => {
                   void act(() => identityApi.decide(view, "deny"))
                 }}
@@ -158,7 +202,7 @@ export function InteractionPanel() {
             <DeviceApproval
               key={`${view.interactionId}:${view.device?.bindingEpoch}`}
               interaction={view}
-              disabled={pending}
+              disabled={pending !== null}
               onApprove={(reauthorize) => {
                 void act(() => identityApi.approveDevice(view, reauthorize))
               }}

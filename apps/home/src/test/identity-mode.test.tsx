@@ -29,7 +29,7 @@ describe("central register mode", () => {
     beginWebOidcLogin({ site: "home", mode: "register" })
     const view = render(
       <StrictMode>
-        <PasswordInteraction interaction={interaction()} onContinue={() => undefined} />
+        <PasswordInteraction interaction={interaction()} onMutate={async () => undefined} />
       </StrictMode>,
     )
     await screen.findByRole("button", { name: "创建账号" })
@@ -38,7 +38,7 @@ describe("central register mode", () => {
     await screen.findByRole("button", { name: "登录" })
     view.rerender(
       <StrictMode>
-        <PasswordInteraction interaction={interaction()} onContinue={() => undefined} />
+        <PasswordInteraction interaction={interaction()} onMutate={async () => undefined} />
       </StrictMode>,
     )
     expect(screen.queryByRole("button", { name: "创建账号" })).toBeNull()
@@ -50,7 +50,7 @@ describe("central register mode", () => {
       render(
         <PasswordInteraction
           interaction={interaction({ realm, registrationAllowed: false })}
-          onContinue={() => undefined}
+          onMutate={async () => undefined}
         />,
       )
       await waitFor(() =>

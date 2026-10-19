@@ -96,6 +96,12 @@ export function UserMenu({ user }: { user: MeResponse }) {
             登录方式
           </Link>
         </DropdownMenuItem>
+        <DropdownMenuItem asChild disabled={pending}>
+          <Link href="/settings/devices">
+            <ShieldCheck />
+            设备管理
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         {error && (
           <p role="alert" className="px-2 py-2 text-xs text-[var(--danger-ink)]">

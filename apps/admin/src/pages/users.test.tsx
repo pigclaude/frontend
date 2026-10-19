@@ -2,10 +2,17 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
+import { MemoryRouter } from "react-router"
 import UsersPage from "./users"
 
 vi.mock("@/lib/api", () => ({
   adminApi: {
+    me: vi.fn(async () => ({
+      id: "a1",
+      account: "reader",
+      status: "active",
+      permissions: ["users:read"],
+    })),
     users: {
       list: vi.fn(async () => ({
         items: [
@@ -14,6 +21,7 @@ vi.mock("@/lib/api", () => ({
             nickname: "运营测试",
             email: "masked@example.test",
             status: "active",
+            authVersion: "1",
             balance: "0",
             createdAt: "2026-10-18T00:00:00Z",
             lastLoginAt: null,
@@ -30,9 +38,11 @@ vi.mock("@/lib/api", () => ({
 describe("UsersPage", () => {
   it("opens a read-only detail drawer with the returned user", async () => {
     render(
-      <QueryClientProvider client={new QueryClient()}>
-        <UsersPage />
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={new QueryClient()}>
+          <UsersPage />
+        </QueryClientProvider>
+      </MemoryRouter>,
     )
     fireEvent.click(await screen.findByRole("button", { name: "详情" }))
     expect(screen.getByRole("dialog", { name: "用户详情" })).toBeTruthy()

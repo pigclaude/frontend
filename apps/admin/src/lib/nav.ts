@@ -18,9 +18,23 @@ export const NAV: NavItem[] = [
     kw: "settings shezhi security",
     permission: "settings:read",
   },
-  { href: "/users", name: "用户", label: "用户", group: "运营管理", kw: "user yonghu" },
+  {
+    href: "/users",
+    name: "用户",
+    label: "用户",
+    group: "运营管理",
+    kw: "user yonghu",
+    permission: "users:read",
+  },
   { href: "/membership", name: "会员", label: "会员", group: "运营管理", kw: "membership huiyuan" },
-  { href: "/devices", name: "设备绑定", label: "设备绑定", group: "安全管理", kw: "device shebei" },
+  {
+    href: "/devices",
+    name: "设备绑定",
+    label: "设备绑定",
+    group: "安全管理",
+    kw: "device shebei",
+    permission: "device:read",
+  },
   { href: "/audits", name: "安全审计", label: "安全审计", group: "安全管理", kw: "audit shenji" },
 ]
 /** 导航分组顺序与侧栏保持一致。 */

@@ -5,7 +5,16 @@ import { MemoryRouter } from "react-router"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { AdminShell } from "./admin-shell"
 
-vi.mock("@/hooks/use-admin-me", () => ({ useAdminMe: () => ({ data: { account: "admin" } }) }))
+vi.mock("@/hooks/use-admin-me", () => ({
+  useAdminMe: () => ({
+    data: {
+      id: "a1",
+      account: "admin",
+      status: "active",
+      permissions: ["users:read", "device:read"],
+    },
+  }),
+}))
 vi.mock("@/lib/api", () => ({ adminApi: { auth: { logout: vi.fn() } } }))
 
 function renderShell(mobile = false) {

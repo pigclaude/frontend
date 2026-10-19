@@ -1,4 +1,9 @@
 // 负责以原后台用户详情抽屉展示当前列表返回的真实摘要。
+import { Link } from "react-router"
+import { AccountActions } from "./account-actions"
+import { useAdminMe } from "@/hooks/use-admin-me"
+import { canAdminPermission } from "@/lib/admin-permissions"
+import type { AccountModerationView } from "@pigclaude/contracts/account-status"
 import type { AdminUserItem } from "@pigclaude/api/admin/types"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -16,11 +21,16 @@ export function UserDrawer({
   user,
   open,
   onOpenChange,
+  onUpdate,
+  onConflict,
 }: {
   user: AdminUserItem | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  onUpdate: (view: AccountModerationView) => void
+  onConflict: () => void
 }) {
+  const { data: me } = useAdminMe()
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="overflow-y-auto sm:max-w-lg">
@@ -54,7 +64,7 @@ export function UserDrawer({
                       </Badge>
                     ) : (
                       <Badge variant="danger" dot>
-                        已禁用
+                        已封禁
                       </Badge>
                     )}
                   </p>
@@ -77,7 +87,22 @@ export function UserDrawer({
                 <DetailRow label="最近登录">
                   {user.lastLoginAt ? formatTime(user.lastLoginAt) : "从未登录"}
                 </DetailRow>
+                <DetailRow label="账号版本">{user.authVersion}</DetailRow>
               </DetailList>
+              {me?.status === "active" && canAdminPermission(me.permissions, "device:read") && (
+                <Link
+                  className="text-sm underline"
+                  to={`/devices?userId=${encodeURIComponent(user.id)}`}
+                >
+                  查看该账号设备
+                </Link>
+              )}
+              <AccountActions
+                key={user.id}
+                user={user}
+                onUpdate={onUpdate}
+                onConflict={onConflict}
+              />
             </div>
           </>
         )}

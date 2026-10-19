@@ -1,4 +1,5 @@
-// 负责定义第一阶段管理员 API 的请求、响应和 decimal string 分页类型。
+// 负责定义管理员 API 的请求、响应和 decimal string 分页类型。
+import type { UserAccountView } from "@pigclaude/contracts/account-status"
 
 /** 管理员登录请求。 */
 export interface AdminLoginRequest {
@@ -19,13 +20,12 @@ export interface AdminMeResponse {
 }
 
 /** 管理员用户列表项，字段保持服务端脱敏摘要语义。 */
-export interface AdminUserItem {
+export interface AdminUserItem extends UserAccountView {
   id: string
   nickname: string
   email: string
   avatar: string
   githubLogin: string
-  status: string
   balance: string
   createdAt: string
   lastLoginAt: string | null
@@ -33,6 +33,7 @@ export interface AdminUserItem {
 
 /** 管理员用户列表查询，游标始终按 decimal string 传输。 */
 export interface ListUsersQuery {
+  status?: "active" | "banned" | ""
   cursor?: string
   limit?: number
   [key: string]: string | number | undefined

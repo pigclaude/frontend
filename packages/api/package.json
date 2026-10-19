@@ -11,7 +11,9 @@
     "./home/identity": "./src/home/identity.ts",
     "./home/types": "./src/home/types.ts",
     "./admin/types": "./src/admin/types.ts",
-    "./admin/security-settings": "./src/admin/security-settings.ts"
+    "./admin/security-settings": "./src/admin/security-settings.ts",
+    "./home/devices": "./src/home/devices.ts",
+    "./admin/account-moderation": "./src/admin/account-moderation.ts"
   },
   "scripts": {
     "lint": "eslint .",

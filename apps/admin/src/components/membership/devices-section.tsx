@@ -1,8 +1,9 @@
-// 负责迁入成熟后台的devices-section布局和交互，使用本项目真实 API。
-import { useState } from "react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { toast } from "sonner"
-import type { MembershipDeviceItem } from "@pigclaude/api/admin/types"
+// 负责按已知用户 ID 管理多设备关系，仅依赖独立设备权限，不读取用户资料。
+import { useLayoutEffect, useState } from "react"
+import { useSearchParams } from "react-router"
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query"
+import { ApiError } from "@pigclaude/api/client"
+import type { UserDeviceView } from "@pigclaude/contracts/user-devices"
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -14,141 +15,214 @@ import {
 } from "@/components/ui/table"
 import { formatTime } from "@/lib/format"
 import { TableCard } from "@/components/shell/table-card"
-import { useCursorPager } from "@/hooks/use-cursor-pager"
 import { adminApi } from "@/lib/api"
-import { toastApiError } from "@/lib/errors"
+import { useAdminMe } from "@/hooks/use-admin-me"
+import { useAdminOperationOwner } from "@/hooks/use-admin-operation-owner"
+import { canAdminPermission } from "@/lib/admin-permissions"
+import { accountOperationError } from "@/lib/account-errors"
 import { ReasonDialog } from "./reason-dialog"
-import {
-  EmptyRow,
-  FilterToolbar,
-  InlineLoadError,
-  LoadingRows,
-  PagerFooter,
-  maskIdentifier,
-  normalizeUserId,
-} from "./table-parts"
-
-/** DevicesSection 保持列表、表单或分页的既有交互契约。 */
+import { EmptyRow, FilterToolbar, InlineLoadError, LoadingRows } from "./table-parts"
+interface Target {
+  device: UserDeviceView
+  authVersion: string
+}
+/** 设备 operator 只需精确 device:read；撤销额外要求 device:revoke。 */
 export function DevicesSection() {
-  const queryClient = useQueryClient()
-  const [userInput, setUserInput] = useState("")
-  const [userId, setUserId] = useState("")
-  const [unbindTarget, setUnbindTarget] = useState<MembershipDeviceItem | null>(null)
-  const pager = useCursorPager(["admin-devices", userId], (cursor) =>
-    adminApi.devices.list({
-      userId: userId || undefined,
-      cursor,
-      limit: 20,
-    }),
-  )
-  const unbindMutation = useMutation({
-    mutationFn: ({ userId: targetUserId, reason }: { userId: string; reason: string }) =>
-      adminApi.devices.unbind({ userId: targetUserId, reason }),
-    onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ["admin-devices"] })
-      void queryClient.invalidateQueries({ queryKey: ["admin-audits"] })
-      toast.success(`已解绑用户 ${variables.userId} 的设备`)
-      pager.reset()
-      window.dispatchEvent(new Event("pigclaude:admin-device"))
-      setUnbindTarget(null)
-    },
-    onError: toastApiError,
+  const [params, setParams] = useSearchParams()
+  const { data: me, isPending: loadingMe } = useAdminMe()
+  const userId = params.get("userId") ?? ""
+  const [userInput, setUserInput] = useState(userId)
+  const [target, setTarget] = useState<Target | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const canRead = me?.status === "active" && canAdminPermission(me.permissions, "device:read")
+  const canRevoke = canRead && canAdminPermission(me.permissions, "device:revoke")
+  useLayoutEffect(() => {
+    if (!canRevoke) setTarget(null)
+  }, [canRevoke])
+  const client = useQueryClient()
+  const query = useInfiniteQuery({
+    queryKey: ["admin-user-devices", userId],
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) => adminApi.devices.forUser(userId, pageParam),
+    getNextPageParam: (page) =>
+      page.devices.length === 50 ? page.devices.at(-1)?.deviceId : undefined,
+    enabled: canRead && !!userId,
+    staleTime: 0,
+    retry: false,
   })
-
+  const operation = useAdminOperationOwner(
+    JSON.stringify([
+      userId,
+      me?.id,
+      me?.permissions,
+      canRevoke,
+      target?.device.deviceId,
+      target?.device.bindingEpoch,
+      target?.authVersion,
+    ]),
+  )
+  async function revoke(reason: string) {
+    if (!target || !canRevoke || query.isError || query.isFetching) return
+    const owner = operation.begin()
+    if (!owner) return
+    setError(null)
+    setNotice(null)
+    try {
+      await adminApi.devices.revoke(
+        userId,
+        target.device.deviceId,
+        {
+          expectedAuthVersion: target.authVersion,
+          expectedBindingEpoch: target.device.bindingEpoch,
+          reason,
+        },
+        owner.isCurrent,
+      )
+      if (!owner.isCurrent()) return
+      setTarget(null)
+      setNotice("指定设备关系已撤销，该账号的其他设备保持原状。")
+      void client.invalidateQueries({ queryKey: ["admin-user-devices", userId] })
+      void client.invalidateQueries({ queryKey: ["admin-audits"] })
+      window.dispatchEvent(new Event("pigclaude:admin-device"))
+    } catch (cause) {
+      if (!owner.isCurrent()) return
+      setError(accountOperationError(cause))
+      if (cause instanceof ApiError && cause.status === 409) {
+        setTarget(null)
+        void client.invalidateQueries({ queryKey: ["admin-user-devices", userId] })
+      }
+    } finally {
+      owner.finish()
+    }
+  }
+  if (loadingMe) return <p role="status">正在读取管理员权限…</p>
+  if (!canRead) return <p role="alert">缺少设备读取权限</p>
+  const rows =
+    query.data?.pages.flatMap((page) =>
+      page.devices.map((device) => ({ device, authVersion: page.authVersion })),
+    ) ?? []
   return (
     <>
+      {error && !target && <p role="alert">{error}</p>}
+      {notice && <p role="status">{notice}</p>}
       <TableCard
         toolbar={
           <FilterToolbar
             title="设备绑定"
             userLabel="设备用户筛选"
+            hint="输入已知用户 ID，查看该账号设备"
             userInput={userInput}
             onUserInput={setUserInput}
-            onApply={() => setUserId(normalizeUserId(userInput))}
+            onApply={() => {
+              setTarget(null)
+              setError(null)
+              setNotice(null)
+              const next = userInput.trim()
+              setParams(next ? { userId: next } : {})
+            }}
           />
         }
-        footer={<PagerFooter pager={pager} noun="台设备" />}
+        footer={
+          <>
+            <span>已读取 {rows.length} 台设备</span>
+            {query.hasNextPage && (
+              <Button
+                variant="outline"
+                disabled={query.isFetchingNextPage}
+                onClick={() => void query.fetchNextPage()}
+              >
+                加载更多设备
+              </Button>
+            )}
+          </>
+        }
       >
-        {pager.isError && pager.items.length === 0 ? (
-          <InlineLoadError message="设备列表加载失败" onRetry={pager.retry} />
+        {!userId ? (
+          <p className="p-5 text-sm text-muted-foreground">
+            请输入目标用户 ID，不需要用户资料读取权限。
+          </p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead>用户 / 设备</TableHead>
-                <TableHead>设备公钥哈希</TableHead>
-                <TableHead>设备指纹</TableHead>
-                <TableHead>最后在线</TableHead>
-                <TableHead>Epoch</TableHead>
-                <TableHead className="text-right">操作</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {pager.isPending ? (
-                <LoadingRows columns={6} />
-              ) : pager.items.length === 0 ? (
-                <EmptyRow columns={6} message="暂无设备绑定记录" />
-              ) : (
-                pager.items.map((item) => (
-                  <DeviceRow
-                    key={`${item.userId}-${item.deviceId}-${item.bindingEpoch}`}
-                    item={item}
-                    onUnbind={setUnbindTarget}
-                  />
-                ))
-              )}
-            </TableBody>
-          </Table>
+          <>
+            {query.isError && (
+              <InlineLoadError message="设备列表加载失败" onRetry={() => void query.refetch()} />
+            )}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>用户 / 设备</TableHead>
+                  <TableHead>平台 / 状态</TableHead>
+                  <TableHead>首次授权</TableHead>
+                  <TableHead>最近活跃</TableHead>
+                  <TableHead>Epoch</TableHead>
+                  <TableHead>操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {query.isPending ? (
+                  <LoadingRows columns={6} />
+                ) : rows.length === 0 ? (
+                  <EmptyRow columns={6} message="暂无设备授权记录" />
+                ) : (
+                  rows.map(({ device, authVersion }) => (
+                    <TableRow key={device.deviceId}>
+                      <TableCell>
+                        <p className="font-mono">{userId}</p>
+                        <p>{device.displayName}</p>
+                        <p className="font-mono text-xs">{device.deviceId}</p>
+                      </TableCell>
+                      <TableCell>
+                        {device.platform} / {device.status === "active" ? "已授权" : "已撤销"}
+                      </TableCell>
+                      <TableCell>{formatTime(device.firstAuthorizedAt)}</TableCell>
+                      <TableCell>
+                        {device.lastSeenAt ? formatTime(device.lastSeenAt) : "暂无"}
+                      </TableCell>
+                      <TableCell className="font-mono">{device.bindingEpoch}</TableCell>
+                      <TableCell>
+                        {canRevoke && (
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            aria-label={`撤销 ${device.displayName}`}
+                            disabled={
+                              operation.pending ||
+                              query.isFetching ||
+                              query.isError ||
+                              device.status !== "active"
+                            }
+                            onClick={() => {
+                              setTarget({ device, authVersion })
+                              setError(null)
+                            }}
+                          >
+                            撤销
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </>
         )}
       </TableCard>
       <ReasonDialog
-        open={unbindTarget !== null}
-        title="解绑设备"
-        reasonLabel="解绑原因"
-        description={`解绑用户 ${unbindTarget?.userId ?? ""} 的当前设备后，该设备需要重新授权才能继续使用。`}
-        confirmLabel="确认解绑"
-        pending={unbindMutation.isPending}
-        onOpenChange={(open) => !open && setUnbindTarget(null)}
-        onConfirm={(reason) =>
-          unbindTarget && unbindMutation.mutate({ userId: unbindTarget.userId, reason })
-        }
+        open={target !== null}
+        title="撤销设备授权"
+        description="仅撤销该账号与所选设备的授权关系，设备需要重新明确授权。"
+        error={error}
+        reasonLabel="操作原因"
+        confirmLabel="确认撤销"
+        pending={operation.pending}
+        preserveWhitespace
+        maxCharacters={500}
+        onOpenChange={(open) => {
+          if (!open) setTarget(null)
+        }}
+        onConfirm={(reason) => void revoke(reason)}
       />
     </>
-  )
-}
-
-/** DeviceRow 保持列表、表单或分页的既有交互契约。 */
-function DeviceRow({
-  item,
-  onUnbind,
-}: {
-  item: MembershipDeviceItem
-  onUnbind: (item: MembershipDeviceItem) => void
-}) {
-  return (
-    <TableRow>
-      <TableCell>
-        <p className="font-mono text-foreground">{item.userId}</p>
-        <p className="mt-0.5 font-mono text-xs text-meta">{maskIdentifier(item.deviceId)}</p>
-      </TableCell>
-      <TableCell>
-        <p className="font-mono text-xs text-foreground">
-          加密 {maskIdentifier(item.deviceEncryptionPublicKeyHash)}
-        </p>
-        <p className="mt-0.5 font-mono text-xs text-meta">
-          签名 {maskIdentifier(item.deviceSigningPublicKeyHash)}
-        </p>
-      </TableCell>
-      <TableCell className="font-mono text-xs">
-        {maskIdentifier(item.deviceFingerprintHash)}
-      </TableCell>
-      <TableCell>{item.lastSeenAt ? formatTime(item.lastSeenAt) : "暂无"}</TableCell>
-      <TableCell className="font-mono">{item.bindingEpoch}</TableCell>
-      <TableCell className="text-right">
-        <Button size="sm" variant="danger" onClick={() => onUnbind(item)}>
-          解绑
-        </Button>
-      </TableCell>
-    </TableRow>
   )
 }

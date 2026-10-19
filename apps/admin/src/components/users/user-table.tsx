@@ -81,7 +81,7 @@ export function UserTable({ items, isPending, onDetail }: UserTableProps) {
                   </Badge>
                 ) : (
                   <Badge variant="danger" dot>
-                    已禁用
+                    已封禁
                   </Badge>
                 )}
               </TableCell>

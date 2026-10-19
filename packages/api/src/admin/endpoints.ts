@@ -1,4 +1,6 @@
 // 负责封装第一阶段管理员登录、会员、设备和审计 HTTP endpoint。
+import { createAccountModerationApi } from "./account-moderation"
+import type { AdminUserDevicesView } from "@pigclaude/contracts/user-devices"
 import { createSecuritySettingsApi } from "./security-settings"
 import type { HttpClient } from "../client"
 import { createAdminSessionWriter } from "./session"
@@ -19,6 +21,7 @@ export function createAdminApi(c: HttpClient) {
       },
     },
     me: () => c.get<T.AdminMeResponse>("/admin/v1/me"),
+    account: createAccountModerationApi(c),
     users: {
       list: (query: T.ListUsersQuery = {}) => c.get<T.ListUsersResponse>("/admin/v1/users", query),
     },
@@ -39,10 +42,25 @@ export function createAdminApi(c: HttpClient) {
     devices: {
       list: (query: T.ListMembershipDevicesQuery = {}) =>
         c.get<T.ListMembershipDevicesResponse>("/admin/v1/devices", query),
-      unbind: (body: T.UnbindMembershipDeviceRequest) =>
-        c.post<Record<string, never>>(
-          `/admin/v1/devices/${encodeURIComponent(body.userId)}/unbind`,
-          { reason: body.reason },
+      /** 只需 device:read，通过已知用户 ID 读取精确设备 envelope。 */
+      forUser: (userId: string, afterDeviceId?: string) =>
+        c.get<AdminUserDevicesView>(`/admin/v1/users/${encodeURIComponent(userId)}/devices`, {
+          limit: 50,
+          afterDeviceId,
+        }),
+      /** 指定关系撤销使用 body CSRF 和两份无损 CAS 版本。 */
+      revoke: (
+        userId: string,
+        deviceId: string,
+        body: { expectedBindingEpoch: string; expectedAuthVersion: string; reason: string },
+        owner: () => boolean,
+      ) =>
+        write<void>(
+          "POST",
+          `/admin/v1/users/${encodeURIComponent(userId)}/devices/${encodeURIComponent(deviceId)}/revoke`,
+          body,
+          "body",
+          owner,
         ),
     },
     audits: {

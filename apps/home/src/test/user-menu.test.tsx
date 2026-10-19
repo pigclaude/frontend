@@ -108,6 +108,9 @@ describe("home user menu lifecycle", () => {
     await openMenu()
     expect(screen.getByRole("menuitem", { name: "账户" }).getAttribute("href")).toBe("/dashboard")
     expect(screen.getByRole("menuitem", { name: "会员" }).getAttribute("href")).toBe("/membership")
+    expect(screen.getByRole("menuitem", { name: "设备管理" }).getAttribute("href")).toBe(
+      "/settings/devices",
+    )
     expect(screen.getByText("p•••@example.com")).toBeTruthy()
     expect(screen.getByText("user••••1234")).toBeTruthy()
     expect(screen.queryByText(user.email)).toBeNull()

@@ -10,7 +10,9 @@
     "./desktop-membership": "./src/desktop-membership.ts",
     "./fixtures/phase1-contract-fixtures": "./src/fixtures/phase1-contract-fixtures.ts",
     "./security-settings": "./src/security-settings.ts",
-    "./oauth": "./src/oauth.ts"
+    "./oauth": "./src/oauth.ts",
+    "./account-status": "./src/account-status.ts",
+    "./user-devices": "./src/user-devices.ts"
   },
   "scripts": {
     "lint": "eslint .",

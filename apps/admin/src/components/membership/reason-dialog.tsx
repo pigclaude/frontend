@@ -18,6 +18,9 @@ interface ReasonDialogProps {
   description: string
   reasonLabel?: string
   confirmLabel: string
+  error?: string | null
+  preserveWhitespace?: boolean
+  maxCharacters?: number
   pending: boolean
   onOpenChange: (open: boolean) => void
   onConfirm: (reason: string) => void
@@ -31,6 +34,9 @@ export function ReasonDialog({
   reasonLabel = "原因",
   confirmLabel,
   pending,
+  error,
+  preserveWhitespace = false,
+  maxCharacters = 200,
   onOpenChange,
   onConfirm,
 }: ReasonDialogProps) {
@@ -47,12 +53,13 @@ export function ReasonDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+        {error && <p role="alert">{error}</p>}
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="pc-action-reason">{reasonLabel}</Label>
           <Textarea
             id="pc-action-reason"
             rows={4}
-            maxLength={200}
+            maxLength={maxCharacters * 2}
             value={reason}
             onChange={(event) => setReason(event.target.value)}
             placeholder="必填，说明操作原因"
@@ -70,8 +77,8 @@ export function ReasonDialog({
           <Button
             type="button"
             variant="destructive"
-            onClick={() => onConfirm(reason.trim())}
-            disabled={pending || reason.trim().length === 0}
+            onClick={() => onConfirm(preserveWhitespace ? reason : reason.trim())}
+            disabled={pending || reason.trim().length === 0 || [...reason].length > maxCharacters}
           >
             {pending ? "提交中…" : confirmLabel}
           </Button>

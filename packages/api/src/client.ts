@@ -36,6 +36,8 @@ export interface HttpClient {
   captureSession?: () => () => boolean
   get<T>(path: string, query?: Query): Promise<T>
   post<T>(path: string, body?: unknown, headers?: Record<string, string>): Promise<T>
+  /** 以 PATCH 更新精确资源，不改变正式 HTTP 方法。 */
+  patch<T>(path: string, body?: unknown): Promise<T>
   /** 读取授权 JSON 响应及其 Location 元数据，兼容服务端 303 fallback。 */
   postWithResponse?<T>(path: string, body?: unknown): Promise<HttpResponse<T>>
   /** multipart/form-data；浏览器自动生成 boundary，调用方不得手写 Content-Type。 */
@@ -167,6 +169,7 @@ export function createClient(opts: ClientOptions = {}): HttpClient {
         Accept: "application/json",
       }),
     postForm: (path, body) => request("POST", path, body),
+    patch: (path, body) => request("PATCH", path, body ?? {}),
     put: (path, body, headers) => request("PUT", path, body ?? {}, undefined, headers),
     delete: (path, body) => request("DELETE", path, body),
   }

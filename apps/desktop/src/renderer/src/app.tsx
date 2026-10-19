@@ -1,5 +1,6 @@
 // 负责把设计稿里的页面串成可切换的桌面界面，并承接主进程授权事件。
 import { useEffect, useState } from "react"
+import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { AuthorizationStateEvent } from "../../main/authorization/types"
 import { AuthorizeScreen } from "./screens/authorize-screen"
 import { LoginScreen } from "./screens/login-screen"
@@ -24,19 +25,43 @@ import type { Screen } from "./screens/screen"
 /** 按登录状态和当前页面画出整窗。 */
 export function DesktopApp() {
   const [devView] = useState(() => parseDevView(window.location.search, import.meta.env.DEV))
-  const [authed, setAuthed] = useState(devView !== null)
+  const [membership, setMembership] = useState<MembershipView>(initialMembershipView)
   const [loginState, setLoginState] = useState(createLoginState)
   const [authorizationState, setAuthorizationState] = useState(createAuthorizationState)
   const [history, setHistory] = useState(() => createScreenHistory(devView?.screen ?? "chat"))
   const screen = currentScreen(history)
   const appearance = useAppearance()
+  const browserPreview = devView !== null && !window.pigclaude?.membership
+  const canUseDesktop =
+    browserPreview || membership.state === "active" || membership.state === "offline_grace"
+
+  useEffect(() => {
+    const bridge = window.pigclaude?.membership
+    if (!bridge) return
+    const unsubscribe = bridge.subscribe((view) => setMembership(view))
+    void bridge.inspect().then((view) => {
+      if (view) setMembership(view)
+    })
+    return unsubscribe
+  }, [])
+
+  useEffect(() => {
+    if (membership.startupPhase === "checking") return
+    if (canUseDesktop && screen === "login") {
+      setHistory((current) => pushScreen(current, "onboarding"))
+    } else if (!canUseDesktop && screen !== "login") {
+      setHistory((current) => pushScreen(current, "login"))
+    }
+  }, [canUseDesktop, membership.startupPhase, screen])
 
   function setScreen(next: Screen): void {
     setHistory((current) => pushScreen(current, next))
   }
 
   useEffect(() => {
-    const unsubscribe = window.pigclaude?.onAuthorizationState?.((event) => {
+    const subscribeAuthorization =
+      window.pigclaude?.authorization?.subscribe ?? window.pigclaude?.onAuthorizationState
+    const unsubscribe = subscribeAuthorization?.((event) => {
       if (event.purpose === "pigclaude-login") {
         const intent: LoginIntent = event.mode === "register" ? "register" : "login"
         const authorizationUrl = event.authorizationUrl
@@ -109,14 +134,15 @@ export function DesktopApp() {
   async function startLoginAuthorization(intent: LoginIntent): Promise<void> {
     setLoginState((current) => reduceLoginState(current, { type: "start-request", intent }))
     const bridge = window.pigclaude
-    if (!bridge?.startAuthorization) {
+    const startAuthorization = bridge?.authorization?.start ?? bridge?.startAuthorization
+    if (!startAuthorization) {
       setLoginState((current) =>
         reduceLoginState(current, { type: "failed", error: "桌面授权桥不可用" }),
       )
       return
     }
     try {
-      const result = await bridge.startAuthorization({ purpose: "pigclaude-login", mode: intent })
+      const result = await startAuthorization({ purpose: "pigclaude-login", mode: intent })
       if (!result.ok) {
         setLoginState((current) =>
           reduceLoginState(current, { type: "failed", error: result.error }),
@@ -141,7 +167,9 @@ export function DesktopApp() {
 
   async function cancelLoginAuthorization(): Promise<void> {
     const sessionId = loginState.sessionId
-    if (sessionId) await window.pigclaude?.cancelAuthorization?.(sessionId)
+    const cancelAuthorization =
+      window.pigclaude?.authorization?.cancel ?? window.pigclaude?.cancelAuthorization
+    if (sessionId) await cancelAuthorization?.(sessionId)
     setLoginState((current) => reduceLoginState(current, { type: "cancelled" }))
   }
 
@@ -153,14 +181,15 @@ export function DesktopApp() {
     daemonExit: string
   }): Promise<void> {
     const bridge = window.pigclaude
-    if (!bridge?.startAuthorization) {
+    const startAuthorization = bridge?.authorization?.start ?? bridge?.startAuthorization
+    if (!startAuthorization) {
       setAuthorizationState((current) =>
         reduceAuthorizationState(current, { type: "failed", error: "桌面授权桥不可用" }),
       )
       return
     }
     try {
-      const result = await bridge.startAuthorization({
+      const result = await startAuthorization({
         purpose: "claude-account",
         mode: "authorize",
         accountName: input.accountName,
@@ -191,7 +220,9 @@ export function DesktopApp() {
 
   async function cancelClaudeAuthorization(): Promise<void> {
     const sessionId = authorizationState.sessionId
-    if (sessionId) await window.pigclaude?.cancelAuthorization?.(sessionId)
+    const cancelAuthorization =
+      window.pigclaude?.authorization?.cancel ?? window.pigclaude?.cancelAuthorization
+    if (sessionId) await cancelAuthorization?.(sessionId)
     setAuthorizationState(createAuthorizationState())
     setHistory((current) =>
       canGoBack(current) ? goBack(current) : pushScreen(current, "accounts"),
@@ -199,21 +230,21 @@ export function DesktopApp() {
   }
 
   function logout(): void {
-    setAuthed(false)
     setLoginState(createLoginState())
     setHistory(createScreenHistory("login"))
   }
 
-  if (!authed || screen === "login") {
+  if (!canUseDesktop || screen === "login") {
     return (
       <LoginScreen
         state={loginState}
+        gateMessage={membershipGateMessage(membership)}
         onAuthorize={(intent) => void startLoginAuthorization(intent)}
         onCancel={() => void cancelLoginAuthorization()}
         onReset={() => setLoginState((current) => reduceLoginState(current, { type: "reset" }))}
         onSuccess={() => {
-          setAuthed(true)
-          setHistory(createScreenHistory("onboarding"))
+          if (canUseDesktop) setHistory(createScreenHistory("onboarding"))
+          else void window.pigclaude?.membership?.inspect()
         }}
       />
     )
@@ -281,4 +312,37 @@ function statusText(status: AuthorizationStateEvent["status"]): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "授权服务不可用"
+}
+
+function initialMembershipView(): MembershipView {
+  return {
+    startupPhase: "checking",
+    revision: 0,
+    state: "connecting",
+    account: null,
+    productCode: null,
+    planKind: null,
+    lifetime: false,
+    membershipValidUntil: null,
+    offlineValidUntil: null,
+    lastVerifiedAt: null,
+    nextVerificationAt: null,
+    bindingEpoch: null,
+    errorCode: null,
+    serverReason: null,
+    authorizationUrl: null,
+  }
+}
+
+function membershipGateMessage(view: MembershipView): string | undefined {
+  const messages: Partial<Record<MembershipView["state"], string>> = {
+    connecting: "正在连接 Rust 授权服务…",
+    configuration_error: "桌面授权配置无效，请检查本地服务地址。",
+    signed_out: "请先在浏览器中登录并授权这台设备。",
+    verification_required: "当前账户没有可用会员授权，请完成浏览器授权后重试。",
+    expired: "会员已到期，请续期后重新检查。",
+    device_revoked: "这台设备已被撤销，请重新授权当前设备。",
+    error: "暂时无法验证会员状态，请检查 Rust 服务是否运行。",
+  }
+  return messages[view.state]
 }

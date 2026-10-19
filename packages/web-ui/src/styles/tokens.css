@@ -1,0 +1,215 @@
+/* 负责提供本文件的前端样式契约。 */
+:root {
+  --brand-mark-snout: #e0607e;
+  color-scheme: dark; /* 原生控件/滚动条/自动填充随主题 */
+  /* ─── Surface ──────────────────────────────────────────────────── */
+  --bg: #08090a;
+  --surface: #191a1b;
+  --surface-warm: var(--surface);
+
+  /* ─── Foreground ───────────────────────────────────────────────── */
+  --fg: #f7f8f8;
+  --fg-2: #d0d6e0;
+  --muted: #8a8f98;
+  --meta: #62666d;
+
+  /* ─── Border ───────────────────────────────────────────────────── */
+  --border: rgba(255, 255, 255, 0.08);
+  --border-soft: rgba(255, 255, 255, 0.05);
+
+  /* ─── Accent ───────────────────────────────────────────────────── */
+  /* The desktop client's blue ramp (#3a83f7 brand). Filled controls carry
+     white text, so the fill is the ramp's deeper step (5.4:1); the brand
+     step itself is the dark-theme hover and the glow/decoration base. */
+  --accent: #2c67c5;
+  --accent-on: #ffffff;
+  --accent-hover: #3a83f7;
+  --accent-active: #1f4e94;
+  --accent-glow: #3a83f7;
+
+  /* ─── Semantic ─────────────────────────────────────────────────── */
+  --success: #27a644;
+  --warn: #eab308;
+  --danger: #dc2626;
+
+  /* ─── Typography ───────────────────────────────────────────────── */
+  --font-display:
+    "Inter Variable", "Inter", "SF Pro Display", -apple-system, system-ui, "Segoe UI", Roboto,
+    sans-serif;
+  --font-body:
+    "Inter Variable", "Inter", "SF Pro Display", -apple-system, system-ui, "Segoe UI", Roboto,
+    sans-serif;
+  --font-mono: "Berkeley Mono", ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 24px;
+  --text-2xl: 32px;
+  --text-3xl: 48px;
+  --text-4xl: 72px;
+
+  --leading-body: 1.5;
+  --leading-tight: 1;
+  --tracking-display: -0.022em;
+
+  /* ─── Spacing ──────────────────────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  --section-y-desktop: 80px;
+  --section-y-tablet: 48px;
+  --section-y-phone: 32px;
+
+  /* ─── Radius ───────────────────────────────────────────────────── */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 9999px;
+
+  /* ─── Elevation ────────────────────────────────────────────────── */
+  --elev-flat: none;
+  --elev-ring: 0 0 0 1px var(--border);
+  --elev-raised: rgba(0, 0, 0, 0.4) 0px 2px 4px, 0 0 0 1px rgba(255, 255, 255, 0.05);
+
+  /* ─── Focus ────────────────────────────────────────────────────── */
+  --focus-ring:
+    0 0 0 2px color-mix(in oklab, var(--accent), transparent 30%), 0 4px 12px rgba(0, 0, 0, 0.1);
+
+  /* ─── Motion ───────────────────────────────────────────────────── */
+  --motion-fast: 150ms;
+  --motion-base: 200ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ─── Layout ───────────────────────────────────────────────────── */
+  --container-max: 1200px;
+  --container-gutter-desktop: 24px;
+  --container-gutter-tablet: 16px;
+  --container-gutter-phone: 12px;
+
+  /* 派生(仅 color-mix,不引入新色) */
+  --panel: #0f1011;
+  --raise-1: rgba(255, 255, 255, 0.02);
+  --raise-2: rgba(255, 255, 255, 0.04);
+  --raise-3: rgba(255, 255, 255, 0.05);
+
+  /* 主题分层派生:暗色=亮度分层(半透明白,无投影),亮色=白卡+真实投影 */
+  --card-bg: var(--raise-1);
+  --card-bg-hover: var(--raise-2);
+  --card-shadow: none;
+  --card-shadow-hover: none;
+  --input-bg: var(--raise-1);
+  --btn-bg: var(--raise-1);
+  --btn-bg-hover: var(--raise-3);
+  --btn-shadow: none;
+  /* 主按钮 hover/压态:暗底提亮(Linear 规范),亮底改压深(提亮会洗白白字) */
+  --btn-primary-hover: var(--accent-hover);
+  --btn-primary-active: var(--accent-active);
+  --pop-shadow:
+    rgba(0, 0, 0, 0) 0 8px 2px, rgba(0, 0, 0, 0.01) 0 5px 2px, rgba(0, 0, 0, 0.04) 0 3px 2px,
+    rgba(0, 0, 0, 0.07) 0 1px 1px, rgba(0, 0, 0, 0.08) 0 0 1px;
+  --backdrop-soft: rgba(0, 0, 0, 0.6);
+  --topbar-shadow: rgba(0, 0, 0, 0.4) 0 2px 8px;
+  /* 顶栏玻璃层:暗色=画布混透明;亮色=白色磨砂(见亮色块) */
+  --topbar-bg: color-mix(in srgb, var(--bg), transparent 18%);
+  --topbar-blur: blur(12px);
+  --mobile-menu-bg: color-mix(in srgb, var(--bg), transparent 8%);
+  --hero-glow: color-mix(in oklab, var(--accent-glow), transparent 84%);
+  /* 语义前景色(文字/图标):暗底混白提亮,亮底改用原色/混黑 */
+  --accent-ink: var(--accent-hover);
+  --success-ink: color-mix(in oklab, var(--success), white 32%);
+  --warn-ink: color-mix(in oklab, var(--warn), white 25%);
+  --danger-ink: #ff9d9d;
+}
+
+:root[data-theme="light"] {
+  --brand-mark-snout: #f3c5d2;
+  color-scheme: light;
+  --bg: #f7f8f8; /* light background */
+  --surface: #ffffff; /* pure white cards */
+  --panel: #f3f4f5; /* light surface tint — sidebar */
+  --fg: #191a1b;
+  --fg-2: #34343a;
+  --muted: #62666d;
+  --meta: #8a8f98;
+  --border: #e6e6e6; /* light border alt */
+  --border-soft: rgba(0, 0, 0, 0.06);
+  /* raise 仅作 hover/压态灰阶,不再充当卡片底 */
+  --raise-1: rgba(0, 0, 0, 0.03);
+  --raise-2: rgba(0, 0, 0, 0.05);
+  --raise-3: rgba(0, 0, 0, 0.07);
+  --elev-raised:
+    0 1px 3px rgba(9, 10, 12, 0.08), 0 4px 12px rgba(9, 10, 12, 0.06),
+    0 0 0 1px rgba(9, 10, 12, 0.03);
+
+  /* 白卡 + 分层真实投影(hover 抬升) */
+  --card-bg: #ffffff;
+  --card-bg-hover: #ffffff;
+  --card-shadow: 0 1px 2px rgba(9, 10, 12, 0.04), 0 2px 6px rgba(9, 10, 12, 0.03);
+  --card-shadow-hover: 0 2px 4px rgba(9, 10, 12, 0.06), 0 8px 20px rgba(9, 10, 12, 0.07);
+  --input-bg: #ffffff;
+  --btn-bg: #ffffff;
+  --btn-bg-hover: #f3f4f5;
+  --btn-shadow: 0 1px 2px rgba(9, 10, 12, 0.06);
+  /* 亮底主按钮 hover 加深:提亮到 #3a83f7 会让白字对比度掉到 3.7:1 */
+  --btn-primary-hover: color-mix(in oklab, var(--accent), black 10%);
+  --btn-primary-active: var(--accent-active);
+  --pop-shadow:
+    0 2px 6px rgba(9, 10, 12, 0.06), 0 12px 32px rgba(9, 10, 12, 0.14),
+    0 0 0 1px rgba(9, 10, 12, 0.04);
+  --backdrop-soft: rgba(9, 10, 12, 0.3);
+  --topbar-shadow: rgba(9, 10, 12, 0.07) 0 2px 8px;
+  /* 白色磨砂顶栏:纯白基底带轻透明,blur+saturate 让穿透内容通透不发灰 */
+  --topbar-bg: rgba(255, 255, 255, 0.72);
+  --topbar-blur: blur(16px) saturate(1.8);
+  --mobile-menu-bg: rgba(255, 255, 255, 0.88);
+  --hero-glow: color-mix(in oklab, var(--accent-glow), transparent 88%);
+  /* 亮底上混白色全部失效:强调用深一档的品牌蓝,语义色用原色/混黑 */
+  --accent-ink: var(--accent);
+  --success-ink: color-mix(in oklab, var(--success), black 12%);
+  --warn-ink: color-mix(in oklab, var(--warn), black 32%);
+  --danger-ink: var(--danger);
+}
+
+:root[data-theme="light"] .input,
+:root[data-theme="light"] .select,
+:root[data-theme="light"] .textarea {
+  border-color: #d0d6e0;
+}
+:root[data-theme="light"] .input:focus,
+:root[data-theme="light"] .select:focus,
+:root[data-theme="light"] .textarea:focus {
+  border-color: var(--accent);
+}
+
+/* 主题切换按钮(ui.js 注入) */
+.theme-toggle {
+  flex: none;
+}
+.theme-toggle .i-sun,
+.theme-toggle .i-moon {
+  width: 15px;
+  height: 15px;
+}
+.theme-toggle .i-sun {
+  display: none;
+}
+:root[data-theme="light"] .theme-toggle .i-sun {
+  display: block;
+}
+:root[data-theme="light"] .theme-toggle .i-moon {
+  display: none;
+}
+.theme-fixed {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 60;
+}

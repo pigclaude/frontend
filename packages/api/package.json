@@ -1,0 +1,26 @@
+{
+  "name": "@pigclaude/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./client": "./src/client.ts",
+    "./home": "./src/home/endpoints.ts",
+    "./admin": "./src/admin/endpoints.ts",
+    "./home/types": "./src/home/types.ts",
+    "./admin/types": "./src/admin/types.ts",
+    "./admin/security-settings": "./src/admin/security-settings.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
+  },
+  "dependencies": {
+    "@pigclaude/contracts": "workspace:*"
+  }
+}

@@ -6,6 +6,7 @@
   "private": true,
   "scripts": {
     "dev": "electron-vite dev",
+    "e2e:phase1": "pnpm build",
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "test": "vitest run",
@@ -13,9 +14,11 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "pnpm typecheck:node && pnpm typecheck:web",
     "visual:baseline": "playwright test --update-snapshots",
-    "visual:check": "playwright test"
+    "visual:check": "playwright test",
+    "package:mac": "pnpm build && electron-builder --config electron-builder.json --mac dmg --arm64 --publish never"
   },
   "dependencies": {
+    "@pigclaude/contracts": "workspace:*",
     "@radix-ui/react-collapsible": "1.1.12",
     "@radix-ui/react-dialog": "1.1.15",
     "@radix-ui/react-dropdown-menu": "2.1.16",
@@ -47,9 +50,12 @@
     "@types/react-dom": "19.2.2",
     "@vitejs/plugin-react": "5.1.0",
     "electron": "43.4.1",
+    "electron-builder": "26.17.0",
     "electron-vite": "5.0.0",
     "typescript": "5.9.3",
     "vite": "7.1.12",
     "vitest": "3.2.4"
-  }
+  },
+  "author": "PigClaude",
+  "productName": "PigClaude"
 }

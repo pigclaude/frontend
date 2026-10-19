@@ -3,3 +3,10 @@ out/
 .superpowers/
 apps/desktop/test-results/
 apps/desktop/playwright-report/
+.next/
+*.tsbuildinfo
+
+test-results/
+playwright-report/
+
+**/release/

@@ -1,2 +1,12 @@
 .superpowers/
 apps/desktop/visual/__screenshots__/
+**/.next/
+**/node_modules/
+pnpm-lock.yaml
+
+**/dist/
+**/out/
+test-results/
+playwright-report/
+
+**/release/

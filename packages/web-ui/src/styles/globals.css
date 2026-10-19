@@ -1,0 +1,55 @@
+/* 负责提供本文件的前端样式契约。 */
+@import "tailwindcss";
+@import "./tokens.css";
+@import "./shadcn-bridge.css";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted-bg);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent-ui: var(--accent-ui);
+  --color-accent-ui-foreground: var(--accent-ui-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-ink: var(--success-ink);
+  --color-warn: var(--warn);
+  --color-warn-ink: var(--warn-ink);
+  --color-danger-ink: var(--danger-ink);
+  --color-accent-ink: var(--accent-ink);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-mono);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius-lg);
+}
+
+/* Tailwind v4 把裸 `border` 工具类的默认色改成 currentColor（v3 是灰）；shadcn 组件
+   （outline 按钮、Select 触发器等）大量用裸 `border`，缺此重置会让边框继承文字色——
+   亮色下变成近黑的重边框（联调期用户反馈「突兀」的根因）。补 shadcn 标准 base 重置：
+   所有元素默认边框色回落到 --border（语义边框色），需要时组件再显式覆盖。 */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop {
+    border-color: var(--color-border, currentColor);
+  }
+}
+
+html {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+}

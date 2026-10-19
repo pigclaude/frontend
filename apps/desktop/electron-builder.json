@@ -1,0 +1,48 @@
+{
+  "appId": "com.pigclaude.desktop",
+  "productName": "PigClaude",
+  "electronVersion": "43.4.1",
+  "directories": {
+    "output": "release"
+  },
+  "artifactName": "${productName}-${version}-${arch}.${ext}",
+  "asar": true,
+  "npmRebuild": false,
+  "files": [
+    "out/main/**",
+    "out/preload/**",
+    "out/renderer/**",
+    "package.json",
+    "!**/*.map",
+    "!**/.env*",
+    "!**/*.{test,spec}.*",
+    "!node_modules/**"
+  ],
+  "extraMetadata": {
+    "pigclaudeEndpoints": {
+      "rustBaseUrl": "http://127.0.0.1:8788",
+      "authOrigin": "http://127.0.0.1:3000"
+    }
+  },
+  "protocols": [
+    {
+      "name": "PigClaude authorization",
+      "schemes": ["pigclaude"]
+    }
+  ],
+  "mac": {
+    "category": "public.app-category.developer-tools",
+    "identity": "-",
+    "hardenedRuntime": true,
+    "notarize": false,
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["arm64"]
+      }
+    ]
+  },
+  "dmg": {
+    "sign": false
+  }
+}

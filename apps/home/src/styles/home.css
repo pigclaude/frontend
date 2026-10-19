@@ -1,0 +1,205 @@
+/* 负责迁移页面的共用外壳、数据状态及本地 Inter 字体。 */
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("/fonts/inter-latin-wght-normal.woff2") format("woff2-variations");
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("/fonts/inter-latin-ext-wght-normal.woff2") format("woff2-variations");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+a {
+  text-decoration: none;
+}
+.page-shell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  width: 100%;
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: var(--space-8) var(--container-gutter-desktop) var(--space-12);
+}
+.narrow {
+  max-width: 820px;
+}
+.card-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: var(--space-4);
+}
+/* 卡片默认布局置于组件层，页面工具类可按原站覆盖内边距等默认值。 */
+@layer components {
+  .home-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 0;
+    padding: var(--space-6);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card-bg);
+    box-shadow: var(--card-shadow);
+  }
+}
+.home-card h2 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.muted {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+.query-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 48px 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  font-size: 14px;
+  color: var(--muted);
+}
+.query-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid color-mix(in oklab, var(--danger), transparent 65%);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--danger), transparent 95%);
+  color: var(--danger-ink);
+  font-size: 14px;
+}
+.status-gate {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid color-mix(in oklab, var(--warn), transparent 55%);
+  background: color-mix(in oklab, var(--warn), transparent 94%);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.status-gate p {
+  color: var(--fg-2);
+}
+.status-gate input {
+  accent-color: var(--accent);
+}
+.data-list {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--raise-1);
+}
+.data-list div {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+.data-list dt {
+  color: var(--meta);
+  font-size: 13px;
+}
+.data-list dd {
+  margin: 0;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: right;
+}
+.device-value {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.preview-window {
+  min-height: 610px;
+  padding: 24px 30px 50px;
+  background: var(--bg);
+  text-align: left;
+}
+.preview-window-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: -24px -30px 30px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--raise-1);
+}
+.preview-window-dots {
+  display: flex;
+  gap: 6px;
+}
+.preview-window-dots i {
+  display: block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--meta);
+  opacity: 0.5;
+}
+.preview-window .card-grid {
+  margin-top: 24px;
+}
+.feature-art {
+  display: grid;
+  place-items: center;
+  min-height: 170px;
+  color: var(--accent-ink);
+}
+@media (max-width: 900px) {
+  .card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 767px) {
+  .page-shell {
+    padding-inline: 16px;
+  }
+  .preview-window {
+    min-height: 0;
+    padding: 20px 16px;
+  }
+  .preview-window-top {
+    margin: -20px -16px 24px;
+    padding: 14px 16px;
+  }
+  .preview-window .card-grid {
+    grid-template-columns: 1fr;
+  }
+}

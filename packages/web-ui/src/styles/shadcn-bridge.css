@@ -1,0 +1,27 @@
+/* 负责提供本文件的前端样式契约。 */
+:root,
+:root[data-theme="light"] {
+  --background: var(--bg);
+  --foreground: var(--fg);
+  --card: var(--surface);
+  --card-foreground: var(--fg);
+  --popover: var(--surface);
+  --popover-foreground: var(--fg);
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-on);
+  --secondary: var(--raise-1);
+  --secondary-foreground: var(--fg-2);
+  /* 命名为 --muted-bg（而非 --muted）：tokens.css 的 --muted 已经是「弱化文字色」
+     语义（见 §Foreground），若在这里重新声明 --muted 会在 :root 上覆盖它（同
+     选择器同优先级，后声明生效），导致 --muted-foreground: var(--muted) 和任何
+     其他 var(--muted) 引用全部读到这里的浅底色而不是弱化文字色。 */
+  --muted-bg: var(--raise-1);
+  --muted-foreground: var(--muted);
+  --accent-ui: var(--raise-2);
+  --accent-ui-foreground: var(--fg);
+  --destructive: var(--danger);
+  --destructive-foreground: var(--accent-on);
+  --input: var(--border);
+  --ring: var(--accent);
+  --radius: var(--radius-md);
+}

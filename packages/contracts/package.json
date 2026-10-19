@@ -1,0 +1,23 @@
+{
+  "name": "@pigclaude/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./captcha": "./src/captcha.ts",
+    "./membership": "./src/membership.ts",
+    "./device-authorization": "./src/device-authorization.ts",
+    "./desktop-membership": "./src/desktop-membership.ts",
+    "./fixtures/phase1-contract-fixtures": "./src/fixtures/phase1-contract-fixtures.ts",
+    "./security-settings": "./src/security-settings.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
+  }
+}

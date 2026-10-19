@@ -10,6 +10,12 @@ describe("isAllowedAuthorizationUrl", () => {
         "http://localhost:5173",
       ),
     ).toBe(true)
+    expect(
+      isAllowedAuthorizationUrl(
+        "http://localhost:5173/authorize/flow-1/approve?state=one",
+        "http://localhost:5173",
+      ),
+    ).toBe(true)
     expect(isAllowedAuthorizationUrl("http://localhost:5173/other", "http://localhost:5173")).toBe(
       false,
     )

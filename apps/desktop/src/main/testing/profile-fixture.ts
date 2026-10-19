@@ -34,19 +34,32 @@ export function membershipView(state: MembershipView["state"] = "active"): Membe
 /** 提供不会接触网络的 Rust 端口，任何错误的远程撤销都会直接失败。 */
 export function profileApi(overrides: Partial<PigclaudeApi> = {}): PigclaudeApi {
   return {
-    startAuthorization: async (input) => ({
-      flowId: "flow-fixture",
-      authorizationUrl: `http://127.0.0.1:8788/authorize/flow-fixture?state=${input.state}`,
-      expiresAt: 601_000,
+    prepareDeviceAuthorization: async (input) => ({
+      contextId: "context-fixture",
+      authorizationUrl: `http://127.0.0.1:8788/oauth2/authorize?state=${input.state}&device_context=context-fixture`,
+      expiresAt: new Date(601_000).toISOString(),
     }),
-    exchangeAuthorization: async () => ({
-      deviceId: "device-fixture",
-      bindingEpoch: "2",
+    exchangeCode: async () => ({
+      access_token: "new-fixture-access",
+      token_type: "Bearer",
+      expires_in: 300,
+      refresh_token: "new-fixture-refresh",
+      scope: "user:read membership:read device:inspect device:revoke",
+    }),
+    readDesktopSession: async () => ({
       userId: "user-fixture",
-      sessionCookie: "new-fixture-cookie",
+      deviceId: "pcd_" + "1".repeat(64),
+      bindingEpoch: "2",
+      authVersion: "1",
     }),
+    refreshToken: async () => {
+      throw new Error("unused refresh")
+    },
+    revokeToken: async () => {
+      throw new Error("unused grant revoke")
+    },
     inspectMembership: async () => membershipView(),
-    revokeDevice: async () => {
+    revokeDeviceBinding: async () => {
       throw new Error("Local sign-out must not revoke the remote device")
     },
     ...overrides,
@@ -91,11 +104,25 @@ export class ProfileVault implements SecretVault {
 
 /** 准备同时包含会话、多个旧授权及设备身份的本机 profile。 */
 export async function seedProfile(vault: SecretVault): Promise<void> {
-  await vault.set(
-    "membership:session",
-    JSON.stringify({ deviceId: "device-fixture", bindingEpoch: "2", accountId: "user-fixture" }),
-  )
+  await vault.set("membership:session", JSON.stringify(oauthSessionFixture()))
   await vault.set("authorization:pigclaude-login:old-user", "old-login-secret")
   await vault.set("authorization:claude-account:other-account", "old-claude-secret")
   await vault.set("device:identity", "device-identity-sentinel")
+}
+
+/** 提供完整当前协议材料，旧格式拒绝另有独立测试。 */
+export function oauthSessionFixture() {
+  return {
+    schemaVersion: 1 as const,
+    protocol: "oauth2" as const,
+    userId: "user-fixture",
+    deviceId: "pcd_" + "1".repeat(64),
+    bindingEpoch: "2",
+    authVersion: "1",
+    accessToken: "new-fixture-access",
+    refreshToken: "new-fixture-refresh",
+    accessTokenExpiresAt: 301_000,
+    refreshTokenExpiresAt: 2_592_001_000,
+    scope: "user:read membership:read device:inspect device:revoke",
+  }
 }

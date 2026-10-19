@@ -1,214 +1,149 @@
-// 负责验证 Electron 主进程访问 Rust API 时的 URL、错误码和秘密边界。
+// 负责验证原生业务 Bearer、inspect/entitlement 双路与固定错误传播。
 import { describe, expect, it, vi } from "vitest"
 import { PigclaudeApiClient, PigclaudeApiError } from "./pigclaude-api-client"
-
-const activeMembership = {
-  startupPhase: "settled",
-  revision: 1,
-  state: "active",
-  account: { userId: "user-1", nickname: "林舟", email: "user@example.com", avatar: "" },
+const baseUrl = "http://127.0.0.1:8788"
+const deviceId = "pcd_" + "1".repeat(64)
+const session = {
+  userId: "9223372036854775807",
+  deviceId,
+  bindingEpoch: "9007199254740993",
+  authVersion: "9223372036854775807",
+  status: "active",
+}
+const entitlement = {
   productCode: "pigclaude",
   planKind: "week",
+  status: "active",
   lifetime: false,
-  membershipValidUntil: "2026-10-19T00:00:00Z",
-  offlineValidUntil: null,
-  lastVerifiedAt: "2026-10-18T00:00:00Z",
-  nextVerificationAt: null,
-  bindingEpoch: "2",
-  errorCode: null,
-  serverReason: null,
-  authorizationUrl: null,
-} as const
+  validUntil: "2026-10-21T00:00:00Z",
+  termsVersion: "1",
+  termsAcceptedAt: "2026-10-19T00:00:00Z",
+  entitlementVersion: "1",
+}
+const input = { deviceId, bindingEpoch: session.bindingEpoch }
 
-describe("PigclaudeApiClient", () => {
-  it("maps a Rust desktop start response and resolves its relative authorization URL", async () => {
-    const fetcher = vi.fn<typeof fetch>(async (input, init) => {
-      expect(String(input)).toBe("http://127.0.0.1:8788/v1/desktop/authorizations/start")
-      expect(init?.method).toBe("POST")
-      expect(init?.headers).toMatchObject({ "content-type": "application/json" })
-      expect(JSON.parse(String(init?.body))).toMatchObject({
-        deviceId: "device-1",
-        codeChallenge: "challenge",
-        state: "state",
-      })
-      return new Response(
-        JSON.stringify({
-          flowId: "flow-1",
-          authorizationUrl: "/authorize/flow-1/approve?state=state",
-          expiresAt: "2026-10-18T00:10:00Z",
-          clientId: "pigclaude-desktop",
-          redirectUri: "http://127.0.0.1:43123/oauth/callback",
-          callbackUrl: "http://127.0.0.1:43123/oauth/callback",
-          purpose: "pigclaude-login",
-        }),
-        { status: 200 },
-      )
-    })
+describe("PigclaudeApiClient native resources", () => {
+  it("combines real thin inspect and richer entitlement with a single captured Bearer and no device query", async () => {
+    const paths: string[] = []
     const client = new PigclaudeApiClient({
-      baseUrl: "http://127.0.0.1:8788",
-      authorizationOrigin: "http://127.0.0.1:3000",
-      fetcher,
+      baseUrl,
+      accessToken: async () => "access-secret",
+      fetcher: async (url, init) => {
+        paths.push(String(url))
+        expect(new Headers(init?.headers).get("authorization")).toBe("Bearer access-secret")
+        expect(new Headers(init?.headers).has("cookie")).toBe(false)
+        return Response.json(String(url).endsWith("/inspect") ? session : entitlement)
+      },
     })
-
-    await expect(
-      client.startAuthorization({
-        deviceId: "device-1",
-        deviceFingerprintHash: "sha256:fingerprint",
-        codeChallenge: "challenge",
-        state: "state",
-        clientId: "pigclaude-desktop",
-        callbackUrl: "http://127.0.0.1:43123/oauth/callback",
-        purpose: "pigclaude-login",
-      }),
-    ).resolves.toMatchObject({
-      flowId: "flow-1",
-      authorizationUrl: "http://127.0.0.1:3000/authorize/flow-1/approve?state=state",
+    const result = await client.inspectMembership(input)
+    expect(paths).toEqual([
+      baseUrl + "/v1/desktop/membership/inspect",
+      baseUrl + "/v1/desktop/entitlement",
+    ])
+    expect(result).toMatchObject({
+      state: "active",
+      bindingEpoch: session.bindingEpoch,
+      account: { userId: session.userId },
+      membershipValidUntil: entitlement.validUntil,
+      offlineValidUntil: null,
     })
+    expect(JSON.stringify(result)).not.toContain("access-secret")
   })
-
-  it("sends exchange through Rust and never turns response secrets into a renderer view", async () => {
-    const fetcher = vi.fn<typeof fetch>(async (_input, init) => {
-      expect(init?.method).toBe("POST")
-      expect(JSON.parse(String(init?.body))).toEqual({
-        flowId: "flow-1",
-        code: "one-time-code",
-        codeVerifier: "verifier",
-        state: "state",
+  it("revokeDeviceBinding sends only empty JSON to the current Bearer relationship", async () => {
+    let body: unknown
+    const client = new PigclaudeApiClient({
+      baseUrl,
+      accessToken: async () => "access-secret",
+      fetcher: async (url, init) => {
+        expect(String(url)).toBe(baseUrl + "/v1/desktop/devices/revoke")
+        expect(init?.method).toBe("POST")
+        body = JSON.parse(String(init?.body)) as unknown
+        return new Response(null, { status: 204 })
+      },
+    })
+    await client.revokeDeviceBinding()
+    expect(body).toEqual({})
+  })
+  it.each([
+    [{ error: "invalid_token", app_error: "ACCOUNT_BANNED" }, 401, "ACCOUNT_BANNED"],
+    [{ error: "invalid_token", app_error: "DEVICE_REVOKED" }, 401, "DEVICE_REVOKED"],
+    [{ error: "insufficient_scope", app_error: "unknown_raw" }, 403, "insufficient_scope"],
+    [{ code: "MEMBERSHIP_EXPIRED" }, 403, "MEMBERSHIP_EXPIRED"],
+    [{ error: "temporarily_unavailable" }, 503, "temporarily_unavailable"],
+  ] as const)(
+    "preserves business errors without automatic refresh %#",
+    async (body, status, code) => {
+      let calls = 0
+      const client = new PigclaudeApiClient({
+        baseUrl,
+        accessToken: async () => "access",
+        fetcher: async () => {
+          calls++
+          return Response.json(body, { status })
+        },
       })
-      return new Response(
-        JSON.stringify({
-          deviceId: "device-1",
-          bindingEpoch: "3",
-          userId: "user-1",
-          sessionCookie: "pigclaude_session=session-secret",
-        }),
-        { status: 200 },
-      )
+      await expect(client.inspectMembership(input)).rejects.toMatchObject({ code, status })
+      expect(calls).toBe(1)
+    },
+  )
+  it("reports network failure without exposing the raw exception", async () => {
+    const client = new PigclaudeApiClient({
+      baseUrl,
+      accessToken: async () => "access",
+      fetcher: async () => {
+        throw new Error("sensitive raw")
+      },
     })
-    const client = new PigclaudeApiClient({ baseUrl: "http://127.0.0.1:8788", fetcher })
-
-    const result = await client.exchangeAuthorization({
-      flowId: "flow-1",
-      code: "one-time-code",
-      codeVerifier: "verifier",
-      state: "state",
-    })
-
-    expect(result).toEqual({
-      deviceId: "device-1",
-      bindingEpoch: "3",
-      userId: "user-1",
-      sessionCookie: "pigclaude_session=session-secret",
-    })
-    expect(JSON.stringify(result)).not.toContain("token")
-    expect(JSON.stringify(result)).not.toContain("credential")
-  })
-
-  it("normalizes server errors and network failures to stable API errors", async () => {
-    const serverError = new PigclaudeApiClient({
-      baseUrl: "http://127.0.0.1:8788",
-      fetcher: vi.fn<typeof fetch>(
-        async () =>
-          new Response(JSON.stringify({ code: "AUTHORIZATION_DEVICE_REVOKED" }), { status: 409 }),
-      ),
-    })
-    await expect(
-      serverError.inspectMembership({ deviceId: "device-1", bindingEpoch: "3" }),
-    ).rejects.toEqual(
-      expect.objectContaining({ code: "AUTHORIZATION_DEVICE_REVOKED", status: 409 }),
-    )
-
-    const unavailable = new PigclaudeApiClient({
-      baseUrl: "http://127.0.0.1:8788",
-      fetcher: vi.fn<typeof fetch>(async () => {
-        throw new TypeError("fetch failed")
-      }),
-    })
-    await expect(
-      unavailable.inspectMembership({ deviceId: "device-1", bindingEpoch: "3" }),
-    ).rejects.toEqual(
+    await expect(client.inspectMembership(input)).rejects.toEqual(
       expect.objectContaining({ code: "SERVER_UNAVAILABLE" } satisfies Partial<PigclaudeApiError>),
     )
   })
-
-  it("reads the membership contract without exposing the bearer to its return value", async () => {
-    const fetcher = vi.fn<typeof fetch>(async (input, init) => {
-      expect(String(input)).toContain("/v1/desktop/membership/inspect")
-      expect(init?.headers).toMatchObject({ authorization: "Bearer access-secret" })
-      expect(init?.headers).toMatchObject({ cookie: "pigclaude_session=session-secret" })
-      return new Response(JSON.stringify(activeMembership), { status: 200 })
-    })
-    const client = new PigclaudeApiClient({
-      baseUrl: "http://127.0.0.1:8788",
-      fetcher,
-      accessToken: async () => "access-secret",
-      sessionCookie: async () => "session-secret",
-    })
-
-    const result = await client.inspectMembership({ deviceId: "device-1", bindingEpoch: "2" })
-    expect(result).toEqual(activeMembership)
-    expect(JSON.stringify(result)).not.toContain("access-secret")
-  })
-
-  it("normalizes the minimal desktop inspect response and preserves the server epoch", async () => {
-    const client = new PigclaudeApiClient({
-      baseUrl: "http://127.0.0.1:8788",
-      sessionCookie: async () => "session-secret",
-      fetcher: vi.fn<typeof fetch>(async (input, init) => {
-        expect(String(input)).toContain("deviceId=device-1")
-        expect(String(input)).toContain("bindingEpoch=2")
-        expect(init?.headers).toMatchObject({ cookie: "pigclaude_session=session-secret" })
-        return new Response(
-          JSON.stringify({
-            deviceId: "device-1",
-            bindingEpoch: "3",
-            status: "active",
-            userId: "user-1",
-          }),
-          { status: 200 },
-        )
-      }),
-    })
-
-    await expect(
-      client.inspectMembership({ deviceId: "device-1", bindingEpoch: "2" }),
-    ).resolves.toMatchObject({
-      state: "active",
-      bindingEpoch: "3",
-    })
-  })
+  it.each(["headers", "body"])(
+    "bounds stalled %s and recovers without a second client",
+    async (phase) => {
+      vi.useFakeTimers()
+      try {
+        let signal: AbortSignal | null | undefined
+        let recover = false
+        const client = new PigclaudeApiClient({
+          baseUrl,
+          accessToken: async () => "access",
+          fetcher: async (url, init) => {
+            signal = init?.signal
+            if (recover)
+              return Response.json(String(url).endsWith("/inspect") ? session : entitlement)
+            if (phase === "headers") return new Promise<Response>(() => {})
+            return new Response(new ReadableStream({ start() {} }))
+          },
+        })
+        const pending = client.inspectMembership(input).catch((error: unknown) => error)
+        await vi.advanceTimersByTimeAsync(15_000)
+        expect(await pending).toMatchObject({ code: "SERVER_UNAVAILABLE" })
+        expect(signal?.aborted).toBe(true)
+        recover = true
+        expect(await client.inspectMembership(input)).toMatchObject({ state: "active" })
+      } finally {
+        vi.useRealTimers()
+      }
+    },
+  )
 })
 
-// 超时覆盖完整 fetch/body 生命周期，恢复时重用同一客户端。
-it.each(["headers", "body"])("aborts stalled %s and recovers on retry", async (phase) => {
-  vi.useFakeTimers()
-  try {
-    let signal: AbortSignal | null | undefined
-    let recover = false
-    const client = new PigclaudeApiClient({
-      baseUrl: "http://127.0.0.1:8788",
-      fetcher: async (_input, init) => {
-        signal = init?.signal
-        if (recover) return new Response(JSON.stringify(activeMembership))
-        if (phase === "headers") return new Promise<Response>(() => {})
-        return new Response(new ReadableStream({ start() {} }))
-      },
-    })
-    let code = "pending"
-    const request = client
-      .inspectMembership({ deviceId: "device-1", bindingEpoch: "2" })
-      .catch((error: unknown) => {
-        code = (error as PigclaudeApiError).code
-      })
-    await vi.advanceTimersByTimeAsync(15_000)
-    expect(code).toBe("SERVER_UNAVAILABLE")
-    expect(signal?.aborted).toBe(true)
-    await request
-    recover = true
-    await expect(
-      client.inspectMembership({ deviceId: "device-1", bindingEpoch: "2" }),
-    ).resolves.toMatchObject({ state: "active" })
-  } finally {
-    vi.useRealTimers()
-  }
+it("uses an explicitly captured token without waiting for a mutable vault provider", async () => {
+  let reads = 0
+  const sent: string[] = []
+  const client = new PigclaudeApiClient({
+    baseUrl,
+    accessToken: async () => {
+      reads++
+      return new Promise<string>(() => {})
+    },
+    fetcher: async (_url, init) => {
+      sent.push(new Headers(init?.headers).get("authorization") ?? "")
+      return new Response(null, { status: 204 })
+    },
+  })
+  await client.revokeDeviceBinding("original-account-token")
+  expect(reads).toBe(0)
+  expect(sent).toEqual(["Bearer original-account-token"])
 })

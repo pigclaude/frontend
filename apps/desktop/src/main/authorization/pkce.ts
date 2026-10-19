@@ -65,8 +65,8 @@ export function validateAuthorizationCallback(
       reason: "denied" | "state-mismatch" | "missing-code" | "expired" | "already-consumed"
     } {
   if (session.consumed) return { ok: false, reason: "already-consumed" }
-  if (callback.error) return { ok: false, reason: "denied" }
   if (callback.state !== session.state) return { ok: false, reason: "state-mismatch" }
+  if (callback.error) return { ok: false, reason: "denied" }
   if (!callback.code) return { ok: false, reason: "missing-code" }
   if (now >= session.expiresAt) return { ok: false, reason: "expired" }
   return { ok: true }

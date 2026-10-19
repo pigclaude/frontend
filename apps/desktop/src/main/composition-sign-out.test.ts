@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import type { MembershipView } from "@pigclaude/contracts/membership"
-import type { DesktopAuthorizationExchangeResponse } from "@pigclaude/contracts/desktop-membership"
+import type { NativeOAuthToken } from "./api/oauth-client"
 import { createDesktopComposition } from "./composition"
 import { FileSecretVault } from "./secret-vault"
 import {
@@ -27,7 +27,7 @@ const request = { purpose: "pigclaude-login", mode: "login" } as const
 const redirect = "http://127.0.0.1:43123/oauth/callback"
 
 describe("DesktopComposition local sign-out", () => {
-  it("clears every authorization on disk, preserves identity, stays signed out on restart and permits reauthorization", async () => {
+  it("clears first-party authorization on disk, preserves identity, stays signed out on restart and permits reauthorization", async () => {
     const directory = await mkdtemp(join(tmpdir(), "pigclaude-profile-sign-out-"))
     try {
       const path = join(directory, "secrets.json")
@@ -38,7 +38,9 @@ describe("DesktopComposition local sign-out", () => {
 
       await expect(composition.signOut()).resolves.toMatchObject({ state: "signed_out" })
       expect(await vault.get("authorization:pigclaude-login:old-user")).toBeNull()
-      expect(await vault.get("authorization:claude-account:other-account")).toBeNull()
+      expect(await vault.get("authorization:claude-account:other-account")).toBe(
+        "old-claude-secret",
+      )
       expect(await vault.get("membership:session")).toBeNull()
       expect(await vault.get("device:identity")).toBe("device-identity-sentinel")
       await composition.dispose()
@@ -55,7 +57,7 @@ describe("DesktopComposition local sign-out", () => {
         await restarted.authorizationService.handleCallback(`${redirect}?code=new&state=${state}`),
       ).toMatchObject({ status: "completed" })
       expect(restarted.membershipGate.view()).toMatchObject({ state: "active" })
-      expect(await vault.get("membership:session")).toContain("new-fixture-cookie")
+      expect(await vault.get("membership:session")).toContain("new-fixture-refresh")
       await restarted.signOut()
       await restarted.dispose()
     } finally {
@@ -97,13 +99,13 @@ describe("DesktopComposition local sign-out", () => {
       ...options,
       vault,
       api: profileApi({
-        startAuthorization: async (input) => {
+        prepareDeviceAuthorization: async (input) => {
           entered.resolve(undefined)
           await release.promise
           return {
-            flowId: "old-flow",
+            contextId: "old-context",
             authorizationUrl: `http://127.0.0.1:8788/authorize/old?state=${input.state}`,
-            expiresAt: 601_000,
+            expiresAt: new Date(601_000).toISOString(),
           }
         },
       }),
@@ -125,21 +127,22 @@ describe("DesktopComposition local sign-out", () => {
     const vault = new ProfileVault()
     await seedProfile(vault)
     const entered = deferred<void>()
-    const response = deferred<DesktopAuthorizationExchangeResponse>()
+    const response = deferred<NativeOAuthToken>()
     const composition = createDesktopComposition({
       ...options,
       vault,
       api: profileApi({
-        exchangeAuthorization: async (input) => {
+        exchangeCode: async (input) => {
           if (input.code === "old") {
             entered.resolve(undefined)
             return response.promise
           }
           return {
-            deviceId: "device-fixture",
-            bindingEpoch: "2",
-            userId: "new-user",
-            sessionCookie: "fresh-cookie",
+            access_token: "fresh-access",
+            refresh_token: "fresh-refresh",
+            token_type: "Bearer",
+            expires_in: 300,
+            scope: "user:read membership:read device:inspect device:revoke",
           }
         },
       }),
@@ -161,14 +164,15 @@ describe("DesktopComposition local sign-out", () => {
       ),
     ).toMatchObject({ status: "completed" })
     response.resolve({
-      deviceId: "device-fixture",
-      bindingEpoch: "1",
-      userId: "old-user",
-      sessionCookie: "stale-cookie",
+      access_token: "stale-access",
+      refresh_token: "stale-refresh",
+      token_type: "Bearer",
+      expires_in: 300,
+      scope: "user:read membership:read device:inspect device:revoke",
     })
     expect(await pending).toMatchObject({ status: "cancelled" })
-    expect(await vault.get("membership:session")).toContain("fresh-cookie")
-    expect(await vault.get("membership:session")).not.toContain("stale-cookie")
+    expect(await vault.get("membership:session")).toContain("fresh-refresh")
+    expect(await vault.get("membership:session")).not.toContain("stale-refresh")
     expect(composition.membershipGate.view()).toMatchObject({ state: "active", bindingEpoch: "2" })
     await composition.dispose()
   })
@@ -224,7 +228,7 @@ describe("DesktopComposition local sign-out", () => {
       ),
     ).toMatchObject({ status: "completed" })
     expect(composition.membershipGate.view()).toMatchObject({ state: "active" })
-    expect(await vault.get("membership:session")).toContain("new-fixture-cookie")
+    expect(await vault.get("membership:session")).toContain("new-fixture-refresh")
     await composition.dispose()
   })
 })

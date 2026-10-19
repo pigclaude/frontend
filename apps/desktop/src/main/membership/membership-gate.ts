@@ -3,14 +3,15 @@ import type { MembershipView } from "@pigclaude/contracts/membership"
 import type {
   DesktopMembershipErrorCode,
   MembershipInspectRequest,
-  MembershipSessionRecord,
+  OAuthDesktopSession,
 } from "@pigclaude/contracts/desktop-membership"
 import type { SecretVault } from "../secret-vault"
+import { parseOAuthDesktopSession } from "../authorization/oauth-session"
 
 /** MembershipGate 调用的最小 API 端口，不允许 gate 依赖 Electron 或 HTTP 实现。 */
 export type MembershipGateApi = {
-  inspectMembership(input: MembershipInspectRequest): Promise<MembershipView>
-  revokeDevice(input: { deviceId: string }): Promise<void>
+  inspectMembership(input: MembershipInspectRequest, accessToken?: string): Promise<MembershipView>
+  revokeDeviceBinding(accessToken?: string): Promise<void>
 }
 
 /** MembershipGate 的依赖，保证时钟和安全仓库可在测试中替换。 */
@@ -26,7 +27,7 @@ export class MembershipGate {
   readonly #vault: SecretVault
   readonly #now: () => number
   readonly #listeners = new Set<(view: MembershipView) => void>()
-  #record: MembershipSessionRecord | null = null
+  #record: OAuthDesktopSession | null = null
   #view: MembershipView = initialView()
   #revision = 0
   #generation = 0
@@ -62,14 +63,17 @@ export class MembershipGate {
       )
     }
     if (!this.isCurrent(generation)) return this.view()
-    const record = parseRecord(raw)
+    const record = parseOAuthDesktopSession(raw)
     this.#record = record
     if (!record) return this.publish(signedOutView())
     try {
-      const remote = await this.#api.inspectMembership({
-        deviceId: record.deviceId,
-        bindingEpoch: record.bindingEpoch,
-      })
+      const remote = await this.#api.inspectMembership(
+        {
+          deviceId: record.deviceId,
+          bindingEpoch: record.bindingEpoch,
+        },
+        record.accessToken,
+      )
       if (!this.isCurrent(generation)) return this.view()
       if (
         remote.bindingEpoch !== null &&
@@ -83,13 +87,32 @@ export class MembershipGate {
       if (!this.isCurrent(generation)) return this.view()
       const errorCode = errorCodeOf(error, "SERVER_UNAVAILABLE")
       const state =
-        errorCode === "AUTHORIZATION_DEVICE_REVOKED" || errorCode === "AUTHORIZATION_BINDING_STALE"
+        errorCode === "DEVICE_REVOKED" ||
+        errorCode === "AUTHORIZATION_DEVICE_REVOKED" ||
+        errorCode === "AUTHORIZATION_BINDING_STALE"
           ? "device_revoked"
           : errorCode === "AUTHORIZATION_EXPIRED"
             ? "expired"
             : errorCode === "AUTHORIZATION_UNAUTHORIZED"
               ? "verification_required"
               : "error"
+      if (errorCode === "ACCOUNT_BANNED" || errorCode === "DEVICE_REVOKED") {
+        const localGeneration = this.#generation + 1
+        return this.mutate(async () => {
+          if (!this.isCurrent(localGeneration) || this.#locallySignedOut || this.#record !== record)
+            return this.view()
+          await this.#deleteLocalSecrets(record.userId)
+          if (!this.isCurrent(localGeneration)) return this.view()
+          this.#record = null
+          return this.publish(
+            this.withState(
+              initialView(),
+              errorCode === "DEVICE_REVOKED" ? "device_revoked" : "verification_required",
+              errorCode,
+            ),
+          )
+        })
+      }
       return this.publish(this.withState(this.#view, state, errorCode))
     }
   }
@@ -105,15 +128,26 @@ export class MembershipGate {
     return { ...this.#view, account: this.#view.account ? { ...this.#view.account } : null }
   }
 
-  /** 撤销服务端设备后清理本机授权材料并广播 signed_out。 */
+  /** 捕获原 session/token 撤销关系，远端等待不占用本机写队列。 */
   async revoke(): Promise<MembershipView> {
-    return this.mutate(async () => {
-      if (this.#disposed) return this.view()
-      const record = this.#record ?? parseRecord(await this.#vault.get("membership:session"))
-      if (record) {
-        await this.#api.revokeDevice({ deviceId: record.deviceId })
-        await this.#deleteLocalSecrets(record.accountId)
+    const generation = ++this.#generation
+    const record =
+      this.#record ?? parseOAuthDesktopSession(await this.#vault.get("membership:session"))
+    if (!this.isCurrent(generation) || this.#locallySignedOut) return this.view()
+    if (record) {
+      try {
+        await this.#api.revokeDeviceBinding(record.accessToken)
+      } catch (error: unknown) {
+        if (!this.isCurrent(generation)) return this.view()
+        throw error
       }
+    }
+    if (!this.isCurrent(generation)) return this.view()
+    const localGeneration = this.#generation + 1
+    return this.mutate(async () => {
+      if (!this.isCurrent(localGeneration)) return this.view()
+      if (record) await this.#deleteLocalSecrets(record.userId)
+      if (!this.isCurrent(localGeneration)) return this.view()
       this.#record = null
       return this.publish(signedOutView())
     })
@@ -127,7 +161,7 @@ export class MembershipGate {
       try {
         await secretWrites
         if (!this.#vault.deletePrefix) throw new Error("安全仓库不支持完整清理授权")
-        await this.#vault.deletePrefix("authorization:")
+        await this.#vault.deletePrefix("authorization:pigclaude-login:")
         await this.#vault.delete("membership:session")
         this.#record = null
         this.#locallySignedOut = true
@@ -140,29 +174,17 @@ export class MembershipGate {
     })
   }
 
-  /** 授权交换完成后写入仅供主进程恢复使用的设备元数据。 */
-  async acceptAuthorization(input: {
-    deviceId: string
-    bindingEpoch: string
-    accountId?: string
-    accessToken?: string
-    refreshToken?: string
-    credential?: string
-    sessionCookie?: string
-  }): Promise<void> {
-    const record: MembershipSessionRecord = {
-      deviceId: input.deviceId,
-      bindingEpoch: input.bindingEpoch,
-      ...(input.accountId ? { accountId: input.accountId } : {}),
-      ...(input.accessToken ? { accessToken: input.accessToken } : {}),
-      ...(input.refreshToken ? { refreshToken: input.refreshToken } : {}),
-      ...(input.credential ? { credential: input.credential } : {}),
-      ...(input.sessionCookie ? { sessionCookie: input.sessionCookie } : {}),
-    }
+  /** 在本机写入屏障内接收当前 OAuth2 材料，失效代次不能发布或恢复记录。 */
+  async acceptAuthorization(
+    input: OAuthDesktopSession,
+    isCurrent: () => boolean = () => true,
+  ): Promise<void> {
+    const record = parseOAuthDesktopSession(JSON.stringify(input))
+    if (!record) throw new Error("INVALID_OAUTH_SESSION")
     await this.mutate(async () => {
-      if (this.#disposed) return
+      if (this.#disposed || !isCurrent()) return
       await this.#vault.set("membership:session", JSON.stringify(record))
-      if (!this.#disposed) {
+      if (!this.#disposed && isCurrent()) {
         this.#record = record
         this.#locallySignedOut = false
       }
@@ -227,7 +249,7 @@ export class MembershipGate {
 
   async #deleteLocalSecrets(accountId?: string): Promise<void> {
     if (this.#vault.deletePrefix) {
-      await this.#vault.deletePrefix("authorization:")
+      await this.#vault.deletePrefix("authorization:pigclaude-login:")
     } else if (accountId) {
       await this.#vault.delete(`authorization:pigclaude-login:${accountId}`)
     }
@@ -257,26 +279,6 @@ function initialView(): MembershipView {
 
 function signedOutView(): MembershipView {
   return { ...initialView(), startupPhase: "settled", state: "signed_out" }
-}
-
-function parseRecord(value: string | null): MembershipSessionRecord | null {
-  if (!value) return null
-  try {
-    const parsed: unknown = JSON.parse(value)
-    if (!isRecord(parsed) || typeof parsed.deviceId !== "string") return null
-    if (typeof parsed.bindingEpoch !== "string") return null
-    return {
-      deviceId: parsed.deviceId,
-      bindingEpoch: parsed.bindingEpoch,
-      accountId: typeof parsed.accountId === "string" ? parsed.accountId : undefined,
-      accessToken: typeof parsed.accessToken === "string" ? parsed.accessToken : undefined,
-      refreshToken: typeof parsed.refreshToken === "string" ? parsed.refreshToken : undefined,
-      credential: typeof parsed.credential === "string" ? parsed.credential : undefined,
-      sessionCookie: typeof parsed.sessionCookie === "string" ? parsed.sessionCookie : undefined,
-    }
-  } catch {
-    return null
-  }
 }
 
 function errorCodeOf(error: unknown, fallback: string): string {

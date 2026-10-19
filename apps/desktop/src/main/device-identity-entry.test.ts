@@ -15,14 +15,14 @@ const identity = () =>
 describe("device identity first-party entries", () => {
   it("sends the derived identity across fresh profiles and ignores old vault identities", async () => {
     const sent: unknown[] = []
-    const startAuthorization = async (
-      input: Parameters<ReturnType<typeof profileApi>["startAuthorization"]>[0],
+    const prepareDeviceAuthorization = async (
+      input: Parameters<ReturnType<typeof profileApi>["prepareDeviceAuthorization"]>[0],
     ) => {
       sent.push(input)
       return {
-        flowId: "flow",
+        contextId: "context",
         authorizationUrl: "http://127.0.0.1:8788/authorize/flow",
-        expiresAt: 600_000,
+        expiresAt: new Date(Date.now() + 600_000).toISOString(),
       }
     }
     for (const account of ["one", "two"]) {
@@ -32,18 +32,17 @@ describe("device identity first-party entries", () => {
         vault,
         authOrigin: "http://127.0.0.1:8788",
         deviceIdentity: identity(),
-        api: profileApi({ startAuthorization }),
+        api: profileApi({ prepareDeviceAuthorization }),
       })
       await composition.authorizationService.start(request, redirect)
       await composition.dispose()
     }
     expect(sent).toHaveLength(2)
-    for (const payload of sent)
-      expect(payload).toMatchObject({ deviceId, deviceFingerprintHash: deviceId.slice(4) })
+    for (const payload of sent) expect(payload).toMatchObject({ deviceId, platform: "darwin" })
     expect(JSON.stringify(sent)).not.toContain(raw)
   })
   it("rejects before a network request when platform identity is unavailable", async () => {
-    const startAuthorization = vi.fn()
+    const prepareDeviceAuthorization = vi.fn()
     const composition = createDesktopComposition({
       vault: new ProfileVault(),
       authOrigin: "http://127.0.0.1:8788",
@@ -52,19 +51,19 @@ describe("device identity first-party entries", () => {
           throw new Error(raw)
         },
       }),
-      api: profileApi({ startAuthorization }),
+      api: profileApi({ prepareDeviceAuthorization }),
     })
     await expect(composition.authorizationService.start(request, redirect)).rejects.toThrow(
       "DEVICE_ID_UNAVAILABLE",
     )
-    expect(startAuthorization).not.toHaveBeenCalled()
+    expect(prepareDeviceAuthorization).not.toHaveBeenCalled()
     expect(composition.authorizationService.getActiveSession()).toBeNull()
     await composition.dispose()
   })
   it("does not start a remote authorization after sign-out invalidates a pending identity read", async () => {
     const reading = deferred<void>()
     const release = deferred<void>()
-    const startAuthorization = vi.fn()
+    const prepareDeviceAuthorization = vi.fn()
     const service = new AuthorizationService({
       authOrigin: "http://127.0.0.1:8788",
       vault: new ProfileVault(),
@@ -78,13 +77,13 @@ describe("device identity first-party entries", () => {
           return { deviceId, platform: "darwin" }
         },
       },
-      startAuthorization,
+      startAuthorization: prepareDeviceAuthorization,
     })
     const pending = service.start(request, redirect).catch((error: unknown) => error)
     await reading.promise
     await service.suspend()
     release.resolve(undefined)
     expect(await pending).toMatchObject({ status: "cancelled" })
-    expect(startAuthorization).not.toHaveBeenCalled()
+    expect(prepareDeviceAuthorization).not.toHaveBeenCalled()
   })
 })

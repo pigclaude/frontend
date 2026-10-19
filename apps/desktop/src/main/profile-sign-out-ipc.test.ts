@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { expect, it, vi } from "vitest"
 import type { PigclaudeBridge } from "../preload/index"
 import { FileSecretVault } from "./secret-vault"
-import { fixtureSafeStorage, membershipView, seedProfile } from "./testing/profile-fixture"
+import { fixtureSafeStorage, seedProfile } from "./testing/profile-fixture"
 
 const fixture = vi.hoisted(() => ({
   directory: "",
@@ -115,21 +115,58 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
   await vault.set("device:identity", identity)
   vi.stubGlobal("fetch", async (input: string | URL | Request, options?: RequestInit) => {
     const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url)
-    if (url.pathname === "/v1/desktop/membership/inspect") return Response.json(membershipView())
-    if (url.pathname === "/v1/desktop/authorizations/start") {
-      const body = JSON.parse(String(options?.body)) as { state: string }
+    const session = {
+      userId: "user-fixture",
+      deviceId: "pcd_" + "1".repeat(64),
+      bindingEpoch: "2",
+      authVersion: "1",
+    }
+    if (url.pathname === "/v1/desktop/membership/inspect")
+      return Response.json({ ...session, status: "active" })
+    if (url.pathname === "/v1/desktop/entitlement")
       return Response.json({
-        flowId: "flow-ipc",
-        authorizationUrl: `/authorize/flow-ipc?state=${body.state}`,
-        expiresAt: Date.now() + 600_000,
+        productCode: "pigclaude",
+        planKind: "week",
+        status: "active",
+        lifetime: false,
+        validUntil: null,
+        termsVersion: "1",
+        termsAcceptedAt: "2026-10-19T00:00:00Z",
+        entitlementVersion: "1",
+      })
+    if (url.pathname === "/v1/desktop/session") return Response.json(session)
+    if (url.pathname === "/v1/desktop/oauth/contexts") {
+      const body = JSON.parse(String(options?.body)) as {
+        state: string
+        clientId: string
+        redirectUri: string
+        codeChallenge: string
+        scopes: string[]
+      }
+      return Response.json({
+        contextId: "context-ipc",
+        authorizationUrl:
+          "http://127.0.0.1:8788/oauth2/authorize?" +
+          new URLSearchParams({
+            response_type: "code",
+            client_id: body.clientId,
+            redirect_uri: body.redirectUri,
+            code_challenge: body.codeChallenge,
+            code_challenge_method: "S256",
+            state: body.state,
+            scope: body.scopes.join(" "),
+            device_context: "context-ipc",
+          }).toString(),
+        expiresAt: new Date(Date.now() + 600_000).toISOString(),
       })
     }
-    if (url.pathname === "/v1/desktop/authorizations/exchange")
+    if (url.pathname === "/oauth2/token")
       return Response.json({
-        deviceId: "device-fixture",
-        bindingEpoch: "2",
-        userId: "user-fixture",
-        sessionCookie: "ipc-cookie",
+        access_token: "ipc-access",
+        refresh_token: "ipc-refresh",
+        token_type: "Bearer",
+        expires_in: 300,
+        scope: "user:read membership:read device:inspect device:revoke",
       })
     throw new Error(`Unexpected remote operation: ${url.pathname}`)
   })
@@ -148,7 +185,7 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     expect(events.at(-1)).toBe("signed_out")
     expect(await vault.get("membership:session")).toBeNull()
     expect(await vault.get("authorization:pigclaude-login:old-user")).toBeNull()
-    expect(await vault.get("authorization:claude-account:other-account")).toBeNull()
+    expect(await vault.get("authorization:claude-account:other-account")).toBe("old-claude-secret")
     expect(await vault.get("device:identity")).toBe(identity)
 
     const started = await bridge.authorization.start({ purpose: "pigclaude-login", mode: "login" })
@@ -157,7 +194,7 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     const state = new URL(started.authorizationUrl).searchParams.get("state")
     await fixture.callback(`http://127.0.0.1:43123/oauth/callback?code=fixture&state=${state}`)
     expect(await bridge.membership.inspect()).toMatchObject({ state: "active" })
-    expect(await vault.get("membership:session")).toContain("ipc-cookie")
+    expect(await vault.get("membership:session")).toContain("ipc-refresh")
     await bridge.membership.signOut()
     unsubscribe()
   } finally {

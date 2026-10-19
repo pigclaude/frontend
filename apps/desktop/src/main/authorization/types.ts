@@ -1,4 +1,5 @@
 // 负责定义浏览器授权会话、回调、token 和状态事件的共享类型。
+import type { OAuthDesktopSession } from "@pigclaude/contracts/desktop-membership"
 
 /** 浏览器授权的业务用途。保证 pigclaude 登录与 Claude 号池授权可区分。 */
 export type AuthorizationPurpose = "pigclaude-login" | "claude-account"
@@ -20,8 +21,6 @@ export type AuthorizationRequest = {
 /** 一次待完成的授权会话。保证 verifier 只留在主进程内。 */
 export type AuthorizationSession = {
   sessionId: string
-  /** Rust desktop flow id；本地 fixture 模式下为空。 */
-  flowId?: string
   state: string
   codeVerifier: string
   codeChallenge: string
@@ -53,8 +52,8 @@ export type AuthorizationToken = {
   deviceId?: string
   bindingEpoch?: string
   userId?: string
-  /** Rust exchange 返回的可选 session cookie，只留在主进程 vault。 */
-  sessionCookie?: string
+  /** 第一方当前协议材料，只能进入主进程 session 仓库。 */
+  oauthSession?: OAuthDesktopSession
 }
 
 /** 授权状态机的可见状态。保证 renderer 不需要知道 token 细节。 */

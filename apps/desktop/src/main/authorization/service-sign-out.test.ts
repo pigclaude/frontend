@@ -107,9 +107,9 @@ describe("AuthorizationService local sign-out isolation", () => {
           await release.promise
         }
         return {
-          flowId: `flow-${number}`,
+          contextId: `context-${number}`,
           authorizationUrl: `http://127.0.0.1:8788/authorize/flow-${number}?state=${input.state}`,
-          expiresAt: 601_000,
+          expiresAt: new Date(601_000).toISOString(),
         }
       },
     })

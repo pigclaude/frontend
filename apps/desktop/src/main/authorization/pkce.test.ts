@@ -64,3 +64,14 @@ describe("authorization protocol", () => {
     ).toEqual({ ok: false, reason: "expired" })
   })
 })
+
+it("validates state before denial and never reflects a foreign error into the active flow", () => {
+  const session = createAuthorizationSession({
+    request,
+    redirectUri: "pigclaude://authorize/callback",
+    now: 1_000,
+  })
+  expect(
+    validateAuthorizationCallback(session, { error: "access_denied", state: "foreign" }, 2_000),
+  ).toEqual({ ok: false, reason: "state-mismatch" })
+})

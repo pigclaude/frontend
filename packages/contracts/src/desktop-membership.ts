@@ -87,3 +87,18 @@ export type DesktopMembershipErrorCode =
   | "AUTHORIZATION_INTERNAL"
   | "SAFE_STORAGE_UNAVAILABLE"
   | "INVALID_RESPONSE"
+
+/** 当前 OAuth2 主进程秘密记录；没有旧 Cookie/vault 格式导入语义。 */
+export type OAuthDesktopSession = {
+  schemaVersion: 1
+  protocol: "oauth2"
+  userId: string
+  deviceId: string
+  bindingEpoch: string
+  authVersion: string
+  accessToken: string
+  refreshToken: string
+  scope: string
+  accessTokenExpiresAt: number
+  refreshTokenExpiresAt: number
+}

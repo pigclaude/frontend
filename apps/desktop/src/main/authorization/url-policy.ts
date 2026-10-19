@@ -8,9 +8,10 @@ export function isAllowedAuthorizationUrl(url: string, authOrigin: string): bool
     return (
       candidate.protocol === expected.protocol &&
       candidate.host === expected.host &&
-      (candidate.pathname === "/authorize" || candidate.pathname.startsWith("/authorize/")) &&
+      candidate.pathname === "/oauth2/authorize" &&
       candidate.username === "" &&
-      candidate.password === ""
+      candidate.password === "" &&
+      candidate.hash === ""
     )
   } catch {
     return false

@@ -32,12 +32,12 @@ describe("fixed platform readers", () => {
       vault: new ProfileVault(),
       authOrigin: "http://127.0.0.1:8788",
       api: profileApi({
-        startAuthorization: async (input) => {
+        prepareDeviceAuthorization: async (input) => {
           sent = input
           return {
-            flowId: "flow",
+            contextId: "flow",
             authorizationUrl: "http://127.0.0.1:8788/authorize/flow",
-            expiresAt: 600_000,
+            expiresAt: new Date(Date.now() + 600_000).toISOString(),
           }
         },
       }),

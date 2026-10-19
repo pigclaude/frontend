@@ -1,4 +1,4 @@
-// 负责验证授权服务使用 Rust desktop flow，而不是本地 fixture exchange。
+// 负责验证授权服务使用 标准 OAuth context，而不是本地 fixture exchange。
 import { describe, expect, it } from "vitest"
 import { AuthorizationService } from "./service"
 import type { AuthorizationRequest, AuthorizationToken } from "./types"
@@ -28,7 +28,6 @@ function token(): AuthorizationToken {
     refreshToken: "refresh-secret",
     accountId: "user-1",
     displayName: "林舟",
-    sessionCookie: "session-secret",
     expiresAt: 2_000_000,
     purpose: "pigclaude-login",
     mode: "login",
@@ -48,12 +47,14 @@ describe("AuthorizationService Rust adapter", () => {
         read: async () => ({ deviceId: "pcd_" + "1".repeat(64), platform: "darwin" }),
       },
       startAuthorization: async (input) => {
-        expect(input).toMatchObject({ mode: "register" })
+        expect(input).toMatchObject({
+          scopes: ["user:read", "membership:read", "device:inspect", "device:revoke"],
+        })
         calls.push(`start:${input.deviceId}:${input.codeChallenge}`)
         return {
-          flowId: "flow-1",
+          contextId: "context-1",
           authorizationUrl: `http://127.0.0.1:8788/authorize/flow-1/approve?state=${input.state}`,
-          expiresAt: 601_000,
+          expiresAt: new Date(601_000).toISOString(),
         }
       },
       exchangeCode: async (input) => {
@@ -77,7 +78,7 @@ describe("AuthorizationService Rust adapter", () => {
     expect(result).toMatchObject({ status: "completed", accountId: "user-1" })
     expect(calls[0]).toMatch(/^start:/)
     expect(calls[1]).toMatch(/^exchange:one-time-code:/)
-    expect(completedToken?.sessionCookie).toBe("session-secret")
+    expect(completedToken?.accountId).toBe("user-1")
     expect(await vault.get("authorization:pigclaude-login:user-1")).toContain("refresh-secret")
   })
 })

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import { MembershipGate, type MembershipGateApi } from "./membership-gate"
 import type { SecretVault } from "../secret-vault"
+import { oauthSessionFixture } from "../testing/profile-fixture"
 
 class MemoryVault implements SecretVault {
   readonly values = new Map<string, string>()
@@ -45,20 +46,17 @@ function view(
 
 function sessionRecord() {
   return {
+    ...oauthSessionFixture(),
+    userId: "user-1",
     accessToken: "access-secret",
     refreshToken: "refresh-secret",
-    credential: "credential-secret",
-    sessionCookie: "pigclaude_session=session-secret",
-    deviceId: "device-1",
-    bindingEpoch: "2",
-    accountId: "user-1",
   }
 }
 
 function api(overrides: Partial<MembershipGateApi> = {}): MembershipGateApi {
   return {
     inspectMembership: async () => view("active"),
-    revokeDevice: async () => undefined,
+    revokeDeviceBinding: async () => undefined,
     ...overrides,
   }
 }
@@ -80,7 +78,7 @@ describe("MembershipGate", () => {
     })
 
     await expect(gate.inspect()).resolves.toMatchObject({ state: "active", bindingEpoch: "2" })
-    expect(inspected).toEqual({ deviceId: "device-1", bindingEpoch: "2" })
+    expect(inspected).toEqual({ deviceId: "pcd_" + "1".repeat(64), bindingEpoch: "2" })
   })
 
   it.each([
@@ -200,9 +198,8 @@ it.each(["result", "timeout"])(
     const startup = gate.inspect()
     await entered.promise
     await gate.acceptAuthorization({
-      deviceId: "device-1",
+      ...sessionRecord(),
       bindingEpoch: "3",
-      sessionCookie: "new-fixture",
     })
     await gate.inspect()
     if (outcome === "timeout")

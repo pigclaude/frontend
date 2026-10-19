@@ -1,8 +1,8 @@
-// 负责在 Electron 主进程组合 Rust API、会员 gate 和浏览器授权，并按逆序释放资源。
+// 负责组合第一方 OAuth、独立 Claude provider 端口和本机会员写入生命周期。
 import type { SecretVault } from "./secret-vault"
 import type { MembershipView } from "@pigclaude/contracts/membership"
-import { AuthorizationService, type AuthorizationExchange } from "./authorization/service"
-import type { AuthorizationToken } from "./authorization/types"
+import { AuthorizationService, type ClaudeAuthorizationAdapter } from "./authorization/service"
+import { parseOAuthDesktopSession } from "./authorization/oauth-session"
 import {
   PigclaudeApiClient,
   type PigclaudeApi,
@@ -11,65 +11,95 @@ import {
 import { MembershipGate } from "./membership/membership-gate"
 import type { DeviceIdentityService } from "./device-identity"
 
-/** Desktop composition 的外部依赖，保证 Electron 运行时只负责装配。 */
+/** composition 的依赖，Claude adapter 与第一方 OAuth API 必须独立。 */
 export type DesktopCompositionOptions = {
   api?: PigclaudeApi
   apiOptions?: PigclaudeApiClientOptions
   vault: SecretVault
   authOrigin: string
-  /** 可替换平台派生端口；省略时授权服务使用真实系统来源。 */
   deviceIdentity?: Pick<DeviceIdentityService, "read">
+  claudeAuthorization?: ClaudeAuthorizationAdapter
   now?: () => number
-  onMembershipView?: (view: Awaited<ReturnType<MembershipGate["inspect"]>>) => void
+  onMembershipView?: (view: MembershipView) => void
 }
-
-/** 第一阶段桌面组合结果；daemon 和 session host 尚未进入这个边界。 */
+/** composition 提供脱敏服务与本机退出，不跨 profile 或 Claude namespace 清理。 */
 export type DesktopComposition = {
   api: PigclaudeApi
   membershipGate: MembershipGate
   authorizationService: AuthorizationService
-  /** 退出本机 profile，不撤销服务端设备或会员。 */
+  /** 本机第一方退出同步失效代次，不等待远端。 */
   signOut: () => Promise<MembershipView>
+  /** 按顺序释放本机授权和会员订阅。 */
   dispose: () => Promise<void>
 }
 
-/** 创建 Rust API、会员 gate 和授权服务，并保证清理顺序可预测。 */
+/** 装配标准 native 登录，迟到网络结果不能越过本机 generation/write fence。 */
 export function createDesktopComposition(options: DesktopCompositionOptions): DesktopComposition {
+  const now = options.now ?? Date.now
   const api =
     options.api ??
     new PigclaudeApiClient({
+      authorizationOrigin: options.authOrigin,
       ...(options.apiOptions ?? { baseUrl: options.authOrigin }),
-      accessToken: options.apiOptions?.accessToken ?? (async () => readAccessToken(options.vault)),
-      sessionCookie:
-        options.apiOptions?.sessionCookie ?? (async () => readSessionCookie(options.vault)),
+      accessToken:
+        options.apiOptions?.accessToken ??
+        (async () =>
+          parseOAuthDesktopSession(await options.vault.get("membership:session"))?.accessToken ??
+          null),
     })
-  const membershipGate = new MembershipGate({
-    api,
-    vault: options.vault,
-    now: options.now,
-  })
+  const membershipGate = new MembershipGate({ api, vault: options.vault, now })
   const unsubscribe = options.onMembershipView
     ? membershipGate.subscribe(options.onMembershipView)
     : () => undefined
+  const unavailableClaude: ClaudeAuthorizationAdapter = {
+    start: async () => {
+      throw new Error("CLAUDE_AUTHORIZATION_UNAVAILABLE：Claude 账号授权服务尚未配置")
+    },
+    exchangeCode: async () => {
+      throw new Error("CLAUDE_AUTHORIZATION_UNAVAILABLE：Claude 账号授权服务尚未配置")
+    },
+  }
   const authorizationService = new AuthorizationService({
     authOrigin: options.authOrigin,
     vault: options.vault,
-    now: options.now,
+    now,
     deviceIdentity: options.deviceIdentity,
-    startAuthorization: (input) => api.startAuthorization(input),
-    exchangeCode: (input) => exchange(api, input),
+    claudeAuthorization: options.claudeAuthorization ?? unavailableClaude,
+    startAuthorization: (input) => api.prepareDeviceAuthorization(input),
+    exchangeCode: async (input) => {
+      if (input.session.request.purpose !== "pigclaude-login") throw new Error("授权用途不匹配")
+      const issuedAt = now()
+      const response = await api.exchangeCode(input)
+      const session = await api.readDesktopSession(response.access_token)
+      const oauthSession = {
+        schemaVersion: 1 as const,
+        protocol: "oauth2" as const,
+        ...session,
+        accessToken: response.access_token,
+        refreshToken: response.refresh_token,
+        scope: response.scope,
+        accessTokenExpiresAt: issuedAt + response.expires_in * 1_000,
+        refreshTokenExpiresAt: issuedAt + 30 * 24 * 60 * 60 * 1_000,
+      }
+      return {
+        purpose: input.session.request.purpose,
+        mode: input.session.request.mode,
+        accountId: session.userId,
+        displayName: session.userId,
+        expiresAt: oauthSession.accessTokenExpiresAt,
+        deviceId: session.deviceId,
+        bindingEpoch: session.bindingEpoch,
+        userId: session.userId,
+        oauthSession,
+      }
+    },
+    commitAuthorization: async ({ token, isCurrent }) => {
+      if (token.purpose === "pigclaude-login" && token.oauthSession) {
+        await membershipGate.acceptAuthorization(token.oauthSession, isCurrent)
+      }
+    },
     onCompleted: async ({ token }) => {
-      if (!token.deviceId || !token.bindingEpoch) return
-      await membershipGate.acceptAuthorization({
-        deviceId: token.deviceId,
-        bindingEpoch: token.bindingEpoch,
-        accountId: token.userId ?? token.accountId,
-        accessToken: token.accessToken,
-        refreshToken: token.refreshToken,
-        credential: token.credential,
-        sessionCookie: token.sessionCookie,
-      })
-      await membershipGate.inspect()
+      if (token.purpose === "pigclaude-login" && token.oauthSession) await membershipGate.inspect()
     },
   })
   let disposed = false
@@ -100,58 +130,5 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
       unsubscribe()
       membershipGate.dispose()
     },
-  }
-}
-
-async function readAccessToken(vault: SecretVault): Promise<string | null> {
-  const raw = await vault.get("membership:session").catch(() => null)
-  if (!raw) return null
-  try {
-    const value: unknown = JSON.parse(raw)
-    if (typeof value !== "object" || value === null || Array.isArray(value)) return null
-    const token = (value as Record<string, unknown>).accessToken
-    return typeof token === "string" && token.length > 0 ? token : null
-  } catch {
-    return null
-  }
-}
-
-async function readSessionCookie(vault: SecretVault): Promise<string | null> {
-  const raw = await vault.get("membership:session").catch(() => null)
-  if (!raw) return null
-  try {
-    const value: unknown = JSON.parse(raw)
-    if (typeof value !== "object" || value === null || Array.isArray(value)) return null
-    const cookie = (value as Record<string, unknown>).sessionCookie
-    return typeof cookie === "string" && cookie.length > 0 ? cookie : null
-  } catch {
-    return null
-  }
-}
-
-async function exchange(
-  api: Pick<PigclaudeApi, "exchangeAuthorization">,
-  input: AuthorizationExchange,
-): Promise<AuthorizationToken> {
-  const flowId = input.session.flowId
-  if (!flowId) throw new Error("授权 flow 尚未创建")
-  const result = await api.exchangeAuthorization({
-    flowId,
-    code: input.code,
-    codeVerifier: input.codeVerifier,
-    state: input.session.state,
-  })
-  return {
-    accessToken: undefined,
-    refreshToken: undefined,
-    accountId: result.userId,
-    displayName: result.userId,
-    expiresAt: Date.now() + 3_600_000,
-    purpose: input.session.request.purpose,
-    mode: input.session.request.mode,
-    deviceId: result.deviceId,
-    bindingEpoch: result.bindingEpoch,
-    userId: result.userId,
-    sessionCookie: result.sessionCookie,
   }
 }

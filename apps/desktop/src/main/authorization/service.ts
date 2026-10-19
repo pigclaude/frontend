@@ -13,10 +13,8 @@ import type {
 } from "./types"
 import type { SecretVault } from "../secret-vault"
 import { DeviceIdentityService } from "../device-identity"
-import type {
-  DesktopAuthorizationStartRequest,
-  DesktopAuthorizationStartResponse,
-} from "@pigclaude/contracts/desktop-membership"
+import type { DeviceAuthorizationInput, DeviceAuthorizationContext } from "../api/oauth-client"
+import { NATIVE_SCOPES } from "../api/oauth-client"
 
 /** 授权码交换所需的主进程参数，保证 verifier 不离开主进程。 */
 export type AuthorizationExchange = {
@@ -27,17 +25,17 @@ export type AuthorizationExchange = {
   session: AuthorizationSession
 }
 
-/** Rust desktop flow 启动端口，保证 verifier 和 state 只在主进程组装。 */
+/** 标准 native context 准备端口，verifier 始终留在主进程。 */
 export type AuthorizationStart = (
-  input: DesktopAuthorizationStartRequest,
-) => Promise<DesktopAuthorizationStartResponse>
+  input: DeviceAuthorizationInput,
+) => Promise<DeviceAuthorizationContext>
 
 /** 授权服务依赖，保证网络和秘密存储可在测试中替换。 */
 export type AuthorizationServiceOptions = {
   authOrigin: string
   vault: SecretVault
   exchangeCode: (input: AuthorizationExchange) => Promise<AuthorizationToken>
-  /** 配置后使用 Rust flow；未配置时保留测试夹具协议。 */
+  /** 配置后第一方登录使用标准 OAuth context。 */
   startAuthorization?: AuthorizationStart
   /** 设备身份只由主进程平台服务读取，不从 renderer 或旧仓库恢复。 */
   deviceIdentity?: Pick<DeviceIdentityService, "read">
@@ -46,7 +44,22 @@ export type AuthorizationServiceOptions = {
     session: AuthorizationSession
     token: AuthorizationToken
   }) => Promise<void>
+  /** 独立 Claude provider 端口，不消费第一方 grant。 */
+  claudeAuthorization?: ClaudeAuthorizationAdapter
+  /** 仅执行本机写入；与现有 writer fence 同步，不得进行网络请求。 */
+  commitAuthorization?: (input: {
+    token: AuthorizationToken
+    isCurrent: () => boolean
+  }) => Promise<void>
   now?: () => number
+}
+
+/** Claude provider 使用自己的准备和兑换端口，不能复用第一方 OAuth。 */
+export type ClaudeAuthorizationAdapter = {
+  /** 仅在独立 provider 准备授权，不调用第一方 context。 */
+  start(session: AuthorizationSession): Promise<{ authorizationUrl: string; expiresAt: number }>
+  /** 将独立 provider code 兑换为 Claude credential，不重解释第一方 token。 */
+  exchangeCode(input: AuthorizationExchange): Promise<AuthorizationToken>
 }
 
 /** 创建授权会话失败时携带的可见状态。 */
@@ -69,6 +82,8 @@ export class AuthorizationService {
   readonly #startAuthorization: AuthorizationServiceOptions["startAuthorization"]
   readonly #deviceIdentity: Pick<DeviceIdentityService, "read">
   readonly #onCompleted: NonNullable<AuthorizationServiceOptions["onCompleted"]>
+  readonly #claudeAuthorization: AuthorizationServiceOptions["claudeAuthorization"]
+  readonly #commitAuthorization: AuthorizationServiceOptions["commitAuthorization"]
   readonly #now: () => number
   #activeSession: AuthorizationSession | null = null
   #pendingSession: AuthorizationSession | null = null
@@ -78,6 +93,8 @@ export class AuthorizationService {
 
   /** 创建绑定授权服务 origin 和秘密仓库的会话服务。 */
   constructor(options: AuthorizationServiceOptions) {
+    this.#claudeAuthorization = options.claudeAuthorization
+    this.#commitAuthorization = options.commitAuthorization
     this.#authOrigin = options.authOrigin
     this.#vault = options.vault
     this.#exchangeCode = options.exchangeCode
@@ -103,7 +120,19 @@ export class AuthorizationService {
     const generation = ++this.#generation
     this.#activeSession = null
     this.#pendingSession = session
-    if (this.#startAuthorization) {
+    if (request.purpose === "claude-account" && this.#claudeAuthorization) {
+      const started = await this.#claudeAuthorization.start(session)
+      if (!this.isCurrent(generation))
+        throw new AuthorizationStartError("cancelled", "授权会话已取消")
+      session.expiresAt = Math.min(session.expiresAt, started.expiresAt)
+      this.#activeSession = session
+      return {
+        sessionId: session.sessionId,
+        authorizationUrl: started.authorizationUrl,
+        expiresAt: session.expiresAt,
+      }
+    }
+    if (request.purpose === "pigclaude-login" && this.#startAuthorization) {
       let identity: Awaited<ReturnType<DeviceIdentityService["read"]>>
       try {
         identity = await this.#deviceIdentity.read()
@@ -116,25 +145,25 @@ export class AuthorizationService {
       }
       const started = await this.#startAuthorization({
         deviceId: identity.deviceId,
-        // Task 19 移除旧 flow 字段前只填入同一派生值，绝不读取旧随机指纹。
-        deviceFingerprintHash: identity.deviceId.slice(4),
+        platform: identity.platform,
+        name: "Pigclaude Desktop",
+        scopes: NATIVE_SCOPES,
         codeChallenge: session.codeChallenge,
         state: session.state,
         clientId: "pigclaude-desktop",
-        callbackUrl: redirectUri,
         redirectUri,
-        purpose: request.purpose,
-        mode: request.mode,
       })
       if (!this.isCurrent(generation)) {
         throw new AuthorizationStartError("cancelled", "授权会话已取消")
       }
-      session.flowId = started.flowId
+      const deadline = Date.parse(started.expiresAt)
+      if (!Number.isFinite(deadline) || deadline <= this.#now()) throw new Error("授权上下文已过期")
+      session.expiresAt = Math.min(session.expiresAt, deadline)
       this.#activeSession = session
       return {
         sessionId: session.sessionId,
         authorizationUrl: started.authorizationUrl,
-        expiresAt: parseExpiration(started.expiresAt, session.expiresAt),
+        expiresAt: session.expiresAt,
       }
     }
     this.#activeSession = session
@@ -157,7 +186,7 @@ export class AuthorizationService {
     } catch {
       return this.failureEvent(session, "state-mismatch", "回调地址无效")
     }
-    if (!matchesRedirect(parsed, session.redirectUri)) {
+    if (!matchesRedirect(parsed, session.redirectUri, url)) {
       return this.failureEvent(session, "state-mismatch", "回调地址与授权会话不匹配")
     }
 
@@ -165,13 +194,17 @@ export class AuthorizationService {
     const validation = validateAuthorizationCallback(session, callback, this.#now())
     if (!validation.ok) {
       if (validation.reason !== "state-mismatch") this.#activeSession = null
-      return this.failureEvent(session, validation.reason, callback.errorDescription)
+      return this.failureEvent(session, validation.reason)
     }
 
     session.consumed = true
     this.#activeSession = null
     try {
-      const token = await this.#exchangeCode({
+      const exchange =
+        session.request.purpose === "claude-account" && this.#claudeAuthorization
+          ? (input: AuthorizationExchange) => this.#claudeAuthorization!.exchangeCode(input)
+          : this.#exchangeCode
+      const token = await exchange({
         code: callback.code ?? "",
         codeVerifier: session.codeVerifier,
         redirectUri: session.redirectUri,
@@ -179,21 +212,29 @@ export class AuthorizationService {
         session,
       })
       if (!this.isCurrent(generation)) return this.failureEvent(session, "cancelled")
+      if (
+        token.purpose !== session.request.purpose ||
+        (session.request.purpose === "claude-account" && token.oauthSession) ||
+        (token.oauthSession && token.credential)
+      )
+        throw new Error("授权用途不匹配")
       const secret = {
         ...(token.accessToken ? { accessToken: token.accessToken } : {}),
         ...(token.refreshToken ? { refreshToken: token.refreshToken } : {}),
         ...(token.credential ? { credential: token.credential } : {}),
         expiresAt: token.expiresAt,
       }
-      if (Object.keys(secret).length > 1) {
-        const writing = this.#localWrites.then(async () => {
-          if (this.isCurrent(generation)) {
-            await this.#vault.set(secretKey(token), JSON.stringify(secret))
-          }
-        })
-        this.#localWrites = writing.catch(() => undefined)
-        await writing
-      }
+      const writing = this.#localWrites.then(async () => {
+        if (!this.isCurrent(generation)) return
+        if (!token.oauthSession && Object.keys(secret).length > 1) {
+          await this.#vault.set(secretKey(token), JSON.stringify(secret))
+        }
+        if (this.isCurrent(generation)) {
+          await this.#commitAuthorization?.({ token, isCurrent: () => this.isCurrent(generation) })
+        }
+      })
+      this.#localWrites = writing.catch(() => undefined)
+      await writing
       if (!this.isCurrent(generation)) return this.failureEvent(session, "cancelled")
       await this.#onCompleted({ session, token })
       if (!this.isCurrent(generation)) return this.failureEvent(session, "cancelled")
@@ -207,9 +248,9 @@ export class AuthorizationService {
         displayName: token.displayName,
         expiresAt: token.expiresAt,
       }
-    } catch (error: unknown) {
+    } catch {
       if (!this.isCurrent(generation)) return this.failureEvent(session, "cancelled")
-      return this.failureEvent(session, "exchange-error", errorMessage(error))
+      return this.failureEvent(session, "exchange-error", "授权码交换失败")
     }
   }
 
@@ -279,9 +320,19 @@ function readCallback(search: URLSearchParams): AuthorizationCallback {
   }
 }
 
-function matchesRedirect(url: URL, redirectUri: string): boolean {
+function matchesRedirect(url: URL, redirectUri: string, raw: string): boolean {
   const expected = new URL(redirectUri)
   return (
+    raw.split(/[?#]/, 1)[0] === redirectUri &&
+    !raw.includes("#") &&
+    !url.username &&
+    !url.password &&
+    !url.hash &&
+    [...url.searchParams.keys()].every(
+      (key) =>
+        ["code", "state", "error", "error_description"].includes(key) &&
+        url.searchParams.getAll(key).length === 1,
+    ) &&
     url.protocol === expected.protocol &&
     url.host === expected.host &&
     url.pathname === expected.pathname
@@ -290,14 +341,6 @@ function matchesRedirect(url: URL, redirectUri: string): boolean {
 
 function secretKey(token: AuthorizationToken): string {
   return `authorization:${token.purpose}:${token.accountId}`
-}
-
-function parseExpiration(value: string | number, fallback: number): number {
-  if (typeof value === "number") return Number.isFinite(value) && value > 0 ? value : fallback
-  const parsed = Date.parse(value)
-  if (Number.isFinite(parsed)) return parsed
-  const numeric = Number(value)
-  return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback
 }
 
 function unknownSessionEvent(
@@ -322,8 +365,4 @@ function statusMessage(status: AuthorizationStateEvent["status"]): string {
     "exchange-error": "授权码交换失败",
   }
   return messages[status] ?? "授权失败"
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "授权码交换失败"
 }

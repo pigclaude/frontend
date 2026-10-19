@@ -16,7 +16,13 @@ import {
   seedProfile,
 } from "./testing/profile-fixture"
 
-const options = { authOrigin: "http://127.0.0.1:8788", now: () => 1_000 }
+const options = {
+  authOrigin: "http://127.0.0.1:8788",
+  now: () => 1_000,
+  deviceIdentity: {
+    read: async () => ({ deviceId: "pcd_" + "1".repeat(64), platform: "darwin" as const }),
+  },
+}
 const request = { purpose: "pigclaude-login", mode: "login" } as const
 const redirect = "http://127.0.0.1:43123/oauth/callback"
 

@@ -9,6 +9,7 @@ import {
   type PigclaudeApiClientOptions,
 } from "./api/pigclaude-api-client"
 import { MembershipGate } from "./membership/membership-gate"
+import type { DeviceIdentityService } from "./device-identity"
 
 /** Desktop composition 的外部依赖，保证 Electron 运行时只负责装配。 */
 export type DesktopCompositionOptions = {
@@ -16,8 +17,8 @@ export type DesktopCompositionOptions = {
   apiOptions?: PigclaudeApiClientOptions
   vault: SecretVault
   authOrigin: string
-  deviceId?: string
-  deviceFingerprintHash?: string
+  /** 可替换平台派生端口；省略时授权服务使用真实系统来源。 */
+  deviceIdentity?: Pick<DeviceIdentityService, "read">
   now?: () => number
   onMembershipView?: (view: Awaited<ReturnType<MembershipGate["inspect"]>>) => void
 }
@@ -54,8 +55,7 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
     authOrigin: options.authOrigin,
     vault: options.vault,
     now: options.now,
-    deviceId: () => options.deviceId ?? "pigclaude-desktop",
-    deviceFingerprintHash: () => options.deviceFingerprintHash ?? "pigclaude-desktop",
+    deviceIdentity: options.deviceIdentity,
     startAuthorization: (input) => api.startAuthorization(input),
     exchangeCode: (input) => exchange(api, input),
     onCompleted: async ({ token }) => {

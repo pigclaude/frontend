@@ -12,6 +12,7 @@ import type {
   AuthorizationToken,
 } from "./types"
 import type { SecretVault } from "../secret-vault"
+import { DeviceIdentityService } from "../device-identity"
 import type {
   DesktopAuthorizationStartRequest,
   DesktopAuthorizationStartResponse,
@@ -38,9 +39,8 @@ export type AuthorizationServiceOptions = {
   exchangeCode: (input: AuthorizationExchange) => Promise<AuthorizationToken>
   /** 配置后使用 Rust flow；未配置时保留测试夹具协议。 */
   startAuthorization?: AuthorizationStart
-  /** 设备身份由 composition 注入，不从 renderer 读取。 */
-  deviceId?: () => string
-  deviceFingerprintHash?: () => string
+  /** 设备身份只由主进程平台服务读取，不从 renderer 或旧仓库恢复。 */
+  deviceIdentity?: Pick<DeviceIdentityService, "read">
   /** Rust exchange 完成后把脱敏设备元数据交给会员 gate。 */
   onCompleted?: (input: {
     session: AuthorizationSession
@@ -67,8 +67,7 @@ export class AuthorizationService {
   readonly #vault: SecretVault
   readonly #exchangeCode: AuthorizationServiceOptions["exchangeCode"]
   readonly #startAuthorization: AuthorizationServiceOptions["startAuthorization"]
-  readonly #deviceId: () => string
-  readonly #deviceFingerprintHash: () => string
+  readonly #deviceIdentity: Pick<DeviceIdentityService, "read">
   readonly #onCompleted: NonNullable<AuthorizationServiceOptions["onCompleted"]>
   readonly #now: () => number
   #activeSession: AuthorizationSession | null = null
@@ -83,8 +82,7 @@ export class AuthorizationService {
     this.#vault = options.vault
     this.#exchangeCode = options.exchangeCode
     this.#startAuthorization = options.startAuthorization
-    this.#deviceId = options.deviceId ?? (() => "pigclaude-desktop")
-    this.#deviceFingerprintHash = options.deviceFingerprintHash ?? (() => "pigclaude-desktop")
+    this.#deviceIdentity = options.deviceIdentity ?? new DeviceIdentityService()
     this.#onCompleted = options.onCompleted ?? (async () => undefined)
     this.#now = options.now ?? Date.now
   }
@@ -106,9 +104,20 @@ export class AuthorizationService {
     this.#activeSession = null
     this.#pendingSession = session
     if (this.#startAuthorization) {
+      let identity: Awaited<ReturnType<DeviceIdentityService["read"]>>
+      try {
+        identity = await this.#deviceIdentity.read()
+      } catch (error: unknown) {
+        if (this.isCurrent(generation)) this.#pendingSession = null
+        throw error
+      }
+      if (!this.isCurrent(generation)) {
+        throw new AuthorizationStartError("cancelled", "授权会话已取消")
+      }
       const started = await this.#startAuthorization({
-        deviceId: this.#deviceId(),
-        deviceFingerprintHash: this.#deviceFingerprintHash(),
+        deviceId: identity.deviceId,
+        // Task 19 移除旧 flow 字段前只填入同一派生值，绝不读取旧随机指纹。
+        deviceFingerprintHash: identity.deviceId.slice(4),
         codeChallenge: session.codeChallenge,
         state: session.state,
         clientId: "pigclaude-desktop",

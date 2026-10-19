@@ -21,7 +21,7 @@ import type {
 } from "./authorization/types"
 import { isAllowedAuthorizationUrl } from "./authorization/url-policy"
 import { createDesktopComposition, type DesktopComposition } from "./composition"
-import { readOrCreateDeviceIdentity } from "./device-identity"
+import { DeviceIdentityService } from "./device-identity"
 import { readDockIconDataUrl } from "./dock-icon"
 import { configureRuntimeProfile } from "./runtime-profile"
 import { readDesktopRuntimeEndpoints } from "./runtime-endpoints"
@@ -41,6 +41,7 @@ const packagedRedirectUri = "pigclaude://authorize/callback"
 const hasSingleInstanceLock = configureRuntimeProfile(app, process.env["PIGCLAUDE_USER_DATA"])
 let mainWindow: BrowserWindow | null = null
 let authorizationService: AuthorizationService | null = null
+let authorizationSetupError: string | undefined
 let desktopComposition: DesktopComposition | null = null
 let callbackServer: Awaited<ReturnType<typeof createCallbackServer>> | null = null
 let pendingCallbackUrls: string[] = []
@@ -63,7 +64,8 @@ if (!hasSingleInstanceLock) {
     try {
       await setupAuthorization()
     } catch (error: unknown) {
-      console.error(errorMessage(error))
+      authorizationSetupError = errorMessage(error)
+      console.error(authorizationSetupError)
     }
     createWindow()
     void desktopComposition?.membershipGate.inspect()
@@ -137,7 +139,7 @@ function registerIpcHandlers(): void {
       const result: AuthorizationStartResult = {
         ok: false,
         status: "network-error",
-        error: "授权服务尚未准备好",
+        error: authorizationSetupError ?? "授权服务尚未准备好",
       }
       return result
     }
@@ -196,13 +198,14 @@ async function setupAuthorization(): Promise<void> {
     join(app.getPath("userData"), "authorization-secrets.json"),
     safeStorage,
   )
-  const identity = await readOrCreateDeviceIdentity(vault)
+  const deviceIdentity = new DeviceIdentityService()
+  await deviceIdentity.read()
   callbackServer = await createCallbackServer(handleCallbackUrl)
   desktopComposition = createDesktopComposition({
     authOrigin,
     apiOptions: { baseUrl: rustBaseUrl, authorizationOrigin: authOrigin },
     vault,
-    ...identity,
+    deviceIdentity,
     onMembershipView: sendMembershipView,
   })
   authorizationService = desktopComposition.authorizationService

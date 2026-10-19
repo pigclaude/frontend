@@ -97,6 +97,9 @@ describe("AuthorizationService local sign-out isolation", () => {
       vault,
       now: () => 1_000,
       exchangeCode: async () => token,
+      deviceIdentity: {
+        read: async () => ({ deviceId: "pcd_" + "1".repeat(64), platform: "darwin" }),
+      },
       startAuthorization: async (input) => {
         const number = ++starts
         if (number === 1) {

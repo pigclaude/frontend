@@ -1,32 +1,54 @@
-// 负责从主进程安全仓库恢复当前安装的设备身份。
-import { createHash, randomUUID } from "node:crypto"
-import type { SecretVault } from "./secret-vault"
+// 负责在主进程从固定系统标识派生跨账号、profile 和安装稳定的设备身份。
+import { createHmac } from "node:crypto"
+import {
+  createPlatformMachineIdReader,
+  DeviceIdentityUnavailableError,
+  withMachineIdDeadline,
+  type DevicePlatform,
+  type PlatformMachineIdReader,
+} from "./device-identity/platform-reader"
 
-/** 当前安装的脱敏设备标识和指纹。 */
-export type DeviceIdentity = { deviceId: string; deviceFingerprintHash: string }
+/** 只允许派生设备 ID 和平台离开机器标识读取边界。 */
+export type DeviceIdentity = { deviceId: string; platform: DevicePlatform }
 
-/** 恢复同一安装的设备身份，新安装只生成一次并由 safeStorage 持久保存。 */
-export async function readOrCreateDeviceIdentity(vault: SecretVault): Promise<DeviceIdentity> {
-  const stored = await vault.get("device:identity")
-  if (stored !== null) {
-    const value: unknown = JSON.parse(stored)
-    if (
-      typeof value !== "object" ||
-      value === null ||
-      !("deviceId" in value) ||
-      typeof value.deviceId !== "string" ||
-      !value.deviceId ||
-      !("deviceFingerprintHash" in value) ||
-      typeof value.deviceFingerprintHash !== "string" ||
-      !value.deviceFingerprintHash
-    )
-      throw new Error("本机设备身份格式无效")
-    return { deviceId: value.deviceId, deviceFingerprintHash: value.deviceFingerprintHash }
+/** 设备身份独立于账号、安全仓库和安装目录，不读取旧随机身份。 */
+export class DeviceIdentityService {
+  #pending: Promise<DeviceIdentity> | undefined
+
+  /** 默认选择当前系统的唯一固定来源，测试可注入只读平台端口。 */
+  constructor(private readonly reader: PlatformMachineIdReader = createPlatformMachineIdReader()) {}
+
+  /** 合并并发读取，只缓存派生结果；失败不返回替代身份或原始错误。 */
+  read(): Promise<DeviceIdentity> {
+    this.#pending ??= withMachineIdDeadline(async () => {
+      const { platform, machineId } = await this.reader.read()
+      const normalized = normalizeMachineId(platform, machineId)
+      const digest = createHmac("sha256", "pigclaude/device-id/v1")
+        .update(platform, "utf8")
+        .update(Buffer.from([0]))
+        .update(normalized, "utf8")
+        .digest("hex")
+      return { deviceId: `pcd_${digest}`, platform }
+    }).catch(() => {
+      this.#pending = undefined
+      throw new DeviceIdentityUnavailableError()
+    })
+    return this.#pending
   }
-  const identity = {
-    deviceId: randomUUID(),
-    deviceFingerprintHash: createHash("sha256").update(randomUUID()).digest("hex"),
+}
+
+function normalizeMachineId(platform: DevicePlatform, machineId: string): string {
+  if (!["darwin", "win32", "linux"].includes(platform) || typeof machineId !== "string") {
+    throw new DeviceIdentityUnavailableError()
   }
-  await vault.set("device:identity", JSON.stringify(identity))
-  return identity
+  const trimmed = machineId.trim()
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const normalized =
+    platform !== "linux" && uuid.test(trimmed)
+      ? trimmed.replaceAll("-", "").toLowerCase()
+      : trimmed.toLowerCase()
+  if (!/^[0-9a-f]{32}$/.test(normalized) || /^(?:0{32}|f{32})$/.test(normalized)) {
+    throw new DeviceIdentityUnavailableError()
+  }
+  return normalized
 }

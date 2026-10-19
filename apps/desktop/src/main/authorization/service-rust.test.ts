@@ -44,6 +44,9 @@ describe("AuthorizationService Rust adapter", () => {
       authOrigin: "http://127.0.0.1:8788",
       vault,
       now: () => 1_000,
+      deviceIdentity: {
+        read: async () => ({ deviceId: "pcd_" + "1".repeat(64), platform: "darwin" }),
+      },
       startAuthorization: async (input) => {
         expect(input).toMatchObject({ mode: "register" })
         calls.push(`start:${input.deviceId}:${input.codeChallenge}`)

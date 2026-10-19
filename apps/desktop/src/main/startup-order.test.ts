@@ -38,7 +38,9 @@ vi.mock("./runtime-endpoints", () => ({
   }),
 }))
 vi.mock("./device-identity", () => ({
-  readOrCreateDeviceIdentity: async () => ({ deviceId: "fixture" }),
+  DeviceIdentityService: class {
+    read = async () => ({ deviceId: "pcd_" + "1".repeat(64), platform: "darwin" })
+  },
 }))
 vi.mock("./secret-vault", () => ({ FileSecretVault: class {} }))
 vi.mock("./authorization/callback-server", () => ({

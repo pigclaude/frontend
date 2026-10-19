@@ -82,6 +82,11 @@ vi.mock("electron", () => ({
   shell: { openExternal: async () => undefined },
 }))
 vi.mock("./runtime-profile", () => ({ configureRuntimeProfile: () => true }))
+vi.mock("./device-identity", () => ({
+  DeviceIdentityService: class {
+    read = async () => ({ deviceId: "pcd_" + "1".repeat(64), platform: "darwin" })
+  },
+}))
 vi.mock("./runtime-endpoints", () => ({
   readDesktopRuntimeEndpoints: () => ({
     rustBaseUrl: "http://127.0.0.1:8789",

@@ -1,6 +1,7 @@
 // 负责本人多设备列表、私有命名、单台及全部远程撤销，结果始终以服务器为准。
 "use client"
 import { useLayoutEffect, useRef, useState } from "react"
+import { usePathname, useSearchParams } from "next/navigation"
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ApiError } from "@pigclaude/api/client"
 import { Button } from "@pigclaude/web-ui/components/button"
@@ -19,6 +20,11 @@ import { deviceManagementError, userDevices } from "./device-management"
 const key = ["user-devices"]
 /** 网站只显示当前账号关系，不从 UA/query 猜测当前硬件。 */
 export function DeviceList() {
+  const pathname = usePathname()
+  const params = useSearchParams()
+  return <DeviceListSession key={`${pathname}?${params.toString()}`} />
+}
+function DeviceListSession() {
   const client = useQueryClient()
   const devices = useInfiniteQuery({
     queryKey: key,

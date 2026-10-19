@@ -3,7 +3,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { DeviceList } from "@/components/devices/device-list"
-const mocks = vi.hoisted(() => ({ fetch: vi.fn<typeof fetch>() }))
+const mocks = vi.hoisted(() => ({ fetch: vi.fn<typeof fetch>(), params: new URLSearchParams() }))
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/settings/devices",
+  useSearchParams: () => mocks.params,
+}))
 vi.mock("@/lib/api", async () => {
   const { createClient } = await import("@pigclaude/api/client")
   return { homeClient: createClient({ fetch: mocks.fetch }), homeApi: {} }
@@ -45,6 +49,7 @@ async function choose(name = "撤销 我的 Mac") {
   fireEvent.click(button)
 }
 beforeEach(() => {
+  mocks.params = new URLSearchParams()
   mocks.fetch.mockReset().mockImplementation(async (url) => {
     if (String(url).startsWith("/v1/user/devices")) return json([device(), device(b, "我的 Linux")])
     if (String(url) === "/v1/user/identities")
@@ -356,4 +361,31 @@ it("uses the next account private name for the same hardware without retaining a
   expect(await screen.findByText("另一个账号私有名称")).toBeTruthy()
   expect(screen.queryByText("我的 Mac")).toBeNull()
   expect(screen.getByText(a)).toBeTruthy()
+})
+
+it("invalidates the actual device consumer owner on a query-only route change", async () => {
+  const original = mocks.fetch.getMockImplementation()!
+  let complete: (response: Response) => void = () => {}
+  mocks.fetch.mockImplementation(async (url, init) =>
+    String(url) === "/v1/session"
+      ? new Promise<Response>((resolve) => {
+          complete = resolve
+        })
+      : original(url, init),
+  )
+  const view = mount()
+  await choose()
+  fireEvent.click(screen.getByRole("button", { name: "使用已有核验继续" }))
+  await waitFor(() =>
+    expect(mocks.fetch.mock.calls.some(([url]) => String(url) === "/v1/session")).toBe(true),
+  )
+  mocks.params = new URLSearchParams("currentDeviceId=untrusted&identityResult=verified")
+  view.rerender(
+    <QueryClientProvider client={view.client}>
+      <DeviceList />
+    </QueryClientProvider>,
+  )
+  complete(json({ csrf: "old-route" }))
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  expect(posts()).toHaveLength(0)
 })

@@ -3,12 +3,14 @@
   "private": true,
   "packageManager": "pnpm@10.28.2",
   "scripts": {
-    "test": "node --test tests/turnstile-launcher.node.mjs && pnpm -r --if-present test",
+    "test": "node --test tests/turnstile-launcher.node.mjs tests/oauth-oidc-launcher.node.mjs && pnpm -r --if-present test",
     "phase1:launch": "node scripts/phase1-local-launcher.mjs",
     "layout": "node scripts/assert-layout.mjs",
     "lint": "eslint .",
     "format": "prettier --check .",
-    "dev:desktop": "pnpm --filter @pigclaude/desktop dev"
+    "dev:desktop": "pnpm --filter @pigclaude/desktop dev",
+    "e2e:oauth-oidc": "node scripts/oauth-oidc-e2e.mjs",
+    "oauth-oidc:launch": "node scripts/oauth-oidc-local-launcher.mjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

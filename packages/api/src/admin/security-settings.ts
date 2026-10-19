@@ -21,16 +21,25 @@ export function createSecuritySettingsApi(client: HttpClient) {
     /** 读取脱敏配置。 */
     get: () => view(client.get<unknown>(path)),
     /** 空秘密不发送，避免覆盖已保存材料。 */
-    saveDraft: async ({ secretKey, ...body }: SaveTurnstileDraft) =>
+    saveDraft: async (
+      { secretKey, ...body }: SaveTurnstileDraft,
+      owner: () => boolean = () => true,
+    ) =>
       view(
-        write<unknown>("PUT", `${path}/draft`, { ...body, ...(secretKey ? { secretKey } : {}) }),
+        write<unknown>(
+          "PUT",
+          `${path}/draft`,
+          { ...body, ...(secretKey ? { secretKey } : {}) },
+          "header",
+          owner,
+        ),
       ),
     /** 只启用与 proof 对应的同版草稿。 */
-    activate: async (body: ActivateTurnstileDraft) =>
-      view(write<unknown>("POST", `${path}/activate`, body)),
+    activate: async (body: ActivateTurnstileDraft, owner: () => boolean = () => true) =>
+      view(write<unknown>("POST", `${path}/activate`, body, "header", owner)),
     /** 独立确认关闭。 */
-    disable: async (body: DisableTurnstile) =>
-      view(write<unknown>("POST", `${path}/disable`, body)),
+    disable: async (body: DisableTurnstile, owner: () => boolean = () => true) =>
+      view(write<unknown>("POST", `${path}/disable`, body, "header", owner)),
     /** 读取已验证的脱敏审计分页。 */
     audits: async (query: { cursor?: string; limit?: number } = {}) => {
       const value = await client.get<unknown>(`${path}/audits`, query)

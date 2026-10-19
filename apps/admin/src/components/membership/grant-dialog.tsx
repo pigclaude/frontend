@@ -1,6 +1,6 @@
 // 负责在原后台 Radix 表单版式中提交真实会员授予请求。
 import { useState, type FormEvent } from "react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { adminApi } from "@/lib/api"
+import { useAdminOperationOwner } from "@/hooks/use-admin-operation-owner"
 import { toastApiError } from "@/lib/errors"
 
 /** 使用已存在的套餐 ID 授予会员，服务端确认成功后刷新会员和审计。 */
@@ -32,32 +33,38 @@ export function GrantDialog({
   const [planId, setPlanId] = useState("")
   const [termsVersion, setTermsVersion] = useState("v1")
   const [remark, setRemark] = useState("")
-  const mutation = useMutation({
-    mutationFn: (value: Parameters<typeof adminApi.membership.grant>[0]) =>
-      adminApi.membership.grant(value),
-    onSuccess: (membership) => {
+  const operation = useAdminOperationOwner(open ? "grant-open" : "grant-closed")
+  const canSubmit = [userId, planId, termsVersion, remark].every((value) => value.trim())
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!canSubmit) return
+    const owner = operation.begin()
+    if (!owner) return
+    try {
+      const membership = await adminApi.membership.grant(
+        {
+          userId: userId.trim(),
+          planId: planId.trim(),
+          termsVersion: termsVersion.trim(),
+          remark: remark.trim(),
+        },
+        owner.isCurrent,
+      )
+      if (!owner.isCurrent()) return
       void queryClient.invalidateQueries({ queryKey: ["admin-memberships"] })
       void queryClient.invalidateQueries({ queryKey: ["admin-audits"] })
       window.dispatchEvent(new CustomEvent("pigclaude:admin-membership", { detail: membership }))
       toast.success(`已为用户 ${membership.userId} 授予会员`)
       onGranted()
       onOpenChange(false)
-    },
-    onError: toastApiError,
-  })
-  const canSubmit = [userId, planId, termsVersion, remark].every((value) => value.trim())
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!canSubmit || mutation.isPending) return
-    mutation.mutate({
-      userId: userId.trim(),
-      planId: planId.trim(),
-      termsVersion: termsVersion.trim(),
-      remark: remark.trim(),
-    })
+    } catch (error) {
+      if (owner.isCurrent()) toastApiError(error)
+    } finally {
+      owner.finish()
+    }
   }
   return (
-    <Dialog open={open} onOpenChange={(value) => !mutation.isPending && onOpenChange(value)}>
+    <Dialog open={open} onOpenChange={(value) => !operation.pending && onOpenChange(value)}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>人工授予会员</DialogTitle>
@@ -105,13 +112,13 @@ export function GrantDialog({
             <Button
               type="button"
               variant="outline"
-              disabled={mutation.isPending}
+              disabled={operation.pending}
               onClick={() => onOpenChange(false)}
             >
               取消
             </Button>
-            <Button type="submit" disabled={!canSubmit || mutation.isPending}>
-              {mutation.isPending ? "提交中…" : "确认授予"}
+            <Button type="submit" disabled={!canSubmit || operation.pending}>
+              {operation.pending ? "提交中…" : "确认授予"}
             </Button>
           </DialogFooter>
         </form>

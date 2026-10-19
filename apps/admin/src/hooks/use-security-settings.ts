@@ -1,5 +1,5 @@
 // 负责缓存脱敏设置和审计；写入直接调用 API，秘密永不进入 mutation variables。
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type {
   SaveTurnstileDraft,
@@ -8,6 +8,8 @@ import type {
 import { adminApi } from "@/lib/api"
 import { useAdminMe } from "./use-admin-me"
 import { securitySettingsErrorMessage } from "@/lib/security-settings-errors"
+import { StaleSessionResponse } from "@pigclaude/api/client"
+import { useAdminOperationOwner } from "./use-admin-operation-owner"
 import { canAdminPermission } from "@/lib/admin-permissions"
 /** 在权限门禁后加载设置，仅将验证过的服务端脱敏结果写入缓存。 */
 export function useSecuritySettings() {
@@ -33,30 +35,30 @@ export function useSecuritySettings() {
     refetchOnReconnect: false,
     retry: false,
   })
-  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const pending = useRef(false)
+  const operation = useAdminOperationOwner(JSON.stringify([me?.id, canWrite, query.data?.revision]))
   const execute = useCallback(
-    async (request: () => Promise<SecuritySettingsView>) => {
-      if (pending.current || !canWrite || !query.data || query.isError || query.isFetching)
+    async (request: (isCurrent: () => boolean) => Promise<SecuritySettingsView>) => {
+      if (!canWrite || !query.data || query.isError || query.isFetching)
         throw new Error("请刷新配置后重试")
-      pending.current = true
-      setBusy(true)
+      const owner = operation.begin()
+      if (!owner) throw new Error("请刷新配置后重试")
       setError(null)
       try {
-        const view = await request()
+        const view = await request(owner.isCurrent)
+        if (!owner.isCurrent()) throw new StaleSessionResponse()
         client.setQueryData(["security-settings"], view)
         void client.invalidateQueries({ queryKey: ["security-settings-audits"] })
         return view
       } catch (cause) {
+        if (!owner.isCurrent()) throw new StaleSessionResponse()
         setError(securitySettingsErrorMessage(cause))
         throw cause
       } finally {
-        pending.current = false
-        setBusy(false)
+        owner.finish()
       }
     },
-    [canWrite, client, query.data, query.isError, query.isFetching],
+    [canWrite, client, query.data, query.isError, query.isFetching, operation.begin],
   )
   return {
     query,
@@ -64,22 +66,29 @@ export function useSecuritySettings() {
     setCursor,
     canRead,
     canWrite,
-    busy,
+    busy: operation.pending,
     error,
-    save: (body: SaveTurnstileDraft) => execute(() => adminApi.settings.turnstile.saveDraft(body)),
+    save: (body: SaveTurnstileDraft) =>
+      execute((isCurrent) => adminApi.settings.turnstile.saveDraft(body, isCurrent)),
     activate: (captchaToken: string) =>
-      execute(() =>
-        adminApi.settings.turnstile.activate({
-          expectedRevision: query.data!.revision,
-          captchaToken,
-        }),
+      execute((isCurrent) =>
+        adminApi.settings.turnstile.activate(
+          {
+            expectedRevision: query.data!.revision,
+            captchaToken,
+          },
+          isCurrent,
+        ),
       ),
     disable: () =>
-      execute(() =>
-        adminApi.settings.turnstile.disable({
-          expectedRevision: query.data!.revision,
-          confirmed: true,
-        }),
+      execute((isCurrent) =>
+        adminApi.settings.turnstile.disable(
+          {
+            expectedRevision: query.data!.revision,
+            confirmed: true,
+          },
+          isCurrent,
+        ),
       ),
   }
 }

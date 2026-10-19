@@ -1,6 +1,7 @@
 // 负责验证会员列表的分页、授权 mutation、query invalidation 和失败反馈。
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { MemoryRouter } from "react-router"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { MembersSection } from "@/components/membership/members-section"
 
@@ -24,7 +25,9 @@ function renderSection() {
     invalidateQueries,
     ...render(
       <QueryClientProvider client={client}>
-        <MembersSection />
+        <MemoryRouter>
+          <MembersSection />
+        </MemoryRouter>
       </QueryClientProvider>,
     ),
   }
@@ -73,12 +76,15 @@ describe("MembersSection", () => {
     fireEvent.change(screen.getByLabelText("操作备注"), { target: { value: "manual" } })
     fireEvent.click(screen.getByRole("button", { name: "确认授予" }))
     await waitFor(() =>
-      expect(api.grant).toHaveBeenCalledWith({
-        userId: "u2",
-        planId: "p1",
-        termsVersion: "v1",
-        remark: "manual",
-      }),
+      expect(api.grant).toHaveBeenCalledWith(
+        {
+          userId: "u2",
+          planId: "p1",
+          termsVersion: "v1",
+          remark: "manual",
+        },
+        expect.any(Function),
+      ),
     )
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["admin-memberships"] })
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["admin-audits"] })

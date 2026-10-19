@@ -1,6 +1,7 @@
 // 负责通过真实权限 hook 与 QueryClient 验证写入的脱敏缓存和权限拒绝。
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, renderHook, waitFor } from "@testing-library/react"
+import { MemoryRouter } from "react-router"
 import type { ReactNode } from "react"
 import { expect, it, vi } from "vitest"
 import { useSecuritySettings } from "./use-security-settings"
@@ -40,7 +41,9 @@ it("does not persist write secrets and refuses malformed responses before cachin
     permissions: ["settings:read", "settings:write"],
   })
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    <QueryClientProvider client={client}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </QueryClientProvider>
   )
   const { result } = renderHook(useSecuritySettings, { wrapper })
   await waitFor(() => expect(result.current.query.data).toEqual(view))

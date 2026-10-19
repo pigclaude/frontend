@@ -25,13 +25,15 @@ export function createAdminApi(c: HttpClient) {
     membership: {
       list: (query: T.ListMembershipsQuery = {}) =>
         c.get<T.ListMembershipsResponse>("/admin/v1/memberships", query),
-      grant: async (body: T.GrantMembershipRequest) =>
-        write<T.MembershipItem>("POST", "/admin/v1/memberships/grant", body),
-      revoke: async (body: T.RevokeMembershipRequest) =>
+      grant: async (body: T.GrantMembershipRequest, owner: () => boolean = () => true) =>
+        write<T.MembershipItem>("POST", "/admin/v1/memberships/grant", body, "header", owner),
+      revoke: async (body: T.RevokeMembershipRequest, owner: () => boolean = () => true) =>
         write<T.MembershipItem>(
           "POST",
           `/admin/v1/memberships/${encodeURIComponent(body.userId)}/revoke`,
           { reason: body.reason },
+          "header",
+          owner,
         ),
     },
     devices: {

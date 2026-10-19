@@ -1,7 +1,7 @@
 // 负责迁入成熟后台的members-section布局和交互，使用本项目真实 API。
 import { GrantDialog } from "./grant-dialog"
 import { useState } from "react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import type { MembershipItem, MembershipStatus } from "@pigclaude/api/admin/types"
 import { Button } from "@/components/ui/button"
@@ -24,6 +24,7 @@ import { formatTime } from "@/lib/format"
 import { TableCard } from "@/components/shell/table-card"
 import { useCursorPager } from "@/hooks/use-cursor-pager"
 import { adminApi } from "@/lib/api"
+import { useAdminOperationOwner } from "@/hooks/use-admin-operation-owner"
 import { toastApiError } from "@/lib/errors"
 import { ReasonDialog } from "./reason-dialog"
 import {
@@ -55,19 +56,32 @@ export function MembersSection() {
       limit: 20,
     }),
   )
-  const revokeMutation = useMutation({
-    mutationFn: ({ userId: targetUserId, reason }: { userId: string; reason: string }) =>
-      adminApi.membership.revoke({ userId: targetUserId, reason }),
-    onSuccess: (membership, variables) => {
+  const revokeOperation = useAdminOperationOwner(
+    JSON.stringify([userId, status, revokeTarget?.userId, revokeTarget?.entitlementVersion]),
+  )
+  async function revoke(reason: string) {
+    if (!revokeTarget) return
+    const owner = revokeOperation.begin()
+    if (!owner) return
+    const targetUserId = revokeTarget.userId
+    try {
+      const membership = await adminApi.membership.revoke(
+        { userId: targetUserId, reason },
+        owner.isCurrent,
+      )
+      if (!owner.isCurrent()) return
       void queryClient.invalidateQueries({ queryKey: ["admin-memberships"] })
       void queryClient.invalidateQueries({ queryKey: ["admin-audits"] })
-      toast.success(`已撤销用户 ${variables.userId} 的会员`)
+      toast.success(`已撤销用户 ${targetUserId} 的会员`)
       pager.reset()
       window.dispatchEvent(new CustomEvent("pigclaude:admin-membership", { detail: membership }))
       setRevokeTarget(null)
-    },
-    onError: toastApiError,
-  })
+    } catch (error) {
+      if (owner.isCurrent()) toastApiError(error)
+    } finally {
+      owner.finish()
+    }
+  }
 
   return (
     <>
@@ -89,11 +103,9 @@ export function MembersSection() {
         title={`撤销用户 ${revokeTarget?.userId ?? ""} 的会员`}
         description={`撤销用户 ${revokeTarget?.userId ?? ""} 的会员后，该用户将无法继续使用会员权限。请填写撤销原因。`}
         confirmLabel="确认"
-        pending={revokeMutation.isPending}
+        pending={revokeOperation.pending}
         onOpenChange={(open) => !open && setRevokeTarget(null)}
-        onConfirm={(reason) =>
-          revokeTarget && revokeMutation.mutate({ userId: revokeTarget.userId, reason })
-        }
+        onConfirm={(reason) => void revoke(reason)}
       />
     </>
   )

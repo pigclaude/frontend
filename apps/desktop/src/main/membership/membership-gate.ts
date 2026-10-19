@@ -31,6 +31,7 @@ export class MembershipGate {
   #revision = 0
   #generation = 0
   #disposed = false
+  #locallySignedOut = false
   #mutation: Promise<void> = Promise.resolve()
 
   /** 创建只依赖 API、时钟和安全仓库的会员门禁。 */
@@ -49,6 +50,7 @@ export class MembershipGate {
       if (mutation === this.#mutation) break
     }
     if (this.#disposed) return this.view()
+    if (this.#locallySignedOut) return this.view()
     const generation = ++this.#generation
     let raw: string | null
     try {
@@ -117,6 +119,27 @@ export class MembershipGate {
     })
   }
 
+  /** 只退出本机 profile；等待旧写入后清理全部授权，失败时阻止检查恢复旧会话。 */
+  signOut(secretWrites: Promise<void> = Promise.resolve()): Promise<MembershipView> {
+    this.#locallySignedOut = true
+    return this.mutate(async () => {
+      if (this.#disposed) throw new Error("会员服务已关闭")
+      try {
+        await secretWrites
+        if (!this.#vault.deletePrefix) throw new Error("安全仓库不支持完整清理授权")
+        await this.#vault.deletePrefix("authorization:")
+        await this.#vault.delete("membership:session")
+        this.#record = null
+        this.#locallySignedOut = true
+        return this.publish(signedOutView())
+      } catch (error: unknown) {
+        this.#locallySignedOut = true
+        this.publish(this.withState(initialView(), "configuration_error", "LOCAL_SIGN_OUT_FAILED"))
+        throw error
+      }
+    })
+  }
+
   /** 授权交换完成后写入仅供主进程恢复使用的设备元数据。 */
   async acceptAuthorization(input: {
     deviceId: string
@@ -139,7 +162,10 @@ export class MembershipGate {
     await this.mutate(async () => {
       if (this.#disposed) return
       await this.#vault.set("membership:session", JSON.stringify(record))
-      if (!this.#disposed) this.#record = record
+      if (!this.#disposed) {
+        this.#record = record
+        this.#locallySignedOut = false
+      }
     })
   }
 

@@ -51,10 +51,10 @@ export type AuthorizationServiceOptions = {
 
 /** 创建授权会话失败时携带的可见状态。 */
 export class AuthorizationStartError extends Error {
-  readonly status: "proxy-mismatch"
+  readonly status: "proxy-mismatch" | "cancelled"
 
   /** 创建带有业务状态的授权启动错误。 */
-  constructor(status: "proxy-mismatch", message: string) {
+  constructor(status: "proxy-mismatch" | "cancelled", message: string) {
     super(message)
     this.name = "AuthorizationStartError"
     this.status = status
@@ -72,6 +72,10 @@ export class AuthorizationService {
   readonly #onCompleted: NonNullable<AuthorizationServiceOptions["onCompleted"]>
   readonly #now: () => number
   #activeSession: AuthorizationSession | null = null
+  #pendingSession: AuthorizationSession | null = null
+  #generation = 0
+  #suspended = false
+  #localWrites: Promise<void> = Promise.resolve()
 
   /** 创建绑定授权服务 origin 和秘密仓库的会话服务。 */
   constructor(options: AuthorizationServiceOptions) {
@@ -90,6 +94,7 @@ export class AuthorizationService {
     request: AuthorizationRequest,
     redirectUri: string,
   ): Promise<{ sessionId: string; authorizationUrl: string; expiresAt: number }> {
+    if (this.#suspended) throw new AuthorizationStartError("cancelled", "本机授权已暂停")
     if (
       request.purpose === "claude-account" &&
       (!request.bridgeExit || request.bridgeExit !== request.daemonExit)
@@ -97,6 +102,9 @@ export class AuthorizationService {
       throw new AuthorizationStartError("proxy-mismatch", "登录桥和 daemon 的出口不一致")
     }
     const session = createAuthorizationSession({ request, redirectUri, now: this.#now() })
+    const generation = ++this.#generation
+    this.#activeSession = null
+    this.#pendingSession = session
     if (this.#startAuthorization) {
       const started = await this.#startAuthorization({
         deviceId: this.#deviceId(),
@@ -109,6 +117,9 @@ export class AuthorizationService {
         purpose: request.purpose,
         mode: request.mode,
       })
+      if (!this.isCurrent(generation)) {
+        throw new AuthorizationStartError("cancelled", "授权会话已取消")
+      }
       session.flowId = started.flowId
       this.#activeSession = session
       return {
@@ -129,6 +140,7 @@ export class AuthorizationService {
   async handleCallback(url: string): Promise<AuthorizationStateEvent> {
     const session = this.#activeSession
     if (!session) return unknownSessionEvent("state-mismatch", "没有等待中的授权会话")
+    const generation = this.#generation
 
     let parsed: URL
     try {
@@ -157,15 +169,26 @@ export class AuthorizationService {
         clientId: "pigclaude-desktop",
         session,
       })
+      if (!this.isCurrent(generation)) return this.failureEvent(session, "cancelled")
       const secret = {
         ...(token.accessToken ? { accessToken: token.accessToken } : {}),
         ...(token.refreshToken ? { refreshToken: token.refreshToken } : {}),
         ...(token.credential ? { credential: token.credential } : {}),
         expiresAt: token.expiresAt,
       }
-      if (Object.keys(secret).length > 1)
-        await this.#vault.set(secretKey(token), JSON.stringify(secret))
+      if (Object.keys(secret).length > 1) {
+        const writing = this.#localWrites.then(async () => {
+          if (this.isCurrent(generation)) {
+            await this.#vault.set(secretKey(token), JSON.stringify(secret))
+          }
+        })
+        this.#localWrites = writing.catch(() => undefined)
+        await writing
+      }
+      if (!this.isCurrent(generation)) return this.failureEvent(session, "cancelled")
       await this.#onCompleted({ session, token })
+      if (!this.isCurrent(generation)) return this.failureEvent(session, "cancelled")
+      this.#pendingSession = null
       return {
         sessionId: session.sessionId,
         purpose: session.request.purpose,
@@ -176,17 +199,20 @@ export class AuthorizationService {
         expiresAt: token.expiresAt,
       }
     } catch (error: unknown) {
+      if (!this.isCurrent(generation)) return this.failureEvent(session, "cancelled")
       return this.failureEvent(session, "exchange-error", errorMessage(error))
     }
   }
 
   /** 取消当前会话并返回取消状态。 */
   async cancel(sessionId: string): Promise<AuthorizationStateEvent> {
-    const session = this.#activeSession
+    const session = this.#pendingSession
     if (!session || session.sessionId !== sessionId) {
       return unknownSessionEvent("cancelled", "授权会话已结束")
     }
+    this.#generation++
     this.#activeSession = null
+    this.#pendingSession = null
     return {
       sessionId: session.sessionId,
       purpose: session.request.purpose,
@@ -198,6 +224,24 @@ export class AuthorizationService {
   /** 返回当前待处理会话，供回调和单实例唤醒使用。 */
   getActiveSession(): AuthorizationSession | null {
     return this.#activeSession
+  }
+
+  /** 同步失效开始、交换和回调，只等待已进入本机仓库的写入完成。 */
+  suspend(): Promise<void> {
+    this.#generation++
+    this.#suspended = true
+    this.#activeSession = null
+    this.#pendingSession = null
+    return this.#localWrites
+  }
+
+  /** 本机清理成功后允许创建全新授权，不恢复已取消的旧会话。 */
+  resume(): void {
+    this.#suspended = false
+  }
+
+  private isCurrent(generation: number): boolean {
+    return !this.#suspended && generation === this.#generation
   }
 
   private failureEvent(

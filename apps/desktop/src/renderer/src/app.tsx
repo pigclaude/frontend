@@ -1,5 +1,5 @@
 // 负责把设计稿里的页面串成可切换的桌面界面，并承接主进程授权事件。
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { AuthorizationStateEvent } from "../../main/authorization/types"
 import { AuthorizeScreen } from "./screens/authorize-screen"
@@ -31,16 +31,25 @@ export function DesktopApp() {
   const [history, setHistory] = useState(() => createScreenHistory(devView?.screen ?? "chat"))
   const screen = currentScreen(history)
   const appearance = useAppearance()
+  const [signOutState, setSignOutState] = useState({ pending: false, error: null as string | null })
+  const signOutInFlight = useRef(false)
+  const authorizationGeneration = useRef(0)
+  const authorizationSession = useRef<string | null>(null)
+  const acceptAuthorizationEvents = useRef(true)
   const browserPreview = devView !== null && !window.pigclaude?.membership
   const canUseDesktop =
-    browserPreview || membership.state === "active" || membership.state === "offline_grace"
+    !signOutState.pending &&
+    signOutState.error === null &&
+    (browserPreview || membership.state === "active" || membership.state === "offline_grace")
 
   useEffect(() => {
     const bridge = window.pigclaude?.membership
     if (!bridge) return
-    const unsubscribe = bridge.subscribe((view) => setMembership(view))
+    const unsubscribe = bridge.subscribe((view) =>
+      setMembership((current) => newerMembershipView(current, view)),
+    )
     void bridge.inspect().then((view) => {
-      if (view) setMembership(view)
+      if (view) setMembership((current) => newerMembershipView(current, view))
     })
     return unsubscribe
   }, [])
@@ -62,6 +71,11 @@ export function DesktopApp() {
     const subscribeAuthorization =
       window.pigclaude?.authorization?.subscribe ?? window.pigclaude?.onAuthorizationState
     const unsubscribe = subscribeAuthorization?.((event) => {
+      if (!acceptAuthorizationEvents.current) return
+      if (event.status === "browser-open") {
+        if (authorizationSession.current && authorizationSession.current !== event.sessionId) return
+        authorizationSession.current = event.sessionId
+      } else if (!event.sessionId || authorizationSession.current !== event.sessionId) return
       if (event.purpose === "pigclaude-login") {
         const intent: LoginIntent = event.mode === "register" ? "register" : "login"
         const authorizationUrl = event.authorizationUrl
@@ -132,6 +146,10 @@ export function DesktopApp() {
   }, [])
 
   async function startLoginAuthorization(intent: LoginIntent): Promise<void> {
+    if (signOutState.pending || signOutState.error) return
+    const generation = ++authorizationGeneration.current
+    authorizationSession.current = null
+    acceptAuthorizationEvents.current = true
     setLoginState((current) => reduceLoginState(current, { type: "start-request", intent }))
     const bridge = window.pigclaude
     const startAuthorization = bridge?.authorization?.start ?? bridge?.startAuthorization
@@ -143,12 +161,14 @@ export function DesktopApp() {
     }
     try {
       const result = await startAuthorization({ purpose: "pigclaude-login", mode: intent })
+      if (generation !== authorizationGeneration.current) return
       if (!result.ok) {
         setLoginState((current) =>
           reduceLoginState(current, { type: "failed", error: result.error }),
         )
         return
       }
+      authorizationSession.current = result.sessionId
       setLoginState((current) =>
         reduceLoginState(current, {
           type: "started",
@@ -159,6 +179,7 @@ export function DesktopApp() {
         }),
       )
     } catch (error: unknown) {
+      if (generation !== authorizationGeneration.current) return
       setLoginState((current) =>
         reduceLoginState(current, { type: "failed", error: errorMessage(error) }),
       )
@@ -166,6 +187,9 @@ export function DesktopApp() {
   }
 
   async function cancelLoginAuthorization(): Promise<void> {
+    authorizationGeneration.current++
+    authorizationSession.current = null
+    acceptAuthorizationEvents.current = false
     const sessionId = loginState.sessionId
     const cancelAuthorization =
       window.pigclaude?.authorization?.cancel ?? window.pigclaude?.cancelAuthorization
@@ -180,6 +204,9 @@ export function DesktopApp() {
     bridgeExit: string
     daemonExit: string
   }): Promise<void> {
+    const generation = ++authorizationGeneration.current
+    authorizationSession.current = null
+    acceptAuthorizationEvents.current = true
     const bridge = window.pigclaude
     const startAuthorization = bridge?.authorization?.start ?? bridge?.startAuthorization
     if (!startAuthorization) {
@@ -198,12 +225,14 @@ export function DesktopApp() {
         bridgeExit: input.bridgeExit,
         daemonExit: input.daemonExit,
       })
+      if (generation !== authorizationGeneration.current) return
       if (!result.ok) {
         setAuthorizationState((current) =>
           reduceAuthorizationState(current, { type: "failed", error: result.error }),
         )
         return
       }
+      authorizationSession.current = result.sessionId
       setAuthorizationState((current) =>
         reduceAuthorizationState(current, {
           type: "start",
@@ -212,6 +241,7 @@ export function DesktopApp() {
         }),
       )
     } catch (error: unknown) {
+      if (generation !== authorizationGeneration.current) return
       setAuthorizationState((current) =>
         reduceAuthorizationState(current, { type: "failed", error: errorMessage(error) }),
       )
@@ -219,6 +249,9 @@ export function DesktopApp() {
   }
 
   async function cancelClaudeAuthorization(): Promise<void> {
+    authorizationGeneration.current++
+    authorizationSession.current = null
+    acceptAuthorizationEvents.current = false
     const sessionId = authorizationState.sessionId
     const cancelAuthorization =
       window.pigclaude?.authorization?.cancel ?? window.pigclaude?.cancelAuthorization
@@ -229,16 +262,42 @@ export function DesktopApp() {
     )
   }
 
-  function logout(): void {
+  async function logout(): Promise<void> {
+    if (signOutInFlight.current) return
+    signOutInFlight.current = true
+    authorizationGeneration.current++
+    authorizationSession.current = null
+    acceptAuthorizationEvents.current = false
+    setSignOutState({ pending: true, error: null })
     setLoginState(createLoginState())
+    setAuthorizationState(createAuthorizationState())
     setHistory(createScreenHistory("login"))
+    try {
+      if (!browserPreview) {
+        const signOut = window.pigclaude?.membership?.signOut
+        if (!signOut) throw new Error("桌面退出服务不可用")
+        const view = await signOut()
+        if (view.state !== "signed_out") throw new Error("本机授权材料未完成清理")
+        setMembership((current) => newerMembershipView(current, view))
+      }
+      setSignOutState({ pending: false, error: null })
+    } catch (error: unknown) {
+      setSignOutState({ pending: false, error: `退出登录失败：${errorMessage(error)}` })
+    } finally {
+      signOutInFlight.current = false
+    }
   }
 
   if (!canUseDesktop || screen === "login") {
     return (
       <LoginScreen
         state={loginState}
-        gateMessage={membershipGateMessage(membership)}
+        gateMessage={
+          signOutState.error ??
+          (signOutState.pending ? "正在退出登录…" : membershipGateMessage(membership))
+        }
+        signingOut={signOutState.pending}
+        onRetrySignOut={signOutState.error ? () => void logout() : undefined}
         onAuthorize={(intent) => void startLoginAuthorization(intent)}
         onCancel={() => void cancelLoginAuthorization()}
         onReset={() => setLoginState((current) => reduceLoginState(current, { type: "reset" }))}
@@ -276,13 +335,17 @@ export function DesktopApp() {
             setAuthorizationState(createAuthorizationState())
             setScreen("authorize")
           }}
-          onLogout={logout}
+          onLogout={() => void logout()}
           theme={appearance.resolved}
           appearance={appearance}
         />
       </ToastProvider>
     </TooltipProvider>
   )
+}
+
+function newerMembershipView(current: MembershipView, incoming: MembershipView): MembershipView {
+  return incoming.revision >= current.revision ? incoming : current
 }
 
 function isAuthorizationFailure(event: AuthorizationStateEvent): boolean {

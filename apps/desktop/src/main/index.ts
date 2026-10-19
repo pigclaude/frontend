@@ -125,6 +125,11 @@ function registerIpcHandlers(): void {
   ipcMain.handle("pigclaude:membership-subscribe", async () => {
     return desktopComposition?.membershipGate.view() ?? null
   })
+  ipcMain.handle("pigclaude:membership-sign-out", async () => {
+    if (!desktopComposition) throw new Error("桌面授权服务尚未准备好")
+    pendingCallbackUrls = []
+    return desktopComposition.signOut()
+  })
 
   ipcMain.handle("pigclaude:authorization-start", async (event, value: unknown) => {
     const request = readAuthorizationRequest(value)
@@ -139,6 +144,9 @@ function registerIpcHandlers(): void {
     try {
       const redirectUri = app.isPackaged ? packagedRedirectUri : callbackServer.redirectUri
       const started = await authorizationService.start(request, redirectUri)
+      if (authorizationService.getActiveSession()?.sessionId !== started.sessionId) {
+        throw new AuthorizationStartError("cancelled", "授权会话已取消")
+      }
       const browserEvent: AuthorizationStateEvent = {
         sessionId: started.sessionId,
         purpose: request.purpose,

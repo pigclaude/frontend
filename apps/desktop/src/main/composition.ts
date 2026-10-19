@@ -1,5 +1,6 @@
 // 负责在 Electron 主进程组合 Rust API、会员 gate 和浏览器授权，并按逆序释放资源。
 import type { SecretVault } from "./secret-vault"
+import type { MembershipView } from "@pigclaude/contracts/membership"
 import { AuthorizationService, type AuthorizationExchange } from "./authorization/service"
 import type { AuthorizationToken } from "./authorization/types"
 import {
@@ -26,6 +27,8 @@ export type DesktopComposition = {
   api: PigclaudeApi
   membershipGate: MembershipGate
   authorizationService: AuthorizationService
+  /** 退出本机 profile，不撤销服务端设备或会员。 */
+  signOut: () => Promise<MembershipView>
   dispose: () => Promise<void>
 }
 
@@ -70,13 +73,30 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
     },
   })
   let disposed = false
+  let signingOut: Promise<MembershipView> | null = null
   return {
     api,
     membershipGate,
     authorizationService,
+    signOut: () => {
+      if (disposed) return Promise.reject(new Error("桌面授权服务已关闭"))
+      if (signingOut) return signingOut
+      const writes = authorizationService.suspend()
+      const pending = membershipGate.signOut(writes).then((view) => {
+        if (!disposed) authorizationService.resume()
+        return view
+      })
+      signingOut = pending
+      const finished = () => {
+        signingOut = null
+      }
+      void pending.then(finished, finished)
+      return pending
+    },
     async dispose(): Promise<void> {
       if (disposed) return
       disposed = true
+      await authorizationService.suspend()
       unsubscribe()
       membershipGate.dispose()
     },

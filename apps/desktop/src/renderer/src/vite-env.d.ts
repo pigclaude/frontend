@@ -29,6 +29,7 @@ interface PigclaudeBridge {
   }
   membership?: {
     inspect: () => Promise<import("@pigclaude/contracts/membership").MembershipView | null>
+    signOut: () => Promise<import("@pigclaude/contracts/membership").MembershipView>
     subscribe: (
       listener: (view: import("@pigclaude/contracts/membership").MembershipView) => void,
     ) => () => void

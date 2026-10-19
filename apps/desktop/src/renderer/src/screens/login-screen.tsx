@@ -9,6 +9,8 @@ import type { LoginIntent, LoginState } from "../models/login-model"
 export type LoginScreenProps = {
   state: LoginState
   gateMessage?: string
+  signingOut?: boolean
+  onRetrySignOut?: () => void
   onAuthorize: (intent: LoginIntent) => void
   onCancel: () => void
   onReset: () => void
@@ -19,6 +21,8 @@ export type LoginScreenProps = {
 export function LoginScreen({
   state,
   gateMessage,
+  signingOut,
+  onRetrySignOut,
   onAuthorize,
   onCancel,
   onReset,
@@ -121,10 +125,21 @@ export function LoginScreen({
         <p className="sub">使用系统浏览器授权，桌面端不会保存你的密码。</p>
         {gateMessage ? <p className="muted login-note">{gateMessage}</p> : null}
         <div className="col login-form">
-          <Button variant="primary" size="block" onClick={() => onAuthorize("login")}>
+          {onRetrySignOut ? <Button onClick={onRetrySignOut}>重试退出</Button> : null}
+          <Button
+            variant="primary"
+            size="block"
+            disabled={signingOut || Boolean(onRetrySignOut)}
+            onClick={() => onAuthorize("login")}
+          >
             登录
           </Button>
-          <Button variant="secondary" size="block" onClick={() => onAuthorize("register")}>
+          <Button
+            variant="secondary"
+            size="block"
+            disabled={signingOut || Boolean(onRetrySignOut)}
+            onClick={() => onAuthorize("register")}
+          >
             注册
           </Button>
           <p className="muted login-note">登录和注册都会在浏览器中完成，不会在这里输入凭据。</p>

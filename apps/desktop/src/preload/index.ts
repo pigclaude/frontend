@@ -24,6 +24,7 @@ export type PigclaudeBridge = {
   }
   membership: {
     inspect: () => Promise<MembershipView | null>
+    signOut: () => Promise<MembershipView>
     subscribe: (listener: (view: MembershipView) => void) => () => void
   }
 }
@@ -45,6 +46,7 @@ const bridge: PigclaudeBridge = {
   },
   membership: {
     inspect: () => ipcRenderer.invoke("pigclaude:membership-inspect"),
+    signOut: () => ipcRenderer.invoke("pigclaude:membership-sign-out"),
     subscribe: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, value: MembershipView) => listener(value)
       ipcRenderer.on("pigclaude:membership-state", handler)

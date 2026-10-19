@@ -30,7 +30,8 @@ export class MembershipGate {
   #record: OAuthDesktopSession | null = null
   #view: MembershipView = initialView()
   #revision = 0
-  #generation = 0
+  #readGeneration = 0
+  #sessionGeneration = 0
   #disposed = false
   #locallySignedOut = false
   #mutation: Promise<void> = Promise.resolve()
@@ -52,20 +53,21 @@ export class MembershipGate {
     }
     if (this.#disposed) return this.view()
     if (this.#locallySignedOut) return this.view()
-    const generation = ++this.#generation
+    const generation = ++this.#readGeneration
     let raw: string | null
     try {
       raw = await this.#vault.get("membership:session")
     } catch {
-      if (!this.isCurrent(generation)) return this.view()
+      if (!this.isCurrentRead(generation)) return this.view()
       return this.publish(
         this.withState(initialView(), "configuration_error", "SAFE_STORAGE_UNAVAILABLE"),
       )
     }
-    if (!this.isCurrent(generation)) return this.view()
+    if (!this.isCurrentRead(generation)) return this.view()
     const record = parseOAuthDesktopSession(raw)
-    this.#record = record
+    this.adoptRecord(record)
     if (!record) return this.publish(signedOutView())
+    const owner = this.#sessionGeneration
     try {
       const remote = await this.#api.inspectMembership(
         {
@@ -74,7 +76,7 @@ export class MembershipGate {
         },
         record.accessToken,
       )
-      if (!this.isCurrent(generation)) return this.view()
+      if (!this.isCurrentRead(generation) || !this.isCurrentSession(owner)) return this.view()
       if (
         remote.bindingEpoch !== null &&
         record.bindingEpoch !== "" &&
@@ -84,7 +86,7 @@ export class MembershipGate {
       }
       return this.publish(this.normalizeRemote(remote))
     } catch (error: unknown) {
-      if (!this.isCurrent(generation)) return this.view()
+      if (!this.isCurrentRead(generation) || !this.isCurrentSession(owner)) return this.view()
       const errorCode = errorCodeOf(error, "SERVER_UNAVAILABLE")
       const state =
         errorCode === "DEVICE_REVOKED" ||
@@ -97,21 +99,7 @@ export class MembershipGate {
               ? "verification_required"
               : "error"
       if (errorCode === "ACCOUNT_BANNED" || errorCode === "DEVICE_REVOKED") {
-        const localGeneration = this.#generation + 1
-        return this.mutate(async () => {
-          if (!this.isCurrent(localGeneration) || this.#locallySignedOut || this.#record !== record)
-            return this.view()
-          await this.#deleteLocalSecrets(record.userId)
-          if (!this.isCurrent(localGeneration)) return this.view()
-          this.#record = null
-          return this.publish(
-            this.withState(
-              initialView(),
-              errorCode === "DEVICE_REVOKED" ? "device_revoked" : "verification_required",
-              errorCode,
-            ),
-          )
-        })
+        return this.clearSession(owner, record, errorCode)
       }
       return this.publish(this.withState(this.#view, state, errorCode))
     }
@@ -128,33 +116,42 @@ export class MembershipGate {
     return { ...this.#view, account: this.#view.account ? { ...this.#view.account } : null }
   }
 
-  /** 捕获原 session/token 撤销关系，远端等待不占用本机写队列。 */
+  /** 捕获原 session/token 撤销关系，普通同会话检查不取消操作，远端等待不占本机队列。 */
   async revoke(): Promise<MembershipView> {
-    const generation = ++this.#generation
+    const initialOwner = this.#sessionGeneration
+    const initialRecord = this.#record
+    // 只等待本机写队列；等待期间换凭据不能把原可见操作重绑给新 grant。
+    for (;;) {
+      const mutation = this.#mutation
+      await mutation
+      if (!this.isCurrentSession(initialOwner) || this.#locallySignedOut) return this.view()
+      if (mutation === this.#mutation) break
+    }
+    if (initialRecord && !sameSession(initialRecord, this.#record)) return this.view()
     const record =
       this.#record ?? parseOAuthDesktopSession(await this.#vault.get("membership:session"))
-    if (!this.isCurrent(generation) || this.#locallySignedOut) return this.view()
+    if (!this.isCurrentSession(initialOwner) || this.#locallySignedOut) return this.view()
+    this.adoptRecord(record)
+    const owner = this.#sessionGeneration
     if (record) {
       try {
         await this.#api.revokeDeviceBinding(record.accessToken)
       } catch (error: unknown) {
-        if (!this.isCurrent(generation)) return this.view()
+        if (!this.isCurrentSession(owner)) return this.view()
+        const code = errorCodeOf(error, "SERVER_UNAVAILABLE")
+        if (code === "ACCOUNT_BANNED" || code === "DEVICE_REVOKED") {
+          return this.clearSession(owner, record, code)
+        }
         throw error
       }
     }
-    if (!this.isCurrent(generation)) return this.view()
-    const localGeneration = this.#generation + 1
-    return this.mutate(async () => {
-      if (!this.isCurrent(localGeneration)) return this.view()
-      if (record) await this.#deleteLocalSecrets(record.userId)
-      if (!this.isCurrent(localGeneration)) return this.view()
-      this.#record = null
-      return this.publish(signedOutView())
-    })
+    if (!this.isCurrentSession(owner)) return this.view()
+    return this.clearSession(owner, record)
   }
 
   /** 只退出本机 profile；等待旧写入后清理全部授权，失败时阻止检查恢复旧会话。 */
   signOut(secretWrites: Promise<void> = Promise.resolve()): Promise<MembershipView> {
+    this.#sessionGeneration++
     this.#locallySignedOut = true
     return this.mutate(async () => {
       if (this.#disposed) throw new Error("会员服务已关闭")
@@ -181,10 +178,11 @@ export class MembershipGate {
   ): Promise<void> {
     const record = parseOAuthDesktopSession(JSON.stringify(input))
     if (!record) throw new Error("INVALID_OAUTH_SESSION")
+    const owner = ++this.#sessionGeneration
     await this.mutate(async () => {
-      if (this.#disposed || !isCurrent()) return
+      if (!this.isCurrentSession(owner) || !isCurrent()) return
       await this.#vault.set("membership:session", JSON.stringify(record))
-      if (!this.#disposed && isCurrent()) {
+      if (this.isCurrentSession(owner) && isCurrent()) {
         this.#record = record
         this.#locallySignedOut = false
       }
@@ -194,21 +192,55 @@ export class MembershipGate {
   /** 释放 gate 订阅，供 composition 的 ordered cleanup 使用。 */
   dispose(): void {
     this.#disposed = true
-    this.#generation++
+    this.#sessionGeneration++
+    this.#readGeneration++
     this.#listeners.clear()
   }
 
-  private isCurrent(generation: number): boolean {
-    return !this.#disposed && this.#generation === generation
+  private isCurrentRead(generation: number): boolean {
+    return !this.#disposed && this.#readGeneration === generation
+  }
+
+  private isCurrentSession(owner: number): boolean {
+    return !this.#disposed && this.#sessionGeneration === owner
+  }
+
+  private adoptRecord(record: OAuthDesktopSession | null): void {
+    // 初次加载不替换已有 owner；同凭据重新 parse 不代表换登录。
+    if (this.#record && !sameSession(this.#record, record)) this.#sessionGeneration++
+    this.#record = record
+  }
+
+  private clearSession(
+    owner: number,
+    record: OAuthDesktopSession | null,
+    terminal?: "ACCOUNT_BANNED" | "DEVICE_REVOKED",
+  ): Promise<MembershipView> {
+    return this.mutate(async () => {
+      if (!this.isCurrentSession(owner)) return this.view()
+      if (record) await this.#deleteLocalSecrets(record.userId)
+      if (!this.isCurrentSession(owner)) return this.view()
+      this.#record = null
+      this.#sessionGeneration++
+      return this.publish(
+        terminal
+          ? this.withState(
+              initialView(),
+              terminal === "DEVICE_REVOKED" ? "device_revoked" : "verification_required",
+              terminal,
+            )
+          : signedOutView(),
+      )
+    })
   }
 
   private mutate<T>(operation: () => Promise<T>): Promise<T> {
-    this.#generation++
+    this.#readGeneration++
     const pending = this.#mutation.then(async () => {
       try {
         return await operation()
       } finally {
-        this.#generation++
+        this.#readGeneration++
       }
     })
     this.#mutation = pending.then(
@@ -279,6 +311,21 @@ function initialView(): MembershipView {
 
 function signedOutView(): MembershipView {
   return { ...initialView(), startupPhase: "settled", state: "signed_out" }
+}
+
+function sameSession(left: OAuthDesktopSession, right: OAuthDesktopSession | null): boolean {
+  return (
+    right !== null &&
+    left.userId === right.userId &&
+    left.deviceId === right.deviceId &&
+    left.bindingEpoch === right.bindingEpoch &&
+    left.authVersion === right.authVersion &&
+    left.accessToken === right.accessToken &&
+    left.refreshToken === right.refreshToken &&
+    left.scope === right.scope &&
+    left.accessTokenExpiresAt === right.accessTokenExpiresAt &&
+    left.refreshTokenExpiresAt === right.refreshTokenExpiresAt
+  )
 }
 
 function errorCodeOf(error: unknown, fallback: string): string {

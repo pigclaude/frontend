@@ -30,6 +30,7 @@ if (process.argv[2] === "--child") {
     },
   )
   record({ role, pid: process.pid, descendant: grandchild.pid })
+  if (role === "browser") process.send({ ready: true })
   const started = () => {
     record({ started: role })
     if (
@@ -85,15 +86,17 @@ if (process.argv[2] === "--child") {
   const original = childProcess.spawn
   childProcess.spawn = (command, args, options) => {
     const role =
-      command === "cargo"
-        ? "build"
-        : command.endsWith("oauth-live-fixture")
-          ? "fixture"
-          : args.includes("playwright")
-            ? "runner"
-            : args.includes("next")
-              ? "home"
-              : "admin"
+      command === "owned-browser-fixture"
+        ? "browser"
+        : command === "cargo"
+          ? "build"
+          : command.endsWith("oauth-live-fixture")
+            ? "fixture"
+            : args.includes("playwright")
+              ? "runner"
+              : args.includes("next")
+                ? "home"
+                : "admin"
     if (role === "admin" && process.env.OAUTH_PROCESS_STAGE === "admin-fail")
       throw new Error("OWNED_START_FAILURE")
     const spawned = original(process.execPath, [file, "--child", role], {
@@ -110,6 +113,29 @@ if (process.argv[2] === "--child") {
     if (spawned.stderr)
       spawned.stderr.on("data", (chunk) => record({ diagnostic: chunk.toString() }))
     return spawned
+  }
+  const { chromium } = await import("@playwright/test")
+  chromium.launchServer = async (options) => {
+    if (
+      options.handleSIGINT !== false ||
+      options.handleSIGTERM !== false ||
+      options.handleSIGHUP !== false
+    )
+      throw new Error("OWNED_BROWSER_SIGNAL_OVERLAP")
+    const child = childProcess.spawn("owned-browser-fixture", [], {
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe", "ipc"],
+      env: process.env,
+    })
+    await new Promise((done, reject) => {
+      child.once("exit", () => reject(new Error("OWNED_BROWSER_EXIT")))
+      if (process.env.OAUTH_PROCESS_STAGE !== "browser-start") child.once("message", done)
+    })
+    return {
+      process: () => child,
+      wsEndpoint: () => "ws://127.0.0.1:12345/OWNED_WS_SECRET_SENTINEL",
+      close: async () => undefined,
+    }
   }
   globalThis.fetch = async (_url, options) => {
     if (process.env.OAUTH_PROCESS_STAGE === "web") {

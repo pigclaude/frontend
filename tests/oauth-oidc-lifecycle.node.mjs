@@ -98,15 +98,17 @@ async function runCase(entry, stage, signal, expected) {
       await until(async () => {
         const entries = await rows()
         const role =
-          stage === "cleanup" || ["late-failure", "late-zero"].includes(stage)
-            ? "fixture"
-            : ["late-web-failure", "late-stubborn"].includes(stage)
-              ? "home"
-              : stage === "web" || stage === "ready"
-                ? "admin"
-                : ["stubborn", "exited-stubborn"].includes(stage)
-                  ? "runner"
-                  : stage
+          stage === "browser-start"
+            ? "browser"
+            : stage === "cleanup" || ["late-failure", "late-zero"].includes(stage)
+              ? "fixture"
+              : ["late-web-failure", "late-stubborn"].includes(stage)
+                ? "home"
+                : stage === "web" || stage === "ready"
+                  ? "admin"
+                  : ["stubborn", "exited-stubborn"].includes(stage)
+                    ? "runner"
+                    : stage
         return (
           (stage === "cleanup"
             ? entries.some((row) => row.stopped === "fixture")
@@ -244,3 +246,8 @@ for (const entry of ["oauth-oidc-e2e.mjs", "oauth-oidc-local-launcher.mjs"]) {
 test("runner组收尾期间web意外退出仍失败而非返回0", { timeout: 20000 }, () =>
   runCase("oauth-oidc-e2e.mjs", "late-stubborn", undefined, 1),
 )
+
+for (const signal of ["SIGINT", "SIGTERM"])
+  test(`e2e browser启动中${signal}仍唯一owner收尾`, { timeout: 20000 }, () =>
+    runCase("oauth-oidc-e2e.mjs", "browser-start", signal),
+  )

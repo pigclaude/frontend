@@ -1,5 +1,6 @@
 // 负责真实Next/Vite代理、浏览器Cookie和中央OIDC表单的本地全链验收；上游仅为HTTP协议mock。
-import { test, expect, type Page } from "@playwright/test"
+import { expect, type Page } from "@playwright/test"
+import { test } from "./oauth-oidc-owned-browser"
 import { authorizeNative } from "./oauth-oidc-native-client"
 
 const home = required("OAUTH_TEST_HOME")

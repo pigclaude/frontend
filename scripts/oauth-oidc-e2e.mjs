@@ -1,4 +1,5 @@
-// 负责以单个owned launcher运行现有Playwright配置，并始终回收测试专属进程。
+// 负责受信OAuth验收：顶层owner持有browser，runner/worker只连接并回收所有已登记资源。
+import { startOwnedOAuthBrowser } from "./oauth-oidc-browser-owner.mjs"
 import { createOAuthLifecycle } from "./oauth-oidc-process-lifecycle.mjs"
 import { startOAuthLauncher, validateOAuthInfrastructure } from "./oauth-oidc-local-launcher.mjs"
 const lifecycle = createOAuthLifecycle()
@@ -23,6 +24,7 @@ try {
     throw new Error("OAUTH_TEST_BUILD_FAILED")
   }
   const launcher = await startOAuthLauncher(process.env, lifecycle)
+  const browser = await startOwnedOAuthBrowser(lifecycle)
   console.log(
     JSON.stringify({
       ready: true,
@@ -41,6 +43,7 @@ try {
         HOME: process.env.HOME,
         TMPDIR: process.env.TMPDIR,
         NO_COLOR: "1",
+        OAUTH_TEST_BROWSER_WS: browser.endpoint,
         OAUTH_TEST_HOME: launcher.home,
         OAUTH_TEST_ADMIN: launcher.admin,
         OAUTH_TEST_CONTROL: launcher.control,

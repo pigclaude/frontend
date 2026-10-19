@@ -1,4 +1,4 @@
-// 负责两个OAuth测试入口在启动前建立幂等取消，并按runner/web/fixture顺序回收自有进程组。
+// 负责受信OAuth测试pipeline的幂等取消；只回收同步登记的runner/browser/web/fixture进程组。
 import { spawn } from "node:child_process"
 const delay = (ms) => new Promise((done) => setTimeout(done, ms))
 function groupExists(child) {
@@ -61,6 +61,8 @@ export function createOAuthLifecycle() {
   let cancelled
   let fail
   let unexpectedExit = false
+  let browserReady = false
+  let supervisionFailed = false
   const failure = new Promise((done) => {
     fail = done
   })
@@ -80,23 +82,32 @@ export function createOAuthLifecycle() {
     /** 同步登记独占process group，保证部分启动也进入收尾。 */
     spawn(command, args, options, role = "web") {
       lifecycle.throwIfCancelled()
-      const child = spawn(command, args, { ...options, detached: true })
-      child.stdin?.on("error", () => undefined)
-      const exited = new Promise((done) => {
-        const finish = (result) => {
-          if (["web", "fixture"].includes(role) && !controller.signal.aborted) {
-            unexpectedExit = true
-            fail()
-          }
-          done(result)
-        }
-        child.once("error", () => finish({ code: 1 }))
-        child.once("exit", (code, signal) => finish({ code: code ?? 1, signal }))
-      })
-      // 错误和退出监听先于任何await，部分启动也属于本次owner。
-      entries.push({ child, exited, fixture: role === "fixture", runner: role === "runner" })
-      return child
+      if (role === "runner" && !browserReady) {
+        supervisionFailed = true
+        throw new Error("OAUTH_TEST_BROWSER_SUPERVISION_REQUIRED")
+      }
+      return register(spawn(command, args, { ...options, detached: true }), role)
     },
+    /** 只供顶层独占launch捕获使用；登记后代库实际spawn的browser，不按PPID补扫。 */
+    registerBrowserProcess(child) {
+      lifecycle.throwIfCancelled()
+      return register(child, "browser")
+    },
+    /** 核对公开BrowserServer.process与同步登记对象一致后，允许受信runner连接。 */
+    confirmBrowserProcess(child, finalize) {
+      const entry = entries.find((value) => value.child === child && value.browser)
+      if (!entry || !child.pid) {
+        supervisionFailed = true
+        throw new Error("OAUTH_TEST_BROWSER_REGISTRATION_FAILED")
+      }
+      entry.finalize = finalize
+      browserReady = true
+    },
+    /** 监督能力失败不能被回收了最外组掩盖成成功。 */
+    failBrowserSupervision() {
+      supervisionFailed = true
+    },
+
     /** 等待直接子进程与其残留后代，保留真实退出码。 */
     async wait(child) {
       const entry = entries.find((value) => value.child === child)
@@ -126,7 +137,13 @@ export function createOAuthLifecycle() {
     },
     /** 幂等先停runner，再逐一回收全部自有组和fixture。 */
     shutdown() {
-      if (closing) return closing
+      if (closing) {
+        if (supervisionFailed)
+          return closing.then(() => {
+            throw new Error("OAUTH_TEST_CLEANUP_FAILED")
+          })
+        return closing
+      }
       controller.abort(new Error("OAUTH_TEST_CANCELLED"))
       closing = (async () => {
         let failed = false
@@ -141,7 +158,25 @@ export function createOAuthLifecycle() {
             failed = true
           }
         }
-        if (failed) throw new Error("OAUTH_TEST_CLEANUP_FAILED")
+        for (const entry of entries.filter((value) => value.finalize)) {
+          let timer
+          try {
+            await Promise.race([
+              entry.finalize(),
+              new Promise((_, reject) => {
+                timer = setTimeout(
+                  () => reject(new Error("OAUTH_TEST_BROWSER_CLOSE_TIMEOUT")),
+                  5000,
+                )
+              }),
+            ])
+          } catch {
+            failed = true
+          } finally {
+            clearTimeout(timer)
+          }
+        }
+        if (failed || supervisionFailed) throw new Error("OAUTH_TEST_CLEANUP_FAILED")
       })()
       return closing
     },
@@ -149,6 +184,28 @@ export function createOAuthLifecycle() {
     dispose() {
       for (const [signal, handler] of handlers) process.removeListener(signal, handler)
     },
+  }
+  function register(child, role) {
+    child.stdin?.on("error", () => undefined)
+    const exited = new Promise((done) => {
+      const finish = (result) => {
+        if (["web", "fixture", "browser"].includes(role) && !controller.signal.aborted) {
+          unexpectedExit = true
+          fail()
+        }
+        done(result)
+      }
+      child.once("error", () => finish({ code: 1 }))
+      child.once("exit", (code, signal) => finish({ code: code ?? 1, signal }))
+    })
+    entries.push({
+      child,
+      exited,
+      fixture: role === "fixture",
+      runner: role === "runner",
+      browser: role === "browser",
+    })
+    return child
   }
   function stopOnce(entry) {
     entry.stopping ??= stop(entry)

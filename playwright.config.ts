@@ -13,6 +13,9 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   use: {
     browserName: "chromium",
+    ...(process.env["OAUTH_TEST_BROWSER_WS"]
+      ? { connectOptions: { wsEndpoint: process.env["OAUTH_TEST_BROWSER_WS"] } }
+      : {}),
     channel: "chromium",
     trace: "off",
     screenshot: "off",

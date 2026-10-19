@@ -30,14 +30,14 @@ describe("home HTTP client options", () => {
     const response = await client.postWithResponse!<{
       deviceId: string
       bindingEpoch: string
-    }>("/v1/authorizations/flow-1/approve", { replaceExisting: false, state: "two" })
+    }>("/test/response-metadata", {})
     expect(response).toEqual({
       data: { deviceId: "device-1", bindingEpoch: "2" },
       status: 303,
       location,
     })
     expect(requestFetch).toHaveBeenCalledWith(
-      "/v1/authorizations/flow-1/approve",
+      "/test/response-metadata",
       expect.objectContaining({
         redirect: "follow",
         headers: expect.objectContaining({ Accept: "application/json" }),
@@ -59,7 +59,7 @@ describe("home HTTP client options", () => {
       deviceId: string
       bindingEpoch: string
       location: string
-    }>("/v1/authorizations/flow-1/approve", { replaceExisting: false, state: "two" })
+    }>("/test/response-metadata", {})
     expect(response).toEqual({
       data: { deviceId: "device-1", bindingEpoch: "2", location },
       status: 200,
@@ -72,9 +72,7 @@ describe("home HTTP client options", () => {
       async () => new Response(JSON.stringify({ deviceId: "device-1" }), { status: 303 }),
     )
     const client = createClient({ fetch: requestFetch })
-    await expect(
-      client.postWithResponse!("/v1/authorizations/flow-1/approve", {}),
-    ).rejects.toMatchObject({
+    await expect(client.postWithResponse!("/test/response-metadata", {})).rejects.toMatchObject({
       status: 303,
     })
   })

@@ -73,3 +73,27 @@ test("PUT草稿拒绝携带proof且不更新上一认证proof", async () => {
     ),
   ).rejects.toThrow("提交证明边界无效")
 })
+
+test("当前OP提交观察实际交互路径并保持原始CSRF和realm", async () => {
+  const body = {
+    realm: "Admin",
+    csrf: "local-context-csrf",
+    mode: "login",
+    captchaToken: "local-proof",
+  }
+  const path = "/v1/identity/interactions/local-context/password"
+  const port: SubmissionPort = {
+    ready: async () => undefined,
+    observe: async (matches) => {
+      expect(matches(`https://www.pigclaude.com${path}`, "POST")).toBe(true)
+      expect(matches("https://www.pigclaude.com/v1/auth/login", "POST")).toBe(false)
+      return { status: 200, body }
+    },
+    click: async () => undefined,
+  }
+  await expect(performSubmission(port, "https://www.pigclaude.com", path, 200)).resolves.toBe(
+    "local-proof",
+  )
+  expect(body.csrf).toBe("local-context-csrf")
+  expect(body.realm).toBe("Admin")
+})

@@ -1,4 +1,5 @@
 // 负责固定生产拒绝场景的短轮次编排，真实 proof 仅经过页面和当前 Node 进程内存。
+import { passwordPath, type PasswordInteraction } from "./turnstile-current-interaction"
 import { proofPage, type ProofCommand, type ProofReply } from "./turnstile-ego-proof"
 import { adminPage, type AdminCommand, type AdminFacts } from "./turnstile-ego-admin"
 
@@ -188,9 +189,12 @@ export async function disposeProof(page: ProofPagePort, command: Omit<ProofComma
 export async function runNegative(
   page: ProofPagePort,
   command: Omit<ProofCommand, "operation">,
-  transport: LoginTransport = fetch,
+  interaction: PasswordInteraction,
+  transport: LoginTransport,
 ) {
   if (!["replay", "wrong-action", "expiry"].includes(command.case)) throw new Error("拒绝场景无效")
+  const path = passwordPath(interaction)
+  if (interaction.realm !== "User") throw new Error("拒绝场景需要当前User交互")
   const started = performance.now()
   const before = await readProofFacts(page, command)
   if (
@@ -220,12 +224,16 @@ export async function runNegative(
     const post = async () => {
       if (command.case !== "expiry") dispatchAgeMs = freshAge(browserAgeMs, started)
       requested = true
-      const response = await transport("https://pigclaude.com/v1/auth/login", {
+      const response = await transport(`https://www.pigclaude.com${path}`, {
         method: "POST",
         redirect: "error",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", origin: "https://www.pigclaude.com" },
+        credentials: "include",
         signal: AbortSignal.timeout(20_000),
         body: JSON.stringify({
+          realm: interaction.realm,
+          csrf: interaction.csrf,
+          mode: "login",
           email: "negative@example.test",
           password: "negative-password",
           captchaToken: proof,

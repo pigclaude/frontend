@@ -3,7 +3,7 @@ import { expect, type APIRequestContext, type Page } from "@playwright/test"
 
 /** 返回唯一获准的生产 HTTPS 来源。 */
 export function productionOrigin(surface: "home" | "www" | "admin" | "api"): string {
-  const host = surface === "home" ? "pigclaude.com" : `${surface}.pigclaude.com`
+  const host = surface === "home" ? "www.pigclaude.com" : `${surface}.pigclaude.com`
   return `https://${host}`
 }
 /** 严格校验四字段正式配置，拒绝 Cloudflare 官方测试 key。 */
@@ -30,7 +30,10 @@ export interface ProductionEvidence {
   cookieHostOnly?: boolean
   revision?: string
   passed?: boolean
-  step?: SubmissionPath
+  step?:
+    | "/admin/v1/settings/turnstile/draft"
+    | "/admin/v1/settings/turnstile/activate"
+    | "identity-password"
 }
 /** 同时校验字段名和值，拒绝把任意秘密装入合法字段。 */
 export function safeEvidence(value: Record<string, unknown>): ProductionEvidence {
@@ -99,17 +102,13 @@ export interface SubmissionPort {
   click(): Promise<void>
 }
 const submissionPaths = [
-  "/v1/auth/register",
-  "/v1/auth/login",
-  "/admin/v1/auth/login",
+  "identity-password",
   "/admin/v1/settings/turnstile/draft",
   "/admin/v1/settings/turnstile/activate",
 ]
 /** 固定真实页面允许发出的认证和设置提交路径。 */
 export type SubmissionPath =
-  | "/v1/auth/register"
-  | "/v1/auth/login"
-  | "/admin/v1/auth/login"
+  | `/v1/identity/interactions/${string}/password`
   | "/admin/v1/settings/turnstile/draft"
   | "/admin/v1/settings/turnstile/activate"
 /** 在点击前安装监听器，并按实际命令检查响应与证明边界。 */
@@ -120,6 +119,11 @@ export async function performSubmission(
   status: number,
   previousProof?: string,
 ): Promise<string | undefined> {
+  if (
+    !/^\/v1\/identity\/interactions\/[A-Za-z0-9_-]{1,256}\/password$/.test(path) &&
+    !["/admin/v1/settings/turnstile/draft", "/admin/v1/settings/turnstile/activate"].includes(path)
+  )
+    throw new Error("提交路径无效")
   await port.ready()
   const draft = path === "/admin/v1/settings/turnstile/draft"
   const responsePromise = port.observe(
@@ -179,34 +183,14 @@ export async function submit(
   console.log(
     JSON.stringify(
       safeEvidence({
-        step: path,
+        step: path.startsWith("/v1/identity/")
+          ? "identity-password"
+          : (path as
+              "/admin/v1/settings/turnstile/draft" | "/admin/v1/settings/turnstile/activate"),
         status,
         hostname: new URL(page.url()).hostname,
         passed: true,
       }),
     ),
   )
-}
-/** 用真实页面登录独立验收管理员，不保存 storageState。 */
-export async function adminLogin(page: Page, readonly = false): Promise<void> {
-  await page.goto(`${productionOrigin("admin")}/login`)
-  await page
-    .getByLabel("账号")
-    .fill(acceptanceInput(readonly ? "READONLY_ACCOUNT" : "ADMIN_ACCOUNT"))
-  await page
-    .getByLabel("密码", { exact: true })
-    .fill(acceptanceInput(readonly ? "READONLY_PASSWORD" : "ADMIN_PASSWORD"))
-  await submit(page, "登录", "/admin/v1/auth/login", 200)
-  await expect(page).toHaveURL(/\/users$/)
-  const session = (await page.context().cookies(productionOrigin("admin"))).find(
-    (cookie) => cookie.name === "pigclaude_admin_session",
-  )
-  const facts = {
-    hostname: "admin.pigclaude.com",
-    cookieSecure: session?.secure === true,
-    cookieHttpOnly: session?.httpOnly === true,
-    cookieHostOnly: session?.domain === "admin.pigclaude.com",
-  }
-  expect(facts.cookieSecure && facts.cookieHttpOnly && facts.cookieHostOnly).toBe(true)
-  console.log(JSON.stringify(safeEvidence(facts)))
 }

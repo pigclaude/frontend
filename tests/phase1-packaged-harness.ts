@@ -176,8 +176,7 @@ export async function verifyColdProtocolRejection(
 ): Promise<void> {
   expect(await installedProcessIds(installedApp)).toEqual([])
   const port = await unusedPort()
-  const callback =
-    "pigclaude://authorize/callback?flow_id=cold-probe&code=cold-probe&state=cold-probe"
+  const callback = "pigclaude://authorize/callback?code=cold-probe&state=cold-probe"
   let browser: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined
   try {
     owner.beginLaunch()

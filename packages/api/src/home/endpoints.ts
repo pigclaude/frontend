@@ -15,21 +15,6 @@ export function createHomeApi(c: HttpClient) {
       plans: () => c.get<T.ListPlansResponse>("/v1/plans"),
       entitlement: () => c.get<T.EntitlementResponse>("/v1/entitlement"),
     },
-    authorizations: {
-      get: (flowId: string) =>
-        c.get<T.AuthorizationResponse>(`/v1/authorizations/${encodeURIComponent(flowId)}`),
-      approve: async (flowId: string, body: T.ApproveAuthorizationRequest) => {
-        const path = `/v1/authorizations/${encodeURIComponent(flowId)}/approve`
-        if (c.postWithResponse) {
-          const { data, location } = await c.postWithResponse<T.ApproveAuthorizationResponse>(
-            path,
-            body,
-          )
-          return { ...data, location: location ?? data.location }
-        }
-        return c.post<T.ApproveAuthorizationResponse>(path, body)
-      },
-    },
   }
 }
 

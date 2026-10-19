@@ -2,7 +2,7 @@
   "membership": {
     "startupPhase": "settled",
     "revision": 7,
-    "state": "offline_grace",
+    "state": "active",
     "account": {
       "userId": "user_01",
       "nickname": "Pig User",
@@ -13,22 +13,12 @@
     "planKind": "week",
     "lifetime": false,
     "membershipValidUntil": null,
-    "offlineValidUntil": "2026-10-19T00:00:00Z",
+    "offlineValidUntil": null,
     "lastVerifiedAt": "2026-10-18T00:00:00Z",
     "nextVerificationAt": "2026-10-18T01:00:00Z",
     "bindingEpoch": "00000000000000000042",
     "errorCode": null,
     "serverReason": null,
     "authorizationUrl": null
-  },
-  "deviceAuthorization": {
-    "flowId": "flow_01",
-    "deviceId": "device_01",
-    "deviceFingerprintHash": "sha256:fixture",
-    "status": "pending",
-    "existingDeviceId": null,
-    "existingBindingEpoch": null,
-    "requiresReplace": false,
-    "expiresAt": "2026-10-18T00:15:00Z"
   }
 }

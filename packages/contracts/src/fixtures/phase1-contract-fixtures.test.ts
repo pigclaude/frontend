@@ -1,11 +1,7 @@
 // 负责验证跨语言 fixture 的完整 JSON、可空字段、decimal string 和秘密字段边界。
 
 import canonicalFixtures from "./phase1-contract-fixtures.json"
-import {
-  deviceAuthorizationFixture,
-  membershipFixture,
-  phase1ContractFixtures,
-} from "./phase1-contract-fixtures"
+import { membershipFixture, phase1ContractFixtures } from "./phase1-contract-fixtures"
 import { describe, expect, it } from "vitest"
 
 function collectKeys(value: unknown): string[] {
@@ -18,14 +14,11 @@ describe("phase1 contract fixtures", () => {
   it("matches the checked-in canonical JSON exactly", () => {
     expect(phase1ContractFixtures).toEqual(canonicalFixtures)
     expect(membershipFixture).toEqual(canonicalFixtures.membership)
-    expect(deviceAuthorizationFixture).toEqual(canonicalFixtures.deviceAuthorization)
   })
 
   it("keeps nullable and decimal string fields explicit", () => {
     expect(membershipFixture.membershipValidUntil).toBeNull()
     expect(membershipFixture.bindingEpoch).toMatch(/^\d+$/)
-    expect(deviceAuthorizationFixture.existingDeviceId).toBeNull()
-    expect(deviceAuthorizationFixture.existingBindingEpoch).toBeNull()
   })
 
   it("contains no secret or credential fields", () => {

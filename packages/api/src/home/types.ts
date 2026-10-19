@@ -1,19 +1,4 @@
-// 负责定义第一阶段 home 登录、会员和设备授权 API 的类型契约。
-import type { DeviceAuthorizationStatus } from "@pigclaude/contracts/device-authorization"
-
-/** 注册请求。 */
-export interface RegisterRequest {
-  email: string
-  password: string
-  nickname: string
-  captchaToken?: string
-}
-/** 登录请求。 */
-export interface LoginRequest {
-  email: string
-  password: string
-  captchaToken?: string
-}
+// 负责定义当前Home用户资料与会员查询契约。
 /** Rust AuthUserView 返回的当前用户身份摘要。 */
 export interface AuthUserView {
   id: string
@@ -60,26 +45,4 @@ export interface EntitlementResponse {
   termsVersion: string
   termsAcceptedAt: string | null
   entitlementVersion: string
-}
-/** 浏览器设备授权 flow 响应。 */
-export interface AuthorizationResponse {
-  flowId: string
-  deviceId: string
-  deviceFingerprintHash: string
-  status: DeviceAuthorizationStatus
-  existingDeviceId: string | null
-  existingBindingEpoch: string | null
-  requiresReplace: boolean
-  expiresAt: string | null
-}
-/** 浏览器确认设备授权请求。 */
-export interface ApproveAuthorizationRequest {
-  replaceExisting: boolean
-  state: string
-}
-/** 浏览器确认设备授权响应。 */
-export interface ApproveAuthorizationResponse {
-  deviceId: string
-  bindingEpoch: string
-  location?: string
 }

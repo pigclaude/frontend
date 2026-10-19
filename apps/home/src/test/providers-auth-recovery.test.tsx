@@ -22,7 +22,7 @@ vi.mock("@/lib/api", () => ({
   homeApi: {
     user: { me: mocks.me },
     membership: { entitlement: mocks.entitlement },
-    authorizations: { get: mocks.get },
+    devices: { list: mocks.get },
   },
 }))
 
@@ -32,7 +32,7 @@ function RecoveryProbe() {
     queryFn: mocks.entitlement,
   })
   const authorization = useQuery({
-    queryKey: ["authorization", "flow-1"],
+    queryKey: ["devices"],
     queryFn: mocks.get,
   })
   const status = `${entitlement.data?.status ?? entitlement.error?.constructor.name ?? "pending"}${

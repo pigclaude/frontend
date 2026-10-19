@@ -46,7 +46,7 @@ describe("captcha API boundaries", () => {
         .mockResolvedValue(new Response(JSON.stringify({ code }), { status: Number(status) })),
     })
     await expect(
-      client.post("/v1/auth/login", { captchaToken: "current-token" }),
+      client.post("/v1/identity/interactions/test/password", { captchaToken: "current-token" }),
     ).rejects.toMatchObject({ code })
     expect(onUnauthorized).not.toHaveBeenCalled()
   })

@@ -3,12 +3,35 @@ import { createServer } from "node:http"
 import { test, expect } from "@playwright/test"
 import { proofFixture } from "./turnstile-ego-fixture"
 import { proofPage, type ProofReply } from "./turnstile-ego-proof"
-import { installProof, readProofFacts, runNegative } from "./turnstile-ego-controller"
+import {
+  installProof,
+  readProofFacts,
+  runNegative as runCurrentNegative,
+} from "./turnstile-ego-controller"
+
+const interaction = {
+  interactionId: "local-interaction",
+  realm: "User",
+  csrf: "local-csrf",
+  phase: "login",
+} as const
+const runNegative = (
+  page: Parameters<typeof runCurrentNegative>[0],
+  command: Parameters<typeof runCurrentNegative>[1],
+  transport: Parameters<typeof runCurrentNegative>[3],
+) => runCurrentNegative(page, command, interaction, transport)
 
 const nonce = "0123456789abcdef0123456789abcdef"
 
 test("真实 Node HTTP 夹具验证同 proof 401→400 且响应正文不会进入证据", async () => {
-  const received: { captchaToken: string; email: string; password: string }[] = []
+  const received: {
+    captchaToken: string
+    email: string
+    password: string
+    realm: string
+    csrf: string
+    mode: string
+  }[] = []
   const server = createServer(async (request, response) => {
     let text = ""
     for await (const chunk of request) text += String(chunk)
@@ -25,7 +48,9 @@ test("真实 Node HTTP 夹具验证同 proof 401→400 且响应正文不会进�
   page.callbacks[0]("local-only-proof")
   try {
     const result = await runNegative(page, command, (url, init) => {
-      expect(url).toBe("https://pigclaude.com/v1/auth/login")
+      expect(url).toBe(
+        "https://www.pigclaude.com/v1/identity/interactions/local-interaction/password",
+      )
       expect(init.redirect).toBe("error")
       return fetch(`http://127.0.0.1:${address.port}`, init)
     })
@@ -33,6 +58,9 @@ test("真实 Node HTTP 夹具验证同 proof 401→400 且响应正文不会进�
     expect(result.replayStatus).toBe(400)
     expect(result.replayNoSetCookie).toBe(true)
     expect(received.length).toBe(2)
+    expect(received[0].csrf).toBe(interaction.csrf)
+    expect(received[0].realm).toBe("User")
+    expect(received[0].mode).toBe("login")
     expect(received[0].captchaToken === received[1].captchaToken).toBe(true)
     expect(received[0].email === "negative@example.test").toBe(true)
     expect(received[0].password === "negative-password").toBe(true)
@@ -187,4 +215,20 @@ test("replay首次401响应延迟不延长同proof第二次提交预算", async 
   ).rejects.toThrow()
   expect(requests).toBe(1)
   expect(page.removed).toEqual(["owned-widget-1"])
+})
+
+test("缺失当前交互CSRF时不消费proof也不发送请求", async () => {
+  const page = proofFixture()
+  const command = { case: "replay", nonce } as const
+  await installProof(page, command)
+  page.callbacks[0]("local-proof")
+  let requests = 0
+  await expect(
+    runCurrentNegative(page, command, { ...interaction, csrf: "" }, async () => {
+      requests++
+      return new Response()
+    }),
+  ).rejects.toThrow("当前OP密码交互不可用")
+  expect(requests).toBe(0)
+  expect((await readProofFacts(page, command)).status).toBe("ready")
 })

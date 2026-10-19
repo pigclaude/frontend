@@ -7,7 +7,7 @@ import {
 } from "./turnstile-production-support"
 
 test("生产来源必须精确匹配 HTTPS 四域名", () => {
-  expect(productionOrigin("home")).toBe("https://pigclaude.com")
+  expect(productionOrigin("home")).toBe("https://www.pigclaude.com")
   expect(productionOrigin("www")).toBe("https://www.pigclaude.com")
   expect(productionOrigin("api")).toBe("https://api.pigclaude.com")
   expect(productionOrigin("admin")).toBe("https://admin.pigclaude.com")

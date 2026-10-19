@@ -4,7 +4,6 @@
   "packageManager": "pnpm@10.28.2",
   "scripts": {
     "test": "node --test tests/turnstile-launcher.node.mjs && pnpm -r --if-present test",
-    "e2e:phase1": "playwright test tests/phase1-web-desktop.spec.ts",
     "phase1:launch": "node scripts/phase1-local-launcher.mjs",
     "layout": "node scripts/assert-layout.mjs",
     "lint": "eslint .",

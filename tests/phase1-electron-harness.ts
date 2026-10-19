@@ -4,7 +4,8 @@ import type { ChildProcess } from "node:child_process"
 import { readFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { join, resolve } from "node:path"
-import type { MembershipSessionRecord } from "../packages/contracts/src/desktop-membership"
+import { parseOAuthDesktopSession } from "../apps/desktop/src/main/authorization/oauth-session"
+import type { OAuthDesktopSession } from "../packages/contracts/src/desktop-membership"
 import type { MembershipView } from "../packages/contracts/src/membership"
 import { OwnedProcess, cleanupFailedLaunch } from "./phase1-owned-process"
 import { desktopEnvironment } from "./phase1-production-desktop-support"
@@ -88,9 +89,7 @@ export async function expectDesktopState(desktop: DesktopHarness, state: string)
 }
 
 /** 测试读取系统 safeStorage 的既有持久快照，秘密只保留在测试进程内存中。 */
-export async function readDesktopSession(
-  desktop: DesktopHarness,
-): Promise<MembershipSessionRecord> {
+export async function readDesktopSession(desktop: DesktopHarness): Promise<OAuthDesktopSession> {
   const userData = await desktop.application.evaluate(({ app }) => app.getPath("userData"))
   const encrypted = JSON.parse(
     await readFile(join(userData, "authorization-secrets.json"), "utf8"),
@@ -101,5 +100,7 @@ export async function readDesktopSession(
     ({ safeStorage }, ciphertext) => safeStorage.decryptString(Buffer.from(ciphertext, "base64")),
     encoded,
   )
-  return JSON.parse(raw) as MembershipSessionRecord
+  const record = parseOAuthDesktopSession(raw)
+  if (!record) throw new Error("当前OAuth记录缺失或无效")
+  return record
 }

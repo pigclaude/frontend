@@ -1,4 +1,4 @@
-// 负责封装第一阶段 home 登录、会员和设备授权 HTTP endpoint。
+// 负责封装 Home 会员和账户查询；登录身份只经中央 OIDC 交互确认。
 import type { HttpClient } from "../client"
 import type { CaptchaConfig } from "@pigclaude/contracts/captcha"
 import type * as T from "./types"
@@ -9,8 +9,6 @@ export function createHomeApi(c: HttpClient) {
     auth: {
       /** 读取公开验证码配置，保留共享 cookie 和错误处理边界。 */
       captcha: () => c.get<CaptchaConfig>("/v1/auth/captcha"),
-      register: (body: T.RegisterRequest) => c.post<T.AuthUserView>("/v1/auth/register", body),
-      login: (body: T.LoginRequest) => c.post<T.AuthUserView>("/v1/auth/login", body),
     },
     user: { me: () => c.get<T.MeResponse>("/v1/user/me") },
     membership: {

@@ -51,3 +51,47 @@ describe("createClient", () => {
     expect(onUnauthorized).toHaveBeenCalledOnce()
   })
 })
+
+// 固定枚举来自正式 OAuth / 交互错误，未知上游字段不得覆盖旧契约。
+describe("OAuth resource and interaction errors", () => {
+  it.each(["ACCOUNT_BANNED", "DEVICE_REVOKED", "ACCOUNT_LINK_REQUIRED"])(
+    "preserves fixed app_error %s",
+    async (code) => {
+      const client = createClient({
+        fetch: vi.fn<typeof fetch>().mockResolvedValue(
+          new Response(JSON.stringify({ error: "access_denied", app_error: code }), {
+            status: 403,
+          }),
+        ),
+      })
+      await expect(client.get("/protected")).rejects.toMatchObject({ status: 403, code })
+    },
+  )
+  it.each(["CAPTCHA_REQUIRED", "CAPTCHA_INVALID", "CAPTCHA_UNAVAILABLE"])(
+    "preserves interaction error %s",
+    async (code) => {
+      const client = createClient({
+        fetch: vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(new Response(JSON.stringify({ error: code }), { status: 400 })),
+      })
+      await expect(client.post("/interaction")).rejects.toMatchObject({ code })
+    },
+  )
+  it("does not normalize arbitrary app_error or ordinary 403 into expired credentials", async () => {
+    const unauthorized = vi.fn()
+    const client = createClient({
+      onUnauthorized: unauthorized,
+      fetch: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ error: "insufficient_scope", app_error: "untrusted-original" }),
+            { status: 403 },
+          ),
+        ),
+    })
+    await expect(client.get("/protected")).rejects.toMatchObject({ status: 403, code: undefined })
+    expect(unauthorized).not.toHaveBeenCalled()
+  })
+})

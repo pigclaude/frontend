@@ -207,19 +207,13 @@ describe("home user menu lifecycle", () => {
         <CacheProbe />
       </Providers>,
     )
-    fireEvent.change(await screen.findByLabelText("邮箱"), { target: { value: "new@example.com" } })
-    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
+    await screen.findByRole("button", { name: "继续登录" })
+    expect(client.getQueryCache().getAll()).toHaveLength(0)
+    expect(mocks.login).not.toHaveBeenCalled()
     const nextUser = { ...user, id: "new-user-5678", nickname: "Grace", email: "new@example.com" }
     mocks.me.mockResolvedValue(nextUser)
-    await waitFor(() =>
-      expect((document.querySelector("button[type=submit]") as HTMLButtonElement).disabled).toBe(
-        false,
-      ),
-    )
-    fireEvent.submit(document.querySelector("form") as HTMLFormElement)
-    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/dashboard"))
-    expect(client.getQueryData(["me"])).toEqual(nextUser)
     expect(client.getQueryData(["authorization", "secret-flow"])).toBeUndefined()
+    // 完整 RP callback 会重载页面；这里仅验证退出后的新权威读取不会复活旧缓存。
     mocks.pathname = "/dashboard"
     view.rerender(
       <Providers>

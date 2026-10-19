@@ -1,9 +1,10 @@
-// 负责创建 home 使用的带 cookie HTTP client 和 Rust API facade。
+// 负责创建 Home 固定同源 Cookie client 和 RP 会话退出 facade。
 import { createClient } from "@pigclaude/api/client"
 import { createHomeApi } from "@pigclaude/api/home"
+import type { WebSessionBootstrap } from "@pigclaude/api/web-oidc"
 import { requestHomeSessionRevalidation } from "@/lib/auth-query"
 
-const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? ""
+const baseUrl = ""
 
 /** home 浏览器 client，始终携带 session cookie。 */
 export const homeClient = createClient({
@@ -21,7 +22,10 @@ export const homeApi = {
   ...api,
   auth: {
     ...api.auth,
-    /** 撤销当前服务器会话，并接受既有端点的无内容成功响应。 */
-    logout: () => homeClient.post<void>("/v1/auth/logout"),
+    /** 先读取真实 RP bootstrap，再用该会话 CSRF 明确退出。 */
+    logout: async () => {
+      const session = await homeClient.get<WebSessionBootstrap>("/v1/session")
+      await homeClient.post<void>("/v1/web/oidc/logout", { csrf: session.csrf })
+    },
   },
 }

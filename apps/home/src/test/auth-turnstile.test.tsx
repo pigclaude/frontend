@@ -1,8 +1,9 @@
-// 负责用真实 home 表单和 HTTP facade 验证 Turnstile 门禁及一次性 token。
+// 负责用中央 OP 密码表单和真实 HTTP client 验证验证码门禁与一次性 token。
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { AuthPanel } from "@/components/auth/auth-panel"
+import { PasswordInteraction } from "@/components/identity/password-interaction"
+import { interaction } from "./identity-fixture"
 import type { TurnstileOptions } from "@pigclaude/web-ui/lib/turnstile-sdk"
 
 const mocks = vi.hoisted(() => ({
@@ -14,12 +15,6 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mocks.push }),
   useSearchParams: () => mocks.params,
 }))
-vi.mock("@/lib/api", async () => {
-  const { createClient } = await import("@pigclaude/api/client")
-  const { createHomeApi } = await import("@pigclaude/api/home")
-  return { homeApi: createHomeApi(createClient({ fetch: mocks.fetch })) }
-})
-
 const widgets: TurnstileOptions[] = []
 
 function response(value: unknown, status = 200) {
@@ -30,11 +25,21 @@ function response(value: unknown, status = 200) {
 }
 
 function mount(initialMode: "login" | "register" = "login") {
+  if (initialMode === "register")
+    sessionStorage.setItem(
+      "pigclaude:registration-ui",
+      JSON.stringify({ mode: "register", createdAt: Date.now() }),
+    )
   return render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <AuthPanel initialMode={initialMode} />
+      <PasswordInteraction
+        interaction={interaction()}
+        onContinue={(result) => {
+          if (result.type === "redirect") mocks.push(result.redirect)
+        }}
+      />
     </QueryClientProvider>,
   )
 }
@@ -62,6 +67,8 @@ function installSdk() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.stubGlobal("fetch", mocks.fetch)
+  sessionStorage.clear()
   widgets.length = 0
   mocks.params = new URLSearchParams()
   installSdk()
@@ -80,6 +87,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.unstubAllGlobals()
   Reflect.deleteProperty(window, "turnstile")
   document.querySelectorAll("script[data-pigclaude-turnstile]").forEach((value) => value.remove())
 })
@@ -172,7 +180,7 @@ describe("home Turnstile auth boundary", () => {
     act(() => widgets[2].callback("register-token"))
     submit()
     await waitFor(() => expect(posts()).toHaveLength(1))
-    expect(posts()[0][0]).toBe("/v1/auth/register")
+    expect(posts()[0][0]).toBe("/v1/identity/interactions/interaction-1/password")
     expect(JSON.parse(String(posts()[0][1]?.body)).captchaToken).toBe("register-token")
   })
 
@@ -184,7 +192,7 @@ describe("home Turnstile auth boundary", () => {
     const get = mocks.fetch.getMockImplementation()
     mocks.fetch.mockImplementation(async (url, init) =>
       init?.method === "POST"
-        ? response({ code }, code === "CAPTCHA_UNAVAILABLE" ? 503 : 400)
+        ? response({ error: code }, code === "CAPTCHA_UNAVAILABLE" ? 503 : 400)
         : get!(url, init),
     )
     mount()
@@ -205,15 +213,15 @@ describe("home Turnstile auth boundary", () => {
       mocks.params.set("redirect", redirect)
       const get = mocks.fetch.getMockImplementation()
       mocks.fetch.mockImplementation(async (url, init) =>
-        init?.method === "POST" ? response({ id: "user-1" }) : get!(url, init),
+        init?.method === "POST" ? response({ type: "redirect", redirect }) : get!(url, init),
       )
       mount(mode)
       await waitFor(() => expect(widgets).toHaveLength(1))
       act(() => widgets[0].callback("redirect-token"))
       submit()
       await waitFor(() => expect(mocks.push).toHaveBeenCalledWith(redirect))
-      expect(mocks.fetch.mock.calls.map(([url]) => url)).toContain("/v1/user/me")
-      expect(mocks.fetch.mock.calls.map(([url]) => url)).toContain("/v1/entitlement")
+      expect(mocks.fetch.mock.calls.map(([url]) => url)).not.toContain("/v1/user/me")
+      expect(mocks.fetch.mock.calls.map(([url]) => url)).not.toContain("/v1/entitlement")
     },
   )
 
@@ -227,16 +235,14 @@ describe("home Turnstile auth boundary", () => {
   })
 
   it.each([
-    ["login", "home_login", "/v1/auth/login"],
-    ["register", "home_register", "/v1/auth/register"],
+    ["login", "home_login", "/v1/identity/interactions/interaction-1/password"],
+    ["register", "home_register", "/v1/identity/interactions/interaction-1/password"],
   ] as const)(
     "sends the current %s token once and requires a new token after credential failure",
     async (mode, action, path) => {
       mount(mode)
       fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
       fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
-      if (mode === "register")
-        fireEvent.change(screen.getByLabelText("昵称"), { target: { value: "Ada" } })
       await waitFor(() => expect(widgets).toHaveLength(1))
       expect(widgets[0].action).toBe(action)
       submit()
@@ -249,7 +255,9 @@ describe("home Turnstile auth boundary", () => {
       expect(JSON.parse(String(posts()[0][1]?.body))).toEqual({
         email: "ada@example.com",
         password: "password",
-        ...(mode === "register" ? { nickname: "Ada" } : {}),
+        realm: "User",
+        csrf: "csrf-marker",
+        mode,
         captchaToken: "first-token",
       })
       await waitFor(() => expect(widgets).toHaveLength(2))

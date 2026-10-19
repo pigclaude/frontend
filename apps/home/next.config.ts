@@ -1,20 +1,14 @@
-// 负责配置 home 的 Next.js 构建和 Rust API 反向代理。
+// 负责 Home 构建与敏感请求日志隔离；API 由固定目标 Route Handler 保留 Host。
 import path from "node:path"
 import type { NextConfig } from "next"
 
-const apiTarget = process.env.API_PROXY_TARGET ?? "http://127.0.0.1:8788"
-
-/** 返回 home 的 Next 配置，浏览器请求保持同源 cookie。 */
+/** 固定服务端代理不使用会改写 Host 的 Next external rewrites。 */
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   output: "standalone",
   outputFileTracingRoot: path.resolve(process.cwd(), "../.."),
-  async rewrites() {
-    return [
-      { source: "/v1/:path*", destination: `${apiTarget}/v1/:path*` },
-      { source: "/authorize/:flowId/approve", destination: "/authorize/:flowId" },
-    ]
+  logging: {
+    incomingRequests: { ignore: [/^\/(?:oauth2|v1|identity|\.well-known)(?:\/|\?|$)/] },
   },
 }
-
 export default nextConfig

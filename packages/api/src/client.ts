@@ -1,6 +1,9 @@
 // 负责提供带 cookie、错误解析和可注入 fetch 的共享 HTTP client。
 export interface ApiErrorBody {
   code: number | string
+  /** 仅识别固定公开应用错误，未知值不覆盖旧错误契约。 */
+  app_error?: string
+  error?: string
   reason: string
   message: string
   metadata: Record<string, string>
@@ -16,7 +19,8 @@ export class ApiError extends Error {
   constructor(status: number, body?: Partial<ApiErrorBody>) {
     super(body?.message || `请求失败（${status}）`)
     this.name = "ApiError"
-    this.code = body?.code
+    this.code =
+      knownApplicationError(body?.app_error) ?? body?.code ?? knownProtocolError(body?.error)
     this.status = status
     this.reason = body?.reason || `HTTP_${status}`
     this.metadata = body?.metadata ?? {}
@@ -137,4 +141,37 @@ export function createClient(opts: ClientOptions = {}): HttpClient {
     put: (path, body) => request("PUT", path, body ?? {}),
     delete: (path) => request("DELETE", path),
   }
+}
+
+function knownProtocolError(error: string | undefined): string | undefined {
+  return error &&
+    [
+      "invalid_request",
+      "invalid_credentials",
+      "identity_conflict",
+      "binding_conflict",
+      "access_denied",
+      "ACCOUNT_LINK_REQUIRED",
+      "CAPTCHA_REQUIRED",
+      "CAPTCHA_INVALID",
+      "CAPTCHA_UNAVAILABLE",
+    ].includes(error)
+    ? error
+    : undefined
+}
+
+function knownApplicationError(error: string | undefined): string | undefined {
+  return error &&
+    [
+      "ACCOUNT_BANNED",
+      "DEVICE_REVOKED",
+      "ACCOUNT_LINK_REQUIRED",
+      "VERIFIED_EMAIL_REQUIRED",
+      "FEDERATION_UNAVAILABLE",
+      "FEDERATION_RATE_LIMITED",
+      "FEDERATION_DISABLED",
+      "FEDERATION_REJECTED",
+    ].includes(error)
+    ? error
+    : undefined
 }

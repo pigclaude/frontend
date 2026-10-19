@@ -1,28 +1,61 @@
-// 负责验证 home 默认反向代理与 Rust 服务监听地址保持一致。
-import { afterEach, describe, expect, it, vi } from "vitest"
+// 负责验证 Next 固定 Route Handler 代理与真实框架 callback 请求日志排除规则。
+// @vitest-environment node
+import { createRequire } from "node:module"
+import { describe, expect, it, vi } from "vitest"
+import nextConfig from "../../next.config"
 
-describe("home Next.js proxy", () => {
-  const originalApiTarget = process.env.API_PROXY_TARGET
+const require = createRequire(import.meta.url)
+const framework: {
+  logRequests: (input: {
+    request: { url: string; method: string }
+    response: { statusCode: number }
+    loggingConfig: unknown
+    requestDurationInMs: number
+  }) => void
+} = require("next/dist/server/dev/log-requests.js")
 
-  afterEach(() => {
-    if (originalApiTarget === undefined) delete process.env.API_PROXY_TARGET
-    else process.env.API_PROXY_TARGET = originalApiTarget
+describe("Home Next proxy/log boundary", () => {
+  it("uses Route Handlers rather than external rewrites that replace website Host", () => {
+    expect(nextConfig.rewrites).toBeUndefined()
   })
 
-  it("uses the Rust server default loopback address", async () => {
-    delete process.env.API_PROXY_TARGET
-    vi.resetModules()
-    const { default: nextConfig } = await import("../../next.config")
-    const rewrites = await nextConfig.rewrites?.()
-    expect(rewrites).toEqual([
-      {
-        source: "/v1/:path*",
-        destination: "http://127.0.0.1:8788/v1/:path*",
-      },
-      {
-        source: "/authorize/:flowId/approve",
-        destination: "/authorize/:flowId",
-      },
-    ])
+  it.each([
+    "/v1/web/oidc/callback",
+    "/oauth2/federation/google/callback",
+    "/oauth2/federation/github/callback",
+    "/oauth2/authorize",
+    "/identity/login",
+    "/identity/authorize",
+  ])("excludes %s from real framework query logging", (path) => {
+    const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true)
+    try {
+      framework.logRequests({
+        request: {
+          url: `${path}?code=synthetic-code-marker&state=synthetic-state-marker`,
+          method: "GET",
+        },
+        response: { statusCode: 303 },
+        loggingConfig: nextConfig.logging,
+        requestDurationInMs: 1,
+      })
+      expect(stdout).not.toHaveBeenCalled()
+    } finally {
+      stdout.mockRestore()
+    }
+  })
+
+  it("retains ordinary incoming path/status logs", () => {
+    const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true)
+    try {
+      framework.logRequests({
+        request: { url: "/dashboard", method: "GET" },
+        response: { statusCode: 200 },
+        loggingConfig: nextConfig.logging,
+        requestDurationInMs: 1,
+      })
+      expect(JSON.stringify(stdout.mock.calls)).toContain("/dashboard")
+    } finally {
+      stdout.mockRestore()
+    }
   })
 })

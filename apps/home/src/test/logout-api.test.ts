@@ -1,4 +1,4 @@
-// 负责验证 home 退出 facade 使用既有 cookie client 和真实 Rust 退出端点。
+// 负责验证 home 退出 facade 使用真实 RP bootstrap CSRF 与固定同源退出。
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 afterEach(() => {
@@ -9,14 +9,31 @@ afterEach(() => {
 describe("home logout API facade", () => {
   it("posts to the Rust logout endpoint with session cookies and accepts 204", async () => {
     vi.resetModules()
-    const requestFetch = vi.fn(async () => new Response(null, { status: 204 }))
+    const requestFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            principalId: "u-1",
+            principalType: "User",
+            authVersion: "1",
+            csrf: "synthetic-csrf",
+            permissions: [],
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
     vi.stubGlobal("fetch", requestFetch)
     const { homeApi } = await import("@/lib/api")
     await homeApi.auth.logout()
-    expect(requestFetch).toHaveBeenCalledOnce()
+    expect(requestFetch).toHaveBeenCalledTimes(2)
     expect(requestFetch).toHaveBeenCalledWith(
-      expect.stringMatching(/\/v1\/auth\/logout$/),
-      expect.objectContaining({ method: "POST", credentials: "include" }),
+      expect.stringMatching(/\/v1\/web\/oidc\/logout$/),
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        body: JSON.stringify({ csrf: "synthetic-csrf" }),
+      }),
     )
   })
 })

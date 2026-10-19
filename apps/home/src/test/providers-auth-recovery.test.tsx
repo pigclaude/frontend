@@ -1,5 +1,5 @@
 // 负责验证 home 业务查询 401 恢复只执行一次会话校验并重试全部失败查询。
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -105,3 +105,21 @@ describe("home provider session recovery", () => {
     )
   })
 })
+
+// OP 交互浏览器可以没有 Home RP Cookie，不能触发 me→登录恢复循环。
+it.each(["/identity/login", "/identity/authorize"])(
+  "does not recover Home session on public %s",
+  async (path) => {
+    mocks.pathname = path
+    window.history.replaceState({}, "", path)
+    render(
+      <Providers>
+        <RecoveryProbe />
+      </Providers>,
+    )
+    await screen.findByText("ApiErrorApiError")
+    fireEvent(window, new Event("pigclaude:home-session-revalidate"))
+    await waitFor(() => expect(mocks.me).not.toHaveBeenCalled())
+    expect(mocks.replace).not.toHaveBeenCalled()
+  },
+)

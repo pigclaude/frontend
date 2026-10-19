@@ -1,6 +1,6 @@
 // 负责按已知用户 ID 管理多设备关系，仅依赖独立设备权限，不读取用户资料。
 import { useLayoutEffect, useState } from "react"
-import { useSearchParams } from "react-router"
+import { useLocation, useSearchParams } from "react-router"
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query"
 import { ApiError } from "@pigclaude/api/client"
 import type { UserDeviceView } from "@pigclaude/contracts/user-devices"
@@ -23,11 +23,16 @@ import { accountOperationError } from "@/lib/account-errors"
 import { ReasonDialog } from "./reason-dialog"
 import { EmptyRow, FilterToolbar, InlineLoadError, LoadingRows } from "./table-parts"
 interface Target {
+  userId: string
   device: UserDeviceView
   authVersion: string
 }
 /** 设备 operator 只需精确 device:read；撤销额外要求 device:revoke。 */
 export function DevicesSection() {
+  const location = useLocation()
+  return <DevicesSectionSession key={location.key} />
+}
+function DevicesSectionSession() {
   const [params, setParams] = useSearchParams()
   const { data: me, isPending: loadingMe } = useAdminMe()
   const userId = params.get("userId") ?? ""
@@ -57,20 +62,22 @@ export function DevicesSection() {
       me?.id,
       me?.permissions,
       canRevoke,
+      target?.userId,
       target?.device.deviceId,
       target?.device.bindingEpoch,
       target?.authVersion,
     ]),
   )
   async function revoke(reason: string) {
-    if (!target || !canRevoke || query.isError || query.isFetching) return
+    if (!target || target.userId !== userId || !canRevoke || query.isError || query.isFetching)
+      return
     const owner = operation.begin()
     if (!owner) return
     setError(null)
     setNotice(null)
     try {
       await adminApi.devices.revoke(
-        userId,
+        target.userId,
         target.device.deviceId,
         {
           expectedAuthVersion: target.authVersion,
@@ -192,7 +199,7 @@ export function DevicesSection() {
                               device.status !== "active"
                             }
                             onClick={() => {
-                              setTarget({ device, authVersion })
+                              setTarget({ userId, device, authVersion })
                               setError(null)
                             }}
                           >

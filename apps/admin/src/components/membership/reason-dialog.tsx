@@ -36,7 +36,7 @@ export function ReasonDialog({
   pending,
   error,
   preserveWhitespace = false,
-  maxCharacters = 200,
+  maxCharacters,
   onOpenChange,
   onConfirm,
 }: ReasonDialogProps) {
@@ -59,7 +59,7 @@ export function ReasonDialog({
           <Textarea
             id="pc-action-reason"
             rows={4}
-            maxLength={maxCharacters * 2}
+            maxLength={maxCharacters === undefined ? 200 : maxCharacters * 2}
             value={reason}
             onChange={(event) => setReason(event.target.value)}
             placeholder="必填，说明操作原因"
@@ -78,7 +78,11 @@ export function ReasonDialog({
             type="button"
             variant="destructive"
             onClick={() => onConfirm(preserveWhitespace ? reason : reason.trim())}
-            disabled={pending || reason.trim().length === 0 || [...reason].length > maxCharacters}
+            disabled={
+              pending ||
+              reason.trim().length === 0 ||
+              (maxCharacters !== undefined && [...reason].length > maxCharacters)
+            }
           >
             {pending ? "提交中…" : confirmLabel}
           </Button>

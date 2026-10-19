@@ -94,6 +94,8 @@ test("错误action只提交一次且 Set-Cookie 存在时拒绝假报通过", as
   const command = { case: "wrong-action", nonce } as const
   await installProof(page, command)
   expect(page.options[0].action).toBe("admin_login")
+  expect(page.paths).toContain("/v1/auth/captcha")
+  expect(page.paths).not.toContain("/admin/v1/auth/captcha")
   page.callbacks[0]("local-wrong-action")
   let requests = 0
   await expect(
@@ -114,6 +116,7 @@ test("safe命名字段也拒绝任意字符串及多余proof，不传播底层�
   for (const changed of [
     { action: "local-secret" },
     { requestedHostname: "elsewhere.test" },
+    { requestedHostname: "pigclaude.com" },
     { proof: "local-secret" },
   ]) {
     const invalid = { evaluate: async () => ({ ...real, ...changed }) as unknown as ProofReply }

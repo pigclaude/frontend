@@ -65,6 +65,7 @@ export async function adminPage(command: AdminCommand): Promise<AdminFacts> {
     )
   if (
     location.origin !== "https://admin.pigclaude.com" ||
+    location.pathname !== "/settings" ||
     !command ||
     !/^[a-f0-9]{32}$/.test(command.nonce) ||
     ![
@@ -104,6 +105,25 @@ export async function adminPage(command: AdminCommand): Promise<AdminFacts> {
   }
   if (command.operation === "reject-hostname") fresh()
   if (command.operation === "prepare-hostname" && win.__pigclaudeTask7Admin) return fail()
+  // 当前Admin RP bootstrap是设置写入CSRF的唯一来源，不借用OP交互或查询参数。
+  const sessionResponse = await fetch("/admin/v1/session", {
+    credentials: "same-origin",
+    cache: "no-store",
+    redirect: "error",
+    signal: AbortSignal.timeout(20_000),
+  }).catch(fail)
+  const session: unknown = await sessionResponse.json().catch(fail)
+  if (
+    sessionResponse.status !== 200 ||
+    !record(session) ||
+    session.principalType !== "Admin" ||
+    typeof session.principalId !== "string" ||
+    !session.principalId ||
+    typeof session.csrf !== "string" ||
+    !session.csrf
+  )
+    return fail()
+  const csrf = session.csrf
   const path = "/admin/v1/settings/turnstile"
   const request = async (suffix = "", method = "GET", body?: object) => {
     try {
@@ -111,7 +131,11 @@ export async function adminPage(command: AdminCommand): Promise<AdminFacts> {
         method,
         credentials: "same-origin",
         cache: "no-store",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          ...(method === "GET" ? {} : { "x-csrf-token": csrf }),
+        },
+        redirect: "error",
         signal: AbortSignal.timeout(20_000),
         ...(body ? { body: JSON.stringify(body) } : {}),
       })

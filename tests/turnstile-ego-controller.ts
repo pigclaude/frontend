@@ -79,7 +79,7 @@ export async function runAdmin(
   }
 }
 
-/** home 的实际 admin_login proof 仅在当前 Node 内存中转到真实 admin 同源 activate。 */
+/** canonical Admin OP的admin_login proof仅用于admin域设置激活的hostname拒绝，不指称OP登录失败。 */
 export async function runHostname(
   home: ProofPagePort,
   admin: AdminPagePort,
@@ -125,7 +125,7 @@ export async function runHostname(
     return {
       ...result,
       action: "admin_login" as const,
-      requestedHostname: "pigclaude.com" as const,
+      requestedHostname: "www.pigclaude.com" as const,
       ageMs: checked.ageMs,
       dispatchAgeMs,
     }
@@ -143,7 +143,7 @@ function facts(value: ProofReply, command: ProofCommand): ProofFacts {
     : command.case === "home-register"
       ? "home_register"
       : "home_login"
-  const requestedHostname = command.case === "admin-login" ? "admin.pigclaude.com" : "pigclaude.com"
+  const requestedHostname = "www.pigclaude.com"
   if (
     Object.keys(value).sort().join(",") !== "action,ageMs,case,requestedHostname,status" ||
     value.case !== command.case ||
@@ -193,9 +193,21 @@ export async function runNegative(
   transport: LoginTransport,
 ) {
   if (!["replay", "wrong-action", "expiry"].includes(command.case)) throw new Error("拒绝场景无效")
-  const path = passwordPath(interaction)
-  if (interaction.realm !== "User") throw new Error("拒绝场景需要当前User交互")
+  const context: PasswordInteraction = {
+    interactionId: interaction.interactionId,
+    realm: interaction.realm,
+    csrf: interaction.csrf,
+    phase: interaction.phase,
+  }
+  const path = passwordPath(context)
+  if (context.realm !== "User") throw new Error("拒绝场景需要当前User交互")
   const started = performance.now()
+  const binding: ProofCommand = { ...command, operation: "validate", interaction: context }
+  try {
+    facts(await page.evaluate(proofPage, binding), binding)
+  } catch {
+    throw new Error("当前OP上下文校验失败；未消费proof")
+  }
   const before = await readProofFacts(page, command)
   if (
     before.status !== "ready" ||
@@ -231,8 +243,8 @@ export async function runNegative(
         credentials: "include",
         signal: AbortSignal.timeout(20_000),
         body: JSON.stringify({
-          realm: interaction.realm,
-          csrf: interaction.csrf,
+          realm: context.realm,
+          csrf: context.csrf,
           mode: "login",
           email: "negative@example.test",
           password: "negative-password",

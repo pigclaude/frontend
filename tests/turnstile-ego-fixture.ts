@@ -3,7 +3,26 @@ import { runInNewContext } from "node:vm"
 import type { ProofCommand, ProofReply } from "./turnstile-ego-proof"
 
 /** 建立只实现测试所需 DOM/SDK 边界的本地执行环境。 */
-export function proofFixture(origin = "https://pigclaude.com") {
+export function proofFixture(
+  pageUrl = "https://www.pigclaude.com/identity/login?interactionId=local-interaction&realm=User",
+) {
+  const initial = new URL(pageUrl)
+  const location = {
+    origin: initial.origin,
+    pathname: initial.pathname,
+    hostname: initial.hostname,
+    search: initial.search,
+    href: initial.href,
+  }
+  let interaction: unknown = {
+    interactionId: initial.searchParams.get("interactionId") ?? "local-interaction",
+    realm: initial.searchParams.get("realm") ?? "User",
+    csrf: "local-csrf",
+    phase: "login",
+    registrationAllowed: true,
+  }
+  const paths: string[] = []
+  let interactionStatus = 200
   let now = 1_000
   const nodes: object[] = []
   const removed: string[] = []
@@ -31,9 +50,21 @@ export function proofFixture(origin = "https://pigclaude.com") {
     append: (...children: object[]) => nodes.push(...children),
     remove: () => undefined,
   })
+  const response = async (path: string) => {
+    const url = new URL(path, location.origin)
+    paths.push(url.pathname + url.search)
+    if (url.pathname.startsWith("/v1/identity/interactions/"))
+      return { status: interactionStatus, json: async () => structuredClone(interaction) }
+    if (["/v1/auth/captcha", "/admin/v1/auth/captcha"].includes(url.pathname)) {
+      configRequests++
+      return { status: 200, json: async () => config }
+    }
+    throw new Error("未登记的本地夹具请求")
+  }
   const sandbox = {
     window: { turnstile: sdk },
-    location: { origin, pathname: "/login", hostname: new URL(origin).hostname },
+    location,
+    URL,
     document: {
       documentElement: { classList: { contains: () => false } },
       createElement: makeNode,
@@ -41,18 +72,40 @@ export function proofFixture(origin = "https://pigclaude.com") {
       head: { append: (node: object) => nodes.push(node) },
     },
     performance: { now: () => now },
-    fetch: async () => {
-      configRequests++
-      return {
-        status: 200,
-        json: async () => config,
-      }
-    },
+    fetch: response,
     setTimeout,
     clearTimeout,
     AbortSignal,
   }
   return {
+    /** 同页面URL和请求上下文供当前interaction读取器使用。 */
+    url: () => location.href,
+    request: {
+      get: async (url: string) => {
+        const r = await response(url)
+        return { status: () => r.status, json: r.json }
+      },
+    },
+    paths,
+    /** 模拟交互过期或设施不可用，验证清理不依赖网络。 */
+    interactionResponseStatus: (status: number) => {
+      interactionStatus = status
+    },
+    /** 改变服务器响应，不把查询参数自动当服务器事实。 */
+    serverInteraction: (value: unknown) => {
+      interaction = value
+    },
+    /** 模拟同页导航，用于旧proof不能跨interaction复用的回归。 */
+    navigate: (value: string) => {
+      const u = new URL(value)
+      Object.assign(location, {
+        origin: u.origin,
+        pathname: u.pathname,
+        hostname: u.hostname,
+        search: u.search,
+        href: u.href,
+      })
+    },
     callbacks,
     options,
     nodes,

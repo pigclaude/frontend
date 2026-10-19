@@ -1,7 +1,10 @@
-// 负责 Ego 真人 proof 的自包含页面内存协议，不读取浏览器持久存储。
+// 负责canonical OP当前交互绑定的自包含proof内存协议，不读取浏览器持久存储。
+import type { PasswordInteraction } from "./turnstile-current-interaction"
 /** 页面协议仅接受有限场景及随机 ownership nonce。 */
 export interface ProofCommand {
-  operation: "install" | "facts" | "consume" | "dispose"
+  operation: "install" | "facts" | "consume" | "dispose" | "validate"
+  /** 仅validate携带原服务器上下文，用于比对，不进入安全facts返值。 */
+  interaction?: PasswordInteraction
   case: "replay" | "wrong-action" | "expiry" | "hostname" | "home-register" | "admin-login"
   nonce: string
 }
@@ -11,7 +14,7 @@ export interface ProofReply {
   status: "pending" | "ready" | "failed" | "consumed" | "disposed"
   ageMs: number | null
   action: "home_register" | "home_login" | "admin_login"
-  requestedHostname: "pigclaude.com" | "admin.pigclaude.com"
+  requestedHostname: "www.pigclaude.com"
   proof?: string
 }
 /** 自包含序列化入口；仅 controller 可以使用 consume 分支。 */
@@ -28,6 +31,7 @@ export async function proofPage(command: ProofCommand): Promise<ProofReply> {
     created: number | null
     widget?: string
     panel?: HTMLElement
+    interaction: PasswordInteraction | null
   }
   const win = window as unknown as {
     turnstile?: Sdk
@@ -46,16 +50,73 @@ export async function proofPage(command: ProofCommand): Promise<ProofReply> {
   } as const
   if (
     !command ||
-    Object.keys(command).sort().join(",") !== "case,nonce,operation" ||
+    Object.keys(command).sort().join(",") !==
+      (command.operation === "validate"
+        ? "case,interaction,nonce,operation"
+        : "case,nonce,operation") ||
     !Object.hasOwn(cases, command.case) ||
     !/^[a-f0-9]{32}$/.test(command.nonce) ||
-    !["install", "facts", "consume", "dispose"].includes(command.operation)
+    !["install", "facts", "consume", "dispose", "validate"].includes(command.operation)
   )
     fail()
-  const admin = command.case === "admin-login"
-  const requestedHostname = admin ? "admin.pigclaude.com" : "pigclaude.com"
-  if (location.origin !== `https://${requestedHostname}` || location.pathname !== "/login") fail()
+  const url = new URL(location.href)
+  const id = url.searchParams.get("interactionId")
+  const selectedRealm = url.searchParams.get("realm")
+  const requestedHostname = "www.pigclaude.com" as const
+  if (
+    url.origin !== "https://www.pigclaude.com" ||
+    !["/identity/login", "/identity/authorize"].includes(url.pathname) ||
+    url.username ||
+    url.password ||
+    url.hash ||
+    !id ||
+    !/^[A-Za-z0-9_-]{1,256}$/.test(id) ||
+    url.searchParams.getAll("interactionId").length !== 1 ||
+    url.searchParams.getAll("realm").length !== 1 ||
+    !["User", "Admin"].includes(selectedRealm ?? "")
+  )
+    fail()
+  const requiredRealm = ["admin-login", "hostname"].includes(command.case) ? "Admin" : "User"
   const action = cases[command.case]
+  const same = (a: PasswordInteraction | null, b: PasswordInteraction | undefined) =>
+    !!a &&
+    !!b &&
+    a.interactionId === b.interactionId &&
+    a.realm === b.realm &&
+    a.csrf === b.csrf &&
+    a.phase === b.phase
+  const resolve = async (): Promise<PasswordInteraction> => {
+    const response = await fetch(
+      `/v1/identity/interactions/${encodeURIComponent(id ?? "")}?realm=${selectedRealm}`,
+      {
+        credentials: "same-origin",
+        cache: "no-store",
+        redirect: "error",
+        signal: AbortSignal.timeout(15_000),
+      },
+    ).catch(fail)
+    const body: unknown = await response.json().catch(fail)
+    if (response.status !== 200 || !body || typeof body !== "object" || Array.isArray(body))
+      return fail()
+    const value = body as Record<string, unknown>
+    if (
+      location.href !== url.href ||
+      value.interactionId !== id ||
+      value.realm !== selectedRealm ||
+      value.realm !== requiredRealm ||
+      value.phase !== "login" ||
+      typeof value.csrf !== "string" ||
+      !value.csrf ||
+      (command.case === "home-register" && value.registrationAllowed !== true)
+    )
+      return fail()
+    return {
+      interactionId: value.interactionId as string,
+      realm: value.realm as "User" | "Admin",
+      csrf: value.csrf,
+      phase: "login",
+    }
+  }
   const current = () => {
     const owned = win.__pigclaudeTask7Ego
     if (!owned || owned.nonce !== command.nonce || owned.case !== command.case) return fail()
@@ -71,7 +132,13 @@ export async function proofPage(command: ProofCommand): Promise<ProofReply> {
   })
   if (command.operation !== "install") {
     const owned = current()
-    if (command.operation === "facts") return facts(owned)
+    // dispose只核验本机nonce/case所有权，不依赖已过期或不可用的服务器交互。
+    if (command.operation !== "dispose") {
+      const interaction = await resolve()
+      if (current() !== owned || !same(owned.interaction, interaction)) fail()
+      if (command.operation === "validate" && !same(owned.interaction, command.interaction)) fail()
+      if (["facts", "validate"].includes(command.operation)) return facts(owned)
+    }
     if (command.operation === "consume") {
       const age = facts(owned).ageMs
       if (
@@ -102,14 +169,20 @@ export async function proofPage(command: ProofCommand): Promise<ProofReply> {
     status: "pending",
     proof: null,
     created: null,
+    interaction: null,
   }
   win.__pigclaudeTask7Ego = owned
-  const isCurrent = () => win.__pigclaudeTask7Ego === owned && owned.status === "pending"
+  const isCurrent = () =>
+    win.__pigclaudeTask7Ego === owned && owned.status === "pending" && location.href === url.href
   try {
-    const prefix = admin ? "/admin/v1" : "/v1"
+    const interaction = await resolve()
+    if (!isCurrent()) fail()
+    owned.interaction = interaction
+    const prefix = interaction.realm === "Admin" ? "/admin/v1" : "/v1"
     const response = await fetch(`${prefix}/auth/captcha`, {
       credentials: "same-origin",
       cache: "no-store",
+      redirect: "error",
       signal: AbortSignal.timeout(15_000),
     })
     const config: unknown = await response.json()

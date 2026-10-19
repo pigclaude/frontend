@@ -24,7 +24,7 @@ export function validatePublicConfig(value: unknown): boolean {
 export interface ProductionEvidence {
   status?: number
   action?: "home_register" | "home_login" | "admin_login"
-  hostname?: "pigclaude.com" | "www.pigclaude.com" | "admin.pigclaude.com"
+  hostname?: "www.pigclaude.com" | "admin.pigclaude.com"
   cookieSecure?: boolean
   cookieHttpOnly?: boolean
   cookieHostOnly?: boolean
@@ -42,8 +42,7 @@ export function safeEvidence(value: Record<string, unknown>): ProductionEvidence
       typeof item === "number" && Number.isInteger(item) && item >= 100 && item <= 599,
     action: (item) =>
       typeof item === "string" && ["home_register", "home_login", "admin_login"].includes(item),
-    hostname: (item) =>
-      item === "pigclaude.com" || item === "www.pigclaude.com" || item === "admin.pigclaude.com",
+    hostname: (item) => item === "www.pigclaude.com" || item === "admin.pigclaude.com",
     cookieSecure: (item) => typeof item === "boolean",
     cookieHttpOnly: (item) => typeof item === "boolean",
     cookieHostOnly: (item) => typeof item === "boolean",

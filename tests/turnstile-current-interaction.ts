@@ -31,15 +31,27 @@ export async function readPasswordInteraction(page: Page): Promise<PasswordInter
   if (
     url.origin !== "https://www.pigclaude.com" ||
     !["/identity/login", "/identity/authorize"].includes(url.pathname) ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.hash !== "" ||
+    url.searchParams.getAll("interactionId").length !== 1 ||
+    url.searchParams.getAll("realm").length !== 1 ||
     !id ||
+    !/^[A-Za-z0-9_-]{1,256}$/.test(id) ||
     !["User", "Admin"].includes(realm ?? "")
   )
     throw new Error("当前页面没有OP交互")
-  const response = await page.request.get(
-    `${url.origin}/v1/identity/interactions/${encodeURIComponent(id)}?realm=${realm}`,
-  )
+  const response = await page.request
+    .get(`${url.origin}/v1/identity/interactions/${encodeURIComponent(id)}?realm=${realm}`, {
+      maxRedirects: 0,
+    })
+    .catch(() => {
+      throw new Error("OP交互读取失败")
+    })
   if (response.status() !== 200) throw new Error("OP交互读取失败")
-  const value: unknown = await response.json()
+  const value: unknown = await response.json().catch(() => {
+    throw new Error("OP交互响应无效")
+  })
   if (!value || typeof value !== "object") throw new Error("OP交互响应无效")
   const v = value as Record<string, unknown>
   if (

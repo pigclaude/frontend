@@ -44,6 +44,7 @@ test("证据拒绝允许字段中的任意字符串、对象与越界值", () =>
     { status: { private: true } },
     { status: 999 },
     { hostname: "elsewhere.test" },
+    { hostname: "pigclaude.com", action: "home_login" },
     { action: "private-material" },
     { passed: "true" },
     { revision: "-1" },

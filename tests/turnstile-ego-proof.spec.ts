@@ -38,7 +38,9 @@ test("过期 proof 306 秒之前不消耗，过期回调不删除首个 proof", 
 test("非expiry消费最多240000ms，旧proof拒绝后保留首个proof和owned实例", async () => {
   for (const caseName of ["replay", "wrong-action", "hostname"] as const) {
     for (const ageMs of [240_000, 240_001, 306_000]) {
-      const page = proofFixture()
+      const page = proofFixture(
+        `https://www.pigclaude.com/identity/login?interactionId=local-interaction&realm=${caseName === "hostname" ? "Admin" : "User"}`,
+      )
       const input = { ...command, case: caseName }
       await page.evaluate(proofPage, input)
       page.callbacks[0]("local-fixed-first-proof")
@@ -61,7 +63,7 @@ test("非expiry消费最多240000ms，旧proof拒绝后保留首个proof和owned
 })
 
 test("未知来源/场景/nonce 在 DOM 或配置请求前拒绝，dispose 只移除自有实例", async () => {
-  const wrong = proofFixture("https://www.pigclaude.com")
+  const wrong = proofFixture("https://pigclaude.com/login")
   await expect(wrong.evaluate(proofPage, command)).rejects.toThrow()
   expect(wrong.nodes.length).toBe(0)
   expect(wrong.requests()).toBe(0)
@@ -104,9 +106,21 @@ test("required正式四字段校验先于渲染，SDK仅使用内存回调且不
     expect(page.nodes.length).toBe(0)
   }
   for (const [caseName, origin, action] of [
-    ["home-register", "https://pigclaude.com", "home_register"],
-    ["replay", "https://pigclaude.com", "home_login"],
-    ["admin-login", "https://admin.pigclaude.com", "admin_login"],
+    [
+      "home-register",
+      "https://www.pigclaude.com/identity/login?interactionId=local-interaction&realm=User",
+      "home_register",
+    ],
+    [
+      "replay",
+      "https://www.pigclaude.com/identity/login?interactionId=local-interaction&realm=User",
+      "home_login",
+    ],
+    [
+      "admin-login",
+      "https://www.pigclaude.com/identity/login?interactionId=local-interaction&realm=Admin",
+      "admin_login",
+    ],
   ] as const) {
     const page = proofFixture(origin)
     await page.evaluate(proofPage, { ...command, case: caseName })

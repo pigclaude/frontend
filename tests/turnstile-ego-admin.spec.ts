@@ -22,18 +22,34 @@ function fixture(readonly = false) {
   let mutateRejected = false
   const calls: { path: string; init: RequestInit }[] = []
   let readDelayMs = 0
+  let session: unknown = {
+    principalType: "Admin",
+    principalId: "local-admin",
+    csrf: "local-admin-session-csrf",
+  }
   const evaluate = async (fn: typeof adminPage, argument: AdminCommand): Promise<AdminFacts> =>
     runInNewContext(`(${fn.toString()})(argument)`, {
       argument,
       window,
-      location: { origin: "https://admin.pigclaude.com" },
+      location: { origin: "https://admin.pigclaude.com", pathname: "/settings" },
       AbortSignal,
+      Headers,
       performance,
       fetch: async (path: string, init: RequestInit = {}) => {
         if (init.method === "GET" && readDelayMs)
           await new Promise((resolve) => setTimeout(resolve, readDelayMs))
         calls.push({ path, init })
         const body = JSON.parse(String(init.body ?? "{}")) as Record<string, unknown>
+        if (path === "/admin/v1/session")
+          return {
+            status: 200,
+            json: async () => session,
+          }
+        if (
+          init.method !== "GET" &&
+          new Headers(init.headers).get("x-csrf-token") !== "local-admin-session-csrf"
+        )
+          return { status: 403, json: async () => ({ error: "access_denied" }) }
         let status = 200
         if (path.endsWith("/draft")) {
           if (readonly) status = 403
@@ -55,6 +71,9 @@ function fixture(readonly = false) {
     evaluate,
     calls,
     state,
+    bootstrap: (value: unknown) => {
+      session = value
+    },
     delayReads: (milliseconds: number) => {
       readDelayMs = milliseconds
     },
@@ -71,8 +90,10 @@ test("owner格式400/CAS409均保留完整状态审计，写入不伪造Origin�
   expect(result.stateUnchanged && result.auditsUnchanged).toBe(true)
   for (const { init } of page.calls) {
     expect(init.credentials).toBe("same-origin")
-    expect(JSON.stringify(init.headers)).not.toMatch(/Origin|Cookie|Authorization/)
+    expect(JSON.stringify(init.headers ?? {})).not.toMatch(/Origin|Cookie|Authorization/)
     expect(String(init.body)).not.toContain("secretKey")
+    if (init.method !== "GET" && init.method !== undefined)
+      expect(new Headers(init.headers).get("x-csrf-token")).toBe("local-admin-session-csrf")
   }
   expect(JSON.stringify(result)).not.toMatch(/local-site-key|local-owner/)
 })
@@ -128,14 +149,16 @@ test("只读会话403保留状态审计，controller不接受安全字段夹带�
 test("hostname controller只在内存转交proof，拒绝后清理owned widget且不回proof", async () => {
   const admin = fixture()
   await runAdmin(admin, "prepare-hostname", nonce)
-  const home = proofFixture()
+  const home = proofFixture(
+    "https://www.pigclaude.com/identity/login?interactionId=local-interaction&realm=Admin",
+  )
   const { installProof } = await import("./turnstile-ego-controller")
   await installProof(home, { case: "hostname", nonce })
   home.callbacks[0]("local-home-admin-action")
   const result = await runHostname(home, admin, nonce, nonce)
   expect(result.statuses).toEqual([400])
   expect(result.activeRevision).toBe("3")
-  expect(result.requestedHostname).toBe("pigclaude.com")
+  expect(result.requestedHostname).toBe("www.pigclaude.com")
   expect(JSON.stringify(result)).not.toMatch(/local-home-admin-action|local-site-key/)
   expect(home.removed).toEqual(["owned-widget-1"])
   expect(result.ageMs).toBe(0)
@@ -146,7 +169,9 @@ test("hostname超过240000ms含306000ms旧proof不消费且没有admin调用", a
   for (const ageMs of [240_001, 306_000]) {
     const admin = fixture()
     await runAdmin(admin, "prepare-hostname", nonce)
-    const home = proofFixture()
+    const home = proofFixture(
+      "https://www.pigclaude.com/identity/login?interactionId=local-interaction&realm=Admin",
+    )
     const { installProof, readProofFacts } = await import("./turnstile-ego-controller")
     await installProof(home, { case: "hostname", nonce })
     home.callbacks[0]("local-stale-hostname-proof")
@@ -163,7 +188,9 @@ test("hostname的consume回包/跨页RPC/页面GET/回程延迟均不能形成�
   for (const stage of ["consume", "outbound", "reads", "return"] as const) {
     const admin = fixture()
     await runAdmin(admin, "prepare-hostname", nonce)
-    const home = proofFixture()
+    const home = proofFixture(
+      "https://www.pigclaude.com/identity/login?interactionId=local-interaction&realm=Admin",
+    )
     const { installProof, readProofFacts } = await import("./turnstile-ego-controller")
     await installProof(home, { case: "hostname", nonce })
     home.callbacks[0]("local-fixed-age-hostname-proof")
@@ -195,5 +222,17 @@ test("hostname的consume回包/跨页RPC/页面GET/回程延迟均不能形成�
     if (stage === "consume" || stage === "outbound") expect(admin.calls.length).toBe(beforeCalls)
     expect((await readProofFacts(home, { case: "hostname", nonce })).status).toBe("consumed")
     expect(home.removed).toEqual([])
+  }
+})
+
+test("设置链只接受真实Admin bootstrap的非空CSRF，拒绝User或缺失上下文", async () => {
+  for (const session of [
+    { principalType: "User", principalId: "local-user", csrf: "local-admin-session-csrf" },
+    { principalType: "Admin", principalId: "local-admin", csrf: "" },
+  ]) {
+    const page = fixture()
+    page.bootstrap(session)
+    await expect(runAdmin(page, "owner-rejections", nonce)).rejects.toThrow("管理员边界场景失败")
+    expect(page.calls.map((call) => call.path)).toEqual(["/admin/v1/session"])
   }
 })

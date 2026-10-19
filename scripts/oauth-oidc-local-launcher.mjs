@@ -1,6 +1,6 @@
 // 负责 OAuth/OIDC 专用本地设施、受限环境及自有 loopback 子进程的完整生命周期。
 import { readFile, lstat } from "node:fs/promises"
-import { spawn } from "node:child_process"
+import { createOAuthLifecycle } from "./oauth-oidc-process-lifecycle.mjs"
 import { randomBytes } from "node:crypto"
 import { fileURLToPath } from "node:url"
 import { resolve } from "node:path"
@@ -52,48 +52,34 @@ export function publicWebEnvironment(env, api, home) {
   }
   return Object.fromEntries(Object.entries(result).filter(([, value]) => typeof value === "string"))
 }
-function start(command, args, env) {
-  const child = spawn(command, args, {
-    cwd: root,
-    env,
-    detached: true,
-    stdio: ["pipe", "pipe", "pipe"],
-  })
-  child.once("error", () => undefined)
+function start(lifecycle, command, args, env, role) {
+  const child = lifecycle.spawn(
+    command,
+    args,
+    {
+      cwd: root,
+      env,
+      stdio: ["pipe", "pipe", "pipe"],
+    },
+    role,
+  )
   child.stderr.resume()
-  // 框架日志可能含URL/表单，本launcher完全不转发原始子进程输出。
   return child
 }
-async function close(child, graceful = false) {
-  if (!child.pid || child.exitCode !== null || child.signalCode !== null) return
-  const exited = new Promise((done) => child.once("exit", done))
-  if (graceful) child.stdin.end()
-  else {
-    try {
-      process.kill(-child.pid, "SIGTERM")
-    } catch {
-      child.kill("SIGTERM")
-    }
-  }
-  const timer = setTimeout(() => {
-    try {
-      process.kill(-child.pid, "SIGKILL")
-    } catch {
-      child.kill("SIGKILL")
-    }
-  }, 5000)
-  await exited
-  clearTimeout(timer)
-  if (graceful && child.exitCode !== 0) throw new Error("OAUTH_TEST_FIXTURE_CLEANUP_FAILED")
-}
-async function healthy(url, child) {
+async function healthy(url, child, lifecycle) {
   const deadline = Date.now() + 120000
   while (Date.now() < deadline) {
+    lifecycle.throwIfCancelled()
     if (child.exitCode !== null || child.signalCode !== null)
       throw new Error("OAUTH_TEST_CHILD_EXITED")
     try {
       if (
-        (await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(1500) })).status < 400
+        (
+          await fetch(url, {
+            redirect: "manual",
+            signal: AbortSignal.any([lifecycle.signal, AbortSignal.timeout(1500)]),
+          })
+        ).status < 400
       )
         return
     } catch {
@@ -104,7 +90,7 @@ async function healthy(url, child) {
   throw new Error("OAUTH_TEST_READY_TIMEOUT")
 }
 /** 启动测试专用Rust example和实际Next/Vite；退出只清理本launcher创建的进程与schema。 */
-export async function startOAuthLauncher(env = process.env) {
+export async function startOAuthLauncher(env = process.env, owner) {
   validateOAuthInfrastructure(env)
   if (!env.OAUTH_TEST_INFRA_FILE) throw new Error("OAUTH_TEST_METADATA_REQUIRED")
   let metadata
@@ -132,53 +118,76 @@ export async function startOAuthLauncher(env = process.env) {
   const home = `http://127.0.0.1:${await allocateLoopbackPort()}`
   const admin = `http://127.0.0.1:${await allocateLoopbackPort()}`
   const secret = randomBytes(32).toString("hex")
+  const lifecycle = owner ?? createOAuthLifecycle()
   const children = []
-  let fixture
   const shutdown = async () => {
-    for (const child of [...children].reverse()) await close(child, child === fixture)
+    try {
+      await lifecycle.shutdown()
+    } finally {
+      if (!owner) lifecycle.dispose()
+    }
   }
+  let fixture
   try {
-    fixture = start(resolve(root, "backend/target/debug/examples/oauth-live-fixture"), [], {
-      PATH: env.PATH,
-      HOME: env.HOME,
-      TMPDIR: env.TMPDIR,
-      DATABASE_URL: env.DATABASE_URL,
-      REDIS_URL: env.REDIS_URL,
-      PIGCLAUDE_SETTINGS_TEST_DATABASE_URL: env.PIGCLAUDE_SETTINGS_TEST_DATABASE_URL,
-      OAUTH_TEST_INFRA_FILE: env.OAUTH_TEST_INFRA_FILE,
-      OAUTH_TEST_HOME: home,
-      OAUTH_TEST_ADMIN: admin,
-      OAUTH_TEST_CONTROL_SECRET: secret,
-    })
+    fixture = start(
+      lifecycle,
+      resolve(root, "backend/target/debug/examples/oauth-live-fixture"),
+      [],
+      {
+        PATH: env.PATH,
+        HOME: env.HOME,
+        TMPDIR: env.TMPDIR,
+        DATABASE_URL: env.DATABASE_URL,
+        REDIS_URL: env.REDIS_URL,
+        PIGCLAUDE_SETTINGS_TEST_DATABASE_URL: env.PIGCLAUDE_SETTINGS_TEST_DATABASE_URL,
+        OAUTH_TEST_INFRA_FILE: env.OAUTH_TEST_INFRA_FILE,
+        OAUTH_TEST_HOME: home,
+        OAUTH_TEST_ADMIN: admin,
+        OAUTH_TEST_CONTROL_SECRET: secret,
+      },
+      "fixture",
+    )
     children.push(fixture)
-    const ports = await new Promise((done, reject) => {
-      let buffer = ""
-      const timer = setTimeout(() => reject(new Error("OAUTH_TEST_FIXTURE_TIMEOUT")), 30000)
-      fixture.once("error", () => {
-        clearTimeout(timer)
-        reject(new Error("OAUTH_TEST_FIXTURE_START_FAILED"))
-      })
-      fixture.once("exit", () => {
-        clearTimeout(timer)
-        reject(new Error("OAUTH_TEST_FIXTURE_EXITED"))
-      })
-      fixture.stdout.on("data", (chunk) => {
-        buffer += chunk.toString()
-        const at = buffer.indexOf("\n")
-        if (at < 0) return
-        try {
-          const value = JSON.parse(buffer.slice(0, at))
-          if (value.ready === true) {
+    const ports = await lifecycle.pending(
+      new Promise((done, reject) => {
+        let buffer = ""
+        const timer = setTimeout(() => reject(new Error("OAUTH_TEST_FIXTURE_TIMEOUT")), 30000)
+        lifecycle.signal.addEventListener(
+          "abort",
+          () => {
             clearTimeout(timer)
-            done(value)
+            reject(new Error("OAUTH_TEST_CANCELLED"))
+          },
+          { once: true },
+        )
+        fixture.once("error", () => {
+          clearTimeout(timer)
+          reject(new Error("OAUTH_TEST_FIXTURE_START_FAILED"))
+        })
+        fixture.once("exit", () => {
+          clearTimeout(timer)
+          reject(new Error("OAUTH_TEST_FIXTURE_EXITED"))
+        })
+        fixture.stdout.on("data", (chunk) => {
+          buffer += chunk.toString()
+          const at = buffer.indexOf("\n")
+          if (at < 0) return
+          try {
+            const value = JSON.parse(buffer.slice(0, at))
+            if (value.ready === true) {
+              clearTimeout(timer)
+              done(value)
+            }
+          } catch {
+            clearTimeout(timer)
+            reject(new Error("OAUTH_TEST_FIXTURE_PROTOCOL"))
           }
-        } catch {
-          reject(new Error("OAUTH_TEST_FIXTURE_PROTOCOL"))
-        }
-      })
-    })
+        })
+      }),
+    )
     fixture.stdout.resume()
     const homeChild = start(
+      lifecycle,
       "pnpm",
       [
         "--dir",
@@ -193,7 +202,9 @@ export async function startOAuthLauncher(env = process.env) {
       ],
       publicWebEnvironment(env, ports.api, home),
     )
+    children.push(homeChild)
     const adminChild = start(
+      lifecycle,
       "pnpm",
       [
         "--dir",
@@ -208,13 +219,15 @@ export async function startOAuthLauncher(env = process.env) {
       ],
       publicWebEnvironment(env, ports.api2, home),
     )
-    children.push(homeChild, adminChild)
+    children.push(adminChild)
     homeChild.stdout.resume()
     adminChild.stdout.resume()
-    await Promise.all([
-      healthy(`${home}/v1/auth/captcha`, homeChild),
-      healthy(`${admin}/login`, adminChild),
-    ])
+    await lifecycle.pending(
+      Promise.all([
+        healthy(`${home}/v1/auth/captcha`, homeChild, lifecycle),
+        healthy(`${admin}/login`, adminChild, lifecycle),
+      ]),
+    )
     return {
       home,
       admin,
@@ -229,8 +242,9 @@ export async function startOAuthLauncher(env = process.env) {
   }
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const lifecycle = createOAuthLifecycle()
   try {
-    const launcher = await startOAuthLauncher()
+    const launcher = await startOAuthLauncher(process.env, lifecycle)
     console.log(
       JSON.stringify({
         ready: true,
@@ -238,14 +252,20 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         adminPort: new URL(launcher.admin).port,
       }),
     )
-    const shutdown = async () => {
-      await launcher.shutdown()
-      process.exit(0)
-    }
-    process.once("SIGTERM", shutdown)
-    process.once("SIGINT", shutdown)
+    await lifecycle.pending(lifecycle.cancellation)
   } catch {
-    console.error("OAUTH_TEST_LAUNCH_FAILED")
-    process.exitCode = 1
+    if (!lifecycle.cancelledBySignal) {
+      console.error("OAUTH_TEST_LAUNCH_FAILED")
+      process.exitCode = 1
+    }
+  } finally {
+    try {
+      await lifecycle.shutdown()
+      console.log("OWNED_PROCESSES_STOPPED")
+    } catch {
+      console.error("OAUTH_TEST_CLEANUP_FAILED")
+      process.exitCode = 1
+    }
+    lifecycle.dispose()
   }
 }

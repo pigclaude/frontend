@@ -1,22 +1,28 @@
 // 负责以单个owned launcher运行现有Playwright配置，并始终回收测试专属进程。
-import { spawn } from "node:child_process"
+import { createOAuthLifecycle } from "./oauth-oidc-process-lifecycle.mjs"
 import { startOAuthLauncher, validateOAuthInfrastructure } from "./oauth-oidc-local-launcher.mjs"
-validateOAuthInfrastructure(process.env)
-const build = spawn(
-  "cargo",
-  [
-    "build",
-    "--locked",
-    "--manifest-path",
-    "../backend/Cargo.toml",
-    "--example",
-    "oauth-live-fixture",
-  ],
-  { stdio: "inherit" },
-)
-if ((await new Promise((done) => build.once("exit", done))) !== 0) process.exit(1)
-const launcher = await startOAuthLauncher()
+const lifecycle = createOAuthLifecycle()
 try {
+  validateOAuthInfrastructure(process.env)
+  const build = lifecycle.spawn(
+    "cargo",
+    [
+      "build",
+      "--locked",
+      "--manifest-path",
+      "../backend/Cargo.toml",
+      "--example",
+      "oauth-live-fixture",
+    ],
+    { stdio: "inherit" },
+    "build",
+  )
+  const built = await lifecycle.wait(build)
+  if (built !== 0) {
+    process.exitCode = built
+    throw new Error("OAUTH_TEST_BUILD_FAILED")
+  }
+  const launcher = await startOAuthLauncher(process.env, lifecycle)
   console.log(
     JSON.stringify({
       ready: true,
@@ -25,7 +31,7 @@ try {
       layer: "local-mock-provider",
     }),
   )
-  const child = spawn(
+  const child = lifecycle.spawn(
     "pnpm",
     ["exec", "playwright", "test", "tests/oauth-oidc-web-desktop.spec.ts"],
     {
@@ -41,19 +47,21 @@ try {
         OAUTH_TEST_CONTROL_SECRET: launcher.secret,
       },
     },
+    "runner",
   )
-  process.exitCode = (await new Promise((done) => child.once("exit", done))) ?? 1
-} finally {
-  await launcher.shutdown()
-  for (const pid of launcher.pids) {
-    let exists = false
-    try {
-      process.kill(pid, 0)
-      exists = true
-    } catch {
-      /* 自有子进程已经退出。 */
-    }
-    if (exists) throw new Error("OAUTH_TEST_CHILD_STILL_RUNNING")
+  process.exitCode = await lifecycle.wait(child)
+} catch {
+  if (!lifecycle.cancelledBySignal) {
+    console.error("OAUTH_TEST_E2E_FAILED")
+    process.exitCode ||= 1
   }
-  console.log("OAUTH_TEST_OWNED_PROCESSES_STOPPED")
+} finally {
+  try {
+    await lifecycle.shutdown()
+    console.log("OAUTH_TEST_OWNED_PROCESSES_STOPPED")
+  } catch {
+    console.error("OAUTH_TEST_CLEANUP_FAILED")
+    process.exitCode = 1
+  }
+  lifecycle.dispose()
 }

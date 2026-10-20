@@ -41,15 +41,37 @@ async function passwordForm(page: Page, email: string, register = false) {
 }
 async function signup(page: Page, email: string) {
   await safeGoto(page, `${home}/register`)
-  await page.getByRole("button", { name: "继续注册", exact: true }).click()
+  await expect(page.getByLabel("邮箱", { exact: true })).toBeVisible()
   await passwordForm(page, email, true)
   await page.waitForURL((url) => url.pathname === "/dashboard")
 }
 async function adminLogin(page: Page) {
   await safeGoto(page, `${admin}/login`)
-  await page.getByRole("button", { name: "继续管理员登录" }).click()
+  await expect(page.getByLabel("邮箱", { exact: true })).toBeVisible()
   await passwordForm(page, "admin@example.test")
   await page.waitForURL((url) => url.origin === admin && url.pathname === "/users")
+}
+
+/** 用已登录的管理员页面给用户开通会员；设备审批要求账号有会员。 */
+async function grantMembership(adminPage: Page, user: unknown) {
+  const adminSession = await request(adminPage, "/admin/v1/session")
+  const grant = await adminPage.evaluate(
+    async ({ user, csrf }) => {
+      const response = await fetch("/admin/v1/memberships/grant", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-csrf-token": String(csrf) },
+        body: JSON.stringify({
+          userId: user,
+          planId: "runtime-plan",
+          termsVersion: "runtime-v1",
+          remark: "local browser",
+        }),
+      })
+      return response.status
+    },
+    { user, csrf: adminSession.body.csrf },
+  )
+  expect(grant).toBe(200)
 }
 
 test.setTimeout(120_000)
@@ -76,10 +98,8 @@ test("真实Home注册、Cookie业务、编码返回、正常SSO和强制注册�
   expect(await page.evaluate(() => document.cookie.includes("pigclaude_session"))).toBe(false)
   const target = "/dashboard?value=%252F%26nested%3Dyes"
   await safeGoto(page, `${home}/login?${new URLSearchParams({ redirect: target })}`)
-  await page.getByRole("button", { name: "继续登录", exact: true }).click()
   await page.waitForURL((url) => url.pathname + url.search === target)
   await safeGoto(page, `${home}/register`)
-  await page.getByRole("button", { name: "继续注册", exact: true }).click()
   await expect(page.getByRole("button", { name: "创建账号", exact: true })).toBeVisible()
   expect(new URL(page.url()).pathname).toBe("/identity/login")
 })
@@ -114,8 +134,8 @@ test("Google HTTP mock经真实浏览器与RP回调建立会话，不向网站JS
     await route.fulfill({ status: 302, headers: { location: result.redirect }, body: "" })
   })
   await safeGoto(page, `${home}/login`)
-  await page.getByRole("button", { name: "继续登录", exact: true }).click()
-  await page.getByRole("button", { name: /Google/ }).click()
+  await expect(page.getByLabel("邮箱", { exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Google", exact: true }).click()
   await page.waitForURL((url) => url.pathname === "/dashboard")
   expect((await request(page, "/v1/session")).status).toBe(200)
   const me = await request(page, "/v1/user/me")
@@ -175,7 +195,7 @@ test("浏览器绑定GitHub身份使用近期密码证明，不按相同邮箱�
     await route.fulfill({ status: 302, headers: { location: result.redirect }, body: "" })
   })
   await safeGoto(page, `${home}/v1/web/oidc/start?maxAge=0`)
-  await page.getByRole("button", { name: "使用 GitHub 登录", exact: true }).click()
+  await page.getByRole("button", { name: "GitHub", exact: true }).click()
   await page.waitForURL(
     (url) =>
       url.pathname === "/identity/login" &&
@@ -214,23 +234,7 @@ test("真实浏览器审批两设备与独立public客户端，会员撤销后�
   const adminPage = await page.context().newPage()
   await adminLogin(adminPage)
   const adminSession = await request(adminPage, "/admin/v1/session")
-  const grant = await adminPage.evaluate(
-    async ({ user, csrf }) => {
-      const response = await fetch("/admin/v1/memberships/grant", {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-csrf-token": String(csrf) },
-        body: JSON.stringify({
-          userId: user,
-          planId: "runtime-plan",
-          termsVersion: "runtime-v1",
-          remark: "local browser",
-        }),
-      })
-      return response.status
-    },
-    { user: me.body.id, csrf: adminSession.body.csrf },
-  )
-  expect(grant).toBe(200)
+  await grantMembership(adminPage, me.body.id)
   const first = await authorizeNative(page, home, `pcd_${"1".repeat(64)}`)
   await safeGoto(page, `${home}/dashboard`)
   const second = await authorizeNative(page, home, `pcd_${"2".repeat(64)}`)
@@ -277,4 +281,31 @@ test("真实浏览器审批两设备与独立public客户端，会员撤销后�
     expect((await session(second.access_token)).status).toBe(401)
     expect((await request(page, "/v1/session")).status).toBe(401)
   }
+})
+
+test("已登录网页直接进入桌面授权，切换账号后用第二个账号授权", async ({ page, browser }) => {
+  const first = "browser-switch-a@example.test"
+  const second = "browser-switch-b@example.test"
+  const other = await browser.newContext()
+  const otherPage = await other.newPage()
+  await signup(otherPage, second)
+  const adminPage = await other.newPage()
+  await adminLogin(adminPage)
+  await grantMembership(adminPage, (await request(otherPage, "/v1/user/me")).body.id)
+  await signup(page, first)
+  const title = page.getByRole("heading", { name: "授权 PigClaude 桌面端", exact: true })
+  await authorizeNative(page, home, `pcd_${"3".repeat(64)}`, async (approval) => {
+    await expect(title).toBeVisible()
+    await expect(approval.getByText(first, { exact: true })).toBeVisible()
+    await approval.getByRole("button", { name: "切换账号", exact: true }).click()
+    await expect(approval.getByLabel("邮箱", { exact: true })).toBeVisible()
+    await passwordForm(approval, second)
+    await expect(title).toBeVisible()
+    await expect(approval.getByText(second, { exact: true })).toBeVisible()
+    await expect(approval.getByText(first, { exact: true })).toHaveCount(0)
+  })
+  const devices = await request(otherPage, "/v1/user/devices")
+  expect(devices.status).toBe(200)
+  expect(JSON.stringify(devices.body)).toContain("Local browser device")
+  await other.close()
 })

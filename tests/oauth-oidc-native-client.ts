@@ -3,8 +3,16 @@ import { createServer } from "node:http"
 import { createHash, randomBytes } from "node:crypto"
 import { expect, type Page } from "@playwright/test"
 
-/** 通过真实中央审批页面完成native授权，所有token只保留在Node测试客户端。 */
-export async function authorizeNative(page: Page, home: string, deviceId: string) {
+/**
+ * 通过真实中央审批页面完成native授权，所有token只保留在Node测试客户端。
+ * `beforeApprove` 在点击「授权并打开桌面端」前于授权页上执行，可用来核对账号或切换账号。
+ */
+export async function authorizeNative(
+  page: Page,
+  home: string,
+  deviceId: string,
+  beforeApprove?: (page: Page) => Promise<void>,
+) {
   const state = randomBytes(32).toString("base64url")
   const verifier = randomBytes(32).toString("base64url")
   const challenge = createHash("sha256").update(verifier).digest("base64url")
@@ -51,7 +59,8 @@ export async function authorizeNative(page: Page, home: string, deviceId: string
     await page.goto(prepared.authorizationUrl).catch(() => {
       throw new Error("LOCAL_NATIVE_NAVIGATION_FAILED")
     })
-    await page.getByRole("button", { name: "授权设备", exact: true }).click()
+    await beforeApprove?.(page)
+    await page.getByRole("button", { name: "授权并打开桌面端", exact: true }).click()
     const code = await Promise.race([
       callback,
       new Promise<never>((_, reject) =>

@@ -15,7 +15,7 @@ export default function IdentityLayout({ children }: { children: ReactNode }) {
       <Suspense fallback={<Nav variant="auth" />}>
         <IdentityNav />
       </Suspense>
-      <main className="auth-glow relative flex flex-1 items-center justify-center px-[var(--container-gutter-desktop)] py-[var(--space-8)]">
+      <main className="auth-glow relative flex flex-1 items-center justify-center overflow-hidden px-[var(--container-gutter-desktop)] py-[var(--space-8)]">
         {children}
       </main>
     </div>

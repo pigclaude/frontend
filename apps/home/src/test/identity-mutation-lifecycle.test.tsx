@@ -107,7 +107,7 @@ describe("central interaction mutation ownership", () => {
   it("excludes provider and duplicate password while password HTTP is pending, then recovers", async () => {
     render(<InteractionPanel />)
     await submitPassword()
-    const provider = screen.getByRole("button", { name: "使用 Google 登录" }) as HTMLButtonElement
+    const provider = screen.getByRole("button", { name: "Google" }) as HTMLButtonElement
     expect(provider.disabled).toBe(true)
     fireEvent.click(provider)
     fireEvent.submit(document.querySelector("form")!)
@@ -129,23 +129,23 @@ describe("central interaction mutation ownership", () => {
       view.rerender(<InteractionPanel />)
       await screen.findByLabelText("邮箱")
       if (newKind === "password") await submitPassword()
-      else fireEvent.click(screen.getByRole("button", { name: "使用 Google 登录" }))
+      else fireEvent.click(screen.getByRole("button", { name: "Google" }))
       await waitFor(() => expect(requests).toHaveLength(2))
       const currentRequest = requests[1]
       expect(currentRequest.url).toContain("/new/")
       await settle(oldRequest, "error")
-      expect(
-        (screen.getByRole("button", { name: "使用 Google 登录" }) as HTMLButtonElement).disabled,
-      ).toBe(true)
-      fireEvent.click(screen.getByRole("button", { name: "使用 GitHub 登录" }))
+      expect((screen.getByRole("button", { name: "Google" }) as HTMLButtonElement).disabled).toBe(
+        true,
+      )
+      fireEvent.click(screen.getByRole("button", { name: "GitHub" }))
       fireEvent.submit(document.querySelector("form")!)
       expect(requests).toHaveLength(2)
       expect(screen.queryByRole("alert")).toBeNull()
       await act(async () => currentRequest.resolve(json({ error: "invalid_request" }, 400)))
       await waitFor(() =>
-        expect(
-          (screen.getByRole("button", { name: "使用 Google 登录" }) as HTMLButtonElement).disabled,
-        ).toBe(false),
+        expect((screen.getByRole("button", { name: "Google" }) as HTMLButtonElement).disabled).toBe(
+          false,
+        ),
       )
     },
   )

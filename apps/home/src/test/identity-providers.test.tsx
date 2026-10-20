@@ -32,7 +32,7 @@ describe("independent provider login", () => {
     )
     render(<InteractionPanel />)
     const button = await screen.findByRole("button", {
-      name: provider === "google" ? "使用 Google 登录" : "使用 GitHub 登录",
+      name: provider === "google" ? "Google" : "GitHub",
     })
     expect((screen.getByRole("button", { name: "登录" }) as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(button)
@@ -50,8 +50,8 @@ describe("independent provider login", () => {
           : json(interaction({ providers: ["github"] })),
     )
     render(<InteractionPanel />)
-    fireEvent.click(await screen.findByRole("button", { name: "使用 GitHub 登录" }))
-    expect(screen.queryByRole("button", { name: "使用 Google 登录" })).toBeNull()
+    fireEvent.click(await screen.findByRole("button", { name: "GitHub" }))
+    expect(screen.queryByRole("button", { name: "Google" })).toBeNull()
     await screen.findByRole("alert")
     expect(document.body.textContent).not.toContain("synthetic-secret")
     await waitFor(() =>

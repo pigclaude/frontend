@@ -186,7 +186,7 @@ describe("home Turnstile auth boundary", () => {
     fireEvent.click(screen.getByRole("button", { name: "重试验证码" }))
     await waitFor(() => expect(widgets).toHaveLength(2))
     act(() => widgets[1].callback("login-only-token"))
-    fireEvent.keyDown(screen.getByRole("tab", { name: "注册" }), { key: "Enter" })
+    fireEvent.click(screen.getByRole("button", { name: "注册" }))
     await waitFor(() => expect(widgets).toHaveLength(3))
     expect(widgets[2].action).toBe("home_register")
     act(() => widgets[1].callback("late-login-token"))

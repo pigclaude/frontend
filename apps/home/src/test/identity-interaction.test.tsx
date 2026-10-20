@@ -39,7 +39,7 @@ describe("identity interaction", () => {
     await screen.findByLabelText("密码")
     fireEvent.click(screen.getByRole("button", { name: "显示密码" }))
     expect((screen.getByLabelText("密码") as HTMLInputElement).type).toBe("text")
-    fireEvent.keyDown(screen.getByRole("tab", { name: "注册" }), { key: "Enter" })
+    fireEvent.click(screen.getByRole("button", { name: "注册" }))
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
     await waitFor(() =>
@@ -71,9 +71,9 @@ describe("identity interaction", () => {
         : json(interaction({ realm: "Admin", registrationAllowed: false, providers: [] })),
     )
     render(<InteractionPanel />)
-    await screen.findByRole("heading", { name: "管理员登录" })
-    expect(screen.queryByRole("tab", { name: "注册" })).toBeNull()
-    expect(screen.queryByText("使用 Google 登录")).toBeNull()
+    await screen.findByRole("heading", { name: "登录管理后台" })
+    expect(screen.queryByRole("button", { name: "注册" })).toBeNull()
+    expect(screen.queryByText("Google")).toBeNull()
   })
   it.each([
     { status: "new", epoch: null },

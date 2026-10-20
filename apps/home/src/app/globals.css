@@ -905,20 +905,6 @@ main:has(#product) + .landing-footer {
   background: radial-gradient(ellipse 55% 50% at 50% 100%, var(--hero-glow), transparent 70%);
 }
 
-.auth-tabs [data-slot="tabs-trigger"][data-state="active"] {
-  border-color: transparent;
-  background: var(--raise-3);
-  color: var(--fg);
-  box-shadow: var(--elev-ring);
-}
-:root[data-theme="light"] .auth-tabs [data-slot="tabs-trigger"][data-state="active"] {
-  background: var(--surface);
-  box-shadow: var(--btn-shadow), var(--elev-ring);
-}
-:root .auth-tabs [data-slot="tabs-trigger"][data-state]:focus-visible {
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring), transparent 50%);
-}
-
 .balance-glow::after {
   content: "";
   position: absolute;

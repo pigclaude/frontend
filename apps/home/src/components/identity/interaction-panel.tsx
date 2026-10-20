@@ -3,8 +3,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { ApiError } from "@pigclaude/api/client"
+import { consumeRegistrationHint } from "@pigclaude/api/web-oidc"
+import { Badge } from "@pigclaude/web-ui/components/badge"
 import { Button } from "@pigclaude/web-ui/components/button"
-import { PasswordInteraction } from "./password-interaction"
+import { LoginForm, type LoginMode } from "./login-form"
 import { ProviderButtons } from "./provider-buttons"
 import { DeviceApproval } from "./device-approval"
 import {
@@ -14,6 +16,9 @@ import {
   type IdentityContinuation,
   type IdentityInteraction,
 } from "@/lib/identity-api"
+
+const alertClass =
+  "rounded-md border border-[color-mix(in_oklab,var(--danger),transparent_65%)] bg-[color-mix(in_oklab,var(--danger),transparent_94%)] px-3 py-2.5 text-[13px] leading-5 text-[var(--danger-ink)]"
 
 /** 从原浏览器交互恢复 CSRF 与 realm；每个页面实例只处理当前有效请求。 */
 export function InteractionPanel() {
@@ -45,6 +50,8 @@ function InteractionSession({
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState<"password" | "other" | null>(null)
   const [reload, setReload] = useState(0)
+  const [mode, setMode] = useState<LoginMode>("login")
+  const hintRead = useRef(false)
   const mutationOwner = useRef<symbol | null>(null)
   const generation = useRef(0)
   const mounted = useRef(false)
@@ -93,6 +100,14 @@ function InteractionSession({
       mutationOwner.current = null
     }
   }, [id, realm, reload, providerError])
+  const registrable =
+    view !== null && view.phase === "login" && view.realm === "User" && view.registrationAllowed
+  useLayoutEffect(() => {
+    // 注册直达提示只在可注册的 User 登录阶段读取一次，绘制前切换以免先闪出登录布局。
+    if (!registrable || hintRead.current) return
+    hintRead.current = true
+    if (consumeRegistrationHint()) setMode("register")
+  }, [registrable])
   function continueWith(result: IdentityContinuation) {
     if (result.type === "redirect") identityNavigation.assign(result.redirect)
     else {
@@ -143,39 +158,77 @@ function InteractionSession({
         )}
       </section>
     )
+  if (view.phase === "login") {
+    const admin = view.realm === "Admin"
+    const register = !admin && view.registrationAllowed && mode === "register"
+    return (
+      <section
+        className="relative flex w-full max-w-[360px] flex-col"
+        aria-labelledby="identity-title"
+      >
+        <header className="flex flex-col gap-1.5">
+          {admin && (
+            <Badge
+              variant="outline"
+              className="mb-2 border-border px-2.5 font-normal text-muted-foreground"
+            >
+              管理后台
+            </Badge>
+          )}
+          <h1 id="identity-title" className="text-xl font-semibold tracking-tight">
+            {admin ? "登录管理后台" : register ? "注册 PigClaude" : "登录 PigClaude"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {admin ? "仅限运营人员使用管理员账号" : "管理会员和桌面设备"}
+          </p>
+        </header>
+        {error && (
+          <p role="alert" className={`mt-5 ${alertClass}`}>
+            {error}
+          </p>
+        )}
+        {expired ? (
+          <p role="alert" className={`mt-5 ${alertClass}`}>
+            登录交互已过期，请重新发起登录
+          </p>
+        ) : (
+          <div className="mt-6 flex flex-col gap-5">
+            <ProviderButtons
+              interaction={view}
+              disabled={pending !== null}
+              onStart={(provider) => {
+                void act(() => identityApi.provider(view, provider))
+              }}
+            />
+            <LoginForm
+              key={view.interactionId}
+              interaction={view}
+              mode={mode}
+              onModeChange={setMode}
+              onMutate={(request) => {
+                void act(request, "password")
+              }}
+              pending={pending === "password"}
+              disabled={pending !== null}
+            />
+          </div>
+        )}
+      </section>
+    )
+  }
   return (
     <section className="flex w-full max-w-[400px] flex-col gap-6" aria-labelledby="identity-title">
       <h1 id="identity-title" className="text-center text-xl font-semibold">
         {view.realm === "Admin"
-          ? "管理员登录"
-          : view.phase === "login"
-            ? "登录 PigClaude"
-            : view.phase === "device_approval"
-              ? "确认设备授权"
-              : "确认登录授权"}
+          ? "登录管理后台"
+          : view.phase === "device_approval"
+            ? "确认设备授权"
+            : "确认登录授权"}
       </h1>
       {expired ? (
         <p role="alert">登录交互已过期，请重新发起登录</p>
       ) : (
         <>
-          {view.phase === "login" && (
-            <>
-              <PasswordInteraction
-                key={view.interactionId}
-                interaction={view}
-                onMutate={(request) => act(request, "password")}
-                pending={pending === "password"}
-                disabled={pending !== null}
-              />
-              <ProviderButtons
-                interaction={view}
-                disabled={pending !== null}
-                onStart={(provider) => {
-                  void act(() => identityApi.provider(view, provider))
-                }}
-              />
-            </>
-          )}
           {view.phase === "consent" && (
             <div className="flex flex-col gap-4">
               <p>是否允许{view.realm === "Admin" ? "管理站" : "用户站"}使用本次登录身份？</p>

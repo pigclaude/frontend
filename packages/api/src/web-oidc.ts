@@ -9,7 +9,10 @@ const registrationHintKey = "pigclaude:registration-ui"
 const hintLifetime = 600_000
 
 /** 顶层导航只接收固定 RP start 或已验证服务器接续。 */
-export const webOidcNavigation = { assign: (url: string) => window.location.assign(url) }
+export const webOidcNavigation = {
+  assign: (url: string) => window.location.assign(url),
+  replace: (url: string) => window.location.replace(url),
+}
 
 /** 返回固定同源 RP start；原 returnTo 只编码一次，由服务器验证路径。 */
 export function webOidcStartPath(input: WebOidcLogin): string {
@@ -20,8 +23,8 @@ export function webOidcStartPath(input: WebOidcLogin): string {
   return `${prefix}/v1/web/oidc/start?${params}`
 }
 
-/** 通过顶层导航进入服务器 RP；注册意图只保存一次性非敏感 UI hint。 */
-export function beginWebOidcLogin(input: WebOidcLogin): void {
+/** 通过顶层导航进入服务器 RP；replace 为 true 时不在历史里留下中转页。注册意图只保存一次性非敏感 UI hint。 */
+export function beginWebOidcLogin(input: WebOidcLogin, options: { replace?: boolean } = {}): void {
   try {
     sessionStorage.removeItem(registrationHintKey)
     if (input.site === "home" && input.mode === "register") {
@@ -33,7 +36,9 @@ export function beginWebOidcLogin(input: WebOidcLogin): void {
   } catch {
     // 存储不可用只影响初始标签，不影响 RP 导航。
   }
-  webOidcNavigation.assign(webOidcStartPath(input))
+  const url = webOidcStartPath(input)
+  if (options.replace) webOidcNavigation.replace(url)
+  else webOidcNavigation.assign(url)
 }
 
 /** 消费一次性注册意图；损坏、过期、未来时间和存储异常一律默认登录。 */

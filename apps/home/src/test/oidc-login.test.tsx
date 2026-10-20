@@ -39,7 +39,7 @@ describe("OIDC entry", () => {
       "/admin/v1/web/oidc/start?returnTo=%2Fusers",
     )
   })
-  it("only starts authentication after an explicit click, including errors", () => {
+  it("does not auto start with an error and retries only after an explicit click", () => {
     mocks.params = new URLSearchParams({
       oidcError: "OIDC_ACCESS_DENIED",
       redirect: "/dashboard?x=a%2Bb%2520",
@@ -51,12 +51,15 @@ describe("OIDC entry", () => {
     )
     expect(mocks.begin).not.toHaveBeenCalled()
     expect(screen.getByRole("alert").textContent).toContain("取消")
-    fireEvent.click(screen.getByRole("button", { name: "继续登录" }))
-    expect(mocks.begin).toHaveBeenCalledWith({
-      site: "home",
-      returnTo: "/dashboard?x=a%2Bb%2520",
-      mode: "login",
-    })
+    fireEvent.click(screen.getByRole("button", { name: "重新登录" }))
+    expect(mocks.begin).toHaveBeenCalledWith(
+      {
+        site: "home",
+        returnTo: "/dashboard?x=a%2Bb%2520",
+        mode: "login",
+      },
+      { replace: true },
+    )
     expect(screen.queryByLabelText("密码")).toBeNull()
   })
   it.each(["/identity/login", "/identity/authorize"])("keeps %s independent of Home me", (path) => {

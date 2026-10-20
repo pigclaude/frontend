@@ -4,6 +4,7 @@ import { useQueryClient, type QueryClient } from "@tanstack/react-query"
 import { useEffect } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiError } from "@pigclaude/api/client"
+import { webOidcNavigation } from "@pigclaude/api/web-oidc"
 import type { MeResponse } from "@pigclaude/api/home/types"
 import { Nav } from "@/components/nav"
 import { Providers } from "@/components/providers"
@@ -83,6 +84,7 @@ async function openMenu() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.spyOn(webOidcNavigation, "replace").mockImplementation(() => undefined)
   mocks.pathname = "/dashboard"
   mocks.params = new URLSearchParams()
   window.history.replaceState({}, "", "/dashboard")
@@ -210,7 +212,7 @@ describe("home user menu lifecycle", () => {
         <CacheProbe />
       </Providers>,
     )
-    await screen.findByRole("button", { name: "继续登录" })
+    await screen.findByRole("status")
     expect(client.getQueryCache().getAll()).toHaveLength(0)
     expect(mocks.login).not.toHaveBeenCalled()
     const nextUser = { ...user, id: "new-user-5678", nickname: "Grace", email: "new@example.com" }
@@ -247,7 +249,7 @@ it("does not let old logout cleanup clear a new route or session after cancelQue
       <CacheProbe />
     </Providers>,
   )
-  await screen.findByRole("button", { name: "继续登录" })
+  await screen.findByRole("status")
   client.setQueryData(["new-session"], { id: "next-user" })
   await act(async () => cancellation.resolve())
   expect(client.getQueryData(["new-session"])).toEqual({ id: "next-user" })

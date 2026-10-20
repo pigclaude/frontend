@@ -1,6 +1,7 @@
-// 负责 Home 登录与注册入口，只通过受信同源 RP start 发起顶层导航。
+// 负责 Home 登录与注册入口：无错误时立即经受信同源 RP start 顶层导航，带错误时只显示提示和重试。
 "use client"
 
+import { useEffect, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@pigclaude/web-ui/components/button"
 import { beginWebOidcLogin } from "@pigclaude/api/web-oidc"
@@ -16,47 +17,41 @@ const errors: Record<string, string> = {
   ACCOUNT_BANNED: "账号已被封禁，无法继续登录",
 }
 
-/** 等待用户明确继续，退出或错误返回后不会自动循环授权。 */
+/** 无已知错误码时只发起一次登录导航；带错误码时不自动循环，由用户点击「重新登录」。 */
 export function AuthPanel({ initialMode = "login" }: { initialMode?: AuthMode } = {}) {
   const params = useSearchParams()
   const errorCode = params.get("oidcError") ?? ""
   const error = Object.hasOwn(errors, errorCode) ? errors[errorCode] : undefined
   const returnTo = params.get("redirect") ?? "/dashboard"
-  const alternateQuery = new URLSearchParams({ redirect: returnTo })
-  const alternatePath = initialMode === "register" ? "/login" : "/register"
+  const started = useRef(false)
+  const start = () =>
+    beginWebOidcLogin({ site: "home", returnTo, mode: initialMode }, { replace: true })
+  useEffect(() => {
+    if (error || started.current) return
+    started.current = true
+    start()
+    // 只在挂载时依据首次参数决定是否自动跳转。
+  }, [])
   return (
     <section
-      className="relative flex w-full max-w-[400px] flex-col gap-6"
+      className="relative flex w-full max-w-[400px] flex-col items-center gap-4 text-center"
       aria-labelledby="auth-title"
     >
-      <div className="flex flex-col items-center gap-2 text-center">
-        <h1 id="auth-title" className="text-xl font-semibold tracking-[-0.288px]">
-          {initialMode === "register" ? "注册 PigClaude" : "登录 PigClaude"}
-        </h1>
-        <p className="text-sm text-muted-foreground">使用 PigClaude 账号管理会员和桌面设备。</p>
-      </div>
-      {error && (
-        <p role="alert" className="query-error">
-          {error}
+      <h1 id="auth-title" className="sr-only">
+        {initialMode === "register" ? "注册 PigClaude" : "登录 PigClaude"}
+      </h1>
+      {error ? (
+        <>
+          <p role="alert" className="query-error">
+            {error}
+          </p>
+          <Button onClick={start}>重新登录</Button>
+        </>
+      ) : (
+        <p role="status" className="text-sm text-muted-foreground">
+          正在前往登录…
         </p>
       )}
-      <Button
-        onClick={() =>
-          beginWebOidcLogin({
-            site: "home",
-            returnTo,
-            mode: initialMode,
-          })
-        }
-      >
-        {initialMode === "register" ? "继续注册" : "继续登录"}
-      </Button>
-      <a
-        className="text-center text-sm text-muted-foreground"
-        href={`${alternatePath}?${alternateQuery}`}
-      >
-        {initialMode === "register" ? "已有账号？登录" : "创建账号"}
-      </a>
     </section>
   )
 }

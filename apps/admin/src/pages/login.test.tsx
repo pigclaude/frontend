@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
 import { MemoryRouter } from "react-router"
 import { describe, expect, it, vi } from "vitest"
+import { webOidcNavigation } from "@pigclaude/api/web-oidc"
 import LoginPage from "./login"
 
 vi.mock("@/lib/api", () => ({
@@ -20,6 +21,7 @@ vi.mock("@/lib/api", () => ({
 
 describe("LoginPage home link", () => {
   it("points to the public home origin by default", () => {
+    vi.spyOn(webOidcNavigation, "replace").mockImplementation(() => {})
     render(
       <QueryClientProvider client={new QueryClient()}>
         <MemoryRouter>

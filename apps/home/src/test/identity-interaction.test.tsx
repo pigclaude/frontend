@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { InteractionPanel } from "@/components/identity/interaction-panel"
-import { identityNavigation } from "@/lib/identity-api"
+import { accountDisplayName, identityApi, identityNavigation } from "@/lib/identity-api"
 import { interaction, json } from "./identity-fixture"
 const mocks = vi.hoisted(() => ({
   params: new URLSearchParams("interactionId=interaction-1&realm=User"),
@@ -177,4 +177,20 @@ it("does not silently treat password authentication as web consent", async () =>
   await waitFor(() =>
     expect(identityNavigation.assign).toHaveBeenCalledWith("/v1/web/oidc/callback?code=synthetic"),
   )
+})
+
+it("derives the display name from the email local part", () => {
+  expect(accountDisplayName("liuqin@example.com")).toBe("liuqin")
+  expect(accountDisplayName("plain")).toBe("plain")
+})
+
+it("posts switch-account with realm and csrf only", async () => {
+  mocks.fetch.mockImplementation(async () =>
+    json({ type: "require_login", interaction: interaction({ account: null }) }),
+  )
+  const result = await identityApi.switchAccount(interaction({ account: { email: "a@b.c" } }))
+  expect(result.type).toBe("require_login")
+  expect(posts()).toHaveLength(1)
+  expect(String(posts()[0][0])).toBe("/v1/identity/interactions/interaction-1/switch-account")
+  expect(JSON.parse(String(posts()[0][1]?.body))).toEqual({ realm: "User", csrf: "csrf-marker" })
 })

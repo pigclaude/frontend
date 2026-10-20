@@ -14,6 +14,7 @@ export interface IdentityInteraction {
   expiresAt: number
   registrationAllowed: boolean
   providers: ("google" | "github")[]
+  account: { email: string } | null
   device: null | {
     deviceId: string
     platform: string
@@ -67,6 +68,9 @@ export const identityApi = {
   /** 网站同意和拒绝均显式提交交互 CSRF。 */
   decide: (view: IdentityInteraction, action: "consent" | "deny") =>
     client.post<IdentityContinuation>(`${path(view)}/${action}`, proof(view)),
+  /** 放弃当前身份并回到登录表单；只提交 realm 与 csrf。 */
+  switchAccount: (view: IdentityInteraction) =>
+    client.post<IdentityContinuation>(`${path(view)}/switch-account`, proof(view)),
   /** 设备关系代次仅来自已核验服务器视图；撤销关系必须明确重新授权。 */
   approveDevice: (view: IdentityInteraction, reauthorize: boolean) =>
     client.post<IdentityContinuation>(`${path(view)}/approve-device`, {
@@ -74,6 +78,12 @@ export const identityApi = {
       expectedBindingEpoch: view.device?.bindingEpoch ?? null,
       reauthorize,
     }),
+}
+
+/** 取邮箱 @ 前的部分作为显示名；没有 @ 时返回原值。 */
+export function accountDisplayName(email: string): string {
+  const at = email.indexOf("@")
+  return at > 0 ? email.slice(0, at) : email
 }
 
 /** 只翻译固定错误，不反射服务器或供应商原始信息。 */

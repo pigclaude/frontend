@@ -12,6 +12,7 @@ export function interaction(overrides: Partial<IdentityInteraction> = {}): Ident
     expiresAt: 4102444800,
     registrationAllowed: true,
     providers: ["google", "github"],
+    account: null,
     device: null,
     ...overrides,
   }

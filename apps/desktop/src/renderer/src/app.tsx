@@ -8,9 +8,15 @@ import { MainWindow } from "./main-window"
 import { ToastProvider } from "./components/toast"
 import { TooltipProvider } from "./components/ui/tooltip"
 import { useAppearance } from "./hooks/use-appearance"
+import { useMembershipConfirmation } from "./hooks/use-membership-confirmation"
 import { createAuthorizationState, reduceAuthorizationState } from "./models/authorization-model"
 import { parseDevView } from "./models/dev-view"
 import { createLoginState, reduceLoginState, type LoginIntent } from "./models/login-model"
+import {
+  initialMembershipView,
+  membershipGateMessage,
+  newerMembershipView,
+} from "./models/membership-view"
 import {
   canGoBack,
   canGoForward,
@@ -41,6 +47,12 @@ export function DesktopApp() {
     !signOutState.pending &&
     signOutState.error === null &&
     (browserPreview || membership.state === "active")
+  const confirmMembership = useMembershipConfirmation({
+    confirming: loginState.view === "confirming",
+    membership,
+    onInspected: (view) => setMembership((current) => newerMembershipView(current, view)),
+    onInactive: () => setLoginState((current) => reduceLoginState(current, { type: "reset" })),
+  })
 
   useEffect(() => {
     const bridge = window.pigclaude?.membership
@@ -103,6 +115,7 @@ export function DesktopApp() {
               expiresAt,
             }),
           )
+          confirmMembership()
           return
         }
         if (isAuthorizationFailure(event)) {
@@ -143,7 +156,7 @@ export function DesktopApp() {
       }
     })
     return () => unsubscribe?.()
-  }, [])
+  }, [confirmMembership])
 
   async function startLoginAuthorization(intent: LoginIntent): Promise<void> {
     if (signOutState.pending || signOutState.error) return
@@ -302,10 +315,6 @@ export function DesktopApp() {
         onAuthorize={(intent) => void startLoginAuthorization(intent)}
         onCancel={() => void cancelLoginAuthorization()}
         onReset={() => setLoginState((current) => reduceLoginState(current, { type: "reset" }))}
-        onSuccess={() => {
-          if (canUseDesktop) setHistory(createScreenHistory("onboarding"))
-          else void window.pigclaude?.membership?.inspect()
-        }}
       />
     )
   }
@@ -345,10 +354,6 @@ export function DesktopApp() {
   )
 }
 
-function newerMembershipView(current: MembershipView, incoming: MembershipView): MembershipView {
-  return incoming.revision >= current.revision ? incoming : current
-}
-
 function isAuthorizationFailure(event: AuthorizationStateEvent): boolean {
   return [
     "cancelled",
@@ -376,37 +381,4 @@ function statusText(status: AuthorizationStateEvent["status"]): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "授权服务不可用"
-}
-
-function initialMembershipView(): MembershipView {
-  return {
-    startupPhase: "checking",
-    revision: 0,
-    state: "connecting",
-    account: null,
-    productCode: null,
-    planKind: null,
-    lifetime: false,
-    membershipValidUntil: null,
-    offlineValidUntil: null,
-    lastVerifiedAt: null,
-    nextVerificationAt: null,
-    bindingEpoch: null,
-    errorCode: null,
-    serverReason: null,
-    authorizationUrl: null,
-  }
-}
-
-function membershipGateMessage(view: MembershipView): string | undefined {
-  const messages: Partial<Record<MembershipView["state"], string>> = {
-    connecting: "正在连接 Rust 授权服务…",
-    configuration_error: "桌面授权配置无效，请检查本地服务地址。",
-    signed_out: "请先在浏览器中登录并授权这台设备。",
-    verification_required: "当前账户没有可用会员授权，请完成浏览器授权后重试。",
-    expired: "会员已到期，请续期后重新检查。",
-    device_revoked: "这台设备已被撤销，请重新授权当前设备。",
-    error: "暂时无法验证会员状态，请检查 Rust 服务是否运行。",
-  }
-  return messages[view.state]
 }

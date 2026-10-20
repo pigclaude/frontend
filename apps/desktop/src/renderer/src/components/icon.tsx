@@ -68,6 +68,7 @@ const marks: Record<string, string> = {
     '<rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/><path d="M7.5 7.5h.01M7.5 16.5h.01"/>',
   snout:
     '<rect x="3" y="6" width="18" height="12.5" rx="6.25"/><path d="M9.5 10.3v3.9M14.5 10.3v3.9"/>',
+  spinner: '<path d="M20.5 12a8.5 8.5 0 1 1-8.5-8.5"/>',
   spark:
     '<path d="M12 4v3M12 17v3M4 12h3M17 12h3M6.3 6.3l2.1 2.1M15.6 15.6l2.1 2.1M6.3 17.7l2.1-2.1M15.6 8.4l2.1-2.1"/>',
   at: '<circle cx="12" cy="12" r="3.5"/><path d="M15.5 12v1.5a2.5 2.5 0 0 0 5 0V12a8.5 8.5 0 1 0-3.5 6.9"/>',

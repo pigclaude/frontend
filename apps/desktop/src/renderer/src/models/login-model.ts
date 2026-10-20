@@ -1,12 +1,15 @@
-// 负责描述 pigclaude 登录/注册浏览器授权的纯状态机。
+// 负责描述 PigClaude 登录/注册浏览器授权的纯状态机。
 
-/** pigclaude 浏览器授权意图。保证登录和注册显示不同的浏览器文案。 */
+/** PigClaude 浏览器授权意图。保证登录和注册显示不同的浏览器文案。 */
 export type LoginIntent = "login" | "register"
 
-/** 浏览器授权登录页面状态。保证 renderer 只保存脱敏授权结果。 */
-export type LoginView = "idle" | "starting" | "waiting" | "success" | "error"
+/**
+ * 浏览器授权登录页面状态。保证 renderer 只保存脱敏授权结果。
+ * `confirming` 表示浏览器授权已完成、正在等会员结果；没有单独的成功页。
+ */
+export type LoginView = "idle" | "starting" | "waiting" | "confirming" | "error"
 
-/** pigclaude 登录/注册状态。保证 token 不进入 React 状态。 */
+/** PigClaude 登录/注册状态。保证 token 不进入 React 状态。 */
 export type LoginState = {
   view: LoginView
   intent: LoginIntent | null
@@ -79,7 +82,7 @@ export function reduceLoginState(state: LoginState, event: LoginEvent): LoginSta
   if (event.type === "completed") {
     return {
       ...state,
-      view: "success",
+      view: "confirming",
       intent: event.intent,
       sessionId: event.sessionId,
       displayName: event.displayName,

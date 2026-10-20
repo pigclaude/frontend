@@ -1,4 +1,4 @@
-// 负责验证登录/注册浏览器授权状态机的意图、等待、完成和失败恢复。
+// 负责验证登录/注册浏览器授权状态机的意图、等待、确认会员和失败恢复。
 import { describe, expect, it } from "vitest"
 import { createLoginState, reduceLoginState } from "./login-model"
 
@@ -14,7 +14,7 @@ describe("browser login model", () => {
     expect(register).toMatchObject({ view: "starting", intent: "register" })
   })
 
-  it("shows a waiting URL and completes without exposing any secret", () => {
+  it("keeps the authorization URL for copying and confirms without exposing any secret", () => {
     const started = reduceLoginState(createLoginState(), {
       type: "started",
       intent: "login",
@@ -34,9 +34,33 @@ describe("browser login model", () => {
       view: "waiting",
       authorizationUrl: expect.stringContaining("state=one"),
     })
-    expect(completed).toMatchObject({ view: "success", displayName: "林舟" })
+    expect(completed).toMatchObject({ view: "confirming", displayName: "林舟" })
     expect(completed).not.toHaveProperty("accessToken")
     expect(completed).not.toHaveProperty("refreshToken")
+  })
+
+  it("moves to confirming instead of a success page after completion", () => {
+    const waitingState = reduceLoginState(createLoginState(), {
+      type: "started",
+      intent: "login",
+      sessionId: "s",
+      authorizationUrl: "http://localhost:5173/authorize?state=s",
+      expiresAt: 1,
+    })
+    const s = reduceLoginState(waitingState, {
+      type: "completed",
+      intent: "login",
+      sessionId: "s",
+      displayName: "d",
+      expiresAt: 1,
+    })
+
+    expect(s.view).toBe("confirming")
+    expect(s.displayName).toBe("d")
+    expect(reduceLoginState(s, { type: "reset" })).toMatchObject({
+      view: "idle",
+      displayName: null,
+    })
   })
 
   it("returns to a retryable idle state after cancel or failure", () => {

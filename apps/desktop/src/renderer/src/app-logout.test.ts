@@ -79,7 +79,7 @@ describe("DesktopApp local sign-out", () => {
 
       await act(async () => fixture.logout())
 
-      expect(container.textContent).toContain("登录 pigclaude")
+      expect(container.textContent).toContain("欢迎使用 PigClaude")
       expect(container.querySelector("[data-screen]")).toBeNull()
       expect(signOut).toHaveBeenCalledOnce()
       expect(window.localStorage.getItem("pigclaude-appearance")).toBe("appearance-sentinel")
@@ -117,14 +117,14 @@ describe("DesktopApp local sign-out", () => {
     )
     expect(retry).toBeDefined()
     await act(async () => retry?.click())
-    expect(container.textContent).toContain("登录 pigclaude")
+    expect(container.textContent).toContain("欢迎使用 PigClaude")
     expect(container.textContent).not.toContain("退出登录失败")
     const login = [...container.querySelectorAll("button")].find(
       (button) => button.textContent === "登录",
     )
     expect(login?.disabled).toBe(false)
     await act(async () => login?.click())
-    expect(container.textContent).toContain("等待浏览器确认")
+    expect(container.textContent).toContain("请在浏览器中继续")
   })
 
   it("ignores an older inspect response delivered after local sign-out", async () => {
@@ -147,7 +147,7 @@ describe("DesktopApp local sign-out", () => {
     await act(async () => fixture.logout())
     await act(async () => resolveInspect(view("active", 1)))
 
-    expect(container.textContent).toContain("登录 pigclaude")
+    expect(container.textContent).toContain("欢迎使用 PigClaude")
     expect(container.querySelector("[data-screen]")).toBeNull()
   })
 
@@ -212,9 +212,15 @@ describe("DesktopApp local sign-out", () => {
         status: "cancelled",
       })
     })
-    expect(container.textContent).toContain("等待浏览器确认")
-    expect(container.textContent).toContain("/authorize/fresh")
+    expect(container.textContent).toContain("请在浏览器中继续")
     expect(container.textContent).not.toContain("OldUser")
+    const writeText = vi.fn(async () => undefined)
+    vi.stubGlobal("navigator", { clipboard: { writeText } })
+    const copy = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent === "复制链接",
+    )
+    await act(async () => copy?.click())
+    expect(writeText).toHaveBeenCalledWith("http://127.0.0.1:8788/authorize/fresh")
     await act(async () =>
       publishAuthorization({
         purpose: "pigclaude-login",
@@ -225,6 +231,8 @@ describe("DesktopApp local sign-out", () => {
         expiresAt: Date.now() + 600_000,
       }),
     )
-    expect(container.textContent).toContain("FreshUser")
+    expect(container.textContent).not.toContain("请在浏览器中继续")
+    expect(container.textContent).toContain("欢迎使用 PigClaude")
+    expect(container.textContent).toContain("请先在浏览器中登录并授权这台设备。")
   })
 })

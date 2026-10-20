@@ -1,12 +1,12 @@
-// 负责展示 pigclaude 登录/注册浏览器授权入口和等待状态。
+// 负责展示 PigClaude 登录/注册入口、等待浏览器授权、确认会员和授权失败四种状态。
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { WithdrawAuthorization } from "../components/withdraw-authorization"
-import { useState, type ReactNode } from "react"
 import { Icon } from "../components/icon"
 import { TrafficLights } from "../components/traffic-lights"
 import { Button } from "../components/ui/button"
 import type { LoginIntent, LoginState } from "../models/login-model"
 
-/** 浏览器授权登录页面 props。 */
+/** 浏览器授权登录页面 props。授权完成后由会员状态决定去向，页面不再提供成功页。 */
 export type LoginScreenProps = {
   state: LoginState
   gateMessage?: string
@@ -16,178 +16,255 @@ export type LoginScreenProps = {
   onAuthorize: (intent: LoginIntent) => void
   onCancel: () => void
   onReset: () => void
-  onSuccess: () => void
 }
 
-/** 绘制登录/注册两个浏览器授权入口和回调等待态。 */
-export function LoginScreen({
-  state,
-  gateMessage,
-  signingOut,
-  canWithdraw,
-  onRetrySignOut,
-  onAuthorize,
-  onCancel,
-  onReset,
-  onSuccess,
-}: LoginScreenProps) {
-  const [copied, setCopied] = useState(false)
+/** 按授权状态画出登录页、等待浏览器页、确认会员页或失败页。完整授权链接只用于复制，不显示在页面上。 */
+export function LoginScreen(props: LoginScreenProps) {
+  const { state } = props
   const intent = state.intent ?? "login"
-  const title = intent === "register" ? "注册 pigclaude" : "登录 pigclaude"
-
-  if (state.view === "success") {
-    return (
-      <AuthWindow>
-        <ResultState
-          icon="check"
-          title={intent === "register" ? "注册并授权完成" : "已确认使用权限"}
-          description={`${state.displayName ?? "当前账户"} 已连接这台设备，接下来配置本机代理和 Claude 账号。`}
-          action={
-            <Button variant="primary" onClick={onSuccess}>
-              开始使用
-            </Button>
-          }
-        />
-      </AuthWindow>
-    )
-  }
-
-  if (state.view === "error") {
-    return (
-      <AuthWindow>
-        <ResultState
-          icon="alert"
-          title="浏览器授权未完成"
-          description={state.error ?? "请重新打开浏览器授权页面。"}
-          action={<Button onClick={() => onAuthorize(intent)}>重新授权</Button>}
-          secondary={
-            <Button variant="ghost" onClick={onReset}>
-              返回
-            </Button>
-          }
-        />
-      </AuthWindow>
-    )
-  }
-
-  if (state.view === "starting" || state.view === "waiting") {
-    async function copyLink() {
-      if (!state.authorizationUrl) return
-      try {
-        await navigator.clipboard.writeText(state.authorizationUrl)
-        setCopied(true)
-        window.setTimeout(() => setCopied(false), 1800)
-      } catch {
-        setCopied(false)
-      }
-    }
-
-    return (
-      <AuthWindow>
-        <div className="result auth-result">
-          <div className="r-title">
-            <Icon name="browser" small />
-            等待浏览器确认
-          </div>
-          <p>
-            {intent === "register"
-              ? "请在刚打开的浏览器中完成注册并确认授权。"
-              : "请在刚打开的浏览器中登录并确认这台设备。"}
-          </p>
-          <div className="browser-wait">
-            <Icon name="browser" />
-            <b>{state.view === "starting" ? "正在打开系统浏览器…" : "浏览器配置目录独立"}</b>
-            <span>桌面端不会接收你的密码或验证码</span>
-            {state.authorizationUrl ? <span className="mono">{state.authorizationUrl}</span> : null}
-          </div>
-          <div className="row">
-            {state.authorizationUrl ? (
-              <Button variant="secondary" onClick={() => void copyLink()}>
-                {copied ? "已复制" : "复制授权链接"}
-              </Button>
-            ) : null}
-            <Button variant="ghost" onClick={() => onAuthorize(intent)}>
-              重新打开
-            </Button>
-            <Button variant="ghost" onClick={onCancel}>
-              取消
-            </Button>
-          </div>
-        </div>
-      </AuthWindow>
-    )
-  }
-
-  return (
-    <AuthWindow>
-      <div className="login">
-        <div className="mark" aria-hidden="true">
-          <Icon name="snout" />
-        </div>
-        <h1>{title}</h1>
-        <p className="sub">使用系统浏览器授权，桌面端不会保存你的密码。</p>
-        {canWithdraw && <WithdrawAuthorization />}
-        {gateMessage ? <p className="muted login-note">{gateMessage}</p> : null}
-        <div className="col login-form">
-          {onRetrySignOut ? <Button onClick={onRetrySignOut}>重试退出</Button> : null}
-          <Button
-            variant="primary"
-            size="block"
-            disabled={signingOut || Boolean(onRetrySignOut)}
-            onClick={() => onAuthorize("login")}
-          >
-            登录
-          </Button>
-          <Button
-            variant="secondary"
-            size="block"
-            disabled={signingOut || Boolean(onRetrySignOut)}
-            onClick={() => onAuthorize("register")}
-          >
-            注册
-          </Button>
-          <p className="muted login-note">登录和注册都会在浏览器中完成，不会在这里输入凭据。</p>
-        </div>
-      </div>
-    </AuthWindow>
-  )
-}
-
-function AuthWindow({ children }: { children: ReactNode }) {
   return (
     <div className="win">
       <div className="win-top">
         <TrafficLights />
       </div>
-      <main className="win-body">{children}</main>
+      <main className="win-body">
+        {state.view === "confirming" ? (
+          <ConfirmingPanel displayName={state.displayName} />
+        ) : state.view === "error" ? (
+          <ErrorPanel
+            error={state.error}
+            onRetry={() => props.onAuthorize(intent)}
+            onBack={props.onReset}
+          />
+        ) : state.view === "starting" || state.view === "waiting" ? (
+          <WaitingPanel
+            intent={intent}
+            starting={state.view === "starting"}
+            authorizationUrl={state.authorizationUrl}
+            onReopen={() => props.onAuthorize(intent)}
+            onCancel={props.onCancel}
+          />
+        ) : (
+          <IdlePanel {...props} />
+        )}
+      </main>
     </div>
   )
 }
 
-function ResultState({
-  icon,
-  title,
-  description,
-  action,
-  secondary,
+function IdlePanel({
+  gateMessage,
+  signingOut,
+  canWithdraw,
+  onRetrySignOut,
+  onAuthorize,
+}: LoginScreenProps) {
+  const locked = Boolean(signingOut || onRetrySignOut)
+  const hasNotices = Boolean(gateMessage || canWithdraw)
+  return (
+    <Panel icon="snout" title="欢迎使用 PigClaude" sub="登录后即可使用你的会员">
+      {hasNotices ? (
+        <div className="signin-notices">
+          {gateMessage ? (
+            <Notice
+              tone={onRetrySignOut ? "bad" : signingOut ? "busy" : "info"}
+              action={
+                onRetrySignOut ? (
+                  <Button size="sm" onClick={onRetrySignOut}>
+                    重试退出
+                  </Button>
+                ) : null
+              }
+            >
+              {gateMessage}
+            </Notice>
+          ) : null}
+          {canWithdraw ? (
+            <div className="signin-withdraw">
+              <WithdrawAuthorization />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="signin-actions">
+        <Button
+          variant="primary"
+          size="block"
+          disabled={locked}
+          onClick={() => onAuthorize("login")}
+        >
+          登录
+        </Button>
+        <Button
+          variant="secondary"
+          size="block"
+          disabled={locked}
+          onClick={() => onAuthorize("register")}
+        >
+          注册
+        </Button>
+      </div>
+      <p className="signin-foot">
+        <Icon name="external" />
+        将在浏览器中打开 PigClaude 网站完成
+      </p>
+    </Panel>
+  )
+}
+
+function WaitingPanel({
+  intent,
+  starting,
+  authorizationUrl,
+  onReopen,
+  onCancel,
 }: {
-  icon: string
-  title: string
-  description: string
-  action: ReactNode
-  secondary?: ReactNode
+  intent: LoginIntent
+  starting: boolean
+  authorizationUrl: string | null
+  onReopen: () => void
+  onCancel: () => void
+}) {
+  const [copied, setCopied] = useState(false)
+  const resetTimer = useRef<number | null>(null)
+
+  useEffect(
+    () => () => {
+      if (resetTimer.current !== null) window.clearTimeout(resetTimer.current)
+    },
+    [],
+  )
+
+  async function copyLink(): Promise<void> {
+    if (!authorizationUrl) return
+    try {
+      await navigator.clipboard.writeText(authorizationUrl)
+      setCopied(true)
+      if (resetTimer.current !== null) window.clearTimeout(resetTimer.current)
+      resetTimer.current = window.setTimeout(() => setCopied(false), 1800)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  const verb = intent === "register" ? "注册" : "登录"
+  return (
+    <Panel
+      icon="browser"
+      title="请在浏览器中继续"
+      sub={`已为你打开 PigClaude 网站，${verb}并授权这台设备后会自动回到这里。`}
+    >
+      <p className="signin-progress" role="status">
+        <span className="signin-pulse" aria-hidden="true" />
+        {starting ? "正在打开浏览器…" : "等待浏览器授权"}
+      </p>
+      <div className="signin-actions">
+        <Button variant="secondary" size="block" disabled={starting} onClick={onReopen}>
+          重新打开浏览器
+        </Button>
+        <div className="signin-row">
+          <Button
+            variant="ghost"
+            size="lg"
+            className={copied ? "is-copied" : undefined}
+            disabled={!authorizationUrl}
+            onClick={() => void copyLink()}
+          >
+            <Icon name={copied ? "check" : "copy"} />
+            {copied ? "已复制" : "复制链接"}
+          </Button>
+          <Button variant="ghost" size="lg" onClick={onCancel}>
+            取消
+          </Button>
+        </div>
+      </div>
+    </Panel>
+  )
+}
+
+function ConfirmingPanel({ displayName }: { displayName: string | null }) {
+  return (
+    <Panel
+      icon="spinner"
+      busy
+      title={<span role="status">正在确认会员…</span>}
+      sub={displayName ? `${displayName} 已授权这台设备` : "浏览器授权已完成"}
+    />
+  )
+}
+
+function ErrorPanel({
+  error,
+  onRetry,
+  onBack,
+}: {
+  error: string | null
+  onRetry: () => void
+  onBack: () => void
 }) {
   return (
-    <div className="result auth-result">
-      <div className="r-title">
-        <Icon name={icon} small />
-        {title}
+    <Panel
+      icon="alert"
+      tone="bad"
+      title="浏览器授权未完成"
+      sub={error ?? "请重新打开浏览器授权页面。"}
+    >
+      <div className="signin-actions">
+        <Button variant="primary" size="block" onClick={onRetry}>
+          重新授权
+        </Button>
+        <Button variant="ghost" size="block" onClick={onBack}>
+          返回
+        </Button>
       </div>
-      <p>{description}</p>
-      <div className="row">
-        {action}
-        {secondary}
+    </Panel>
+  )
+}
+
+function Panel({
+  icon,
+  tone,
+  busy,
+  title,
+  sub,
+  children,
+}: {
+  icon: string
+  tone?: "bad"
+  busy?: boolean
+  title: ReactNode
+  sub: string
+  children?: ReactNode
+}) {
+  return (
+    <section className="signin" aria-busy={busy || undefined}>
+      <div className="signin-mark" data-tone={tone} aria-hidden="true">
+        <Icon name={icon} className={busy ? "signin-spinner" : undefined} />
       </div>
+      <h1>{title}</h1>
+      <p className="signin-sub">{sub}</p>
+      {children}
+    </section>
+  )
+}
+
+function Notice({
+  tone,
+  action,
+  children,
+}: {
+  tone: "info" | "busy" | "bad"
+  action: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <div className="signin-notice" data-tone={tone} role={tone === "bad" ? "alert" : "status"}>
+      <Icon
+        name={tone === "bad" ? "alert" : tone === "busy" ? "spinner" : "info"}
+        className={tone === "busy" ? "signin-spinner" : undefined}
+      />
+      <span>{children}</span>
+      {action}
     </div>
   )
 }

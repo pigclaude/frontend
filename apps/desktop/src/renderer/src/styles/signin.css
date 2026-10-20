@@ -1,0 +1,206 @@
+/*
+  PigClaude 桌面登录 · 登录、等待浏览器、确认会员和授权失败四屏共用的居中布局
+  只引用 tokens.css 的语义变量；玻璃外观下 --surface、--panel 自动变成半透明。
+*/
+
+.signin {
+  display: flex;
+  width: min(300px, 100%);
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  animation: signin-in 240ms var(--ease) both;
+}
+
+.signin-mark {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 18px;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: var(--shadow-soft);
+}
+
+.signin-mark .ic {
+  width: 26px;
+  height: 26px;
+}
+
+.signin-mark[data-tone="bad"] {
+  color: var(--bad-text);
+}
+
+.signin h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: calc(var(--ui-scale) * 20px);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.signin-sub {
+  max-width: 280px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: var(--fs-md);
+  line-height: 1.55;
+  /* 中文只在标点和空格处换行，句子不会从词中间断开；没有断点的长句仍可在任意处折行 */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/* 门禁提示、退出失败和撤销授权都排在按钮上方，与按钮同宽 */
+.signin-notices {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.signin-notice,
+.signin-withdraw > div {
+  padding: 9px 11px;
+  border-radius: var(--r-lg);
+  background: var(--panel);
+  box-shadow: inset 0 0 0 var(--hair) var(--border);
+  color: var(--fg-2);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  text-align: left;
+}
+
+.signin-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.signin-notice > .ic {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.signin-notice > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.signin-notice .btn {
+  flex: none;
+  margin: -1px -3px -1px 0;
+}
+
+.signin-notice[data-tone="bad"] {
+  background: color-mix(in oklab, var(--bad) 9%, transparent);
+  box-shadow: inset 0 0 0 var(--hair) color-mix(in oklab, var(--bad) 24%, transparent);
+  color: var(--bad-text);
+}
+
+.signin-notice[data-tone="bad"] > .ic {
+  color: currentColor;
+}
+
+/* 撤销授权组件在设置页也用，这里只按位置排成「说明在左、按钮在右」 */
+.signin-withdraw > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.signin-withdraw p {
+  grid-row: 1;
+  grid-column: 1;
+  margin: 0;
+}
+
+.signin-withdraw .btn {
+  grid-row: 1;
+  grid-column: 2;
+}
+
+.signin-withdraw [role="alert"] {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  color: var(--bad-text);
+}
+
+.signin-actions {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.signin-notices + .signin-actions {
+  margin-top: 14px;
+}
+
+.signin-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.signin-row .btn.is-copied {
+  color: var(--ok-text);
+}
+
+.signin-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.signin-foot .ic {
+  width: 13px;
+  height: 13px;
+}
+
+.signin-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 16px 0 0;
+  padding: 3px 10px;
+  border-radius: var(--r-full);
+  background: var(--panel);
+  box-shadow: inset 0 0 0 var(--hair) var(--border);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.signin-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--info);
+  animation: pulse 1.6s var(--ease) infinite;
+}
+
+.signin-spinner {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes signin-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

@@ -4,7 +4,6 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { ApiError } from "@pigclaude/api/client"
 import { consumeRegistrationHint } from "@pigclaude/api/web-oidc"
-import { Badge } from "@pigclaude/web-ui/components/badge"
 import { Button } from "@pigclaude/web-ui/components/button"
 import { LoginForm, type LoginMode } from "./login-form"
 import { ProviderButtons } from "./provider-buttons"
@@ -167,14 +166,6 @@ function InteractionSession({
         aria-labelledby="identity-title"
       >
         <header className="flex flex-col gap-1.5">
-          {admin && (
-            <Badge
-              variant="outline"
-              className="mb-2 border-border px-2.5 font-normal text-muted-foreground"
-            >
-              管理后台
-            </Badge>
-          )}
           <h1 id="identity-title" className="text-xl font-semibold tracking-tight">
             {admin ? "登录管理后台" : register ? "注册 PigClaude" : "登录 PigClaude"}
           </h1>
@@ -219,11 +210,7 @@ function InteractionSession({
   return (
     <section className="flex w-full max-w-[400px] flex-col gap-6" aria-labelledby="identity-title">
       <h1 id="identity-title" className="text-center text-xl font-semibold">
-        {view.realm === "Admin"
-          ? "登录管理后台"
-          : view.phase === "device_approval"
-            ? "确认设备授权"
-            : "确认登录授权"}
+        {view.phase === "device_approval" ? "确认设备授权" : "确认登录授权"}
       </h1>
       {expired ? (
         <p role="alert">登录交互已过期，请重新发起登录</p>

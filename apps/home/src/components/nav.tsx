@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { homeApi } from "@/lib/api"
 import { Menu } from "lucide-react"
+import { Badge } from "@pigclaude/web-ui/components/badge"
 import { Button } from "@pigclaude/web-ui/components/button"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@pigclaude/web-ui/components/sheet"
 import { cn } from "@pigclaude/web-ui/lib/utils"
@@ -24,8 +25,14 @@ const marketingLinks = [
   { href: "/#pricing", label: "会员权益" },
 ]
 
-/** 按当前路由呈现成熟原站顶栏，未实现的业务入口不出现。 */
-export function Nav({ variant = "app" }: { variant?: "marketing" | "app" | "auth" }) {
+/** 按当前路由呈现成熟原站顶栏，未实现的业务入口不出现；`tag` 紧贴品牌显示站点标记。 */
+export function Nav({
+  variant = "app",
+  tag,
+}: {
+  variant?: "marketing" | "app" | "auth"
+  tag?: string
+}) {
   const pathname = usePathname()
   const session = useQuery({
     queryKey: ["me"],
@@ -54,13 +61,23 @@ export function Nav({ variant = "app" }: { variant?: "marketing" | "app" | "auth
   return (
     <header className="sticky top-0 z-50 border-b border-[var(--border-soft)] bg-[var(--topbar-bg)] backdrop-blur-[12px]">
       <div className="mx-auto flex h-[56px] max-w-[var(--container-max)] items-center gap-[var(--space-6)] px-[var(--container-gutter-desktop)]">
-        <Link
-          href={variant === "app" ? "/dashboard" : "/"}
-          className="inline-flex shrink-0 items-center gap-2.5 text-[15px] font-semibold tracking-tight text-foreground"
-        >
-          <BrandMark className="size-[26px] shrink-0" tone="brand" />
-          <span>PigClaude</span>
-        </Link>
+        <div className="flex shrink-0 items-center gap-2.5">
+          <Link
+            href={variant === "app" ? "/dashboard" : "/"}
+            className="inline-flex shrink-0 items-center gap-2.5 text-[15px] font-semibold tracking-tight text-foreground"
+          >
+            <BrandMark className="size-[26px] shrink-0" tone="brand" />
+            <span>PigClaude</span>
+          </Link>
+          {tag && (
+            <Badge
+              variant="outline"
+              className="border-border px-2 font-normal text-muted-foreground"
+            >
+              {tag}
+            </Badge>
+          )}
+        </div>
         {variant === "auth" ? (
           <div className="ml-auto">
             <Button asChild variant="outline" size="sm">

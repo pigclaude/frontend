@@ -93,9 +93,16 @@ describe("central one-step login page", () => {
     await screen.findByLabelText("邮箱")
     expect(screen.getByRole("heading").textContent).toBe("登录管理后台")
     expect(screen.getByText("仅限运营人员使用管理员账号")).toBeTruthy()
-    expect(screen.getByText("管理后台")).toBeTruthy()
+    expect(screen.queryByText("管理后台")).toBeNull()
     expect(screen.getByRole("link", { name: "返回官网" }).getAttribute("href")).toBe("/")
     expect(screen.queryByText(/注册|Google|GitHub/)).toBeNull()
+  })
+
+  it("titles Admin consent as an authorization step, not a login page", async () => {
+    mocks.params = new URLSearchParams("interactionId=interaction-1&realm=Admin")
+    serve({ realm: "Admin", registrationAllowed: false, providers: [], phase: "consent" })
+    render(<InteractionPanel />)
+    expect((await screen.findByRole("heading")).textContent).toBe("确认登录授权")
   })
 
   it("keeps the form usable while showing provider errors", async () => {

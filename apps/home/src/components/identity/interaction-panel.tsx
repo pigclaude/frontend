@@ -5,9 +5,12 @@ import { useSearchParams } from "next/navigation"
 import { ApiError } from "@pigclaude/api/client"
 import { consumeRegistrationHint } from "@pigclaude/api/web-oidc"
 import { Button } from "@pigclaude/web-ui/components/button"
+import { LineIcon } from "@pigclaude/web-ui/components/line-icon"
+import { PigclaudeMark } from "@pigclaude/web-ui/components/pigclaude-mark"
 import { LoginForm, type LoginMode } from "./login-form"
 import { ProviderButtons } from "./provider-buttons"
 import { DeviceApproval } from "./device-approval"
+import { ConsentApproval } from "./consent-approval"
 import {
   identityApi,
   identityErrorMessage,
@@ -207,38 +210,54 @@ function InteractionSession({
       </section>
     )
   }
+  const device = view.phase === "device_approval"
   return (
-    <section className="flex w-full max-w-[400px] flex-col gap-6" aria-labelledby="identity-title">
-      <h1 id="identity-title" className="text-center text-xl font-semibold">
-        {view.phase === "device_approval" ? "确认设备授权" : "确认登录授权"}
-      </h1>
+    <section className="flex w-full max-w-[380px] flex-col" aria-labelledby="identity-title">
+      <header className="flex flex-col items-center gap-1.5 text-center">
+        {device && (
+          <div aria-hidden="true" className="mb-4 flex items-center gap-3">
+            <span className="flex size-10 items-center justify-center rounded-[10px] border border-border bg-[var(--card-bg)] text-[var(--fg-2)] shadow-[var(--card-shadow)]">
+              <LineIcon name="monitor" className="size-5" />
+            </span>
+            <LineIcon name="swap" className="size-4 text-[var(--meta)]" />
+            <span className="flex size-10 items-center justify-center rounded-[10px] border border-border bg-[var(--card-bg)] text-foreground shadow-[var(--card-shadow)]">
+              <PigclaudeMark tone="brand" className="size-6" />
+            </span>
+          </div>
+        )}
+        <h1 id="identity-title" className="text-xl font-semibold tracking-tight">
+          {device ? "授权 PigClaude 桌面端" : "确认登录授权"}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          {device
+            ? "这台设备将登录到你的账号"
+            : `是否允许${view.realm === "Admin" ? "管理站" : "用户站"}使用本次登录身份？`}
+        </p>
+      </header>
+      {error && (
+        <p role="alert" className={`mt-5 ${alertClass}`}>
+          {error}
+        </p>
+      )}
       {expired ? (
-        <p role="alert">登录交互已过期，请重新发起登录</p>
+        <p role="alert" className={`mt-5 ${alertClass}`}>
+          登录交互已过期，请重新发起登录
+        </p>
       ) : (
-        <>
+        <div className="mt-6">
           {view.phase === "consent" && (
-            <div className="flex flex-col gap-4">
-              <p>是否允许{view.realm === "Admin" ? "管理站" : "用户站"}使用本次登录身份？</p>
-              <Button
-                disabled={pending !== null}
-                onClick={() => {
-                  void act(() => identityApi.decide(view, "consent"))
-                }}
-              >
-                同意并继续
-              </Button>
-              <Button
-                variant="outline"
-                disabled={pending !== null}
-                onClick={() => {
-                  void act(() => identityApi.decide(view, "deny"))
-                }}
-              >
-                拒绝
-              </Button>
-            </div>
+            <ConsentApproval
+              interaction={view}
+              disabled={pending !== null}
+              onConsent={() => {
+                void act(() => identityApi.decide(view, "consent"))
+              }}
+              onDeny={() => {
+                void act(() => identityApi.decide(view, "deny"))
+              }}
+            />
           )}
-          {view.phase === "device_approval" && (
+          {device && (
             <DeviceApproval
               key={`${view.interactionId}:${view.device?.bindingEpoch}`}
               interaction={view}
@@ -249,14 +268,12 @@ function InteractionSession({
               onDeny={() => {
                 void act(() => identityApi.decide(view, "deny"))
               }}
+              onSwitchAccount={() => {
+                void act(() => identityApi.switchAccount(view))
+              }}
             />
           )}
-        </>
-      )}
-      {error && (
-        <p role="alert" className="query-error">
-          {error}
-        </p>
+        </div>
       )}
     </section>
   )

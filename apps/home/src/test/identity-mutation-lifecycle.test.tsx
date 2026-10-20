@@ -82,7 +82,7 @@ describe("central interaction mutation ownership", () => {
       await settle(oldRequest, kind)
       expect(identityNavigation.assign).not.toHaveBeenCalled()
       expect((screen.getByLabelText("邮箱") as HTMLInputElement).value).toBe("new@example.com")
-      expect(screen.queryByRole("button", { name: "同意并继续" })).toBeNull()
+      expect(screen.queryByRole("button", { name: "同意" })).toBeNull()
       expect(screen.queryByRole("alert")).toBeNull()
     },
   )
@@ -99,7 +99,7 @@ describe("central interaction mutation ownership", () => {
       await screen.findByLabelText("邮箱")
       await settle(oldRequest, kind)
       expect(identityNavigation.assign).not.toHaveBeenCalled()
-      expect(screen.queryByRole("button", { name: "同意并继续" })).toBeNull()
+      expect(screen.queryByRole("button", { name: "同意" })).toBeNull()
       expect(screen.getByLabelText("邮箱")).toBeTruthy()
     },
   )

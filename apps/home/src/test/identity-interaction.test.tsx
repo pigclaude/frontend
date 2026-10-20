@@ -105,7 +105,7 @@ describe("identity interaction", () => {
       await screen.findByText("我的 Mac")
       expect(posts()).toHaveLength(0)
       const approve = screen.getByRole("button", {
-        name: status === "revoked" ? "重新授权设备" : "授权设备",
+        name: status === "revoked" ? "重新授权设备" : "授权并打开桌面端",
       })
       if (status === "revoked") {
         expect((approve as HTMLButtonElement).disabled).toBe(true)
@@ -136,9 +136,9 @@ describe("identity interaction", () => {
         : json(interaction({ phase: "consent" })),
     )
     render(<InteractionPanel />)
-    await screen.findByRole("button", { name: "同意并继续" })
+    await screen.findByRole("button", { name: "同意" })
     expect(posts()).toHaveLength(0)
-    fireEvent.click(screen.getByRole("button", { name: "拒绝" }))
+    fireEvent.click(screen.getByRole("button", { name: "取消" }))
     await waitFor(() => expect(posts()).toHaveLength(1))
     expect(String(posts()[0][0])).toMatch(/\/deny$/)
     expect(JSON.parse(String(posts()[0][1]?.body))).toEqual({ realm: "User", csrf: "csrf-marker" })
@@ -167,10 +167,10 @@ it("does not silently treat password authentication as web consent", async () =>
     ),
   )
   fireEvent.submit(document.querySelector("form")!)
-  await screen.findByRole("button", { name: "同意并继续" })
+  await screen.findByRole("button", { name: "同意" })
   expect(posts()).toHaveLength(1)
   expect(identityNavigation.assign).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole("button", { name: "同意并继续" }))
+  fireEvent.click(screen.getByRole("button", { name: "同意" }))
   await waitFor(() => expect(posts()).toHaveLength(2))
   expect(String(posts()[1][0])).toMatch(/\/consent$/)
   expect(JSON.parse(String(posts()[1][1]?.body))).toEqual({ realm: "User", csrf: "csrf-marker" })

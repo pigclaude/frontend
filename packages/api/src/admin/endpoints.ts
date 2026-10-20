@@ -40,8 +40,6 @@ export function createAdminApi(c: HttpClient) {
         ),
     },
     devices: {
-      list: (query: T.ListMembershipDevicesQuery = {}) =>
-        c.get<T.ListMembershipDevicesResponse>("/admin/v1/devices", query),
       /** 只需 device:read，通过已知用户 ID 读取精确设备 envelope。 */
       forUser: (userId: string, afterDeviceId?: string) =>
         c.get<AdminUserDevicesView>(`/admin/v1/users/${encodeURIComponent(userId)}/devices`, {

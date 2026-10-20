@@ -86,33 +86,6 @@ export interface RevokeMembershipRequest {
   userId: string
   reason: string
 }
-/** 已绑定设备摘要。 */
-export interface MembershipDeviceItem {
-  userId: string
-  deviceId: string
-  deviceEncryptionPublicKeyHash: string
-  deviceSigningPublicKeyHash: string
-  deviceFingerprintHash: string
-  bindingEpoch: string
-  lastSeenAt: string | null
-}
-/** 设备列表查询。 */
-export interface ListMembershipDevicesQuery {
-  userId?: string
-  cursor?: string
-  limit?: number
-  [key: string]: string | number | undefined
-}
-/** 设备分页响应。 */
-export interface ListMembershipDevicesResponse {
-  items: MembershipDeviceItem[]
-  nextCursor: string
-}
-/** 解绑设备请求。 */
-export interface UnbindMembershipDeviceRequest {
-  userId: string
-  reason: string
-}
 /** 不可变安全审计记录。 */
 export interface MembershipAuditItem {
   id: string

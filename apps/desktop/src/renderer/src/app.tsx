@@ -52,6 +52,14 @@ export function DesktopApp() {
     !signOutState.pending &&
     signOutState.error === null &&
     (browserPreview || membership.state === "active")
+  const startupSettled = membership.startupPhase !== "checking"
+  const gatedScreen: Screen | null =
+    canUseDesktop && screen === "login" && startupSettled
+      ? browserPreview
+        ? "onboarding"
+        : initialScreenAfterLogin(membership)
+      : null
+  const shownScreen = gatedScreen ?? screen
   const confirmMembership = useMembershipConfirmation({
     confirming: loginState.view === "confirming",
     membership,
@@ -71,15 +79,15 @@ export function DesktopApp() {
     return unsubscribe
   }, [])
 
+  // 渲染时已经直接画出 gatedScreen，这里只把历史记录补成同一屏，中间不会先画登录页。
   useEffect(() => {
-    if (membership.startupPhase === "checking") return
-    if (canUseDesktop && screen === "login") {
-      const next = browserPreview ? "onboarding" : initialScreenAfterLogin(membership)
-      setHistory(createScreenHistory(next))
+    if (!startupSettled) return
+    if (gatedScreen) {
+      setHistory(createScreenHistory(gatedScreen))
     } else if (!canUseDesktop && screen !== "login") {
       setHistory((current) => pushScreen(current, "login"))
     }
-  }, [browserPreview, canUseDesktop, membership, screen])
+  }, [canUseDesktop, gatedScreen, screen, startupSettled])
 
   function setScreen(next: Screen): void {
     setHistory((current) => pushScreen(current, next))
@@ -321,7 +329,7 @@ export function DesktopApp() {
     }
   }
 
-  if (!canUseDesktop || screen === "login") {
+  if (!canUseDesktop || shownScreen === "login") {
     return (
       <LoginScreen
         state={loginState}
@@ -338,7 +346,7 @@ export function DesktopApp() {
       />
     )
   }
-  if (screen === "onboarding") {
+  if (shownScreen === "onboarding") {
     return (
       <OnboardingScreen
         key={onboardingReturn ?? "start"}
@@ -348,7 +356,7 @@ export function DesktopApp() {
       />
     )
   }
-  if (screen === "authorize") {
+  if (shownScreen === "authorize") {
     return (
       <AuthorizeScreen
         state={authorizationState}
@@ -365,7 +373,7 @@ export function DesktopApp() {
     <TooltipProvider>
       <ToastProvider>
         <MainWindow
-          screen={screen}
+          screen={shownScreen}
           canGoBack={canGoBack(history)}
           canGoForward={canGoForward(history)}
           onNavigate={setScreen}

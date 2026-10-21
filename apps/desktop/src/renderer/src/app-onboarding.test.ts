@@ -4,6 +4,7 @@ import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { MembershipView } from "@pigclaude/contracts/membership"
+import type { AuthorizationStateEvent } from "../../main/authorization/types"
 import { DesktopApp } from "./app"
 import { initialMembershipView } from "./models/membership-view"
 import { markOnboardingSeen, onboardingSeenKey } from "./lib/onboarding-storage"
@@ -44,9 +45,29 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 
-function installBridge(userId = "u1"): void {
+/** 装好会员有效的桥；返回值把 Claude 账号授权事件推给界面。 */
+function installBridge(userId = "u1"): (event: AuthorizationStateEvent) => void {
+  let publish: (event: AuthorizationStateEvent) => void = () => undefined
   window.pigclaude = {
     platform: "darwin",
+    authorization: {
+      start: async () => ({
+        ok: true,
+        sessionId: "claude-1",
+        authorizationUrl: "https://claude.example/authorize",
+        expiresAt: Date.now() + 60_000,
+      }),
+      cancel: async () => ({
+        sessionId: "claude-1",
+        purpose: "claude-account",
+        mode: "authorize",
+        status: "cancelled",
+      }),
+      subscribe: (listener) => {
+        publish = listener
+        return () => undefined
+      },
+    },
     membership: {
       inspect: async () => active(userId),
       subscribe: () => () => {},
@@ -54,6 +75,7 @@ function installBridge(userId = "u1"): void {
       signOut: async () => active(userId),
     },
   }
+  return (event) => publish(event)
 }
 
 function screen(): string | null | undefined {
@@ -138,6 +160,32 @@ describe("desktop onboarding gate", () => {
     expect(container.textContent).toContain("取消")
 
     await click("取消")
+
+    expect(screen()).toBe("onboarding")
+    expect(container.textContent).toContain("第 2 步，共 3 步")
+    expect(window.localStorage.getItem(onboardingSeenKey("u1"))).toBeNull()
+  })
+
+  it("returns to the account step after the Claude authorization finishes", async () => {
+    const publish = installBridge()
+    await act(async () => root.render(createElement(DesktopApp)))
+    await click("跳过")
+    await click("添加账号")
+    await click("下一步")
+    await click("绑定 LA-01")
+    await click("保存并核对出口")
+    await click("重新核对")
+    await click("打开浏览器授权")
+    await act(async () =>
+      publish({
+        sessionId: "claude-1",
+        purpose: "claude-account",
+        mode: "authorize",
+        status: "completed",
+      }),
+    )
+
+    await click("回到账号")
 
     expect(screen()).toBe("onboarding")
     expect(container.textContent).toContain("第 2 步，共 3 步")

@@ -3,13 +3,16 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/login-gate.ts"
+    ".": "./src/login-gate.ts",
+    "./proxy-bridge": "./src/proxy-bridge.ts",
+    "./egress-check": "./src/egress-check.ts"
   },
   "scripts": {
     "test": "vitest run"
   },
   "dependencies": {
-    "@pigclaude/local-store": "workspace:*"
+    "@pigclaude/local-store": "workspace:*",
+    "undici": "6.21.2"
   },
   "devDependencies": {
     "vitest": "3.2.4"

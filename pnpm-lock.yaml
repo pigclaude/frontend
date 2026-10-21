@@ -319,6 +319,9 @@ importers:
       '@pigclaude/local-store':
         specifier: workspace:*
         version: link:../local-store
+      undici:
+        specifier: 6.21.2
+        version: 6.21.2
     devDependencies:
       vitest:
         specifier: 3.2.4

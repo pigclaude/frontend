@@ -38,7 +38,8 @@ const bannedFragments = {
   switcher: ["@pigclaude/", "node:fs", "node:http", "node:net"],
   daemon: ["@pigclaude/", "node:fs"],
   "session-env": ["@pigclaude/", "node:fs", "node:http", "node:net"],
-  "login-gate": ["@pigclaude/", "node:fs", "node:http", "node:net"],
+  // 代理桥和出口核对在 login-gate 里，需要 node:http/node:net；仍然不能直接读写文件。
+  "login-gate": ["@pigclaude/", "node:fs"],
 }
 
 async function sourceFiles(directory) {

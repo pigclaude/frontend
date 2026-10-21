@@ -13,11 +13,11 @@ import {
   type OnboardingStep,
 } from "../models/onboarding-model"
 
-/** 新手引导 props。onFinish 在做完最后一步或点「稍后再说」时调用；returnStep 让引导从指定步骤开始。 */
+/** 新手引导 props。onFinish 在做完最后一步或点「稍后再说」时调用；onOpenAuthorize 交出离开时的进度，resume 让引导带着这份进度继续。 */
 export type OnboardingScreenProps = {
   onFinish: () => void
-  onOpenAuthorize: () => void
-  returnStep?: OnboardingStep
+  onOpenAuthorize: (state: OnboardingState) => void
+  resume?: OnboardingState
 }
 
 const stepCopy: Record<OnboardingStep, { icon: string; title: string; why: string }> = {
@@ -39,10 +39,10 @@ const stepCopy: Record<OnboardingStep, { icon: string; title: string; why: strin
 }
 
 /** 画出整窗引导，不带侧栏。保证每一步都能跳过，后一步不因前一步跳过而锁定。 */
-export function OnboardingScreen({ onFinish, onOpenAuthorize, returnStep }: OnboardingScreenProps) {
-  const [state, setState] = useState(() => createOnboardingState(returnStep))
+export function OnboardingScreen({ onFinish, onOpenAuthorize, resume }: OnboardingScreenProps) {
+  const [state, setState] = useState(() => resume ?? createOnboardingState())
   const heading = useRef<HTMLHeadingElement>(null)
-  const moved = useRef(returnStep !== undefined)
+  const moved = useRef(resume !== undefined)
   const index = onboardingSteps.indexOf(state.step)
   const copy = stepCopy[state.step]
 
@@ -90,7 +90,7 @@ export function OnboardingScreen({ onFinish, onOpenAuthorize, returnStep }: Onbo
             ) : (
               <StepFoot onSkip={() => advance({ type: "skip" })}>
                 {state.step === "account" ? (
-                  <Button variant="primary" size="lg" onClick={onOpenAuthorize}>
+                  <Button variant="primary" size="lg" onClick={() => onOpenAuthorize(state)}>
                     添加账号
                   </Button>
                 ) : (

@@ -26,3 +26,10 @@ export function reduceOnboarding(
   const next = onboardingSteps[onboardingSteps.indexOf(state.step) + 1]
   return next ? { step: next, done } : "finished"
 }
+
+/** 从 Claude 授权页回到引导：授权已完成时把当前步骤记为完成并前进一步，取消时原样停在离开时的步骤。 */
+export function resumeOnboarding(state: OnboardingState, authorized: boolean): OnboardingState {
+  if (!authorized) return state
+  const next = reduceOnboarding(state, { type: "complete" })
+  return next === "finished" ? state : next
+}

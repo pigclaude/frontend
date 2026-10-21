@@ -25,7 +25,11 @@ import {
   newerMembershipView,
 } from "./models/membership-view"
 import { initialScreenAfterLogin } from "./models/onboarding-gate"
-import type { OnboardingStep } from "./models/onboarding-model"
+import {
+  createOnboardingState,
+  resumeOnboarding,
+  type OnboardingState,
+} from "./models/onboarding-model"
 import {
   canGoBack,
   canGoForward,
@@ -46,8 +50,9 @@ export function DesktopApp() {
   const [history, setHistory] = useState(() => createScreenHistory(devView?.screen ?? "login"))
   const screen = currentScreen(history)
   const appearance = useAppearance()
-  const [onboardingReturn, setOnboardingReturn] = useState<OnboardingStep | undefined>(
-    devView?.step,
+  // 引导进度放在这里而不是引导页内部，打开 Claude 授权页再回来时进度不会丢。
+  const [onboardingReturn, setOnboardingReturn] = useState<OnboardingState | undefined>(() =>
+    devView?.step ? createOnboardingState(devView.step) : undefined,
   )
   const [signOutState, setSignOutState] = useState({ pending: false, error: null as string | null })
   const signOutInFlight = useRef(false)
@@ -100,9 +105,9 @@ export function DesktopApp() {
     setHistory((current) => pushScreen(current, next))
   }
 
-  function openAuthorize(returnStep?: OnboardingStep): void {
+  function openAuthorize(returnTo?: OnboardingState): void {
     setAuthorizationState(createAuthorizationState())
-    setOnboardingReturn(returnStep)
+    setOnboardingReturn(returnTo)
     setScreen("authorize")
   }
 
@@ -300,6 +305,9 @@ export function DesktopApp() {
     authorizationSession.current = null
     acceptAuthorizationEvents.current = false
     const sessionId = authorizationState.sessionId
+    // 授权已完成时回到引导的下一步并记下这一步已完成；中途取消则回到原步骤。
+    const authorized = authorizationState.approved || authorizationState.step === "completed"
+    setOnboardingReturn((current) => current && resumeOnboarding(current, authorized))
     const cancelAuthorization =
       window.pigclaude?.authorization?.cancel ?? window.pigclaude?.cancelAuthorization
     if (sessionId) await cancelAuthorization?.(sessionId)
@@ -358,10 +366,10 @@ export function DesktopApp() {
   if (shownScreen === "onboarding") {
     return (
       <OnboardingScreen
-        key={onboardingReturn ?? "start"}
+        key={onboardingReturn?.step ?? "start"}
         onFinish={finishOnboarding}
-        onOpenAuthorize={() => openAuthorize("account")}
-        returnStep={onboardingReturn}
+        onOpenAuthorize={openAuthorize}
+        resume={onboardingReturn}
       />
     )
   }

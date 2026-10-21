@@ -1,4 +1,4 @@
-// 负责验证全屏引导的出现时机：会员有效时按账号只出现一次，稍后再说或做完才写标记，Claude 授权页回来停在第 2 步。
+// 负责验证全屏引导的出现时机：会员有效时按账号只出现一次，稍后再说或做完才写标记；Claude 授权页取消回到第 2 步，授权完成进到第 3 步，进度不丢。
 // @vitest-environment jsdom
 import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
@@ -88,6 +88,12 @@ function button(name: string): HTMLButtonElement | undefined {
   )
 }
 
+function progress(): (string | null)[] {
+  return [...container.querySelectorAll(".onboarding-progress li")].map((item) =>
+    item.getAttribute("data-state"),
+  )
+}
+
 async function click(name: string): Promise<void> {
   const target = button(name)
   expect(target, name).toBeDefined()
@@ -163,10 +169,30 @@ describe("desktop onboarding gate", () => {
 
     expect(screen()).toBe("onboarding")
     expect(container.textContent).toContain("第 2 步，共 3 步")
+    expect(progress()).toEqual(["skipped", "current", "todo"])
     expect(window.localStorage.getItem(onboardingSeenKey("u1"))).toBeNull()
   })
 
-  it("returns to the account step after the Claude authorization finishes", async () => {
+  it("keeps the finished proxy step after a cancelled Claude authorization", async () => {
+    installBridge()
+    await act(async () => root.render(createElement(DesktopApp)))
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="代理地址"]')
+    expect(input).not.toBeNull()
+    await act(async () => {
+      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set
+      setValue?.call(input, "http://user:pass@host:8000")
+      input?.dispatchEvent(new Event("input", { bubbles: true }))
+    })
+    await click("测试并添加")
+    expect(progress()).toEqual(["done", "current", "todo"])
+    await click("添加账号")
+    await click("取消")
+
+    expect(container.textContent).toContain("第 2 步，共 3 步")
+    expect(progress()).toEqual(["done", "current", "todo"])
+  })
+
+  it("moves on to the session step after the Claude authorization finishes", async () => {
     const publish = installBridge()
     await act(async () => root.render(createElement(DesktopApp)))
     await click("跳过")
@@ -188,7 +214,9 @@ describe("desktop onboarding gate", () => {
     await click("回到账号")
 
     expect(screen()).toBe("onboarding")
-    expect(container.textContent).toContain("第 2 步，共 3 步")
+    expect(container.textContent).toContain("第 3 步，共 3 步")
+    expect(container.textContent).toContain("开始第一个会话")
+    expect(progress()).toEqual(["skipped", "done", "current"])
     expect(window.localStorage.getItem(onboardingSeenKey("u1"))).toBeNull()
   })
 })

@@ -1,4 +1,5 @@
 // 负责提供账号与代理页面使用的可编辑脱敏 fixture。
+import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { accountFixtures, proxyFixtures } from "./renderer-fixtures"
 
 /** 账号页面可编辑的脱敏记录。 */
@@ -11,6 +12,13 @@ export type PoolAccount = {
   autoSwitch: boolean
   proxyId: string | null
   fingerprint: string
+  email?: string | null
+  subscriptionType?: string | null
+  needsReauth?: boolean
+  credentialExpiresAt?: number | null
+  proxyName?: string | null
+  proxyExit?: string | null
+  fingerprintDetail?: ClaudeFingerprintView
 }
 
 /** 代理页面可编辑的脱敏记录。 */

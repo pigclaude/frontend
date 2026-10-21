@@ -31,7 +31,10 @@ export function AccountDetailScreen({
           <span className="avatar lg">{account.mark}</span>
           <div>
             <h1>{account.name}</h1>
-            <p className="sub">Claude 官方订阅账号 · {account.status}</p>
+            <p className="sub">
+              Claude 官方订阅账号 · {account.status}
+              {account.email ? ` · ${account.email}` : ""}
+            </p>
           </div>
         </div>
         <div className="actions">
@@ -57,7 +60,7 @@ export function AccountDetailScreen({
               <span className="bar">
                 <i style={{ width: `${account.usage ?? 0}%` }} />
               </span>
-              <span className="num">{account.usage ?? "—"}%</span>
+              <span className="num">{account.usage === null ? "—" : `${account.usage}%`}</span>
             </span>
           </div>
           <div className="item">
@@ -76,8 +79,12 @@ export function AccountDetailScreen({
         <div className="group">
           <div className="item">
             <div className="main">
-              <div className="ttl">LA-01</div>
-              <div className="desc mono">203.0.113.42 · 洛杉矶 · 登录与对话同一出口</div>
+              <div className="ttl">{account.proxyName ?? "未绑定代理"}</div>
+              <div className="desc mono">
+                {account.proxyExit
+                  ? `${account.proxyExit} · 登录与对话同一出口`
+                  : "登录前需要绑定一个可用代理"}
+              </div>
             </div>
             <Button size="sm" variant="secondary" onClick={onChangeProxy}>
               更换
@@ -103,13 +110,21 @@ export function AccountDetailScreen({
             <div className="main">
               <div className="ttl">浏览器</div>
             </div>
-            <span className="val">Chrome 141 · macOS</span>
+            <span className="val">
+              {account.fingerprintDetail
+                ? `${account.fingerprintDetail.brand} · ${account.fingerprintDetail.platform}`
+                : "Chrome · macOS"}
+            </span>
           </div>
           <div className="item">
             <div className="main">
               <div className="ttl">语言与时区</div>
             </div>
-            <span className="val">en-US · America/Los_Angeles</span>
+            <span className="val">
+              {account.fingerprintDetail
+                ? `${account.fingerprintDetail.lang} · ${account.fingerprintDetail.timezone}`
+                : "en-US · America/Los_Angeles"}
+            </span>
           </div>
         </div>
         <p className="note">下次重新授权时生效，已有的登录不受影响。</p>
@@ -124,7 +139,9 @@ export function AccountDetailScreen({
               <div className="ttl">本机保存</div>
               <div className="desc">只用于本机中继替换 Authorization</div>
             </div>
-            <span className="status ok">已保存</span>
+            <span className={account.needsReauth ? "status bad" : "status ok"}>
+              {account.needsReauth ? "需要重新授权" : "已保存"}
+            </span>
           </div>
         </div>
       </section>

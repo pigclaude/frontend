@@ -18,7 +18,8 @@ import {
 import { projectFixtures } from "./fixtures/project-fixtures"
 import type { ProjectNavigationState } from "./models/navigation-model"
 import { addProject } from "./models/project-model"
-import { createPoolState } from "./models/pool-model"
+import { toPoolAccount, toPoolProxy } from "./models/claude-account-view"
+import { useClaudeAccounts } from "./hooks/use-claude-accounts"
 import { settingsScreens } from "./models/settings-nav"
 import type { AppearanceController } from "./hooks/use-appearance"
 import type { ResolvedTheme } from "./models/theme-model"
@@ -36,6 +37,7 @@ export type MainWindowProps = {
   onBack: () => void
   onForward: () => void
   onOpenAuthorize: () => void
+  onReauthorizeAccount?: (accountId: string) => void
   onLogout: () => void
   theme: ResolvedTheme
   appearance: AppearanceController
@@ -50,6 +52,7 @@ export function MainWindow({
   onBack,
   onForward,
   onOpenAuthorize,
+  onReauthorizeAccount,
   onLogout,
   theme,
   appearance,
@@ -62,7 +65,9 @@ export function MainWindow({
   const [projects, setProjects] = useState(projectFixtures)
   const [addingProject, setAddingProject] = useState(false)
   const toast = useToast()
-  const [poolState] = useState(createPoolState)
+  const pool = useClaudeAccounts()
+  const accounts = pool.accounts.map((account) => toPoolAccount(account, pool.proxies))
+  const proxies = pool.proxies.map((proxy) => toPoolProxy(proxy, pool.accounts))
   const inSettings = settingsScreens.has(screen)
 
   useEffect(() => {
@@ -180,15 +185,24 @@ export function MainWindow({
         {screen === "accounts" ? (
           <ScrollPanel>
             <AccountsScreen
-              accounts={poolState.accounts}
-              proxies={poolState.proxies}
+              accounts={accounts}
+              proxies={proxies}
+              error={pool.error}
               onOpenAuthorize={onOpenAuthorize}
+              onReauthorize={(accountId) => onReauthorizeAccount?.(accountId) ?? onOpenAuthorize()}
+              onRemove={(accountId) => void pool.remove(accountId)}
+              onUpdate={(input) => void pool.update(input)}
             />
           </ScrollPanel>
         ) : null}
         {screen === "proxies" ? (
           <ScrollPanel>
-            <ProxiesScreen proxies={poolState.proxies} />
+            <ProxiesScreen
+              proxies={proxies}
+              error={pool.error}
+              onTest={(proxyId) => pool.testProxy(proxyId)}
+              onSave={(input) => pool.saveProxy(input)}
+            />
           </ScrollPanel>
         ) : null}
         {screen === "usage" ? (

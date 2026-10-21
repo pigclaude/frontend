@@ -4,7 +4,11 @@ import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { MembershipView } from "@pigclaude/contracts/membership"
-import type { AuthorizationStateEvent } from "../../main/authorization/types"
+import type {
+  ClaudeAccountEvent,
+  ClaudeAccountView,
+  ProxyView,
+} from "@pigclaude/contracts/claude-account"
 import { DesktopApp } from "./app"
 import { initialMembershipView } from "./models/membership-view"
 import { markOnboardingSeen, onboardingSeenKey } from "./lib/onboarding-storage"
@@ -45,35 +49,84 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 
-/** 装好会员有效的桥；返回值把 Claude 账号授权事件推给界面。 */
-function installBridge(userId = "u1"): (event: AuthorizationStateEvent) => void {
-  let publish: (event: AuthorizationStateEvent) => void = () => undefined
+/** 装好会员有效的桥；返回值把 Claude 账号登录事件推给界面。 */
+function installBridge(userId = "u1"): (event: ClaudeAccountEvent) => void {
+  let publish: (event: ClaudeAccountEvent) => void = () => undefined
+  let account: ClaudeAccountView | null = null
+  const proxy: ProxyView = {
+    id: "la-01",
+    name: "LA-01",
+    url: "http://127.0.0.1:1",
+    lastTest: {
+      ok: true,
+      ip: "203.0.113.42",
+      latencyMs: 1,
+      testedAt: "2026-10-21T00:00:00.000Z",
+    },
+  }
+  const view = (): ClaudeAccountView => ({
+    id: "acc-1",
+    displayName: "主力 Max",
+    enabled: true,
+    email: "user@example.com",
+    subscriptionType: "max",
+    needsReauth: false,
+    credentialExpiresAt: 4_102_444_800_000,
+    proxyId: "la-01",
+    fingerprint: {
+      seed: "123456",
+      brand: "Chrome",
+      platform: "macos",
+      lang: "en-US",
+      timezone: "America/Los_Angeles",
+      canvasNoise: true,
+      clientRectsNoise: true,
+    },
+    createdAt: "2026-10-21T00:00:00.000Z",
+    updatedAt: "2026-10-21T00:00:00.000Z",
+  })
   window.pigclaude = {
     platform: "darwin",
-    authorization: {
-      start: async () => ({
-        ok: true,
-        sessionId: "claude-1",
-        authorizationUrl: "https://claude.example/authorize",
-        expiresAt: Date.now() + 60_000,
-      }),
-      cancel: async () => ({
-        sessionId: "claude-1",
-        purpose: "claude-account",
-        mode: "authorize",
-        status: "cancelled",
-      }),
-      subscribe: (listener) => {
-        publish = listener
-        return () => undefined
-      },
-    },
     membership: {
       inspect: async () => active(userId),
       subscribe: () => () => {},
       withdraw: async () => active(userId),
       signOut: async () => active(userId),
     },
+    claudeAccounts: {
+      list: async () => (account === null ? [] : [account]),
+      authorize: async () => {
+        account = view()
+        publish({
+          accountId: "acc-1",
+          phase: "waiting-browser",
+          errorCode: null,
+          message: null,
+        })
+        await Promise.resolve()
+        publish({
+          accountId: "acc-1",
+          phase: "authorized",
+          errorCode: null,
+          message: null,
+        })
+        return account
+      },
+      cancelAuthorization: async () => undefined,
+      update: async () => account ?? view(),
+      remove: async () => undefined,
+      subscribe: (listener) => {
+        publish = listener
+        return () => undefined
+      },
+    },
+    proxies: {
+      list: async () => [proxy],
+      save: async () => proxy,
+      remove: async () => undefined,
+      test: async () => proxy,
+    },
+    egress: { check: async () => ({ ok: true, ip: "203.0.113.42" }) },
   }
   return (event) => publish(event)
 }
@@ -193,24 +246,17 @@ describe("desktop onboarding gate", () => {
   })
 
   it("moves on to the session step after the Claude authorization finishes", async () => {
-    const publish = installBridge()
+    installBridge()
     await act(async () => root.render(createElement(DesktopApp)))
     await click("跳过")
     await click("添加账号")
     await click("下一步")
-    await click("绑定 LA-01")
+    await click("绑定代理")
     await click("保存并核对出口")
-    await click("重新核对")
-    await click("打开浏览器授权")
-    await act(async () =>
-      publish({
-        sessionId: "claude-1",
-        purpose: "claude-account",
-        mode: "authorize",
-        status: "completed",
-      }),
-    )
-
+    await click("开始核对并授权")
+    await act(async () => {
+      await Promise.resolve()
+    })
     await click("回到账号")
 
     expect(screen()).toBe("onboarding")

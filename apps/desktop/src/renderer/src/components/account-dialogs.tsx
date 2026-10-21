@@ -1,5 +1,5 @@
 // 负责账号删除、代理切换和指纹编辑弹层。
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
@@ -54,6 +54,9 @@ export function AccountProxyDialog({
   onConfirm: (proxyId: string) => void
 }) {
   const [selected, setSelected] = useState(proxies[0]?.id ?? "")
+  useEffect(() => {
+    if (open) setSelected(proxies[0]?.id ?? "")
+  }, [open, proxies])
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -111,6 +114,9 @@ export function FingerprintDialog({
   onConfirm: (fingerprint: string) => void
 }) {
   const [fingerprint, setFingerprint] = useState(account?.fingerprint ?? "")
+  useEffect(() => {
+    if (open) setFingerprint(account?.fingerprint ?? "")
+  }, [open, account])
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -130,7 +136,25 @@ export function FingerprintDialog({
           </div>
           <div className="field">
             <label>浏览器</label>
-            <Input value="Chrome 141 · macOS" readOnly />
+            <Input
+              value={
+                account?.fingerprintDetail
+                  ? `${account.fingerprintDetail.brand} · ${account.fingerprintDetail.platform}`
+                  : "Chrome · macOS"
+              }
+              readOnly
+            />
+          </div>
+          <div className="field">
+            <label>语言与时区</label>
+            <Input
+              value={
+                account?.fingerprintDetail
+                  ? `${account.fingerprintDetail.lang} · ${account.fingerprintDetail.timezone}`
+                  : "en-US · America/Los_Angeles"
+              }
+              readOnly
+            />
           </div>
           <p className="hint">建议和代理出口保持一致。</p>
         </div>

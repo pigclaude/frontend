@@ -1,21 +1,24 @@
-// 负责添加或重新授权 Claude 账号，并把确认交给外部浏览器。
+// 负责添加或重新授权 Claude 账号；出口核对交给主进程，确认交给外部浏览器。
 import { useState, type ReactNode } from "react"
+import type { ClaudeAccountView, ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Icon } from "../components/icon"
 import { TrafficLights } from "../components/traffic-lights"
+import type { PoolProxy } from "../fixtures/pool-fixtures"
 import type { AuthorizationEvent, AuthorizationState } from "../models/authorization-model"
 
 /** Claude 授权向导 props。 */
 export type AuthorizeScreenProps = {
   state: AuthorizationState
+  proxies: PoolProxy[]
+  account?: ClaudeAccountView | null
   onEvent: (event: AuthorizationEvent) => void
   onStartBrowserAuthorization: (input: {
-    accountName: string
-    proxyId: string | null
-    fingerprintSeed: string | null
-    bridgeExit: string
-    daemonExit: string
+    accountId?: string
+    displayName: string
+    proxyId: string
+    fingerprint: ClaudeFingerprintView
   }) => void
   onCancel: () => void
 }
@@ -23,33 +26,35 @@ export type AuthorizeScreenProps = {
 /** 绘制六步账号授权向导和外部浏览器等待态。 */
 export function AuthorizeScreen({
   state,
+  proxies,
+  account,
   onEvent,
   onStartBrowserAuthorization,
   onCancel,
 }: AuthorizeScreenProps) {
-  const [name, setName] = useState(state.accountName || "主力 Max")
-  const [fingerprint, setFingerprint] = useState(state.fingerprintSeed || "fp_4d18…73aa")
-  const [copied, setCopied] = useState(false)
-  const authorizationUrl = state.authorizationUrl ?? ""
+  const [name, setName] = useState(state.accountName || account?.displayName || "主力 Max")
+  const [proxyId, setProxyId] = useState(state.proxyId ?? account?.proxyId ?? proxies[0]?.id ?? "")
+  const [fingerprint, setFingerprint] = useState<ClaudeFingerprintView>(
+    account?.fingerprint ?? {
+      seed: state.fingerprintSeed || "123456",
+      brand: "Chrome",
+      platform: "macos",
+      lang: "en-US",
+      timezone: "America/Los_Angeles",
+      canvasNoise: true,
+      clientRectsNoise: true,
+    },
+  )
+  const selectedProxy = proxies.find((proxy) => proxy.id === proxyId) ?? null
 
   function startBrowserAuthorization() {
+    if (name.trim() === "" || proxyId === "") return
     onStartBrowserAuthorization({
-      accountName: name,
-      proxyId: state.proxyId,
-      fingerprintSeed: fingerprint,
-      bridgeExit: state.bridgeExit,
-      daemonExit: state.daemonExit,
+      accountId: account?.id,
+      displayName: name.trim(),
+      proxyId,
+      fingerprint,
     })
-  }
-
-  async function copyLink() {
-    try {
-      await navigator.clipboard.writeText(authorizationUrl)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1800)
-    } catch {
-      setCopied(false)
-    }
   }
 
   return (
@@ -63,7 +68,7 @@ export function AuthorizeScreen({
       <main className="win-body">
         <div className="wiz">
           <div className="wizard-progress">
-            <span>添加 Claude 账号</span>
+            <span>{account ? "重新授权 Claude 账号" : "添加 Claude 账号"}</span>
             <span>{state.step === "completed" ? "完成" : stepLabel(state.step)}</span>
           </div>
           <div className="progress-bars" aria-hidden="true">
@@ -95,6 +100,7 @@ export function AuthorizeScreen({
               <div className="wizard-foot">
                 <Button
                   variant="primary"
+                  disabled={name.trim() === ""}
                   onClick={() => {
                     onEvent({ type: "set-name", accountName: name })
                     onEvent({ type: "advance" })
@@ -110,34 +116,39 @@ export function AuthorizeScreen({
               title="选一个 IP 代理"
               description="这个账号的登录浏览器和以后所有对话请求，都从这一个代理出去。"
             >
-              <div className="choice is-selected">
-                <span className="radio-dot" />
-                <div className="grow">
-                  <b>LA-01</b>
-                  <div className="desc">203.0.113.42 · 洛杉矶 · 住宅</div>
-                </div>
-                <span className="status ok">可用</span>
-              </div>
-              <div className="choice">
-                <span className="radio-dot" />
-                <div className="grow">
-                  <b>SJC-02</b>
-                  <div className="desc">198.51.100.17 · 圣何塞</div>
-                </div>
-                <span className="status ok">可用</span>
-              </div>
-              <div className="wizard-foot">
-                <Button variant="ghost" onClick={() => onEvent({ type: "advance" })}>
-                  下一步
+              {proxies.length === 0 ? (
+                <p className="note">还没有代理。先在代理页添加一个 HTTP/HTTPS 代理。</p>
+              ) : null}
+              {proxies.map((proxy) => (
+                <Button
+                  variant="plain"
+                  key={proxy.id}
+                  className={proxyId === proxy.id ? "choice is-selected" : "choice"}
+                  type="button"
+                  onClick={() => setProxyId(proxy.id)}
+                >
+                  <span className="radio-dot" />
+                  <div className="grow">
+                    <b>{proxy.name}</b>
+                    <div className="desc">
+                      {proxy.exit} · {proxy.region}
+                    </div>
+                  </div>
+                  <span className={proxy.available ? "status ok" : "status bad"}>
+                    {proxy.available ? `${proxy.latency} ms` : "待测试"}
+                  </span>
                 </Button>
+              ))}
+              <div className="wizard-foot">
                 <Button
                   variant="primary"
+                  disabled={proxyId === ""}
                   onClick={() => {
-                    onEvent({ type: "set-proxy", proxyId: "la-01" })
+                    onEvent({ type: "set-proxy", proxyId })
                     onEvent({ type: "advance" })
                   }}
                 >
-                  绑定 LA-01
+                  绑定代理
                 </Button>
               </div>
             </WizardBody>
@@ -145,36 +156,98 @@ export function AuthorizeScreen({
           {state.step === "fingerprint" ? (
             <WizardBody
               title="设定这个账号的指纹"
-              description="指纹由你决定，保存在本机这个账号下。以后重新授权都用同一份。"
+              description="指纹保存在本机这个账号下。以后重新授权都用同一份。"
             >
               <div className="field">
                 <label htmlFor="authorize-fingerprint">指纹种子</label>
                 <Input
                   id="authorize-fingerprint"
                   className="mono"
-                  value={fingerprint}
-                  onChange={(event) => setFingerprint(event.target.value)}
+                  value={fingerprint.seed}
+                  onChange={(event) =>
+                    setFingerprint((current) => ({ ...current, seed: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="authorize-brand">浏览器品牌</label>
+                <Input
+                  id="authorize-brand"
+                  value={fingerprint.brand}
+                  onChange={(event) =>
+                    setFingerprint((current) => ({ ...current, brand: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="authorize-platform">平台</label>
+                <Input
+                  id="authorize-platform"
+                  value={fingerprint.platform}
+                  onChange={(event) =>
+                    setFingerprint((current) => ({ ...current, platform: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="authorize-lang">语言</label>
+                <Input
+                  id="authorize-lang"
+                  value={fingerprint.lang}
+                  onChange={(event) =>
+                    setFingerprint((current) => ({ ...current, lang: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="authorize-timezone">时区</label>
+                <Input
+                  id="authorize-timezone"
+                  value={fingerprint.timezone}
+                  onChange={(event) =>
+                    setFingerprint((current) => ({ ...current, timezone: event.target.value }))
+                  }
                 />
               </div>
               <div className="group">
-                <div className="item">
+                <label className="item">
                   <div className="main">
-                    <div className="ttl">浏览器</div>
-                    <div className="desc">Chrome 141 · macOS</div>
+                    <div className="ttl">Canvas 噪声</div>
+                    <div className="desc">关闭时传 --disable-spoofing=canvas</div>
                   </div>
-                </div>
-                <div className="item">
+                  <input
+                    type="checkbox"
+                    checked={fingerprint.canvasNoise}
+                    onChange={(event) =>
+                      setFingerprint((current) => ({
+                        ...current,
+                        canvasNoise: event.target.checked,
+                      }))
+                    }
+                  />
+                </label>
+                <label className="item">
                   <div className="main">
-                    <div className="ttl">语言与时区</div>
-                    <div className="desc">en-US · America/Los_Angeles</div>
+                    <div className="ttl">ClientRects 噪声</div>
+                    <div className="desc">关闭时传 --disable-spoofing=clientrects</div>
                   </div>
-                </div>
+                  <input
+                    type="checkbox"
+                    checked={fingerprint.clientRectsNoise}
+                    onChange={(event) =>
+                      setFingerprint((current) => ({
+                        ...current,
+                        clientRectsNoise: event.target.checked,
+                      }))
+                    }
+                  />
+                </label>
               </div>
               <div className="wizard-foot">
                 <Button
                   variant="primary"
                   onClick={() => {
-                    onEvent({ type: "set-fingerprint", fingerprintSeed: fingerprint })
+                    onEvent({ type: "set-fingerprint", fingerprintSeed: fingerprint.seed })
                     onEvent({ type: "advance" })
                   }}
                 >
@@ -185,64 +258,33 @@ export function AuthorizeScreen({
           ) : null}
           {state.step === "exit" ? (
             <WizardBody
-              title="核对出口"
-              description="登录桥和中继必须经过同一个代理出口，才会进入授权。"
+              title="核对出口并打开授权页"
+              description="主进程会先核对代理桥和 daemon 出口，一致后才会启动指纹浏览器内核。"
             >
-              <div className="lanes">
-                <div className="lane">
-                  <b>登录桥</b>
-                  <span>指纹浏览器 · 本机桥 · LA-01</span>
-                  <strong>{state.bridgeExit || "待检测"}</strong>
+              <div className="group">
+                <div className="item">
+                  <div className="main">
+                    <div className="ttl">代理</div>
+                    <div className="desc mono">
+                      {selectedProxy ? `${selectedProxy.name} · ${selectedProxy.exit}` : "未选择"}
+                    </div>
+                  </div>
                 </div>
-                <div className="lane">
-                  <b>中继</b>
-                  <span>本机 daemon · LA-01</span>
-                  <strong>{state.daemonExit || "待检测"}</strong>
+                <div className="item">
+                  <div className="main">
+                    <div className="ttl">指纹</div>
+                    <div className="desc mono">{fingerprint.seed}</div>
+                  </div>
                 </div>
               </div>
-              {state.canLaunch ? (
-                <div className="verdict good">
-                  <Icon name="check" small /> 两条路出口一致，可以继续
-                </div>
-              ) : (
-                <div className="verdict bad">
-                  <Icon name="x" small /> 请勿登录：先完成出口核对
-                </div>
-              )}
               {state.error ? <p className="error-text">{state.error}</p> : null}
               <div className="wizard-foot">
                 <Button
-                  variant="ghost"
-                  onClick={() => {
-                    onEvent({
-                      type: "set-exits",
-                      bridgeExit: "203.0.113.10",
-                      daemonExit: "198.51.100.20",
-                    })
-                    onEvent({ type: "check-exit" })
-                  }}
-                >
-                  模拟出口不一致
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    onEvent({
-                      type: "set-exits",
-                      bridgeExit: "203.0.113.42",
-                      daemonExit: "203.0.113.42",
-                    })
-                    onEvent({ type: "check-exit" })
-                  }}
-                >
-                  重新核对
-                </Button>
-                <Button
                   variant="primary"
-                  disabled={!state.canLaunch}
+                  disabled={proxyId === "" || name.trim() === ""}
                   onClick={startBrowserAuthorization}
                 >
-                  打开浏览器授权
+                  {state.error ? "重新核对" : "开始核对并授权"}
                 </Button>
               </div>
             </WizardBody>
@@ -250,21 +292,20 @@ export function AuthorizeScreen({
           {state.step === "waiting" ? (
             <WizardBody
               title="在外部浏览器里完成授权"
-              description="桌面端不会在软件窗口里确认授权。请在刚打开的浏览器页面中完成登录。"
+              description="桌面端不会在软件窗口里确认授权。请在刚打开的指纹浏览器里完成登录。"
             >
               <div className="browser-wait">
                 <Icon name="browser" />
                 <b>等待浏览器确认</b>
-                <span>浏览器配置目录独立 · 出口持续核对</span>
-                <span className="mono">{authorizationUrl}</span>
+                <span>授权过程中出站流量持续绑定在该账号的代理上</span>
                 {state.error ? <span className="error-text">{state.error}</span> : null}
               </div>
               <div className="wizard-foot">
-                <Button variant="secondary" onClick={() => void copyLink()}>
-                  {copied ? "已复制" : "复制登录链接"}
-                </Button>
-                <Button variant="ghost" onClick={startBrowserAuthorization}>
+                <Button variant="secondary" onClick={startBrowserAuthorization}>
                   重新发起
+                </Button>
+                <Button variant="ghost" onClick={onCancel}>
+                  取消
                 </Button>
               </div>
             </WizardBody>
@@ -272,19 +313,21 @@ export function AuthorizeScreen({
           {state.step === "completed" ? (
             <WizardBody
               title={`「${name}」已加入号池`}
-              description="授权完成，指纹和代理已保存到本机。"
+              description="授权完成，凭据、指纹和代理已保存到本机。"
             >
               <div className="group">
                 <div className="item">
                   <div className="main">
                     <div className="ttl">代理</div>
-                    <div className="desc mono">LA-01 · 203.0.113.42</div>
+                    <div className="desc mono">
+                      {selectedProxy ? `${selectedProxy.name} · ${selectedProxy.exit}` : "未选择"}
+                    </div>
                   </div>
                 </div>
                 <div className="item">
                   <div className="main">
                     <div className="ttl">指纹</div>
-                    <div className="desc mono">{fingerprint}</div>
+                    <div className="desc mono">{fingerprint.seed}</div>
                   </div>
                 </div>
                 <div className="item">

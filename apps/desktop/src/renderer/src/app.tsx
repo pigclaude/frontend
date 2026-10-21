@@ -1,6 +1,7 @@
 // 负责把设计稿里的页面串成可切换的桌面界面，并承接主进程授权事件。
 import { useEffect, useRef, useState } from "react"
 import type { MembershipView } from "@pigclaude/contracts/membership"
+import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import type { AuthorizationStateEvent } from "../../main/authorization/types"
 import { AuthorizeScreen } from "./screens/authorize-screen"
 import { LoginScreen } from "./screens/login-screen"
@@ -9,9 +10,11 @@ import { MainWindow } from "./main-window"
 import { ToastProvider } from "./components/toast"
 import { TooltipProvider } from "./components/ui/tooltip"
 import { useAppearance } from "./hooks/use-appearance"
+import { useClaudeAccounts } from "./hooks/use-claude-accounts"
 import { useMembershipConfirmation } from "./hooks/use-membership-confirmation"
 import { markOnboardingSeen } from "./lib/onboarding-storage"
 import { createAuthorizationState, reduceAuthorizationState } from "./models/authorization-model"
+import { toPoolProxy } from "./models/claude-account-view"
 import { parseDevView, type DevLoginPhase, type DevView } from "./models/dev-view"
 import {
   createLoginState,
@@ -50,6 +53,8 @@ export function DesktopApp() {
   const [history, setHistory] = useState(() => createScreenHistory(devView?.screen ?? "login"))
   const screen = currentScreen(history)
   const appearance = useAppearance()
+  const claudeAccounts = useClaudeAccounts()
+  const [reauthorizeAccountId, setReauthorizeAccountId] = useState<string | null>(null)
   // 引导进度放在这里而不是引导页内部，打开 Claude 授权页再回来时进度不会丢。
   const [onboardingReturn, setOnboardingReturn] = useState<OnboardingState | undefined>(() =>
     devView?.step ? createOnboardingState(devView.step) : undefined,
@@ -91,6 +96,40 @@ export function DesktopApp() {
     return unsubscribe
   }, [])
 
+  useEffect(() => {
+    const event = claudeAccounts.event
+    if (event === null) return
+    setAuthorizationState((current) => {
+      if (event.phase === "checking-egress") {
+        return { ...current, step: "exit", error: null }
+      }
+      if (event.phase === "waiting-browser") {
+        return { ...current, step: "waiting", error: null, canLaunch: true }
+      }
+      if (event.phase === "exchanging" || event.phase === "saving") {
+        return { ...current, step: "waiting" }
+      }
+      if (event.phase === "authorized") {
+        return { ...current, step: "completed", approved: true, error: null }
+      }
+      if (event.phase === "blocked" || event.phase === "failed") {
+        return {
+          ...current,
+          step: "exit",
+          error: event.message ?? "授权失败",
+          canLaunch: false,
+        }
+      }
+      if (event.phase === "cancelled") return createAuthorizationState()
+      return current
+    })
+  }, [claudeAccounts.event])
+
+  useEffect(() => {
+    if (claudeAccounts.error === null) return
+    setAuthorizationState((current) => ({ ...current, error: claudeAccounts.error }))
+  }, [claudeAccounts.error])
+
   // 渲染时已经直接画出 gatedScreen，这里只把历史记录补成同一屏，中间不会先画登录页。
   useEffect(() => {
     if (!startupSettled) return
@@ -105,7 +144,8 @@ export function DesktopApp() {
     setHistory((current) => pushScreen(current, next))
   }
 
-  function openAuthorize(returnTo?: OnboardingState): void {
+  function openAuthorize(returnTo?: OnboardingState, accountId?: string | null): void {
+    setReauthorizeAccountId(accountId ?? null)
     setAuthorizationState(createAuthorizationState())
     setOnboardingReturn(returnTo)
     setScreen("authorize")
@@ -249,69 +289,28 @@ export function DesktopApp() {
     setLoginState((current) => reduceLoginState(current, { type: "cancelled" }))
   }
 
-  async function startClaudeAuthorization(input: {
-    accountName: string
-    proxyId: string | null
-    fingerprintSeed: string | null
-    bridgeExit: string
-    daemonExit: string
-  }): Promise<void> {
-    const generation = ++authorizationGeneration.current
-    authorizationSession.current = null
+  function startClaudeAuthorization(input: {
+    accountId?: string
+    displayName: string
+    proxyId: string
+    fingerprint: ClaudeFingerprintView
+  }): void {
     acceptAuthorizationEvents.current = true
-    const bridge = window.pigclaude
-    const startAuthorization = bridge?.authorization?.start ?? bridge?.startAuthorization
-    if (!startAuthorization) {
-      setAuthorizationState((current) =>
-        reduceAuthorizationState(current, { type: "failed", error: "桌面授权桥不可用" }),
-      )
-      return
-    }
-    try {
-      const result = await startAuthorization({
-        purpose: "claude-account",
-        mode: "authorize",
-        accountName: input.accountName,
-        proxyId: input.proxyId ?? undefined,
-        fingerprintSeed: input.fingerprintSeed ?? undefined,
-        bridgeExit: input.bridgeExit,
-        daemonExit: input.daemonExit,
-      })
-      if (generation !== authorizationGeneration.current) return
-      if (!result.ok) {
-        setAuthorizationState((current) =>
-          reduceAuthorizationState(current, { type: "failed", error: result.error }),
-        )
-        return
-      }
-      authorizationSession.current = result.sessionId
-      setAuthorizationState((current) =>
-        reduceAuthorizationState(current, {
-          type: "start",
-          sessionId: result.sessionId,
-          url: result.authorizationUrl,
-        }),
-      )
-    } catch (error: unknown) {
-      if (generation !== authorizationGeneration.current) return
-      setAuthorizationState((current) =>
-        reduceAuthorizationState(current, { type: "failed", error: errorMessage(error) }),
-      )
-    }
+    authorizationSession.current = null
+    setAuthorizationState((current) => ({ ...current, step: "exit", error: null }))
+    void claudeAccounts.authorize(input)
   }
 
   async function cancelClaudeAuthorization(): Promise<void> {
     authorizationGeneration.current++
     authorizationSession.current = null
     acceptAuthorizationEvents.current = false
-    const sessionId = authorizationState.sessionId
     // 授权已完成时回到引导的下一步并记下这一步已完成；中途取消则回到原步骤。
     const authorized = authorizationState.approved || authorizationState.step === "completed"
     setOnboardingReturn((current) => current && resumeOnboarding(current, authorized))
-    const cancelAuthorization =
-      window.pigclaude?.authorization?.cancel ?? window.pigclaude?.cancelAuthorization
-    if (sessionId) await cancelAuthorization?.(sessionId)
+    await claudeAccounts.cancelAuthorization()
     setAuthorizationState(createAuthorizationState())
+    setReauthorizeAccountId(null)
     setHistory((current) =>
       canGoBack(current) ? goBack(current) : pushScreen(current, "accounts"),
     )
@@ -377,10 +376,12 @@ export function DesktopApp() {
     return (
       <AuthorizeScreen
         state={authorizationState}
+        proxies={claudeAccounts.proxies.map((proxy) => toPoolProxy(proxy, claudeAccounts.accounts))}
+        account={claudeAccounts.accounts.find((item) => item.id === reauthorizeAccountId) ?? null}
         onEvent={(event) =>
           setAuthorizationState((current) => reduceAuthorizationState(current, event))
         }
-        onStartBrowserAuthorization={(input) => void startClaudeAuthorization(input)}
+        onStartBrowserAuthorization={startClaudeAuthorization}
         onCancel={() => void cancelClaudeAuthorization()}
       />
     )
@@ -397,6 +398,7 @@ export function DesktopApp() {
           onBack={() => setHistory(goBack)}
           onForward={() => setHistory(goForward)}
           onOpenAuthorize={() => openAuthorize()}
+          onReauthorizeAccount={(accountId) => openAuthorize(undefined, accountId)}
           onLogout={() => void logout()}
           theme={appearance.resolved}
           appearance={appearance}

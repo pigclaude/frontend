@@ -1,8 +1,24 @@
 // 负责解析开发期地址里的 screen、theme、glass 参数，让视觉回归能直接打开指定页面。
 import type { Screen } from "../screens/screen"
+import type { LoginView } from "./login-model"
+import { onboardingSteps, type OnboardingStep } from "./onboarding-model"
 
-/** 开发期要直接打开的页面、主题和玻璃效果。 */
-export type DevView = { screen: Screen; theme: "light" | "dark"; glass: boolean }
+/** 开发期可以直接停住的登录阶段。 */
+export type DevLoginPhase = Extract<LoginView, "idle" | "waiting" | "confirming" | "error">
+
+const loginPhases: readonly DevLoginPhase[] = ["idle", "waiting", "confirming", "error"]
+
+/**
+ * 开发期要直接打开的页面、主题和玻璃效果。
+ * phase 让登录页停在指定阶段（同时当作未登录），step 让引导停在指定步骤。
+ */
+export type DevView = {
+  screen: Screen
+  theme: "light" | "dark"
+  glass: boolean
+  phase?: DevLoginPhase
+  step?: OnboardingStep
+}
 
 const screenNames: Record<Screen, true> = {
   login: true,
@@ -35,9 +51,13 @@ export function parseDevView(search: string, dev: boolean): DevView | null {
   const params = new URLSearchParams(search)
   const screen = params.get("screen")
   if (!screen || !Object.hasOwn(screenNames, screen)) return null
+  const phase = loginPhases.find((name) => name === params.get("phase"))
+  const step = onboardingSteps.find((name) => name === params.get("step"))
   return {
     screen: screen as Screen,
     theme: params.get("theme") === "dark" ? "dark" : "light",
     glass: params.get("glass") === "1",
+    ...(phase && screen === "login" ? { phase } : {}),
+    ...(step && screen === "onboarding" ? { step } : {}),
   }
 }

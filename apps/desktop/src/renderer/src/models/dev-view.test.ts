@@ -26,4 +26,12 @@ describe("parseDevView", () => {
       glass: false,
     })
   })
+
+  it("只在对应页面上认可 phase 和 step", () => {
+    expect(parseDevView("?screen=login&phase=waiting", true)?.phase).toBe("waiting")
+    expect(parseDevView("?screen=login&phase=nope", true)?.phase).toBeUndefined()
+    expect(parseDevView("?screen=chat&phase=waiting", true)?.phase).toBeUndefined()
+    expect(parseDevView("?screen=onboarding&step=session", true)?.step).toBe("session")
+    expect(parseDevView("?screen=login&step=session", true)?.step).toBeUndefined()
+  })
 })

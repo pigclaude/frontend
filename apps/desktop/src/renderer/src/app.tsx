@@ -12,8 +12,13 @@ import { useAppearance } from "./hooks/use-appearance"
 import { useMembershipConfirmation } from "./hooks/use-membership-confirmation"
 import { markOnboardingSeen } from "./lib/onboarding-storage"
 import { createAuthorizationState, reduceAuthorizationState } from "./models/authorization-model"
-import { parseDevView } from "./models/dev-view"
-import { createLoginState, reduceLoginState, type LoginIntent } from "./models/login-model"
+import { parseDevView, type DevLoginPhase } from "./models/dev-view"
+import {
+  createLoginState,
+  reduceLoginState,
+  type LoginIntent,
+  type LoginState,
+} from "./models/login-model"
 import {
   initialMembershipView,
   membershipGateMessage,
@@ -36,12 +41,14 @@ import type { Screen } from "./screens/screen"
 export function DesktopApp() {
   const [devView] = useState(() => parseDevView(window.location.search, import.meta.env.DEV))
   const [membership, setMembership] = useState<MembershipView>(initialMembershipView)
-  const [loginState, setLoginState] = useState(createLoginState)
+  const [loginState, setLoginState] = useState(() => devLoginState(devView?.phase))
   const [authorizationState, setAuthorizationState] = useState(createAuthorizationState)
   const [history, setHistory] = useState(() => createScreenHistory(devView?.screen ?? "login"))
   const screen = currentScreen(history)
   const appearance = useAppearance()
-  const [onboardingReturn, setOnboardingReturn] = useState<OnboardingStep | undefined>()
+  const [onboardingReturn, setOnboardingReturn] = useState<OnboardingStep | undefined>(
+    devView?.step,
+  )
   const [signOutState, setSignOutState] = useState({ pending: false, error: null as string | null })
   const signOutInFlight = useRef(false)
   const authorizationGeneration = useRef(0)
@@ -51,7 +58,7 @@ export function DesktopApp() {
   const canUseDesktop =
     !signOutState.pending &&
     signOutState.error === null &&
-    (browserPreview || membership.state === "active")
+    (browserPreview ? devView?.phase === undefined : membership.state === "active")
   const startupSettled = membership.startupPhase !== "checking"
   const gatedScreen: Screen | null =
     canUseDesktop && screen === "login" && startupSettled
@@ -387,6 +394,26 @@ export function DesktopApp() {
       </ToastProvider>
     </TooltipProvider>
   )
+}
+
+// 开发期预览用的固定登录状态；时间戳取远期常量，保证截图不随时间变化。
+function devLoginState(phase: DevLoginPhase | undefined): LoginState {
+  const idle = createLoginState()
+  if (phase === "waiting") {
+    return {
+      ...idle,
+      view: "waiting",
+      intent: "login",
+      sessionId: "dev-preview",
+      authorizationUrl: "https://pigclaude.example/oauth2/authorize",
+      expiresAt: 4_102_444_800_000,
+    }
+  }
+  if (phase === "confirming") {
+    return { ...idle, view: "confirming", intent: "login", displayName: "小猪" }
+  }
+  if (phase === "error") return { ...idle, view: "error", error: "授权已过期，请重新授权。" }
+  return idle
 }
 
 function isAuthorizationFailure(event: AuthorizationStateEvent): boolean {

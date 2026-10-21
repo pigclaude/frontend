@@ -183,6 +183,7 @@ function knownProtocolError(error: string | undefined): string | undefined {
       "identity_conflict",
       "binding_conflict",
       "access_denied",
+      "membership_required",
       "ACCOUNT_LINK_REQUIRED",
       "CAPTCHA_REQUIRED",
       "CAPTCHA_INVALID",

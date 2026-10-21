@@ -50,6 +50,7 @@ function InteractionSession({
 }) {
   const [view, setView] = useState<IdentityInteraction | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [membershipRequired, setMembershipRequired] = useState(false)
   const [pending, setPending] = useState<"password" | "other" | null>(null)
   const [reload, setReload] = useState(0)
   const [mode, setMode] = useState<LoginMode>("login")
@@ -57,6 +58,8 @@ function InteractionSession({
   const mutationOwner = useRef<symbol | null>(null)
   const generation = useRef(0)
   const mounted = useRef(false)
+  // 切换账号失败后重读交互时保留的错误；重读期间沿用旧视图并禁用操作，避免闪回加载页。
+  const carriedError = useRef<string | null>(null)
   useLayoutEffect(() => {
     mounted.current = true
     return () => {
@@ -68,10 +71,13 @@ function InteractionSession({
   }, [])
   useEffect(() => {
     const current = ++generation.current
+    const carried = carriedError.current
+    carriedError.current = null
     mutationOwner.current = null
-    setPending(null)
-    setView(null)
-    setError(null)
+    setPending(carried === null ? null : "other")
+    if (carried === null) setView(null)
+    setError(carried)
+    setMembershipRequired(false)
     if (!id) {
       setError("登录交互缺失，请重新发起登录")
       return
@@ -80,6 +86,7 @@ function InteractionSession({
       (interaction) => {
         if (current === generation.current) {
           setView(interaction)
+          setPending(null)
           if (
             providerError &&
             [
@@ -94,7 +101,11 @@ function InteractionSession({
         }
       },
       (reason: unknown) => {
-        if (current === generation.current) setError(identityErrorMessage(reason))
+        if (current === generation.current) {
+          setView(null)
+          setPending(null)
+          setError(identityErrorMessage(reason))
+        }
       },
     )
     return () => {
@@ -120,6 +131,10 @@ function InteractionSession({
   async function act(
     request: () => Promise<IdentityContinuation>,
     kind: "password" | "other" = "other",
+    hooks: {
+      onResult?: (result: IdentityContinuation) => void
+      onError?: (message: string) => void
+    } = {},
   ) {
     if (!mounted.current || mutationOwner.current !== null) return
     // 在任何异步验证码/HTTP操作开始前捕获生命周期和唯一 owner。
@@ -130,11 +145,20 @@ function InteractionSession({
       mounted.current && current === generation.current && mutationOwner.current === owner
     setPending(kind)
     setError(null)
+    setMembershipRequired(false)
     try {
       const result = await request()
-      if (ownsMutation()) continueWith(result)
+      if (ownsMutation()) {
+        continueWith(result)
+        hooks.onResult?.(result)
+      }
     } catch (reason) {
-      if (ownsMutation()) setError(identityErrorMessage(reason))
+      if (ownsMutation()) {
+        const message = identityErrorMessage(reason)
+        setError(message)
+        setMembershipRequired(reason instanceof ApiError && reason.code === "membership_required")
+        hooks.onError?.(message)
+      }
     } finally {
       // 旧请求不能清除新交互、新重试或新 mutation 的 pending。
       if (ownsMutation()) {
@@ -237,6 +261,17 @@ function InteractionSession({
       {error && (
         <p role="alert" className={`mt-5 ${alertClass}`}>
           {error}
+          {device && membershipRequired && (
+            <>
+              {" "}
+              <a
+                href="/membership"
+                className="font-medium text-[var(--accent-ink)] underline-offset-4 hover:underline"
+              >
+                开通会员
+              </a>
+            </>
+          )}
         </p>
       )}
       {expired ? (
@@ -269,7 +304,17 @@ function InteractionSession({
                 void act(() => identityApi.decide(view, "deny"))
               }}
               onSwitchAccount={() => {
-                void act(() => identityApi.switchAccount(view))
+                void act(() => identityApi.switchAccount(view), "other", {
+                  // 换号后回到登录表单，不沿用之前切到的注册布局。
+                  onResult: (result) => {
+                    if (result.type === "require_login") setMode("login")
+                  },
+                  // 后端可能已在失败前重置交互；重读权威视图并保留错误提示。
+                  onError: (message) => {
+                    carriedError.current = message
+                    setReload((value) => value + 1)
+                  },
+                })
               }}
             />
           )}

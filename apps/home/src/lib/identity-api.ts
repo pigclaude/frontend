@@ -104,6 +104,7 @@ export function identityErrorMessage(reason: unknown): string {
       binding_conflict: "设备状态已变化，请从客户端重新发起授权",
       invalid_request: "交互已失效或不可用，请重新发起登录",
       access_denied: "此次操作未获授权，请重新发起登录",
+      membership_required: "这个账号还没有可用会员，开通会员后再授权，或切换到已有会员的账号",
     }
     const code = String(reason.code)
     const message = Object.hasOwn(messages, code) ? messages[code] : undefined

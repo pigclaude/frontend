@@ -1,4 +1,4 @@
-// 负责验证中央设备授权页的说明内容、切换账号、失效、错误重试、原始接续及重复提交门禁。
+// 负责验证中央设备授权页的说明内容、切换账号、无会员提示、失效、错误重试、原始接续及重复提交门禁。
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { InteractionPanel } from "@/components/identity/interaction-panel"
@@ -217,6 +217,15 @@ describe("desktop authorization page", () => {
     expect((await screen.findByRole("alert")).textContent).toBe(
       "交互已失效或不可用，请重新发起登录",
     )
+    await waitFor(() =>
+      expect(mocks.fetch.mock.calls.filter(([, init]) => init?.method !== "POST")).toHaveLength(2),
+    )
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "授权并打开桌面端" }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    )
+    expect(screen.getByRole("alert").textContent).toBe("交互已失效或不可用，请重新发起登录")
     expect(screen.getByText("liuqin@example.com")).toBeTruthy()
     expect(
       (screen.getByRole("button", { name: "授权并打开桌面端" }) as HTMLButtonElement).disabled,
@@ -224,6 +233,75 @@ describe("desktop authorization page", () => {
     expect((screen.getByRole("button", { name: "切换账号" }) as HTMLButtonElement).disabled).toBe(
       false,
     )
+  })
+  it("re-reads the interaction after a failed switch and keeps the error", async () => {
+    let reads = 0
+    mocks.fetch.mockImplementation(async (url) => {
+      if (String(url).endsWith("/auth/captcha"))
+        return json({ enabled: false, provider: "turnstile", siteKey: null, mode: "disabled" })
+      if (String(url).endsWith("/switch-account")) return json({ error: "server_error" }, 500)
+      reads += 1
+      return json(reads === 1 ? approvalView() : interaction({ account: null }))
+    })
+    render(<InteractionPanel />)
+    fireEvent.click(await screen.findByRole("button", { name: "切换账号" }))
+    await screen.findByRole("heading", { name: "登录 PigClaude" })
+    expect(screen.getByRole("alert").textContent).toBe("请求失败，请稍后重试")
+    expect(screen.getByLabelText("邮箱")).toBeTruthy()
+    expect(reads).toBe(2)
+    expect(posted()).toHaveLength(1)
+  })
+  it("returns to the sign-in layout after switching from a registration", async () => {
+    mocks.fetch.mockImplementation(async (url) => {
+      const target = String(url)
+      if (target.endsWith("/auth/captcha"))
+        return json({ enabled: false, provider: "turnstile", siteKey: null, mode: "disabled" })
+      if (target.endsWith("/password"))
+        return json({ type: "require_device_approval", interaction: approvalView() })
+      if (target.endsWith("/switch-account"))
+        return json({ type: "require_login", interaction: interaction({ account: null }) })
+      return json(interaction({ clientId: "pigclaude-desktop" }))
+    })
+    render(<InteractionPanel />)
+    await screen.findByLabelText("邮箱")
+    fireEvent.click(screen.getByRole("button", { name: "注册" }))
+    expect(screen.getByRole("heading").textContent).toBe("注册 PigClaude")
+    fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "new@example.com" } })
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "valid-password" } })
+    fireEvent.click(screen.getByRole("button", { name: "创建账号" }))
+    fireEvent.click(await screen.findByRole("button", { name: "切换账号" }))
+    await screen.findByRole("heading", { name: "登录 PigClaude" })
+    expect(screen.getByRole("button", { name: "登录" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "创建账号" })).toBeNull()
+  })
+  it("explains a missing membership and keeps switching available", async () => {
+    mocks.fetch.mockImplementation(async (url, init) => {
+      if (String(url).endsWith("/approve-device"))
+        return json({ error: "membership_required" }, 403)
+      if (init?.method === "POST") return json({ error: "invalid_request" }, 400)
+      return json(approvalView())
+    })
+    render(<InteractionPanel />)
+    fireEvent.click(await screen.findByRole("button", { name: "授权并打开桌面端" }))
+    const alert = await screen.findByRole("alert")
+    expect(alert.textContent).toContain(
+      "这个账号还没有可用会员，开通会员后再授权，或切换到已有会员的账号",
+    )
+    expect(alert.textContent).not.toContain("此次操作未获授权")
+    const link = screen.getByRole("link", { name: "开通会员" })
+    expect(link.getAttribute("href")).toBe("/membership")
+    expect((screen.getByRole("button", { name: "切换账号" }) as HTMLButtonElement).disabled).toBe(
+      false,
+    )
+  })
+  it("keeps the generic denial copy for other access errors", async () => {
+    mocks.fetch.mockImplementation(async (_url, init) =>
+      init?.method === "POST" ? json({ error: "access_denied" }, 403) : json(approvalView()),
+    )
+    render(<InteractionPanel />)
+    fireEvent.click(await screen.findByRole("button", { name: "授权并打开桌面端" }))
+    expect((await screen.findByRole("alert")).textContent).toBe("此次操作未获授权，请重新发起登录")
+    expect(screen.queryByRole("link", { name: "开通会员" })).toBeNull()
   })
   it("still offers switching when the account view is missing", async () => {
     serveApproval({ ...approvalView(), account: null })

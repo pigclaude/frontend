@@ -101,6 +101,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   cleanup()
+  sessionStorage.clear()
   vi.restoreAllMocks()
 })
 

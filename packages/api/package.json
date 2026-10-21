@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./web-oidc": "./src/web-oidc.ts",
+    "./auto-start-guard": "./src/auto-start-guard.ts",
     "./client": "./src/client.ts",
     "./home": "./src/home/endpoints.ts",
     "./admin": "./src/admin/endpoints.ts",

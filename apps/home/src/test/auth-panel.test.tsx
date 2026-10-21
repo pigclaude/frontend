@@ -1,4 +1,4 @@
-// 负责验证 RP 入口立即发起登录/注册、仅启动一次、带错误时不自动跳转，以及固定错误和查询重试 UI。
+// 负责验证 RP 入口立即发起登录/注册、仅启动一次、带错误或 10 秒内重复自动发起时不自动跳转，以及固定错误和查询重试 UI。
 import { StrictMode } from "react"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -11,6 +11,8 @@ vi.mock("next/navigation", () => ({ useSearchParams: () => mocks.params }))
 vi.mock("@pigclaude/api/web-oidc", () => ({ beginWebOidcLogin: mocks.begin }))
 afterEach(() => {
   cleanup()
+  sessionStorage.clear()
+  vi.useRealTimers()
   vi.clearAllMocks()
   mocks.params = new URLSearchParams()
 })
@@ -82,6 +84,50 @@ describe("Home RP login panel", () => {
     expect(screen.queryByRole("alert")).toBeNull()
     expect(document.body.textContent).not.toContain("synthetic-secret")
     expect(mocks.begin).toHaveBeenCalledTimes(1)
+  })
+  it("tells the user to click 重新登录 after a cancelled login", () => {
+    mocks.params = new URLSearchParams({ oidcError: "OIDC_ACCESS_DENIED" })
+    render(<AuthPanel />)
+    expect(screen.getByRole("alert").textContent).toBe("已取消登录，可点击重新登录")
+    expect(screen.getByRole("button", { name: "重新登录" })).toBeTruthy()
+  })
+  it("holds a second auto start within 10 seconds and waits for a click", () => {
+    vi.useFakeTimers({ now: 1_000_000, toFake: ["Date"] })
+    render(<AuthPanel />)
+    expect(mocks.begin).toHaveBeenCalledTimes(1)
+    cleanup()
+    vi.setSystemTime(1_009_000)
+    render(<AuthPanel />)
+    expect(mocks.begin).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(screen.queryByRole("status")).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "重新登录" }))
+    expect(mocks.begin).toHaveBeenCalledTimes(2)
+  })
+  it("auto starts again once 10 seconds have passed", () => {
+    vi.useFakeTimers({ now: 1_000_000, toFake: ["Date"] })
+    render(<AuthPanel />)
+    cleanup()
+    vi.setSystemTime(1_010_000)
+    render(<AuthPanel />)
+    expect(mocks.begin).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole("status").textContent).toBe("正在前往登录…")
+  })
+  it("does not hold the register entry", () => {
+    render(<AuthPanel />)
+    cleanup()
+    render(<AuthPanel initialMode="register" />)
+    expect(mocks.begin).toHaveBeenCalledTimes(2)
+  })
+  it("auto starts as before when session storage throws", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked")
+    })
+    render(<AuthPanel />)
+    cleanup()
+    render(<AuthPanel />)
+    expect(mocks.begin).toHaveBeenCalledTimes(2)
+    vi.mocked(Storage.prototype.getItem).mockRestore()
   })
   it("keeps explicit retry for business query errors", () => {
     const retry = vi.fn()

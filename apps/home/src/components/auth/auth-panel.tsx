@@ -1,35 +1,40 @@
-// 负责 Home 登录与注册入口：无错误时立即经受信同源 RP start 顶层导航，带错误时只显示提示和重试。
+// 负责 Home 登录与注册入口：无错误时立即经受信同源 RP start 顶层导航，带错误或 10 秒内重复自动发起时只显示提示和重试。
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@pigclaude/web-ui/components/button"
 import { beginWebOidcLogin } from "@pigclaude/api/web-oidc"
+import { claimAutoStart } from "@pigclaude/api/auto-start-guard"
 
 /** 登录和注册页面的初始 UI 意图。 */
 export type AuthMode = "login" | "register"
 
 const errors: Record<string, string> = {
-  OIDC_ACCESS_DENIED: "已取消登录，可选择继续登录",
+  OIDC_ACCESS_DENIED: "已取消登录，可点击重新登录",
   OIDC_LOGIN_REQUIRED: "请重新登录后继续",
   OIDC_FAILED: "登录未完成，请重试",
   OIDC_UNAVAILABLE: "登录服务暂时不可用，请稍后重试",
   ACCOUNT_BANNED: "账号已被封禁，无法继续登录",
 }
 
-/** 无已知错误码时只发起一次登录导航；带错误码时不自动循环，由用户点击「重新登录」。 */
+/** 无已知错误码时只发起一次登录导航；带错误码或 10 秒内刚自动发起过时不自动循环，由用户点击「重新登录」。 */
 export function AuthPanel({ initialMode = "login" }: { initialMode?: AuthMode } = {}) {
   const params = useSearchParams()
   const errorCode = params.get("oidcError") ?? ""
   const error = Object.hasOwn(errors, errorCode) ? errors[errorCode] : undefined
   const returnTo = params.get("redirect") ?? "/dashboard"
   const started = useRef(false)
+  // 10 秒内再次自动发起时停下，改为显示「重新登录」，避免 401 与 SSO 之间来回跳转。
+  const [held, setHeld] = useState(false)
   const start = () =>
     beginWebOidcLogin({ site: "home", returnTo, mode: initialMode }, { replace: true })
   useEffect(() => {
     if (error || started.current) return
     started.current = true
-    start()
+    // 防循环只针对 /login；注册入口不受登录回跳影响。
+    if (initialMode === "register" || claimAutoStart("home")) start()
+    else setHeld(true)
     // 只在挂载时依据首次参数决定是否自动跳转。
   }, [])
   return (
@@ -40,11 +45,13 @@ export function AuthPanel({ initialMode = "login" }: { initialMode?: AuthMode } 
       <h1 id="auth-title" className="sr-only">
         {initialMode === "register" ? "注册 PigClaude" : "登录 PigClaude"}
       </h1>
-      {error ? (
+      {error || held ? (
         <>
-          <p role="alert" className="query-error">
-            {error}
-          </p>
+          {error && (
+            <p role="alert" className="query-error">
+              {error}
+            </p>
+          )}
           <Button onClick={start}>重新登录</Button>
         </>
       ) : (

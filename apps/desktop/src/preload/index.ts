@@ -1,6 +1,16 @@
 // 负责向渲染进程暴露桌面桥。只转发授权状态，不传递凭据。
 import { contextBridge, ipcRenderer } from "electron"
 import type { MembershipView } from "@pigclaude/contracts/membership"
+import {
+  isClaudeAccountEvent,
+  isClaudeAccountView,
+  isProxyView,
+  type ClaudeAccountEvent,
+  type ClaudeAccountView,
+  type ClaudeFingerprintView,
+  type EgressView,
+  type ProxyView,
+} from "@pigclaude/contracts/claude-account"
 import type {
   AuthorizationRequest,
   AuthorizationStartResult,
@@ -28,6 +38,34 @@ export type PigclaudeBridge = {
     /** 撤销当前可信 token 绑定的设备关系，不接收自报身份。 */
     withdraw: () => Promise<MembershipView>
     subscribe: (listener: (view: MembershipView) => void) => () => void
+  }
+  claudeAccounts: {
+    list: () => Promise<ClaudeAccountView[]>
+    authorize: (input: {
+      accountId?: string
+      displayName: string
+      proxyId: string
+      fingerprint: ClaudeFingerprintView
+    }) => Promise<ClaudeAccountView>
+    cancelAuthorization: () => Promise<void>
+    update: (input: {
+      accountId: string
+      displayName?: string
+      enabled?: boolean
+      proxyId?: string
+      fingerprint?: ClaudeFingerprintView
+    }) => Promise<ClaudeAccountView>
+    remove: (accountId: string) => Promise<void>
+    subscribe: (listener: (event: ClaudeAccountEvent) => void) => () => void
+  }
+  proxies: {
+    list: () => Promise<ProxyView[]>
+    save: (input: { id?: string; name: string; url: string }) => Promise<ProxyView>
+    remove: (id: string) => Promise<void>
+    test: (id: string) => Promise<ProxyView>
+  }
+  egress: {
+    check: (proxyId: string) => Promise<EgressView>
   }
 }
 
@@ -58,6 +96,51 @@ const bridge: PigclaudeBridge = {
       })
       return () => ipcRenderer.removeListener("pigclaude:membership-state", handler)
     },
+  },
+  claudeAccounts: {
+    list: async () => {
+      const value: unknown = await ipcRenderer.invoke("pigclaude:claude-accounts-list")
+      return Array.isArray(value) ? value.filter(isClaudeAccountView) : []
+    },
+    authorize: async (input) => {
+      const value: unknown = await ipcRenderer.invoke("pigclaude:claude-accounts-authorize", input)
+      if (!isClaudeAccountView(value)) throw new Error("INVALID_CLAUDE_ACCOUNT_RESPONSE")
+      return value
+    },
+    cancelAuthorization: () => ipcRenderer.invoke("pigclaude:claude-accounts-cancel"),
+    update: async (input) => {
+      const value: unknown = await ipcRenderer.invoke("pigclaude:claude-accounts-update", input)
+      if (!isClaudeAccountView(value)) throw new Error("INVALID_CLAUDE_ACCOUNT_RESPONSE")
+      return value
+    },
+    remove: (accountId) => ipcRenderer.invoke("pigclaude:claude-accounts-remove", accountId),
+    subscribe: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, value: unknown) => {
+        if (isClaudeAccountEvent(value)) listener(value)
+      }
+      ipcRenderer.on("pigclaude:claude-account-state", handler)
+      return () => ipcRenderer.removeListener("pigclaude:claude-account-state", handler)
+    },
+  },
+  proxies: {
+    list: async () => {
+      const value: unknown = await ipcRenderer.invoke("pigclaude:proxies-list")
+      return Array.isArray(value) ? value.filter(isProxyView) : []
+    },
+    save: async (input) => {
+      const value: unknown = await ipcRenderer.invoke("pigclaude:proxies-save", input)
+      if (!isProxyView(value)) throw new Error("INVALID_PROXY_RESPONSE")
+      return value
+    },
+    remove: (id) => ipcRenderer.invoke("pigclaude:proxies-remove", id),
+    test: async (id) => {
+      const value: unknown = await ipcRenderer.invoke("pigclaude:proxies-test", id)
+      if (!isProxyView(value)) throw new Error("INVALID_PROXY_RESPONSE")
+      return value
+    },
+  },
+  egress: {
+    check: (proxyId) => ipcRenderer.invoke("pigclaude:egress-check", proxyId),
   },
 }
 

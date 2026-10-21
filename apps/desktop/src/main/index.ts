@@ -13,6 +13,10 @@ import {
 import { join } from "node:path"
 import { readFileSync } from "node:fs"
 import type { MembershipView } from "@pigclaude/contracts/membership"
+import type { ClaudeAccountEvent } from "@pigclaude/contracts/claude-account"
+import { LocalStore } from "@pigclaude/local-store"
+import { checkEgress } from "@pigclaude/login-gate/egress-check"
+import { startProxyBridge } from "@pigclaude/login-gate/proxy-bridge"
 import { createCallbackServer } from "./authorization/callback-server"
 import { AuthorizationStartError, AuthorizationService } from "./authorization/service"
 import type {
@@ -21,6 +25,12 @@ import type {
   AuthorizationStateEvent,
 } from "./authorization/types"
 import { isAllowedAuthorizationUrl } from "./authorization/url-policy"
+import { ClaudeAccountService } from "./claude/account-service"
+import { ClaudeAccountError } from "./claude/errors"
+import { FingerprintChromiumAdapter } from "./claude/fingerprint-chromium"
+import { registerClaudeIpc } from "./claude/ipc"
+import { ProxyService } from "./claude/proxy-service"
+import { SubscriptionOAuth } from "./claude/subscription-oauth"
 import { createDesktopComposition, type DesktopComposition } from "./composition"
 import { DeviceIdentityService } from "./device-identity"
 import { readDockIconDataUrl } from "./dock-icon"
@@ -44,6 +54,8 @@ let mainWindow: BrowserWindow | null = null
 let authorizationService: AuthorizationService | null = null
 let authorizationSetupError: string | undefined
 let desktopComposition: DesktopComposition | null = null
+let claudeAccountService: ClaudeAccountService | null = null
+let proxyService: ProxyService | null = null
 let callbackServer: Awaited<ReturnType<typeof createCallbackServer>> | null = null
 let pendingCallbackUrls: string[] = []
 let cleanupLiveEvents = () => {}
@@ -87,6 +99,7 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   cleanupLiveEvents()
   void desktopComposition?.dispose()
+  void claudeAccountService?.dispose()
   void callbackServer?.close()
 })
 
@@ -205,6 +218,12 @@ function registerIpcHandlers(): void {
     sendAuthorizationState(result)
     return result
   })
+
+  registerClaudeIpc({
+    getService: () => claudeAccountService,
+    getProxyService: () => proxyService,
+    isTrusted: isTrustedSender,
+  })
 }
 
 async function setupAuthorization(): Promise<void> {
@@ -215,14 +234,36 @@ async function setupAuthorization(): Promise<void> {
   const deviceIdentity = new DeviceIdentityService()
   await deviceIdentity.read()
   callbackServer = await createCallbackServer(handleCallbackUrl)
-  desktopComposition = createDesktopComposition({
+  const composition = createDesktopComposition({
     authOrigin,
     apiOptions: { baseUrl: rustBaseUrl, authorizationOrigin: authOrigin },
     vault,
     deviceIdentity,
     onMembershipView: sendMembershipView,
   })
-  authorizationService = desktopComposition.authorizationService
+  desktopComposition = composition
+  authorizationService = composition.authorizationService
+
+  const localStore = new LocalStore(join(app.getPath("userData"), "local"))
+  const browser = new FingerprintChromiumAdapter({
+    profilesRoot: join(app.getPath("userData"), "local", "browser-profiles"),
+    binaryPath: process.env["PIGCLAUDE_FINGERPRINT_CHROMIUM_BIN"],
+  })
+  claudeAccountService = new ClaudeAccountService({
+    store: localStore,
+    browser,
+    oauth: new SubscriptionOAuth(),
+    startBridge: startProxyBridge,
+    checkEgress,
+    ensureMembership: async () => {
+      const view = await composition.membershipGate.inspect()
+      if (view.state !== "active") {
+        throw new ClaudeAccountError("MEMBERSHIP_REQUIRED", "会员状态不可用")
+      }
+    },
+    onEvent: sendClaudeAccountEvent,
+  })
+  proxyService = new ProxyService({ store: localStore })
   const checkLive = () => {
     void desktopComposition?.resume()
   }
@@ -266,6 +307,20 @@ function sendMembershipView(view: MembershipView): void {
   for (const window of BrowserWindow.getAllWindows()) {
     window.webContents.send("pigclaude:membership-state", view)
   }
+}
+
+function sendClaudeAccountEvent(event: ClaudeAccountEvent): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send("pigclaude:claude-account-state", event)
+  }
+}
+
+function isTrustedSender(event: Electron.IpcMainInvokeEvent): boolean {
+  return (
+    mainWindow !== null &&
+    event.sender === mainWindow.webContents &&
+    event.senderFrame === mainWindow.webContents.mainFrame
+  )
 }
 
 function createWindow(): void {

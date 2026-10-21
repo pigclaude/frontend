@@ -35,6 +35,9 @@ interface PigclaudeBridge {
       listener: (view: import("@pigclaude/contracts/membership").MembershipView) => void,
     ) => () => void
   }
+  claudeAccounts?: import("../../preload/index").PigclaudeBridge["claudeAccounts"]
+  proxies?: import("../../preload/index").PigclaudeBridge["proxies"]
+  egress?: import("../../preload/index").PigclaudeBridge["egress"]
 }
 
 interface Window {

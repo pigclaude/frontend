@@ -7,6 +7,14 @@ import { createAuthorizationMiddleware } from "./src/dev/authorization-middlewar
 
 const stripComments = { legalComments: "none" as const }
 
+// workspace 包导出 TypeScript 源码，必须打进产物；electron-vite 默认会把 package.json
+// 里的依赖全部 external，运行时加载 .ts 会失败。
+const bundledWorkspacePackages = [
+  "@pigclaude/contracts",
+  "@pigclaude/local-store",
+  "@pigclaude/login-gate",
+]
+
 /** 开发时让系统浏览器里的授权页通知桌面端。正式环境由权限服务接管。 */
 function devAuthorization(): Plugin {
   const fixture = new DevAuthorizationFixture()
@@ -21,11 +29,19 @@ function devAuthorization(): Plugin {
 export default defineConfig({
   main: {
     esbuild: stripComments,
-    build: { minify: true, sourcemap: false },
+    build: {
+      minify: true,
+      sourcemap: false,
+      externalizeDeps: { exclude: bundledWorkspacePackages },
+    },
   },
   preload: {
     esbuild: stripComments,
-    build: { minify: true, sourcemap: false },
+    build: {
+      minify: true,
+      sourcemap: false,
+      externalizeDeps: { exclude: bundledWorkspacePackages },
+    },
   },
   renderer: {
     esbuild: stripComments,

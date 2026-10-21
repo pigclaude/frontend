@@ -12,7 +12,7 @@ import { useAppearance } from "./hooks/use-appearance"
 import { useMembershipConfirmation } from "./hooks/use-membership-confirmation"
 import { markOnboardingSeen } from "./lib/onboarding-storage"
 import { createAuthorizationState, reduceAuthorizationState } from "./models/authorization-model"
-import { parseDevView, type DevLoginPhase } from "./models/dev-view"
+import { parseDevView, type DevLoginPhase, type DevView } from "./models/dev-view"
 import {
   createLoginState,
   reduceLoginState,
@@ -342,7 +342,9 @@ export function DesktopApp() {
         state={loginState}
         gateMessage={
           signOutState.error ??
-          (signOutState.pending ? "正在退出登录…" : membershipGateMessage(membership))
+          (signOutState.pending
+            ? "正在退出登录…"
+            : previewGateMessage(browserPreview, devView, membership))
         }
         signingOut={signOutState.pending}
         canWithdraw={membership.account !== null && membership.state !== "device_revoked"}
@@ -394,6 +396,16 @@ export function DesktopApp() {
       </ToastProvider>
     </TooltipProvider>
   )
+}
+
+// 开发期 phase 预览没有会员桥，不显示「正在连接」占位提示，让截图停在干净的登录页。
+function previewGateMessage(
+  browserPreview: boolean,
+  devView: DevView | null,
+  membership: MembershipView,
+): string | undefined {
+  if (browserPreview && devView?.phase !== undefined) return undefined
+  return membershipGateMessage(membership)
 }
 
 // 开发期预览用的固定登录状态；时间戳取远期常量，保证截图不随时间变化。

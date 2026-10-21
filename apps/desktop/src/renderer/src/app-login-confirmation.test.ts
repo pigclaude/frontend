@@ -36,11 +36,20 @@ function view(state: MembershipView["state"], revision: number): MembershipView 
   }
 }
 
+/** 带账号的有效会员：引导按账号记标记，没有 userId 时不会进引导。 */
+function activeFor(userId: string, revision: number): MembershipView {
+  return {
+    ...view("active", revision),
+    account: { userId, nickname: "u", email: "u@example.com", avatar: "" },
+  }
+}
+
 let root: Root
 let container: HTMLDivElement
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true)
+  window.localStorage.clear()
   container = document.createElement("div")
   document.body.append(container)
   root = createRoot(container)
@@ -122,7 +131,7 @@ describe("desktop login membership confirmation", () => {
     expect(container.textContent).not.toContain("开始使用")
     expect(screen()).toBeUndefined()
 
-    await act(async () => settle(view("active", 2)))
+    await act(async () => settle(activeFor("u1", 2)))
     expect(screen()).toBe("onboarding")
     expect(container.textContent).not.toContain("正在确认会员…")
   })

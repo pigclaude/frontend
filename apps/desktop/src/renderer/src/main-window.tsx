@@ -3,7 +3,6 @@ import { useEffect, useState } from "react"
 import { AccountsScreen } from "./screens/accounts-screen"
 import { ChatScreen } from "./screens/chat-screen"
 import { EnvironmentScreen } from "./screens/environment-screen"
-import { OnboardingScreen } from "./screens/onboarding-screen"
 import { ProxiesScreen } from "./screens/proxies-screen"
 import { SettingsScreen } from "./screens/settings/settings-sections"
 import { TrayScreen } from "./screens/tray-screen"
@@ -176,14 +175,6 @@ export function MainWindow({
             onOpen={onNavigate}
             smartPunctuation={appearance.settings.smartPunctuation}
           />
-        ) : null}
-        {screen === "onboarding" ? (
-          <ScrollPanel>
-            <OnboardingScreen
-              onDone={() => onNavigate("chat-new")}
-              onOpenAuthorize={onOpenAuthorize}
-            />
-          </ScrollPanel>
         ) : null}
         {screen === "tray" ? <TrayScreen onOpenAccounts={() => onNavigate("accounts")} /> : null}
         {screen === "accounts" ? (

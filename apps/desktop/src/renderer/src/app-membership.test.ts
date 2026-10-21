@@ -57,6 +57,19 @@ describe("desktop membership and appearance integration", () => {
     expect(markup).toContain('data-appearance="ready"')
   })
 
+  it("previews onboarding full-screen without the main window or fake names", () => {
+    vi.stubEnv("DEV", true)
+    vi.stubGlobal("window", { location: { search: "?screen=onboarding&theme=dark" } })
+
+    const markup = renderToStaticMarkup(createElement(DesktopApp))
+
+    expect(markup).toContain('data-screen="onboarding"')
+    expect(markup).toContain("第 1 步，共 3 步")
+    expect(markup).toContain("添加一个代理")
+    expect(markup).not.toContain("data-theme")
+    expect(markup).not.toContain("林舟")
+  })
+
   it("rejects screen preview parameters outside DEV even without a desktop bridge", () => {
     vi.stubEnv("DEV", false)
     vi.stubGlobal("window", { location: { search: "?screen=appearance&theme=dark" } })

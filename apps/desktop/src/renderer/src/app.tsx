@@ -4,11 +4,13 @@ import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { AuthorizationStateEvent } from "../../main/authorization/types"
 import { AuthorizeScreen } from "./screens/authorize-screen"
 import { LoginScreen } from "./screens/login-screen"
+import { OnboardingScreen } from "./screens/onboarding-screen"
 import { MainWindow } from "./main-window"
 import { ToastProvider } from "./components/toast"
 import { TooltipProvider } from "./components/ui/tooltip"
 import { useAppearance } from "./hooks/use-appearance"
 import { useMembershipConfirmation } from "./hooks/use-membership-confirmation"
+import { markOnboardingSeen } from "./lib/onboarding-storage"
 import { createAuthorizationState, reduceAuthorizationState } from "./models/authorization-model"
 import { parseDevView } from "./models/dev-view"
 import { createLoginState, reduceLoginState, type LoginIntent } from "./models/login-model"
@@ -17,6 +19,8 @@ import {
   membershipGateMessage,
   newerMembershipView,
 } from "./models/membership-view"
+import { initialScreenAfterLogin } from "./models/onboarding-gate"
+import type { OnboardingStep } from "./models/onboarding-model"
 import {
   canGoBack,
   canGoForward,
@@ -34,9 +38,10 @@ export function DesktopApp() {
   const [membership, setMembership] = useState<MembershipView>(initialMembershipView)
   const [loginState, setLoginState] = useState(createLoginState)
   const [authorizationState, setAuthorizationState] = useState(createAuthorizationState)
-  const [history, setHistory] = useState(() => createScreenHistory(devView?.screen ?? "chat"))
+  const [history, setHistory] = useState(() => createScreenHistory(devView?.screen ?? "login"))
   const screen = currentScreen(history)
   const appearance = useAppearance()
+  const [onboardingReturn, setOnboardingReturn] = useState<OnboardingStep | undefined>()
   const [signOutState, setSignOutState] = useState({ pending: false, error: null as string | null })
   const signOutInFlight = useRef(false)
   const authorizationGeneration = useRef(0)
@@ -69,14 +74,28 @@ export function DesktopApp() {
   useEffect(() => {
     if (membership.startupPhase === "checking") return
     if (canUseDesktop && screen === "login") {
-      setHistory((current) => pushScreen(current, "onboarding"))
+      const next = browserPreview ? "onboarding" : initialScreenAfterLogin(membership)
+      setHistory(createScreenHistory(next))
     } else if (!canUseDesktop && screen !== "login") {
       setHistory((current) => pushScreen(current, "login"))
     }
-  }, [canUseDesktop, membership.startupPhase, screen])
+  }, [browserPreview, canUseDesktop, membership, screen])
 
   function setScreen(next: Screen): void {
     setHistory((current) => pushScreen(current, next))
+  }
+
+  function openAuthorize(returnStep?: OnboardingStep): void {
+    setAuthorizationState(createAuthorizationState())
+    setOnboardingReturn(returnStep)
+    setScreen("authorize")
+  }
+
+  function finishOnboarding(): void {
+    const userId = membership.account?.userId
+    if (userId) markOnboardingSeen(userId)
+    setOnboardingReturn(undefined)
+    setHistory(createScreenHistory("chat"))
   }
 
   useEffect(() => {
@@ -284,6 +303,7 @@ export function DesktopApp() {
     setSignOutState({ pending: true, error: null })
     setLoginState(createLoginState())
     setAuthorizationState(createAuthorizationState())
+    setOnboardingReturn(undefined)
     setHistory(createScreenHistory("login"))
     try {
       if (!browserPreview) {
@@ -318,6 +338,16 @@ export function DesktopApp() {
       />
     )
   }
+  if (screen === "onboarding") {
+    return (
+      <OnboardingScreen
+        key={onboardingReturn ?? "start"}
+        onFinish={finishOnboarding}
+        onOpenAuthorize={() => openAuthorize("account")}
+        returnStep={onboardingReturn}
+      />
+    )
+  }
   if (screen === "authorize") {
     return (
       <AuthorizeScreen
@@ -341,10 +371,7 @@ export function DesktopApp() {
           onNavigate={setScreen}
           onBack={() => setHistory(goBack)}
           onForward={() => setHistory(goForward)}
-          onOpenAuthorize={() => {
-            setAuthorizationState(createAuthorizationState())
-            setScreen("authorize")
-          }}
+          onOpenAuthorize={() => openAuthorize()}
           onLogout={() => void logout()}
           theme={appearance.resolved}
           appearance={appearance}

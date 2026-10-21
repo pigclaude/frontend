@@ -1,35 +1,12 @@
 // 在本机数据目录保存账号、明文凭据、用户设置的指纹和 IP 代理池。
 
 import { randomUUID } from "node:crypto"
-import { readFile, rename, rm, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { basename, dirname, join } from "node:path"
+import { parseAccountRecord, parseProxy, type AccountRecord, type IpProxy } from "./schema"
 
-/** 一个账号的指纹配置。保证种子、品牌、平台、语言、时区、画布噪声和 client rects 噪声一起保存。 */
-export type FingerprintConfig = {
-  seed: string
-  brand: string
-  platform: string
-  lang: string
-  timezone: string
-  canvasNoise: boolean
-  clientRectsNoise: boolean
-}
-
-/** 代理池里的一条 IP 代理。保证用 id 标识，url 是代理地址。 */
-export type IpProxy = {
-  id: string
-  url: string
-}
-
-/** 本机一条账号记录。保证凭据明文放在 credential，并绑定一条代理和一份用户设置的指纹。 */
-export type AccountRecord = {
-  id: string
-  enabled: boolean
-  credential: string
-  proxyId: string
-  fingerprint: FingerprintConfig
-  exhaustedUntil: string | null
-}
+export type { AccountRecord, FingerprintConfig, IpProxy, ProxyTestResult } from "./schema"
+export type { ClaudeCredential } from "./credential"
 
 /** 读写本机 proxies.json 与 accounts.json。保证按 id 覆盖，同一文件的保存排队，凭据不加密，文件留在本机。 */
 export class LocalStore {
@@ -49,11 +26,44 @@ export class LocalStore {
     })
   }
 
+  /** 按 id 删除一条代理。保证文件不存在或记录不存在时不报错。 */
+  async removeProxy(id: string): Promise<void> {
+    await this.enqueue(this.proxiesPath(), async () => {
+      const proxies = await readProxies(this.proxiesPath())
+      await writeJson(
+        this.proxiesPath(),
+        proxies.filter((proxy) => proxy.id !== id),
+      )
+    })
+  }
+
+  /** 按 id 读取代理。保证没有这条记录时返回 null。 */
+  async getProxy(id: string): Promise<IpProxy | null> {
+    const proxies = await readProxies(this.proxiesPath())
+    return proxies.find((proxy) => proxy.id === id) ?? null
+  }
+
+  /** 返回全部已保存代理。保证文件不存在时返回空数组。 */
+  async listProxies(): Promise<IpProxy[]> {
+    return readProxies(this.proxiesPath())
+  }
+
   /** 按 id 保存或覆盖一条账号。保证明文写入 credential，保留指纹，同一文件里交错的保存不会丢掉另一条。 */
   async saveAccount(account: AccountRecord): Promise<void> {
     await this.enqueue(this.accountsPath(), async () => {
       const accounts = replaceById(await readAccounts(this.accountsPath()), account)
       await writeJson(this.accountsPath(), accounts)
+    })
+  }
+
+  /** 按 id 删除一条账号。保证文件不存在或记录不存在时不报错。 */
+  async removeAccount(id: string): Promise<void> {
+    await this.enqueue(this.accountsPath(), async () => {
+      const accounts = await readAccounts(this.accountsPath())
+      await writeJson(
+        this.accountsPath(),
+        accounts.filter((account) => account.id !== id),
+      )
     })
   }
 
@@ -63,7 +73,7 @@ export class LocalStore {
     return accounts.find((account) => account.id === id) ?? null
   }
 
-  /** 返回全部已保存账号。保证文件不存在时返回空数组。 */
+  /** 返回全部已保存账号。保证文件不存在时返回空数组，旧记录在读取时迁移为 v2。 */
   async listAccounts(): Promise<AccountRecord[]> {
     return readAccounts(this.accountsPath())
   }
@@ -98,21 +108,22 @@ function replaceById<T extends { id: string }>(items: readonly T[], next: T): T[
 }
 
 async function readAccounts(path: string): Promise<AccountRecord[]> {
-  return readList(path, isAccountRecord)
+  return readList(path, parseAccountRecord)
 }
 
 async function readProxies(path: string): Promise<IpProxy[]> {
-  return readList(path, isProxy)
+  return readList(path, parseProxy)
 }
 
-async function readList<T>(path: string, accept: (value: unknown) => value is T): Promise<T[]> {
+async function readList<T>(path: string, parse: (value: unknown) => T | null): Promise<T[]> {
   const parsed = await readJson(path)
   if (parsed === undefined) return []
   if (!Array.isArray(parsed)) throw new Error(`${basename(path)} 不是列表`)
   const items: T[] = []
   for (const item of parsed) {
-    if (!accept(item)) throw new Error(`${basename(path)} 不是列表`)
-    items.push(item)
+    const record = parse(item)
+    if (record === null) throw new Error(`${basename(path)} 不是列表`)
+    items.push(record)
   }
   return items
 }
@@ -127,11 +138,12 @@ async function readJson(path: string): Promise<unknown> {
   }
 }
 
-// 先写同目录临时文件，再 rename 覆盖目标，避免读到半截 JSON。
+// 先写同目录临时文件，再 rename 覆盖目标，避免读到半截 JSON；文件和临时文件都只给当前用户读写。
 async function writeJson(path: string, value: readonly unknown[]): Promise<void> {
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 })
   const temporary = join(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`)
   try {
-    await writeFile(temporary, JSON.stringify(value), "utf8")
+    await writeFile(temporary, JSON.stringify(value), { encoding: "utf8", mode: 0o600 })
     await rename(temporary, path)
   } catch (error: unknown) {
     await rm(temporary, { force: true })
@@ -139,40 +151,6 @@ async function writeJson(path: string, value: readonly unknown[]): Promise<void>
   }
 }
 
-function isAccountRecord(value: unknown): value is AccountRecord {
-  if (!isRecord(value)) return false
-  return (
-    typeof value.id === "string" &&
-    typeof value.enabled === "boolean" &&
-    typeof value.credential === "string" &&
-    typeof value.proxyId === "string" &&
-    isFingerprint(value.fingerprint) &&
-    (value.exhaustedUntil === null || typeof value.exhaustedUntil === "string")
-  )
-}
-
-function isFingerprint(value: unknown): value is FingerprintConfig {
-  if (!isRecord(value)) return false
-  return (
-    typeof value.seed === "string" &&
-    typeof value.brand === "string" &&
-    typeof value.platform === "string" &&
-    typeof value.lang === "string" &&
-    typeof value.timezone === "string" &&
-    typeof value.canvasNoise === "boolean" &&
-    typeof value.clientRectsNoise === "boolean"
-  )
-}
-
-function isProxy(value: unknown): value is IpProxy {
-  if (!isRecord(value)) return false
-  return typeof value.id === "string" && typeof value.url === "string"
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
-
 function isEnoent(error: unknown): boolean {
-  return isRecord(error) && error.code === "ENOENT"
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
 }

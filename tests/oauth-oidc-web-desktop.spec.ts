@@ -302,6 +302,11 @@ test("已登录网页直接进入桌面授权，切换账号后用第二个账�
       await expect(approval.getByText(first, { exact: true })).toBeVisible()
       await approval.getByRole("button", { name: "切换账号", exact: true }).click()
       await expect(approval.getByLabel("邮箱", { exact: true })).toBeVisible()
+      // 切换账号必须结束第一个账号的网站会话，同一浏览器里不再能以它的身份访问。
+      expect((await request(approval, "/v1/session")).status).toBe(401)
+      const afterSwitch = await request(approval, "/v1/user/me")
+      expect(afterSwitch.status).toBe(401)
+      expect(afterSwitch.body.email).not.toBe(first)
       await passwordForm(approval, second)
       await expect(title).toBeVisible()
       await expect(approval.getByText(second, { exact: true })).toBeVisible()

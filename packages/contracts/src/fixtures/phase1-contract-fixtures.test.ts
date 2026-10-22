@@ -17,6 +17,12 @@ describe("phase1 contract fixtures", () => {
   })
 
   it("keeps nullable and decimal string fields explicit", () => {
+    expect(canonicalFixtures.membershipWithTier.tier).toEqual({
+      code: "vip",
+      name: "VIP",
+      level: 1,
+    })
+    expect(membershipFixture.tier).toBeNull()
     expect(membershipFixture.membershipValidUntil).toBeNull()
     expect(membershipFixture.bindingEpoch).toMatch(/^\d+$/)
   })

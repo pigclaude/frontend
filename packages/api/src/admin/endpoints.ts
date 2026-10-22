@@ -1,4 +1,6 @@
 // 负责封装第一阶段管理员登录、会员、设备和审计 HTTP endpoint。
+import { createAdminMembershipApi } from "../membership/admin"
+import { createPaymentSettingsApi } from "../membership/payment-settings"
 import { createAccountModerationApi } from "./account-moderation"
 import type { AdminUserDevicesView } from "@pigclaude/contracts/user-devices"
 import { createSecuritySettingsApi } from "./security-settings"
@@ -11,7 +13,7 @@ import type * as T from "./types"
 export function createAdminApi(c: HttpClient) {
   const write = createAdminSessionWriter(c)
   return {
-    settings: { turnstile: createSecuritySettingsApi(c) },
+    settings: { turnstile: createSecuritySettingsApi(c), payment: createPaymentSettingsApi(c) },
     auth: {
       /** 读取管理员登录的公开验证码配置，不依赖管理员会话。 */
       captcha: () => c.get<CaptchaConfig>("/admin/v1/auth/captcha"),
@@ -25,20 +27,7 @@ export function createAdminApi(c: HttpClient) {
     users: {
       list: (query: T.ListUsersQuery = {}) => c.get<T.ListUsersResponse>("/admin/v1/users", query),
     },
-    membership: {
-      list: (query: T.ListMembershipsQuery = {}) =>
-        c.get<T.ListMembershipsResponse>("/admin/v1/memberships", query),
-      grant: async (body: T.GrantMembershipRequest, owner: () => boolean = () => true) =>
-        write<T.MembershipItem>("POST", "/admin/v1/memberships/grant", body, "header", owner),
-      revoke: async (body: T.RevokeMembershipRequest, owner: () => boolean = () => true) =>
-        write<T.MembershipItem>(
-          "POST",
-          `/admin/v1/memberships/${encodeURIComponent(body.userId)}/revoke`,
-          { reason: body.reason },
-          "header",
-          owner,
-        ),
-    },
+    membership: createAdminMembershipApi(c),
     devices: {
       /** 只需 device:read，通过已知用户 ID 读取精确设备 envelope。 */
       forUser: (userId: string, afterDeviceId?: string) =>

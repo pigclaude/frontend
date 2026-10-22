@@ -3,7 +3,7 @@ import { GrantDialog } from "./grant-dialog"
 import { useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import type { MembershipItem, MembershipStatus } from "@pigclaude/api/admin/types"
+import type { MembershipItem, MembershipStatus } from "@pigclaude/api/membership/types"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -33,7 +33,6 @@ import {
   InlineLoadError,
   LoadingRows,
   PagerFooter,
-  PLAN_KIND,
   StatusBadge,
   normalizeUserId,
 } from "./table-parts"
@@ -49,12 +48,14 @@ export function MembersSection() {
   const [status, setStatus] = useState<MembershipStatus | "">("")
   const [revokeTarget, setRevokeTarget] = useState<MembershipItem | null>(null)
   const pager = useCursorPager(["admin-memberships", userId, status], (cursor) =>
-    adminApi.membership.list({
-      userId: userId || undefined,
-      status,
-      cursor,
-      limit: 20,
-    }),
+    adminApi.membership.memberships
+      .list({
+        q: userId || undefined,
+        status,
+        cursor: cursor === "0" ? undefined : cursor,
+        limit: 20,
+      })
+      .then((page) => ({ ...page, nextCursor: page.nextCursor ?? "0" })),
   )
   const revokeOperation = useAdminOperationOwner(
     JSON.stringify([userId, status, revokeTarget?.userId, revokeTarget?.entitlementVersion]),
@@ -172,7 +173,7 @@ function TableCardContent({
               <TableHead>档位</TableHead>
               <TableHead>状态</TableHead>
               <TableHead>授权期限</TableHead>
-              <TableHead>条款 / 版本</TableHead>
+              <TableHead>权益版本</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
@@ -209,21 +210,14 @@ function MembershipRow({
     <TableRow>
       <TableCell className="font-mono text-foreground">{item.userId}</TableCell>
       <TableCell>
-        <p className="font-mono text-xs text-foreground">#{item.planId}</p>
-        <p className="text-xs text-meta">{PLAN_KIND[item.planKind]}</p>
+        <p className="font-mono text-xs text-foreground">{item.tier.name}</p>
+        <p className="text-xs text-meta">{item.tier.code}</p>
       </TableCell>
       <TableCell>
         <StatusBadge status={item.status} />
       </TableCell>
+      <TableCell>{formatTime(item.validUntil)}</TableCell>
       <TableCell>
-        {item.lifetime
-          ? "产品生命周期永久授权"
-          : item.validUntil
-            ? formatTime(item.validUntil)
-            : "—"}
-      </TableCell>
-      <TableCell>
-        <p className="font-mono text-xs text-foreground">{item.termsVersion || "短卡无条款"}</p>
         <p className="mt-0.5 text-xs text-meta">版本 {item.entitlementVersion}</p>
       </TableCell>
       <TableCell className="text-right">

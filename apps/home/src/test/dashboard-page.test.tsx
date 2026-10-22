@@ -18,19 +18,12 @@ const user: MeResponse = {
   avatar: "",
   balance: "0",
   createdAt,
-  productCode: "",
-  planKind: "",
-  membershipStatus: "inactive",
-  validUntil: null,
 }
 const membership: EntitlementResponse = {
-  productCode: "",
-  planKind: "day",
-  status: "inactive",
-  lifetime: false,
+  status: "none",
+  tier: null,
+  remainingSeconds: "0",
   validUntil: null,
-  termsVersion: "",
-  termsAcceptedAt: null,
   entitlementVersion: "0",
 }
 
@@ -66,10 +59,10 @@ describe("dashboard account facts", () => {
     expect(screen.queryByText(user.email)).toBeNull()
   })
 
-  it("does not render a product row when the authoritative entitlement has no product", async () => {
+  it("does not render a tier row when the authoritative entitlement has no tier", async () => {
     renderDashboard()
     await screen.findByText("p•••@example.com")
-    expect(screen.queryByText("产品")).toBeNull()
+    expect(screen.queryByText("会员等级")).toBeNull()
   })
 
   it("uses the real registration timestamp instead of a sample date", async () => {
@@ -80,12 +73,15 @@ describe("dashboard account facts", () => {
     expect(screen.getByText("注册时间")).toBeTruthy()
   })
 
-  it("renders a nonempty product from entitlement instead of the compatibility user field", async () => {
-    mocks.me.mockResolvedValue({ ...user, productCode: "legacy-product" })
-    mocks.entitlement.mockResolvedValue({ ...membership, productCode: "pigclaude" })
+  it("renders the nonempty tier from authoritative entitlement", async () => {
+    mocks.me.mockResolvedValue(user)
+    mocks.entitlement.mockResolvedValue({
+      ...membership,
+      tier: { code: "vip", name: "VIP", level: 1 },
+    })
     renderDashboard()
-    expect(await screen.findByText("pigclaude")).toBeTruthy()
-    expect(screen.getByText("产品")).toBeTruthy()
-    expect(screen.queryByText("legacy-product")).toBeNull()
+    expect(await screen.findByText("VIP")).toBeTruthy()
+    expect(screen.getByText("会员等级")).toBeTruthy()
+    expect(screen.queryByText("会员产品")).toBeNull()
   })
 })

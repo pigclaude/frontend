@@ -3,14 +3,10 @@ import { test, expect } from "@playwright/test"
 const admin = process.env.TASK18_ADMIN_URL
 const member = {
   userId: "42",
-  planId: "day",
-  productCode: "pigclaude",
-  planKind: "day",
   status: "active",
-  lifetime: false,
+  email: "member@example.test",
+  tier: { code: "vip", name: "VIP", level: 1 },
   validUntil: "2026-10-30T00:00:00Z",
-  termsVersion: "v1",
-  termsAcceptedAt: null,
   entitlementVersion: "1",
 }
 test("default membership reason retains native 200 UTF-16 insertion limit and trimmed HTTP submission", async ({
@@ -23,7 +19,15 @@ test("default membership reason retains native 200 UTF-16 insertion limit and tr
     const path = new URL(request.url()).pathname
     if (request.method() === "POST") {
       writes.push({ path, body: request.postDataJSON() })
-      await route.fulfill({ json: { ...member, status: "revoked" } })
+      await route.fulfill({
+        json: {
+          status: "revoked",
+          tier: member.tier,
+          validUntil: member.validUntil,
+          remainingSeconds: "0",
+          entitlementVersion: "2",
+        },
+      })
       return
     }
     await route.fulfill({
@@ -32,11 +36,13 @@ test("default membership reason retains native 200 UTF-16 insertion limit and tr
             id: "a1",
             account: "member operator",
             status: "active",
+            email: "member@example.test",
+            tier: { code: "vip", name: "VIP", level: 1 },
             permissions: ["membership:read", "membership:write"],
           }
         : path.endsWith("/session")
           ? { csrf: "fixture-csrf" }
-          : { items: [member], nextCursor: "0" },
+          : { items: [member], nextCursor: null },
     })
   })
   await page.goto(`${admin}/membership`)
@@ -77,6 +83,8 @@ test("explicit governance accepts 500 Unicode characters, rejects 501 and preser
             id: "a1",
             account: "moderator",
             status: "active",
+            email: "member@example.test",
+            tier: { code: "vip", name: "VIP", level: 1 },
             permissions: ["users:read", "users:ban"],
           }
         : path.endsWith("/session")
@@ -88,6 +96,8 @@ test("explicit governance accepts 500 Unicode characters, rejects 501 and preser
                   nickname: "目标用户",
                   email: "masked@example.test",
                   status: "active",
+                  email: "member@example.test",
+                  tier: { code: "vip", name: "VIP", level: 1 },
                   authVersion: "1",
                   avatar: "",
                   githubLogin: "",
@@ -96,7 +106,7 @@ test("explicit governance accepts 500 Unicode characters, rejects 501 and preser
                   lastLoginAt: null,
                 },
               ],
-              nextCursor: "0",
+              nextCursor: null,
             },
     })
   })

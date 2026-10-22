@@ -1,6 +1,6 @@
 // 负责迁入成熟后台的table-parts布局和交互，使用本项目真实 API。
 import type { ReactNode } from "react"
-import type { MembershipStatus } from "@pigclaude/api/admin/types"
+import type { MembershipStatus } from "@pigclaude/api/membership/types"
 import { Badge, type BadgeVariant } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -12,14 +12,8 @@ import { ToolbarTitle } from "@/components/shell/table-card"
 /** 复用真实游标栈的卡片分页。 */
 export { PagerFooter } from "@/components/shell/pager"
 
-/** 套餐周期的中文名称。 */
-export const PLAN_KIND = {
-  day: "天卡",
-  week: "周卡",
-  lifetime: "永久卡",
-} as const
-
 const MEMBERSHIP_STATUS: Record<MembershipStatus, { label: string; tone: BadgeVariant }> = {
+  none: { label: "未开通", tone: "neutral" },
   active: { label: "有效", tone: "success" },
   expired: { label: "已过期", tone: "neutral" },
   revoked: { label: "已撤销", tone: "danger" },

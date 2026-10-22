@@ -18,5 +18,29 @@
     "serverReason": null,
     "authorizationUrl": null,
     "tier": null
+  },
+  "membershipWithTier": {
+    "startupPhase": "settled",
+    "revision": 7,
+    "state": "active",
+    "account": {
+      "userId": "user_01",
+      "nickname": "Pig User",
+      "email": "user@example.com",
+      "avatar": ""
+    },
+    "membershipValidUntil": null,
+    "offlineValidUntil": null,
+    "lastVerifiedAt": "2026-10-18T00:00:00Z",
+    "nextVerificationAt": "2026-10-18T01:00:00Z",
+    "bindingEpoch": "00000000000000000042",
+    "errorCode": null,
+    "serverReason": null,
+    "authorizationUrl": null,
+    "tier": {
+      "code": "vip",
+      "name": "VIP",
+      "level": 1
+    }
   }
 }

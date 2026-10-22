@@ -14,7 +14,11 @@
     "./admin/types": "./src/admin/types.ts",
     "./admin/security-settings": "./src/admin/security-settings.ts",
     "./home/devices": "./src/home/devices.ts",
-    "./admin/account-moderation": "./src/admin/account-moderation.ts"
+    "./admin/account-moderation": "./src/admin/account-moderation.ts",
+    "./membership/types": "./src/membership/types.ts",
+    "./membership/home": "./src/membership/home.ts",
+    "./membership/admin": "./src/membership/admin.ts",
+    "./membership/payment-settings": "./src/membership/payment-settings.ts"
   },
   "scripts": {
     "lint": "eslint .",

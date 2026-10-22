@@ -44,7 +44,7 @@ export interface HttpClient {
   postForm<T>(path: string, body: FormData): Promise<T>
   put<T>(path: string, body?: unknown, headers?: Record<string, string>): Promise<T>
   /** DELETE 可发送严格 JSON CSRF body；未提供 body 的旧只读参数语义不变。 */
-  delete<T>(path: string, body?: unknown): Promise<T>
+  delete<T>(path: string, body?: unknown, headers?: Record<string, string>): Promise<T>
 }
 
 /** HTTP client 返回的状态和 Location 元数据，供需要处理 303 的 endpoint 使用。 */
@@ -171,7 +171,7 @@ export function createClient(opts: ClientOptions = {}): HttpClient {
     postForm: (path, body) => request("POST", path, body),
     patch: (path, body) => request("PATCH", path, body ?? {}),
     put: (path, body, headers) => request("PUT", path, body ?? {}, undefined, headers),
-    delete: (path, body) => request("DELETE", path, body),
+    delete: (path, body, headers) => request("DELETE", path, body, undefined, headers),
   }
 }
 

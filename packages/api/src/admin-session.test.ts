@@ -15,7 +15,14 @@ describe("admin RP client", () => {
           : json({}),
       )
     const api = createAdminApi(createClient({ fetch: fetcher }))
-    await api.membership.grant({ userId: "u1", planId: "day", termsVersion: "v1", remark: "ok" })
+    await api.membership.grants.create({
+      userId: "u1",
+      tierId: "vip",
+      durationUnit: "day",
+      duration: "1",
+      valueFen: "0",
+      remark: "ok",
+    })
     await api.membership.revoke({ userId: "u1", reason: "remove" })
     const writes = fetcher.mock.calls.filter(([, init]) => init?.method === "POST")
     expect(writes).toHaveLength(2)

@@ -42,7 +42,7 @@ export default function DashboardPage() {
       </main>
     )
   const membership = entitlement.data
-  const productCode = membership.productCode.trim()
+  const tierName = membership.tier?.name
   return (
     <main className="page-shell">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -89,10 +89,10 @@ export default function DashboardPage() {
                 </dd>
               </div>
             )}
-            {productCode && (
+            {tierName && (
               <div>
-                <dt>产品</dt>
-                <dd>{productCode}</dd>
+                <dt>会员等级</dt>
+                <dd>{tierName}</dd>
               </div>
             )}
           </dl>
@@ -110,11 +110,7 @@ export default function DashboardPage() {
                 : "当前没有有效会员"}
           </p>
           <p className="muted">
-            {membership.validUntil
-              ? `有效期至 ${membership.validUntil}`
-              : membership.lifetime
-                ? "永久会员"
-                : ""}
+            {membership.validUntil ? `有效期至 ${membership.validUntil}` : ""}
           </p>
           <Button asChild variant="outline">
             <Link href="/membership">查看会员</Link>

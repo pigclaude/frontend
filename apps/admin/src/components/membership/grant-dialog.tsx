@@ -18,7 +18,7 @@ import { adminApi } from "@/lib/api"
 import { useAdminOperationOwner } from "@/hooks/use-admin-operation-owner"
 import { toastApiError } from "@/lib/errors"
 
-/** 使用已存在的套餐 ID 授予会员，服务端确认成功后刷新会员和审计。 */
+/** 使用已存在的等级 ID 授予会员，服务端确认成功后刷新会员和审计。 */
 export function GrantDialog({
   open,
   onOpenChange,
@@ -30,22 +30,24 @@ export function GrantDialog({
 }) {
   const queryClient = useQueryClient()
   const [userId, setUserId] = useState("")
-  const [planId, setPlanId] = useState("")
-  const [termsVersion, setTermsVersion] = useState("v1")
+  const [tierId, setTierId] = useState("")
+  const [duration, setDuration] = useState("1")
   const [remark, setRemark] = useState("")
   const operation = useAdminOperationOwner(open ? "grant-open" : "grant-closed")
-  const canSubmit = [userId, planId, termsVersion, remark].every((value) => value.trim())
+  const canSubmit = [userId, tierId, duration, remark].every((value) => value.trim())
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!canSubmit) return
     const owner = operation.begin()
     if (!owner) return
     try {
-      const membership = await adminApi.membership.grant(
+      const membership = await adminApi.membership.grants.create(
         {
           userId: userId.trim(),
-          planId: planId.trim(),
-          termsVersion: termsVersion.trim(),
+          tierId: tierId.trim(),
+          duration: duration.trim(),
+          durationUnit: "day",
+          valueFen: "0",
           remark: remark.trim(),
         },
         owner.isCurrent,
@@ -54,7 +56,7 @@ export function GrantDialog({
       void queryClient.invalidateQueries({ queryKey: ["admin-memberships"] })
       void queryClient.invalidateQueries({ queryKey: ["admin-audits"] })
       window.dispatchEvent(new CustomEvent("pigclaude:admin-membership", { detail: membership }))
-      toast.success(`已为用户 ${membership.userId} 授予会员`)
+      toast.success(`已为用户 ${userId.trim()} 授予会员`)
       onGranted()
       onOpenChange(false)
     } catch (error) {
@@ -68,7 +70,9 @@ export function GrantDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>人工授予会员</DialogTitle>
-          <DialogDescription>该操作不收费，将记录操作人、套餐、条款版本和备注。</DialogDescription>
+          <DialogDescription>
+            该操作不收费，授予价值为 0，将记录操作人、等级、时长和备注。
+          </DialogDescription>
         </DialogHeader>
         <form className="flex flex-col gap-4" onSubmit={submit}>
           <div className="flex flex-col gap-1.5">
@@ -81,20 +85,20 @@ export function GrantDialog({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="grant-plan">套餐 ID</Label>
+            <Label htmlFor="grant-tier">等级 ID</Label>
             <Input
-              id="grant-plan"
-              value={planId}
-              onChange={(event) => setPlanId(event.target.value)}
+              id="grant-tier"
+              value={tierId}
+              onChange={(event) => setTierId(event.target.value)}
               required
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="grant-terms">条款版本</Label>
+            <Label htmlFor="grant-duration">时长（天）</Label>
             <Input
-              id="grant-terms"
-              value={termsVersion}
-              onChange={(event) => setTermsVersion(event.target.value)}
+              id="grant-duration"
+              value={duration}
+              onChange={(event) => setDuration(event.target.value)}
               required
             />
           </div>

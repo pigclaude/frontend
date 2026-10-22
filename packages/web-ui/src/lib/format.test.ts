@@ -94,3 +94,10 @@ describe("formatMicroUsd", () => {
     expect(formatMicroUsd(0)).toBe("0.00 USD")
   })
 })
+
+it("formats integer seconds without rounding into a longer duration", async () => {
+  const { formatDurationSeconds } = await import("./format")
+  expect(formatDurationSeconds("1047600")).toBe("12 天 3 小时")
+  expect(formatDurationSeconds(3599)).toBe("0 天 0 小时")
+  expect(formatDurationSeconds("9007199254740993")).toBe("104249991374 天 7 小时")
+})

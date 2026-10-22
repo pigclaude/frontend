@@ -81,3 +81,9 @@ export function formatTimeShanghai(ts: string | number | Date): string {
   const p = (x: number) => String(x).padStart(2, "0")
   return `${s.getUTCFullYear()}-${p(s.getUTCMonth() + 1)}-${p(s.getUTCDate())} ${p(s.getUTCHours())}:${p(s.getUTCMinutes())}`
 }
+
+/** 整数秒仅用于展示，按整天和剩余整小时截断，不参与业务定价。 */
+export function formatDurationSeconds(seconds: string | number): string {
+  const value = BigInt(seconds)
+  return `${value / 86400n} 天 ${(value % 86400n) / 3600n} 小时`
+}

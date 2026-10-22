@@ -4,7 +4,7 @@ import type { WebSessionBootstrap } from "../web-oidc"
 /** 旧业务用 header CSRF；RP 与新严格 DTO 使用显式 body CSRF。 */
 export function createAdminSessionWriter(client: HttpClient) {
   return async <T>(
-    method: "POST" | "PUT",
+    method: "POST" | "PUT" | "DELETE",
     path: string,
     body: object,
     transport: "header" | "body" = "header",
@@ -18,8 +18,12 @@ export function createAdminSessionWriter(client: HttpClient) {
       throw new Error("会话校验失败，请重新登录")
     const headers = transport === "header" ? { "X-CSRF-Token": session.csrf } : undefined
     const values = transport === "body" ? { ...body, csrf: session.csrf } : body
-    return method === "PUT"
-      ? client.put<T>(path, values, headers)
-      : client.post<T>(path, values, headers)
+    const result = await (method === "DELETE"
+      ? client.delete<T>(path, values, headers)
+      : method === "PUT"
+        ? client.put<T>(path, values, headers)
+        : client.post<T>(path, values, headers))
+    if (!owner() || !isCurrent()) throw new StaleSessionResponse()
+    return result
   }
 }

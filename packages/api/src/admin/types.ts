@@ -44,48 +44,6 @@ export interface ListUsersResponse {
   items: AdminUserItem[]
   nextCursor: string
 }
-/** 会员状态。 */
-export type MembershipStatus = "active" | "expired" | "revoked"
-/** 会员套餐周期。 */
-export type MembershipPlanKind = "day" | "week" | "lifetime"
-/** 会员列表项。 */
-export interface MembershipItem {
-  userId: string
-  planId: string
-  productCode: string
-  planKind: MembershipPlanKind
-  status: MembershipStatus
-  lifetime: boolean
-  validUntil: string | null
-  termsVersion: string
-  termsAcceptedAt: string | null
-  entitlementVersion: string
-}
-/** 会员列表查询，cursor 和 userId 均按字符串传输。 */
-export interface ListMembershipsQuery {
-  userId?: string
-  status?: MembershipStatus | ""
-  cursor?: string
-  limit?: number
-  [key: string]: string | number | undefined
-}
-/** 会员分页响应。 */
-export interface ListMembershipsResponse {
-  items: MembershipItem[]
-  nextCursor: string
-}
-/** 人工授予会员请求。 */
-export interface GrantMembershipRequest {
-  userId: string
-  planId: string
-  termsVersion: string
-  remark: string
-}
-/** 撤销会员请求。 */
-export interface RevokeMembershipRequest {
-  userId: string
-  reason: string
-}
 /** 不可变安全审计记录。 */
 export interface MembershipAuditItem {
   id: string

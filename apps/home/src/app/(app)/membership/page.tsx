@@ -13,7 +13,7 @@ export default function MembershipPage() {
     queryKey: ["entitlement"],
     queryFn: homeApi.membership.entitlement,
   })
-  const plans = useQuery({ queryKey: ["plans"], queryFn: homeApi.membership.plans })
+  const plans = useQuery({ queryKey: ["membership-catalog"], queryFn: homeApi.membership.catalog })
   if (entitlement.isPending || plans.isPending)
     return (
       <main className="page-shell">
@@ -34,7 +34,7 @@ export default function MembershipPage() {
     )
   const expired =
     entitlement.data.status === "expired" ||
-    entitlement.data.status === "inactive" ||
+    entitlement.data.status === "none" ||
     entitlement.data.status === "revoked"
   return (
     <main className="page-shell">
@@ -52,9 +52,7 @@ export default function MembershipPage() {
             <p className="mt-1 text-xs text-[var(--meta)]">账号与桌面客户端共享会员权益</p>
           </div>
         </div>
-        <p>
-          {expired ? "会员已过期或未激活" : entitlement.data.lifetime ? "永久会员" : "会员有效"}
-        </p>
+        <p>{expired ? "会员已过期或未激活" : "会员有效"}</p>
         {entitlement.data.validUntil && (
           <p className="muted">有效期至 {entitlement.data.validUntil}</p>
         )}
@@ -74,7 +72,7 @@ export default function MembershipPage() {
         <h2 id="plans-title" className="text-[17px] font-semibold">
           可用套餐
         </h2>
-        <PlanCards plans={plans.data.items} />
+        <PlanCards plans={plans.data.tiers} />
       </section>
     </main>
   )

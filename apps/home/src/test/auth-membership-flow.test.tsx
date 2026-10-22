@@ -14,20 +14,13 @@ function fixtureClient(): HttpClient {
           email: "ada@example.com",
           balance: "0",
           createdAt: "2026-01-01T00:00:00Z",
-          productCode: "pigclaude",
-          planKind: "day",
-          membershipStatus: "active",
-          validUntil: null,
         } as T
       if (path === "/v1/entitlement")
         return {
-          productCode: "pigclaude",
-          planKind: "day",
           status: "expired",
-          lifetime: false,
+          tier: { code: "vip", name: "VIP", level: 1 },
+          remainingSeconds: "0",
           validUntil: "2026-01-02T00:00:00Z",
-          termsVersion: "1",
-          termsAcceptedAt: null,
           entitlementVersion: "2",
         } as T
       throw new Error(`unexpected GET ${path}`)
@@ -45,7 +38,7 @@ describe("Home post-OIDC membership API", () => {
     const api = createHomeApi(client)
     const [me, entitlement] = await Promise.all([api.user.me(), api.membership.entitlement()])
     expect(me.email).toBe("ada@example.com")
-    expect(me.membershipStatus).toBe("active")
+    expect(entitlement.tier?.code).toBe("vip")
     expect(entitlement.status).toBe("expired")
     expect(client.post).not.toHaveBeenCalled()
     expect("login" in api.auth).toBe(false)

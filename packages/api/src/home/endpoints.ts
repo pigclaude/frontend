@@ -1,4 +1,5 @@
 // 负责封装 Home 会员和账户查询；登录身份只经中央 OIDC 交互确认。
+import { createHomeMembershipApi } from "../membership/home"
 import type { HttpClient } from "../client"
 import type { CaptchaConfig } from "@pigclaude/contracts/captcha"
 import type * as T from "./types"
@@ -11,10 +12,7 @@ export function createHomeApi(c: HttpClient) {
       captcha: () => c.get<CaptchaConfig>("/v1/auth/captcha"),
     },
     user: { me: () => c.get<T.MeResponse>("/v1/user/me") },
-    membership: {
-      plans: () => c.get<T.ListPlansResponse>("/v1/plans"),
-      entitlement: () => c.get<T.EntitlementResponse>("/v1/entitlement"),
-    },
+    membership: createHomeMembershipApi(c),
   }
 }
 

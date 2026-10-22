@@ -57,13 +57,15 @@ async function grantMembership(adminPage: Page, user: unknown) {
   const adminSession = await request(adminPage, "/admin/v1/session")
   const grant = await adminPage.evaluate(
     async ({ user, csrf }) => {
-      const response = await fetch("/admin/v1/memberships/grant", {
+      const response = await fetch("/admin/v1/membership/grants", {
         method: "POST",
         headers: { "content-type": "application/json", "x-csrf-token": String(csrf) },
         body: JSON.stringify({
           userId: user,
-          planId: "runtime-plan",
-          termsVersion: "runtime-v1",
+          tierId: "vip",
+          durationUnit: "day",
+          duration: "1",
+          valueFen: "0",
           remark: "local browser",
         }),
       })

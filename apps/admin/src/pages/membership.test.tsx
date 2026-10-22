@@ -13,7 +13,13 @@ const api = vi.hoisted(() => ({
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 
 vi.mock("@/lib/api", () => ({
-  adminApi: { membership: { list: api.list, grant: api.grant, revoke: api.revoke } },
+  adminApi: {
+    membership: {
+      memberships: { list: api.list },
+      grants: { create: api.grant },
+      revoke: api.revoke,
+    },
+  },
 }))
 vi.mock("sonner", () => ({ toast }))
 
@@ -40,29 +46,20 @@ describe("MembersSection", () => {
       items: [
         {
           userId: "u1",
-          planId: "p1",
-          productCode: "pigclaude",
-          planKind: "week",
           status: "active",
-          lifetime: false,
+          email: "member@example.test",
+          tier: { code: "vip", name: "VIP", level: 1 },
           validUntil: "2026-10-20T00:00:00Z",
-          termsVersion: "v1",
-          termsAcceptedAt: null,
           entitlementVersion: "2",
         },
       ],
-      nextCursor: "0",
+      nextCursor: null,
     })
     api.grant.mockResolvedValue({
-      userId: "u2",
-      planId: "p1",
-      productCode: "pigclaude",
-      planKind: "week",
       status: "active",
-      lifetime: false,
-      validUntil: null,
-      termsVersion: "v1",
-      termsAcceptedAt: null,
+      remainingSeconds: "86400",
+      tier: { code: "vip", name: "VIP", level: 1 },
+      validUntil: "2026-10-30T00:00:00Z",
       entitlementVersion: "1",
     })
   })
@@ -72,15 +69,17 @@ describe("MembersSection", () => {
     expect(await screen.findByText("u1")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "人工授予" }))
     fireEvent.change(screen.getByLabelText("用户 ID"), { target: { value: "u2" } })
-    fireEvent.change(screen.getByLabelText("套餐 ID"), { target: { value: "p1" } })
+    fireEvent.change(screen.getByLabelText("等级 ID"), { target: { value: "p1" } })
     fireEvent.change(screen.getByLabelText("操作备注"), { target: { value: "manual" } })
     fireEvent.click(screen.getByRole("button", { name: "确认授予" }))
     await waitFor(() =>
       expect(api.grant).toHaveBeenCalledWith(
         {
           userId: "u2",
-          planId: "p1",
-          termsVersion: "v1",
+          tierId: "p1",
+          durationUnit: "day",
+          duration: "1",
+          valueFen: "0",
           remark: "manual",
         },
         expect.any(Function),
@@ -95,7 +94,7 @@ describe("MembersSection", () => {
     renderSection()
     fireEvent.click(await screen.findByRole("button", { name: "人工授予" }))
     fireEvent.change(screen.getByLabelText("用户 ID"), { target: { value: "u2" } })
-    fireEvent.change(screen.getByLabelText("套餐 ID"), { target: { value: "p1" } })
+    fireEvent.change(screen.getByLabelText("等级 ID"), { target: { value: "p1" } })
     fireEvent.change(screen.getByLabelText("操作备注"), { target: { value: "manual" } })
     fireEvent.click(screen.getByRole("button", { name: "确认授予" }))
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("denied"))

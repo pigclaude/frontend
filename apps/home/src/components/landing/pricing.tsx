@@ -8,7 +8,7 @@ import { QueryError, QueryLoading } from "@/components/query-state"
 
 /** 让公开首页与会员页共享真实套餐缓存和精确价格展示。 */
 export function Pricing() {
-  const plans = useQuery({ queryKey: ["plans"], queryFn: homeApi.membership.plans })
+  const plans = useQuery({ queryKey: ["membership-catalog"], queryFn: homeApi.membership.catalog })
   return (
     <section id="pricing" className="landing-section scroll-mt-16">
       <div className="landing-container">
@@ -23,7 +23,7 @@ export function Pricing() {
           ) : plans.isError ? (
             <QueryError error={plans.error} onRetry={() => void plans.refetch()} />
           ) : (
-            <PlanCards plans={plans.data.items} />
+            <PlanCards plans={plans.data.tiers} />
           )}
         </div>
       </div>

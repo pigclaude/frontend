@@ -9,9 +9,6 @@
       "email": "user@example.com",
       "avatar": ""
     },
-    "productCode": "pigclaude",
-    "planKind": "week",
-    "lifetime": false,
     "membershipValidUntil": null,
     "offlineValidUntil": null,
     "lastVerifiedAt": "2026-10-18T00:00:00Z",
@@ -19,6 +16,7 @@
     "bindingEpoch": "00000000000000000042",
     "errorCode": null,
     "serverReason": null,
-    "authorizationUrl": null
+    "authorizationUrl": null,
+    "tier": null
   }
 }

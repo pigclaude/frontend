@@ -12,15 +12,20 @@ export type MembershipState =
   | "device_revoked"
   | "error"
 
+/** 服务端嵌套会员等级摘要，不携带可变价格或套餐期限。 */
+export interface TierView {
+  code: string
+  name: string
+  level: number
+}
+
 /** renderer 使用的会员状态快照，金额和版本字段保持服务端 decimal string 语义。 */
 export interface MembershipView {
   startupPhase: "checking" | "settled"
   revision: number
   state: MembershipState
   account: { userId: string; nickname: string; email: string; avatar: string } | null
-  productCode: "pigclaude" | null
-  planKind: "day" | "week" | "lifetime" | null
-  lifetime: boolean
+  tier: TierView | null
   membershipValidUntil: string | null
   offlineValidUntil: string | null
   lastVerifiedAt: string | null

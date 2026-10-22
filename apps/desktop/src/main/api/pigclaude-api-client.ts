@@ -52,12 +52,7 @@ export class PigclaudeApiClient extends OAuthClient {
             ? "expired"
             : "verification_required",
       account: { userId: session.userId, nickname: "", email: "", avatar: "" },
-      productCode: value.productCode === "pigclaude" ? "pigclaude" : null,
-      planKind:
-        value.planKind === "day" || value.planKind === "week" || value.planKind === "lifetime"
-          ? value.planKind
-          : null,
-      lifetime: value.lifetime === true,
+      tier: readTier(value.tier),
       membershipValidUntil: nullableString(value.validUntil),
       offlineValidUntil: null,
       lastVerifiedAt: null,
@@ -84,4 +79,17 @@ function nullableString(value: unknown): string | null {
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function readTier(value: unknown): MembershipView["tier"] {
+  if (
+    !isRecord(value) ||
+    typeof value.code !== "string" ||
+    typeof value.name !== "string" ||
+    typeof value.level !== "number" ||
+    !Number.isSafeInteger(value.level) ||
+    value.level <= 0
+  )
+    return null
+  return { code: value.code, name: value.name, level: value.level }
 }

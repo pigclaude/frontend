@@ -149,13 +149,9 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     }
     if (url.pathname === "/v1/desktop/entitlement")
       return Response.json({
-        productCode: "pigclaude",
-        planKind: "week",
+        tier: { code: "vip", name: "VIP", level: 1 },
         status: "active",
-        lifetime: false,
         validUntil: null,
-        termsVersion: "1",
-        termsAcceptedAt: "2026-10-19T00:00:00Z",
         entitlementVersion: "1",
       })
     if (url.pathname === "/v1/desktop/session") {

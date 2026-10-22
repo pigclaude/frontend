@@ -11,13 +11,9 @@ const session = {
   status: "active",
 }
 const entitlement = {
-  productCode: "pigclaude",
-  planKind: "week",
+  tier: { code: "vip", name: "VIP", level: 1 },
   status: "active",
-  lifetime: false,
   validUntil: "2026-10-21T00:00:00Z",
-  termsVersion: "1",
-  termsAcceptedAt: "2026-10-19T00:00:00Z",
   entitlementVersion: "1",
 }
 const input = { deviceId, bindingEpoch: session.bindingEpoch }
@@ -42,12 +38,16 @@ describe("PigclaudeApiClient native resources", () => {
     ])
     expect(result).toMatchObject({
       state: "active",
+      tier: entitlement.tier,
       bindingEpoch: session.bindingEpoch,
       account: { userId: session.userId },
       membershipValidUntil: entitlement.validUntil,
       offlineValidUntil: null,
     })
     expect(JSON.stringify(result)).not.toContain("access-secret")
+    for (const field of ["productCode", "planKind", "lifetime", "termsVersion"]) {
+      expect(result).not.toHaveProperty(field)
+    }
   })
   it("revokeDeviceBinding sends only empty JSON to the current Bearer relationship", async () => {
     let body: unknown
@@ -146,4 +146,20 @@ it("uses an explicitly captured token without waiting for a mutable vault provid
   await client.revokeDeviceBinding("original-account-token")
   expect(reads).toBe(0)
   expect(sent).toEqual(["Bearer original-account-token"])
+})
+
+it.each([
+  null,
+  [],
+  { code: "vip" },
+  { code: "vip", name: "VIP", level: 0 },
+  { code: "vip", name: "VIP", level: 1.5 },
+])("maps malformed tier to null without changing Bearer identity %#", async (tier) => {
+  const client = new PigclaudeApiClient({
+    baseUrl,
+    accessToken: async () => "access",
+    fetcher: async (url) =>
+      Response.json(String(url).endsWith("/inspect") ? session : { ...entitlement, tier }),
+  })
+  expect(await client.inspectMembership(input)).toHaveProperty("tier", null)
 })

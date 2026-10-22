@@ -71,8 +71,7 @@ function setup(
         if (path === "/v1/desktop/entitlement")
           return json({
             status: "active",
-            productCode: "pigclaude",
-            planKind: "week",
+            tier: { code: "vip", name: "VIP", level: 1 },
             bindingEpoch: session.bindingEpoch,
           })
         return json({ error: "obsolete_endpoint" }, 404)

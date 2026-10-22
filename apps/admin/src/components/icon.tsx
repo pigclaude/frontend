@@ -19,3 +19,22 @@ export function TiersIcon(props: ComponentProps<"svg">) {
     </svg>
   )
 }
+
+/** 订单和支付设置共用的手绘收据图标。 */
+export function OrdersIcon(props: ComponentProps<"svg">) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z" />
+      <path d="M9 7h6M9 11h6M9 15h3" />
+    </svg>
+  )
+}

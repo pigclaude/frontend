@@ -7,9 +7,18 @@ export interface NavItem {
   group: string
   kw: string
   permission?: string
+  anyPermissions?: string[]
 }
 /** 后台仅展示已经实现的业务。 */
 export const NAV: NavItem[] = [
+  {
+    href: "/orders",
+    name: "订单",
+    label: "订单",
+    group: "运营管理",
+    kw: "orders dingdan payment",
+    permission: "payment:read",
+  },
   {
     href: "/tiers",
     name: "会员等级",
@@ -24,7 +33,7 @@ export const NAV: NavItem[] = [
     label: "系统设置",
     group: "安全管理",
     kw: "settings shezhi security",
-    permission: "settings:read",
+    anyPermissions: ["settings:read", "payment:read"],
   },
   {
     href: "/users",
@@ -58,4 +67,11 @@ export function resolveCrumb(path: string) {
 /** 当前入口都是独立页面，不存在导航父项。 */
 export function isNavParent(href: string) {
   return href === "/membership"
+}
+
+/** 导航设置入口允许安全或支付读取权限，其他入口保留原精确权限。 */
+export function canSeeNav(item: NavItem, permissions: string[], active: boolean) {
+  return item.anyPermissions
+    ? active && item.anyPermissions.some((p) => permissions.includes(p))
+    : !item.permission || (active && permissions.includes(item.permission))
 }

@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useAdminMe } from "@/hooks/use-admin-me"
-import { canAdminPermission } from "@/lib/admin-permissions"
+import { canSeeNav } from "@/lib/nav"
 import { GROUPS, isNavParent, NAV, type NavItem } from "@/lib/nav"
 import { toggleTheme } from "@pigclaude/web-ui/lib/theme"
 import { BrandMark } from "./brand-mark"
@@ -98,9 +98,7 @@ export function SideNav({
             {NAV.filter(
               (item) =>
                 item.group === group &&
-                (!item.permission ||
-                  (me?.status === "active" &&
-                    canAdminPermission(me.permissions ?? [], item.permission))),
+                canSeeNav(item, me?.permissions ?? [], me?.status === "active"),
             ).map((item) => (
               <NavEntry
                 key={item.href}

@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate } from "react-router"
 import { AdminGuard } from "@/components/admin-guard"
 import { AdminShell } from "@/components/shell/admin-shell"
 import LoginPage from "@/pages/login"
+import OrdersPage from "@/pages/orders"
 import UsersPage from "@/pages/users"
 import TiersPage from "@/pages/tiers"
 import MembershipPage from "@/pages/membership"
@@ -21,6 +22,7 @@ export const router = createBrowserRouter([
         element: <AdminShell />,
         children: [
           { index: true, element: <Navigate to="/users" replace /> },
+          { path: "orders", element: <OrdersPage /> },
           { path: "users", element: <UsersPage /> },
           { path: "tiers", element: <TiersPage /> },
           { path: "membership", element: <MembershipPage /> },

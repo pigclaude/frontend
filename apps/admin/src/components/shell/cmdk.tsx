@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Kbd } from "@/components/ui/kbd"
 import { useAdminMe } from "@/hooks/use-admin-me"
-import { canAdminPermission } from "@/lib/admin-permissions"
+import { canSeeNav } from "@/lib/nav"
 import { GROUPS, NAV } from "@/lib/nav"
 import { NAV_ICONS } from "./nav-icons"
 
@@ -38,10 +38,8 @@ export function Cmdk({ open, onOpenChange }: CmdkProps) {
   const { pathname } = useLocation()
 
   const { data: me } = useAdminMe()
-  const pages: CmdkPage[] = NAV.filter(
-    (item) =>
-      !item.permission ||
-      (me?.status === "active" && canAdminPermission(me.permissions ?? [], item.permission)),
+  const pages: CmdkPage[] = NAV.filter((item) =>
+    canSeeNav(item, me?.permissions ?? [], me?.status === "active"),
   ).map((item) => ({ ...item, icon: NAV_ICONS[item.href] }))
 
   useEffect(() => {

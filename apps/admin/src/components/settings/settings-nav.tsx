@@ -1,5 +1,7 @@
 // 负责迁入固定 Pigcursor 200px 粘性设置分组导航，仅保留安全风控。
-import { Settings2, ShieldCheck, type LucideIcon } from "lucide-react"
+import { Settings2, ShieldCheck } from "lucide-react"
+import type { ComponentType, ComponentProps } from "react"
+import { OrdersIcon } from "@/components/icon"
 import { cn } from "@pigclaude/web-ui/lib/utils"
 interface PanelDef {
   id: string
@@ -7,11 +9,14 @@ interface PanelDef {
 }
 
 // 面板图标：按 settings-spec 的面板 id 登记；未登记的新面板回落到通用齿轮图标（导航与面板头共用）。
-export function panelIcon(id: string): LucideIcon {
+export function panelIcon(id: string): ComponentType<ComponentProps<"svg">> {
   return PANEL_ICONS[id] ?? Settings2
 }
 
-const PANEL_ICONS: Record<string, LucideIcon> = { security: ShieldCheck }
+const PANEL_ICONS: Record<string, ComponentType<ComponentProps<"svg">>> = {
+  security: ShieldCheck,
+  payment: OrdersIcon,
+}
 
 interface SettingsNavProps {
   panels: PanelDef[]

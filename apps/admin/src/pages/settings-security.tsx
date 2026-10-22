@@ -1,6 +1,6 @@
 // 负责沿用固定 Pigcursor 系统设置布局并保护未保存修改的路由离开。
 import { useState } from "react"
-import { useBeforeUnload, useBlocker } from "react-router"
+import { useBeforeUnload, useBlocker, useSearchParams, useLocation } from "react-router"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -17,8 +17,48 @@ import { TurnstileSettingsForm } from "@/components/settings/turnstile-settings-
 import { TurnstileSettingsHistory } from "@/components/settings/turnstile-settings-history"
 import { securitySettingsErrorMessage } from "@/lib/security-settings-errors"
 import { useSecuritySettings } from "@/hooks/use-security-settings"
-/** 拒绝无读权限页面与加载失败空默认值，路由跳转使用 data router blocker。 */
+import { useAdminMe } from "@/hooks/use-admin-me"
+import { SettingsPaymentPage } from "./settings-payment"
+import { adminSessionGeneration } from "@/lib/session-generation"
+/** 设置入口按精确读取权限挂载唯一分区，不触发未授权接口。 */
 export default function SettingsSecurityPage() {
+  const { data: me } = useAdminMe()
+  const [params, setParams] = useSearchParams()
+  const location = useLocation()
+  const panels =
+    me?.status === "active"
+      ? [
+          ...(me.permissions.includes("settings:read")
+            ? [{ id: "security", title: "安全风控" }]
+            : []),
+          ...(me.permissions.includes("payment:read") ? [{ id: "payment", title: "易支付" }] : []),
+        ]
+      : []
+  const active = panels.find((p) => p.id === params.get("panel"))?.id ?? panels[0]?.id
+  const onSelect = (id: string) => {
+    if (id !== active) setParams({ panel: id })
+  }
+  const identity = JSON.stringify([
+    me?.id,
+    me?.permissions,
+    location.key,
+    adminSessionGeneration.current(),
+  ])
+  if (!active) return <p role="alert">无权查看系统设置</p>
+  return active === "payment" ? (
+    <SettingsPaymentPage key={identity} panels={panels} onSelect={onSelect} />
+  ) : (
+    <SecuritySection key={identity} panels={panels} onSelect={onSelect} />
+  )
+}
+/** 拒绝无读权限页面与加载失败空默认值，路由跳转使用 data router blocker。 */
+function SecuritySection({
+  panels,
+  onSelect,
+}: {
+  panels: { id: string; title: string }[]
+  onSelect: (id: string) => void
+}) {
   const settings = useSecuritySettings()
   const [dirty, setDirty] = useState(false)
   const blocker = useBlocker(dirty)
@@ -52,12 +92,7 @@ export default function SettingsSecurityPage() {
         }
       />
       <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-[200px_minmax(0,1fr)]">
-        <SettingsNav
-          panels={[{ id: "security", title: "安全风控" }]}
-          active="security"
-          activeDirty={dirty}
-          onSelect={() => {}}
-        />
+        <SettingsNav panels={panels} active="security" activeDirty={dirty} onSelect={onSelect} />
         {query.isPending ? (
           <div role="status" className="rounded-xl border border-border bg-[var(--card-bg)] p-5">
             加载中…

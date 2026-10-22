@@ -14,6 +14,7 @@ export function interaction(overrides: Partial<IdentityInteraction> = {}): Ident
     providers: ["google", "github"],
     account: null,
     device: null,
+    restartUrl: "https://www.pigclaude.com/login",
     ...overrides,
   }
 }

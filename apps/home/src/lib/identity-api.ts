@@ -22,6 +22,8 @@ export interface IdentityInteraction {
     status: "new" | "active" | "revoked"
     bindingEpoch: string | null
   }
+  /** 过期后重新发起登录的网站入口；桌面端交互为 null，只能回到客户端发起。 */
+  restartUrl: string | null
 }
 
 /** 认证与审批只接续服务器给出的视图或一次性跳转。 */

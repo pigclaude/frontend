@@ -11,6 +11,7 @@ import { LoginForm, type LoginMode } from "./login-form"
 import { ProviderButtons } from "./provider-buttons"
 import { DeviceApproval } from "./device-approval"
 import { ConsentApproval } from "./consent-approval"
+import { ExpiredNotice } from "./expired-notice"
 import {
   identityApi,
   identityErrorMessage,
@@ -167,6 +168,19 @@ function InteractionSession({
       }
     }
   }
+  const deadline = view?.expiresAt
+  const [, rerenderAtDeadline] = useState(0)
+  useEffect(() => {
+    // 页面长时间停留时在服务器期限到达那一刻切换为过期提示，而不是等用户提交后才报错。
+    if (deadline === undefined) return
+    const remaining = deadline * 1000 - Date.now()
+    if (remaining <= 0) return
+    const timer = window.setTimeout(
+      () => rerenderAtDeadline((value) => value + 1),
+      Math.min(remaining, 2_147_483_647),
+    )
+    return () => window.clearTimeout(timer)
+  }, [deadline])
   const expired = view !== null && view.expiresAt * 1000 <= Date.now()
   if (!view)
     return (
@@ -177,7 +191,11 @@ function InteractionSession({
               {error}
             </p>
             <Button onClick={() => setReload((value) => value + 1)}>重试</Button>
-            <a href="/login">返回登录</a>
+            {realm === "User" ? (
+              <a href="/login">返回登录</a>
+            ) : (
+              <p className="text-sm text-muted-foreground">请回到管理后台重新登录</p>
+            )}
           </>
         ) : (
           <p role="status">正在读取登录交互…</p>
@@ -200,15 +218,13 @@ function InteractionSession({
             {admin ? "仅限运营人员使用管理员账号" : "管理会员和桌面设备"}
           </p>
         </header>
-        {error && (
+        {error && !expired && (
           <p role="alert" className={`mt-5 ${alertClass}`}>
             {error}
           </p>
         )}
         {expired ? (
-          <p role="alert" className={`mt-5 ${alertClass}`}>
-            登录交互已过期，请重新发起登录
-          </p>
+          <ExpiredNotice restartUrl={view.restartUrl} className={alertClass} />
         ) : (
           <div className="mt-6 flex flex-col gap-5">
             <ProviderButtons
@@ -258,7 +274,7 @@ function InteractionSession({
             : `是否允许${view.realm === "Admin" ? "管理站" : "用户站"}使用本次登录身份？`}
         </p>
       </header>
-      {error && (
+      {error && !expired && (
         <p role="alert" className={`mt-5 ${alertClass}`}>
           {error}
           {device && membershipRequired && (
@@ -275,9 +291,7 @@ function InteractionSession({
         </p>
       )}
       {expired ? (
-        <p role="alert" className={`mt-5 ${alertClass}`}>
-          登录交互已过期，请重新发起登录
-        </p>
+        <ExpiredNotice restartUrl={view.restartUrl} className={alertClass} />
       ) : (
         <div className="mt-6">
           {view.phase === "consent" && (

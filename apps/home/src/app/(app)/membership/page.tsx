@@ -4,7 +4,7 @@ import { Suspense, useState } from "react"
 import { usePathname, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { StaleSessionResponse } from "@pigclaude/api/client"
-import { formatDurationSeconds } from "@pigclaude/web-ui/lib/format"
+import { formatDurationSeconds, formatTime } from "@pigclaude/web-ui/lib/format"
 import { TierCards, type PurchaseIntent } from "@/components/membership/tier-cards"
 import { PayDialog } from "@/components/membership/pay-dialog"
 import { QueryError, QueryLoading } from "@/components/query-state"
@@ -106,7 +106,7 @@ function MembershipAccount({
       <section className="home-card" aria-labelledby="membership-status">
         <h2 id="membership-status">当前权益</h2>
         <p>{active ? `会员有效 · ${entitlement.tier?.name ?? ""}` : "会员已过期或未激活"}</p>
-        {entitlement.validUntil && <p>有效期至 {entitlement.validUntil}</p>}
+        {entitlement.validUntil && <p>有效期至 {formatTime(entitlement.validUntil)}</p>}
         <p>剩余 {formatDurationSeconds(entitlement.remainingSeconds)}</p>
         {active ? (
           <div className="status-gate" role="status">

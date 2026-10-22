@@ -3,7 +3,7 @@ import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useLocation } from "react-router"
 import type { AdminOrder, AdminOrdersQuery, OrderStatus } from "@pigclaude/api/membership/types"
-import { formatFen } from "@pigclaude/web-ui/lib/format"
+import { formatFen, formatTime } from "@pigclaude/web-ui/lib/format"
 import { adminApi } from "@/lib/api"
 import { useAdminMe } from "@/hooks/use-admin-me"
 import { PageHead } from "@/components/shell/page-head"
@@ -233,8 +233,8 @@ function OrderRow({ item }: { item: AdminOrder }) {
         {shortfall && <p>少收 {formatFen(item.creditShortfallFen)}</p>}
       </TableCell>
       <TableCell>
-        创建：{item.createdAt}
-        {item.activatedAt && <p>生效：{item.activatedAt}</p>}
+        创建：{formatTime(item.createdAt)}
+        {item.activatedAt && <p>生效：{formatTime(item.activatedAt)}</p>}
       </TableCell>
     </TableRow>
   )

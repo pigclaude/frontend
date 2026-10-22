@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, act } from "@testing-libra
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import MembershipPage from "@/app/(app)/membership/page"
+import { formatTime } from "@pigclaude/web-ui/lib/format"
 import { catalog, quotes, created } from "./membership-fixtures"
 const mocks = vi.hoisted(() => ({
   catalog: vi.fn(),
@@ -188,4 +189,10 @@ it("does not reopen the return order after changing account", async () => {
   })
   await screen.findByText("折合 ¥8.33/月")
   expect(screen.queryByRole("dialog")).toBeNull()
+})
+
+it("formats entitlement expiry for readers instead of raw ISO", async () => {
+  mount()
+  await screen.findByText(`有效期至 ${formatTime("2026-12-01T00:00:00Z")}`)
+  expect(screen.queryByText(/2026-12-01T00:00:00Z/)).toBeNull()
 })

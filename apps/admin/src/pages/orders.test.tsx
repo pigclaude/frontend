@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router"
 import { beforeEach, expect, it, vi } from "vitest"
+import { formatTime } from "@pigclaude/web-ui/lib/format"
 import OrdersPage from "./orders"
 import type { AdminOrder } from "@pigclaude/api/membership/types"
 const mocks = vi.hoisted(() => ({ list: vi.fn(), tiers: vi.fn() }))
@@ -123,4 +124,16 @@ it("shows errors with retry and null cursor ends pagination", async () => {
   fireEvent.click(screen.getByRole("button", { name: "重试" }))
   await screen.findByText("暂无订单")
   expect((screen.getByRole("button", { name: "下一页" }) as HTMLButtonElement).disabled).toBe(true)
+})
+
+it("formats both order timestamps without exposing raw ISO", async () => {
+  mocks.list.mockResolvedValue({
+    items: [{ ...row, activatedAt: "2026-10-22T01:02:03.123456Z" }],
+    filterTiers: [],
+    nextCursor: null,
+  })
+  mount()
+  await screen.findByText(`创建：${formatTime(row.createdAt)}`)
+  expect(screen.getByText(`生效：${formatTime("2026-10-22T01:02:03.123456Z")}`)).toBeTruthy()
+  expect(screen.queryByText(/T01:02:03/)).toBeNull()
 })

@@ -3,7 +3,7 @@
 
 import { useQuery } from "@tanstack/react-query"
 import { homeApi } from "@/lib/api"
-import { PlanCards } from "@/components/membership/plan-cards"
+import { TierCards } from "@/components/membership/tier-cards"
 import { QueryError, QueryLoading } from "@/components/query-state"
 
 /** 让公开首页与会员页共享真实套餐缓存和精确价格展示。 */
@@ -23,7 +23,7 @@ export function Pricing() {
           ) : plans.isError ? (
             <QueryError error={plans.error} onRetry={() => void plans.refetch()} />
           ) : (
-            <PlanCards plans={plans.data.tiers} />
+            <TierCards tiers={plans.data.tiers} />
           )}
         </div>
       </div>

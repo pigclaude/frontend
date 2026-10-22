@@ -93,3 +93,39 @@ it.each(["permission", "route", "session", "closed"])(
     expect(api.error).not.toHaveBeenCalled()
   },
 )
+it.each(["input-roundtrip", "close-reopen", "session"])(
+  "cannot submit a completed preview after %s",
+  async (mode) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    function tree(open = true) {
+      return (
+        <QueryClientProvider client={client}>
+          <MemoryRouter>
+            <GrantDialog open={open} onOpenChange={vi.fn()} onGranted={vi.fn()} />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+    }
+    const view = render(tree())
+    await fillGrant("manual")
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "确认授予" }).hasAttribute("disabled")).toBe(false),
+    )
+    api.preview.mockReturnValue(new Promise(() => {}))
+    if (mode === "input-roundtrip") {
+      fireEvent.change(screen.getByLabelText("时长"), { target: { value: "2" } })
+      fireEvent.change(screen.getByLabelText("时长"), { target: { value: "1" } })
+    }
+    if (mode === "close-reopen") {
+      view.rerender(tree(false))
+      view.rerender(tree())
+    }
+    if (mode === "session") adminSessionGeneration.invalidate()
+    fireEvent.click(screen.getByRole("button", { name: "确认授予" }))
+    expect(api.create).not.toHaveBeenCalled()
+    if (mode !== "session") {
+      expect(screen.getByRole("button", { name: "确认授予" }).hasAttribute("disabled")).toBe(true)
+      expect(screen.queryByText("生效后：VIP，到期 2026-12-01")).toBeNull()
+    }
+  },
+)

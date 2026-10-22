@@ -92,7 +92,7 @@ export function GrantDialog({
   const canSubmit = !!parsed.input && !!preview && !error && canWrite && open
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!canSubmit || !parsed.input) return
+    if (!canSubmit || !parsed.input || !previewResult?.isCurrent()) return
     const owner = operation.begin()
     if (!owner) return
     const input = parsed.input

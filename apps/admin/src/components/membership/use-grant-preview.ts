@@ -4,6 +4,7 @@ import type { GrantInput, GrantPreview } from "@pigclaude/api/membership/types"
 import { ApiError } from "@pigclaude/api/client"
 import { adminApi } from "@/lib/api"
 import { adminSessionGeneration } from "@/lib/session-generation"
+import { useResultGeneration } from "./use-result-generation"
 import { useAdminOperationOwner } from "@/hooks/use-admin-operation-owner"
 /** 只对指定的低等级冲突提供撤销提示，其余错误保留原消息。 */
 export function grantError(cause: unknown): string {
@@ -17,15 +18,16 @@ export function grantError(cause: unknown): string {
 }
 /** 仅返回与完整输入标识匹配的服务端预览；等待期间失效不发请求。 */
 export function useGrantPreview(input: GrantInput | null, key: string) {
+  const { generation, isCurrent } = useResultGeneration(key)
   const [result, setResult] = useState<{
-    key: string
+    generation: typeof generation
     preview?: GrantPreview
     error?: string
   } | null>(null)
-  const operation = useAdminOperationOwner(key)
+  const operation = useAdminOperationOwner(JSON.stringify([key, generation.version]))
   useEffect(() => {
     if (!input) return
-    const session = adminSessionGeneration.current()
+    const session = generation.session
     const timer = setTimeout(() => {
       if (session !== adminSessionGeneration.current()) return
       const owner = operation.begin()
@@ -33,14 +35,17 @@ export function useGrantPreview(input: GrantInput | null, key: string) {
       void adminApi.membership.grants
         .preview(input, owner.isCurrent)
         .then((preview) => {
-          if (owner.isCurrent()) setResult({ key, preview })
+          if (owner.isCurrent()) setResult({ generation, preview })
         })
         .catch((cause: unknown) => {
-          if (owner.isCurrent()) setResult({ key, error: grantError(cause) })
+          if (owner.isCurrent()) setResult({ generation, error: grantError(cause) })
         })
         .finally(owner.finish)
     }, 250)
     return () => clearTimeout(timer)
-  }, [input, key, operation.begin])
-  return result?.key === key ? result : null
+  }, [input, generation, operation.begin])
+  return result?.generation === generation &&
+    generation.session === adminSessionGeneration.current()
+    ? { ...result, isCurrent }
+    : null
 }

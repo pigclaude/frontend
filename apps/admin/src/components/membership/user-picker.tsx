@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import type { UserPick } from "@pigclaude/api/membership/types"
 import { adminApi } from "@/lib/api"
 import { adminSessionGeneration } from "@/lib/session-generation"
+import { useResultGeneration } from "./use-result-generation"
 import { useAdminOperationOwner } from "@/hooks/use-admin-operation-owner"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
@@ -21,14 +22,17 @@ export function UserPicker({
   const location = useLocation()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
-  const [result, setResult] = useState<{ key: string; items: UserPick[]; error?: string } | null>(
-    null,
-  )
   const key = JSON.stringify([location.key, open, disabled, value?.userId, query])
-  const operation = useAdminOperationOwner(key)
+  const { generation, isCurrent } = useResultGeneration(key)
+  const [result, setResult] = useState<{
+    generation: typeof generation
+    items: UserPick[]
+    error?: string
+  } | null>(null)
+  const operation = useAdminOperationOwner(JSON.stringify([key, generation.version]))
   useEffect(() => {
     if (!open || disabled || value || !query.trim()) return
-    const session = adminSessionGeneration.current()
+    const session = generation.session
     const timer = setTimeout(() => {
       if (session !== adminSessionGeneration.current()) return
       const owner = operation.begin()
@@ -36,15 +40,16 @@ export function UserPicker({
       void adminApi.membership.users
         .search(query.trim())
         .then(({ items }) => {
-          if (owner.isCurrent()) setResult({ key, items })
+          if (owner.isCurrent()) setResult({ generation, items })
         })
         .catch(() => {
-          if (owner.isCurrent()) setResult({ key, items: [], error: "搜索失败，请修改输入后重试" })
+          if (owner.isCurrent())
+            setResult({ generation, items: [], error: "搜索失败，请修改输入后重试" })
         })
         .finally(owner.finish)
     }, 250)
     return () => clearTimeout(timer)
-  }, [open, disabled, value, query, key, operation.begin])
+  }, [open, disabled, value, query, generation, operation.begin])
   if (value)
     return (
       <div className="flex items-center gap-2 rounded-lg border border-border p-2">
@@ -65,7 +70,10 @@ export function UserPicker({
         </Button>
       </div>
     )
-  const current = result?.key === key ? result : null
+  const current =
+    result?.generation === generation && generation.session === adminSessionGeneration.current()
+      ? result
+      : null
   return (
     <Popover open={open && !disabled} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -96,6 +104,7 @@ export function UserPicker({
                   key={user.userId}
                   value={user.userId}
                   onSelect={() => {
+                    if (!isCurrent()) return
                     onChange(user)
                     setOpen(false)
                     setQuery("")

@@ -123,3 +123,35 @@ it("clears a selected chip and searches again", async () => {
   await tick()
   expect(search).toHaveBeenLastCalledWith("b")
 })
+it.each(["query-roundtrip", "close-reopen"])(
+  "does not offer completed search results after %s",
+  async (mode) => {
+    mount()
+    query()
+    await tick()
+    expect(screen.getByRole("option")).toBeTruthy()
+    if (mode === "query-roundtrip") {
+      fireEvent.change(screen.getByRole("combobox"), { target: { value: "b" } })
+      fireEvent.change(screen.getByRole("combobox"), { target: { value: "a" } })
+    } else {
+      fireEvent.keyDown(screen.getByRole("combobox"), { key: "Escape" })
+      fireEvent.click(screen.getByRole("button", { name: "选择用户" }))
+    }
+    expect(screen.queryByRole("option")).toBeNull()
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" })
+    expect(screen.queryByRole("button", { name: "清除用户" })).toBeNull()
+    await tick(249)
+    expect(screen.queryByRole("option")).toBeNull()
+    await tick(1)
+    expect(screen.getByRole("option")).toBeTruthy()
+    expect(search).toHaveBeenCalledTimes(2)
+  },
+)
+it("cannot select a completed result after session expires without rerender", async () => {
+  mount()
+  query()
+  await tick()
+  adminSessionGeneration.invalidate()
+  fireEvent.click(screen.getByRole("option"))
+  expect(screen.queryByRole("button", { name: "清除用户" })).toBeNull()
+})

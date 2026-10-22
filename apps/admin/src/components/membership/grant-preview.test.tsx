@@ -106,3 +106,22 @@ it.each(["input", "closed-or-permission", "route", "session", "unmount"])(
     expect(screen.queryByText("OLD-REPLY")).toBeNull()
   },
 )
+it.each(["input-roundtrip", "close-reopen", "session"])(
+  "does not reuse completed preview after %s",
+  async (mode) => {
+    const view = mount()
+    await tick()
+    expect(screen.getByText(result.validUntil)).toBeTruthy()
+    if (mode === "input-roundtrip") view.change({ ...input, duration: "2" })
+    if (mode === "close-reopen") view.change(input, false)
+    if (mode === "session") adminSessionGeneration.invalidate()
+    view.change()
+    expect(screen.queryByText(result.validUntil)).toBeNull()
+    await tick(249)
+    expect(preview).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText(result.validUntil)).toBeNull()
+    await tick(1)
+    expect(preview).toHaveBeenCalledTimes(2)
+    expect(screen.getByText(result.validUntil)).toBeTruthy()
+  },
+)

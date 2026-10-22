@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Tier } from "@pigclaude/api/membership/types"
 import { ApiError } from "@pigclaude/api/client"
 import { adminApi } from "@/lib/api"
+import { refreshTierCatalog } from "@/components/tiers/refresh-tier-catalog"
 import { useAdminMe } from "@/hooks/use-admin-me"
 import { useAdminOperationOwner } from "@/hooks/use-admin-operation-owner"
 import { tierPermissions } from "@/lib/admin-permissions"
@@ -38,14 +39,7 @@ export default function TiersPage() {
     try {
       await adminApi.membership.tiers.remove(deleting.tier.id, owner.isCurrent)
       if (!owner.isCurrent()) return
-      for (const queryKey of [
-        ["admin-tiers"],
-        ["admin-memberships"],
-        ["admin-audits"],
-        ["membership-catalog"],
-      ])
-        void client.invalidateQueries({ queryKey })
-      window.dispatchEvent(new CustomEvent("pigclaude:admin-membership"))
+      refreshTierCatalog(client)
       setDeleting(null)
     } catch (cause) {
       if (owner.isCurrent())

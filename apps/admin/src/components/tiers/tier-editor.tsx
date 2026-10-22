@@ -5,6 +5,7 @@ import type { Tier } from "@pigclaude/api/membership/types"
 import { useAdminOperationOwner } from "@/hooks/use-admin-operation-owner"
 import { adminSessionGeneration } from "@/lib/session-generation"
 import { adminApi } from "@/lib/api"
+import { refreshTierCatalog } from "@/components/tiers/refresh-tier-catalog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -92,14 +93,7 @@ export function TierEditor({
         owner.isCurrent,
       )
       if (!owner.isCurrent()) return
-      for (const queryKey of [
-        ["admin-tiers"],
-        ["admin-memberships"],
-        ["admin-audits"],
-        ["membership-catalog"],
-      ])
-        void client.invalidateQueries({ queryKey })
-      window.dispatchEvent(new CustomEvent("pigclaude:admin-membership"))
+      refreshTierCatalog(client)
       onClose()
     } catch (cause) {
       if (owner.isCurrent()) setError(cause instanceof Error ? cause.message : "保存失败")

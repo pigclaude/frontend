@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react"
 import { useLocation, useNavigate } from "react-router"
 import { Command as CommandPrimitive } from "cmdk"
-import { CornerDownLeft, Search, type LucideIcon } from "lucide-react"
+import { CornerDownLeft, Search } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Kbd } from "@/components/ui/kbd"
@@ -16,7 +16,7 @@ interface CmdkPage {
   name: string
   group: string
   kw: string
-  icon: LucideIcon
+  icon: (typeof NAV_ICONS)[string]
   action?: () => void
 }
 

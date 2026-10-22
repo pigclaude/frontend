@@ -38,6 +38,7 @@ export interface TierOption extends OptionInput {
   id: string
   priceFen: string
   monthlyPurchaseFen: string
+  savedFen: string
 }
 /** 管理等级及服务端定价结果。 */
 export interface Tier extends TierInput {

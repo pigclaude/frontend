@@ -3,3 +3,15 @@
 export function canAdminPermission(permissions: readonly string[], permission: string): boolean {
   return permissions.includes(permission)
 }
+
+/** 等级管理区只接受活跃管理员和精确读写权限。 */
+export function tierPermissions(
+  me: { status: string; permissions?: readonly string[] } | undefined,
+) {
+  const canRead =
+    me?.status === "active" && canAdminPermission(me.permissions ?? [], "membership:read")
+  return {
+    canRead,
+    canWrite: canRead && canAdminPermission(me?.permissions ?? [], "membership:tiers:write"),
+  }
+}

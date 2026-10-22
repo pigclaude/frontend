@@ -4,6 +4,7 @@ import { AdminGuard } from "@/components/admin-guard"
 import { AdminShell } from "@/components/shell/admin-shell"
 import LoginPage from "@/pages/login"
 import UsersPage from "@/pages/users"
+import TiersPage from "@/pages/tiers"
 import MembershipPage from "@/pages/membership"
 import DevicesPage from "@/pages/devices"
 import SettingsSecurityPage from "@/pages/settings-security"
@@ -21,6 +22,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/users" replace /> },
           { path: "users", element: <UsersPage /> },
+          { path: "tiers", element: <TiersPage /> },
           { path: "membership", element: <MembershipPage /> },
           { path: "devices", element: <DevicesPage /> },
           { path: "audits", element: <AuditsPage /> },

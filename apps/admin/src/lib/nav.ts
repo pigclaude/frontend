@@ -8,8 +8,16 @@ export interface NavItem {
   kw: string
   permission?: string
 }
-/** 后台仅展示已经实现的四项业务。 */
+/** 后台仅展示已经实现的业务。 */
 export const NAV: NavItem[] = [
+  {
+    href: "/tiers",
+    name: "会员等级",
+    label: "会员等级",
+    group: "运营管理",
+    kw: "tiers dengji jiage",
+    permission: "membership:read",
+  },
   {
     href: "/settings",
     name: "系统设置",

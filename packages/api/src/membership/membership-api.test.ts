@@ -106,6 +106,7 @@ it("existing tier preview keeps immutable code while save omits it and retains o
                 id: "temporary-option",
                 priceFen: "1",
                 monthlyPurchaseFen: "1",
+                savedFen: "0",
               },
             ],
           },
@@ -160,7 +161,7 @@ it("tier serialization excludes response-only fields without mutating editing ID
   const editing = {
     ...tier,
     id: "existing",
-    options: [{ ...tier.options[0], priceFen: "123", monthlyPurchaseFen: "234" }],
+    options: [{ ...tier.options[0], priceFen: "123", monthlyPurchaseFen: "234", savedFen: "111" }],
   }
   await api.tiers.preview(editing)
   await api.tiers.save(editing.id, editing)

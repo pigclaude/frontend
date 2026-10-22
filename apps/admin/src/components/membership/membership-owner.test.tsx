@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { GrantDialog } from "./grant-dialog"
+import { setupPickerDom, fillGrant } from "./grant-test-support"
 import { MembersSection } from "./members-section"
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn<typeof fetch>(),
@@ -16,7 +17,15 @@ vi.mock("sonner", () => ({ toast: { success: mocks.success, error: mocks.error }
 vi.mock("@/lib/api", async () => {
   const { createClient } = await import("@pigclaude/api/client")
   const { createAdminApi } = await import("@pigclaude/api/admin")
-  return { adminApi: createAdminApi(createClient({ fetch: mocks.fetch })) }
+  const adminApi = createAdminApi(createClient({ fetch: mocks.fetch }))
+  adminApi.membership.grants.preview = async () => ({
+    tier: { code: "vip", name: "VIP", level: 1 },
+    validUntil: "2026-12-01T00:00:00Z",
+    voidedRemainingSeconds: "0",
+    voidedValueFen: "0",
+    convertedSeconds: "0",
+  })
+  return { adminApi }
 })
 const member = {
   userId: "u1",
@@ -58,9 +67,10 @@ function mount(kind: "grant" | "revoke", client: QueryClient) {
 }
 async function submit(kind: "grant" | "revoke") {
   if (kind === "grant") {
-    fireEvent.change(screen.getByLabelText("用户 ID"), { target: { value: "u1" } })
-    fireEvent.change(screen.getByLabelText("等级 ID"), { target: { value: "day" } })
-    fireEvent.change(screen.getByLabelText("操作备注"), { target: { value: "reviewed" } })
+    await fillGrant("reviewed")
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "确认授予" }).hasAttribute("disabled")).toBe(false),
+    )
     fireEvent.click(screen.getByRole("button", { name: "确认授予" }))
   } else {
     fireEvent.click(await screen.findByRole("button", { name: "撤销" }))
@@ -69,11 +79,26 @@ async function submit(kind: "grant" | "revoke") {
   }
 }
 function normal(url: RequestInfo | URL) {
+  if (String(url).includes("/membership/tiers"))
+    return json({ items: [{ id: "day", name: "VIP", enabled: true }] })
+  if (String(url).includes("/membership/users"))
+    return json({
+      items: [
+        {
+          userId: "u1",
+          email: "member@example.test",
+          tierName: null,
+          validUntil: null,
+          status: "none",
+        },
+      ],
+    })
   return String(url) === "/admin/v1/session"
     ? json({ csrf: "owner-csrf" })
     : json({ items: [member], nextCursor: null })
 }
 const writes = () => mocks.fetch.mock.calls.filter(([, init]) => init?.method === "POST")
+setupPickerDom()
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.fetch.mockImplementation(async (url) => normal(url))

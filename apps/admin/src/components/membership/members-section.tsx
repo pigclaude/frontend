@@ -1,9 +1,10 @@
 // 负责迁入成熟后台的members-section布局和交互，使用本项目真实 API。
 import { GrantDialog } from "./grant-dialog"
 import { useState } from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import type { MembershipItem, MembershipStatus } from "@pigclaude/api/membership/types"
+import { formatDurationSeconds } from "@pigclaude/web-ui/lib/format"
+import type { Tier, MembershipItem, MembershipStatus } from "@pigclaude/api/membership/types"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -37,31 +38,45 @@ import {
   normalizeUserId,
 } from "./table-parts"
 
-// 会员列表：合并后一个用户一条会员记录。可按用户 ID / 状态筛选；
+// 会员列表：一个用户一条记录，可按邮箱、ID、等级和状态筛选；
 // 行内「撤销」是安全停权（ReasonDialog 收必填原因，写不可变审计）。
 /** MembersSection 保持列表、表单或分页的既有交互契约。 */
-export function MembersSection() {
+export function MembersSection({ canWrite = true }: { canWrite?: boolean }) {
   const [showGrant, setShowGrant] = useState(false)
   const queryClient = useQueryClient()
   const [userInput, setUserInput] = useState("")
   const [userId, setUserId] = useState("")
+  const [tierId, setTierId] = useState("")
+  const tiers = useQuery({
+    queryKey: ["admin-tiers"],
+    queryFn: adminApi.membership.tiers.list,
+    retry: false,
+  })
   const [status, setStatus] = useState<MembershipStatus | "">("")
   const [revokeTarget, setRevokeTarget] = useState<MembershipItem | null>(null)
-  const pager = useCursorPager(["admin-memberships", userId, status], (cursor) =>
+  const pager = useCursorPager(["admin-memberships", userId, status, tierId], (cursor) =>
     adminApi.membership.memberships
       .list({
         q: userId || undefined,
         status,
-        cursor: cursor === "0" ? undefined : cursor,
+        tierId: tierId || undefined,
+        cursor: !cursor || cursor === "0" ? undefined : cursor,
         limit: 20,
       })
       .then((page) => ({ ...page, nextCursor: page.nextCursor ?? "0" })),
   )
   const revokeOperation = useAdminOperationOwner(
-    JSON.stringify([userId, status, revokeTarget?.userId, revokeTarget?.entitlementVersion]),
+    JSON.stringify([
+      userId,
+      status,
+      tierId,
+      canWrite,
+      revokeTarget?.userId,
+      revokeTarget?.entitlementVersion,
+    ]),
   )
   async function revoke(reason: string) {
-    if (!revokeTarget) return
+    if (!revokeTarget || !canWrite) return
     const owner = revokeOperation.begin()
     if (!owner) return
     const targetUserId = revokeTarget.userId
@@ -86,13 +101,17 @@ export function MembersSection() {
 
   return (
     <>
-      {showGrant && (
+      {showGrant && canWrite && (
         <GrantDialog open={showGrant} onOpenChange={setShowGrant} onGranted={pager.reset} />
       )}
       <TableCardContent
         pager={pager}
         userInput={userInput}
         status={status}
+        tierId={tierId}
+        tiers={tiers.data?.items ?? []}
+        onTier={setTierId}
+        canWrite={canWrite}
         onUserInput={setUserInput}
         onApply={() => setUserId(normalizeUserId(userInput))}
         onStatus={setStatus}
@@ -100,7 +119,7 @@ export function MembersSection() {
         onGrant={() => setShowGrant(true)}
       />
       <ReasonDialog
-        open={revokeTarget !== null}
+        open={revokeTarget !== null && canWrite}
         title={`撤销用户 ${revokeTarget?.userId ?? ""} 的会员`}
         description={`撤销用户 ${revokeTarget?.userId ?? ""} 的会员后，该用户将无法继续使用会员权限。请填写撤销原因。`}
         confirmLabel="确认"
@@ -117,6 +136,10 @@ function TableCardContent({
   pager,
   userInput,
   status,
+  tierId,
+  tiers,
+  onTier,
+  canWrite,
   onUserInput,
   onApply,
   onStatus,
@@ -126,6 +149,10 @@ function TableCardContent({
   pager: ReturnType<typeof useCursorPager<MembershipItem>>
   userInput: string
   status: MembershipStatus | ""
+  tierId: string
+  tiers: Tier[]
+  onTier: (value: string) => void
+  canWrite: boolean
   onUserInput: (value: string) => void
   onApply: () => void
   onStatus: (value: MembershipStatus | "") => void
@@ -138,10 +165,27 @@ function TableCardContent({
         <FilterToolbar
           title="会员列表"
           userLabel="会员用户筛选"
+          placeholder="邮箱或 ID"
           userInput={userInput}
           onUserInput={onUserInput}
           onApply={onApply}
         >
+          <Select
+            value={tierId || "all"}
+            onValueChange={(value) => onTier(value === "all" ? "" : value)}
+          >
+            <SelectTrigger aria-label="会员等级">
+              <SelectValue placeholder="全部等级" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部等级</SelectItem>
+              {tiers.map((tier) => (
+                <SelectItem key={tier.id} value={tier.id}>
+                  {tier.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select
             value={status || "all"}
             onValueChange={(value) => onStatus(value === "all" ? "" : (value as MembershipStatus))}
@@ -156,9 +200,11 @@ function TableCardContent({
               <SelectItem value="revoked">已撤销</SelectItem>
             </SelectContent>
           </Select>
-          <Button type="button" variant="outline" onClick={onGrant}>
-            人工授予
-          </Button>
+          {canWrite && (
+            <Button type="button" variant="outline" onClick={onGrant}>
+              人工授予
+            </Button>
+          )}
         </FilterToolbar>
       }
       footer={<PagerFooter pager={pager} noun="条会员" />}
@@ -170,10 +216,10 @@ function TableCardContent({
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead>用户</TableHead>
-              <TableHead>档位</TableHead>
+              <TableHead>等级</TableHead>
               <TableHead>状态</TableHead>
-              <TableHead>授权期限</TableHead>
-              <TableHead>权益版本</TableHead>
+              <TableHead>到期时间</TableHead>
+              <TableHead>剩余时间</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
@@ -187,6 +233,7 @@ function TableCardContent({
                 <MembershipRow
                   key={`${item.userId}-${item.entitlementVersion}`}
                   item={item}
+                  canWrite={canWrite}
                   onRevoke={onRevoke}
                 />
               ))
@@ -201,14 +248,19 @@ function TableCardContent({
 /** MembershipRow 保持列表、表单或分页的既有交互契约。 */
 function MembershipRow({
   item,
+  canWrite,
   onRevoke,
 }: {
   item: MembershipItem
+  canWrite: boolean
   onRevoke: (item: MembershipItem) => void
 }) {
   return (
     <TableRow>
-      <TableCell className="font-mono text-foreground">{item.userId}</TableCell>
+      <TableCell>
+        <p>{item.email}</p>
+        <p className="font-mono text-xs text-meta">{item.userId}</p>
+      </TableCell>
       <TableCell>
         <p className="font-mono text-xs text-foreground">{item.tier.name}</p>
         <p className="text-xs text-meta">{item.tier.code}</p>
@@ -218,13 +270,17 @@ function MembershipRow({
       </TableCell>
       <TableCell>{formatTime(item.validUntil)}</TableCell>
       <TableCell>
-        <p className="mt-0.5 text-xs text-meta">版本 {item.entitlementVersion}</p>
+        {formatDurationSeconds(
+          item.status === "active"
+            ? Math.max(0, Math.floor((Date.parse(item.validUntil) - Date.now()) / 1000))
+            : 0,
+        )}
       </TableCell>
       <TableCell className="text-right">
         <Button
           size="sm"
           variant="danger"
-          disabled={item.status === "revoked"}
+          disabled={!canWrite || item.status === "revoked"}
           onClick={() => onRevoke(item)}
         >
           撤销

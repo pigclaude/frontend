@@ -23,6 +23,7 @@ const MEMBERSHIP_STATUS: Record<MembershipStatus, { label: string; tone: BadgeVa
 export function FilterToolbar({
   title,
   userLabel = "用户 ID",
+  placeholder = "用户 ID",
   hint,
   userInput,
   onUserInput,
@@ -31,6 +32,7 @@ export function FilterToolbar({
 }: {
   title: string
   userLabel?: string
+  placeholder?: string
   hint?: ReactNode
   userInput: string
   onUserInput: (value: string) => void
@@ -50,8 +52,7 @@ export function FilterToolbar({
       <SearchInput
         value={userInput}
         onChange={(event) => onUserInput(event.target.value)}
-
-        placeholder="用户 ID"
+        placeholder={placeholder}
         aria-label={userLabel}
         wrapperClassName="sm:w-[200px]!"
       />

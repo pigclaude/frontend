@@ -5,6 +5,9 @@ import { describe, expect, it, vi } from "vitest"
 import MembershipPage from "./membership"
 import DevicesPage from "./devices"
 
+vi.mock("@/hooks/use-admin-me", () => ({
+  useAdminMe: () => ({ data: { id: "admin", status: "active", permissions: ["membership:read"] } }),
+}))
 vi.mock("@/components/membership/members-section", () => ({
   MembersSection: () => <div>会员列表内容</div>,
 }))

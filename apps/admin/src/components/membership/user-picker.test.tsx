@@ -71,7 +71,7 @@ it("shows membership summary", async () => {
   mount()
   query()
   await tick()
-  expect(screen.getByText("SVIP · 2026-12-01 到期")).toBeTruthy()
+  expect(screen.getByText(/SVIP · .* 到期/)).toBeTruthy()
   expect(screen.getByText("u1")).toBeTruthy()
 })
 it.each(["expired", "revoked"] as const)("does not present %s as active", async (status) => {

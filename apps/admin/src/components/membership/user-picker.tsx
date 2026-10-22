@@ -1,4 +1,5 @@
 // 负责按邮箱或 ID 搜索用户，保护防抖请求与选中状态的归属。
+import { formatTime } from "@/lib/format"
 import { useLocation } from "react-router"
 import { useEffect, useState } from "react"
 import type { UserPick } from "@pigclaude/api/membership/types"
@@ -114,7 +115,7 @@ export function UserPicker({
                   <p className="text-xs text-meta">{user.userId}</p>
                   <p className="text-xs text-meta">
                     {user.status === "active" && user.tierName && user.validUntil
-                      ? `${user.tierName} · ${user.validUntil.slice(0, 10)} 到期`
+                      ? `${user.tierName} · ${formatTime(user.validUntil)} 到期`
                       : "无会员"}
                   </p>
                 </CommandItem>

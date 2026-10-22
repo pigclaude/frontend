@@ -125,7 +125,7 @@ it.each(["input-roundtrip", "close-reopen", "session"])(
     expect(api.create).not.toHaveBeenCalled()
     if (mode !== "session") {
       expect(screen.getByRole("button", { name: "确认授予" }).hasAttribute("disabled")).toBe(true)
-      expect(screen.queryByText("生效后：VIP，到期 2026-12-01")).toBeNull()
+      expect(screen.queryByText(/^生效后：VIP，到期 /)).toBeNull()
     }
   },
 )

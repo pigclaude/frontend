@@ -1,4 +1,5 @@
 // 负责通过正式用户选择器授予等级，预览与写入绑定输入、页面和会话。
+import { formatTime } from "@/lib/format"
 import { useMemo, useState, type FormEvent } from "react"
 import { useLocation } from "react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -222,7 +223,7 @@ export function GrantDialog({
           {preview && (
             <div className="rounded-lg border border-border p-3 text-sm">
               <p>
-                生效后：{preview.tier.name}，到期 {preview.validUntil.slice(0, 10)}
+                生效后：{preview.tier.name}，到期 {formatTime(preview.validUntil)}
               </p>
               {BigInt(preview.voidedRemainingSeconds) > 0n && (
                 <p>

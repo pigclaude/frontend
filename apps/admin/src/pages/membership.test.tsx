@@ -138,7 +138,7 @@ describe("MembersSection", () => {
     renderSection()
     fireEvent.click(await screen.findByRole("button", { name: "人工授予" }))
     await fillGrant("manual")
-    expect(await screen.findByText("生效后：SVIP，到期 2026-12-01")).toBeTruthy()
+    expect(await screen.findByText(/^生效后：SVIP，到期 /)).toBeTruthy()
     expect(
       screen.getByText("将清除 VIP 剩余 10 天 0 小时（价值 ¥12.50），折合 SVIP 2 天 0 小时"),
     ).toBeTruthy()

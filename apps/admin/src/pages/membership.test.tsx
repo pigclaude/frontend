@@ -60,14 +60,14 @@ describe("MembersSection", () => {
         {
           userId: "u2",
           email: "two@example.test",
-          tierName: "VIP",
+          tier: { code: "vip", name: "VIP", level: 1, cardStyle: "azure" },
           status: "active",
           validUntil: "2026-12-01T00:00:00Z",
         },
       ],
     })
     api.preview.mockResolvedValue({
-      tier: { code: "svip", name: "SVIP", level: 2 },
+      tier: { code: "svip", name: "SVIP", level: 2, cardStyle: "azure" },
       validUntil: "2026-12-01T00:00:00Z",
       voidedRemainingSeconds: "864000",
       voidedValueFen: "1250",
@@ -79,7 +79,7 @@ describe("MembersSection", () => {
           userId: "u1",
           status: "active",
           email: "member@example.test",
-          tier: { code: "vip", name: "VIP", level: 1 },
+          tier: { code: "vip", name: "VIP", level: 1, cardStyle: "azure" },
           validUntil: "2026-10-20T00:00:00Z",
           entitlementVersion: "2",
         },
@@ -89,7 +89,7 @@ describe("MembersSection", () => {
     api.grant.mockResolvedValue({
       status: "active",
       remainingSeconds: "86400",
-      tier: { code: "vip", name: "VIP", level: 1 },
+      tier: { code: "vip", name: "VIP", level: 1, cardStyle: "azure" },
       validUntil: "2026-10-30T00:00:00Z",
       entitlementVersion: "1",
     })
@@ -158,7 +158,7 @@ describe("MembersSection", () => {
         {
           userId: "expired-id",
           email: "expired@example.test",
-          tier: { code: "vip", name: "VIP", level: 1 },
+          tier: { code: "vip", name: "VIP", level: 1, cardStyle: "azure" },
           status: "expired",
           validUntil: "2020-01-01T00:00:00Z",
           entitlementVersion: "1",

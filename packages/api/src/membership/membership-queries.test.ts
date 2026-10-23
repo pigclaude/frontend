@@ -37,7 +37,6 @@ it("payment-only order query consumes filterTiers without a membership directory
       tierId: "deleted",
       from: "2026-10-22T10:00:00+08:00",
       to: "2026-10-23T10:00:00+08:00",
-      stale: true,
       needsReview: true,
       status: "pending",
       cursor: "opaque",
@@ -51,7 +50,6 @@ it("payment-only order query consumes filterTiers without a membership directory
     tierId: "deleted",
     from: "2026-10-22T10:00:00+08:00",
     to: "2026-10-23T10:00:00+08:00",
-    stale: "true",
     needsReview: "true",
     status: "pending",
     cursor: "opaque",
@@ -109,4 +107,20 @@ it("payment settings reject unexpected secret-bearing response fields before ret
   await expect(
     createAdminApi(createClient({ fetch: fetcher })).settings.payment.view(),
   ).rejects.toThrow("支付设置响应格式无效")
+})
+
+it("reads own order history with cursor", async () => {
+  const fetcher = vi.fn<typeof fetch>(async () => json({ items: [], nextCursor: null }))
+  const api = createHomeApi(createClient({ fetch: fetcher })).membership
+  await api.orders({ cursor: "c1", limit: 10 })
+  await api.orders()
+  expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+    "/v1/membership/orders?cursor=c1&limit=10",
+    "/v1/membership/orders",
+  ])
+})
+it("reads admin order summary", async () => {
+  const fetcher = vi.fn<typeof fetch>(async () => json({}))
+  await createAdminApi(createClient({ fetch: fetcher })).membership.orders.summary()
+  expect(fetcher.mock.calls[0][0]).toBe("/admin/v1/payment/orders/summary")
 })

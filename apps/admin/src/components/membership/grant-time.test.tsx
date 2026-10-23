@@ -33,8 +33,10 @@ it.each([
         code: "vip",
         name: "VIP",
         level: 1,
+        cardStyle: "azure",
         monthlyPriceFen: "100",
-        description: "",
+        tagline: "",
+        benefits: [],
         enabled: true,
         options: [],
       },
@@ -45,14 +47,14 @@ it.each([
       {
         userId: "u1",
         email: "u@example.test",
-        tierName: "VIP",
+        tier: { code: "vip", name: "VIP", level: 1, cardStyle: "azure" },
         validUntil: "2027-01-03T16:57:06Z",
         status: "active",
       },
     ],
   })
   api.preview.mockResolvedValue({
-    tier: { name: "VIP", code: "vip", level: 1 },
+    tier: { name: "VIP", code: "vip", level: 1, cardStyle: "azure" },
     validUntil: "2027-01-03T16:57:06Z",
     voidedRemainingSeconds: "0",
     voidedValueFen: "0",

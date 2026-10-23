@@ -118,7 +118,10 @@ it("does not expose late account A quotes after switching to B", async () => {
       ...quotes,
       offers: [],
       remainingUpgrade: null,
-      entitlement: { ...quotes.entitlement, tier: { code: "svip", name: "SVIP", level: 2 } },
+      entitlement: {
+        ...quotes.entitlement,
+        tier: { code: "svip", name: "SVIP", level: 2, cardStyle: "gold" },
+      },
     })
   const { client } = mount()
   await waitFor(() => expect(mocks.quotes).toHaveBeenCalledTimes(1))

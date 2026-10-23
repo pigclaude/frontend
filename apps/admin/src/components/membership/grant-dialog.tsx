@@ -227,7 +227,7 @@ export function GrantDialog({
               </p>
               {BigInt(preview.voidedRemainingSeconds) > 0n && (
                 <p>
-                  将清除 {user?.status === "active" ? (user.tierName ?? "原会员") : "原会员"} 剩余{" "}
+                  将清除 {user?.status === "active" ? (user.tier?.name ?? "原会员") : "原会员"} 剩余{" "}
                   {formatDurationSeconds(preview.voidedRemainingSeconds)}（价值{" "}
                   {formatFen(preview.voidedValueFen)}），折合 {preview.tier.name}{" "}
                   {formatDurationSeconds(preview.convertedSeconds)}

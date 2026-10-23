@@ -114,8 +114,8 @@ export function UserPicker({
                   <p>{user.email}</p>
                   <p className="text-xs text-meta">{user.userId}</p>
                   <p className="text-xs text-meta">
-                    {user.status === "active" && user.tierName && user.validUntil
-                      ? `${user.tierName} · ${formatTime(user.validUntil)} 到期`
+                    {user.status === "active" && user.tier?.name && user.validUntil
+                      ? `${user.tier?.name} · ${formatTime(user.validUntil)} 到期`
                       : "无会员"}
                   </p>
                 </CommandItem>

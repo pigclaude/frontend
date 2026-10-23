@@ -18,7 +18,9 @@ const tier = {
   name: "VIP",
   level: 1,
   monthlyPriceFen: "10000",
-  description: "",
+  tagline: "",
+  cardStyle: "rose",
+  benefits: ["保留权益"],
   enabled: true,
   options: [
     {
@@ -26,6 +28,8 @@ const tier = {
       months: 3,
       discountKind: "percent",
       discountValue: "7500",
+      badge: "专属",
+      recommended: true,
       enabled: true,
       priceFen: "22500",
       monthlyPurchaseFen: "30000",
@@ -85,6 +89,11 @@ describe("tiers", () => {
     expect(api.save.mock.calls[0][0]).toBe("tier-original")
     expect(api.save.mock.calls[0][1]).not.toHaveProperty("code")
     expect(api.save.mock.calls[0][1].options[0].id).toBe("option-original")
+    expect(api.save.mock.calls[0][1]).toMatchObject({
+      cardStyle: "rose",
+      benefits: ["保留权益"],
+      options: [{ id: "option-original", badge: "专属", recommended: true }],
+    })
   })
   it("percent input 7.5 is sent as 7500", async () => {
     await edit()

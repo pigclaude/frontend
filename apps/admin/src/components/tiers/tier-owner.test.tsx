@@ -14,7 +14,9 @@ const tier: Tier = {
   code: "vip",
   level: 1,
   monthlyPriceFen: "10000",
-  description: "",
+  tagline: "",
+  cardStyle: "azure",
+  benefits: [],
   enabled: true,
   options: [
     {
@@ -22,6 +24,8 @@ const tier: Tier = {
       months: 3,
       discountKind: "none",
       discountValue: "0",
+      badge: null,
+      recommended: false,
       enabled: true,
       priceFen: "30000",
       monthlyPurchaseFen: "30000",

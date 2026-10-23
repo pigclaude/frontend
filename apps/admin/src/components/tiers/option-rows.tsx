@@ -97,7 +97,17 @@ export function OptionRows({
         variant="outline"
         disabled={disabled}
         onClick={() =>
-          onChange([...options, { months: "1", discountKind: "none", value: "0", enabled: true }])
+          onChange([
+            ...options,
+            {
+              months: "1",
+              discountKind: "none",
+              value: "0",
+              badge: null,
+              recommended: false,
+              enabled: true,
+            },
+          ])
         }
       >
         添加档位

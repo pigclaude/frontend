@@ -16,6 +16,12 @@ const row: AdminOrder = {
   email: "buyer@test",
   kind: "purchase",
   tierName: "历史等级",
+  tierCode: "vip",
+  cardStyle: "azure",
+  purpose: "open",
+  optionPriceFen: "1000",
+  paidAt: null,
+  expiresAt: "2026-10-23T00:00:00Z",
   months: 1,
   listPriceFen: "9007199254740993",
   creditFen: "10",
@@ -80,11 +86,9 @@ it("filters pending review and passes opaque cursor; resets on filter", async ()
       expect.objectContaining({ cursor: "opaque+/cursor" }),
     ),
   )
-  fireEvent.click(screen.getByLabelText("只看少收"))
+  fireEvent.change(screen.getByLabelText("订单等级"), { target: { value: "deleted" } })
   await waitFor(() =>
-    expect(mocks.list).toHaveBeenLastCalledWith(
-      expect.objectContaining({ stale: true, cursor: undefined }),
-    ),
+    expect(mocks.list).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: undefined })),
   )
   expect(mocks.tiers).not.toHaveBeenCalled()
   expect(screen.getByText("已删除等级")).toBeTruthy()

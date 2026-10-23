@@ -25,7 +25,7 @@ export function TierCards({
         >
           <h3 className="text-[17px] font-semibold">{tier.name}</h3>
           <p>按月购买 {formatFen(tier.monthlyPriceFen)}</p>
-          <p className="text-sm">{tier.description}</p>
+          <p className="text-sm">{tier.tagline}</p>
           {quotes?.remainingUpgrade?.tierCode === tier.code && onChoose && (
             <UpgradeOffer
               offer={quotes.remainingUpgrade}

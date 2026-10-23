@@ -29,6 +29,9 @@ export function createHomeMembershipApi(client: HttpClient) {
       check()
       return result
     },
+    /** 分页读取当前用户的订单历史。 */
+    orders: (query: { cursor?: string; limit?: number } = {}) =>
+      client.get<T.HomeOrderPage>(`${path}/orders`, query),
     /** 只查询当前登录用户拥有的订单。 */
     order: (orderNo: string) =>
       client.get<T.HomeOrder>(`${path}/orders/${encodeURIComponent(orderNo)}`),

@@ -19,7 +19,7 @@ vi.mock("@/lib/api", async () => {
   const { createAdminApi } = await import("@pigclaude/api/admin")
   const adminApi = createAdminApi(createClient({ fetch: mocks.fetch }))
   adminApi.membership.grants.preview = async () => ({
-    tier: { code: "vip", name: "VIP", level: 1 },
+    tier: { code: "vip", name: "VIP", level: 1, cardStyle: "azure" },
     validUntil: "2026-12-01T00:00:00Z",
     voidedRemainingSeconds: "0",
     voidedValueFen: "0",
@@ -31,7 +31,7 @@ const member = {
   userId: "u1",
   status: "active",
   email: "member@example.test",
-  tier: { code: "vip", name: "VIP", level: 1 },
+  tier: { code: "vip", name: "VIP", level: 1, cardStyle: "azure" },
   validUntil: "2026-10-30T00:00:00Z",
   entitlementVersion: "1",
 }
@@ -87,7 +87,7 @@ function normal(url: RequestInfo | URL) {
         {
           userId: "u1",
           email: "member@example.test",
-          tierName: null,
+          tier: null,
           validUntil: null,
           status: "none",
         },

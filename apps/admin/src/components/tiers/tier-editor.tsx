@@ -144,12 +144,12 @@ export function TierEditor({
             disabled={disabled}
             onChange={(e) => setDraft({ ...draft, monthlyPrice: e.target.value })}
           />
-          <Label htmlFor="tier-description">说明</Label>
+          <Label htmlFor="tier-tagline">说明</Label>
           <Textarea
-            id="tier-description"
-            value={draft.description}
+            id="tier-tagline"
+            value={draft.tagline}
             disabled={disabled}
-            onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+            onChange={(e) => setDraft({ ...draft, tagline: e.target.value })}
           />
           <Label htmlFor="tier-enabled">上架</Label>
           <Switch

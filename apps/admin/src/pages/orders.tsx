@@ -132,14 +132,6 @@ function OrdersContent({ identity }: { identity: string }) {
           />
           只看待处理
         </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={!!filters.stale}
-            onChange={(e) => filter({ stale: e.target.checked || undefined })}
-          />
-          只看少收
-        </label>
       </form>
       {query.isPending && <p role="status">加载中…</p>}
       {query.isError && (

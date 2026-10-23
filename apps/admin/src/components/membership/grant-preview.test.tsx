@@ -16,7 +16,7 @@ const input: GrantInput = {
   remark: "manual",
 }
 const result: GrantPreview = {
-  tier: { code: "vip", name: "VIP", level: 1 },
+  tier: { code: "vip", name: "VIP", level: 1, cardStyle: "azure" },
   validUntil: "2026-12-01",
   voidedRemainingSeconds: "0",
   voidedValueFen: "0",

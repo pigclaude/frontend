@@ -17,7 +17,9 @@ const tier = {
   name: "VIP",
   level: 1,
   monthlyPriceFen: "9007199254740993",
-  description: "",
+  tagline: "展示标语",
+  cardStyle: "gold" as const,
+  benefits: ["权益"],
   enabled: true,
   options: [
     {
@@ -25,6 +27,8 @@ const tier = {
       months: 1,
       discountKind: "none" as const,
       discountValue: "0",
+      badge: "推荐",
+      recommended: true,
       enabled: true,
     },
   ],
@@ -171,7 +175,9 @@ it("tier serialization excludes response-only fields without mutating editing ID
     name: tier.name,
     level: tier.level,
     monthlyPriceFen: tier.monthlyPriceFen,
-    description: tier.description,
+    tagline: tier.tagline,
+    cardStyle: tier.cardStyle,
+    benefits: tier.benefits,
     enabled: tier.enabled,
     options: tier.options,
   }

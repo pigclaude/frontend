@@ -77,7 +77,7 @@ describe("dashboard account facts", () => {
     mocks.me.mockResolvedValue(user)
     mocks.entitlement.mockResolvedValue({
       ...membership,
-      tier: { code: "vip", name: "VIP", level: 1 },
+      tier: { code: "vip", name: "VIP", level: 1, cardStyle: "azure" },
     })
     renderDashboard()
     expect(await screen.findByText("VIP")).toBeTruthy()

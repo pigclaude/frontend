@@ -1,17 +1,21 @@
 // 负责等级表单的精确单位转换和请求白名单，不计算展示金额。
-import type { Tier, TierInput, OptionInput } from "@pigclaude/api/membership/types"
+import type { Tier, TierInput, OptionInput, CardStyle } from "@pigclaude/api/membership/types"
 /** 表单中的数值保留原始文本，避免浮点和输入中间态丢失。 */
 export interface TierDraft {
   code: string
   name: string
   level: string
   monthlyPrice: string
-  description: string
+  tagline: string
+  cardStyle: CardStyle
+  benefits: string[]
   enabled: boolean
   options: {
     id?: string
     months: string
     discountKind: OptionInput["discountKind"]
+    badge: string | null
+    recommended: boolean
     value: string
     enabled: boolean
   }[]
@@ -42,10 +46,14 @@ export function draftFromTier(tier: Tier | null): TierDraft {
         name: tier.name,
         level: String(tier.level),
         monthlyPrice: displayUnits(tier.monthlyPriceFen, 2),
-        description: tier.description,
+        tagline: tier.tagline,
+        cardStyle: tier.cardStyle,
+        benefits: [...tier.benefits],
         enabled: tier.enabled,
         options: tier.options.map((o) => ({
           id: o.id,
+          badge: o.badge,
+          recommended: o.recommended,
           months: String(o.months),
           discountKind: o.discountKind,
           value:
@@ -60,23 +68,57 @@ export function draftFromTier(tier: Tier | null): TierDraft {
         name: "",
         level: "1",
         monthlyPrice: "",
-        description: "",
+        tagline: "",
+        cardStyle: "azure",
+        benefits: [],
         enabled: true,
-        options: [{ months: "1", discountKind: "none", value: "0", enabled: true }],
+        options: [
+          {
+            months: "1",
+            discountKind: "none",
+            value: "0",
+            badge: null,
+            recommended: false,
+            enabled: true,
+          },
+        ],
       }
 }
 /** 预览总是携带已知 code；保存已有等级时调用方显式省略。 */
 export function tierInput(draft: TierDraft): TierInput & { code: string } {
   if (!draft.name.trim() || !draft.code.trim()) throw new Error("请填写名称和代号")
+  if ([...draft.tagline].length > 24) throw new Error("标语最多 24 个字符")
+  if (
+    draft.benefits.length > 8 ||
+    draft.benefits.some((benefit) => {
+      const length = [...benefit.trim()].length
+      return length < 1 || length > 24
+    })
+  )
+    throw new Error("权益最多 8 条，每条需为 1–24 个字符")
+  if (
+    draft.options.some(
+      (option) =>
+        option.badge !== null &&
+        ([...option.badge.trim()].length < 1 || [...option.badge.trim()].length > 6),
+    )
+  )
+    throw new Error("档位角标需为 1–6 个字符")
+  if (draft.options.filter((option) => option.recommended).length > 1)
+    throw new Error("每个等级最多一个推荐档位")
   return {
     code: draft.code.trim(),
     name: draft.name.trim(),
     level: integer(draft.level),
     monthlyPriceFen: parseUnits(draft.monthlyPrice, 2),
-    description: draft.description,
+    tagline: draft.tagline,
+    cardStyle: draft.cardStyle,
+    benefits: [...draft.benefits],
     enabled: draft.enabled,
     options: draft.options.map((o) => ({
       ...(o.id ? { id: o.id } : {}),
+      badge: o.badge,
+      recommended: o.recommended,
       months: integer(o.months),
       discountKind: o.discountKind,
       discountValue:

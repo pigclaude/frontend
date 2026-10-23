@@ -13,7 +13,9 @@ describe("membership plan display", () => {
       name: "VIP",
       level: 1,
       monthlyPriceFen: "1234",
-      description: "桌面设备授权",
+      tagline: "桌面设备授权",
+      cardStyle: "azure",
+      benefits: [],
       options: [],
     }
     render(<TierCards tiers={[plan]} />)
@@ -35,7 +37,9 @@ it("omits zero savings and keeps the exact server per-month amount", () => {
           name: "VIP",
           level: 1,
           monthlyPriceFen: "1234",
-          description: "",
+          tagline: "",
+          cardStyle: "azure",
+          benefits: [],
           options: [
             {
               id: "one",
@@ -44,6 +48,8 @@ it("omits zero savings and keeps the exact server per-month amount", () => {
               monthlyPurchaseFen: "1234",
               savedFen: "0",
               perMonthFen: "1234",
+              badge: null,
+              recommended: false,
             },
           ],
         },

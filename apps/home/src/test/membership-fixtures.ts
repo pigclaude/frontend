@@ -9,7 +9,9 @@ export const catalog: Catalog = {
       name: "VIP",
       level: 1,
       monthlyPriceFen: "1000",
-      description: "基础权益",
+      tagline: "基础权益",
+      cardStyle: "azure",
+      benefits: [],
       options: [
         {
           id: "vip-3",
@@ -18,6 +20,8 @@ export const catalog: Catalog = {
           monthlyPurchaseFen: "3000",
           savedFen: "500",
           perMonthFen: "833",
+          badge: null,
+          recommended: false,
         },
       ],
     },
@@ -26,7 +30,9 @@ export const catalog: Catalog = {
       name: "SVIP",
       level: 2,
       monthlyPriceFen: "2000",
-      description: "高级权益",
+      tagline: "高级权益",
+      cardStyle: "gold",
+      benefits: [],
       options: [
         {
           id: "svip-3",
@@ -35,6 +41,8 @@ export const catalog: Catalog = {
           monthlyPurchaseFen: "6000",
           savedFen: "1000",
           perMonthFen: "1667",
+          badge: null,
+          recommended: false,
         },
       ],
     },
@@ -42,9 +50,10 @@ export const catalog: Catalog = {
 }
 /** 登录报价包含抵扣、赠时及剩余时间升级。 */
 export const quotes: Quotes = {
+  currentTier: null,
   entitlement: {
     status: "active",
-    tier: { code: "vip", name: "VIP", level: 1 },
+    tier: { code: "vip", name: "VIP", level: 1, cardStyle: "azure" },
     validUntil: "2026-12-01T00:00:00Z",
     remainingSeconds: "864000",
     entitlementVersion: "2",

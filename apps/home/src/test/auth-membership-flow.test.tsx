@@ -18,7 +18,7 @@ function fixtureClient(): HttpClient {
       if (path === "/v1/entitlement")
         return {
           status: "expired",
-          tier: { code: "vip", name: "VIP", level: 1 },
+          tier: { code: "vip", name: "VIP", level: 1, cardStyle: "azure" },
           remainingSeconds: "0",
           validUntil: "2026-01-02T00:00:00Z",
           entitlementVersion: "2",

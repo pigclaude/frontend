@@ -29,14 +29,14 @@ beforeEach(() => {
       {
         userId: "u1",
         email: "user@example.test",
-        tierName: null,
+        tier: null,
         validUntil: null,
         status: "none",
       },
     ],
   })
   api.preview.mockResolvedValue({
-    tier: { name: "VIP", code: "vip", level: 1 },
+    tier: { name: "VIP", code: "vip", level: 1, cardStyle: "azure" },
     validUntil: "2026-12-01",
     voidedRemainingSeconds: "0",
     voidedValueFen: "0",

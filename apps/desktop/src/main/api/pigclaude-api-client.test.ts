@@ -11,7 +11,7 @@ const session = {
   status: "active",
 }
 const entitlement = {
-  tier: { code: "vip", name: "VIP", level: 1 },
+  tier: { code: "vip", name: "VIP", level: 1, cardStyle: "gold" },
   status: "active",
   validUntil: "2026-10-21T00:00:00Z",
   entitlementVersion: "1",
@@ -38,12 +38,13 @@ describe("PigclaudeApiClient native resources", () => {
     ])
     expect(result).toMatchObject({
       state: "active",
-      tier: entitlement.tier,
+      tier: { code: "vip", name: "VIP", level: 1 },
       bindingEpoch: session.bindingEpoch,
       account: { userId: session.userId },
       membershipValidUntil: entitlement.validUntil,
       offlineValidUntil: null,
     })
+    expect(result.tier).toEqual({ code: "vip", name: "VIP", level: 1 })
     expect(JSON.stringify(result)).not.toContain("access-secret")
     for (const field of ["productCode", "planKind", "lifetime", "termsVersion"]) {
       expect(result).not.toHaveProperty(field)

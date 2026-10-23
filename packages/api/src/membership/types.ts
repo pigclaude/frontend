@@ -1,9 +1,12 @@
 // 负责会员等级、权益、报价与管理员操作的服务端 DTO；金额保持十进制字符串。
+/** 会员卡面使用固定预设。 */
+export type CardStyle = "azure" | "gold" | "obsidian" | "violet" | "emerald" | "rose"
 /** 公开等级标识不包含内部数据库 ID。 */
 export interface TierRef {
   code: string
   name: string
   level: number
+  cardStyle: CardStyle
 }
 /** 权益状态含从未开通，与撤销和过期严格区分。 */
 export type MembershipStatus = "none" | "active" | "expired" | "revoked"
@@ -21,6 +24,8 @@ export interface OptionInput {
   months: number
   discountKind: "none" | "amount" | "percent"
   discountValue: string
+  badge: string | null
+  recommended: boolean
   enabled: boolean
 }
 /** 创建和预览要求 code；更新客户端按已有 ID 省略 code。 */
@@ -29,7 +34,9 @@ export interface TierInput {
   name: string
   level: number
   monthlyPriceFen: string
-  description: string
+  cardStyle: CardStyle
+  tagline: string
+  benefits: string[]
   enabled: boolean
   options: OptionInput[]
 }
@@ -44,6 +51,7 @@ export interface TierOption extends OptionInput {
 export interface Tier extends TierInput {
   id: string
   code: string
+  activeMemberCount?: number
   options: TierOption[]
 }
 /** 用户目录档位含服务端优惠和单月价格。 */
@@ -54,10 +62,13 @@ export interface CatalogOption {
   monthlyPurchaseFen: string
   savedFen: string
   perMonthFen: string
+  badge: string | null
+  recommended: boolean
 }
 /** 用户公开等级目录。 */
 export interface CatalogTier extends TierRef {
-  description: string
+  tagline: string
+  benefits: string[]
   monthlyPriceFen: string
   options: CatalogOption[]
 }
@@ -86,11 +97,17 @@ export interface RemainingUpgrade {
   payableFen: string
   creditFen: string
 }
+/** 当前等级展示文案由服务端返回。 */
+export interface CurrentTier extends TierRef {
+  tagline: string
+  benefits: string[]
+}
 /** 本人报价与权益同次返回。 */
 export interface Quotes {
   entitlement: EntitlementResponse
   offers: Offer[]
   remainingUpgrade: RemainingUpgrade | null
+  currentTier: CurrentTier | null
 }
 /** 建单只发送意图，不允许客户端金额。 */
 export type CreateOrderInput = { payType: PayType } & (
@@ -144,7 +161,7 @@ export interface ListMembershipsResponse {
 export interface UserPick {
   userId: string
   email: string
-  tierName: string | null
+  tier: TierRef | null
   validUntil: string | null
   status: MembershipStatus
 }
@@ -177,7 +194,6 @@ export type AdminOrdersQuery = {
   tierId?: string
   from?: string
   to?: string
-  stale?: boolean
   needsReview?: boolean
   cursor?: string
   limit?: number
@@ -189,6 +205,12 @@ export interface AdminOrder {
   email: string
   kind: OrderKind
   tierName: string
+  tierCode: string
+  cardStyle: CardStyle
+  purpose: OrderPurpose
+  optionPriceFen: string
+  paidAt: string | null
+  expiresAt: string
   months: number | null
   listPriceFen: string
   creditFen: string
@@ -206,4 +228,33 @@ export interface AdminOrders {
   items: AdminOrder[]
   nextCursor: string | null
   filterTiers: { id: string; name: string }[]
+}
+
+/** 订单目的由服务端冻结。 */
+export type OrderPurpose = "open" | "renew" | "upgrade" | "upgrade_remaining"
+/** 本人历史订单仅展示本人可见快照。 */
+export interface HomeOrderItem {
+  orderNo: string
+  tier: TierRef
+  purpose: OrderPurpose
+  months: number | null
+  payableFen: string
+  paidFen: string | null
+  payType: PayType | "free"
+  status: OrderStatus
+  createdAt: string
+  activatedAt: string | null
+}
+/** 本人历史订单使用服务端游标。 */
+export interface HomeOrderPage {
+  items: HomeOrderItem[]
+  nextCursor: string | null
+}
+/** 后台统计金额和待处理并集均由服务端计算。 */
+export interface AdminOrdersSummary {
+  todayPaidFen: string
+  monthPaidFen: string
+  monthActivatedCount: number
+  needsReviewCount: number
+  pendingCount: number
 }

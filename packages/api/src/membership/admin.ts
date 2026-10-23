@@ -54,6 +54,8 @@ export function createAdminMembershipApi(client: HttpClient) {
         owner,
       ),
     orders: {
+      /** 读取服务端统一口径订单统计。 */
+      summary: () => client.get<T.AdminOrdersSummary>("/admin/v1/payment/orders/summary"),
       /** 支付只读用户直接使用响应 filterTiers，无需请求会员目录。 */
       list: (query: T.AdminOrdersQuery = {}) =>
         client.get<T.AdminOrders>("/admin/v1/payment/orders", query),
@@ -70,14 +72,20 @@ function tierFields(input: T.TierInput, includeCode: boolean): T.TierInput {
     name: input.name,
     level: input.level,
     monthlyPriceFen: input.monthlyPriceFen,
-    description: input.description,
+    tagline: input.tagline,
+    cardStyle: input.cardStyle,
+    benefits: input.benefits,
     enabled: input.enabled,
-    options: input.options.map(({ id, months, discountKind, discountValue, enabled }) => ({
-      ...(id === undefined ? {} : { id }),
-      months,
-      discountKind,
-      discountValue,
-      enabled,
-    })),
+    options: input.options.map(
+      ({ id, months, discountKind, discountValue, badge, recommended, enabled }) => ({
+        ...(id === undefined ? {} : { id }),
+        months,
+        discountKind,
+        discountValue,
+        badge,
+        recommended,
+        enabled,
+      }),
+    ),
   }
 }

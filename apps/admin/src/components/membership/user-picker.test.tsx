@@ -11,7 +11,7 @@ vi.mock("@/lib/api", () => ({ adminApi: { membership: { users: { search } } } })
 const user: UserPick = {
   userId: "u1",
   email: "a@example.test",
-  tierName: "SVIP",
+  tier: { code: "svip", name: "SVIP", level: 2, cardStyle: "gold" },
   validUntil: "2026-12-01T00:00:00Z",
   status: "active",
 }

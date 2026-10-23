@@ -23,6 +23,7 @@ const result = spawnSync(
       TMPDIR: process.env.TMPDIR,
       OAUTH_TEST_BROWSER_WS: runtime.browserWs,
       MEMBERSHIP_CAPTURE_REVISION: process.env.MEMBERSHIP_CAPTURE_REVISION,
+      MEMBERSHIP_BOUNDARY_SMOKE: process.env.MEMBERSHIP_BOUNDARY_SMOKE,
     },
     encoding: "utf8",
     maxBuffer: 50 * 1024 * 1024,

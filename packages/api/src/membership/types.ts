@@ -119,8 +119,19 @@ export type Payment =
   | { kind: "qr"; qrcode: string; imageUrl: string | null }
   | { kind: "redirect"; url: string }
   | { kind: "free" }
-/** 建单响应仅包含服务端实付与支付载体。 */
+/** 本人订单明细来自服务端冻结字段，不在浏览器重新定价。 */
+export interface OrderPresentation {
+  tier: TierRef
+  purpose: OrderPurpose
+  months: number | null
+  durationSeconds: string
+  optionPriceFen: string
+  creditFen: string
+  bonusSeconds: string
+}
+/** 建单响应仅包含服务端实付、明细与支付载体。 */
 export interface CreatedOrder {
+  presentation: OrderPresentation
   orderNo: string
   payableFen: string
   expiresAt: string
@@ -130,6 +141,7 @@ export interface CreatedOrder {
 export type OrderStatus = "pending" | "activated" | "needs_review" | "expired" | "closed"
 /** 本人订单查询不暴露管理员字段。 */
 export interface HomeOrder {
+  presentation: OrderPresentation
   orderNo: string
   status: OrderStatus
   payableFen: string

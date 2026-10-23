@@ -35,6 +35,15 @@ const tier = {
 }
 it("create order sends body csrf and never computes amounts, preserving img-only payment", async () => {
   const response = {
+    presentation: {
+      tier: { code: "vip", name: "VIP", level: 1, cardStyle: "gold" },
+      purpose: "open",
+      months: 1,
+      durationSeconds: "2592000",
+      optionPriceFen: "9007199254740993",
+      creditFen: "0",
+      bonusSeconds: "0",
+    },
     orderNo: "PC1",
     payableFen: "9007199254740993",
     expiresAt: "now",
@@ -184,4 +193,27 @@ it("tier serialization excludes response-only fields without mutating editing ID
   expect(JSON.parse(String(writes[1][1]?.body))).toEqual(saved)
   expect(editing.id).toBe("existing")
   expect(editing.options[0].id).toBe("original-option")
+})
+
+it("owned return status preserves presentation without inventing a payment carrier", async () => {
+  const response = {
+    orderNo: "PC1",
+    status: "expired",
+    payableFen: "9007199254740993",
+    expiresAt: "now",
+    presentation: {
+      tier: { code: "vip", name: "停售VIP", level: 1, cardStyle: "rose" },
+      purpose: "open",
+      months: 1,
+      durationSeconds: "2592000",
+      optionPriceFen: "9007199254740993",
+      creditFen: "0",
+      bonusSeconds: "0",
+    },
+  }
+  const fetcher = vi.fn<typeof fetch>(async () => json(response))
+  const order = await createHomeApi(createClient({ fetch: fetcher })).membership.order("PC1")
+  expect(order).toEqual(response)
+  expect(order).not.toHaveProperty("payment")
+  expect(fetcher.mock.calls[0][0]).toBe("/v1/membership/orders/PC1")
 })

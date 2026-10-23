@@ -1,5 +1,5 @@
 // 负责提供会员页面和真实支付弹窗测试的服务端报价样例。
-import type { Catalog, Quotes, CreatedOrder } from "@pigclaude/api/membership/types"
+import type { Catalog, Quotes, CreatedOrder, HomeOrder } from "@pigclaude/api/membership/types"
 /** 公开目录保留服务端计算的价格字段。 */
 export const catalog: Catalog = {
   payTypes: ["alipay", "wxpay"],
@@ -85,8 +85,26 @@ export const quotes: Quotes = {
 }
 /** 建单响应只由服务端提供订单和应付金额。 */
 export const created: CreatedOrder = {
+  presentation: {
+    tier: { code: "svip", name: "SVIP", level: 2, cardStyle: "gold" },
+    purpose: "upgrade",
+    months: 3,
+    durationSeconds: "7776000",
+    optionPriceFen: "5000",
+    creditFen: "1000",
+    bonusSeconds: "0",
+  },
   orderNo: "PC12345678901234567890",
   payableFen: "4000",
   expiresAt: "2026-12-01T00:15:00Z",
   payment: { kind: "qr", qrcode: "https://pay.example/qr", imageUrl: null },
+}
+
+/** 本人查单不含支付载体，不能从回跳状态伪造二维码。 */
+export const homeOrder: HomeOrder = {
+  orderNo: created.orderNo,
+  payableFen: created.payableFen,
+  expiresAt: created.expiresAt,
+  presentation: created.presentation,
+  status: "pending",
 }

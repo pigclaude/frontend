@@ -3,16 +3,23 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { ApiError } from "@pigclaude/api/client"
-import { PayDialog } from "@/components/membership/pay-dialog"
+import { PayPanel } from "@/components/membership/pay-panel"
 import type { PayType } from "@pigclaude/api/membership/types"
-import { created } from "./membership-fixtures"
+import { created, homeOrder } from "./membership-fixtures"
 import { homeSessionGeneration } from "@/lib/session-generation"
-const mocks = vi.hoisted(() => ({ createOrder: vi.fn(), order: vi.fn() }))
+const mocks = vi.hoisted(() => ({ createOrder: vi.fn(), order: vi.fn(), entitlement: vi.fn() }))
 vi.mock("@/lib/api", () => ({ homeApi: { membership: mocks } }))
 beforeEach(() => {
+  mocks.entitlement.mockResolvedValue({
+    status: "active",
+    tier: { code: "svip", name: "SVIP", level: 2, cardStyle: "gold" },
+    validUntil: "2027-01-01T00:00:00Z",
+    remainingSeconds: "86400",
+    entitlementVersion: "3",
+  })
   vi.useFakeTimers()
   mocks.createOrder.mockResolvedValue(created)
-  mocks.order.mockResolvedValue({ ...created, status: "pending" })
+  mocks.order.mockResolvedValue({ ...homeOrder, status: "pending" })
 })
 afterEach(() => {
   cleanup()
@@ -28,24 +35,26 @@ function mount(
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client.setQueryData(["me"], { id: "a" })
   const close = vi.fn()
+  const activated = vi.fn()
   const invalidate = vi.spyOn(client, "invalidateQueries")
   const view = render(
     <QueryClientProvider client={client}>
-      <PayDialog
+      <PayPanel
         ownerId="a"
         intent={{ optionId: "svip-3" }}
         payTypes={payTypes}
-        initialPayType={initialPayType}
+        payType={initialPayType ?? payTypes[0] ?? "alipay"}
+        onActivated={activated}
         orderNo={orderNo}
         onClose={close}
       />
     </QueryClientProvider>,
   )
-  return { client, close, invalidate, ...view }
+  return { client, close, activated, invalidate, ...view }
 }
 async function create() {
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "创建订单" }))
+    await vi.advanceTimersByTimeAsync(0)
   })
 }
 async function tick(ms: number) {
@@ -53,18 +62,18 @@ async function tick(ms: number) {
     await vi.advanceTimersByTimeAsync(ms)
   })
 }
-it("renders qr and polls until activated then refreshes queries and closes after 3 seconds", async () => {
+it("renders qr and polls until activated then refreshes queries and closes after 2.5 seconds", async () => {
   const { invalidate, close } = mount()
   await create()
   expect(screen.getByText("应付 ¥40.00")).toBeTruthy()
   expect(screen.getByLabelText("付款二维码").tagName.toLowerCase()).toBe("svg")
-  mocks.order.mockResolvedValue({ ...created, status: "activated" })
+  mocks.order.mockResolvedValue({ ...homeOrder, status: "activated" })
   await tick(2000)
-  expect(screen.getByText("支付成功，会员已生效")).toBeTruthy()
+  expect(screen.getByText("SVIP 已生效")).toBeTruthy()
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ["entitlement"] })
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ["membership-quotes", "a"] })
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ["membership-orders", "a"] })
-  await tick(2999)
+  await tick(2499)
   expect(close).not.toHaveBeenCalled()
   await tick(1)
   expect(close).toHaveBeenCalledTimes(1)
@@ -93,6 +102,7 @@ it.each([true, false])(
     mount()
     await create()
     expect(window.open).toHaveBeenCalled()
+    if (opened) expect(window.opener).toBeNull()
     expect(
       screen.getByText(
         opened ? "已在新窗口打开收银台" : "浏览器阻止了新窗口，请点击下方链接打开收银台",
@@ -107,17 +117,15 @@ it.each([true, false])(
 it.each(["expired", "closed", "needs_review"])("stops at terminal %s", async (status) => {
   mount()
   await create()
-  mocks.order.mockResolvedValue({ ...created, status })
+  mocks.order.mockResolvedValue({ ...homeOrder, status })
   await tick(2000)
   expect(
-    screen.getByText(
-      status === "needs_review" ? "付款已收到，正在人工处理，请联系客服" : "订单已过期，请重新下单",
-    ),
+    screen.getByText(status === "needs_review" ? "付款已收到，正在人工核对" : "付款码已过期"),
   ).toBeTruthy()
   await tick(10000)
   expect(mocks.order).toHaveBeenCalledTimes(1)
   if (status !== "needs_review") {
-    fireEvent.click(screen.getByRole("button", { name: "重新下单" }))
+    fireEvent.click(screen.getByRole("button", { name: "重新获取" }))
     await create()
     expect(mocks.createOrder).toHaveBeenCalledTimes(2)
   }
@@ -126,7 +134,7 @@ it("free payment succeeds without polling", async () => {
   mocks.createOrder.mockResolvedValue({ ...created, payment: { kind: "free" } })
   mount()
   await create()
-  expect(screen.getByText("支付成功，会员已生效")).toBeTruthy()
+  expect(screen.getByText("SVIP 已生效")).toBeTruthy()
   await tick(5000)
   expect(mocks.order).not.toHaveBeenCalled()
 })
@@ -151,7 +159,7 @@ it("stops polling on close and ignores a late order result", async () => {
   await tick(2000)
   fireEvent.click(screen.getByRole("button", { name: "关闭" }))
   await act(async () => {
-    resolve({ ...created, status: "activated" })
+    resolve({ ...homeOrder, status: "activated" })
   })
   await tick(10000)
   expect(invalidate).not.toHaveBeenCalled()
@@ -168,6 +176,7 @@ it("ignores a late create after close and reopening", async () => {
   await create()
   fireEvent.click(screen.getByRole("button", { name: "关闭" }))
   first.unmount()
+  mocks.createOrder.mockReturnValueOnce(new Promise(() => {}))
   mount()
   await act(async () => {
     resolve(created)
@@ -202,13 +211,14 @@ it("resumes a return order immediately without creating another order", async ()
 })
 it("uses the selected enabled channel without sending client prices", async () => {
   mount()
+  await create()
   fireEvent.click(screen.getByRole("radio", { name: "微信" }))
   await create()
   expect(mocks.createOrder).toHaveBeenCalledWith(
     { optionId: "svip-3", payType: "wxpay" },
     expect.any(Function),
   )
-  expect(screen.getByText("请用微信扫码")).toBeTruthy()
+  expect(screen.getByText("请使用微信扫码")).toBeTruthy()
 })
 it("retries status errors and stops after a final response", async () => {
   mocks.order.mockRejectedValueOnce(new Error("network"))
@@ -216,7 +226,7 @@ it("retries status errors and stops after a final response", async () => {
   await create()
   await tick(2000)
   expect(screen.getByRole("alert").textContent).toBe("订单状态读取失败，正在重试")
-  mocks.order.mockResolvedValue({ ...created, status: "needs_review" })
+  mocks.order.mockResolvedValue({ ...homeOrder, status: "needs_review" })
   await tick(2000)
   expect(screen.queryByRole("alert")).toBeNull()
   await tick(6000)

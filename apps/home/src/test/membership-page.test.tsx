@@ -4,12 +4,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import MembershipPage from "@/app/(app)/membership/page"
 import { formatTime } from "@pigclaude/web-ui/lib/format"
-import { catalog, quotes, created } from "./membership-fixtures"
+import { catalog, quotes, created, homeOrder } from "./membership-fixtures"
 const mocks = vi.hoisted(() => ({
   catalog: vi.fn(),
   quotes: vi.fn(),
   me: vi.fn(),
   order: vi.fn(),
+  createOrder: vi.fn(),
   params: "",
   path: "/membership",
 }))
@@ -25,16 +26,18 @@ vi.mock("@/lib/api", () => ({
       catalog: mocks.catalog,
       quotes: mocks.quotes,
       order: mocks.order,
+      createOrder: mocks.createOrder,
     },
   },
 }))
 beforeEach(() => {
+  mocks.createOrder.mockResolvedValue(created)
   mocks.params = ""
   mocks.path = "/membership"
   mocks.me.mockResolvedValue({ id: "a" })
   mocks.catalog.mockResolvedValue(catalog)
   mocks.quotes.mockResolvedValue(quotes)
-  mocks.order.mockResolvedValue({ ...created, status: "pending" })
+  mocks.order.mockResolvedValue({ ...homeOrder, status: "pending" })
 })
 afterEach(() => {
   cleanup()
@@ -212,4 +215,53 @@ it("formats entitlement expiry for readers instead of raw ISO", async () => {
   mount()
   await screen.findByText(`有效期至 ${formatTime("2026-12-01T00:00:00Z")}`)
   expect(screen.queryByText(/2026-12-01T00:00:00Z/)).toBeNull()
+})
+
+it("page wires automatic checkout with the selected channel", async () => {
+  mount()
+  fireEvent.click(await screen.findByRole("radio", { name: /SVIP/ }))
+  fireEvent.click(screen.getByRole("radio", { name: "微信" }))
+  fireEvent.click(screen.getByRole("button", { name: "立即升级" }))
+  await waitFor(() =>
+    expect(mocks.createOrder).toHaveBeenCalledWith(
+      { optionId: "svip-3", payType: "wxpay" },
+      expect.any(Function),
+    ),
+  )
+  expect(screen.queryByRole("button", { name: "创建订单" })).toBeNull()
+})
+it("page wires free quote to confirmation before a POST", async () => {
+  mocks.quotes.mockResolvedValue({
+    ...quotes,
+    offers: quotes.offers.map((offer) => ({ ...offer, payableFen: "0" })),
+  })
+  mount()
+  fireEvent.click(await screen.findByRole("radio", { name: /SVIP/ }))
+  fireEvent.click(screen.getByRole("button", { name: "免费升级" }))
+  expect(await screen.findByText("本次升级无需付款")).toBeTruthy()
+  expect(mocks.createOrder).not.toHaveBeenCalled()
+})
+
+it("success closes with a toast and replays the current card glint", async () => {
+  vi.useFakeTimers()
+  mocks.createOrder.mockResolvedValue({ ...created, payment: { kind: "free" } })
+  mount()
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(20)
+  })
+  const firstCard = screen.getByRole("radio", { name: /VIP.*基础权益/ })
+  fireEvent.click(screen.getByRole("button", { name: "立即续费" }))
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(20)
+  })
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2500)
+  })
+  expect(screen.queryByRole("dialog")).toBeNull()
+  expect(screen.getByRole("radio", { name: /VIP.*基础权益/ })).not.toBe(firstCard)
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(50)
+  })
+  expect(screen.getByText("VIP 已生效")).toBeTruthy()
+  vi.useRealTimers()
 })

@@ -7,7 +7,9 @@ export function MembershipCards({
   cards,
   selected,
   onSelect,
+  glintSequence = 0,
 }: {
+  glintSequence?: number
   cards: CardModel[]
   selected: string | null
   onSelect: (code: string) => void
@@ -16,7 +18,7 @@ export function MembershipCards({
     <MembershipCardGroup label="会员等级">
       {cards.map((card) => (
         <MembershipCard
-          key={card.code}
+          key={`${card.code}:${card.role === "current" || card.role === "current-retired" ? glintSequence : 0}`}
           name={card.name}
           cardStyle={card.cardStyle}
           tagline={card.tagline}

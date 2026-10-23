@@ -6,6 +6,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { StaleSessionResponse } from "@pigclaude/api/client"
 import { formatDurationSeconds, formatTime } from "@pigclaude/web-ui/lib/format"
 import type { PayType } from "@pigclaude/api/membership/types"
+import { Toaster } from "@pigclaude/web-ui/components/sonner"
+import { toast } from "sonner"
 import { BenefitGrid } from "@pigclaude/web-ui/components/benefit-grid"
 import {
   checkoutModel,
@@ -18,7 +20,7 @@ import { CheckoutBar } from "@/components/membership/checkout-bar"
 import { PurchaseHistory } from "@/components/membership/purchase-history"
 import { MembershipSkeleton } from "@/components/membership/membership-skeleton"
 import { RemainingUpgradeBanner } from "@/components/membership/remaining-upgrade-banner"
-import { PayDialog } from "@/components/membership/pay-dialog"
+import { PayPanel, type PaySummary } from "@/components/membership/pay-panel"
 import { QueryError, QueryLoading } from "@/components/query-state"
 import { homeApi } from "@/lib/api"
 import { homeSessionGeneration } from "@/lib/session-generation"
@@ -87,10 +89,12 @@ function MembershipAccount({
   const [checkout, setCheckout] = useState<{
     id: number
     intent?: PurchaseIntent
+    summary?: PaySummary
     payType?: PayType
     orderNo?: string
   } | null>(orderNo ? { id: 0, orderNo } : null)
   const [sequence, setSequence] = useState(0)
+  const [glintSequence, setGlintSequence] = useState(0)
   const catalog = useQuery({
     queryKey: ["membership-catalog"],
     queryFn: homeApi.membership.catalog,
@@ -127,10 +131,33 @@ function MembershipAccount({
   const choose = (intent: PurchaseIntent) => {
     const id = sequence + 1
     setSequence(id)
-    setCheckout({ id, intent, payType: channel || undefined })
+    const card = model.cards.find((item) => item.code === model.selectedTier)
+    const remaining = "remainingUpgrade" in intent ? model.remainingUpgrade : null
+    const option = model.options.find((item) => item.id === model.selectedOptionId)
+    const offer = remaining ?? model.offer
+    setCheckout({
+      id,
+      intent,
+      payType: channel || undefined,
+      summary:
+        card && offer
+          ? {
+              tierName: card.name,
+              cardStyle: card.cardStyle,
+              title: remaining
+                ? `${card.name} · 剩余 ${formatDurationSeconds(remaining.remainingSeconds)}`
+                : `${card.name} · ${option?.months ?? ""} 个月`,
+              optionPriceFen: remaining ? null : (option?.priceFen ?? null),
+              creditFen: offer.creditFen,
+              payableFen: offer.payableFen,
+              bonusSeconds: remaining ? "0" : (model.offer?.bonusSeconds ?? "0"),
+            }
+          : undefined,
+    })
   }
   return (
     <main className="page-shell pb-36 sm:pb-8">
+      <Toaster />
       <div>
         <h1 className="page-title">会员</h1>
         {!active && <p>开通会员后即可在桌面端使用 PigClaude</p>}
@@ -155,6 +182,7 @@ function MembershipAccount({
       </section>
       <MembershipCards
         cards={model.cards}
+        glintSequence={glintSequence}
         selected={model.selectedTier}
         onSelect={(tier) => setSelection(defaultSelection(catalog.data, quotes.data, { tier }))}
       />
@@ -185,11 +213,19 @@ function MembershipAccount({
       />
       <PurchaseHistory ownerId={ownerId} session={session} />
       {checkout && (
-        <PayDialog
+        <PayPanel
           key={checkout.id}
           ownerId={ownerId}
           intent={checkout.intent}
-          initialPayType={checkout.payType}
+          payType={checkout.payType ?? "alipay"}
+          summary={checkout.summary}
+          onActivated={() => {
+            setGlintSequence((value) => value + 1)
+            const current = client.getQueryData<{ tier?: { name: string } }>(["entitlement"])
+            toast.success(
+              `${current?.tier?.name ?? entitlement.tier?.name ?? checkout.summary?.tierName ?? "会员"} 已生效`,
+            )
+          }}
           payTypes={catalog.data.payTypes}
           orderNo={checkout.orderNo}
           onClose={() => setCheckout(null)}

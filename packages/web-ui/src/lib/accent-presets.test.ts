@@ -1,10 +1,37 @@
 // 负责验证预设顺序、精确旧值及默认样式的主题色契约。
+import ts from "typescript"
 import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 import { ACCENT_PRESETS, DEFAULT_ACCENT } from "./accent-presets"
 import { ACCENT_BG, contrastRatio } from "./accent-color"
 
 describe("accent presets", () => {
+  it("presets are complete static literal tables without runtime dependencies", () => {
+    const source = readFileSync(new URL("./accent-presets.ts", import.meta.url), "utf8")
+    const syntax = ts.createSourceFile("accent-presets.ts", source, ts.ScriptTarget.Latest, true)
+    expect(syntax.statements.some(ts.isImportDeclaration)).toBe(false)
+    const declaration = syntax.statements
+      .filter(ts.isVariableStatement)
+      .flatMap((statement) => [...statement.declarationList.declarations])
+      .find((entry) => entry.name.getText(syntax) === "ACCENT_PRESETS")
+    expect(declaration?.initializer && ts.isArrayLiteralExpression(declaration.initializer)).toBe(
+      true,
+    )
+    if (!declaration?.initializer || !ts.isArrayLiteralExpression(declaration.initializer)) return
+    const presets = declaration.initializer.elements
+    expect(presets).toHaveLength(8)
+    function literalObject(node: ts.Node): boolean {
+      return (
+        ts.isObjectLiteralExpression(node) &&
+        node.properties.every(
+          (property) =>
+            ts.isPropertyAssignment(property) &&
+            (ts.isStringLiteral(property.initializer) || literalObject(property.initializer)),
+        )
+      )
+    }
+    expect(presets.every(literalObject)).toBe(true)
+  })
   it("every preset meets AA in both modes", () => {
     for (const preset of ACCENT_PRESETS)
       for (const mode of ["dark", "light"] as const) {

@@ -39,6 +39,8 @@ export async function authorizeNative(
   const address = server.address()
   if (!address || typeof address === "string") throw new Error("LOCAL_CALLBACK_LISTENER_FAILED")
   const redirect = `http://127.0.0.1:${address.port}/oauth/callback`
+  const callbackPattern = `${redirect}?**`
+  await page.context().route(callbackPattern, (route) => route.continue())
   try {
     const response = await fetch(`${home}/v1/desktop/oauth/contexts`, {
       method: "POST",
@@ -95,6 +97,7 @@ export async function authorizeNative(
     expect(tokens.scope.includes("openid")).toBe(false)
     return tokens
   } finally {
+    await page.context().unroute(callbackPattern)
     server.closeAllConnections()
     await new Promise<void>((done) => server.close(() => done()))
   }

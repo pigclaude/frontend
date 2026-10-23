@@ -58,6 +58,14 @@ it("renders cards durations benefits and checkout", async () => {
   expect(screen.getByRole("button", { name: "立即续费" })).toBeTruthy()
   expect(container.querySelector("select")).toBeNull()
 })
+it("account loading exposes named skeleton without visible loading text", async () => {
+  mocks.me.mockReturnValue(new Promise(() => {}))
+  const { container } = mount()
+  const status = await screen.findByRole("status")
+  expect(status.getAttribute("aria-label")).toBe("正在读取账户…")
+  expect(status.textContent).toBe("")
+  expect(container.querySelector('[data-slot="skeleton"]')).not.toBeNull()
+})
 it("loading shows skeleton not text", async () => {
   mocks.quotes.mockReturnValue(new Promise(() => {}))
   mount()

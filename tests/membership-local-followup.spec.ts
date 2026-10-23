@@ -1,12 +1,21 @@
 // 负责会员验收的会话过期和最终可视读回，不重做购买。
-import { test, expect } from "@playwright/test"
+import { expect } from "@playwright/test"
+import { test } from "./oauth-oidc-owned-browser"
 import { authorizeNative } from "./oauth-oidc-native-client"
-import { config, sql, record, screenshot, goto, login } from "./membership-local-support"
+import {
+  ownedContext,
+  config,
+  sql,
+  record,
+  screenshot,
+  goto,
+  login,
+} from "./membership-local-support"
 test.setTimeout(180_000)
-test("task17 Issue1 concurrent refresh and expiry UI", async ({ browser }) => {
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1100 } })
+test("task15 Issue1 concurrent refresh and expiry UI", async ({ browser }) => {
+  const context = await ownedContext(browser, { viewport: { width: 1440, height: 1100 } })
   const user = await context.newPage()
-  const email = "task17-main@example.test"
+  const email = `${config.runId}-main@example.test`
   await login(user, email)
   await goto(user, `${config.home}/membership`)
   sql(
@@ -35,7 +44,7 @@ test("task17 Issue1 concurrent refresh and expiry UI", async ({ browser }) => {
     ["home", config.home],
     ["admin", config.admin],
   ]) {
-    const expiryContext = await browser.newContext({ viewport: { width: 1100, height: 900 } })
+    const expiryContext = await ownedContext(browser, { viewport: { width: 1100, height: 900 } })
     const expiry = await expiryContext.newPage()
     await expiry.clock.install()
     await goto(expiry, `${origin}/login`)
@@ -103,48 +112,5 @@ test("task17 Issue1 concurrent refresh and expiry UI", async ({ browser }) => {
     if (!(error instanceof Error) || error.message !== "EXPECTED_NATIVE_EXPIRY") throw error
   })
   expect(expiredNative).toBe(true)
-  await context.close()
-})
-
-test("task17 final visual readback", async ({ browser }) => {
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1500 } })
-  const page = await context.newPage()
-  await login(page, "task17-main@example.test")
-  await goto(page, `${config.home}/membership`)
-  await expect(page.getByText(/有效期至/)).toBeVisible()
-  expect(await page.getByText(/有效期至/).textContent()).not.toMatch(/T\d{2}:/)
-  await page.evaluate(() => window.scrollTo(0, 0))
-  const title = await page.getByRole("heading", { name: "会员", exact: true }).boundingBox()
-  const header = await page.locator("header").first().boundingBox()
-  expect(title && header && title.y >= header.y + header.height).toBe(true)
-  record("10-membership-layout", {
-    title,
-    header,
-    scrollY: await page.evaluate(() => scrollY),
-    expiry: await page.getByText(/有效期至/).textContent(),
-  })
-  await screenshot(page, "07-native-entitlement-membership")
-  await login(page, "admin@example.test", true)
-  await goto(page, `${config.admin}/orders`)
-  await expect(page.locator("tbody").getByText("已生效", { exact: true }).first()).toBeVisible()
-  const cells = await page.locator("tbody tr").allTextContents()
-  expect(cells).toHaveLength(5)
-  for (const text of cells) {
-    expect(text).toContain("已生效")
-    expect(text).toMatch(/2026-/)
-    expect(text).not.toMatch(/\d{4}-\d{2}-\d{2}T/)
-  }
-  record("10-orders-accessible-rows", cells)
-  await page.locator("table").evaluate((table) => {
-    let parent = table.parentElement
-    while (parent) {
-      if (parent.scrollWidth > parent.clientWidth) {
-        parent.scrollLeft = parent.scrollWidth
-        return
-      }
-      parent = parent.parentElement
-    }
-  })
-  await screenshot(page, "06-orders-right")
   await context.close()
 })

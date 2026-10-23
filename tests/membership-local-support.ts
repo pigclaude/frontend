@@ -1,14 +1,19 @@
 // 负责任务专属真实浏览器付款、管理员配置、数据库读回及会话过期验收；不保存认证材料。
-import { expect, type Page } from "@playwright/test"
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs"
+import { expect, type Page, type Browser, type BrowserContextOptions } from "@playwright/test"
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs"
 import { execFileSync } from "node:child_process"
 import { resolve } from "node:path"
 const root = resolve(process.cwd(), "..")
-const plan = resolve(root, ".superpowers/sdd/2026-10-22-pigclaude-membership-tiers-payment")
+const plan = resolve(root, ".superpowers/sdd/2026-10-23-pigclaude-membership-experience")
 /** 仅允许本计划私有运行信息与脱敏证据目录。 */
 export const config = JSON.parse(
-  readFileSync(resolve(plan, "task-17-runtime.private.json"), "utf8"),
+  readFileSync(resolve(plan, "task-15-runtime.private.json"), "utf8"),
 ) as {
+  owner: string
+  runId: string
+  evidence: string
+  browserWs: string
+  postgresContainer: string
   home: string
   admin: string
   gateway: string
@@ -18,20 +23,17 @@ export const config = JSON.parse(
   database: string
 }
 /** 仅允许本计划私有运行信息与脱敏证据目录。 */
-export const evidence = resolve(
-  root,
-  "docs/verification/2026-10-22-membership-tiers-payment-evidence",
-)
+export const evidence = config.evidence
 mkdirSync(evidence, { recursive: true })
 if (
+  config.owner !== "2026-10-23-membership-experience" ||
+  config.postgresContainer !== "pigclaude-experience-pg" ||
+  !/^t15-[0-9]+-[a-f0-9]{8}$/.test(config.runId) ||
   !/^settings_test_[a-f0-9]{32}$/.test(config.schema) ||
   !/^pigclaude_oauth_test_[a-f0-9]+$/.test(config.database)
 )
   throw new Error("OWNERSHIP_REQUIRED")
 const records: Record<string, unknown> = {
-  ...(existsSync(resolve(evidence, "database-and-browser.json"))
-    ? JSON.parse(readFileSync(resolve(evidence, "database-and-browser.json"), "utf8"))
-    : {}),
   executedAt: new Date().toISOString(),
   database: config.database,
   schema: config.schema,
@@ -42,7 +44,7 @@ export function sql(query: string) {
     "docker",
     [
       "exec",
-      "pigclaude-membership-pg",
+      config.postgresContainer,
       "psql",
       "-U",
       "postgres",
@@ -59,6 +61,16 @@ export function sql(query: string) {
 }
 /** 在本任务限定资源内执行验收，并只记录业务字段。 */
 export function record(name: string, value: unknown) {
+  let prior: Record<string, unknown> = {}
+  try {
+    prior = JSON.parse(
+      readFileSync(resolve(evidence, "database-and-browser.json"), "utf8"),
+    ) as Record<string, unknown>
+  } catch {
+    /* 本轮首次写入。 */
+  }
+  Object.assign(records, prior)
+  records.executedAt = new Date().toISOString()
   records[name] = value
   writeFileSync(resolve(evidence, "database-and-browser.json"), JSON.stringify(records, null, 2))
   console.log(`ACCEPTANCE ${name}`)
@@ -104,24 +116,64 @@ export async function login(page: Page, email: string, admin = false, register =
   await page.waitForURL((url) => url.pathname === (admin ? "/users" : "/dashboard"))
 }
 /** 通过真实页面完成本地动作，截图不包含认证材料。 */
-export async function pay(page: Page, name: string, email: string, free = false) {
-  await screenshot(page, `${name}-selection`, true)
-  await page.getByRole("button", { name: "创建订单", exact: true }).click()
+export async function pay(
+  page: Page,
+  name: string,
+  email: string,
+  cta: string,
+  tier: string,
+  free = false,
+) {
+  const created = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/v1/membership/orders") && response.request().method() === "POST",
+  )
+  await page.getByRole("button", { name: cta, exact: true }).click()
+  if (free) await page.getByRole("button", { name: "确认升级", exact: true }).click()
+  const response = await created
+  expect(response.status()).toBe(200)
+  const body = (await response.json()) as { order: { orderNo: string }; orderNo?: string }
+  const order = body.order?.orderNo ?? body.orderNo
+  expect(order).toMatch(/^PC[0-9A-Z]{20}$/)
+  record(`${name}-created`, body)
+  const panel = page.getByRole("dialog", { name: "会员支付" })
   if (!free) {
-    await expect(page.getByLabel("付款二维码")).toBeVisible()
+    await expect(panel.getByLabel("付款二维码")).toBeVisible()
     await screenshot(page, `${name}-qr`, true)
-    const order = sql(
-      `SELECT order_no FROM payment_orders o JOIN users u ON u.id=o.user_id WHERE u.email='${email}' AND o.status='pending'`,
-    )
-    expect(order).toMatch(/^PC[0-9A-Z]{20}$/)
-    const response = await fetch(`${config.gateway}/__pay?order=${order}`, {
+    const paid = await fetch(`${config.gateway}/__pay?order=${order}`, {
       method: "POST",
       redirect: "manual",
     })
-    expect(response.status).toBe(200)
+    expect(paid.status).toBe(200)
+    await panel.getByRole("button", { name: "我已完成支付", exact: true }).click()
   }
-  await expect(page.getByText("支付成功，会员已生效", { exact: true })).toBeVisible()
+  await expect(panel.getByRole("status").filter({ hasText: `${tier} 已生效` })).toBeVisible()
   await screenshot(page, `${name}-success`, true)
-  await page.getByRole("button", { name: "关闭", exact: true }).click()
+  await panel.getByRole("button", { name: "完成", exact: true }).click()
   return readback(name, email)
+}
+/** 通过真实等级与时长单选控件选择服务端报价。 */
+export async function selectOffer(page: Page, tier: string, months: number) {
+  await page
+    .getByRole("radiogroup", { name: "会员等级" })
+    .getByRole("radio", { name: new RegExp(`^${tier}\\b`) })
+    .click()
+  await page
+    .getByRole("radiogroup", { name: "购买时长" })
+    .getByRole("radio", { name: new RegExp(`^${months} 个月`) })
+    .click()
+}
+
+/** 每个上下文只允许本轮正式站点和网关，native回调由其专属helper精确注册。 */
+export async function ownedContext(browser: Browser, options: BrowserContextOptions = {}) {
+  const context = await browser.newContext(options)
+  context.setDefaultTimeout(20_000)
+  await context.route("**/*", (route) => {
+    const url = new URL(route.request().url())
+    return [config.home, config.admin, config.gateway].includes(url.origin) ||
+      url.protocol === "data:"
+      ? route.continue()
+      : route.abort()
+  })
+  return context
 }

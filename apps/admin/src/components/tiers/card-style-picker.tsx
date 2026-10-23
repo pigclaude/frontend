@@ -1,4 +1,5 @@
 // 负责六种固定卡面的键盘单选，不改变主题色。
+import "./card-style-picker.css"
 import type { CardStyle } from "@pigclaude/api/membership/types"
 import { MembershipCard, MembershipCardGroup } from "@pigclaude/web-ui/components/membership-card"
 /** 提供固定卡面缩略图和单一键盘入口。 */
@@ -13,7 +14,7 @@ export function CardStylePicker({
 }) {
   return (
     <MembershipCardGroup label="卡面">
-      <div className="grid grid-cols-3 gap-2">
+      <div className="card-style-picker grid w-full grid-cols-2 gap-2 sm:grid-cols-3">
         {(["azure", "gold", "obsidian", "violet", "emerald", "rose"] as const).map((style) => (
           <MembershipCard
             key={style}

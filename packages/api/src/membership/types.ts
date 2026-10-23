@@ -42,6 +42,7 @@ export interface TierInput {
 }
 /** 管理档位的所有展示金额由服务端返回。 */
 export interface TierOption extends OptionInput {
+  perMonthFen: string
   id: string
   priceFen: string
   monthlyPurchaseFen: string
@@ -239,7 +240,7 @@ export interface AdminOrder {
 export interface AdminOrders {
   items: AdminOrder[]
   nextCursor: string | null
-  filterTiers: { id: string; name: string }[]
+  filterTiers: { id: string; name: string; cardStyle: CardStyle }[]
 }
 
 /** 订单目的由服务端冻结。 */

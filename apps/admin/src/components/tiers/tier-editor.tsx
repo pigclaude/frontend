@@ -2,6 +2,7 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import type { Tier } from "@pigclaude/api/membership/types"
+import { useResultGeneration } from "@/components/membership/use-result-generation"
 import { useAdminOperationOwner } from "@/hooks/use-admin-operation-owner"
 import { adminSessionGeneration } from "@/lib/session-generation"
 import { adminApi } from "@/lib/api"
@@ -9,7 +10,10 @@ import { refreshTierCatalog } from "@/components/tiers/refresh-tier-catalog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { CardStylePicker } from "./card-style-picker"
+import { BenefitListEditor } from "./benefit-list-editor"
+import { TierPreview } from "./tier-preview"
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
 import {
   Sheet,
@@ -18,7 +22,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet"
-import { draftFromTier, tierInput } from "./tier-draft"
+import { draftFromTier, tierInput, draftErrors } from "./tier-draft"
 import { OptionRows } from "./option-rows"
 /** 编辑状态只从原等级初始化；预览只提供金额，原始 tier/option 身份永久保留。 */
 export function TierEditor({
@@ -34,10 +38,13 @@ export function TierEditor({
 }) {
   const client = useQueryClient()
   const [draft, setDraft] = useState(() => draftFromTier(tier))
+  const [confirmClose, setConfirmClose] = useState(false)
   const [error, setError] = useState("")
   const [preview, setPreview] = useState<{ key: string; tier: Tier } | null>(null)
   const [previewError, setPreviewError] = useState<{ key: string; message: string } | null>(null)
-  const key = JSON.stringify([identity, canWrite, draft])
+  const scope = JSON.stringify([identity, canWrite, draft])
+  const { generation } = useResultGeneration(scope)
+  const key = JSON.stringify([scope, generation.version, generation.session])
   const previewOperation = useAdminOperationOwner(key)
   const saveOperation = useAdminOperationOwner(JSON.stringify([identity, canWrite]))
   useEffect(() => {
@@ -101,77 +108,138 @@ export function TierEditor({
       owner.finish()
     }
   }
+  function close() {
+    if (saveOperation.pending) return
+    if (canWrite && JSON.stringify(draft) !== JSON.stringify(draftFromTier(tier)))
+      setConfirmClose(true)
+    else onClose()
+  }
+  const fields = draftErrors(draft)
   const disabled = !canWrite || saveOperation.pending
   const prices = preview?.key === key ? preview.tier.options : !canWrite ? tier?.options : undefined
   return (
     <Sheet
       open
       onOpenChange={(open) => {
-        if (!open) onClose()
+        if (!open) close()
       }}
     >
-      <SheetContent className="overflow-y-auto sm:max-w-xl">
+      <SheetContent className="overflow-hidden sm:max-w-[560px]">
         <SheetHeader>
           <SheetTitle>{canWrite ? (tier ? "编辑等级" : "新建等级") : "查看等级"}</SheetTitle>
           <SheetDescription>1 个月按 30 天计。价格由服务端预览计算。</SheetDescription>
         </SheetHeader>
-        <form className="flex flex-col gap-4 p-5" onSubmit={save}>
-          <Label htmlFor="tier-name">名称</Label>
-          <Input
-            id="tier-name"
-            value={draft.name}
-            disabled={disabled}
-            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-          />
-          <Label htmlFor="tier-code">代号</Label>
-          <Input
-            id="tier-code"
-            value={draft.code}
-            disabled={disabled || !!tier}
-            onChange={(e) => setDraft({ ...draft, code: e.target.value })}
-          />
-          <Label htmlFor="tier-level">等级</Label>
-          <Input
-            id="tier-level"
-            value={draft.level}
-            disabled={disabled}
-            onChange={(e) => setDraft({ ...draft, level: e.target.value })}
-          />
-          <Label htmlFor="tier-price">月价（元）</Label>
-          <Input
-            id="tier-price"
-            value={draft.monthlyPrice}
-            disabled={disabled}
-            onChange={(e) => setDraft({ ...draft, monthlyPrice: e.target.value })}
-          />
-          <Label htmlFor="tier-tagline">说明</Label>
-          <Textarea
-            id="tier-tagline"
-            value={draft.tagline}
-            disabled={disabled}
-            onChange={(e) => setDraft({ ...draft, tagline: e.target.value })}
-          />
-          <Label htmlFor="tier-enabled">上架</Label>
-          <Switch
-            id="tier-enabled"
-            checked={draft.enabled}
-            disabled={disabled}
-            onCheckedChange={(enabled) => setDraft({ ...draft, enabled })}
-          />
-          <OptionRows
-            options={draft.options}
-            prices={prices}
-            disabled={disabled}
-            onChange={(options) => setDraft({ ...draft, options })}
-          />
-          {previewError?.key === key && <p role="alert">{previewError.message}</p>}
-          {error && <p role="alert">{error}</p>}
-          {canWrite && (
-            <Button type="submit" disabled={saveOperation.pending}>
-              保存等级
+        <form className="flex min-h-0 flex-1 flex-col" onSubmit={save}>
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
+            <section className="grid grid-cols-2 gap-3">
+              <h3 className="col-span-2">基本信息</h3>
+              {(
+                [
+                  ["name", "tier-name", "名称"],
+                  ["code", "tier-code", "代号"],
+                  ["level", "tier-level", "等级"],
+                  ["monthlyPrice", "tier-price", "月价（元）"],
+                ] as const
+              ).map(([field, id, label]) => (
+                <div key={field} className="space-y-2">
+                  <Label htmlFor={id}>{label}</Label>
+                  <Input
+                    id={id}
+                    value={draft[field]}
+                    disabled={disabled || (field === "code" && !!tier)}
+                    aria-invalid={!!fields[field]}
+                    aria-describedby={fields[field] ? `error-${field}` : undefined}
+                    onChange={(event) => setDraft({ ...draft, [field]: event.target.value })}
+                  />
+                </div>
+              ))}
+            </section>
+            <section className="space-y-3">
+              <h3>卡面</h3>
+              <CardStylePicker
+                value={draft.cardStyle}
+                disabled={disabled}
+                onChange={(cardStyle) => setDraft({ ...draft, cardStyle })}
+              />
+              <Label htmlFor="tier-tagline">标语</Label>
+              <Input
+                id="tier-tagline"
+                aria-invalid={!!fields.tagline}
+                aria-describedby={fields.tagline ? "error-tagline" : undefined}
+                value={draft.tagline}
+                disabled={disabled}
+                onChange={(e) => setDraft({ ...draft, tagline: e.target.value })}
+              />
+            </section>
+            <BenefitListEditor
+              value={draft.benefits}
+              disabled={disabled}
+              onChange={(benefits) => setDraft({ ...draft, benefits })}
+            />
+            <Label htmlFor="tier-enabled">上架</Label>
+            <Switch
+              id="tier-enabled"
+              checked={draft.enabled}
+              disabled={disabled}
+              onCheckedChange={(enabled) => setDraft({ ...draft, enabled })}
+            />
+            <OptionRows
+              error={fields.options}
+              options={draft.options}
+              prices={prices}
+              disabled={disabled}
+              onChange={(options) => setDraft({ ...draft, options })}
+            />
+            <div aria-label="字段错误">
+              {Object.entries(fields)
+                .filter(([field]) => field !== "options")
+                .map(([field, message]) => (
+                  <p
+                    key={field}
+                    id={`error-${field}`}
+                    className="text-destructive"
+                    data-field={field}
+                  >
+                    {message}
+                  </p>
+                ))}
+            </div>
+            <TierPreview
+              tier={
+                preview?.key === key ? preview.tier : !canWrite ? (tier ?? undefined) : undefined
+              }
+            />
+            {previewError?.key === key && <p role="alert">{previewError.message}</p>}
+            {error && <p role="alert">{error}</p>}
+          </div>
+          <div className="flex shrink-0 justify-end gap-2 border-t bg-background p-5">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={saveOperation.pending}
+              onClick={close}
+            >
+              取消
             </Button>
-          )}
+            {canWrite && (
+              <Button type="submit" disabled={saveOperation.pending}>
+                保存等级
+              </Button>
+            )}
+          </div>
         </form>
+        <Dialog open={confirmClose && canWrite} onOpenChange={setConfirmClose}>
+          <DialogContent>
+            <DialogTitle>放弃未保存的修改？</DialogTitle>
+            <DialogDescription>放弃后将恢复已保存的等级信息。</DialogDescription>
+            <Button type="button" onClick={() => setConfirmClose(false)}>
+              继续编辑
+            </Button>
+            <Button type="button" onClick={onClose}>
+              放弃修改
+            </Button>
+          </DialogContent>
+        </Dialog>
       </SheetContent>
     </Sheet>
   )

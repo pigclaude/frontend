@@ -53,7 +53,7 @@ beforeEach(() => {
       row,
       { ...row, orderNo: "PC-shortfall", status: "activated", creditShortfallFen: "23" },
     ],
-    filterTiers: [{ id: "deleted", name: "已删除等级" }],
+    filterTiers: [{ id: "deleted", name: "已删除等级", cardStyle: "azure" }],
     nextCursor: "opaque+/cursor",
   })
 })

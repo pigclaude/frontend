@@ -28,6 +28,7 @@ const tier: Tier = {
       recommended: false,
       enabled: true,
       priceFen: "30000",
+      perMonthFen: "10000",
       monthlyPurchaseFen: "30000",
       savedFen: "0",
     },
@@ -62,7 +63,12 @@ function mount(canWrite = true) {
     )
   }
   const view = render(tree(canWrite))
-  return { ...view, close, invalidate, changePermission: () => view.rerender(tree(false)) }
+  return {
+    ...view,
+    close,
+    invalidate,
+    changePermission: (write = false) => view.rerender(tree(write)),
+  }
 }
 async function tick(ms = 300) {
   await act(async () => {
@@ -143,4 +149,32 @@ describe("tier operation ownership", () => {
       expect(view.invalidate).not.toHaveBeenCalled()
     },
   )
+  it("never revives completed preview on ABA input", async () => {
+    mount()
+    await tick()
+    expect(screen.getByText("现价 ¥270.00")).toBeTruthy()
+    fireEvent.change(screen.getByLabelText("月价（元）"), { target: { value: "200" } })
+    fireEvent.change(screen.getByLabelText("月价（元）"), { target: { value: "100.00" } })
+    expect(screen.queryByText("现价 ¥270.00")).toBeNull()
+    await tick()
+    expect(screen.getByText("现价 ¥270.00")).toBeTruthy()
+  })
+  it("old save finally cannot release the next permission owner's pending", async () => {
+    const old = deferred()
+    const next = deferred()
+    api.save.mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise)
+    const view = mount()
+    fireEvent.click(screen.getByRole("button", { name: "保存等级" }))
+    view.changePermission()
+    view.changePermission(true)
+    fireEvent.change(screen.getByLabelText("名称"), { target: { value: "新草稿" } })
+    fireEvent.click(screen.getByRole("button", { name: "保存等级" }))
+    await act(async () => old.resolve(tier))
+    expect(screen.getByRole("button", { name: "保存等级" }).hasAttribute("disabled")).toBe(true)
+    expect(screen.getByLabelText("名称").getAttribute("value")).toBe("新草稿")
+    expect(view.close).not.toHaveBeenCalled()
+    expect(view.invalidate).not.toHaveBeenCalled()
+    await act(async () => next.resolve(tier))
+    expect(view.close).toHaveBeenCalledTimes(1)
+  })
 })

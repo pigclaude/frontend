@@ -23,7 +23,7 @@ it("payment-only order query consumes filterTiers without a membership directory
   const response = {
     items: [],
     nextCursor: null,
-    filterTiers: [{ id: "deleted", name: "历史等级" }],
+    filterTiers: [{ id: "deleted", name: "历史等级", cardStyle: "azure" }],
   }
   const fetcher = vi.fn<typeof fetch>(async (url) =>
     String(url).startsWith("/admin/v1/payment/orders")

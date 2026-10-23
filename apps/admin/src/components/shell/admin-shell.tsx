@@ -12,6 +12,7 @@ import { useMediaQuery } from "@/hooks/use-media-query"
 import { adminSessionGeneration } from "@/lib/session-generation"
 import { adminApi } from "@/lib/api"
 import { toastApiError } from "@/lib/errors"
+import { AccentPicker } from "@pigclaude/web-ui/components/accent-picker"
 import { ThemeButton } from "../theme-button"
 import { Cmdk } from "./cmdk"
 import { Crumbs } from "./crumbs"
@@ -197,6 +198,7 @@ export function AdminShell() {
                 </span>
               </button>
 
+              <AccentPicker />
               <ThemeButton />
             </div>
           </header>

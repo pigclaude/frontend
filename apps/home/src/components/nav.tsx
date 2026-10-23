@@ -13,6 +13,7 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@pigclaude/web-ui
 import { cn } from "@pigclaude/web-ui/lib/utils"
 import { BrandMark } from "@/components/brand-mark"
 import { UserMenu } from "@/components/user-menu"
+import { AccentPicker } from "@pigclaude/web-ui/components/accent-picker"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 const accountLinks = [
@@ -79,7 +80,9 @@ export function Nav({
           )}
         </div>
         {variant === "auth" ? (
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <AccentPicker />
+            <ThemeToggle />
             <Button asChild variant="outline" size="sm">
               <Link href="/">返回官网</Link>
             </Button>
@@ -120,6 +123,7 @@ export function Nav({
                   </Button>
                 </>
               )}
+              <AccentPicker />
               <ThemeToggle />
               <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
                 <SheetTrigger asChild>

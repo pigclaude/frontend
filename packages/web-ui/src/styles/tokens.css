@@ -18,14 +18,15 @@
   --border-soft: rgba(255, 255, 255, 0.05);
 
   /* ─── Accent ───────────────────────────────────────────────────── */
-  /* The desktop client's blue ramp (#3a83f7 brand). Filled controls carry
-     white text, so the fill is the ramp's deeper step (5.4:1); the brand
-     step itself is the dark-theme hover and the glow/decoration base. */
-  --accent: #2c67c5;
+  /* 品牌色用于光晕和装饰，白字按钮使用更深的底色保持 AA 对比度。
+     交互态单独选择可读填充，不直接把明亮的品牌色作为白字背景。 */
+  --accent: #6352d9;
   --accent-on: #ffffff;
-  --accent-hover: #3a83f7;
-  --accent-active: #1f4e94;
-  --accent-glow: #3a83f7;
+  --accent-hover: #8b7cf6;
+  --accent-active: #4c3db8;
+  --accent-glow: #8b7cf6;
+  --landing-ink-from: #c9c1fd;
+  --landing-ink-to: #8b7cf6;
 
   /* ─── Semantic ─────────────────────────────────────────────────── */
   --success: #27a644;
@@ -109,8 +110,8 @@
   --btn-bg: var(--raise-1);
   --btn-bg-hover: var(--raise-3);
   --btn-shadow: none;
-  /* 主按钮 hover/压态:暗底提亮(Linear 规范),亮底改压深(提亮会洗白白字) */
-  --btn-primary-hover: var(--accent-hover);
+  /* 主按钮交互态使用满足白字 AA 的安全底色。 */
+  --btn-primary-hover: var(--accent);
   --btn-primary-active: var(--accent-active);
   --pop-shadow:
     rgba(0, 0, 0, 0) 0 8px 2px, rgba(0, 0, 0, 0.01) 0 5px 2px, rgba(0, 0, 0, 0.04) 0 3px 2px,
@@ -158,8 +159,8 @@
   --btn-bg: #ffffff;
   --btn-bg-hover: #f3f4f5;
   --btn-shadow: 0 1px 2px rgba(9, 10, 12, 0.06);
-  /* 亮底主按钮 hover 加深:提亮到 #3a83f7 会让白字对比度掉到 3.7:1 */
-  --btn-primary-hover: color-mix(in oklab, var(--accent), black 10%);
+  /* 亮底主按钮交互态沿用可读的安全填充。 */
+  --btn-primary-hover: var(--accent);
   --btn-primary-active: var(--accent-active);
   --pop-shadow:
     0 2px 6px rgba(9, 10, 12, 0.06), 0 12px 32px rgba(9, 10, 12, 0.14),
@@ -171,7 +172,14 @@
   --topbar-blur: blur(16px) saturate(1.8);
   --mobile-menu-bg: rgba(255, 255, 255, 0.88);
   --hero-glow: color-mix(in oklab, var(--accent-glow), transparent 88%);
-  /* 亮底上混白色全部失效:强调用深一档的品牌蓝,语义色用原色/混黑 */
+  --accent: #6352d9;
+  --accent-on: #ffffff;
+  --accent-hover: #6352d9;
+  --accent-active: #4c3db8;
+  --accent-glow: #8b7cf6;
+  --landing-ink-from: #8b7cf6;
+  --landing-ink-to: #6352d9;
+  /* 亮底强调使用更深的品牌色，语义色使用原色或混黑。 */
   --accent-ink: var(--accent);
   --success-ink: color-mix(in oklab, var(--success), black 12%);
   --warn-ink: color-mix(in oklab, var(--warn), black 32%);

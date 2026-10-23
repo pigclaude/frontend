@@ -245,6 +245,35 @@ for (const statement of settingsForm.statements) {
 if (requiredSettingsImports.size)
   throw new Error("target migration mismatch: settings must use fixed admin Card/Switch entities")
 
+// 本任务只批准强调色默认值、landing token 和主按钮安全交互态的精确转换。
+// 其余来源 token 和组件结构仍逐字规范化比较，原有负对照继续生效。
+function task6AccentTransform(source, file) {
+  if (file === "packages/web-ui/src/components/button.tsx") {
+    return source.replace(
+      "bg-primary text-primary-foreground hover:bg-primary/90",
+      "bg-primary text-primary-foreground hover:bg-[var(--btn-primary-hover)] active:bg-[var(--btn-primary-active)]",
+    )
+  }
+  if (file !== "packages/web-ui/src/styles/tokens.css") return source
+  return source
+    .replaceAll("#2c67c5", "#6352d9")
+    .replaceAll("#3a83f7", "#8b7cf6")
+    .replaceAll("#1f4e94", "#4c3db8")
+    .replace(
+      "--accent-glow: #8b7cf6;",
+      "--accent-glow: #8b7cf6;\n  --landing-ink-from: #c9c1fd;\n  --landing-ink-to: #8b7cf6;",
+    )
+    .replace("--btn-primary-hover: var(--accent-hover);", "--btn-primary-hover: var(--accent);")
+    .replace(
+      "--btn-primary-hover: color-mix(in oklab, var(--accent), black 10%);",
+      "--btn-primary-hover: var(--accent);",
+    )
+    .replace(
+      "--accent-ink: var(--accent);",
+      "--accent: #6352d9;\n  --accent-on: #ffffff;\n  --accent-hover: #6352d9;\n  --accent-active: #4c3db8;\n  --accent-glow: #8b7cf6;\n  --landing-ink-from: #8b7cf6;\n  --landing-ink-to: #6352d9;\n  --accent-ink: var(--accent);",
+    )
+}
+
 // 批量读取固定提交的 blob，避免逐组件启动 Git 进程。
 const batch = execFileSync("git", ["-C", sourceRoot, "cat-file", "--batch"], {
   input: migrationPairs.map((pair) => `${sourceCommit}:${pair.source}\n`).join(""),
@@ -260,7 +289,10 @@ for (const pair of migrationPairs) {
   const source = batch.subarray(sourceStart, sourceEnd).toString("utf8")
   batchOffset = sourceEnd + 1
   const target = await readFile(join(root, pair.target), "utf8")
-  const sourceCanonical = await canonicalSource(source, pair.source, true)
+  const sourceCanonical = await canonicalSource(
+    task6AccentTransform(await canonicalSource(source, pair.source, true), pair.source),
+    pair.source,
+  )
   const targetCanonical = await canonicalSource(target, pair.target)
   if (sourceCanonical !== targetCanonical) {
     throw new Error(`target migration mismatch: ${pair.source} -> ${pair.target}`)

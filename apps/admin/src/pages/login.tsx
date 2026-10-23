@@ -5,6 +5,7 @@ import { beginWebOidcLogin } from "@pigclaude/api/web-oidc"
 import { claimAutoStart } from "@pigclaude/api/auto-start-guard"
 import { LineIcon } from "@pigclaude/web-ui/components/line-icon"
 import { Button } from "@/components/ui/button"
+import { AccentPicker } from "@pigclaude/web-ui/components/accent-picker"
 import { ThemeButton } from "@/components/theme-button"
 import { BrandMark } from "@/components/shell/brand-mark"
 import { resolveHomeOrigin } from "@/lib/runtime-config"
@@ -39,7 +40,10 @@ export default function LoginPage() {
         <div className="absolute top-[-280px] left-1/2 h-[560px] w-[900px] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,var(--hero-glow),transparent)]" />
         <div className="absolute inset-0 [mask-image:radial-gradient(ellipse_70%_55%_at_50%_0%,black,transparent)] bg-[linear-gradient(to_right,var(--border-soft)_1px,transparent_1px),linear-gradient(to_bottom,var(--border-soft)_1px,transparent_1px)] bg-[size:44px_44px]" />
       </div>
-      <ThemeButton className="fixed top-4 right-4" />
+      <div className="fixed top-4 right-4 flex items-center gap-2">
+        <AccentPicker />
+        <ThemeButton />
+      </div>
       <div className="relative flex w-full max-w-[400px] animate-in flex-col gap-7 duration-500 fade-in-0 slide-in-from-bottom-2">
         <div className="flex flex-col items-center gap-4 text-center">
           <BrandMark className="size-11 rounded-xl" />

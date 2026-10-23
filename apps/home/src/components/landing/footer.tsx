@@ -1,6 +1,7 @@
 // 负责迁入原首页多列页脚、底栏与渐隐大字标的视觉结构。
 import Link from "next/link"
 import { BrandMark } from "@/components/brand-mark"
+import { AccentPicker } from "@pigclaude/web-ui/components/accent-picker"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 /** 只提供当前真实存在的产品和账户链接。 */
@@ -65,6 +66,7 @@ export function Footer() {
         <div className="landing-foot-bar">
           <span>© {new Date().getFullYear()} PigClaude</span>
           <div className="landing-foot-toggles">
+            <AccentPicker />
             <ThemeToggle />
           </div>
         </div>

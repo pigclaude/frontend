@@ -7,10 +7,8 @@
   --landing-card: var(--panel);
   --landing-card-2: #141516;
   --landing-hi: rgba(255, 255, 255, 0.06);
-  --landing-glow: rgba(58, 131, 247, 0.42);
+  --landing-glow: color-mix(in srgb, var(--accent-glow) 42%, transparent);
   --landing-dot: rgba(255, 255, 255, 0.075);
-  --landing-ink-from: #a9cffb;
-  --landing-ink-to: #3a83f7;
   --landing-ink: var(--accent-ink);
   --landing-live: #5fcf7e;
 }
@@ -18,11 +16,9 @@
   --landing-card: var(--surface);
   --landing-card-2: #fbfbfc;
   --landing-hi: rgba(0, 0, 0, 0.04);
-  --landing-glow: rgba(58, 131, 247, 0.2);
+  --landing-glow: color-mix(in srgb, var(--accent-glow) 20%, transparent);
   --landing-dot: rgba(0, 0, 0, 0.09);
-  --landing-ink-from: #3a83f7;
-  --landing-ink-to: #2c67c5;
-  --landing-ink: color-mix(in oklab, var(--accent), black 12%);
+  --landing-ink: var(--accent-ink);
   --landing-live: #1f8f3a;
 }
 
@@ -138,8 +134,8 @@ a.landing-pill:focus-visible {
 .landing-cta-primary {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    0 0 0 1px rgba(58, 131, 247, 0.7),
-    0 10px 28px -10px rgba(58, 131, 247, 0.9);
+    0 0 0 1px color-mix(in srgb, var(--accent-glow) 70%, transparent),
+    0 10px 28px -10px color-mix(in srgb, var(--accent-glow) 90%, transparent);
 }
 .landing-hero-note {
   margin: 16px 0 0;
@@ -185,14 +181,14 @@ a.landing-pill:focus-visible {
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.7),
     0 60px 140px -30px rgba(0, 0, 0, 0.95),
-    0 0 120px -20px rgba(58, 131, 247, 0.32);
+    0 0 120px -20px color-mix(in srgb, var(--accent-glow) 32%, transparent);
 }
 :root[data-theme="light"] .landing-window {
   border-color: rgba(0, 0, 0, 0.12);
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.03),
     0 50px 110px -30px rgba(9, 10, 12, 0.35),
-    0 0 100px -30px rgba(58, 131, 247, 0.3);
+    0 0 100px -30px color-mix(in srgb, var(--accent-glow) 30%, transparent);
 }
 .landing-stage-still {
   display: none;
@@ -461,15 +457,23 @@ a.landing-pill:focus-visible {
 .landing-plan-hl {
   border-color: color-mix(in oklab, var(--accent-ink), transparent 58%);
   background:
-    linear-gradient(180deg, rgba(58, 131, 247, 0.16), rgba(58, 131, 247, 0.02) 58%),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--accent-glow) 16%, transparent),
+      color-mix(in srgb, var(--accent-glow) 2%, transparent) 58%
+    ),
     var(--landing-card);
-  box-shadow: 0 40px 90px -50px rgba(58, 131, 247, 0.85);
+  box-shadow: 0 40px 90px -50px color-mix(in srgb, var(--accent-glow) 85%, transparent);
 }
 :root[data-theme="light"] .landing-plan-hl {
   background:
-    linear-gradient(180deg, rgba(58, 131, 247, 0.09), rgba(58, 131, 247, 0) 58%),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--accent-glow) 9%, transparent),
+      color-mix(in srgb, var(--accent-glow) 0%, transparent) 58%
+    ),
     var(--landing-card);
-  box-shadow: 0 30px 70px -45px rgba(58, 131, 247, 0.6);
+  box-shadow: 0 30px 70px -45px color-mix(in srgb, var(--accent-glow) 60%, transparent);
 }
 .landing-plan-name {
   display: flex;
@@ -573,12 +577,20 @@ a.landing-pill:focus-visible {
   border: 1px solid var(--border);
   padding: 64px;
   background:
-    radial-gradient(ellipse 60% 70% at 78% 30%, rgba(58, 131, 247, 0.24), transparent 70%),
+    radial-gradient(
+      ellipse 60% 70% at 78% 30%,
+      color-mix(in srgb, var(--accent-glow) 24%, transparent),
+      transparent 70%
+    ),
     var(--landing-card);
 }
 :root[data-theme="light"] .landing-final {
   background:
-    radial-gradient(ellipse 60% 70% at 78% 30%, rgba(58, 131, 247, 0.12), transparent 70%),
+    radial-gradient(
+      ellipse 60% 70% at 78% 30%,
+      color-mix(in srgb, var(--accent-glow) 12%, transparent),
+      transparent 70%
+    ),
     var(--landing-card);
 }
 .landing-final::before {
@@ -677,7 +689,11 @@ a.landing-pill:focus-visible {
   border-top: 0;
 }
 .landing-dl-row.is-mine {
-  background: linear-gradient(90deg, rgba(58, 131, 247, 0.12), transparent 70%);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent-glow) 12%, transparent),
+    transparent 70%
+  );
   box-shadow: inset 2px 0 0 var(--accent);
 }
 .landing-dl-os {

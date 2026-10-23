@@ -41,6 +41,14 @@ export function TierCard({
           <li key={option.id}>
             {option.months} 个月 · {formatFen(option.priceFen)} {option.badge}{" "}
             {option.recommended && "推荐"}
+            <p className="text-sm text-muted-foreground">
+              {option.discountKind === "none"
+                ? "无优惠"
+                : option.discountKind === "amount"
+                  ? `立减 ${formatFen(option.discountValue)}`
+                  : `打折 · 省 ${formatFen(option.savedFen)}`}{" "}
+              · 按月购买 {formatFen(option.monthlyPurchaseFen)}
+            </p>
           </li>
         ))}
       </ul>

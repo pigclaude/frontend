@@ -71,31 +71,46 @@ test("owned history summary attention and rose persistence", async ({ browser })
   const before = sql(
     `SELECT json_build_object('orderNo',order_no,'status',status,'shortfall',credit_shortfall_fen) FROM payment_orders WHERE order_no='${order}'`,
   )
-  sql(
-    `UPDATE payment_orders SET credit_shortfall_fen=1 WHERE order_no='${order}' AND user_id=(SELECT id FROM users WHERE email='${email}')`,
+  const originalShortfall = sql(
+    `SELECT credit_shortfall_fen::text FROM payment_orders WHERE order_no='${order}' AND user_id=(SELECT id FROM users WHERE email='${email}')`,
   )
-  await admin.getByRole("button", { name: "刷新", exact: true }).click()
-  const attentionResponse = admin.waitForResponse(
-    (r) => r.url().includes("/admin/v1/payment/orders?") && r.url().includes("needsReview=true"),
-  )
-  await admin.getByRole("tab", { name: /^待处理/ }).click()
-  const attention = (await (await attentionResponse).json()) as { items: { orderNo: string }[] }
-  expect(attention.items.map((o) => o.orderNo)).toContain(order)
-  await expect(admin.getByLabel("少收警示", { exact: true })).toBeVisible()
-  record("14-attention-controlled-fixture", {
-    reason: "Owned SQL visual/filter fixture, not real gateway shortfall",
-    before: JSON.parse(before),
-    after: JSON.parse(
-      sql(
-        `SELECT json_build_object('orderNo',order_no,'status',status,'shortfall',credit_shortfall_fen) FROM payment_orders WHERE order_no='${order}'`,
+  expect(originalShortfall).toMatch(/^\d+$/)
+  try {
+    sql(
+      `UPDATE payment_orders SET credit_shortfall_fen=1 WHERE order_no='${order}' AND user_id=(SELECT id FROM users WHERE email='${email}')`,
+    )
+    await admin.getByRole("button", { name: "刷新", exact: true }).click()
+    const attentionResponse = admin.waitForResponse(
+      (r) => r.url().includes("/admin/v1/payment/orders?") && r.url().includes("needsReview=true"),
+    )
+    await admin.getByRole("tab", { name: /^待处理/ }).click()
+    const attention = (await (await attentionResponse).json()) as { items: { orderNo: string }[] }
+    expect(attention.items.map((o) => o.orderNo)).toContain(order)
+    await expect(admin.getByLabel("少收警示", { exact: true })).toBeVisible()
+    record("14-attention-controlled-fixture", {
+      reason: "Owned SQL visual/filter fixture, not real gateway shortfall",
+      before: JSON.parse(before),
+      after: JSON.parse(
+        sql(
+          `SELECT json_build_object('orderNo',order_no,'status',status,'shortfall',credit_shortfall_fen) FROM payment_orders WHERE order_no='${order}'`,
+        ),
       ),
-    ),
-    api: attention,
-  })
-  sql(
-    `UPDATE payment_orders SET credit_shortfall_fen=0 WHERE order_no='${order}' AND user_id=(SELECT id FROM users WHERE email='${email}')`,
-  )
-  await context.close()
+      api: attention,
+    })
+  } finally {
+    try {
+      sql(
+        `UPDATE payment_orders SET credit_shortfall_fen=${originalShortfall} WHERE order_no='${order}' AND user_id=(SELECT id FROM users WHERE email='${email}')`,
+      )
+      const restored = sql(
+        `SELECT credit_shortfall_fen::text FROM payment_orders WHERE order_no='${order}' AND user_id=(SELECT id FROM users WHERE email='${email}')`,
+      )
+      expect(restored).toBe(originalShortfall)
+      record("14-attention-restoration", { orderNo: order, originalShortfall, restored })
+    } finally {
+      await context.close()
+    }
+  }
 })
 test("activated return-only closes after real-time success window", async ({ browser }) => {
   const context = await ownedContext(browser)

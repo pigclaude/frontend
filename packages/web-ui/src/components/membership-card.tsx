@@ -1,25 +1,75 @@
 // 提供固定会员卡面及可复用的单选分组键盘行为，不依赖业务 API。
-import { useLayoutEffect, useRef, type ReactNode } from "react"
+import { useCallback, useLayoutEffect, useRef, type ReactNode } from "react"
 
 /** 会员卡面与服务端预设一致，保持共享组件独立。 */
 export type MembershipCardStyle = "azure" | "gold" | "obsidian" | "violet" | "emerald" | "rose"
 
 /** 以单一 Tab 入口和方向键支持组内所有可用会员选项。 */
-export function MembershipCardGroup({ label, children }: { label: string; children: ReactNode }) {
+export function MembershipCardGroup({
+  label,
+  children,
+  layout,
+}: {
+  label: string
+  children: ReactNode
+  layout?: "track"
+}) {
   const ref = useRef<HTMLDivElement>(null)
+  const aligned = useRef<{ radio: HTMLButtonElement | null; mobile: boolean }>({
+    radio: null,
+    mobile: false,
+  })
+  // 只改变轨道的水平位置；缩放中的卡片也按未缩放宽度完整保留。
+  const scrollTrackTo = useCallback(
+    (radio: HTMLButtonElement) => {
+      const group = ref.current
+      if (layout !== "track" || !group || getComputedStyle(group).overflowX !== "auto") return
+      const box = group.getBoundingClientRect()
+      const target = radio.getBoundingClientRect()
+      const left =
+        target.left - box.left + group.scrollLeft - (radio.offsetWidth - target.width) / 2
+      const right = left + radio.offsetWidth
+      if (left < group.scrollLeft + 8) group.scrollLeft = Math.max(0, left - 8)
+      else if (right > group.scrollLeft + group.clientWidth - 8)
+        group.scrollLeft = right - group.clientWidth + 8
+    },
+    [layout],
+  )
+  const alignSelection = useCallback(() => {
+    const group = ref.current
+    if (layout !== "track" || !group) return
+    const radio =
+      Array.from(
+        group.querySelectorAll<HTMLButtonElement>('[role="radio"][aria-checked="true"]'),
+      ).find((node) => node.closest('[role="radiogroup"]') === group) ?? null
+    const mobile = getComputedStyle(group).overflowX === "auto"
+    const previous = aligned.current
+    aligned.current = { radio, mobile }
+    if (radio && mobile && (previous.radio !== radio || !previous.mobile)) scrollTrackTo(radio)
+  }, [layout, scrollTrackTo])
+  useLayoutEffect(() => {
+    if (layout !== "track" || !ref.current || typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(alignSelection)
+    observer.observe(ref.current)
+    return () => observer.disconnect()
+  }, [layout, alignSelection])
   useLayoutEffect(() => {
     const nodes = ref.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]')
     if (!nodes) return
-    const radios = Array.from(nodes)
+    const radios = Array.from(nodes).filter(
+      (radio) => radio.closest('[role="radiogroup"]') === ref.current,
+    )
     const enabled = radios.filter((radio) => !radio.disabled)
     const entry =
       enabled.find((radio) => radio.getAttribute("aria-checked") === "true") ?? enabled[0]
     for (const radio of radios) radio.tabIndex = radio === entry ? 0 : -1
+    alignSelection()
   })
   return (
     <div
       ref={ref}
       className="membership-card-group"
+      data-layout={layout}
       role="radiogroup"
       aria-label={label}
       onKeyDown={(event) => {
@@ -42,8 +92,12 @@ export function MembershipCardGroup({ label, children }: { label: string; childr
               : (current + (direction ?? 0) + radios.length) % radios.length
         const next = radios[index]
         for (const radio of radios) radio.tabIndex = radio === next ? 0 : -1
-        next.focus()
+        next.focus({
+          preventScroll:
+            layout === "track" && getComputedStyle(event.currentTarget).overflowX === "auto",
+        })
         next.click()
+        scrollTrackTo(next)
       }}
     >
       {children}

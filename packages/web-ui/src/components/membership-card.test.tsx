@@ -78,3 +78,18 @@ it("badge carries its preset and benefits disappear when empty", () => {
   rerender(<BenefitGrid items={["高级模型", "专属服务"]} />)
   expect(screen.getAllByRole("listitem")).toHaveLength(2)
 })
+
+it("nested groups retain their own single Tab entry", () => {
+  render(
+    <MembershipCardGroup label="外组">
+      <MembershipCard name="外" cardStyle="azure" onSelect={() => {}} />
+      <MembershipCardGroup label="内组">
+        <MembershipCard name="内一" cardStyle="gold" onSelect={() => {}} />
+        <MembershipCard name="内二" cardStyle="rose" selected onSelect={() => {}} />
+      </MembershipCardGroup>
+    </MembershipCardGroup>,
+  )
+  expect(screen.getByRole("radio", { name: "外" }).tabIndex).toBe(0)
+  expect(screen.getByRole("radio", { name: "内一" }).tabIndex).toBe(-1)
+  expect(screen.getByRole("radio", { name: "内二" }).tabIndex).toBe(0)
+})

@@ -182,15 +182,18 @@ function MembershipAccount({
       </section>
       <MembershipCards
         cards={model.cards}
+        entitlement={entitlement}
         glintSequence={glintSequence}
         selected={model.selectedTier}
         onSelect={(tier) => setSelection(defaultSelection(catalog.data, quotes.data, { tier }))}
       />
-      <DurationPicker
-        options={model.options}
-        selected={model.selectedOptionId}
-        onSelect={(option) => setSelection({ ...selected, option })}
-      />
+      {model.hasPurchasableOffers && (
+        <DurationPicker
+          options={model.options}
+          selected={model.selectedOptionId}
+          onSelect={(option) => setSelection({ ...selected, option })}
+        />
+      )}
       <BenefitGrid
         items={model.cards.find((card) => card.code === model.selectedTier)?.benefits ?? []}
       />
@@ -202,15 +205,17 @@ function MembershipAccount({
             choose({ remainingUpgrade: { tierCode: model.remainingUpgrade.tierCode } })
         }}
       />
-      <CheckoutBar
-        model={model}
-        payTypes={catalog.data.payTypes}
-        payType={channel}
-        onPayType={setPayType}
-        onChoose={() => {
-          if (model.cta.intent) choose(model.cta.intent)
-        }}
-      />
+      {model.hasPurchasableOffers && (
+        <CheckoutBar
+          model={model}
+          payTypes={catalog.data.payTypes}
+          payType={channel}
+          onPayType={setPayType}
+          onChoose={() => {
+            if (model.cta.intent) choose(model.cta.intent)
+          }}
+        />
+      )}
       <PurchaseHistory ownerId={ownerId} session={session} />
       {checkout && (
         <PayPanel

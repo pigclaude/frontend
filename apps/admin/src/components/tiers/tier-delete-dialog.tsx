@@ -1,5 +1,11 @@
 // 负责删除或启停的确认与错误反馈，不自行发起请求。
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 /** 确认动作的归属与 pending 由页面操作 owner 管理。 */
 export function TierDeleteDialog({
@@ -39,17 +45,19 @@ export function TierDeleteDialog({
           确认{action} {name}？{!toggle && "仍有有效会员时请改为下架。"}
         </DialogDescription>
         {error && <p role="alert">{error}</p>}
-        <Button variant="outline" disabled={pending} onClick={onClose}>
-          取消
-        </Button>
-        <Button disabled={pending} onClick={onConfirm}>
-          确认{action}
-        </Button>
-        {conflict && (
-          <Button disabled={pending} onClick={onUnpublish}>
-            改为下架
+        <DialogFooter>
+          <Button variant="outline" disabled={pending} onClick={onClose}>
+            取消
           </Button>
-        )}
+          <Button disabled={pending} onClick={onConfirm}>
+            确认{action}
+          </Button>
+          {conflict && (
+            <Button disabled={pending} onClick={onUnpublish}>
+              改为下架
+            </Button>
+          )}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

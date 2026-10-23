@@ -190,7 +190,7 @@ function TableCardContent({
               <SelectItem value="all">全部等级</SelectItem>
               {tiers.map((tier) => (
                 <SelectItem key={tier.id} value={tier.id}>
-                  {tier.name}
+                  <TierBadge name={tier.name} cardStyle={tier.cardStyle} />
                 </SelectItem>
               ))}
             </SelectContent>

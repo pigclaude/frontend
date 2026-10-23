@@ -1,15 +1,18 @@
 // 展示支付载体、免费确认和三类终态，金额与权益均只使用服务器响应。
 import { useState } from "react"
 import { QRCodeSVG } from "qrcode.react"
-import type { Payment, PayType } from "@pigclaude/api/membership/types"
+import type { Payment, PayType, EntitlementResponse } from "@pigclaude/api/membership/types"
 import { Button } from "@pigclaude/web-ui/components/button"
-import { formatDurationSeconds, formatFen } from "@pigclaude/web-ui/lib/format"
+import { formatDurationSeconds, formatFen, formatTime } from "@pigclaude/web-ui/lib/format"
+import { MembershipCard } from "@pigclaude/web-ui/components/membership-card"
+import { SuccessCheck } from "@/components/icon"
 import { OrderCountdown } from "./order-countdown"
 import type { PaySummary } from "./pay-panel"
 /** 明细不对浏览器金额做加减或费率换算。 */
 export function PayDetails({ summary }: { summary: PaySummary }) {
   return (
-    <div data-style={summary.cardStyle} className="rounded-xl border p-4">
+    <div className="space-y-3">
+      <MembershipCard size="sm" name={summary.tierName} cardStyle={summary.cardStyle} />
       <p>{summary.title}</p>
       {summary.optionPriceFen !== null && <p>套餐金额 {formatFen(summary.optionPriceFen)}</p>}
       <p>已抵扣 {formatFen(summary.creditFen)}</p>
@@ -85,20 +88,39 @@ export function FreeView({ confirm }: { confirm(): void }) {
     </div>
   )
 }
-/** 成功权益有效期仅在刷新成功之后展示。 */
+/** 冻结订单履行与刷新后的当前权益分别表述，历史回跳不冒充新开通。 */
 export function SuccessView({
   tierName,
-  validUntil,
+  historical,
+  entitlement,
   finish,
 }: {
   tierName: string
-  validUntil?: string
+  historical: boolean
+  entitlement?: EntitlementResponse
   finish(): void
 }) {
+  const active = entitlement?.status === "active"
+  const current = active
+    ? (entitlement.tier?.name ?? "会员")
+    : entitlement?.status === "expired"
+      ? "已过期"
+      : entitlement?.status === "revoked"
+        ? "已撤销"
+        : "未开通"
   return (
-    <div>
-      <p role="status">{tierName} 已生效</p>
-      {validUntil && <p>有效期至 {validUntil}</p>}
+    <div className="space-y-3">
+      <SuccessCheck />
+      <p role="status">
+        {historical ? "本订单已生效" : active ? `${tierName} 已生效` : "本订单已生效"}
+      </p>
+      {(historical || !active) && <p>当前会员：{current}</p>}
+      {entitlement?.validUntil && (
+        <p>
+          {historical || !active ? "当前权益有效期至" : "有效期至"}{" "}
+          {formatTime(entitlement.validUntil)}
+        </p>
+      )}
       <Button onClick={finish}>完成</Button>
     </div>
   )

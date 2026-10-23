@@ -4,6 +4,25 @@
   flex-wrap: wrap;
   gap: 16px;
 }
+.membership-card-group[data-layout="track"] > .membership-card[data-dimmed="true"] {
+  transform: scale(0.97);
+}
+.membership-card-group[data-layout="track"] > .membership-card[data-selected="true"] {
+  transform: scale(1);
+}
+@media (width < 640px) {
+  .membership-card-group[data-layout="track"] {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 8px;
+    padding: 8px;
+  }
+  .membership-card-group[data-layout="track"] > .membership-card {
+    flex: 0 0 calc(100% - 40px);
+    scroll-snap-align: start;
+  }
+}
 .membership-card {
   position: relative;
   isolation: isolate;
@@ -182,6 +201,14 @@
 .duration-card:hover:not(:disabled) {
   transform: translateY(-2px);
 }
+.membership-card-group[data-layout="track"]
+  > .membership-card[data-dimmed="true"]:hover:not(:disabled) {
+  transform: scale(0.97);
+}
+.membership-card-group[data-layout="track"]
+  > .membership-card[data-selected="true"]:hover:not(:disabled) {
+  transform: scale(1);
+}
 .membership-card:focus-visible,
 .duration-card:focus-visible {
   outline: 3px solid var(--ring);
@@ -219,7 +246,35 @@
   flex-shrink: 0;
   color: var(--accent-ink);
 }
+.membership-success-check {
+  color: var(--accent-ink);
+}
+.membership-success-check path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: membership-check 450ms ease-out both;
+}
+@keyframes membership-check {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
+  .membership-success-check path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .membership-card-group[data-layout="track"]
+    > .membership-card[data-dimmed="true"]:hover:not(:disabled),
+  .membership-card-group[data-layout="track"]
+    > .membership-card[data-selected="true"]:hover:not(:disabled),
+  .membership-card-group[data-layout="track"] > .membership-card[data-dimmed="true"],
+  .membership-card-group[data-layout="track"] > .membership-card[data-selected="true"] {
+    transform: none;
+  }
   .membership-card,
   .duration-card {
     transition: none;

@@ -286,3 +286,42 @@ it("preserves checkout initial channel and falls back if it is unavailable", asy
   await create()
   expect(mocks.createOrder.mock.calls[1][0]).toEqual({ optionId: "svip-3", payType: "alipay" })
 })
+
+it.each(["active", "expired", "revoked", "none"])(
+  "historical fulfilled VIP order separates fresh %s membership without activation delivery",
+  async (status) => {
+    mocks.order.mockResolvedValue({
+      ...homeOrder,
+      status: "activated",
+      presentation: {
+        ...homeOrder.presentation,
+        tier: { code: "vip", name: "VIP", level: 1, cardStyle: "azure" },
+      },
+    })
+    mocks.entitlement.mockResolvedValue({
+      status,
+      tier: status === "none" ? null : { code: "svip", name: "SVIP", level: 2, cardStyle: "gold" },
+      validUntil: "2027-01-01T00:00:00Z",
+      remainingSeconds: "0",
+      entitlementVersion: "4",
+    })
+    const { activated, close } = mount(created.orderNo)
+    await tick(0)
+    expect(screen.getByText("本订单已生效")).toBeTruthy()
+    expect(screen.queryByText("VIP 已生效")).toBeNull()
+    expect(
+      screen.getByText(
+        status === "active"
+          ? "当前会员：SVIP"
+          : status === "expired"
+            ? "当前会员：已过期"
+            : status === "revoked"
+              ? "当前会员：已撤销"
+              : "当前会员：未开通",
+      ),
+    ).toBeTruthy()
+    await tick(2500)
+    expect(close).toHaveBeenCalledOnce()
+    expect(activated).not.toHaveBeenCalled()
+  },
+)

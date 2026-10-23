@@ -273,3 +273,42 @@ it("success closes with a toast and replays the current card glint", async () =>
   expect(screen.getByText("VIP 已生效")).toBeTruthy()
   vi.useRealTimers()
 })
+
+it.each(["empty", "retired", "blocked", "no-offer"])(
+  "hides duration and checkout when %s has no purchasable offer",
+  async (kind) => {
+    mocks.catalog.mockResolvedValue(kind === "empty" ? { ...catalog, tiers: [] } : catalog)
+    mocks.quotes.mockResolvedValue({
+      ...quotes,
+      currentTier: kind === "retired" ? { ...catalog.tiers[1], enabled: false } : null,
+      offers:
+        kind === "blocked" || kind === "retired"
+          ? quotes.offers.map((offer) => ({ ...offer, blocked: "LOWER_TIER" }))
+          : [],
+    })
+    mount()
+    await screen.findByRole("radiogroup", { name: "会员等级" })
+    expect(screen.queryByRole("radiogroup", { name: "购买时长" })).toBeNull()
+    expect(screen.queryByRole("region", { name: "结算" })).toBeNull()
+    expect(screen.getByRole("button", { name: "购买记录" })).toBeTruthy()
+  },
+)
+it("keeps payment-disabled explanation when real purchasable offers exist", async () => {
+  mocks.catalog.mockResolvedValue({ ...catalog, payTypes: [] })
+  mount()
+  await screen.findByRole("radiogroup", { name: "购买时长" })
+  expect(screen.getByRole("region", { name: "结算" }).textContent).toContain("在线支付暂未开放")
+})
+it("current card contains its own remaining time and expiry, including retired rights", async () => {
+  mocks.catalog.mockResolvedValue({ ...catalog, tiers: [catalog.tiers[1]] })
+  mocks.quotes.mockResolvedValue({
+    ...quotes,
+    currentTier: { ...catalog.tiers[0], enabled: false },
+  })
+  mount()
+  const group = await screen.findByRole("radiogroup", { name: "会员等级" })
+  const current = group.querySelector('[data-style="azure"]')
+  expect(current?.textContent).toContain("剩余 10 天")
+  expect(current?.textContent).toContain("2026-12-01 到期")
+  expect(current?.textContent).toContain("该等级已停售，到期前权益不受影响")
+})

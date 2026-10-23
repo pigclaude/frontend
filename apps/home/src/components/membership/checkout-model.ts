@@ -30,6 +30,7 @@ export interface CtaModel {
 /** 一次选择对应的完整结算视图。 */
 export interface CheckoutModel {
   cards: CardModel[]
+  hasPurchasableOffers: boolean
   selectedTier: string | null
   options: CatalogOption[]
   selectedOptionId: string | null
@@ -112,6 +113,11 @@ export function checkoutModel(
   else if (card?.role === "current") label = "立即续费"
   return {
     cards,
+    hasPurchasableOffers: catalog.tiers.some((tier) =>
+      tier.options.some((option) =>
+        quotes.offers.some((offer) => offer.optionId === option.id && !offer.blocked),
+      ),
+    ),
     selectedTier: selection.tier,
     options,
     selectedOptionId: option?.id ?? null,

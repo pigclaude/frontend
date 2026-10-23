@@ -17,7 +17,7 @@ import {
   SheetDescription,
 } from "@pigclaude/web-ui/components/sheet"
 import { useMediaQuery } from "@pigclaude/web-ui/hooks/use-media-query"
-import { formatDurationSeconds, formatTime } from "@pigclaude/web-ui/lib/format"
+import { formatDurationSeconds } from "@pigclaude/web-ui/lib/format"
 import type { PurchaseIntent } from "./checkout-model"
 import { PaymentMethods } from "./payment-methods"
 import { useOrderLifecycle } from "./use-order-lifecycle"
@@ -74,7 +74,12 @@ export function PayPanel(props: {
     lifecycle.stop()
     setVisible(false)
     latest.current.props.onClose()
-    if (activated) latest.current.props.onActivated()
+    if (
+      activated &&
+      !latest.current.props.orderNo &&
+      client.getQueryData<EntitlementResponse>(["entitlement"])?.status === "active"
+    )
+      latest.current.props.onActivated()
   }
   const finish = useRef(close)
   finish.current = close
@@ -158,8 +163,9 @@ export function PayPanel(props: {
       )}
       {status === "activated" && (
         <SuccessView
+          historical={!!props.orderNo}
+          entitlement={entitlement}
           tierName={summary?.tierName ?? "会员"}
-          validUntil={entitlement?.validUntil ? formatTime(entitlement.validUntil) : undefined}
           finish={() => close(true)}
         />
       )}

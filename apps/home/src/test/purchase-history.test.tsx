@@ -79,3 +79,25 @@ it("rejects a late history response after the current owner changes", async () =
   expect(screen.queryByText("SVIP 3 个月 · 升级")).toBeNull()
   expect(client.getQueryData(["membership-orders", "a", 0])).toBeUndefined()
 })
+
+it.each(["reject", "missing"])(
+  "clipboard %s shows selectable complete order fallback",
+  async (kind) => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value:
+        kind === "missing" ? undefined : { writeText: () => Promise.reject(new Error("denied")) },
+    })
+    mocks.orders.mockResolvedValue({ items: [row], nextCursor: null })
+    mount()
+    fireEvent.click(screen.getByRole("button", { name: "购买记录" }))
+    fireEvent.click(await screen.findByRole("button", { name: "复制单号" }))
+    expect(await screen.findByRole("status")).toHaveProperty(
+      "textContent",
+      "复制失败，请手动复制单号",
+    )
+    const fallback = screen.getByRole("textbox", { name: "完整单号" }) as HTMLInputElement
+    expect(fallback.value).toBe(row.orderNo)
+    expect(fallback.readOnly).toBe(true)
+  },
+)

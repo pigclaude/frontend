@@ -1,4 +1,6 @@
 // 负责档位表单及服务端预览价格，任何显示金额均直接来自响应。
+import { useId } from "react"
+import type { DraftField } from "./tier-draft"
 import type { TierOption } from "@pigclaude/api/membership/types"
 import { formatFen } from "@pigclaude/web-ui/lib/format"
 import { Input } from "@/components/ui/input"
@@ -13,14 +15,38 @@ export function OptionRows({
   prices,
   disabled,
   error,
+  errors,
   onChange,
 }: {
   options: TierDraft["options"]
   prices?: TierOption[]
   disabled: boolean
+  errors?: Partial<Record<DraftField, string>>
   error?: string
   onChange: (options: TierDraft["options"]) => void
 }) {
+  const prefix = useId()
+  function field(index: number, key: "months" | "value" | "badge") {
+    const message = errors?.[`option.${index}.${key}`]
+    return {
+      "aria-invalid": !!message,
+      "aria-describedby":
+        [
+          key === "value" ? `${prefix}-${index}-value-help` : null,
+          message ? `${prefix}-${index}-${key}` : null,
+        ]
+          .filter(Boolean)
+          .join(" ") || undefined,
+    }
+  }
+  function fieldError(index: number, key: "months" | "value" | "badge") {
+    const message = errors?.[`option.${index}.${key}`]
+    return message ? (
+      <p id={`${prefix}-${index}-${key}`} className="text-destructive">
+        档位 {index + 1}：{message}
+      </p>
+    ) : null
+  }
   function update(index: number, patch: Partial<TierDraft["options"][number]>) {
     onChange(options.map((o, i) => (i === index ? { ...o, ...patch } : o)))
   }
@@ -33,10 +59,12 @@ export function OptionRows({
           <Label htmlFor={`months-${i}`}>月数 {i + 1}</Label>
           <Input
             id={`months-${i}`}
+            {...field(i, "months")}
             value={option.months}
             disabled={disabled}
             onChange={(e) => update(i, { months: e.target.value })}
           />
+          {fieldError(i, "months")}
           <Label htmlFor={`kind-${i}`}>优惠方式 {i + 1}</Label>
           <ToggleGroup
             id={`kind-${i}`}
@@ -56,20 +84,24 @@ export function OptionRows({
           <Label htmlFor={`value-${i}`}>优惠值 {i + 1}</Label>
           <Input
             id={`value-${i}`}
+            {...field(i, "value")}
             value={option.value}
             disabled={disabled || option.discountKind === "none"}
             onChange={(e) => update(i, { value: e.target.value })}
           />
-          <p className="text-xs text-muted-foreground">
+          {fieldError(i, "value")}
+          <p id={`${prefix}-${i}-value-help`} className="text-xs text-muted-foreground">
             {option.discountKind === "percent" ? "按几折输入，例如 7.5" : "立减按元输入"}
           </p>
           <Label htmlFor={`badge-${i}`}>角标 {i + 1}</Label>
           <Input
             id={`badge-${i}`}
+            {...field(i, "badge")}
             value={option.badge}
             disabled={disabled}
             onChange={(e) => update(i, { badge: e.target.value })}
           />
+          {fieldError(i, "badge")}
           <Button
             type="button"
             aria-label={`推荐 ${i + 1}`}

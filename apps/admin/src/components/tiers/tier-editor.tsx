@@ -13,7 +13,13 @@ import { Label } from "@/components/ui/label"
 import { CardStylePicker } from "./card-style-picker"
 import { BenefitListEditor } from "./benefit-list-editor"
 import { TierPreview } from "./tier-preview"
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
 import {
   Sheet,
@@ -172,6 +178,7 @@ export function TierEditor({
               />
             </section>
             <BenefitListEditor
+              errors={fields}
               value={draft.benefits}
               disabled={disabled}
               onChange={(benefits) => setDraft({ ...draft, benefits })}
@@ -184,6 +191,7 @@ export function TierEditor({
               onCheckedChange={(enabled) => setDraft({ ...draft, enabled })}
             />
             <OptionRows
+              errors={fields}
               error={fields.options}
               options={draft.options}
               prices={prices}
@@ -192,7 +200,12 @@ export function TierEditor({
             />
             <div aria-label="字段错误">
               {Object.entries(fields)
-                .filter(([field]) => field !== "options")
+                .filter(
+                  ([field]) =>
+                    field !== "options" &&
+                    !field.startsWith("benefit.") &&
+                    !field.startsWith("option."),
+                )
                 .map(([field, message]) => (
                   <p
                     key={field}
@@ -232,12 +245,14 @@ export function TierEditor({
           <DialogContent>
             <DialogTitle>放弃未保存的修改？</DialogTitle>
             <DialogDescription>放弃后将恢复已保存的等级信息。</DialogDescription>
-            <Button type="button" onClick={() => setConfirmClose(false)}>
-              继续编辑
-            </Button>
-            <Button type="button" onClick={onClose}>
-              放弃修改
-            </Button>
+            <DialogFooter>
+              <Button type="button" onClick={() => setConfirmClose(false)}>
+                继续编辑
+              </Button>
+              <Button type="button" onClick={onClose}>
+                放弃修改
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </SheetContent>

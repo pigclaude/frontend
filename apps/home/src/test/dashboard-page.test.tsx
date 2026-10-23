@@ -80,8 +80,47 @@ describe("dashboard account facts", () => {
       tier: { code: "vip", name: "VIP", level: 1, cardStyle: "azure" },
     })
     renderDashboard()
-    expect(await screen.findByText("VIP")).toBeTruthy()
+    expect((await screen.findAllByText("VIP")).length).toBeGreaterThan(0)
     expect(screen.getByText("会员等级")).toBeTruthy()
     expect(screen.queryByText("会员产品")).toBeNull()
   })
+})
+
+it("shows member card with renew action for active member", async () => {
+  mocks.entitlement.mockResolvedValue({
+    ...membership,
+    status: "active",
+    tier: { code: "vip", name: "VIP", level: 1, cardStyle: "azure" },
+    remainingSeconds: "176400",
+    validUntil: "2026-12-01T00:00:00Z",
+  })
+  renderDashboard()
+  expect((await screen.findByRole("link", { name: "续费" })).getAttribute("href")).toBe(
+    "/membership",
+  )
+  expect(screen.getByText("剩余 2 天 1 小时")).toBeTruthy()
+  expect(
+    screen
+      .getByText(/有效期至/)
+      .closest(".membership-card")
+      ?.getAttribute("data-size"),
+  ).toBe("sm")
+})
+it("shows open action for none", async () => {
+  renderDashboard()
+  expect((await screen.findByRole("link", { name: "开通会员" })).getAttribute("href")).toBe(
+    "/membership",
+  )
+  expect(screen.getByText("未开通")).toBeTruthy()
+})
+it("shows management action for expired membership", async () => {
+  mocks.entitlement.mockResolvedValue({
+    ...membership,
+    status: "expired",
+    tier: { code: "vip", name: "VIP", level: 1, cardStyle: "azure" },
+  })
+  renderDashboard()
+  expect((await screen.findByRole("link", { name: "管理会员" })).getAttribute("href")).toBe(
+    "/membership",
+  )
 })

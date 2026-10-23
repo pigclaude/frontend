@@ -8,8 +8,10 @@ export function DurationCardGroup(props: { label: string; children: ReactNode })
   return <MembershipCardGroup {...props} />
 }
 
-/** 原样格式化服务端三个分金额，并以单选按钮展示购买时长。 */
+/** 原样格式化服务端三个分金额，默认单选，官网使用导航按钮语义。 */
 export function DurationCard(props: {
+  /** 官网导航使用真实按钮语义，不参与时长单选。 */
+  navigation?: boolean
   months: number
   priceFen: string
   perMonthFen: string
@@ -23,8 +25,8 @@ export function DurationCard(props: {
     <button
       type="button"
       className="duration-card"
-      role="radio"
-      aria-checked={props.selected}
+      role={props.navigation ? undefined : "radio"}
+      aria-checked={props.navigation ? undefined : props.selected}
       aria-disabled={!!props.disabled}
       disabled={props.disabled}
       tabIndex={props.disabled ? -1 : 0}

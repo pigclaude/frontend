@@ -3,8 +3,9 @@
 
 import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
-import { Laptop, ShieldCheck, UserRound } from "lucide-react"
-import { formatTime } from "@pigclaude/web-ui/lib/format"
+import { Laptop, UserRound } from "lucide-react"
+import { MembershipCard } from "@pigclaude/web-ui/components/membership-card"
+import { formatDurationSeconds, formatTime } from "@pigclaude/web-ui/lib/format"
 import { Button } from "@pigclaude/web-ui/components/button"
 import { homeApi } from "@/lib/api"
 import { maskEmail, maskUserId } from "@/lib/identity-mask"
@@ -98,22 +99,31 @@ export default function DashboardPage() {
           </dl>
         </section>
         <section className="home-card">
-          <span className="grid size-11 place-items-center rounded-[var(--radius-md)] bg-[var(--raise-2)] text-[var(--accent-ink)]">
-            <ShieldCheck className="size-5" />
-          </span>
           <h2>会员权益</h2>
-          <p>
-            {membership.status === "active"
-              ? "会员有效"
-              : membership.status === "expired"
-                ? "会员已过期"
-                : "当前没有有效会员"}
-          </p>
-          <p className="muted">
-            {membership.validUntil ? `有效期至 ${membership.validUntil}` : ""}
-          </p>
+          <MembershipCard
+            size="sm"
+            name={membership.status === "none" ? "未开通" : (tierName ?? "会员")}
+            cardStyle={membership.tier?.cardStyle ?? "azure"}
+            eyebrow={
+              membership.status === "active"
+                ? "会员有效"
+                : membership.status === "expired"
+                  ? "会员已过期"
+                  : undefined
+            }
+            tagline={`剩余 ${formatDurationSeconds(membership.remainingSeconds)}`}
+            footer={
+              membership.validUntil ? `有效期至 ${formatTime(membership.validUntil)}` : undefined
+            }
+          />
           <Button asChild variant="outline">
-            <Link href="/membership">查看会员</Link>
+            <Link href="/membership">
+              {membership.status === "active"
+                ? "续费"
+                : membership.status === "none"
+                  ? "开通会员"
+                  : "管理会员"}
+            </Link>
           </Button>
         </section>
       </div>

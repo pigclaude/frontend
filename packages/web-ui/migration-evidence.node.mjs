@@ -10,6 +10,20 @@ const frontend = resolve(import.meta.dirname, "../..")
 const guard = join(frontend, "scripts/assert-pigcursor-migration.mjs")
 
 for (const [file, before, after, shouldPass, caseName] of [
+  [
+    "styles/globals.css",
+    '@import "./membership.css";',
+    '@import "./other.css";',
+    false,
+    "拒绝会员样式入口改名",
+  ],
+  [
+    "styles/globals.css",
+    '@import "./membership.css";',
+    '@import "./membership.css";\n@import "./membership.css";',
+    false,
+    "拒绝会员样式重复引入",
+  ],
   ["styles/tokens.css", "--bg: #08090a", "--bg: #ff0000", false, "拒绝背景色漂移"],
   [
     "styles/tokens.css",

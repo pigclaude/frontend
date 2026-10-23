@@ -245,6 +245,15 @@ for (const statement of settingsForm.statements) {
 if (requiredSettingsImports.size)
   throw new Error("target migration mismatch: settings must use fixed admin Card/Switch entities")
 
+// Task 7 只额外批准共享会员样式的单条入口引入。
+function task7MembershipTransform(source, file) {
+  if (file !== "packages/web-ui/src/styles/globals.css") return source
+  return source.replace(
+    '@import "./shadcn-bridge.css";',
+    '@import "./shadcn-bridge.css";\n@import "./membership.css";',
+  )
+}
+
 // 本任务只批准强调色默认值、landing token 和主按钮安全交互态的精确转换。
 // 其余来源 token 和组件结构仍逐字规范化比较，原有负对照继续生效。
 function task6AccentTransform(source, file) {
@@ -290,7 +299,10 @@ for (const pair of migrationPairs) {
   batchOffset = sourceEnd + 1
   const target = await readFile(join(root, pair.target), "utf8")
   const sourceCanonical = await canonicalSource(
-    task6AccentTransform(await canonicalSource(source, pair.source, true), pair.source),
+    task7MembershipTransform(
+      task6AccentTransform(await canonicalSource(source, pair.source, true), pair.source),
+      pair.source,
+    ),
     pair.source,
   )
   const targetCanonical = await canonicalSource(target, pair.target)

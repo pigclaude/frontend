@@ -72,14 +72,16 @@ beforeEach(() => {
 })
 it("never renders key value and never caches entered key", async () => {
   const { client } = mount()
-  const input = await screen.findByLabelText("密钥")
+  fireEvent.click(await screen.findByRole("button", { name: "更换" }))
+  const input = screen.getByLabelText("密钥")
   expect((input as HTMLInputElement).value).toBe("")
   expect((input as HTMLInputElement).placeholder).toBe("已配置，留空则不修改")
   fireEvent.change(input, { target: { value: "local-secret" } })
-  fireEvent.click(screen.getByRole("button", { name: "保存配置" }))
+  fireEvent.click(screen.getByRole("button", { name: "保存" }))
   await waitFor(() => expect(writes).toHaveLength(1))
   expect(writes[0]).toMatchObject({ key: "local-secret", expectedRevision: "7" })
-  await waitFor(() => expect((screen.getByLabelText("密钥") as HTMLInputElement).value).toBe(""))
+  await screen.findByRole("button", { name: "更换" })
+  expect((input as HTMLInputElement).value).toBe("")
   expect(
     JSON.stringify(
       client
@@ -95,7 +97,7 @@ it("never renders key value and never caches entered key", async () => {
 it("blank key is omitted on save", async () => {
   mount()
   fireEvent.change(await screen.findByLabelText("PID"), { target: { value: "new" } })
-  fireEvent.click(screen.getByRole("button", { name: "保存配置" }))
+  fireEvent.click(screen.getByRole("button", { name: "保存" }))
   await waitFor(() => expect(writes).toHaveLength(1))
   expect(writes[0]).not.toHaveProperty("key")
 })
@@ -103,7 +105,7 @@ it("revision conflict message", async () => {
   conflict = true
   mount()
   fireEvent.change(await screen.findByLabelText("PID"), { target: { value: "new" } })
-  fireEvent.click(screen.getByRole("button", { name: "保存配置" }))
+  fireEvent.click(screen.getByRole("button", { name: "保存" }))
   await screen.findByText("配置已被他人修改，请刷新")
 })
 it("payment-only read is reachable and cannot edit", async () => {
@@ -124,7 +126,8 @@ it("dirty navigation is blocked", async () => {
 it("dirty section switch asks before discarding local key", async () => {
   permissions.push("settings:read")
   const { router } = mount()
-  fireEvent.change(await screen.findByLabelText("密钥"), { target: { value: "discard-me" } })
+  fireEvent.click(await screen.findByRole("button", { name: "更换" }))
+  fireEvent.change(screen.getByLabelText("密钥"), { target: { value: "discard-me" } })
   fireEvent.click(screen.getByRole("button", { name: "安全风控" }))
   await screen.findByText("放弃未保存的修改？")
   expect(router.state.location.search).toBe("?panel=payment")
@@ -134,12 +137,23 @@ it("dirty section switch asks before discarding local key", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "放弃修改并离开" }))
   await screen.findByText("设置加载失败")
   fireEvent.click(screen.getByRole("button", { name: "易支付" }))
-  expect(((await screen.findByLabelText("密钥")) as HTMLInputElement).value).toBe("")
+  await screen.findByRole("button", { name: "更换" })
+  expect(screen.queryByLabelText("密钥")).toBeNull()
 })
 it("failed initial payment load offers retry without editable empty defaults", async () => {
   mocks.fetch.mockResolvedValue(Response.json({ code: "SETTINGS_UNAVAILABLE" }, { status: 503 }))
   mount()
   await screen.findByText("设置加载失败")
   expect(screen.queryByLabelText("PID")).toBeNull()
-  expect(screen.queryByRole("button", { name: "保存配置" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "保存" })).toBeNull()
+})
+it("initial payment loading exposes a named skeleton without bare loading text", () => {
+  mocks.fetch.mockImplementation(() => new Promise<Response>(() => {}))
+  mount()
+  expect(
+    screen
+      .getByRole("status", { name: "正在加载支付配置" })
+      .querySelector('[data-slot="skeleton"]'),
+  ).toBeTruthy()
+  expect(screen.queryByText("加载中…")).toBeNull()
 })

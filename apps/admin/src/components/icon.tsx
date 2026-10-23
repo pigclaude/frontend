@@ -91,3 +91,39 @@ export function OrderWarningIcon(props: ComponentProps<"svg">) {
     </svg>
   )
 }
+
+/** 支付渠道使用的手绘标志。 */
+export function AlipayIcon(props: ComponentProps<"svg">) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M5 5h14v14H5V5ZM8 10h8M12 7v6M8 16c4 0 6-3 7-6M7 12l11 6" />
+    </svg>
+  )
+}
+
+/** 支付渠道使用的手绘标志。 */
+export function WechatPayIcon(props: ComponentProps<"svg">) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M3 10c0-4 5-7 10-5s6 7 2 10l-5 1-4 3v-4c-2-1-3-3-3-5ZM8 9h.01M13 9h.01M14 14l2 2 5-5" />
+    </svg>
+  )
+}

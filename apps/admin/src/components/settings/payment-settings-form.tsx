@@ -4,10 +4,12 @@ import type {
   PaymentSettingsView,
   SavePaymentSettings,
 } from "@pigclaude/api/membership/payment-settings"
-import type { PayType } from "@pigclaude/api/membership/types"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
+import { PayTypeCards } from "./pay-type-cards"
+import { PaymentStatusBanner } from "./payment-status-banner"
+import { SecretField } from "./payment-secret-field"
 import { SettingRow, SettingSection } from "./setting-row"
 /** 密钥仅存于当前表单 ref 和短时命令，不放入查询或 mutation 状态。 */
 export function PaymentSettingsForm({
@@ -32,6 +34,7 @@ export function PaymentSettingsForm({
   const [payTypes, setPayTypes] = useState(view.payTypes)
   const secret = useRef("")
   const [secretVersion, setSecretVersion] = useState(0)
+  const [resetSignal, setResetSignal] = useState(0)
   const alive = useRef(true)
   useEffect(() => {
     alive.current = true
@@ -57,6 +60,7 @@ export function PaymentSettingsForm({
     setPayTypes(view.payTypes)
     secret.current = ""
     setSecretVersion((v) => v + 1)
+    setResetSignal((v) => v + 1)
   }
   async function save() {
     if (disabled || !dirty) return
@@ -73,6 +77,7 @@ export function PaymentSettingsForm({
       if (alive.current) {
         secret.current = ""
         setSecretVersion((v) => v + 1)
+        setResetSignal((v) => v + 1)
         onDirtyChange(false)
       }
     } catch {
@@ -82,7 +87,8 @@ export function PaymentSettingsForm({
   return (
     <section className="rounded-xl border p-5">
       <h2>易支付 · 版本 {view.revision}</h2>
-      <SettingSection>
+      <PaymentStatusBanner view={view} />
+      <SettingSection title="网关">
         <SettingRow title="启用支付" labelId="payment-enabled" inline>
           <Switch
             aria-labelledby="payment-enabled"
@@ -91,7 +97,11 @@ export function PaymentSettingsForm({
             onCheckedChange={setEnabled}
           />
         </SettingRow>
-        <SettingRow title="网关地址" labelFor="payment-gateway">
+        <SettingRow
+          title="网关地址"
+          labelFor="payment-gateway"
+          hint="易支付网关根地址，必须是 https"
+        >
           <Input
             id="payment-gateway"
             disabled={disabled}
@@ -99,7 +109,7 @@ export function PaymentSettingsForm({
             onChange={(e) => setGatewayUrl(e.target.value)}
           />
         </SettingRow>
-        <SettingRow title="PID" labelFor="payment-pid">
+        <SettingRow title="PID" labelFor="payment-pid" hint="易支付商户号">
           <Input
             id="payment-pid"
             disabled={disabled}
@@ -107,42 +117,27 @@ export function PaymentSettingsForm({
             onChange={(e) => setPid(e.target.value)}
           />
         </SettingRow>
-        <SettingRow title="密钥" labelFor="payment-key">
-          <Input
-            id="payment-key"
-            type="password"
-            autoComplete="new-password"
+        <SettingRow title="密钥" labelFor="payment-key" hint="商户密钥，加密保存，不会回显">
+          <SecretField
+            configured={view.keyConfigured}
             disabled={disabled}
-            value={secret.current}
-            placeholder={view.keyConfigured ? "已配置，留空则不修改" : "未配置"}
-            onChange={(e) => {
-              secret.current = e.target.value
-              setSecretVersion((v) => v + 1)
+            resetSignal={resetSignal}
+            onChange={(value) => {
+              secret.current = value
+              if (alive.current) setSecretVersion((v) => v + 1)
             }}
           />
         </SettingRow>
-        <SettingRow title="支付方式">
-          <div className="flex gap-4">
-            {(["alipay", "wxpay"] as PayType[]).map((type) => (
-              <label key={type}>
-                <input
-                  type="checkbox"
-                  disabled={disabled}
-                  checked={payTypes.includes(type)}
-                  onChange={(e) =>
-                    setPayTypes(
-                      e.target.checked
-                        ? [...payTypes, type]
-                        : payTypes.filter((value) => value !== type),
-                    )
-                  }
-                />
-                {type === "alipay" ? "支付宝" : "微信支付"}
-              </label>
-            ))}
-          </div>
-        </SettingRow>
-        <SettingRow title="回调站点地址" labelFor="payment-notify">
+      </SettingSection>
+      <SettingSection title="支付方式">
+        <PayTypeCards value={payTypes} disabled={disabled} onChange={setPayTypes} />
+      </SettingSection>
+      <SettingSection title="回调">
+        <SettingRow
+          title="回调站点地址"
+          labelFor="payment-notify"
+          hint="用于接收支付结果通知的站点外部地址"
+        >
           <Input
             id="payment-notify"
             disabled={disabled}
@@ -151,14 +146,17 @@ export function PaymentSettingsForm({
           />
         </SettingRow>
       </SettingSection>
-      <div className="flex gap-3">
-        <Button disabled={disabled || !dirty} onClick={() => void save()}>
-          保存配置
-        </Button>
-        <Button variant="outline" disabled={busy || !dirty} onClick={reset}>
-          撤销修改
-        </Button>
-      </div>
+      {dirty && (
+        <div className="sticky bottom-0 flex items-center gap-3 rounded-lg border bg-background p-4">
+          <span className="flex-1 text-sm">有未保存的修改</span>
+          <Button disabled={disabled || !dirty} onClick={() => void save()}>
+            保存
+          </Button>
+          <Button variant="outline" disabled={busy || !dirty} onClick={reset}>
+            撤销
+          </Button>
+        </div>
+      )}
     </section>
   )
 }

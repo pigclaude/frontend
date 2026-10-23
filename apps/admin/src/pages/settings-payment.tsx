@@ -6,6 +6,7 @@ import { SettingsNav } from "@/components/settings/settings-nav"
 import { PaymentSettingsForm } from "@/components/settings/payment-settings-form"
 import { TurnstileSettingsHistory } from "@/components/settings/turnstile-settings-history"
 import { PageHead } from "@/components/shell/page-head"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -51,7 +52,9 @@ export function SettingsPaymentPage({
         <SettingsNav panels={panels} active="payment" activeDirty={dirty} onSelect={onSelect} />
         <div className="min-w-0 space-y-4">
           {query.isPending ? (
-            <p role="status">加载中…</p>
+            <div role="status" aria-label="正在加载支付配置">
+              <Skeleton className="h-64 w-full" />
+            </div>
           ) : !query.data ? (
             <p role="alert">
               设置加载失败<Button onClick={() => void query.refetch()}>重试</Button>

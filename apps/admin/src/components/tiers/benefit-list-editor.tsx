@@ -69,6 +69,7 @@ export function BenefitListEditor({
           </Button>
         </div>
       ))}
+      {errors?.["benefit.8"] && <p className="text-destructive">{errors["benefit.8"]}</p>}
       <Button
         type="button"
         disabled={disabled || value.length >= 8}

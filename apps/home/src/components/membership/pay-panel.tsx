@@ -17,15 +17,18 @@ import {
   SheetDescription,
 } from "@pigclaude/web-ui/components/sheet"
 import { useMediaQuery } from "@pigclaude/web-ui/hooks/use-media-query"
-import { formatDurationSeconds } from "@pigclaude/web-ui/lib/format"
+import { remainingLabel } from "./membership-cards"
 import type { PurchaseIntent } from "./checkout-model"
 import { PaymentMethods } from "./payment-methods"
 import { useOrderLifecycle } from "./use-order-lifecycle"
+import { Skeleton } from "@pigclaude/web-ui/components/skeleton"
+import { CloseIcon } from "@/components/icon"
 import {
   CashierView,
   ExpiredView,
   FreeView,
   PayDetails,
+  PayHeader,
   PendingReviewView,
   QrView,
   SuccessView,
@@ -60,7 +63,16 @@ export function PayPanel(props: {
   const [confirmFree, setConfirmFree] = useState(
     !props.orderNo && props.summary?.payableFen === "0",
   )
-  const mobile = useMediaQuery("(max-width: 639px)")
+  // 打开时定下用底部抽屉还是居中弹窗；旋转屏幕跨过断点也不换容器，避免面板内状态和焦点丢失。
+  const narrow = useMediaQuery("(max-width: 639px)")
+  const [mediaReady, setMediaReady] = useState(false)
+  const [mobile, setMobile] = useState<boolean | null>(null)
+  useEffect(() => {
+    setMediaReady(true)
+  }, [])
+  useEffect(() => {
+    if (mediaReady) setMobile((current) => current ?? narrow)
+  }, [mediaReady, narrow])
   const latest = useRef({ props, lifecycle, payType })
   latest.current = { props, lifecycle, payType }
   const closed = useRef(false)
@@ -109,7 +121,7 @@ export function PayPanel(props: {
           cardStyle: actual.tier.cardStyle,
           title:
             actual.months === null
-              ? `${actual.tier.name} · 剩余 ${formatDurationSeconds(actual.durationSeconds)}`
+              ? `${actual.tier.name} · 剩余 ${remainingLabel(actual.durationSeconds)}升级`
               : `${actual.tier.name} · ${actual.months} 个月`,
           optionPriceFen: actual.optionPriceFen,
           creditFen: actual.creditFen,
@@ -117,57 +129,85 @@ export function PayPanel(props: {
           bonusSeconds: actual.bonusSeconds,
         }
       : props.summary
-  const status = confirmFree ? "confirm-free" : lifecycle.status
+  const idleBeforeCreate =
+    lifecycle.status === "idle" &&
+    !lifecycle.error &&
+    !!props.intent &&
+    props.payTypes.length > 0 &&
+    !closed.current
+  const status = confirmFree ? "confirm-free" : idleBeforeCreate ? "creating" : lifecycle.status
   const payment = lifecycle.order?.payment
+  // 免费升级可能已在服务端生效，此时换渠道会按新身份报出付费订单，所以免费单不显示渠道。
+  const free = summary?.payableFen === "0" || payment?.kind === "free"
+  const showMethods =
+    !free &&
+    !!props.intent &&
+    props.payTypes.length > 0 &&
+    (status === "creating" || status === "pending" || (status === "idle" && !!lifecycle.error))
+  const remaining = actual
+    ? actual.months === null
+    : !!props.intent && "remainingUpgrade" in props.intent
   const entitlement =
     status === "activated" ? client.getQueryData<EntitlementResponse>(["entitlement"]) : undefined
+  const orderNumber = lifecycle.metadata?.orderNo ?? lifecycle.order?.orderNo ?? props.orderNo ?? ""
+  const isMobile = mobile ?? (mediaReady ? narrow : false)
   const content = (
     <>
-      {summary && <PayDetails summary={summary} />}
-      {!summary && lifecycle.amountFen !== null && <p>{lifecycle.amountFen}</p>}
-      {status === "confirm-free" && <FreeView confirm={() => create()} />}
-      {status === "creating" && (
-        <div
-          role="status"
-          aria-label="正在创建订单"
-          className="h-24 animate-pulse motion-reduce:animate-none"
-        />
-      )}
-      {(status === "pending" || status === "idle") && props.intent && (
-        <PaymentMethods
-          payTypes={props.payTypes}
-          value={payType}
-          onChange={(channel) => {
-            setPayType(channel)
-            create(channel)
-          }}
-        />
-      )}
-      {!props.payTypes.length && props.intent && <p>在线支付暂未开放</p>}
-      {status === "pending" && (
-        <>
-          {payment?.kind === "qr" && lifecycle.order && (
-            <QrView
-              payment={payment}
-              payType={payType}
-              mobile={mobile}
-              expiresAt={lifecycle.order.expiresAt}
-            />
-          )}
-          {payment?.kind === "redirect" && (
-            <CashierView url={payment.url} opened={lifecycle.opened} />
-          )}
-          <p role="status">正在等待支付结果…</p>
-          <Button onClick={lifecycle.checkNow}>我已完成支付</Button>
-        </>
-      )}
-      {status === "activated" && (
+      <div className="pay-top">
+        {summary ? <PayHeader summary={summary} /> : <span />}
+        <button type="button" className="pay-close" aria-label="关闭" onClick={() => close()}>
+          <CloseIcon />
+        </button>
+      </div>
+      {status === "activated" ? (
         <SuccessView
           historical={!!props.orderNo}
           entitlement={entitlement}
           tierName={summary?.tierName ?? "会员"}
           finish={() => close(true)}
         />
+      ) : (
+        summary && <PayDetails summary={summary} remaining={remaining} />
+      )}
+      {status === "confirm-free" && <FreeView confirm={() => create()} />}
+      {showMethods && (
+        <PaymentMethods
+          payTypes={props.payTypes}
+          value={payType}
+          disabled={status === "creating"}
+          onChange={(channel) => {
+            setPayType(channel)
+            create(channel)
+          }}
+        />
+      )}
+      {status === "creating" && (
+        <div className="pay-state" role="status" aria-label="正在创建订单">
+          {!free && <Skeleton className="size-[196px] rounded-xl" />}
+          <p className="pay-note">{free ? "正在为你升级" : "正在生成付款码"}</p>
+        </div>
+      )}
+      {!props.payTypes.length && props.intent && <p className="pay-note">在线支付暂未开放</p>}
+      {status === "pending" && (
+        <>
+          {payment?.kind === "qr" && lifecycle.order && (
+            <QrView
+              payment={payment}
+              payType={payType}
+              mobile={isMobile}
+              expiresAt={lifecycle.order.expiresAt}
+            />
+          )}
+          {payment?.kind === "redirect" && (
+            <CashierView url={payment.url} opened={lifecycle.opened} />
+          )}
+          <p className="sr-only" role="status">
+            正在等待支付结果…
+          </p>
+          <Button variant="outline" className="w-full" onClick={lifecycle.checkNow}>
+            我已完成支付
+          </Button>
+        </>
       )}
       {(status === "expired" || status === "closed") && (
         <ExpiredView
@@ -175,21 +215,20 @@ export function PayPanel(props: {
           retry={() => (props.intent ? create() : close())}
         />
       )}
-      {status === "needs_review" && (
-        <PendingReviewView
-          orderNo={lifecycle.metadata?.orderNo ?? lifecycle.order?.orderNo ?? props.orderNo ?? ""}
-        />
+      {status === "needs_review" && <PendingReviewView orderNo={orderNumber} />}
+      {lifecycle.error && (
+        <p className="pay-error" role="alert">
+          {lifecycle.error}
+        </p>
       )}
-      {lifecycle.error && <p role="alert">{lifecycle.error}</p>}
       {status === "idle" && lifecycle.error && props.intent && (
-        <Button onClick={() => create()}>重试</Button>
+        <Button className="w-full" onClick={() => create()}>
+          重试
+        </Button>
       )}
-      <Button variant="outline" onClick={() => close()}>
-        关闭
-      </Button>
     </>
   )
-  return mobile ? (
+  return isMobile ? (
     <Sheet
       open={visible}
       onOpenChange={(next) => {
@@ -199,10 +238,11 @@ export function PayPanel(props: {
       <SheetContent
         side="bottom"
         showCloseButton={false}
-        className="max-h-[90dvh] overflow-y-auto p-6 motion-reduce:animate-none"
+        className="pay-panel max-h-[92dvh] overflow-y-auto rounded-t-2xl motion-reduce:animate-none"
       >
-        <SheetTitle>会员支付</SheetTitle>
-        <SheetDescription>支付状态以服务器确认结果为准。</SheetDescription>
+        <SheetTitle className="sr-only">会员支付</SheetTitle>
+        <SheetDescription className="sr-only">支付状态以服务器确认结果为准。</SheetDescription>
+        <span className="pay-grab" aria-hidden="true" />
         {content}
       </SheetContent>
     </Sheet>
@@ -215,10 +255,10 @@ export function PayPanel(props: {
     >
       <DialogContent
         showCloseButton={false}
-        className="max-h-[90dvh] overflow-y-auto motion-reduce:animate-none"
+        className="pay-panel max-h-[90dvh] overflow-y-auto sm:max-w-[400px] motion-reduce:animate-none"
       >
-        <DialogTitle>会员支付</DialogTitle>
-        <DialogDescription>支付状态以服务器确认结果为准。</DialogDescription>
+        <DialogTitle className="sr-only">会员支付</DialogTitle>
+        <DialogDescription className="sr-only">支付状态以服务器确认结果为准。</DialogDescription>
         {content}
       </DialogContent>
     </Dialog>

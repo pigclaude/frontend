@@ -1,11 +1,11 @@
 // 负责展示当前会员权益及服务端购买报价，以账户、会话和路由隔离支付生命周期。
 "use client"
 import { Suspense, useState } from "react"
-import { usePathname, useSearchParams } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { StaleSessionResponse } from "@pigclaude/api/client"
-import { formatDurationSeconds, formatTime } from "@pigclaude/web-ui/lib/format"
-import type { PayType } from "@pigclaude/api/membership/types"
+import { formatTime } from "@pigclaude/web-ui/lib/format"
+import type { EntitlementResponse, PayType } from "@pigclaude/api/membership/types"
 import { Toaster } from "@pigclaude/web-ui/components/sonner"
 import { toast } from "sonner"
 import { BenefitGrid } from "@pigclaude/web-ui/components/benefit-grid"
@@ -14,7 +14,7 @@ import {
   defaultSelection,
   type PurchaseIntent,
 } from "@/components/membership/checkout-model"
-import { MembershipCards } from "@/components/membership/membership-cards"
+import { MembershipCards, remainingLabel } from "@/components/membership/membership-cards"
 import { DurationPicker } from "@/components/membership/duration-picker"
 import { CheckoutBar } from "@/components/membership/checkout-bar"
 import { PurchaseHistory } from "@/components/membership/purchase-history"
@@ -81,6 +81,8 @@ function MembershipAccount({
   orderNo?: string
 }) {
   const client = useQueryClient()
+  const router = useRouter()
+  const pathname = usePathname()
   const params = useSearchParams()
   const [selection, setSelection] = useState<{ tier: string | null; option: string | null } | null>(
     null,
@@ -126,6 +128,7 @@ function MembershipAccount({
       option: params.get("option"),
     })
   const model = checkoutModel(catalog.data, quotes.data, selected)
+  const selectedCard = model.cards.find((card) => card.code === model.selectedTier)
   const channel =
     catalog.data.payTypes.find((type) => type === payType) ?? catalog.data.payTypes[0] ?? ""
   const choose = (intent: PurchaseIntent) => {
@@ -145,7 +148,7 @@ function MembershipAccount({
               tierName: card.name,
               cardStyle: card.cardStyle,
               title: remaining
-                ? `${card.name} · 剩余 ${formatDurationSeconds(remaining.remainingSeconds)}`
+                ? `${card.name} · 剩余 ${remainingLabel(remaining.remainingSeconds)}升级`
                 : `${card.name} · ${option?.months ?? ""} 个月`,
               optionPriceFen: remaining ? null : (option?.priceFen ?? null),
               creditFen: offer.creditFen,
@@ -156,30 +159,13 @@ function MembershipAccount({
     })
   }
   return (
-    <main className="page-shell pb-36 sm:pb-8">
+    <main className="page-shell membership-page">
       <Toaster />
-      <div>
+      <header className="membership-head">
         <h1 className="page-title">会员</h1>
-        {!active && <p>开通会员后即可在桌面端使用 PigClaude</p>}
-        <p className="mt-2 text-sm text-[var(--meta)]">查看你的会员状态、有效期和可用套餐。</p>
-      </div>
-      <section className="home-card" aria-labelledby="membership-status">
-        <h2 id="membership-status">当前权益</h2>
-        <p>{active ? `会员有效 · ${entitlement.tier?.name ?? ""}` : "会员已过期或未激活"}</p>
-        {entitlement.validUntil && <p>有效期至 {formatTime(entitlement.validUntil)}</p>}
-        <p>剩余 {formatDurationSeconds(entitlement.remainingSeconds)}</p>
-        {active ? (
-          <div className="status-gate" role="status">
-            <strong>等待桌面客户端发起授权</strong>
-            <p>请从 PigClaude 桌面客户端发起设备授权，再打开客户端提供的合法授权链接。</p>
-          </div>
-        ) : (
-          <div className="status-gate" role="status">
-            <strong>需要有效会员才能授权设备</strong>
-            <p>请先选择下方套餐开通会员，再从桌面客户端发起授权。</p>
-          </div>
-        )}
-      </section>
+        <p className="membership-sub">选择等级和时长，扫码即可开通、续费或升级。</p>
+        {!active && <p className="membership-hint">开通会员后即可在桌面端使用 PigClaude</p>}
+      </header>
       <MembershipCards
         cards={model.cards}
         entitlement={entitlement}
@@ -194,9 +180,14 @@ function MembershipAccount({
           onSelect={(option) => setSelection({ ...selected, option })}
         />
       )}
-      <BenefitGrid
-        items={model.cards.find((card) => card.code === model.selectedTier)?.benefits ?? []}
-      />
+      {selectedCard && selectedCard.benefits.length > 0 && (
+        <section className="membership-section" aria-labelledby="membership-benefits">
+          <div className="membership-section-head">
+            <h2 id="membership-benefits">{selectedCard.name} 权益</h2>
+          </div>
+          <BenefitGrid items={selectedCard.benefits} />
+        </section>
+      )}
       <RemainingUpgradeBanner
         offer={model.remainingUpgrade}
         disabled={!catalog.data.payTypes.length}
@@ -226,14 +217,23 @@ function MembershipAccount({
           summary={checkout.summary}
           onActivated={() => {
             setGlintSequence((value) => value + 1)
-            const current = client.getQueryData<{ tier?: { name: string } }>(["entitlement"])
-            toast.success(
-              `${current?.tier?.name ?? entitlement.tier?.name ?? checkout.summary?.tierName ?? "会员"} 已生效`,
-            )
+            const current = client.getQueryData<EntitlementResponse>(["entitlement"])
+            const name =
+              current?.tier?.name ?? entitlement.tier?.name ?? checkout.summary?.tierName ?? "会员"
+            const until = current?.validUntil ? formatTime(current.validUntil).slice(0, 10) : null
+            toast.success(until ? `${name} 已生效，有效期至 ${until}` : `${name} 已生效`)
           }}
           payTypes={catalog.data.payTypes}
           orderNo={checkout.orderNo}
-          onClose={() => setCheckout(null)}
+          onClose={() => {
+            setCheckout(null)
+            // 网关回跳单处理完就从地址栏去掉 ?order=，刷新页面不会再打开这笔旧订单；其他参数保留。
+            if (checkout.orderNo) {
+              const rest = new URLSearchParams(params.toString())
+              rest.delete("order")
+              router.replace(rest.size ? `${pathname}?${rest}` : pathname)
+            }
+          }}
         />
       )}
     </main>

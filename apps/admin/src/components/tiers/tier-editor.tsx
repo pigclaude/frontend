@@ -1,5 +1,5 @@
 // 负责等级抽屉、300ms 服务端预览与保存归属，迟到回复不能覆盖新输入。
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import type { Tier } from "@pigclaude/api/membership/types"
 import { useResultGeneration } from "@/components/membership/use-result-generation"
@@ -28,7 +28,14 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet"
-import { draftFromTier, tierInput, draftErrors } from "./tier-draft"
+import {
+  changedFields,
+  draftErrors,
+  draftFromTier,
+  tierInput,
+  type DraftField,
+  type TierDraft,
+} from "./tier-draft"
 import { OptionRows } from "./option-rows"
 /** 编辑状态只从原等级初始化；预览只提供金额，原始 tier/option 身份永久保留。 */
 export function TierEditor({
@@ -44,6 +51,10 @@ export function TierEditor({
 }) {
   const client = useQueryClient()
   const [draft, setDraft] = useState(() => draftFromTier(tier))
+  // 字段错误只在用户改过该字段或点过保存之后显示，刚打开的新建抽屉不报错。
+  const [touched, setTouched] = useState<ReadonlySet<DraftField>>(() => new Set())
+  const [attempts, setAttempts] = useState(0)
+  const form = useRef<HTMLFormElement>(null)
   const [confirmClose, setConfirmClose] = useState(false)
   const [error, setError] = useState("")
   const [preview, setPreview] = useState<{ key: string; tier: Tier } | null>(null)
@@ -85,14 +96,22 @@ export function TierEditor({
     }, 300)
     return () => clearTimeout(timer)
   }, [canWrite, draft, key, previewOperation.begin])
+  useEffect(() => {
+    if (attempts) form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
+  }, [attempts])
+  function edit(next: TierDraft) {
+    setTouched(new Set([...touched, ...changedFields(draft, next)]))
+    setDraft(next)
+  }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!canWrite) return
     let input
     try {
       input = tierInput(draft)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "输入无效")
+    } catch {
+      // 错误已经写在各自的输入框下面，这里只把焦点带到第一个出错的字段。
+      setAttempts((value) => value + 1)
       return
     }
     const owner = saveOperation.begin()
@@ -120,7 +139,16 @@ export function TierEditor({
       setConfirmClose(true)
     else onClose()
   }
-  const fields = draftErrors(draft)
+  const all = draftErrors(draft)
+  const fields = Object.fromEntries(
+    Object.entries(all).filter(
+      ([field]) =>
+        attempts > 0 ||
+        field === "options" ||
+        field === "benefit.8" ||
+        touched.has(field as DraftField),
+    ),
+  ) as Partial<Record<DraftField, string>>
   const disabled = !canWrite || saveOperation.pending
   const prices = preview?.key === key ? preview.tier.options : !canWrite ? tier?.options : undefined
   return (
@@ -135,7 +163,7 @@ export function TierEditor({
           <SheetTitle>{canWrite ? (tier ? "编辑等级" : "新建等级") : "查看等级"}</SheetTitle>
           <SheetDescription>1 个月按 30 天计。价格由服务端预览计算。</SheetDescription>
         </SheetHeader>
-        <form className="flex min-h-0 flex-1 flex-col" onSubmit={save}>
+        <form ref={form} className="flex min-h-0 flex-1 flex-col" onSubmit={save}>
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
             <section className="grid grid-cols-2 gap-3">
               <h3 className="col-span-2">基本信息</h3>
@@ -155,8 +183,13 @@ export function TierEditor({
                     disabled={disabled || (field === "code" && !!tier)}
                     aria-invalid={!!fields[field]}
                     aria-describedby={fields[field] ? `error-${field}` : undefined}
-                    onChange={(event) => setDraft({ ...draft, [field]: event.target.value })}
+                    onChange={(event) => edit({ ...draft, [field]: event.target.value })}
                   />
+                  {fields[field] && (
+                    <p id={`error-${field}`} className="text-sm text-destructive">
+                      {fields[field]}
+                    </p>
+                  )}
                 </div>
               ))}
             </section>
@@ -165,7 +198,7 @@ export function TierEditor({
               <CardStylePicker
                 value={draft.cardStyle}
                 disabled={disabled}
-                onChange={(cardStyle) => setDraft({ ...draft, cardStyle })}
+                onChange={(cardStyle) => edit({ ...draft, cardStyle })}
               />
               <Label htmlFor="tier-tagline">标语</Label>
               <Input
@@ -174,21 +207,26 @@ export function TierEditor({
                 aria-describedby={fields.tagline ? "error-tagline" : undefined}
                 value={draft.tagline}
                 disabled={disabled}
-                onChange={(e) => setDraft({ ...draft, tagline: e.target.value })}
+                onChange={(e) => edit({ ...draft, tagline: e.target.value })}
               />
+              {fields.tagline && (
+                <p id="error-tagline" className="text-sm text-destructive">
+                  {fields.tagline}
+                </p>
+              )}
             </section>
             <BenefitListEditor
               errors={fields}
               value={draft.benefits}
               disabled={disabled}
-              onChange={(benefits) => setDraft({ ...draft, benefits })}
+              onChange={(benefits) => edit({ ...draft, benefits })}
             />
             <Label htmlFor="tier-enabled">上架</Label>
             <Switch
               id="tier-enabled"
               checked={draft.enabled}
               disabled={disabled}
-              onCheckedChange={(enabled) => setDraft({ ...draft, enabled })}
+              onCheckedChange={(enabled) => edit({ ...draft, enabled })}
             />
             <OptionRows
               errors={fields}
@@ -196,27 +234,8 @@ export function TierEditor({
               options={draft.options}
               prices={prices}
               disabled={disabled}
-              onChange={(options) => setDraft({ ...draft, options })}
+              onChange={(options) => edit({ ...draft, options })}
             />
-            <div aria-label="字段错误">
-              {Object.entries(fields)
-                .filter(
-                  ([field]) =>
-                    field !== "options" &&
-                    !field.startsWith("benefit.") &&
-                    !field.startsWith("option."),
-                )
-                .map(([field, message]) => (
-                  <p
-                    key={field}
-                    id={`error-${field}`}
-                    className="text-destructive"
-                    data-field={field}
-                  >
-                    {message}
-                  </p>
-                ))}
-            </div>
             <TierPreview
               tier={
                 preview?.key === key ? preview.tier : !canWrite ? (tier ?? undefined) : undefined

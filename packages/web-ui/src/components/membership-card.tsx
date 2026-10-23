@@ -105,11 +105,11 @@ export function MembershipCardGroup({
   )
 }
 
-/** 展示等级信息；提供选择回调时使用原生按钮承载单选语义。 */
+/** 展示等级信息；提供选择回调时使用原生按钮承载单选语义。xs 只画等级名小卡。 */
 export function MembershipCard(props: {
   name: string
   cardStyle: MembershipCardStyle
-  size?: "lg" | "sm"
+  size?: "lg" | "sm" | "xs"
   eyebrow?: ReactNode
   tagline?: ReactNode
   price?: ReactNode
@@ -125,8 +125,14 @@ export function MembershipCard(props: {
       {props.onSelect && <span className="membership-card-radio" aria-hidden="true" />}
       <span className="membership-card-name">{props.name}</span>
       {props.eyebrow != null && <span className="membership-card-eyebrow">{props.eyebrow}</span>}
-      {props.tagline != null && <span className="membership-card-tagline">{props.tagline}</span>}
-      {props.price != null && <span className="membership-card-price">{props.price}</span>}
+      {(props.tagline != null || props.price != null) && (
+        <span className="membership-card-bottom">
+          {props.tagline != null && (
+            <span className="membership-card-tagline">{props.tagline}</span>
+          )}
+          {props.price != null && <span className="membership-card-price">{props.price}</span>}
+        </span>
+      )}
       {props.footer != null && <span className="membership-card-footer">{props.footer}</span>}
     </>
   )

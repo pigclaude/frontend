@@ -62,10 +62,14 @@ async function tick(ms: number) {
     await vi.advanceTimersByTimeAsync(ms)
   })
 }
+// 金额明细是 dt/dd 对，按标签读出对应的金额。
+function detail(label: string) {
+  return screen.getByText(label, { selector: "dt" }).nextElementSibling?.textContent
+}
 it("renders qr and polls until activated then refreshes queries and closes after 2.5 seconds", async () => {
   const { invalidate, close } = mount()
   await create()
-  expect(screen.getByText("应付 ¥40.00")).toBeTruthy()
+  expect(detail("应付")).toBe("¥40.00")
   expect(screen.getByLabelText("付款二维码").tagName.toLowerCase()).toBe("svg")
   mocks.order.mockResolvedValue({ ...homeOrder, status: "activated" })
   await tick(2000)
@@ -218,7 +222,7 @@ it("uses the selected enabled channel without sending client prices", async () =
     { optionId: "svip-3", payType: "wxpay" },
     expect.any(Function),
   )
-  expect(screen.getByText("请使用微信扫码")).toBeTruthy()
+  expect(screen.getByText("请使用微信扫码支付")).toBeTruthy()
 })
 it("retries status errors and stops after a final response", async () => {
   mocks.order.mockRejectedValueOnce(new Error("network"))
@@ -325,3 +329,18 @@ it.each(["active", "expired", "revoked", "none"])(
     expect(activated).not.toHaveBeenCalled()
   },
 )
+
+it("free upgrade whose refresh fails keeps polling the existing order instead of offering a retry", async () => {
+  mocks.createOrder.mockResolvedValue({ ...created, payableFen: "0", payment: { kind: "free" } })
+  mocks.entitlement.mockRejectedValueOnce(new Error("network"))
+  mocks.order.mockResolvedValue({ ...homeOrder, status: "activated" })
+  mount()
+  await create()
+  expect(screen.getByRole("alert").textContent).toBe("订单状态读取失败，正在重试")
+  expect(screen.queryByRole("button", { name: "重试" })).toBeNull()
+  expect(screen.queryByRole("radio", { name: "微信" })).toBeNull()
+  await tick(2000)
+  expect(mocks.order).toHaveBeenCalledWith(created.orderNo)
+  expect(screen.getByText("SVIP 已生效")).toBeTruthy()
+  expect(mocks.createOrder).toHaveBeenCalledTimes(1)
+})

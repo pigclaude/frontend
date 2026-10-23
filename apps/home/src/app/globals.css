@@ -1,6 +1,7 @@
 /* 直接迁入固定 Pigcursor 源的首页、认证、概览光晕及高对比焦点样式，所有颜色沿用共享主题 token。 */
 @import "@pigclaude/web-ui/styles/globals.css";
 @import "../styles/home.css";
+@import "../styles/membership-page.css";
 @source '../../../../packages/web-ui/src';
 
 :root {
@@ -18,7 +19,7 @@
   --landing-hi: rgba(0, 0, 0, 0.04);
   --landing-glow: color-mix(in srgb, var(--accent-glow) 20%, transparent);
   --landing-dot: rgba(0, 0, 0, 0.09);
-  --landing-ink: var(--accent-ink);
+  --landing-ink: color-mix(in oklab, var(--accent), black 12%);
   --landing-live: #1f8f3a;
 }
 

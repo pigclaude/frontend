@@ -63,6 +63,7 @@ describe("共享主题", () => {
       expect(readAccent()).toEqual(choice)
     }
     expect(themeInitializationScript).not.toMatch(/\/\/|\/\*/)
+    expect(themeInitializationScript).not.toContain("createAccentEngine.toString")
   })
 
   it("只恢复 Pigclaude 的亮色选择，缺省和无效值使用暗色", () => {

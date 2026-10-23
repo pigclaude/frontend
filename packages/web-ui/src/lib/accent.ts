@@ -7,12 +7,14 @@ export type AccentChoice = { kind: "preset"; id: AccentPresetId } | { kind: "cus
 /** 主题色持久化键。 */
 export const ACCENT_STORAGE_KEY = "pigclaude-accent"
 /** 当前主题色缓存编码版本。 */
-export const ACCENT_STORAGE_VERSION = 1
+export const ACCENT_STORAGE_VERSION = 2
 /** 服务端和无效缓存共享稳定默认快照。 */
 export const DEFAULT_ACCENT_CHOICE: AccentChoice = { kind: "preset", id: "indigo" }
 const listeners = new Set<() => void>()
 let snapshot: AccentChoice = DEFAULT_ACCENT_CHOICE
 let appliedWithoutStorage = false
+// 同一份存储字符串只解析一次：解析要重算整套 CSS 做校验，每个选择器每次渲染都会读取。
+let readCache: { raw: string | null; choice: AccentChoice } | null = null
 
 /** 根据合法的逻辑选择返回完整深浅调色板。 */
 export function paletteFor(choice: AccentChoice): AccentPalette {
@@ -29,8 +31,13 @@ function stabilize(choice: AccentChoice) {
 /** 存储缺失、拒绝、版本过期或缓存被篡改时返回默认预设。 */
 export function readAccent(): AccentChoice {
   try {
-    const cached = accentEngine.parse(localStorage.getItem(ACCENT_STORAGE_KEY), ACCENT_PRESETS)
-    return stabilize(cached?.choice ?? DEFAULT_ACCENT_CHOICE)
+    const raw = localStorage.getItem(ACCENT_STORAGE_KEY)
+    if (!readCache || readCache.raw !== raw)
+      readCache = {
+        raw,
+        choice: accentEngine.parse(raw, ACCENT_PRESETS)?.choice ?? DEFAULT_ACCENT_CHOICE,
+      }
+    return stabilize(readCache.choice)
   } catch {
     return DEFAULT_ACCENT_CHOICE
   }

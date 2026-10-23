@@ -2,7 +2,7 @@
 import { useState } from "react"
 import { useLocation } from "react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import type { Tier, TierInput } from "@pigclaude/api/membership/types"
+import type { Tier } from "@pigclaude/api/membership/types"
 import { ApiError } from "@pigclaude/api/client"
 import { adminApi } from "@/lib/api"
 import { refreshTierCatalog } from "@/components/tiers/refresh-tier-catalog"
@@ -12,7 +12,6 @@ import { tierPermissions } from "@/lib/admin-permissions"
 import { PageHead } from "@/components/shell/page-head"
 import { Button } from "@/components/ui/button"
 import { TierDeleteDialog } from "@/components/tiers/tier-delete-dialog"
-import { draftFromTier, tierInput } from "@/components/tiers/tier-draft"
 import { Alert } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -45,15 +44,13 @@ export default function TiersPage() {
     if (!owner) return
     setError("")
     try {
-      if (toggle || unpublish) {
-        const input: TierInput = tierInput(draftFromTier(deleting.tier))
-        delete input.code
-        await adminApi.membership.tiers.save(
+      if (toggle || unpublish)
+        await adminApi.membership.tiers.setEnabled(
           deleting.tier.id,
-          { ...input, enabled: unpublish ? false : !deleting.tier.enabled },
+          unpublish ? false : !deleting.tier.enabled,
           owner.isCurrent,
         )
-      } else await adminApi.membership.tiers.remove(deleting.tier.id, owner.isCurrent)
+      else await adminApi.membership.tiers.remove(deleting.tier.id, owner.isCurrent)
       if (!owner.isCurrent()) return
       refreshTierCatalog(client)
       setDeleting(null)

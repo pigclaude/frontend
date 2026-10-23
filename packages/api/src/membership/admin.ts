@@ -23,6 +23,15 @@ export function createAdminMembershipApi(client: HttpClient) {
           owner,
         )
       },
+      /** 只切换上下架，其他字段保持服务端现值，不会覆盖其他管理员的编辑。 */
+      setEnabled: (id: string, enabled: boolean, owner: () => boolean = () => true) =>
+        write<void>(
+          "PUT",
+          `${path}/tiers/${encodeURIComponent(id)}/enabled`,
+          { enabled },
+          "header",
+          owner,
+        ),
       /** 通过正式 DELETE 软删除等级。 */
       remove: (id: string, owner: () => boolean = () => true) =>
         write<void>("DELETE", `${path}/tiers/${encodeURIComponent(id)}`, {}, "header", owner),

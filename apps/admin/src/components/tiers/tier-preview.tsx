@@ -18,18 +18,20 @@ export function TierPreview({ tier }: { tier?: Tier }) {
             footer={tier.benefits.join(" · ")}
           />
           <div className="grid grid-cols-2 gap-2">
-            {tier.options.map((option, index) => (
-              <DurationCard
-                key={index}
-                months={option.months}
-                priceFen={option.priceFen}
-                perMonthFen={option.perMonthFen}
-                savedFen={option.savedFen}
-                badge={option.badge}
-                selected={option.recommended}
-                disabled
-              />
-            ))}
+            {tier.options
+              .filter((option) => option.enabled)
+              .map((option, index) => (
+                <DurationCard
+                  key={index}
+                  months={option.months}
+                  priceFen={option.priceFen}
+                  perMonthFen={option.perMonthFen}
+                  savedFen={option.savedFen}
+                  badge={option.badge}
+                  selected={option.recommended}
+                  disabled
+                />
+              ))}
           </div>
         </>
       )}

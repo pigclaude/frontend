@@ -13,10 +13,12 @@ const mocks = vi.hoisted(() => ({
   createOrder: vi.fn(),
   params: "",
   path: "/membership",
+  replace: vi.fn(),
 }))
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(mocks.params),
   usePathname: () => mocks.path,
+  useRouter: () => ({ replace: mocks.replace }),
 }))
 vi.mock("@/lib/api", () => ({
   homeApi: {
@@ -41,6 +43,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
   vi.clearAllMocks()
 })
 function mount() {
@@ -52,10 +55,18 @@ function mount() {
   )
   return { client, ...view }
 }
+// 当前等级卡写着「当前等级 · 剩余 N 天」，用卡面样式判断页面展示的是哪个账户的等级。
+function currentCardStyle() {
+  return screen
+    .getByText(/^当前等级 · 剩余/)
+    .closest(".membership-card")
+    ?.getAttribute("data-style")
+}
 it("renders cards durations benefits and checkout", async () => {
   const { container } = mount()
   await screen.findByRole("radiogroup", { name: "会员等级" })
   expect(screen.getByRole("button", { name: "立即续费" })).toBeTruthy()
+  expect(screen.queryByText(/已抵扣/)).toBeNull()
   expect(container.querySelector("select")).toBeNull()
 })
 it("account loading exposes named skeleton without visible loading text", async () => {
@@ -95,23 +106,44 @@ it("lower tier card disabled for svip", async () => {
 it("remaining upgrade card only on selected tier and when offered", async () => {
   const view = mount()
   await screen.findByText("¥8.33/月")
-  expect(screen.queryByRole("button", { name: /把剩余/ })).toBeNull()
+  expect(screen.queryByRole("button", { name: /只想升级剩余/ })).toBeNull()
   fireEvent.click(screen.getByRole("radio", { name: /SVIP/ }))
   expect(
-    screen.getByRole("button", { name: /把剩余 10 天 0 小时升级为 SVIP，补 ¥10.00/ }),
+    screen.getByRole("button", { name: /只想升级剩余的 10 天？\s*补 ¥10\.00\s*，到期日不变/ }),
   ).toBeTruthy()
   view.unmount()
   mocks.quotes.mockResolvedValue({ ...quotes, remainingUpgrade: null })
   mount()
   await screen.findByText("¥8.33/月")
   fireEvent.click(screen.getByRole("radio", { name: /SVIP/ }))
-  expect(screen.queryByRole("button", { name: /把剩余/ })).toBeNull()
+  expect(screen.queryByRole("button", { name: /只想升级剩余/ })).toBeNull()
 })
 it("opens polling dialog when valid order query param present", async () => {
   mocks.params = `order=${created.orderNo}`
   mount()
   expect(await screen.findByRole("dialog")).toBeTruthy()
   await waitFor(() => expect(mocks.order).toHaveBeenCalledWith(created.orderNo))
+})
+it("closing a return order removes it from the address bar", async () => {
+  mocks.params = `order=${created.orderNo}`
+  mount()
+  await screen.findByRole("dialog")
+  expect(mocks.replace).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole("button", { name: "关闭" }))
+  expect(mocks.replace).toHaveBeenCalledWith("/membership")
+})
+it("closing a return order keeps the other query parameters", async () => {
+  mocks.params = `tier=svip&order=${created.orderNo}&option=svip-3`
+  mount()
+  await screen.findByRole("dialog")
+  fireEvent.click(screen.getByRole("button", { name: "关闭" }))
+  expect(mocks.replace).toHaveBeenCalledWith("/membership?tier=svip&option=svip-3")
+})
+it("closing a fresh checkout leaves the address bar alone", async () => {
+  mount()
+  fireEvent.click(await screen.findByRole("button", { name: "立即续费" }))
+  fireEvent.click(screen.getByRole("button", { name: "关闭" }))
+  expect(mocks.replace).not.toHaveBeenCalled()
 })
 it("ignores invalid return order", async () => {
   mocks.params = "order=bad"
@@ -153,11 +185,11 @@ it("does not expose late account A quotes after switching to B", async () => {
   await act(async () => {
     client.setQueryData(["me"], { id: "b" })
   })
-  await screen.findByText("会员有效 · SVIP")
+  await waitFor(() => expect(currentCardStyle()).toBe("gold"))
   await act(async () => {
     resolve(quotes)
   })
-  expect(screen.queryByText("会员有效 · VIP")).toBeNull()
+  expect(currentCardStyle()).toBe("gold")
   expect(screen.queryByRole("button", { name: "立即续费" })).toBeNull()
 })
 it("cancels the old dialog on route change even when returning to the same route", async () => {
@@ -192,14 +224,14 @@ it("cancels a late A quote across an A-B-A account cycle", async () => {
   await act(async () => {
     client.setQueryData(["me"], { id: "b" })
   })
-  await screen.findByText("会员有效 · VIP")
+  await waitFor(() => expect(currentCardStyle()).toBe("azure"))
   await act(async () => {
     client.setQueryData(["me"], { id: "a" })
   })
   await act(async () => {
     resolve(quotes)
   })
-  await screen.findByText("会员有效 · VIP")
+  await waitFor(() => expect(currentCardStyle()).toBe("azure"))
   expect(screen.queryByRole("button", { name: "立即续费" })).toBeNull()
   expect(mocks.quotes).toHaveBeenCalledTimes(3)
 })
@@ -221,7 +253,7 @@ it("does not reopen the return order after changing account", async () => {
 
 it("formats entitlement expiry for readers instead of raw ISO", async () => {
   mount()
-  await screen.findByText(`有效期至 ${formatTime("2026-12-01T00:00:00Z")}`)
+  await screen.findByText(`${formatTime("2026-12-01T00:00:00Z").slice(0, 10)} 到期`)
   expect(screen.queryByText(/2026-12-01T00:00:00Z/)).toBeNull()
 })
 
@@ -257,7 +289,8 @@ it("success closes with a toast and replays the current card glint", async () =>
   await act(async () => {
     await vi.advanceTimersByTimeAsync(20)
   })
-  const firstCard = screen.getByRole("radio", { name: /VIP.*基础权益/ })
+  const firstCard = screen.getByRole("radio", { name: /^VIP/ })
+  expect(firstCard.getAttribute("data-glint")).toBe("false")
   fireEvent.click(screen.getByRole("button", { name: "立即续费" }))
   await act(async () => {
     await vi.advanceTimersByTimeAsync(20)
@@ -266,12 +299,13 @@ it("success closes with a toast and replays the current card glint", async () =>
     await vi.advanceTimersByTimeAsync(2500)
   })
   expect(screen.queryByRole("dialog")).toBeNull()
-  expect(screen.getByRole("radio", { name: /VIP.*基础权益/ })).not.toBe(firstCard)
+  const replayed = screen.getByRole("radio", { name: /^VIP/ })
+  expect(replayed).not.toBe(firstCard)
+  expect(replayed.getAttribute("data-glint")).toBe("true")
   await act(async () => {
     await vi.advanceTimersByTimeAsync(50)
   })
-  expect(screen.getByText("VIP 已生效")).toBeTruthy()
-  vi.useRealTimers()
+  expect(screen.getByText("VIP 已生效，有效期至 2026-12-01")).toBeTruthy()
 })
 
 it.each(["empty", "retired", "blocked", "no-offer"])(

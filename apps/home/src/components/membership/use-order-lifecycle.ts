@@ -138,8 +138,16 @@ export function useOrderLifecycle({ ownerId, orderNo }: { ownerId: string; order
       setOrder(result)
       setAmount(result.payableFen)
       setPresentation(result.presentation)
-      if (result.payment.kind === "free") await success(id)
-      else {
+      if (result.payment.kind === "free") {
+        // 免费单已在服务端生效；刷新失败只能改为查单，不能回到可重新下单的状态。
+        try {
+          await success(id)
+        } catch {
+          if (!current(id)) return
+          setError("订单状态读取失败，正在重试")
+          schedule(result.orderNo, id)
+        }
+      } else {
         setStatus("pending")
         if (result.payment.kind === "redirect") {
           const popup = window.open(result.payment.url, "_blank")

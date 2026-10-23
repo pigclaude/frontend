@@ -4,6 +4,8 @@ import type { AccentChoice } from "./accent"
 
 type Color = { l: number; c: number; h: number }
 
+// 主按钮悬停色是静止底色在 OKLCH 里压深一档（等同 oklab 混入 10% 黑），白字对比度只升不降。
+// 缓存版本 1 写于悬停色改算法之前，旧 CSS 必然对不上，读取时只沿用其中的选择并按当前算法重算。
 /** 构造无外部运行时依赖的引擎，确保首帧和 React 使用完全相同的算法。 */
 export function createAccentEngine() {
   const backgrounds = { dark: "#08090a", light: "#f7f8f8" }
@@ -107,6 +109,10 @@ export function createAccentEngine() {
       },
     }
   }
+  function pressed(hex: string) {
+    const color = hexToOklch(hex)
+    return oklchToHex({ l: color.l * 0.9, c: color.c * 0.9, h: color.h })
+  }
   function paletteFor(choice: AccentChoice, presets: readonly AccentPreset[]) {
     if (choice.kind === "custom") return deriveAccent(choice.hex)
     return presets.find((preset) => preset.id === choice.id) ?? presets[0]
@@ -128,10 +134,8 @@ export function createAccentEngine() {
         const declarations = (Object.keys(names) as (keyof typeof names)[])
           .map((key) => `--${names[key]}:${tokens[key]};`)
           .join("")
-        const hover =
-          contrastRatio(tokens.accentOn, tokens.accentHover) >= 4.5
-            ? tokens.accentHover
-            : tokens.accent
+        const darker = mode === "dark" ? pressed(tokens.accent) : tokens.accent
+        const hover = contrastRatio(tokens.accentOn, darker) >= 4.5 ? darker : tokens.accent
         const active =
           contrastRatio(tokens.accentOn, tokens.accentActive) >= 4.5
             ? tokens.accentActive
@@ -146,7 +150,8 @@ export function createAccentEngine() {
   ): { choice: AccentChoice; css: string } | null {
     try {
       const value = JSON.parse(raw ?? "null")
-      if (!value || value.v !== 1 || typeof value.css !== "string" || !value.choice) return null
+      if (!value || (value.v !== 1 && value.v !== 2)) return null
+      if (typeof value.css !== "string" || !value.choice) return null
       const choice = value.choice
       if (choice.kind === "preset") {
         if (!presets.some((preset) => preset.id === choice.id)) return null
@@ -156,7 +161,7 @@ export function createAccentEngine() {
           ? { kind: "preset", id: choice.id }
           : { kind: "custom", hex: choice.hex.toLowerCase() }
       const css = accentCss(paletteFor(normalized, presets))
-      return value.css === css ? { choice: normalized, css } : null
+      return value.v === 1 || value.css === css ? { choice: normalized, css } : null
     } catch {
       return null
     }

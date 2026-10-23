@@ -72,4 +72,16 @@ describe("accent derivation", () => {
       }
     }
   })
+  it("dark hover is mixed with 10% black and light hover keeps the resting fill", () => {
+    for (const palette of [...ACCENT_PRESETS, ...["#ffe680", "#12ab34"].map(deriveAccent)]) {
+      const blocks = accentCss(palette).split("}").filter(Boolean)
+      for (const [index, mode] of (["dark", "light"] as const).entries()) {
+        const hover = /--btn-primary-hover:(#[0-9a-f]{6});/.exec(blocks[index])?.[1] ?? ""
+        if (mode === "dark") {
+          expect(hover).not.toBe(palette[mode].accent)
+          expect(hexToOklch(hover).l).toBeCloseTo(hexToOklch(palette[mode].accent).l * 0.9, 2)
+        } else expect(hover).toBe(palette[mode].accent)
+      }
+    }
+  })
 })

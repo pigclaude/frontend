@@ -145,6 +145,16 @@ it("tier remove uses DELETE header csrf and accepts empty response", async () =>
   expect(fetcher.mock.calls[1][1]?.method).toBe("DELETE")
   expect(new Headers(fetcher.mock.calls[1][1]?.headers).get("X-CSRF-Token")).toBe("admin")
 })
+it("tier enabled toggle sends only the flag with header csrf", async () => {
+  const fetcher = vi.fn<typeof fetch>(async (url) =>
+    String(url).endsWith("session") ? json({ csrf: "admin" }) : json({ ok: true }),
+  )
+  await createAdminApi(createClient({ fetch: fetcher })).membership.tiers.setEnabled("a/b", false)
+  expect(fetcher.mock.calls[1][0]).toBe("/admin/v1/membership/tiers/a%2Fb/enabled")
+  expect(fetcher.mock.calls[1][1]?.method).toBe("PUT")
+  expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toEqual({ enabled: false })
+  expect(new Headers(fetcher.mock.calls[1][1]?.headers).get("X-CSRF-Token")).toBe("admin")
+})
 it.each(["owner", "session"])(
   "tier remove rejects stale %s during bootstrap before mutation",
   async (boundary) => {

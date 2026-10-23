@@ -2,6 +2,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { applyAccent, readAccent, resetAccent, subscribeAccent, ACCENT_STORAGE_KEY } from "./accent"
+import { accentEngine } from "./accent-engine"
 const fallback = { kind: "preset", id: "indigo" }
 beforeEach(() => {
   localStorage.clear()
@@ -13,7 +14,7 @@ describe("accent persistence", () => {
   it("apply stores versioned choice and injects style", () => {
     applyAccent({ kind: "preset", id: "rose" })
     expect(JSON.parse(localStorage.getItem(ACCENT_STORAGE_KEY)!)).toMatchObject({
-      v: 1,
+      v: 2,
       choice: { kind: "preset", id: "rose" },
     })
     expect(document.getElementById("pigclaude-accent")?.textContent).toContain("html:root")
@@ -60,6 +61,32 @@ describe("accent persistence", () => {
     listener.mockClear()
     window.dispatchEvent(new StorageEvent("storage", { key: ACCENT_STORAGE_KEY }))
     expect(listener).not.toHaveBeenCalled()
+  })
+  it("reads the same stored value without re-validating it each time", () => {
+    applyAccent({ kind: "custom", hex: "#12ab34" })
+    const parse = vi.spyOn(accentEngine, "parse")
+    readAccent()
+    readAccent()
+    expect(parse).toHaveBeenCalledTimes(1)
+    applyAccent({ kind: "preset", id: "rose" })
+    parse.mockClear()
+    expect(readAccent()).toEqual({ kind: "preset", id: "rose" })
+    expect(parse).toHaveBeenCalledTimes(1)
+  })
+  it("keeps a version 1 choice saved before the hover change and rejects other versions", () => {
+    const stale = "html:root{--accent:#c2496c;--btn-primary-hover:#c2496c;}"
+    localStorage.setItem(
+      ACCENT_STORAGE_KEY,
+      JSON.stringify({ v: 1, choice: { kind: "preset", id: "rose" }, css: stale }),
+    )
+    expect(readAccent()).toEqual({ kind: "preset", id: "rose" })
+    for (const v of [0, 3]) {
+      localStorage.setItem(
+        ACCENT_STORAGE_KEY,
+        JSON.stringify({ v, choice: { kind: "preset", id: "rose" }, css: stale }),
+      )
+      expect(readAccent()).toEqual(fallback)
+    }
   })
   it("reset removes storage and style", () => {
     applyAccent({ kind: "preset", id: "rose" })

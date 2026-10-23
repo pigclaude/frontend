@@ -154,3 +154,19 @@ export function draftErrors(draft: TierDraft): Partial<Record<DraftField, string
     errors.options = "每个等级最多一个推荐档位"
   return errors
 }
+/** 列出两份草稿之间内容变化的字段；新增的空白权益或档位不算改动，用于只在改过之后显示错误。 */
+export function changedFields(before: TierDraft, after: TierDraft): DraftField[] {
+  const result: DraftField[] = []
+  for (const key of ["name", "code", "level", "monthlyPrice", "tagline"] as const)
+    if (before[key] !== after[key]) result.push(key)
+  after.benefits.forEach((value, i) => {
+    if (i < before.benefits.length && before.benefits[i] !== value) result.push(`benefit.${i}`)
+  })
+  after.options.forEach((option, i) => {
+    const previous = before.options[i]
+    if (!previous) return
+    for (const key of ["months", "value", "badge"] as const)
+      if (previous[key] !== option[key]) result.push(`option.${i}.${key}`)
+  })
+  return result
+}

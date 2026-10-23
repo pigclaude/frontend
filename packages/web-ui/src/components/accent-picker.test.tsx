@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { AccentPicker } from "./accent-picker"
 import { readAccent, resetAccent } from "../lib/accent"
+import { hexToOklch } from "../lib/accent-color"
 beforeEach(() => {
   resetAccent()
   vi.stubGlobal(
@@ -56,6 +57,24 @@ describe("accent picker", () => {
     fireEvent.click(screen.getByRole("button", { name: "恢复默认" }))
     expect(readAccent()).toEqual({ kind: "preset", id: "indigo" })
     expect(screen.getByRole("radio", { name: "靛紫" }).getAttribute("aria-checked")).toBe("true")
+  })
+  it("brightness round trip keeps the custom color saturated", () => {
+    render(<AccentPicker />)
+    open()
+    const before = hexToOklch("#8b7cf6").c
+    const brightness = screen.getByRole("slider", { name: "亮度" })
+    for (const key of ["PageUp", "PageUp", "PageUp", "PageDown", "PageDown", "PageDown"])
+      fireEvent.keyDown(brightness, { key })
+    const choice = readAccent()
+    expect(choice.kind).toBe("custom")
+    if (choice.kind === "custom") expect(hexToOklch(choice.hex).c).toBeGreaterThan(before * 0.9)
+  })
+  it("typing a preset brand hex selects that preset", () => {
+    render(<AccentPicker />)
+    open()
+    fireEvent.change(screen.getByRole("textbox", { name: "HEX" }), { target: { value: "#EC6F8F" } })
+    expect(readAccent()).toEqual({ kind: "preset", id: "rose" })
+    expect(screen.getByRole("radio", { name: "猪鼻粉" }).getAttribute("aria-checked")).toBe("true")
   })
   it("supports radio arrow keys and slider keyboard semantics", async () => {
     render(<AccentPicker />)

@@ -4,7 +4,7 @@ import { Button } from "@pigclaude/web-ui/components/button"
 import { formatDurationSeconds, formatFen } from "@pigclaude/web-ui/lib/format"
 import type { CheckoutModel } from "./checkout-model"
 import { PaymentMethods } from "./payment-methods"
-/** 窄屏结算栏保持贴底，动作仅传递服务器档位意图。 */
+/** 宽屏跟在内容后，窄屏吸附视口底部；动作仅传递服务器档位意图。 */
 export function CheckoutBar({
   model,
   payTypes,
@@ -18,22 +18,36 @@ export function CheckoutBar({
   onPayType: (type: PayType) => void
   onChoose: () => void
 }) {
+  const offer = model.offer
+  const notes = [
+    offer?.kind === "upgrade_package" && offer.creditFen !== "0"
+      ? `已抵扣 ${formatFen(offer.creditFen)}`
+      : null,
+    offer && offer.bonusSeconds !== "0"
+      ? `另赠 ${formatDurationSeconds(offer.bonusSeconds)}`
+      : null,
+  ].filter((note) => note !== null)
   return (
-    <section
-      className="sticky bottom-0 z-10 flex flex-wrap items-center gap-4 rounded-xl border bg-background p-4 sm:static"
-      aria-label="结算"
-    >
-      <div>
-        <p>应付 {model.offer ? formatFen(model.offer.payableFen) : "—"}</p>
-        {model.offer?.kind === "upgrade_package" && (
-          <p>已抵扣 {formatFen(model.offer.creditFen)}</p>
-        )}
-        {model.offer && model.offer.bonusSeconds !== "0" && (
-          <p>另赠 {formatDurationSeconds(model.offer.bonusSeconds)}</p>
+    <section className="checkout-bar" aria-label="结算">
+      {payTypes.length ? (
+        <PaymentMethods payTypes={payTypes} value={payType} onChange={onPayType} />
+      ) : (
+        <p className="checkout-offline">在线支付暂未开放，请稍后再来</p>
+      )}
+      <div className="checkout-total">
+        <b>
+          <span className="sr-only">应付 </span>
+          {offer ? formatFen(offer.payableFen) : "—"}
+        </b>
+        {notes.length > 0 && (
+          <p className="checkout-notes">
+            {notes.map((note) => (
+              <span key={note}>{note}</span>
+            ))}
+          </p>
         )}
       </div>
-      <PaymentMethods payTypes={payTypes} value={payType} onChange={onPayType} />
-      <Button disabled={model.cta.disabled} onClick={onChoose}>
+      <Button size="lg" className="checkout-cta" disabled={model.cta.disabled} onClick={onChoose}>
         {model.cta.label}
       </Button>
     </section>

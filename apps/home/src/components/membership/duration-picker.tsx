@@ -12,7 +12,11 @@ export function DurationPicker({
   onSelect: (id: string) => void
 }) {
   return (
-    <section>
+    <section className="membership-section" aria-labelledby="membership-duration">
+      <div className="membership-section-head">
+        <h2 id="membership-duration">选择时长</h2>
+        <small>1 个月按 30 天计</small>
+      </div>
       <DurationCardGroup label="购买时长">
         {options.map((option) => (
           <DurationCard
@@ -23,7 +27,6 @@ export function DurationPicker({
           />
         ))}
       </DurationCardGroup>
-      <p className="text-xs text-muted-foreground">1 个月按 30 天计</p>
     </section>
   )
 }

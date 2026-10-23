@@ -110,8 +110,8 @@
   --btn-bg: var(--raise-1);
   --btn-bg-hover: var(--raise-3);
   --btn-shadow: none;
-  /* 主按钮交互态使用满足白字 AA 的安全底色。 */
-  --btn-primary-hover: var(--accent);
+  /* 主按钮悬停色是底色在 OKLab 里混入 10% 黑，白字对比度只升不降；所选主题色会整组覆盖。 */
+  --btn-primary-hover: #5546bc;
   --btn-primary-active: var(--accent-active);
   --pop-shadow:
     rgba(0, 0, 0, 0) 0 8px 2px, rgba(0, 0, 0, 0.01) 0 5px 2px, rgba(0, 0, 0, 0.04) 0 3px 2px,
@@ -159,8 +159,8 @@
   --btn-bg: #ffffff;
   --btn-bg-hover: #f3f4f5;
   --btn-shadow: 0 1px 2px rgba(9, 10, 12, 0.06);
-  /* 亮底主按钮交互态沿用可读的安全填充。 */
-  --btn-primary-hover: var(--accent);
+  /* 亮底与暗底使用同一个压深一档的悬停色。 */
+  --btn-primary-hover: #5546bc;
   --btn-primary-active: var(--accent-active);
   --pop-shadow:
     0 2px 6px rgba(9, 10, 12, 0.06), 0 12px 32px rgba(9, 10, 12, 0.14),

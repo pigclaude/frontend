@@ -144,14 +144,10 @@ test("task15 owned membership browser acceptance", async ({ browser }) => {
   await selectOffer(other, "VIP", 1)
   const beforeRemaining = await pay(other, "05-before-remaining", otherEmail, "立即开通", "VIP")
   await selectOffer(other, "SVIP", 1)
-  const remainingButton = other.getByRole("button", { name: /^把剩余/ })
-  const remaining = await pay(
-    other,
-    "05-upgrade-remaining",
-    otherEmail,
-    (await remainingButton.textContent()) ?? "",
-    "SVIP",
-  )
+  // 横幅的可读名称在块级子元素之间带空格，和 textContent 不同，所以按开头匹配。
+  const remainingCta = /^只想升级剩余/
+  await expect(other.getByRole("button", { name: remainingCta })).toBeVisible()
+  const remaining = await pay(other, "05-upgrade-remaining", otherEmail, remainingCta, "SVIP")
   expect(remaining.membership.valid_until).toBe(beforeRemaining.membership.valid_until)
   expect(remaining.membership.tier_id).toBe("svip")
   expect(remaining.orders[1]?.kind).toBe("upgrade_remaining")

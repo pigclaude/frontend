@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 import { ACCENT_PRESETS, DEFAULT_ACCENT } from "./accent-presets"
 import { ACCENT_BG, contrastRatio } from "./accent-color"
+import { accentCss } from "./accent"
 
 describe("accent presets", () => {
   it("presets are complete static literal tables without runtime dependencies", () => {
@@ -94,6 +95,11 @@ describe("accent presets", () => {
         landingInkTo: "#2c67c5",
       },
     })
+  })
+  it("blue light-mode primary hover keeps the legacy 10% darken", () => {
+    const blue = ACCENT_PRESETS.find((p) => p.id === "blue")!
+    const light = accentCss(blue).split("}")[1]
+    expect(light).toContain("--btn-primary-hover:#2c67c5;")
   })
   it("presets are indigo first and unique", () => {
     expect(DEFAULT_ACCENT).toBe("indigo")

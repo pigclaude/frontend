@@ -100,6 +100,10 @@ async function tick(ms = 0) {
     await vi.advanceTimersByTimeAsync(ms)
   })
 }
+// 金额明细是 dt/dd 对，按标签读出对应的金额。
+function detail(label: string) {
+  return screen.getByText(label, { selector: "dt" }).nextElementSibling?.textContent
+}
 it("creates on open with chosen channel and replaces quote with actual server presentation", async () => {
   mount()
   await tick()
@@ -107,10 +111,10 @@ it("creates on open with chosen channel and replaces quote with actual server pr
     { optionId: "svip-3", payType: "wxpay" },
     expect.any(Function),
   )
-  expect(screen.getByText("应付 ¥50.00")).toBeTruthy()
-  expect(screen.getByText("套餐金额 ¥60.00")).toBeTruthy()
-  expect(screen.getByText("已抵扣 ¥10.00")).toBeTruthy()
-  expect(screen.getByText("另赠 1 天 0 小时")).toBeTruthy()
+  expect(detail("应付")).toBe("¥50.00")
+  expect(detail("档位价")).toBe("¥60.00")
+  expect(detail("剩余价值抵扣")).toBe("−¥10.00")
+  expect(detail("另赠")).toBe("1 天 0 小时")
   expect(screen.queryByText("旧报价")).toBeNull()
 })
 it("switching channel creates a fresh order and keeps the new QR", async () => {
@@ -125,7 +129,7 @@ it("switching channel creates a fresh order and keeps the new QR", async () => {
     fireEvent.click(screen.getByRole("radio", { name: "支付宝" }))
   })
   expect(mocks.createOrder.mock.calls[1][0]).toEqual({ optionId: "svip-3", payType: "alipay" })
-  expect(screen.getByText("请使用支付宝扫码")).toBeTruthy()
+  expect(screen.getByText("请使用支付宝扫码支付")).toBeTruthy()
 })
 it("check now polls immediately and resets the 2 second cycle", async () => {
   mount()
@@ -262,7 +266,7 @@ it("return-only StrictMode displays owned metadata without inventing QR or recon
   const view = mount({ returnOnly: true, strict: true })
   await tick()
   expect(screen.getByText("已停售等级 · 3 个月")).toBeTruthy()
-  expect(screen.getByText("应付 ¥50.00")).toBeTruthy()
+  expect(detail("应付")).toBe("¥50.00")
   expect(screen.queryByLabelText("付款二维码")).toBeNull()
   expect(screen.queryByRole("radio", { name: "支付宝" })).toBeNull()
   expect(mocks.createOrder).not.toHaveBeenCalled()
@@ -433,4 +437,35 @@ it("success replaces an inactive pre-payment entitlement request instead of awai
   expect(view.client.getQueryData(["entitlement"])).toMatchObject({
     validUntil: "2027-01-01T00:00:00Z",
   })
+})
+
+it("keeps the open container and its state when the width crosses the breakpoint", async () => {
+  let narrow = false
+  const listeners = new Set<() => void>()
+  vi.stubGlobal("matchMedia", () => ({
+    get matches() {
+      return narrow
+    },
+    addEventListener: (_: string, listener: () => void) => listeners.add(listener),
+    removeEventListener: (_: string, listener: () => void) => listeners.delete(listener),
+  }))
+  mocks.order.mockResolvedValue(response("needs_review"))
+  mount()
+  await tick()
+  await tick(2000)
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: vi.fn().mockResolvedValue(undefined) },
+  })
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "复制单号" }))
+  })
+  expect(screen.getByText("单号已复制")).toBeTruthy()
+  await act(async () => {
+    narrow = true
+    for (const listener of listeners) listener()
+  })
+  expect(document.querySelector('[data-slot="sheet-content"]')).toBeNull()
+  expect(screen.getByText("单号已复制")).toBeTruthy()
+  vi.unstubAllGlobals()
 })

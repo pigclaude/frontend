@@ -272,10 +272,10 @@ function task6AccentTransform(source, file) {
       "--accent-glow: #8b7cf6;",
       "--accent-glow: #8b7cf6;\n  --landing-ink-from: #c9c1fd;\n  --landing-ink-to: #8b7cf6;",
     )
-    .replace("--btn-primary-hover: var(--accent-hover);", "--btn-primary-hover: var(--accent);")
+    .replace("--btn-primary-hover: var(--accent-hover);", "--btn-primary-hover: #5546bc;")
     .replace(
       "--btn-primary-hover: color-mix(in oklab, var(--accent), black 10%);",
-      "--btn-primary-hover: var(--accent);",
+      "--btn-primary-hover: #5546bc;",
     )
     .replace(
       "--accent-ink: var(--accent);",

@@ -1,0 +1,457 @@
+/* 会员页、结算栏、付款面板和购买记录的布局；颜色全部来自共享主题 token。 */
+.membership-page {
+  max-width: 980px;
+  padding-bottom: 32px;
+}
+.membership-head .membership-sub {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.membership-head .membership-hint {
+  display: inline-flex;
+  margin-top: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-ink) 12%, transparent);
+  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+.membership-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.membership-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.membership-section-head h2 {
+  color: var(--fg-2);
+  font-size: 15px;
+  font-weight: 600;
+}
+.membership-section-head small {
+  color: var(--meta);
+  font-size: 12px;
+}
+
+/* ─── 剩余天数升级 ───────────────────────────────────────────── */
+.remaining-upgrade {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px dashed color-mix(in srgb, var(--accent-ink) 45%, transparent);
+  border-radius: 12px;
+  color: var(--fg-2);
+  font-size: 14px;
+  text-align: left;
+  transition: background-color 150ms;
+}
+.remaining-upgrade:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-ink) 8%, transparent);
+}
+.remaining-upgrade:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.remaining-upgrade b,
+.remaining-upgrade-action {
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+/* ─── 结算栏 ─────────────────────────────────────────────────── */
+.checkout-bar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 20px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  backdrop-filter: blur(12px);
+}
+.checkout-total {
+  margin-left: auto;
+  text-align: right;
+}
+.checkout-total b {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.checkout-total p {
+  margin-top: 2px;
+  color: var(--meta);
+  font-size: 12px;
+}
+.checkout-notes span + span::before {
+  content: " · ";
+}
+.checkout-cta {
+  height: 46px;
+  padding-inline: 30px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: 0 10px 26px -12px var(--accent-glow);
+}
+.checkout-offline {
+  color: var(--muted);
+  font-size: 14px;
+}
+@media (width < 640px) {
+  .membership-page {
+    padding-bottom: 150px;
+  }
+  .checkout-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    margin-inline: -16px;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    border-width: 1px 0 0;
+    border-radius: 0;
+  }
+  .checkout-bar > :first-child {
+    flex-basis: 100%;
+  }
+  .checkout-total {
+    margin-left: 0;
+    text-align: left;
+  }
+  .checkout-total b {
+    font-size: 22px;
+  }
+  .checkout-cta {
+    height: 42px;
+    margin-left: auto;
+    padding-inline: 22px;
+  }
+}
+
+/* ─── 支付方式 ───────────────────────────────────────────────── */
+.pay-methods {
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--raise-1);
+}
+.pay-methods .pay-method {
+  gap: 6px;
+  height: 32px;
+  padding-inline: 12px;
+  border-radius: 7px;
+  color: var(--muted);
+}
+.pay-methods .pay-method[data-state="on"] {
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 0 0 1px var(--accent-ink);
+}
+.pay-method-single {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-2);
+  font-size: 14px;
+}
+.pay-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  background: #1677ff;
+}
+.pay-dot[data-channel="wxpay"] {
+  background: #07c160;
+}
+
+/* ─── 付款面板 ───────────────────────────────────────────────── */
+.pay-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+}
+.pay-grab {
+  width: 36px;
+  height: 4px;
+  margin: -6px auto 0;
+  border-radius: 999px;
+  background: var(--border);
+}
+.pay-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pay-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.pay-header-title {
+  overflow: hidden;
+  color: var(--fg);
+  font-size: 15px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pay-header-meta {
+  color: var(--meta);
+  font-size: 12px;
+}
+.pay-close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  transition: background-color 150ms;
+}
+.pay-close:hover {
+  background: var(--raise-3);
+  color: var(--fg);
+}
+.pay-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--raise-1);
+}
+.pay-line,
+.pay-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 13px;
+}
+.pay-line dd {
+  color: var(--fg-2);
+  font-weight: 500;
+}
+.pay-line dd[data-tone="credit"] {
+  color: var(--success);
+}
+.pay-total {
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.pay-total dd {
+  color: var(--fg);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.pay-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.pay-qr-code {
+  position: relative;
+  padding: 10px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 0 0 1px var(--border);
+}
+.pay-qr-mark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 3px solid #fff;
+  border-radius: 9px;
+  background: #1677ff;
+  color: #fff;
+  transform: translate(-50%, -50%);
+}
+.pay-qr-mark[data-channel="wxpay"] {
+  background: #07c160;
+}
+.pay-qr-mark svg {
+  width: 22px;
+  height: 22px;
+}
+.pay-qr-caption {
+  margin-top: 4px;
+  color: var(--fg-2);
+  font-size: 14px;
+}
+.pay-qr p[aria-live] {
+  color: var(--meta);
+  font-size: 12px;
+}
+.pay-alipay-link {
+  margin-top: 6px;
+  background: #1677ff;
+  color: #fff;
+}
+.pay-alipay-link:hover {
+  background: #0f62d6;
+}
+.pay-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.pay-state > button {
+  margin-top: 8px;
+}
+.pay-state-title {
+  color: var(--fg);
+  font-size: 16px;
+  font-weight: 700;
+}
+.pay-note {
+  color: var(--muted);
+  font-size: 13px;
+}
+.pay-link {
+  color: var(--accent-ink);
+  font-size: 13px;
+}
+.pay-error {
+  color: var(--danger);
+  font-size: 13px;
+  text-align: center;
+}
+.pay-order-no {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.pay-free-mark,
+.pay-success-mark {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+}
+.pay-free-mark {
+  background: color-mix(in srgb, var(--accent-ink) 14%, transparent);
+  color: var(--accent-ink);
+  font-size: 22px;
+  font-weight: 800;
+}
+.pay-success-mark {
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+}
+.pay-success-mark svg {
+  width: 34px;
+  height: 34px;
+}
+
+/* ─── 购买记录 ───────────────────────────────────────────────── */
+.purchase-history {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.purchase-history-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 14px 16px;
+  color: var(--fg-2);
+  font-size: 14px;
+  font-weight: 500;
+}
+.purchase-history-toggle {
+  color: var(--meta);
+  font-size: 13px;
+}
+.purchase-history-empty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px 16px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.purchase-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+.purchase-row-title {
+  color: var(--fg-2);
+}
+.purchase-row-amount {
+  margin-left: auto;
+  color: var(--fg);
+  font-weight: 600;
+}
+.purchase-row-time {
+  flex-basis: 100%;
+  color: var(--meta);
+  font-size: 12px;
+}
+.purchase-status {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--raise-3);
+  color: var(--muted);
+  font-size: 12px;
+}
+.purchase-status[data-status="activated"] {
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  color: var(--success);
+}
+.purchase-status[data-status="needs_review"],
+.purchase-status[data-status="pending"] {
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
+}
+.purchase-row-copy {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 13px;
+}
+@media (width >= 640px) {
+  .purchase-row-time {
+    flex-basis: auto;
+    min-width: 140px;
+    text-align: right;
+  }
+}
+.pay-panel .pay-methods {
+  width: 100%;
+}
+.pay-panel .pay-methods .pay-method {
+  flex: 1;
+}

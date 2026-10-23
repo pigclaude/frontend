@@ -136,3 +136,12 @@ it.each(["resolve", "reject"])("old %s cannot clear successor owner secret", asy
   expect(current.value).toBe("new-owner")
   expect(screen.getByText("有未保存的修改")).toBeTruthy()
 })
+it("turning a pay type off and on again leaves the form clean", () => {
+  mount({ ...view, payTypes: ["alipay", "wxpay"] })
+  const alipay = screen.getByRole("switch", { name: "支付宝" })
+  fireEvent.click(alipay)
+  expect(screen.getByText("有未保存的修改")).toBeTruthy()
+  fireEvent.click(alipay)
+  expect(alipay.getAttribute("aria-checked")).toBe("true")
+  expect(screen.queryByText("有未保存的修改")).toBeNull()
+})

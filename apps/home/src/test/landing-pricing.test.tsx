@@ -1,5 +1,5 @@
 // 验证公开价格区等级选择、服务端金额及登录导航，不触发购买请求。
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { ApiError } from "@pigclaude/api/client"
@@ -71,7 +71,7 @@ it("logged in duration click goes to membership with params", async () => {
     expect(mocks.push).toHaveBeenCalledWith("/membership?tier=svip&option=svip-3"),
   )
   expect(screen.getByText("¥90,071,992,547,409.93")).toBeTruthy()
-  expect(screen.getByText("¥12.34/月")).toBeTruthy()
+  expect(within(screen.getByLabelText("购买时长")).getByText("¥12.34/月")).toBeTruthy()
   expect(screen.getByText("高级权益")).toBeTruthy()
   expect(screen.queryByText("基础权益")).toBeNull()
   expect(screen.queryByText(/省/)).toBeNull()
@@ -184,4 +184,20 @@ it("lets only the newest click navigate and clear pending", async () => {
   })
   expect(mocks.push).toHaveBeenCalledOnce()
   expect(duration.hasAttribute("disabled")).toBe(false)
+})
+
+it("orders tiers by level and labels the card price per month", async () => {
+  mocks.catalog.mockResolvedValue({
+    tiers: [tier, { ...tier, code: "vip", name: "VIP", level: 1, monthlyPriceFen: "990" }],
+    payTypes: ["alipay"],
+  })
+  show()
+  const cards = await screen.findAllByRole("radio")
+  expect(cards.map((card) => card.querySelector(".membership-card-name")?.textContent)).toEqual([
+    "VIP",
+    "SVIP",
+  ])
+  expect(cards[0].getAttribute("aria-checked")).toBe("true")
+  expect(within(cards[0]).getByText("¥9.90/月")).toBeTruthy()
+  expect(screen.queryByText(/按月购买/)).toBeNull()
 })

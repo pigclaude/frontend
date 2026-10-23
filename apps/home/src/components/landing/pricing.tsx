@@ -31,7 +31,8 @@ export function Pricing() {
   )
   const [pending, setPending] = useState(false)
   const plans = useQuery({ queryKey: ["membership-catalog"], queryFn: homeApi.membership.catalog })
-  const tier = plans.data?.tiers.find((item) => item.code === selected) ?? plans.data?.tiers[0]
+  const tiers = plans.data?.tiers.toSorted((a, b) => a.level - b.level) ?? []
+  const tier = tiers.find((item) => item.code === selected) ?? tiers[0]
   const navigate = async (target: string) => {
     const id = ++request.current
     const session = homeSessionGeneration.current()
@@ -67,13 +68,13 @@ export function Pricing() {
           ) : (
             <>
               <MembershipCardGroup label="会员等级">
-                {plans.data.tiers.map((item) => (
+                {tiers.map((item) => (
                   <MembershipCard
                     key={item.code}
                     name={item.name}
                     cardStyle={item.cardStyle}
                     tagline={item.tagline}
-                    price={`按月购买 ${formatFen(item.monthlyPriceFen)}`}
+                    price={`${formatFen(item.monthlyPriceFen)}/月`}
                     selected={tier?.code === item.code}
                     onSelect={() => setSelected(item.code)}
                   />

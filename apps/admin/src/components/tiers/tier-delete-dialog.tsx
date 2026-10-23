@@ -49,7 +49,8 @@ export function TierDeleteDialog({
           <Button variant="outline" disabled={pending} onClick={onClose}>
             取消
           </Button>
-          <Button disabled={pending} onClick={onConfirm}>
+          {/* 还有有效会员时再删一次也会失败，只留「改为下架」。 */}
+          <Button disabled={pending || conflict} onClick={onConfirm}>
             确认{action}
           </Button>
           {conflict && (

@@ -120,7 +120,7 @@ export async function pay(
   page: Page,
   name: string,
   email: string,
-  cta: string,
+  cta: string | RegExp,
   tier: string,
   free = false,
 ) {

@@ -192,8 +192,8 @@ it("date drafts apply and clear inclusive bounds without immediate requests", as
   await waitFor(() =>
     expect(mocks.list).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        from: new Date("2026-10-21T00:00").toISOString(),
-        to: new Date("2026-10-23T00:00").toISOString(),
+        from: "2026-10-20T16:00:00.000Z",
+        to: "2026-10-22T16:00:00.000Z",
       }),
     ),
   )
@@ -373,3 +373,16 @@ for (const change of ["identity", "location", "session"] as const) {
     expect((screen.getByLabelText("起始时间") as HTMLInputElement).value).toBe("")
   })
 }
+
+it("does not apply a date range whose start is after its end", async () => {
+  mount()
+  await loaded()
+  const calls = mocks.list.mock.calls.length
+  fireEvent.click(screen.getByRole("button", { name: "时间范围" }))
+  fireEvent.change(screen.getByLabelText("起始时间"), { target: { value: "2026-10-23T00:00" } })
+  fireEvent.change(screen.getByLabelText("截止时间"), { target: { value: "2026-10-21T00:00" } })
+  expect(screen.getByText("截止时间不能早于起始时间")).toBeTruthy()
+  expect(screen.getByRole("button", { name: "应用" }).hasAttribute("disabled")).toBe(true)
+  fireEvent.click(screen.getByRole("button", { name: "应用" }))
+  expect(mocks.list.mock.calls.length).toBe(calls)
+})

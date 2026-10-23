@@ -6,7 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiError } from "@pigclaude/api/client"
 import TiersPage from "./tiers"
 
-const api = vi.hoisted(() => ({ list: vi.fn(), preview: vi.fn(), save: vi.fn(), remove: vi.fn() }))
+const api = vi.hoisted(() => ({
+  list: vi.fn(),
+  preview: vi.fn(),
+  save: vi.fn(),
+  remove: vi.fn(),
+  setEnabled: vi.fn(),
+}))
 const auth = vi.hoisted(() => ({
   id: "a",
   permissions: ["membership:read", "membership:tiers:write"],
@@ -58,6 +64,12 @@ async function edit() {
   mount()
   fireEvent.click(await screen.findByRole("button", { name: "编辑 VIP" }))
   return screen.getByRole("dialog")
+}
+function description(control: HTMLElement) {
+  return (control.getAttribute("aria-describedby") ?? "")
+    .split(" ")
+    .map((id) => document.getElementById(id)?.textContent ?? "")
+    .join(" ")
 }
 afterEach(() => vi.unstubAllGlobals())
 describe("tiers", () => {
@@ -132,6 +144,8 @@ describe("tiers", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "删除" }))
     fireEvent.click(screen.getByRole("button", { name: "确认删除" }))
     expect(await screen.findByText("还有有效会员，无法删除")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "确认删除" }).hasAttribute("disabled")).toBe(true)
+    expect(screen.getByRole("button", { name: "改为下架" }).hasAttribute("disabled")).toBe(false)
   })
   it("creates a tier with code and exact amount without floating point conversion", async () => {
     mount()
@@ -154,7 +168,8 @@ describe("tiers", () => {
     await edit()
     fireEvent.change(screen.getByLabelText("月价（元）"), { target: { value: "1.001" } })
     fireEvent.click(screen.getByRole("button", { name: "保存等级" }))
-    expect(screen.getByRole("alert").textContent).toContain("精度")
+    expect(description(screen.getByLabelText("月价（元）"))).toContain("精度")
+    expect(screen.queryByRole("alert")).toBeNull()
     await new Promise((resolve) => setTimeout(resolve, 350))
     expect(api.preview).not.toHaveBeenCalled()
     expect(api.save).not.toHaveBeenCalled()
@@ -173,38 +188,22 @@ describe("tiers", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认删除" }))
     expect(await screen.findByText("请求冲突")).toBeTruthy()
     expect(screen.queryByText("还有有效会员，无法删除")).toBeNull()
+    expect(screen.getByRole("button", { name: "确认删除" }).hasAttribute("disabled")).toBe(false)
   })
   it("renders tier cards with member counts", async () => {
     mount()
     expect(await screen.findByText("1 位有效会员")).toBeTruthy()
     expect(screen.queryByRole("table")).toBeNull()
   })
-  it("enable switch confirms before saving", async () => {
+  it("enable switch confirms, then changes only enabled without resaving the tier", async () => {
     mount()
     fireEvent.click(await screen.findByRole("switch", { name: "上架 VIP" }))
-    expect(api.save).not.toHaveBeenCalled()
+    expect(api.setEnabled).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole("button", { name: "确认下架" }))
-    await waitFor(() => expect(api.save).toHaveBeenCalled())
-    expect(api.save.mock.calls[0][1]).toEqual({
-      name: "VIP",
-      level: 1,
-      monthlyPriceFen: "10000",
-      tagline: "",
-      cardStyle: "rose",
-      benefits: ["保留权益"],
-      enabled: false,
-      options: [
-        {
-          id: "option-original",
-          months: 3,
-          discountKind: "percent",
-          discountValue: "7500",
-          badge: "专属",
-          recommended: true,
-          enabled: true,
-        },
-      ],
-    })
+    await waitFor(() =>
+      expect(api.setEnabled).toHaveBeenCalledWith(tier.id, false, expect.any(Function)),
+    )
+    expect(api.save).not.toHaveBeenCalled()
   })
   it("delete conflict offers unpublish", async () => {
     api.remove.mockRejectedValue(new ApiError(409, { code: "INVALID_STATE" }))
@@ -214,12 +213,9 @@ describe("tiers", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认删除" }))
     fireEvent.click(await screen.findByRole("button", { name: "改为下架" }))
     await waitFor(() =>
-      expect(api.save).toHaveBeenCalledWith(
-        tier.id,
-        expect.objectContaining({ enabled: false }),
-        expect.any(Function),
-      ),
+      expect(api.setEnabled).toHaveBeenCalledWith(tier.id, false, expect.any(Function)),
     )
+    expect(api.save).not.toHaveBeenCalled()
   })
   it("editor shows live preview prices", async () => {
     api.preview.mockResolvedValue({ ...tier, options: [{ ...tier.options[0], priceFen: "13500" }] })
@@ -249,14 +245,14 @@ describe("tiers", () => {
     fireEvent.change(screen.getByLabelText("标语"), { target: { value: "新标语" } })
     fireEvent.change(screen.getByLabelText("权益 1"), { target: { value: "新权益" } })
     fireEvent.change(screen.getByLabelText("角标 1"), { target: { value: "新角标" } })
-    fireEvent.click(screen.getByRole("radio", { name: "gold" }))
+    fireEvent.click(screen.getByRole("radio", { name: "金" }))
     fireEvent.click(screen.getByRole("button", { name: "取消" }))
     expect(screen.getByText("放弃未保存的修改？")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "继续编辑" }))
     expect(screen.getByLabelText("标语").getAttribute("value")).toBe("新标语")
     expect(screen.getByLabelText("权益 1").getAttribute("value")).toBe("新权益")
     expect(screen.getByLabelText("角标 1").getAttribute("value")).toBe("新角标")
-    expect(screen.getByRole("radio", { name: "gold" }).getAttribute("aria-checked")).toBe("true")
+    expect(screen.getByRole("radio", { name: "金" }).getAttribute("aria-checked")).toBe("true")
     fireEvent.click(screen.getByRole("button", { name: "取消" }))
     fireEvent.click(screen.getByRole("button", { name: "放弃修改" }))
     fireEvent.click(screen.getByRole("button", { name: "编辑 VIP" }))
@@ -286,10 +282,43 @@ describe("tiers", () => {
     expect(await screen.findByText("还没有会员等级")).toBeTruthy()
     expect(screen.getAllByRole("button", { name: "新建等级" })).toHaveLength(2)
   })
-  it("shows field errors and readonly saved server prices", async () => {
+  it("shows the tagline error under the tagline input", async () => {
     const view = await edit()
-    fireEvent.change(screen.getByLabelText("标语"), { target: { value: "😀".repeat(25) } })
-    expect(within(view).getByLabelText("字段错误").textContent).toContain("标语最多 24 个字")
+    const tagline = screen.getByLabelText("标语")
+    fireEvent.change(tagline, { target: { value: "😀".repeat(25) } })
+    expect(tagline.getAttribute("aria-invalid")).toBe("true")
+    expect(description(tagline)).toBe("标语最多 24 个字")
+    expect(tagline.nextElementSibling?.textContent).toBe("标语最多 24 个字")
+    expect(within(view).queryByLabelText("字段错误")).toBeNull()
+  })
+  it("new tier shows field errors under inputs only after editing or saving", async () => {
+    mount()
+    fireEvent.click(await screen.findByRole("button", { name: "新建等级" }))
+    const dialog = screen.getByRole("dialog")
+    for (const text of ["请填写名称", "请填写代号", "精度"])
+      expect(dialog.textContent).not.toContain(text)
+    for (const label of ["名称", "代号", "等级", "月价（元）", "标语", "月数 1", "角标 1"])
+      expect(screen.getByLabelText(label).getAttribute("aria-invalid")).toBe("false")
+    const name = screen.getByLabelText("名称")
+    fireEvent.change(name, { target: { value: "金卡" } })
+    fireEvent.change(name, { target: { value: "" } })
+    expect(name.getAttribute("aria-invalid")).toBe("true")
+    expect(description(name)).toBe("请填写名称")
+    expect(name.nextElementSibling?.textContent).toBe("请填写名称")
+    expect(screen.getByLabelText("代号").getAttribute("aria-invalid")).toBe("false")
+    expect(dialog.textContent).not.toContain("请填写代号")
+    fireEvent.change(screen.getByLabelText("等级"), { target: { value: "0" } })
+    expect(description(screen.getByLabelText("等级"))).toBe("等级和月数超出范围")
+    fireEvent.click(screen.getByRole("button", { name: "添加权益" }))
+    expect(screen.getByLabelText("权益 1").getAttribute("aria-invalid")).toBe("false")
+    expect(description(screen.getByLabelText("权益 1"))).toBe("")
+    fireEvent.click(screen.getByRole("button", { name: "保存等级" }))
+    expect(api.save).not.toHaveBeenCalled()
+    expect(description(screen.getByLabelText("代号"))).toBe("请填写代号")
+    expect(description(screen.getByLabelText("月价（元）"))).toContain("精度")
+    expect(description(screen.getByLabelText("权益 1"))).toBe("权益 1：权益不能为空")
+    expect(document.activeElement).toBe(name)
+    expect(screen.queryByRole("alert")).toBeNull()
   })
   it("permission downgrade discards unsaved draft and shows only stored prices", async () => {
     const view = mount()
@@ -340,7 +369,8 @@ describe("tiers", () => {
         .map((id) => document.getElementById(id)?.textContent ?? "")
         .join(" ")
     fireEvent.click(screen.getByRole("button", { name: "添加权益" }))
-    expect(description(screen.getByLabelText("权益 2"))).toContain("权益 2：权益不能为空")
+    // 刚添加的空白条目在填写或保存之前不报错。
+    expect(description(screen.getByLabelText("权益 2"))).toBe("")
     fireEvent.change(screen.getByLabelText("权益 2"), { target: { value: "😀".repeat(25) } })
     fireEvent.click(screen.getByRole("button", { name: "上移权益 2" }))
     expect(description(screen.getByLabelText("权益 1"))).toContain("权益 1：每条权益最多 24 个字")

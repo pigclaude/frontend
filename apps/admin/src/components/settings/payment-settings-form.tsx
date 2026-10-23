@@ -48,7 +48,7 @@ export function PaymentSettingsForm({
     gatewayUrl !== view.gatewayUrl ||
     pid !== view.pid ||
     notifyBaseUrl !== view.notifyBaseUrl ||
-    JSON.stringify(payTypes) !== JSON.stringify(view.payTypes) ||
+    JSON.stringify(payTypes.toSorted()) !== JSON.stringify(view.payTypes.toSorted()) ||
     secret.current !== ""
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange, secretVersion])
   const disabled = !canWrite || busy || refreshFailed

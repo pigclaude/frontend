@@ -23,6 +23,10 @@ const tabs: { value: OrderTab; label: string }[] = [
   { value: "closed", label: "已关闭" },
   { value: "attention", label: "待处理" },
 ]
+// 统计卡按北京时间切分今天和本月，筛选输入也按北京时间解释，与浏览器所在时区无关。
+function beijing(value: string) {
+  return new Date(`${value.length === 16 ? `${value}:00` : value}+08:00`).toISOString()
+}
 /** 使用 shadcn 控件提交服务器筛选，不在客户端过滤列表。 */
 export function OrderToolbar({
   tab,
@@ -43,6 +47,8 @@ export function OrderToolbar({
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
   const [open, setOpen] = useState(false)
+  // 两个输入格式相同，按字符串比较即可判断先后。
+  const reversed = !!from && !!to && from > to
   return (
     <div className="w-full space-y-3">
       <Tabs
@@ -103,6 +109,7 @@ export function OrderToolbar({
             <Button variant="outline">时间范围</Button>
           </PopoverTrigger>
           <PopoverContent className="space-y-3 p-4">
+            <p className="text-xs text-muted-foreground">按北京时间筛选</p>
             <label className="block space-y-1">
               起始时间
               <Input
@@ -117,16 +124,24 @@ export function OrderToolbar({
               <Input
                 type="datetime-local"
                 aria-label="截止时间"
+                aria-invalid={reversed}
+                aria-describedby={reversed ? "order-range-error" : undefined}
                 value={to}
                 onChange={(event) => setTo(event.target.value)}
               />
             </label>
+            {reversed && (
+              <p id="order-range-error" className="text-xs text-destructive">
+                截止时间不能早于起始时间
+              </p>
+            )}
             <div className="flex gap-2">
               <Button
+                disabled={reversed}
                 onClick={() => {
                   filter({
-                    from: from ? new Date(from).toISOString() : undefined,
-                    to: to ? new Date(to).toISOString() : undefined,
+                    from: from ? beijing(from) : undefined,
+                    to: to ? beijing(to) : undefined,
                   })
                   setOpen(false)
                 }}

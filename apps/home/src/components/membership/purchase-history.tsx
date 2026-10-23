@@ -54,45 +54,63 @@ export function PurchaseHistory({ ownerId, session }: { ownerId: string; session
   }
   const orders = history.data?.pages.flatMap((page) => page.items) ?? []
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
+    <Collapsible open={open} onOpenChange={setOpen} className="purchase-history">
       <CollapsibleTrigger asChild>
-        <Button variant="ghost">购买记录</Button>
+        <button type="button" className="purchase-history-trigger">
+          <span>购买记录</span>
+          <span className="purchase-history-toggle" aria-hidden="true">
+            {open ? "收起" : "展开 ›"}
+          </span>
+        </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
         {history.isPending ? (
-          <Skeleton className="h-24" />
+          <div className="space-y-2 p-4">
+            <Skeleton className="h-10" />
+            <Skeleton className="h-10" />
+          </div>
         ) : history.isError ? (
-          <div role="alert">
-            购买记录读取失败<Button onClick={() => void history.refetch()}>重试</Button>
+          <div className="purchase-history-empty" role="alert">
+            购买记录读取失败
+            <Button size="sm" variant="outline" onClick={() => void history.refetch()}>
+              重试
+            </Button>
           </div>
         ) : (
           <>
-            {!orders.length && <p>暂无购买记录</p>}
+            {!orders.length && <p className="purchase-history-empty">暂无购买记录</p>}
             <ul>
               {orders.map((order) => (
-                <li className="flex flex-wrap items-center gap-3 border-b py-4" key={order.orderNo}>
+                <li className="purchase-row" key={order.orderNo}>
                   <TierBadge {...order.tier} />
-                  <span>
+                  <span className="purchase-row-title">
                     {order.tier.name}
                     {order.months === null ? "" : ` ${order.months} 个月`} ·{" "}
                     {order.months === null ? "剩余升级" : purposes[order.purpose]}
                   </span>
-                  <span>{formatFen(order.paidFen ?? order.payableFen)}</span>
-                  <span>{statuses[order.status]}</span>
+                  <span className="purchase-row-amount">
+                    {formatFen(order.paidFen ?? order.payableFen)}
+                  </span>
+                  <span className="purchase-status" data-status={order.status}>
+                    {statuses[order.status]}
+                  </span>
+                  <time className="purchase-row-time" dateTime={order.createdAt}>
+                    {formatTime(order.createdAt)}
+                  </time>
                   {order.status === "needs_review" && (
-                    <Button variant="outline" onClick={() => void copy(order.orderNo)}>
+                    <Button size="sm" variant="outline" onClick={() => void copy(order.orderNo)}>
                       复制单号
                     </Button>
                   )}
                   {copyResult?.orderNo === order.orderNo && (
-                    <div>
+                    <div className="purchase-row-copy">
                       <p role="status">
                         {copyResult.failed ? "复制失败，请手动复制单号" : "单号已复制"}
                       </p>
                       {copyResult.failed && (
                         <Input
                           aria-label="完整单号"
-                          className="w-full select-text rounded border p-2 font-mono"
+                          className="w-full select-text font-mono"
                           readOnly
                           value={order.orderNo}
                           onFocus={(event) => event.currentTarget.select()}
@@ -100,17 +118,19 @@ export function PurchaseHistory({ ownerId, session }: { ownerId: string; session
                       )}
                     </div>
                   )}
-                  <time dateTime={order.createdAt}>{formatTime(order.createdAt)}</time>
                 </li>
               ))}
             </ul>
             {history.hasNextPage && (
-              <Button
-                disabled={history.isFetchingNextPage}
-                onClick={() => void history.fetchNextPage()}
-              >
-                加载更多
-              </Button>
+              <div className="p-3 text-center">
+                <Button
+                  variant="ghost"
+                  disabled={history.isFetchingNextPage}
+                  onClick={() => void history.fetchNextPage()}
+                >
+                  加载更多
+                </Button>
+              </div>
             )}
           </>
         )}

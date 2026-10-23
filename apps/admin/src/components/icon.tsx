@@ -38,3 +38,56 @@ export function OrdersIcon(props: ComponentProps<"svg">) {
     </svg>
   )
 }
+
+/** 订单复制控件使用的手绘双页图标。 */
+export function OrderCopyIcon(props: ComponentProps<"svg">) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <rect x="8" y="8" width="12" height="13" rx="2" />
+      <path d="M15 8V3H3v13h5" />
+    </svg>
+  )
+}
+/** 统计重试使用的手绘刷新图标。 */
+export function OrderRefreshIcon(props: ComponentProps<"svg">) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M20 10a8 8 0 1 0-1 7M20 4v6h-6" />
+    </svg>
+  )
+}
+/** 少收金额旁的手绘警示图标。 */
+export function OrderWarningIcon(props: ComponentProps<"svg">) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="m12 3 10 18H2L12 3ZM12 9v5M12 17h.01" />
+    </svg>
+  )
+}

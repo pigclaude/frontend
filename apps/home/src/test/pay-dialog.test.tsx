@@ -20,7 +20,11 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.clearAllMocks()
 })
-function mount(orderNo?: string, payTypes: PayType[] = ["alipay", "wxpay"]) {
+function mount(
+  orderNo?: string,
+  payTypes: PayType[] = ["alipay", "wxpay"],
+  initialPayType?: PayType,
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client.setQueryData(["me"], { id: "a" })
   const close = vi.fn()
@@ -31,6 +35,7 @@ function mount(orderNo?: string, payTypes: PayType[] = ["alipay", "wxpay"]) {
         ownerId="a"
         intent={{ optionId: "svip-3" }}
         payTypes={payTypes}
+        initialPayType={initialPayType}
         orderNo={orderNo}
         onClose={close}
       />
@@ -58,6 +63,7 @@ it("renders qr and polls until activated then refreshes queries and closes after
   expect(screen.getByText("支付成功，会员已生效")).toBeTruthy()
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ["entitlement"] })
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ["membership-quotes", "a"] })
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["membership-orders", "a"] })
   await tick(2999)
   expect(close).not.toHaveBeenCalled()
   await tick(1)
@@ -196,7 +202,7 @@ it("resumes a return order immediately without creating another order", async ()
 })
 it("uses the selected enabled channel without sending client prices", async () => {
   mount()
-  fireEvent.change(screen.getByRole("combobox"), { target: { value: "wxpay" } })
+  fireEvent.click(screen.getByRole("radio", { name: "微信" }))
   await create()
   expect(mocks.createOrder).toHaveBeenCalledWith(
     { optionId: "svip-3", payType: "wxpay" },
@@ -251,11 +257,22 @@ it("session invalidation stops polling and success close delivery", async () => 
 
 it("only offers catalog channels and refuses creation when none are enabled", async () => {
   const first = mount(undefined, ["wxpay"])
-  expect(screen.queryByRole("option", { name: "支付宝" })).toBeNull()
-  expect(screen.getByRole("option", { name: "微信" })).toBeTruthy()
+  expect(screen.queryByRole("radio", { name: "支付宝" })).toBeNull()
+  expect(screen.getByText("使用微信支付")).toBeTruthy()
   first.unmount()
   mount(undefined, [])
   expect(screen.getByText("在线支付暂未开放")).toBeTruthy()
   expect(screen.queryByRole("button", { name: "创建订单" })).toBeNull()
   expect(mocks.createOrder).not.toHaveBeenCalled()
+})
+
+it("preserves checkout initial channel and falls back if it is unavailable", async () => {
+  const view = mount(undefined, ["alipay", "wxpay"], "wxpay")
+  expect(screen.getByRole("radio", { name: "微信" }).getAttribute("aria-checked")).toBe("true")
+  await create()
+  expect(mocks.createOrder.mock.calls[0][0]).toEqual({ optionId: "svip-3", payType: "wxpay" })
+  view.unmount()
+  mount(undefined, ["alipay"], "wxpay")
+  await create()
+  expect(mocks.createOrder.mock.calls[1][0]).toEqual({ optionId: "svip-3", payType: "alipay" })
 })

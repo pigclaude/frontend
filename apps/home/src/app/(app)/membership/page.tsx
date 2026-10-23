@@ -5,7 +5,19 @@ import { usePathname, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { StaleSessionResponse } from "@pigclaude/api/client"
 import { formatDurationSeconds, formatTime } from "@pigclaude/web-ui/lib/format"
-import { TierCards, type PurchaseIntent } from "@/components/membership/tier-cards"
+import type { PayType } from "@pigclaude/api/membership/types"
+import { BenefitGrid } from "@pigclaude/web-ui/components/benefit-grid"
+import {
+  checkoutModel,
+  defaultSelection,
+  type PurchaseIntent,
+} from "@/components/membership/checkout-model"
+import { MembershipCards } from "@/components/membership/membership-cards"
+import { DurationPicker } from "@/components/membership/duration-picker"
+import { CheckoutBar } from "@/components/membership/checkout-bar"
+import { PurchaseHistory } from "@/components/membership/purchase-history"
+import { MembershipSkeleton } from "@/components/membership/membership-skeleton"
+import { RemainingUpgradeBanner } from "@/components/membership/remaining-upgrade-banner"
 import { PayDialog } from "@/components/membership/pay-dialog"
 import { QueryError, QueryLoading } from "@/components/query-state"
 import { homeApi } from "@/lib/api"
@@ -67,9 +79,15 @@ function MembershipAccount({
   orderNo?: string
 }) {
   const client = useQueryClient()
+  const params = useSearchParams()
+  const [selection, setSelection] = useState<{ tier: string | null; option: string | null } | null>(
+    null,
+  )
+  const [payType, setPayType] = useState<PayType | "">("")
   const [checkout, setCheckout] = useState<{
     id: number
     intent?: PurchaseIntent
+    payType?: PayType
     orderNo?: string
   } | null>(orderNo ? { id: 0, orderNo } : null)
   const [sequence, setSequence] = useState(0)
@@ -90,17 +108,32 @@ function MembershipAccount({
       return result
     },
   })
-  if (catalog.isPending || quotes.isPending) return <QueryLoading label="正在读取会员信息…" />
+  if (catalog.isPending || quotes.isPending) return <MembershipSkeleton />
   if (catalog.isError)
     return <QueryError error={catalog.error} onRetry={() => void catalog.refetch()} />
   if (quotes.isError)
     return <QueryError error={quotes.error} onRetry={() => void quotes.refetch()} />
   const entitlement = quotes.data.entitlement
   const active = entitlement.status === "active"
+  const selected =
+    selection ??
+    defaultSelection(catalog.data, quotes.data, {
+      tier: params.get("tier"),
+      option: params.get("option"),
+    })
+  const model = checkoutModel(catalog.data, quotes.data, selected)
+  const channel =
+    catalog.data.payTypes.find((type) => type === payType) ?? catalog.data.payTypes[0] ?? ""
+  const choose = (intent: PurchaseIntent) => {
+    const id = sequence + 1
+    setSequence(id)
+    setCheckout({ id, intent, payType: channel || undefined })
+  }
   return (
-    <main className="page-shell">
+    <main className="page-shell pb-36 sm:pb-8">
       <div>
         <h1 className="page-title">会员</h1>
+        {!active && <p>开通会员后即可在桌面端使用 PigClaude</p>}
         <p className="mt-2 text-sm text-[var(--meta)]">查看你的会员状态、有效期和可用套餐。</p>
       </div>
       <section className="home-card" aria-labelledby="membership-status">
@@ -120,23 +153,43 @@ function MembershipAccount({
           </div>
         )}
       </section>
-      <section aria-labelledby="tiers-title" className="flex flex-col gap-4">
-        <h2 id="tiers-title">可用套餐</h2>
-        <TierCards
-          tiers={catalog.data.tiers}
-          quotes={quotes.data}
-          onChoose={(intent) => {
-            const id = sequence + 1
-            setSequence(id)
-            setCheckout({ id, intent })
-          }}
-        />
-      </section>
+      <MembershipCards
+        cards={model.cards}
+        selected={model.selectedTier}
+        onSelect={(tier) => setSelection(defaultSelection(catalog.data, quotes.data, { tier }))}
+      />
+      <DurationPicker
+        options={model.options}
+        selected={model.selectedOptionId}
+        onSelect={(option) => setSelection({ ...selected, option })}
+      />
+      <BenefitGrid
+        items={model.cards.find((card) => card.code === model.selectedTier)?.benefits ?? []}
+      />
+      <RemainingUpgradeBanner
+        offer={model.remainingUpgrade}
+        disabled={!catalog.data.payTypes.length}
+        onChoose={() => {
+          if (model.remainingUpgrade)
+            choose({ remainingUpgrade: { tierCode: model.remainingUpgrade.tierCode } })
+        }}
+      />
+      <CheckoutBar
+        model={model}
+        payTypes={catalog.data.payTypes}
+        payType={channel}
+        onPayType={setPayType}
+        onChoose={() => {
+          if (model.cta.intent) choose(model.cta.intent)
+        }}
+      />
+      <PurchaseHistory ownerId={ownerId} session={session} />
       {checkout && (
         <PayDialog
           key={checkout.id}
           ownerId={ownerId}
           intent={checkout.intent}
+          initialPayType={checkout.payType}
           payTypes={catalog.data.payTypes}
           orderNo={checkout.orderNo}
           onClose={() => setCheckout(null)}

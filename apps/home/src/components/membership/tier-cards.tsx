@@ -4,7 +4,7 @@ import { Button } from "@pigclaude/web-ui/components/button"
 import { formatDurationSeconds, formatFen } from "@pigclaude/web-ui/lib/format"
 import { UpgradeOffer } from "./upgrade-offer"
 /** 下单意图只表达档位或剩余升级，不包含客户端计算金额。 */
-export type PurchaseIntent = { optionId: string } | { remainingUpgrade: { tierCode: string } }
+import type { PurchaseIntent } from "./checkout-model"
 /** 公开目录独立可展示；登录报价存在时才允许发起对应购买。 */
 export function TierCards({
   tiers,

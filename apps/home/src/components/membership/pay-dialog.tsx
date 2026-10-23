@@ -15,24 +15,29 @@ import {
 import { formatFen } from "@pigclaude/web-ui/lib/format"
 import { homeApi } from "@/lib/api"
 import { homeSessionGeneration } from "@/lib/session-generation"
-import type { PurchaseIntent } from "./tier-cards"
+import { PaymentMethods } from "./payment-methods"
+import type { PurchaseIntent } from "./checkout-model"
 
 /** 每次挂载代表一次独立支付意图；父页面以账户和路由隔离挂载。 */
 export function PayDialog({
   ownerId,
   intent,
   payTypes,
+  initialPayType,
   orderNo,
   onClose,
 }: {
   ownerId: string
   intent?: PurchaseIntent
   payTypes: PayType[]
+  initialPayType?: PayType
   orderNo?: string
   onClose: () => void
 }) {
   const client = useQueryClient()
-  const [payType, setPayType] = useState<PayType | "">(payTypes[0] ?? "")
+  const [payType, setPayType] = useState<PayType | "">(
+    initialPayType && payTypes.includes(initialPayType) ? initialPayType : (payTypes[0] ?? ""),
+  )
   const [order, setOrder] = useState<CreatedOrder | null>(null)
   const [amount, setAmount] = useState<string | null>(null)
   const [status, setStatus] = useState<OrderStatus | "select">(orderNo ? "pending" : "select")
@@ -62,6 +67,7 @@ export function PayDialog({
   function success(id: symbol) {
     if (!current(id)) return
     setStatus("activated")
+    void client.invalidateQueries({ queryKey: ["membership-orders", ownerId] })
     void client.invalidateQueries({ queryKey: ["entitlement"] })
     void client.invalidateQueries({ queryKey: ["membership-quotes", ownerId] })
     timer.current = setTimeout(() => {
@@ -159,21 +165,12 @@ export function PayDialog({
               <p>在线支付暂未开放</p>
             ) : (
               <>
-                <label>
-                  支付方式
-                  <select
-                    aria-label="支付方式"
-                    value={payType}
-                    disabled={busy}
-                    onChange={(event) => setPayType(event.target.value as PayType)}
-                  >
-                    {payTypes.map((type) => (
-                      <option key={type} value={type}>
-                        {type === "alipay" ? "支付宝" : "微信"}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <PaymentMethods
+                  payTypes={payTypes}
+                  value={payType}
+                  onChange={setPayType}
+                  disabled={busy}
+                />
                 <Button disabled={busy || !intent || !payType} onClick={() => void create()}>
                   {busy ? "正在创建订单…" : "创建订单"}
                 </Button>

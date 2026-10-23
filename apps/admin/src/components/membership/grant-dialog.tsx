@@ -1,10 +1,8 @@
 // 负责通过正式用户选择器授予等级，预览与写入绑定输入、页面和会话。
-import { formatTime } from "@/lib/format"
 import { useMemo, useState, type FormEvent } from "react"
 import { useLocation } from "react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import type { GrantInput, UserPick } from "@pigclaude/api/membership/types"
-import { formatDurationSeconds, formatFen } from "@pigclaude/web-ui/lib/format"
+import type { GrantInput, Tier, UserPick } from "@pigclaude/api/membership/types"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -18,13 +16,10 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { Skeleton } from "@/components/ui/skeleton"
+import { TierRadioCards } from "./tier-radio-cards"
+import { GrantTimeline } from "./grant-timeline"
 import { adminApi } from "@/lib/api"
 import { useAdminOperationOwner } from "@/hooks/use-admin-operation-owner"
 import { toastApiError } from "@/lib/errors"
@@ -58,8 +53,19 @@ export function GrantDialog({
     enabled: open && canWrite,
     retry: false,
   })
+  function lowerTierReason(tier: Tier) {
+    return user?.status === "active" &&
+      user.validUntil &&
+      Date.parse(user.validUntil) > Date.now() &&
+      user.tier &&
+      user.tier.level > tier.level
+      ? "已是更高等级，请先撤销"
+      : null
+  }
+  const selectedTier = tiers.data?.items.find((tier) => tier.id === tierId)
+  const blocked = selectedTier ? lowerTierReason(selectedTier) : null
   const parsed = useMemo(() => {
-    if (!open || !canWrite || !user || !tierId || !remark.trim()) return { input: null }
+    if (!open || !canWrite || !user || !tierId || blocked || !remark.trim()) return { input: null }
     try {
       if (!/^[1-9]\d*$/.test(duration)) throw new Error("时长必须为正整数")
       const input: GrantInput = {
@@ -74,7 +80,7 @@ export function GrantDialog({
     } catch (cause) {
       return { input: null, error: cause instanceof Error ? cause.message : "输入无效" }
     }
-  }, [open, canWrite, user, tierId, duration, durationUnit, value, remark])
+  }, [open, canWrite, user, tierId, duration, durationUnit, value, remark, blocked])
   const key = JSON.stringify([
     location.key,
     open,
@@ -132,19 +138,12 @@ export function GrantDialog({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>等级</Label>
-            <Select value={tierId} onValueChange={setTierId} disabled={disabled}>
-              <SelectTrigger aria-label="授予等级">
-                <SelectValue placeholder="选择等级" />
-              </SelectTrigger>
-              <SelectContent>
-                {tiers.data?.items.map((tier) => (
-                  <SelectItem key={tier.id} value={tier.id}>
-                    {tier.name}
-                    {!tier.enabled && "（已下架）"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <TierRadioCards
+              tiers={tiers.data?.items ?? []}
+              value={tierId || null}
+              onChange={setTierId}
+              disabledReason={(tier) => (disabled ? "当前不可操作" : lowerTierReason(tier))}
+            />
             {tiers.isError && (
               <p role="alert">
                 等级加载失败{" "}
@@ -164,19 +163,18 @@ export function GrantDialog({
                 onChange={(event) => setDuration(event.target.value)}
                 required
               />
-              <Select
+              <ToggleGroup
+                type="single"
                 value={durationUnit}
-                onValueChange={(unit) => setUnit(unit as GrantInput["durationUnit"])}
                 disabled={disabled}
+                aria-label="时长单位"
+                onValueChange={(unit) => {
+                  if (unit === "month" || unit === "day") setUnit(unit)
+                }}
               >
-                <SelectTrigger aria-label="时长单位">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="month">月</SelectItem>
-                  <SelectItem value="day">天</SelectItem>
-                </SelectContent>
-              </Select>
+                <ToggleGroupItem value="month">月</ToggleGroupItem>
+                <ToggleGroupItem value="day">天</ToggleGroupItem>
+              </ToggleGroup>
             </div>
             <div className="flex gap-2">
               {[1, 3, 6, 12].map((months) => (
@@ -219,21 +217,17 @@ export function GrantDialog({
             />
           </div>
           {error && <p role="alert">{error}</p>}
-          {parsed.input && !preview && !error && <p role="status">预览中…</p>}
-          {preview && (
-            <div className="rounded-lg border border-border p-3 text-sm">
-              <p>
-                生效后：{preview.tier.name}，到期 {formatTime(preview.validUntil)}
-              </p>
-              {BigInt(preview.voidedRemainingSeconds) > 0n && (
-                <p>
-                  将清除 {user?.status === "active" ? (user.tier?.name ?? "原会员") : "原会员"} 剩余{" "}
-                  {formatDurationSeconds(preview.voidedRemainingSeconds)}（价值{" "}
-                  {formatFen(preview.voidedValueFen)}），折合 {preview.tier.name}{" "}
-                  {formatDurationSeconds(preview.convertedSeconds)}
-                </p>
-              )}
+          {parsed.input && !preview && !error && (
+            <div role="status" aria-label="正在预览">
+              <Skeleton className="h-16 w-full" />
             </div>
+          )}
+          {preview && (
+            <GrantTimeline
+              now={new Date().toISOString()}
+              preview={preview}
+              previousTier={user?.status === "active" ? user.tier : null}
+            />
           )}
           <DialogFooter>
             <Button

@@ -1,4 +1,6 @@
 // 负责按邮箱或 ID 搜索用户，保护防抖请求与选中状态的归属。
+import { TierBadge } from "@pigclaude/web-ui/components/tier-badge"
+import { Skeleton } from "@/components/ui/skeleton"
 import { formatTime } from "@/lib/format"
 import { useLocation } from "react-router"
 import { useEffect, useState } from "react"
@@ -56,6 +58,14 @@ export function UserPicker({
       <div className="flex items-center gap-2 rounded-lg border border-border p-2">
         <span>
           {value.email} <span className="text-xs text-meta">{value.userId}</span>
+          {value.status === "active" && value.tier && value.validUntil ? (
+            <span className="mt-1 flex flex-wrap items-center gap-1">
+              <TierBadge {...value.tier} />
+              <span className="text-xs text-meta">{formatTime(value.validUntil)} 到期</span>
+            </span>
+          ) : (
+            <span className="block text-xs text-meta">无会员</span>
+          )}
         </span>
         <Button
           type="button"
@@ -94,7 +104,9 @@ export function UserPicker({
             {!query.trim() ? (
               <p className="p-2 text-sm text-meta">输入至少 1 个字符</p>
             ) : !current ? (
-              <p role="status">搜索中…</p>
+              <div role="status" aria-label="正在搜索用户" className="p-2">
+                <Skeleton className="h-10 w-full" />
+              </div>
             ) : current.error ? (
               <p role="alert">{current.error}</p>
             ) : current.items.length === 0 ? (
@@ -114,9 +126,14 @@ export function UserPicker({
                   <p>{user.email}</p>
                   <p className="text-xs text-meta">{user.userId}</p>
                   <p className="text-xs text-meta">
-                    {user.status === "active" && user.tier?.name && user.validUntil
-                      ? `${user.tier?.name} · ${formatTime(user.validUntil)} 到期`
-                      : "无会员"}
+                    {user.status === "active" && user.tier && user.validUntil ? (
+                      <>
+                        <TierBadge {...user.tier} />
+                        <span> · {formatTime(user.validUntil)} 到期</span>
+                      </>
+                    ) : (
+                      "无会员"
+                    )}
                   </p>
                 </CommandItem>
               ))

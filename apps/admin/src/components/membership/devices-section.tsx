@@ -4,6 +4,7 @@ import { useLocation, useSearchParams } from "react-router"
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query"
 import { ApiError } from "@pigclaude/api/client"
 import type { UserDeviceView } from "@pigclaude/contracts/user-devices"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -103,7 +104,13 @@ function DevicesSectionSession() {
       owner.finish()
     }
   }
-  if (loadingMe) return <p role="status">正在读取管理员权限…</p>
+  if (loadingMe)
+    return (
+      <div role="status" aria-label="正在读取管理员权限" className="space-y-3">
+        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-48 w-full" />
+      </div>
+    )
   if (!canRead) return <p role="alert">缺少设备读取权限</p>
   const rows =
     query.data?.pages.flatMap((page) =>

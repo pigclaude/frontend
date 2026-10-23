@@ -1,4 +1,5 @@
 // 负责迁入成熟后台的members-section布局和交互，使用本项目真实 API。
+import { TierBadge } from "@pigclaude/web-ui/components/tier-badge"
 import { GrantDialog } from "./grant-dialog"
 import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -126,7 +127,15 @@ export function MembersSection({ canWrite = true }: { canWrite?: boolean }) {
         pending={revokeOperation.pending}
         onOpenChange={(open) => !open && setRevokeTarget(null)}
         onConfirm={(reason) => void revoke(reason)}
-      />
+      >
+        {revokeTarget && (
+          <div className="space-y-2 rounded-lg border p-3 text-sm">
+            <p>{revokeTarget.email}</p>
+            <TierBadge {...revokeTarget.tier} />
+            <p>剩余 {formatDurationSeconds(remainingSeconds(revokeTarget))}</p>
+          </div>
+        )}
+      </ReasonDialog>
     </>
   )
 }
@@ -262,19 +271,19 @@ function MembershipRow({
         <p className="font-mono text-xs text-meta">{item.userId}</p>
       </TableCell>
       <TableCell>
-        <p className="font-mono text-xs text-foreground">{item.tier.name}</p>
+        <TierBadge {...item.tier} />
         <p className="text-xs text-meta">{item.tier.code}</p>
       </TableCell>
       <TableCell>
         <StatusBadge status={item.status} />
       </TableCell>
-      <TableCell>{formatTime(item.validUntil)}</TableCell>
+      <TableCell className={remainingSeconds(item) === 0 ? "text-meta" : undefined}>
+        {formatTime(item.validUntil)}
+      </TableCell>
       <TableCell>
-        {formatDurationSeconds(
-          item.status === "active"
-            ? Math.max(0, Math.floor((Date.parse(item.validUntil) - Date.now()) / 1000))
-            : 0,
-        )}
+        <span className={remainingSeconds(item) === 0 ? "text-meta" : undefined}>
+          剩余 {formatDurationSeconds(remainingSeconds(item))}
+        </span>
       </TableCell>
       <TableCell className="text-right">
         <Button
@@ -288,4 +297,11 @@ function MembershipRow({
       </TableCell>
     </TableRow>
   )
+}
+
+// 仅计算展示用剩余秒数，不改变服务器状态或权益。
+function remainingSeconds(item: MembershipItem) {
+  return item.status === "active"
+    ? Math.max(0, Math.floor((Date.parse(item.validUntil) - Date.now()) / 1000))
+    : 0
 }

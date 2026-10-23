@@ -31,7 +31,6 @@ export async function fillGrant(remark: string) {
     target: { value: "u" },
   })
   fireEvent.click(await screen.findByRole("option"))
-  fireEvent.keyDown(screen.getByRole("combobox", { name: "授予等级" }), { key: "ArrowDown" })
-  fireEvent.click(await screen.findByRole("option"))
+  fireEvent.click(await screen.findByRole("radio", { name: /VIP/ }))
   fireEvent.change(screen.getByLabelText("操作备注"), { target: { value: remark } })
 }

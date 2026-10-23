@@ -212,3 +212,11 @@ it("does not proceed past bootstrap if live device permission changes", async ()
   await new Promise((resolve) => setTimeout(resolve, 0))
   expect(mocks.fetch.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false)
 })
+
+it("shows a permission skeleton instead of bare loading text", () => {
+  mocks.fetch.mockReturnValue(new Promise<Response>(() => {}))
+  mount()
+  const status = screen.getByRole("status", { name: "正在读取管理员权限" })
+  expect(status.querySelector('[data-slot="skeleton"]')).toBeTruthy()
+  expect(screen.queryByText("正在读取管理员权限…")).toBeNull()
+})

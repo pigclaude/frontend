@@ -54,7 +54,22 @@ describe("MembersSection", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     auth.permissions = ["membership:read", "membership:write"]
-    api.tiers.mockResolvedValue({ items: [{ id: "p1", name: "SVIP", enabled: false }] })
+    api.tiers.mockResolvedValue({
+      items: [
+        {
+          id: "p1",
+          code: "svip",
+          name: "SVIP",
+          level: 2,
+          cardStyle: "gold",
+          monthlyPriceFen: "100",
+          tagline: "",
+          benefits: [],
+          enabled: false,
+          options: [],
+        },
+      ],
+    })
     api.search.mockResolvedValue({
       items: [
         {
@@ -93,6 +108,29 @@ describe("MembersSection", () => {
       validUntil: "2026-10-30T00:00:00Z",
       entitlementVersion: "1",
     })
+  })
+
+  it("membership page exposes accessible filters without native visible controls", async () => {
+    const { container } = renderSection(true)
+    await screen.findByText("member@example.test")
+    expect(screen.getByRole("combobox", { name: "会员等级" })).toBeTruthy()
+    expect(screen.getByRole("combobox", { name: "会员状态" })).toBeTruthy()
+    expect(
+      [...container.querySelectorAll("select, input[type=checkbox]")].every(
+        (node) =>
+          node.getAttribute("aria-hidden") === "true" && node.getAttribute("tabindex") === "-1",
+      ),
+    ).toBe(true)
+    expect(container.querySelector('.tier-badge[data-style="azure"]')).toBeTruthy()
+    expect(screen.getByText(/^剩余 /)).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "撤销" }))
+    const dialog = screen.getByRole("dialog")
+    expect(dialog.textContent).toContain("member@example.test")
+    expect(dialog.querySelector('.tier-badge[data-style="azure"]')).toBeTruthy()
+    expect(dialog.textContent).toContain("剩余")
+    expect(screen.getByRole("button", { name: "确认" }).getAttribute("data-variant")).toBe(
+      "destructive",
+    )
   })
 
   it("grant posts userId, tierId, duration, unit, valueFen and remark", async () => {
@@ -139,9 +177,7 @@ describe("MembersSection", () => {
     fireEvent.click(await screen.findByRole("button", { name: "人工授予" }))
     await fillGrant("manual")
     expect(await screen.findByText(/^生效后：SVIP，到期 /)).toBeTruthy()
-    expect(
-      screen.getByText("将清除 VIP 剩余 10 天 0 小时（价值 ¥12.50），折合 SVIP 2 天 0 小时"),
-    ).toBeTruthy()
+    expect(screen.getByText("VIP 剩余 10 天 0 小时 · 价值 ¥12.50 · 将清除")).toBeTruthy()
   })
   it("lower tier conflict disables submit", async () => {
     api.preview.mockRejectedValueOnce(new ApiError(409, { code: "LOWER_TIER_WHILE_HIGHER_ACTIVE" }))
@@ -170,7 +206,7 @@ describe("MembersSection", () => {
     expect(await screen.findByText("expired@example.test")).toBeTruthy()
     expect(screen.getByText("expired-id")).toBeTruthy()
     expect(screen.getAllByText("已过期").length).toBeGreaterThan(0)
-    expect(screen.getByText("0 天 0 小时")).toBeTruthy()
+    expect(screen.getByText("剩余 0 天 0 小时")).toBeTruthy()
   })
   it("parses large grant value exactly and switches duration unit", async () => {
     renderSection()
@@ -180,8 +216,7 @@ describe("MembersSection", () => {
       target: { value: "90071992547409.93" },
     })
     fireEvent.click(screen.getByRole("button", { name: "3 个月" }))
-    fireEvent.keyDown(screen.getByRole("combobox", { name: "时长单位" }), { key: "ArrowDown" })
-    fireEvent.click(await screen.findByRole("option", { name: "天" }))
+    fireEvent.click(screen.getByRole("radio", { name: "天" }))
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "确认授予" }).hasAttribute("disabled")).toBe(false),
     )

@@ -71,7 +71,7 @@ it("shows membership summary", async () => {
   mount()
   query()
   await tick()
-  expect(screen.getByText(/SVIP · .* 到期/)).toBeTruthy()
+  expect(screen.getByRole("option").textContent).toMatch(/SVIP · .* 到期/)
   expect(screen.getByText("u1")).toBeTruthy()
 })
 it.each(["expired", "revoked"] as const)("does not present %s as active", async (status) => {
@@ -154,4 +154,15 @@ it("cannot select a completed result after session expires without rerender", as
   adminSessionGeneration.invalidate()
   fireEvent.click(screen.getByRole("option"))
   expect(screen.queryByRole("button", { name: "清除用户" })).toBeNull()
+})
+
+it("result shows tier badge", async () => {
+  mount()
+  query()
+  await tick()
+  const option = screen.getByRole("option")
+  expect(option.querySelector('.tier-badge[data-style="gold"]')).toBeTruthy()
+  expect(option.textContent).toContain("a@example.test")
+  expect(option.textContent).toContain("u1")
+  expect(option.textContent).toContain("到期")
 })

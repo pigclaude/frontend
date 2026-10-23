@@ -23,7 +23,22 @@ vi.mock("sonner", () => ({ toast: { success: api.success, error: api.error } }))
 setupPickerDom()
 beforeEach(() => {
   vi.clearAllMocks()
-  api.list.mockResolvedValue({ items: [{ id: "vip", name: "VIP", enabled: true }] })
+  api.list.mockResolvedValue({
+    items: [
+      {
+        id: "vip",
+        code: "vip",
+        name: "VIP",
+        level: 1,
+        cardStyle: "azure",
+        monthlyPriceFen: "100",
+        tagline: "",
+        benefits: [],
+        enabled: true,
+        options: [],
+      },
+    ],
+  })
   api.search.mockResolvedValue({
     items: [
       {

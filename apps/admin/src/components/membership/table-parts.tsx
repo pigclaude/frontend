@@ -2,6 +2,7 @@
 import type { ReactNode } from "react"
 import type { MembershipStatus } from "@pigclaude/api/membership/types"
 import { Badge, type BadgeVariant } from "@/components/ui/badge"
+import { Alert } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/empty-state"
 import { SearchInput } from "@/components/ui/input"
@@ -99,37 +100,28 @@ export function EmptyRow({ columns, message }: { columns: number; message: strin
 /** LoadError 保持列表、表单或分页的既有交互契约。 */
 export function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="rounded-xl border border-border bg-[var(--card-bg)]">
-      <EmptyState
-        tone="danger"
-        title={message}
-        description="可能是网络波动或服务暂不可用，请重试。"
-        action={
-          <Button size="sm" variant="outline" onClick={onRetry}>
-            重试
-          </Button>
-        }
-      />
-    </div>
+    <Alert className="space-y-2">
+      <p>{message}</p>
+      <p className="text-meta">可能是网络波动或服务暂不可用，请重试。</p>
+      <Button size="sm" variant="outline" onClick={onRetry}>
+        重试
+      </Button>
+    </Alert>
   )
 }
 
 /** InlineLoadError 保持列表、表单或分页的既有交互契约。 */
 export function InlineLoadError({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <EmptyState
-      role="alert"
-      tone="danger"
-      title={message}
-      description="请稍后重试。"
-      action={
-        onRetry && (
-          <Button variant="outline" onClick={onRetry}>
-            重试
-          </Button>
-        )
-      }
-    />
+    <Alert className="space-y-2">
+      <p>{message}</p>
+      <p className="text-meta">请稍后重试。</p>
+      {onRetry && (
+        <Button variant="outline" onClick={onRetry}>
+          重试
+        </Button>
+      )}
+    </Alert>
   )
 }
 

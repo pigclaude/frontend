@@ -1,5 +1,5 @@
 // 负责迁入成熟后台的reason-dialog布局和交互，使用本项目真实 API。
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -16,6 +16,7 @@ interface ReasonDialogProps {
   open: boolean
   title: string
   description: string
+  children?: ReactNode
   reasonLabel?: string
   confirmLabel: string
   error?: string | null
@@ -37,6 +38,7 @@ export function ReasonDialog({
   error,
   preserveWhitespace = false,
   maxCharacters,
+  children,
   onOpenChange,
   onConfirm,
 }: ReasonDialogProps) {
@@ -53,6 +55,7 @@ export function ReasonDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+        {children}
         {error && <p role="alert">{error}</p>}
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="pc-action-reason">{reasonLabel}</Label>

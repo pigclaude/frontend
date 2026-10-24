@@ -1,6 +1,6 @@
 // 负责展示当前会员权益及服务端购买报价，以账户、会话和路由隔离支付生命周期。
 "use client"
-import { Suspense, useState } from "react"
+import { Suspense, useState, type ReactNode } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { StaleSessionResponse } from "@pigclaude/api/client"
@@ -28,17 +28,37 @@ import { homeSessionGeneration } from "@/lib/session-generation"
 /** Suspense 包住读取 searchParams 的子树，满足 Next 生产预渲染要求。 */
 export default function MembershipPage() {
   return (
-    <Suspense fallback={<QueryLoading label="正在读取会员信息…" />}>
+    <Suspense
+      fallback={
+        <MembershipState>
+          <QueryLoading label="正在读取会员信息…" />
+        </MembershipState>
+      }
+    >
       <MembershipRoute />
     </Suspense>
   )
+}
+// 加载和错误状态与正文共用页面外壳，左右边缘和顶栏对齐。
+function MembershipState({ children }: { children: ReactNode }) {
+  return <main className="page-shell membership-page">{children}</main>
 }
 function MembershipRoute() {
   const pathname = usePathname()
   const params = useSearchParams()
   const me = useQuery({ queryKey: ["me"], queryFn: homeApi.user.me })
-  if (me.isPending) return <QueryLoading label="正在读取账户…" />
-  if (me.isError) return <QueryError error={me.error} onRetry={() => void me.refetch()} />
+  if (me.isPending)
+    return (
+      <MembershipState>
+        <QueryLoading label="正在读取账户…" />
+      </MembershipState>
+    )
+  if (me.isError)
+    return (
+      <MembershipState>
+        <QueryError error={me.error} onRetry={() => void me.refetch()} />
+      </MembershipState>
+    )
   const session = homeSessionGeneration.current()
   const orders = params.getAll("order")
   const orderNo = orders.length === 1 && /^PC[0-9A-Z]{20}$/.test(orders[0]) ? orders[0] : undefined
@@ -116,9 +136,17 @@ function MembershipAccount({
   })
   if (catalog.isPending || quotes.isPending) return <MembershipSkeleton />
   if (catalog.isError)
-    return <QueryError error={catalog.error} onRetry={() => void catalog.refetch()} />
+    return (
+      <MembershipState>
+        <QueryError error={catalog.error} onRetry={() => void catalog.refetch()} />
+      </MembershipState>
+    )
   if (quotes.isError)
-    return <QueryError error={quotes.error} onRetry={() => void quotes.refetch()} />
+    return (
+      <MembershipState>
+        <QueryError error={quotes.error} onRetry={() => void quotes.refetch()} />
+      </MembershipState>
+    )
   const entitlement = quotes.data.entitlement
   const active = entitlement.status === "active"
   const selected =
@@ -129,6 +157,7 @@ function MembershipAccount({
     })
   const model = checkoutModel(catalog.data, quotes.data, selected)
   const selectedCard = model.cards.find((card) => card.code === model.selectedTier)
+  const hasAside = model.hasPurchasableOffers || model.remainingUpgrade !== null
   const channel =
     catalog.data.payTypes.find((type) => type === payType) ?? catalog.data.payTypes[0] ?? ""
   const choose = (intent: PurchaseIntent) => {
@@ -166,48 +195,56 @@ function MembershipAccount({
         <p className="membership-sub">选择等级和时长，扫码即可开通、续费或升级。</p>
         {!active && <p className="membership-hint">开通会员后即可在桌面端使用 PigClaude</p>}
       </header>
-      <MembershipCards
-        cards={model.cards}
-        entitlement={entitlement}
-        glintSequence={glintSequence}
-        selected={model.selectedTier}
-        onSelect={(tier) => setSelection(defaultSelection(catalog.data, quotes.data, { tier }))}
-      />
-      {model.hasPurchasableOffers && (
-        <DurationPicker
-          options={model.options}
-          selected={model.selectedOptionId}
-          onSelect={(option) => setSelection({ ...selected, option })}
-        />
-      )}
-      {selectedCard && selectedCard.benefits.length > 0 && (
-        <section className="membership-section" aria-labelledby="membership-benefits">
-          <div className="membership-section-head">
-            <h2 id="membership-benefits">{selectedCard.name} 权益</h2>
-          </div>
-          <BenefitGrid items={selectedCard.benefits} />
-        </section>
-      )}
-      <RemainingUpgradeBanner
-        offer={model.remainingUpgrade}
-        disabled={!catalog.data.payTypes.length}
-        onChoose={() => {
-          if (model.remainingUpgrade)
-            choose({ remainingUpgrade: { tierCode: model.remainingUpgrade.tierCode } })
-        }}
-      />
-      {model.hasPurchasableOffers && (
-        <CheckoutBar
-          model={model}
-          payTypes={catalog.data.payTypes}
-          payType={channel}
-          onPayType={setPayType}
-          onChoose={() => {
-            if (model.cta.intent) choose(model.cta.intent)
-          }}
-        />
-      )}
-      <PurchaseHistory ownerId={ownerId} session={session} />
+      <div className="membership-layout" data-aside={hasAside}>
+        <div className="membership-main">
+          <MembershipCards
+            cards={model.cards}
+            entitlement={entitlement}
+            glintSequence={glintSequence}
+            selected={model.selectedTier}
+            onSelect={(tier) => setSelection(defaultSelection(catalog.data, quotes.data, { tier }))}
+          />
+          {model.hasPurchasableOffers && (
+            <DurationPicker
+              options={model.options}
+              selected={model.selectedOptionId}
+              onSelect={(option) => setSelection({ ...selected, option })}
+            />
+          )}
+          {selectedCard && selectedCard.benefits.length > 0 && (
+            <section className="membership-section" aria-labelledby="membership-benefits">
+              <div className="membership-section-head">
+                <h2 id="membership-benefits">{selectedCard.name} 权益</h2>
+              </div>
+              <BenefitGrid items={selectedCard.benefits} />
+            </section>
+          )}
+        </div>
+        <div className="membership-aside">
+          {model.hasPurchasableOffers && (
+            <CheckoutBar
+              model={model}
+              payTypes={catalog.data.payTypes}
+              payType={channel}
+              onPayType={setPayType}
+              onChoose={() => {
+                if (model.cta.intent) choose(model.cta.intent)
+              }}
+            />
+          )}
+          <RemainingUpgradeBanner
+            offer={model.remainingUpgrade}
+            disabled={!catalog.data.payTypes.length}
+            onChoose={() => {
+              if (model.remainingUpgrade)
+                choose({ remainingUpgrade: { tierCode: model.remainingUpgrade.tierCode } })
+            }}
+          />
+        </div>
+        <div className="membership-history">
+          <PurchaseHistory ownerId={ownerId} session={session} />
+        </div>
+      </div>
       {checkout && (
         <PayPanel
           key={checkout.id}

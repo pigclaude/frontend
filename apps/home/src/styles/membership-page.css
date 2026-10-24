@@ -1,7 +1,48 @@
 /* 会员页、结算栏、付款面板和购买记录的布局；颜色全部来自共享主题 token。 */
 .membership-page {
-  max-width: 980px;
-  padding-bottom: 32px;
+  padding-bottom: 48px;
+}
+
+/* ─── 两栏布局：宽屏左侧选择、右侧吸顶结算，外缘与顶栏容器对齐 ─── */
+.membership-layout,
+.membership-main,
+.membership-aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-width: 0;
+}
+.membership-aside {
+  gap: 12px;
+}
+@media (width < 1024px) {
+  /* 单栏时不生成盒子，结算栏的 sticky 以整页为范围。 */
+  .membership-aside {
+    display: contents;
+  }
+}
+@media (width >= 1024px) {
+  .membership-layout[data-aside="true"] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-areas:
+      "main aside"
+      "history aside";
+    grid-template-rows: auto 1fr;
+    align-items: start;
+    gap: var(--space-6) 32px;
+  }
+  .membership-main {
+    grid-area: main;
+  }
+  .membership-history {
+    grid-area: history;
+  }
+  .membership-layout[data-aside="true"] .membership-aside {
+    grid-area: aside;
+    position: sticky;
+    top: calc(56px + var(--space-6));
+  }
 }
 .membership-head .membership-sub {
   margin-top: 6px;
@@ -71,17 +112,44 @@
 /* ─── 结算栏 ─────────────────────────────────────────────────── */
 .checkout-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 18px;
+  gap: 14px 18px;
   padding: 16px 20px;
   border: 1px solid var(--border);
   border-radius: 16px;
   background: color-mix(in srgb, var(--panel) 94%, transparent);
   backdrop-filter: blur(12px);
 }
+.checkout-head {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.checkout-head-label {
+  color: var(--meta);
+  font-size: 12px;
+}
+.checkout-head-plan {
+  color: var(--fg);
+  font-size: 15px;
+  font-weight: 600;
+}
+.checkout-head-meta {
+  margin-left: auto;
+  color: var(--meta);
+  font-size: 12px;
+}
 .checkout-total {
   margin-left: auto;
   text-align: right;
+}
+.checkout-total-label {
+  display: none;
 }
 .checkout-total b {
   font-size: 28px;
@@ -124,7 +192,10 @@
     border-width: 1px 0 0;
     border-radius: 0;
   }
-  .checkout-bar > :first-child {
+  .checkout-head {
+    display: none;
+  }
+  .checkout-bar > :nth-child(2) {
     flex-basis: 100%;
   }
   .checkout-total {
@@ -138,6 +209,63 @@
     height: 42px;
     margin-left: auto;
     padding-inline: 22px;
+  }
+}
+
+@media (width >= 1024px) {
+  .membership-aside .checkout-bar {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 16px;
+    padding: 20px;
+    border-radius: 18px;
+    box-shadow: 0 24px 60px -36px rgb(0 0 0 / 55%);
+  }
+  .membership-aside .checkout-head {
+    flex-direction: column;
+    gap: 4px;
+    padding-bottom: 16px;
+  }
+  .membership-aside .checkout-head-plan {
+    font-size: 18px;
+  }
+  .membership-aside .checkout-head-meta {
+    margin-left: 0;
+  }
+  .membership-aside .checkout-total {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: baseline;
+    margin-left: 0;
+    column-gap: 12px;
+  }
+  .membership-aside .checkout-total-label {
+    display: block;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .membership-aside .checkout-total b {
+    text-align: right;
+    font-size: 32px;
+  }
+  .membership-aside .checkout-total p {
+    grid-column: 1 / -1;
+    text-align: right;
+  }
+  .membership-aside .checkout-cta {
+    width: 100%;
+  }
+  .membership-aside .pay-methods {
+    width: 100%;
+  }
+  .membership-aside .pay-methods .pay-method {
+    flex: 1;
+  }
+  .membership-aside .remaining-upgrade {
+    flex-direction: column;
+    align-items: flex-start;
+    font-size: 13px;
   }
 }
 

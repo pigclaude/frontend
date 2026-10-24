@@ -28,6 +28,16 @@ export function unauthorizedQueryAction(
   return queryKey.length === 1 && queryKey[0] === ME_QUERY_KEY[0] ? "redirect" : "revalidate"
 }
 
+/** 判断错误是否为后端会话续期中的短暂不可用（503 AUTH_UNAVAILABLE），而不是未登录。 */
+export function isTransientSessionError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 503 && error.code === "AUTH_UNAVAILABLE"
+}
+
+/** 只对会话短暂不可用重试两次，其余错误保持不重试，避免掩盖真实失败。 */
+export function retryTransientSession(failureCount: number, error: unknown): boolean {
+  return failureCount < 2 && isTransientSessionError(error)
+}
+
 /** 请求 app shell 重新验证会话，返回是否成功派发浏览器事件。 */
 export function requestHomeSessionRevalidation(
   queryHash?: string,

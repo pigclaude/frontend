@@ -14,6 +14,7 @@ import {
   ME_QUERY_KEY,
   isPublicHomePath,
   requestHomeSessionRevalidation,
+  retryTransientSession,
   unauthorizedQueryAction,
   type HomeSessionRevalidationEvent,
 } from "@/lib/auth-query"
@@ -67,7 +68,7 @@ export function Providers({ children }: { children: ReactNode }) {
           },
         }),
         defaultOptions: {
-          queries: { staleTime: 30_000, retry: false },
+          queries: { staleTime: 30_000, retry: retryTransientSession, retryDelay: 800 },
         },
       }),
   )

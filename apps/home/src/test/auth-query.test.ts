@@ -1,4 +1,4 @@
-// 负责验证 home 的会话 401 分类和 revalidate 事件行为。
+// 负责验证 home 的会话 401 分类、会话短暂不可用重试和 revalidate 事件行为。
 import { homeLoginRedirect } from "../lib/auth-query"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiError } from "@pigclaude/api/client"
@@ -6,6 +6,7 @@ import {
   HOME_SESSION_REVALIDATE_EVENT,
   isPublicHomePath,
   requestHomeSessionRevalidation,
+  retryTransientSession,
   unauthorizedQueryAction,
   type HomeSessionRevalidationEvent,
 } from "@/lib/auth-query"
@@ -52,4 +53,16 @@ it("preserves registration mode in authorization recovery", () => {
   expect(homeLoginRedirect(route.replace("register", "unknown"))).toBe(
     `/login?redirect=${encodeURIComponent(route.replace("register", "unknown"))}`,
   )
+})
+
+describe("retryTransientSession", () => {
+  it("retries only 503 AUTH_UNAVAILABLE, at most twice", () => {
+    const busy = new ApiError(503, { code: "AUTH_UNAVAILABLE" })
+    expect(retryTransientSession(0, busy)).toBe(true)
+    expect(retryTransientSession(1, busy)).toBe(true)
+    expect(retryTransientSession(2, busy)).toBe(false)
+    expect(retryTransientSession(0, new ApiError(503, { code: "PAYMENT_UNAVAILABLE" }))).toBe(false)
+    expect(retryTransientSession(0, new ApiError(401))).toBe(false)
+    expect(retryTransientSession(0, new Error("network"))).toBe(false)
+  })
 })

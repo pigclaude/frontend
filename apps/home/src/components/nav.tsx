@@ -6,6 +6,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { homeApi } from "@/lib/api"
+import { isTransientSessionError } from "@/lib/auth-query"
 import { Menu } from "lucide-react"
 import { Badge } from "@pigclaude/web-ui/components/badge"
 import { Button } from "@pigclaude/web-ui/components/button"
@@ -39,7 +40,6 @@ export function Nav({
     queryKey: ["me"],
     queryFn: homeApi.user.me,
     enabled: variant !== "auth",
-    retry: false,
   })
   const [mobileOpen, setMobileOpen] = useState(false)
   const mobileNav = useRef<HTMLElement>(null)
@@ -113,6 +113,17 @@ export function Nav({
                 />
               ) : session.data ? (
                 <UserMenu user={session.data} />
+              ) : isTransientSessionError(session.error) ? (
+                // 会话暂时无法确认时不冒充未登录，给出重试入口而不是留空。
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={session.isFetching}
+                  onClick={() => void session.refetch()}
+                >
+                  {session.isFetching ? "连接中…" : "重新连接"}
+                </Button>
               ) : (
                 <>
                   <Button asChild variant="outline" size="sm" className="hidden md:inline-flex">

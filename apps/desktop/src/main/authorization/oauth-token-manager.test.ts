@@ -79,3 +79,27 @@ it("preparation storage failure sends zero HTTP and retains the never-consumed r
   expect(await manager.accessToken()).toBe("rotated-access")
   expect(refreshToken).toHaveBeenCalledTimes(1)
 })
+
+it("accepts the server's one-hour access lifetime and rejects anything longer", async () => {
+  const hour = fixture()
+  hour.refreshToken.mockResolvedValueOnce({
+    access_token: "hour-access",
+    refresh_token: "hour-refresh",
+    token_type: "Bearer",
+    expires_in: 3600,
+    scope: hour.original.scope,
+  })
+  await expect(hour.manager.accessToken()).resolves.toBe("hour-access")
+  expect(JSON.parse((await hour.vault.get("membership:session"))!)).toMatchObject({
+    accessTokenExpiresAt: 2_000 + 3_600_000,
+  })
+  const longer = fixture()
+  longer.refreshToken.mockResolvedValueOnce({
+    access_token: "long-access",
+    refresh_token: "long-refresh",
+    token_type: "Bearer",
+    expires_in: 3601,
+    scope: longer.original.scope,
+  })
+  await expect(longer.manager.accessToken()).rejects.toMatchObject({ code: "INVALID_RESPONSE" })
+})

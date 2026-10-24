@@ -8,11 +8,11 @@ import {
 } from "./oauth"
 
 describe("OAuth wire contracts", () => {
-  it("accepts only standard snake_case token fields and a 300 second access lifetime", () => {
+  it("accepts only standard snake_case token fields and an access lifetime of at most one hour", () => {
     const response = {
       access_token: "pc_at_opaque",
       token_type: "Bearer",
-      expires_in: 300,
+      expires_in: 3600,
       refresh_token: "pc_rt_opaque",
       scope: "user:read device:revoke",
     } satisfies OAuthTokenResponse
@@ -24,7 +24,10 @@ describe("OAuth wire contracts", () => {
         expiresIn: 300,
       }),
     ).toBe(false)
-    expect(isNativeOAuthTokenResponse({ ...response, expires_in: 301 })).toBe(false)
+    expect(isNativeOAuthTokenResponse({ ...response, expires_in: 120 })).toBe(true)
+    expect(isNativeOAuthTokenResponse({ ...response, expires_in: 3601 })).toBe(false)
+    expect(isNativeOAuthTokenResponse({ ...response, expires_in: 0 })).toBe(false)
+    expect(isNativeOAuthTokenResponse({ ...response, expires_in: 1.5 })).toBe(false)
     expect(isNativeOAuthTokenResponse({ ...response, id_token: "jwt" })).toBe(false)
     expectTypeOf<Extract<"id_token", keyof NativeOAuthTokenResponse>>().toEqualTypeOf<never>()
   })

@@ -1,6 +1,7 @@
 // 负责第一方 OAuth 的逻辑归属、单飞轮换、持久消费屏障及本机写入序列。
 import type { OAuthDesktopSession } from "@pigclaude/contracts/desktop-membership"
 import type { PigclaudeApi } from "../api/pigclaude-api-client"
+import { MAX_ACCESS_TOKEN_SECONDS } from "@pigclaude/contracts/oauth"
 import { PigclaudeApiError } from "../api/oauth-client"
 import type { SecretVault } from "../secret-vault"
 import { parseOAuthDesktopSession } from "./oauth-session"
@@ -225,7 +226,7 @@ export class OAuthTokenManager {
         token.token_type !== "Bearer" ||
         !Number.isInteger(token.expires_in) ||
         token.expires_in <= 0 ||
-        token.expires_in > 300
+        token.expires_in > MAX_ACCESS_TOKEN_SECONDS
       )
         throw failure("INVALID_RESPONSE")
       if (this.#now() >= record.refreshTokenExpiresAt) throw failure("AUTHORIZATION_REQUIRED")

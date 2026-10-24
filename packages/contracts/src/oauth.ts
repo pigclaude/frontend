@@ -1,10 +1,13 @@
 // 负责标准 OAuth/OIDC wire 契约；native 响应不接受 ID Token，网站令牌只由 Rust RP 持有。
 
-/** OAuth access token 的标准响应字段，生命周期固定为 300 秒。 */
+/** access token 最长有效期（秒）；接近 grant 绝对到期时服务端会给出更短的值。 */
+export const MAX_ACCESS_TOKEN_SECONDS = 3600
+
+/** OAuth access token 的标准响应字段，有效期 1～3600 秒的整数。 */
 export type OAuthTokenResponse = {
   access_token: string
   token_type: "Bearer"
-  expires_in: 300
+  expires_in: number
   refresh_token?: string
   scope: string
 }
@@ -80,7 +83,10 @@ export function isNativeOAuthTokenResponse(value: unknown): value is NativeOAuth
     typeof value.access_token === "string" &&
     value.access_token.length > 0 &&
     value.token_type === "Bearer" &&
-    value.expires_in === 300 &&
+    typeof value.expires_in === "number" &&
+    Number.isSafeInteger(value.expires_in) &&
+    value.expires_in > 0 &&
+    value.expires_in <= MAX_ACCESS_TOKEN_SECONDS &&
     typeof value.scope === "string" &&
     (value.refresh_token === undefined ||
       (typeof value.refresh_token === "string" && value.refresh_token.length > 0)) &&

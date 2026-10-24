@@ -151,6 +151,7 @@ describe("OAuthClient native public protocol", () => {
     { ...token, token_type: "Other" },
     { ...token, scope: "openid" },
     { ...token, expires_in: -1 },
+    { ...token, expires_in: 3601 },
     { ...token, refresh_token: "" },
   ])("rejects malformed or OIDC token material %#", async (body) => {
     const client = new OAuthClient({ baseUrl, fetcher: async () => json(body) })

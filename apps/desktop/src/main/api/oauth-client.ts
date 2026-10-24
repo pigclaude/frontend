@@ -1,5 +1,6 @@
 // 负责定义标准 native OAuth public client 的主进程网络边界。
 import type { DevicePlatform } from "../device-identity/platform-reader"
+import { MAX_ACCESS_TOKEN_SECONDS } from "@pigclaude/contracts/oauth"
 
 /** 主进程上下文准备输入，平台只在发送 DTO 时映射。 */
 export type DeviceAuthorizationInput = {
@@ -297,7 +298,7 @@ function readToken(value: unknown): NativeOAuthToken {
     typeof value.expires_in !== "number" ||
     !Number.isSafeInteger(value.expires_in) ||
     value.expires_in <= 0 ||
-    value.expires_in > 300 ||
+    value.expires_in > MAX_ACCESS_TOKEN_SECONDS ||
     typeof value.scope !== "string" ||
     !value.scope ||
     value.scope.split(" ").some((scope) => !NATIVE_SCOPES.some((allowed) => allowed === scope)) ||

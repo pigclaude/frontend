@@ -4,7 +4,7 @@
     "revision": 7,
     "state": "active",
     "account": {
-      "userId": "user_01",
+      "userId": "100001",
       "nickname": "Pig User",
       "email": "user@example.com",
       "avatar": ""
@@ -24,7 +24,7 @@
     "revision": 7,
     "state": "active",
     "account": {
-      "userId": "user_01",
+      "userId": "100001",
       "nickname": "Pig User",
       "email": "user@example.com",
       "avatar": ""

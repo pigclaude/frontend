@@ -99,7 +99,7 @@ function AuditRow({ item }: { item: MembershipAuditItem }) {
         {item.createdAt ? formatTime(item.createdAt) : "—"}
       </TableCell>
       <TableCell>
-        <p className="font-mono text-foreground">{item.userId}</p>
+        <p className="font-mono text-foreground">{item.userId ?? "—"}</p>
         <p className="mt-0.5 text-xs text-meta">
           {item.operatorType} · {item.operatorId || "—"}
         </p>

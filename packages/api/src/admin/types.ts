@@ -48,7 +48,7 @@ export interface ListUsersResponse {
 export interface MembershipAuditItem {
   id: string
   eventType: string
-  userId: string
+  userId: string | null
   deviceId: string
   bindingEpoch: string
   result: string

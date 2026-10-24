@@ -6,6 +6,7 @@ import LoginPage from "@/pages/login"
 import OrdersPage from "@/pages/orders"
 import UsersPage from "@/pages/users"
 import TiersPage from "@/pages/tiers"
+import TierEditorPage from "@/pages/tier-editor"
 import MembershipPage from "@/pages/membership"
 import DevicesPage from "@/pages/devices"
 import SettingsSecurityPage from "@/pages/settings-security"
@@ -25,6 +26,8 @@ export const router = createBrowserRouter([
           { path: "orders", element: <OrdersPage /> },
           { path: "users", element: <UsersPage /> },
           { path: "tiers", element: <TiersPage /> },
+          { path: "tiers/new", element: <TierEditorPage /> },
+          { path: "tiers/:tierId", element: <TierEditorPage /> },
           { path: "membership", element: <MembershipPage /> },
           { path: "devices", element: <DevicesPage /> },
           { path: "audits", element: <AuditsPage /> },

@@ -1,6 +1,6 @@
-// 负责会员等级权限、列表、编辑抽屉及删除确认。
+// 负责会员等级权限、列表导航及删除确认。
 import { useState } from "react"
-import { useLocation } from "react-router"
+import { useLocation, useNavigate } from "react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Tier } from "@pigclaude/api/membership/types"
 import { ApiError } from "@pigclaude/api/client"
@@ -16,12 +16,12 @@ import { Alert } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { TierList } from "@/components/tiers/tier-list"
-import { TierEditor } from "@/components/tiers/tier-editor"
 /** 只读管理员只能查看；预览和写入必须拥有显式等级写权限。 */
 export default function TiersPage() {
   const { data: me } = useAdminMe()
   const { canRead, canWrite } = tierPermissions(me)
   const location = useLocation()
+  const navigate = useNavigate()
   const identity = JSON.stringify([me?.id, location.key])
   const client = useQueryClient()
   const query = useQuery({
@@ -30,7 +30,6 @@ export default function TiersPage() {
     enabled: canRead,
     retry: false,
   })
-  const [editing, setEditing] = useState<{ tier: Tier | null; identity: string } | null>(null)
   const [deleting, setDeleting] = useState<{ tier: Tier; identity: string } | null>(null)
   const [toggle, setToggle] = useState(false)
   const [conflict, setConflict] = useState(false)
@@ -77,9 +76,7 @@ export default function TiersPage() {
       <PageHead
         title="会员等级"
         subtitle="管理等级与价格。1 个月按 30 天计。"
-        actions={
-          canWrite && <Button onClick={() => setEditing({ tier: null, identity })}>新建等级</Button>
-        }
+        actions={canWrite && <Button onClick={() => navigate("/tiers/new")}>新建等级</Button>}
       />
       {query.isPending && (
         <div aria-label="加载会员等级" className="grid grid-cols-3 gap-4">
@@ -96,18 +93,14 @@ export default function TiersPage() {
       {query.data?.items.length === 0 && (
         <EmptyState
           title="还没有会员等级"
-          action={
-            canWrite && (
-              <Button onClick={() => setEditing({ tier: null, identity })}>新建等级</Button>
-            )
-          }
+          action={canWrite && <Button onClick={() => navigate("/tiers/new")}>新建等级</Button>}
         />
       )}
       {!!query.data?.items.length && (
         <TierList
           tiers={query.data?.items ?? []}
           canWrite={canWrite}
-          onEdit={(tier) => setEditing({ tier, identity })}
+          onEdit={(tier) => navigate(`/tiers/${tier.id}`)}
           onToggle={(tier) => {
             setError("")
             setConflict(false)
@@ -120,15 +113,6 @@ export default function TiersPage() {
             setError("")
             setDeleting({ tier, identity })
           }}
-        />
-      )}
-      {editing?.identity === identity && (
-        <TierEditor
-          key={`${identity}-${canWrite}-${editing.tier?.id ?? "new"}`}
-          tier={editing.tier}
-          identity={identity}
-          canWrite={canWrite}
-          onClose={() => setEditing(null)}
         />
       )}
       <TierDeleteDialog

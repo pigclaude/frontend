@@ -93,6 +93,40 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 describe("tier operation ownership", () => {
+  it("renders a full-page editor instead of a sheet", () => {
+    mount()
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(screen.getByRole("heading", { name: /编辑 VIP/ })).toBeTruthy()
+    expect(screen.getByRole("region", { name: "用户端预览" })).toBeTruthy()
+  })
+  it("reports dirty state and uses onSaved after a successful save", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const onDirtyChange = vi.fn()
+    const onSaved = vi.fn()
+    const onClose = vi.fn()
+    api.save.mockResolvedValue(tier)
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <TierEditor
+            tier={tier}
+            identity="admin"
+            canWrite
+            onClose={onClose}
+            onSaved={onSaved}
+            onDirtyChange={onDirtyChange}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false)
+    fireEvent.change(screen.getByLabelText("名称"), { target: { value: "新名称" } })
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true)
+    fireEvent.click(screen.getByRole("button", { name: "保存等级" }))
+    await act(async () => {})
+    expect(onSaved).toHaveBeenCalledTimes(1)
+    expect(onClose).not.toHaveBeenCalled()
+  })
   it("does not start preview after session changes during debounce", async () => {
     mount()
     await tick(100)

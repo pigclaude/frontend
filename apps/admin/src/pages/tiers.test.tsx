@@ -1,10 +1,11 @@
 // 验证等级编辑的服务端价格、精确单位、权限及不可变身份合同。
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import { MemoryRouter } from "react-router"
+import { createMemoryRouter, RouterProvider } from "react-router"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiError } from "@pigclaude/api/client"
 import TiersPage from "./tiers"
+import TierEditorPage from "./tier-editor"
 
 const api = vi.hoisted(() => ({
   list: vi.fn(),
@@ -48,22 +49,38 @@ const tier = {
     },
   ],
 }
+function routerAt(pathname: string) {
+  return createMemoryRouter(
+    [
+      { path: "/tiers", element: <TiersPage /> },
+      { path: "/tiers/new", element: <TierEditorPage /> },
+      { path: "/tiers/:tierId", element: <TierEditorPage /> },
+    ],
+    { initialEntries: [pathname] },
+  )
+}
 function mount() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  let router = routerAt("/tiers")
   const tree = () => (
     <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <TiersPage />
-      </MemoryRouter>
+      <RouterProvider router={router} />
     </QueryClientProvider>
   )
   const view = render(tree())
-  return { ...view, rerenderPage: () => view.rerender(tree()) }
+  return {
+    ...view,
+    rerenderPage: () => {
+      router = routerAt(router.state.location.pathname)
+      view.rerender(tree())
+    },
+  }
 }
 async function edit() {
   mount()
   fireEvent.click(await screen.findByRole("button", { name: "编辑 VIP" }))
-  return screen.getByRole("dialog")
+  await screen.findByRole("heading", { name: /编辑 VIP/ })
+  return screen.getByTestId("tier-editor")
 }
 function description(control: HTMLElement) {
   return (control.getAttribute("aria-describedby") ?? "")
@@ -150,6 +167,7 @@ describe("tiers", () => {
   it("creates a tier with code and exact amount without floating point conversion", async () => {
     mount()
     fireEvent.click(await screen.findByRole("button", { name: "新建等级" }))
+    await screen.findByRole("heading", { name: "新建等级" })
     fireEvent.change(screen.getByLabelText("名称"), { target: { value: "Silver" } })
     fireEvent.change(screen.getByLabelText("代号"), { target: { value: "silver" } })
     fireEvent.change(screen.getByLabelText("月价（元）"), {
@@ -294,7 +312,7 @@ describe("tiers", () => {
   it("new tier shows field errors under inputs only after editing or saving", async () => {
     mount()
     fireEvent.click(await screen.findByRole("button", { name: "新建等级" }))
-    const dialog = screen.getByRole("dialog")
+    const dialog = await screen.findByTestId("tier-editor")
     for (const text of ["请填写名称", "请填写代号", "精度"])
       expect(dialog.textContent).not.toContain(text)
     for (const label of ["名称", "代号", "等级", "月价（元）", "标语", "月数 1", "角标 1"])

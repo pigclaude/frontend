@@ -32,7 +32,6 @@ async function tick(ms = 250) {
   })
 }
 function query(text = "a") {
-  fireEvent.click(screen.getByRole("button", { name: "选择用户" }))
   fireEvent.change(screen.getByRole("combobox"), { target: { value: text } })
 }
 beforeEach(() => {
@@ -57,6 +56,7 @@ afterEach(() => {
 })
 it("searches by email and selects with keyboard", async () => {
   mount()
+  expect(screen.getByRole("combobox", { name: "搜索用户邮箱或 ID" })).toBeTruthy()
   query("a@example.test")
   await tick(249)
   expect(search).not.toHaveBeenCalled()
@@ -66,6 +66,15 @@ it("searches by email and selects with keyboard", async () => {
   fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" })
   expect(screen.getByText("a@example.test")).toBeTruthy()
   expect(screen.getByRole("button", { name: "清除用户" })).toBeTruthy()
+})
+it("anchors the result popup to the picker instead of the dialog", async () => {
+  mount()
+  query()
+  await tick()
+  const popup = screen.getByRole("listbox").parentElement
+  expect(popup?.className).toContain("absolute")
+  expect(popup?.parentElement?.hasAttribute("cmdk-root")).toBe(true)
+  expect(popup?.parentElement?.className).toContain("relative")
 })
 it("shows membership summary", async () => {
   mount()
@@ -135,7 +144,7 @@ it.each(["query-roundtrip", "close-reopen"])(
       fireEvent.change(screen.getByRole("combobox"), { target: { value: "a" } })
     } else {
       fireEvent.keyDown(screen.getByRole("combobox"), { key: "Escape" })
-      fireEvent.click(screen.getByRole("button", { name: "选择用户" }))
+      fireEvent.focus(screen.getByRole("combobox"))
     }
     expect(screen.queryByRole("option")).toBeNull()
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" })

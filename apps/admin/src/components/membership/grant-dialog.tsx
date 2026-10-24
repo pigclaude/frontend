@@ -1,4 +1,4 @@
-// 负责通过正式用户选择器授予等级，预览与写入绑定输入、页面和会话。
+// 负责通过正式用户选择器授予等级，预览与写入绑定输入、页面和会话；分区控件拆在同目录文件里。
 import { useMemo, useState, type FormEvent } from "react"
 import { useLocation } from "react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -16,15 +16,14 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { Skeleton } from "@/components/ui/skeleton"
-import { TierRadioCards } from "./tier-radio-cards"
-import { GrantTimeline } from "./grant-timeline"
+import { TierChoiceCards } from "./tier-choice-cards"
 import { adminApi } from "@/lib/api"
 import { useAdminOperationOwner } from "@/hooks/use-admin-operation-owner"
 import { toastApiError } from "@/lib/errors"
 import { parseUnits } from "@/components/tiers/tier-draft"
 import { UserPicker } from "./user-picker"
+import { GrantDurationField } from "./grant-duration-field"
+import { GrantPreviewPanel } from "./grant-preview-panel"
 import { grantError, useGrantPreview } from "./use-grant-preview"
 /** 只提交通过当前预览的完整授予意图，成功后刷新会员和审计。 */
 export function GrantDialog({
@@ -122,127 +121,120 @@ export function GrantDialog({
     }
   }
   const disabled = !canWrite || operation.pending
+  const steps = [
+    { label: "选择用户", done: !!user },
+    { label: "选择等级", done: !!tierId && !blocked },
+    { label: "填写时长", done: /^[1-9]\d*$/.test(duration) },
+    { label: "填写操作备注", done: !!remark.trim() },
+  ]
   return (
     <Dialog open={open} onOpenChange={(next) => !operation.pending && onOpenChange(next)}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>人工授予会员</DialogTitle>
-          <DialogDescription>
-            该操作不收费，将记录操作人、等级、时长、授予价值和备注。1 个月按 30 天计。
-          </DialogDescription>
-        </DialogHeader>
-        <form className="flex flex-col gap-4" onSubmit={submit}>
-          <div className="flex flex-col gap-1.5">
-            <Label>用户</Label>
-            <UserPicker value={user} onChange={setUser} disabled={disabled || !open} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>等级</Label>
-            <TierRadioCards
-              tiers={tiers.data?.items ?? []}
-              value={tierId || null}
-              onChange={setTierId}
-              disabledReason={(tier) => (disabled ? "当前不可操作" : lowerTierReason(tier))}
-            />
-            {tiers.isError && (
-              <p role="alert">
-                等级加载失败{" "}
-                <Button type="button" variant="ghost" onClick={() => void tiers.refetch()}>
-                  重试
-                </Button>
+      <DialogContent className="max-h-[90dvh] overflow-hidden p-0 sm:max-w-4xl">
+        <div className="flex max-h-[90dvh] min-h-0 flex-col">
+          <DialogHeader className="border-b border-border-soft px-6 py-5">
+            <DialogTitle>人工授予会员</DialogTitle>
+            <DialogDescription>
+              该操作不收费，将记录操作人、等级、时长、授予价值和备注。1 个月按 30 天计。
+            </DialogDescription>
+          </DialogHeader>
+          <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
+            <div className="grid min-h-0 flex-1 gap-6 overflow-y-auto px-6 py-5 md:grid-cols-[minmax(0,1fr)_300px]">
+              <div className="flex min-w-0 flex-col gap-6">
+                <div className="flex flex-col gap-1.5">
+                  <Label>用户</Label>
+                  <UserPicker value={user} onChange={setUser} disabled={disabled || !open} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label>等级</Label>
+                  <TierChoiceCards
+                    tiers={tiers.data?.items ?? []}
+                    value={tierId || null}
+                    onChange={setTierId}
+                    disabledReason={(tier) => (disabled ? "当前不可操作" : lowerTierReason(tier))}
+                  />
+                  {tiers.isError && (
+                    <p role="alert">
+                      等级加载失败{" "}
+                      <Button type="button" variant="ghost" onClick={() => void tiers.refetch()}>
+                        重试
+                      </Button>
+                    </p>
+                  )}
+                </div>
+                <div className="grid gap-x-4 gap-y-6 sm:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+                  <GrantDurationField
+                    duration={duration}
+                    unit={durationUnit}
+                    disabled={disabled}
+                    onDuration={setDuration}
+                    onUnit={setUnit}
+                  />
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="grant-value">授予价值（元）</Label>
+                    <div className="relative">
+                      <span
+                        aria-hidden="true"
+                        className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-meta"
+                      >
+                        ¥
+                      </span>
+                      <Input
+                        id="grant-value"
+                        inputMode="decimal"
+                        className="h-10 pl-7 text-sm tabular-nums"
+                        value={value}
+                        disabled={disabled}
+                        onChange={(event) => setValue(event.target.value)}
+                      />
+                    </div>
+                    <p className="text-xs text-meta">用于以后升级补差，未收费填 0</p>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="grant-remark">操作备注</Label>
+                  <Textarea
+                    id="grant-remark"
+                    rows={3}
+                    value={remark}
+                    disabled={disabled}
+                    placeholder="例如：活动赠送、客服补偿，会写入审计记录"
+                    onChange={(event) => setRemark(event.target.value)}
+                    required
+                  />
+                </div>
+                {error && (
+                  <p role="alert" className="text-sm text-destructive">
+                    {error}
+                  </p>
+                )}
+              </div>
+              <aside className="flex min-w-0 flex-col gap-3 md:sticky md:top-0 md:self-start">
+                <GrantPreviewPanel
+                  user={user}
+                  steps={steps}
+                  preview={preview}
+                  pending={!!parsed.input && !error}
+                />
+              </aside>
+            </div>
+            <DialogFooter className="mx-0 mb-0 mt-0 flex-row items-center justify-end border-t border-border-soft px-6 py-4">
+              <p className="mr-auto hidden text-xs text-meta sm:block">
+                授予立即生效，操作会写入审计日志
               </p>
-            )}
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="grant-duration">时长</Label>
-            <div className="flex gap-2">
-              <Input
-                id="grant-duration"
-                value={duration}
-                disabled={disabled}
-                onChange={(event) => setDuration(event.target.value)}
-                required
-              />
-              <ToggleGroup
-                type="single"
-                value={durationUnit}
-                disabled={disabled}
-                aria-label="时长单位"
-                onValueChange={(unit) => {
-                  if (unit === "month" || unit === "day") setUnit(unit)
-                }}
+              <Button
+                type="button"
+                variant="outline"
+                disabled={operation.pending}
+                onClick={() => onOpenChange(false)}
               >
-                <ToggleGroupItem value="month">月</ToggleGroupItem>
-                <ToggleGroupItem value="day">天</ToggleGroupItem>
-              </ToggleGroup>
-            </div>
-            <div className="flex gap-2">
-              {[1, 3, 6, 12].map((months) => (
-                <Button
-                  key={months}
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={disabled}
-                  onClick={() => {
-                    setDuration(String(months))
-                    setUnit("month")
-                  }}
-                >
-                  {months} 个月
-                </Button>
-              ))}
-            </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="grant-value">授予价值（元）</Label>
-            <Input
-              id="grant-value"
-              inputMode="decimal"
-              value={value}
-              disabled={disabled}
-              onChange={(event) => setValue(event.target.value)}
-            />
-            <p className="text-xs text-meta">用于以后升级补差，未收费填 0</p>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="grant-remark">操作备注</Label>
-            <Textarea
-              id="grant-remark"
-              rows={3}
-              value={remark}
-              disabled={disabled}
-              onChange={(event) => setRemark(event.target.value)}
-              required
-            />
-          </div>
-          {error && <p role="alert">{error}</p>}
-          {parsed.input && !preview && !error && (
-            <div role="status" aria-label="正在预览">
-              <Skeleton className="h-16 w-full" />
-            </div>
-          )}
-          {preview && (
-            <GrantTimeline
-              now={new Date().toISOString()}
-              preview={preview}
-              previousTier={user?.status === "active" ? user.tier : null}
-            />
-          )}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={operation.pending}
-              onClick={() => onOpenChange(false)}
-            >
-              取消
-            </Button>
-            <Button type="submit" disabled={!canSubmit || operation.pending}>
-              {operation.pending ? "提交中…" : "确认授予"}
-            </Button>
-          </DialogFooter>
-        </form>
+                取消
+              </Button>
+              <Button type="submit" disabled={!canSubmit || operation.pending}>
+                {operation.pending ? "提交中…" : "确认授予"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </div>
       </DialogContent>
     </Dialog>
   )

@@ -26,8 +26,7 @@ export function setupPickerDom() {
 }
 /** 使用实际 cmdk 与 Radix 选择用户和等级，保留可访问交互。 */
 export async function fillGrant(remark: string) {
-  fireEvent.click(screen.getByRole("button", { name: "选择用户" }))
-  fireEvent.change(await screen.findByRole("combobox", { name: "搜索用户邮箱或 ID" }), {
+  fireEvent.change(await screen.findByRole("combobox"), {
     target: { value: "u" },
   })
   fireEvent.click(await screen.findByRole("option"))

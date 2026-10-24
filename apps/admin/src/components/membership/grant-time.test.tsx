@@ -68,8 +68,7 @@ it.each([
       </MemoryRouter>
     </QueryClientProvider>,
   )
-  fireEvent.click(screen.getByRole("button", { name: "选择用户" }))
-  fireEvent.change(await screen.findByRole("combobox", { name: "搜索用户邮箱或 ID" }), {
+  fireEvent.change(await screen.findByRole("combobox"), {
     target: { value: "u" },
   })
   const option = await screen.findByRole("option")

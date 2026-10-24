@@ -62,8 +62,7 @@ function mount(canWrite = true) {
   )
 }
 async function selectUser() {
-  fireEvent.click(screen.getByRole("button", { name: "选择用户" }))
-  fireEvent.change(screen.getByRole("combobox", { name: "搜索用户邮箱或 ID" }), {
+  fireEvent.change(screen.getByRole("combobox"), {
     target: { value: "u" },
   })
   fireEvent.click(await screen.findByRole("option"))
@@ -80,10 +79,10 @@ it("higher current tier disables lower tier card and preserves selected user sum
   expect(lower.getAttribute("aria-disabled")).toBe("true")
   expect(lower.hasAttribute("disabled")).toBe(true)
   expect(screen.getByText("已是更高等级，请先撤销")).toBeTruthy()
-  expect(screen.getByText("u1")).toBeTruthy()
-  expect(screen.getByText("u@example.test")).toBeTruthy()
+  expect(screen.getAllByText("u1").length).toBeGreaterThan(0)
+  expect(screen.getAllByText("u@example.test").length).toBeGreaterThan(0)
   expect(document.querySelector('.tier-badge[data-style="gold"]')).toBeTruthy()
-  expect(screen.getByText(/到期$/)).toBeTruthy()
+  expect(screen.getAllByText(/到期$/).length).toBeGreaterThan(0)
   fireEvent.click(lower)
   fireEvent.change(screen.getByLabelText("操作备注"), { target: { value: "manual" } })
   expect(api.preview).not.toHaveBeenCalled()

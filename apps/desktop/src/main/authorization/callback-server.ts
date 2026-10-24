@@ -1,5 +1,6 @@
 // 负责在回环地址接收浏览器授权回调，并把结果交给主进程服务。
 import { createServer } from "node:http"
+import { sendCompletionPage } from "./completion-page"
 
 /** 启动只绑定 127.0.0.1 的回调服务并返回授权 redirect URI。 */
 export async function createCallbackServer(
@@ -17,12 +18,24 @@ export async function createCallbackServer(
     const callbackUrl = `http://127.0.0.1:${port}${requestUrl.pathname}${requestUrl.search}`
     void onCallback(callbackUrl).then(
       () => {
-        response.setHeader("content-type", "text/html; charset=utf-8")
-        response.end("<h1>授权完成</h1><p>可以返回 pigclaude。</p>")
+        sendCompletionPage(response, {
+          kind: "success",
+          title: "授权完成",
+          message: "PigClaude 已收到授权，回到应用即可继续使用。",
+          hint: "这个标签页可以直接关闭",
+        })
       },
       () => {
-        response.statusCode = 500
-        response.end("授权失败")
+        sendCompletionPage(
+          response,
+          {
+            kind: "error",
+            title: "授权未完成",
+            message: "授权回调处理失败，请回到 PigClaude 重试。",
+            hint: "如果问题持续，请重新发起授权。",
+          },
+          500,
+        )
       },
     )
   })

@@ -14,7 +14,13 @@ describe("createCallbackServer", () => {
     await server.close()
 
     expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toContain("text/html")
+    expect(response.headers.get("cache-control")).toBe("no-store")
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff")
+    expect(response.headers.get("content-security-policy")).toContain("default-src 'none'")
     expect(body).toContain("授权完成")
+    expect(body).toContain("PigClaude")
+    expect(body).not.toContain("code=abc")
     expect(received).toContain("code=abc")
     expect(new URL(server.redirectUri).hostname).toBe("127.0.0.1")
   })

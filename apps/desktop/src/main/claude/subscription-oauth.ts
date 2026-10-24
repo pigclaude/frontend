@@ -2,6 +2,7 @@
 
 import { randomBytes, timingSafeEqual } from "node:crypto"
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
+import { sendCompletionPage } from "../authorization/completion-page"
 import { createPkceChallenge } from "../authorization/pkce"
 import { fetch as undiciFetch, type Dispatcher } from "undici"
 
@@ -154,14 +155,24 @@ export class SubscriptionOAuth {
       }
       const error = url.searchParams.get("error")
       if (error !== null) {
-        respond(response, "授权未完成，请回到 PigClaude。")
+        sendCompletionPage(response, {
+          kind: "error",
+          title: "授权未完成",
+          message: "授权被拒绝，请回到 PigClaude 重新发起。",
+          hint: "如果问题持续，请重新发起授权。",
+        })
         result.complete({ kind: "error", code: "OAUTH_DENIED", message: "授权被拒绝" })
         return
       }
       const state = url.searchParams.get("state") ?? ""
       const code = url.searchParams.get("code")
       if (!safeEqual(state, input.state)) {
-        respond(response, "授权校验失败，请回到 PigClaude 重新开始。")
+        sendCompletionPage(response, {
+          kind: "error",
+          title: "授权未完成",
+          message: "授权校验失败，请回到 PigClaude 重新开始。",
+          hint: "不要关闭 PigClaude，回到应用重新发起授权。",
+        })
         result.complete({
           kind: "error",
           code: "OAUTH_STATE_MISMATCH",
@@ -170,7 +181,12 @@ export class SubscriptionOAuth {
         return
       }
       if (code === null || code === "") {
-        respond(response, "授权缺少 code，请回到 PigClaude 重新开始。")
+        sendCompletionPage(response, {
+          kind: "error",
+          title: "授权未完成",
+          message: "授权缺少 code，请回到 PigClaude 重新开始。",
+          hint: "不要关闭 PigClaude，回到应用重新发起授权。",
+        })
         result.complete({
           kind: "error",
           code: "OAUTH_EXCHANGE_FAILED",
@@ -178,7 +194,12 @@ export class SubscriptionOAuth {
         })
         return
       }
-      respond(response, "授权完成，可以关闭此页面。")
+      sendCompletionPage(response, {
+        kind: "success",
+        title: "授权完成",
+        message: "PigClaude 已收到 Claude 账号授权，可以关闭此页面继续。",
+        hint: "如果没有自动切回，请手动关闭此标签页。",
+      })
       result.complete({ kind: "code", code })
     }
 
@@ -395,11 +416,6 @@ function listen(server: Server, host: string, port = 0): Promise<number> {
       resolve(address.port)
     })
   })
-}
-
-function respond(response: ServerResponse, message: string): void {
-  response.writeHead(200, { "content-type": "text/html; charset=utf-8" })
-  response.end(`<!doctype html><meta charset="utf-8"><title>PigClaude</title><p>${message}</p>`)
 }
 
 function safeEqual(left: string, right: string): boolean {

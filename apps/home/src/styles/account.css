@@ -242,3 +242,78 @@
     display: none;
   }
 }
+
+/* ─── 个人资料：身份卡和昵称编辑 ─── */
+.profile-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(140deg, color-mix(in oklab, var(--accent) 14%, transparent), transparent 60%),
+    var(--card-bg);
+  box-shadow: var(--card-shadow);
+}
+.profile-hero-name {
+  margin: 0;
+  color: var(--fg);
+  font-size: 18px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.profile-hero-meta {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.profile-hero-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.profile-hero-tags:empty {
+  display: none;
+}
+.profile-hero-link {
+  border-radius: 999px;
+  outline: none;
+}
+.profile-hero-link:hover .set-tag {
+  color: var(--fg);
+}
+.profile-hero-link:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+.nickname-editor {
+  margin-top: 6px;
+}
+.nickname-editor-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.nickname-editor-error {
+  margin-top: 6px;
+  color: var(--danger-ink);
+  font-size: 12.5px;
+}
+
+/* ─── 行内灰字：功能暂未开放等说明 ─── */
+.set-muted-text {
+  color: var(--muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.account-notice {
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--raise-1);
+  color: var(--fg-2);
+  font-size: 13px;
+}

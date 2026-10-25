@@ -1,4 +1,4 @@
-// 负责验证成熟用户菜单的脱敏摘要、退出状态机与真实 Providers 会话清理。
+// 负责验证成熟用户菜单的脱敏邮箱摘要、退出状态机与真实 Providers 会话清理。
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { useQueryClient, type QueryClient } from "@tanstack/react-query"
 import { useEffect } from "react"
@@ -37,7 +37,7 @@ vi.mock("@/lib/api", () => ({
 }))
 
 const user: MeResponse = {
-  id: "user-private-secret-1234",
+  id: "100001",
   nickname: "Ada",
   email: "private@example.com",
   avatar: "",
@@ -102,7 +102,7 @@ afterEach(() => {
 })
 
 describe("home user menu lifecycle", () => {
-  it("provides the source account and membership entries with masked identity", async () => {
+  it("provides the source account and membership entries with masked email", async () => {
     renderMenu()
     await openMenu()
     expect(screen.getByRole("menuitem", { name: "账户" }).getAttribute("href")).toBe("/dashboard")
@@ -111,10 +111,15 @@ describe("home user menu lifecycle", () => {
       "/settings/devices",
     )
     expect(screen.getByText("p•••@example.com")).toBeTruthy()
-    expect(screen.getByText("user••••1234")).toBeTruthy()
+    expect(screen.getByText("100001")).toBeTruthy()
     expect(screen.queryByText(user.email)).toBeNull()
-    expect(screen.queryByText(user.id)).toBeNull()
     expect(screen.queryByText("账户余额")).toBeNull()
+  })
+
+  it("shows the numeric user id unmasked", async () => {
+    renderMenu()
+    await openMenu()
+    expect(await screen.findByText("100001")).toBeTruthy()
   })
 
   it("calls logout once, clears sensitive caches and replaces the route with plain login", async () => {
@@ -212,7 +217,7 @@ describe("home user menu lifecycle", () => {
     await screen.findByRole("status")
     expect(client.getQueryCache().getAll()).toHaveLength(0)
     expect(mocks.login).not.toHaveBeenCalled()
-    const nextUser = { ...user, id: "new-user-5678", nickname: "Grace", email: "new@example.com" }
+    const nextUser = { ...user, id: "100002", nickname: "Grace", email: "new@example.com" }
     mocks.me.mockResolvedValue(nextUser)
     expect(client.getQueryData(["authorization", "secret-flow"])).toBeUndefined()
     // 完整 RP callback 会重载页面；这里仅验证退出后的新权威读取不会复活旧缓存。

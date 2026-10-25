@@ -1,4 +1,4 @@
-// 负责迁入 Pigcursor 用户头像和磨砂菜单，并连接真实退出及脱敏账户摘要。
+// 负责迁入 Pigcursor 用户头像和磨砂菜单，并连接真实退出及脱敏邮箱摘要。
 "use client"
 
 import { useLayoutEffect, useRef, useState } from "react"
@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@pigclaude/web-ui/components/dropdown-menu"
 import { homeApi } from "@/lib/api"
-import { maskEmail, maskUserId } from "@/lib/identity-mask"
+import { maskEmail } from "@/lib/identity-mask"
 import { useHomeSessionActions } from "@/components/home-session-context"
 
 /** 沿用原站菜单结构，仅提供真实账户/会员入口和可重试、不可重复提交的退出。 */
@@ -73,9 +73,7 @@ export function UserMenu({ user }: { user: MeResponse }) {
         </div>
         <div className="mx-1 mb-1 flex items-center justify-between rounded-md border border-[var(--border-soft)] bg-[var(--raise-1)] px-3 py-2.5">
           <span className="text-xs text-muted-foreground">用户 ID</span>
-          <span className="font-mono text-[15px] font-medium text-foreground">
-            {maskUserId(user.id)}
-          </span>
+          <span className="font-mono text-[15px] font-medium text-foreground">{user.id}</span>
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild disabled={pending}>

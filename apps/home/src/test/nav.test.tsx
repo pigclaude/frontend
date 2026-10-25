@@ -13,7 +13,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/api", () => ({ homeApi: { user: { me: mocks.me } } }))
 
 beforeEach(() => {
-  mocks.me.mockResolvedValue({ id: "user-12345678", nickname: "Ada", email: "ada@example.com" })
+  mocks.me.mockResolvedValue({ id: "100001", nickname: "Ada", email: "ada@example.com" })
 })
 afterEach(() => {
   cleanup()
@@ -48,7 +48,7 @@ describe("migrated home topbar", () => {
     renderNav()
     const reconnect = await screen.findByRole("button", { name: "重新连接" }, { timeout: 4000 })
     expect(screen.queryByRole("link", { name: "登录" })).toBeNull()
-    mocks.me.mockResolvedValue({ id: "user-12345678", nickname: "Ada", email: "ada@example.com" })
+    mocks.me.mockResolvedValue({ id: "100001", nickname: "Ada", email: "ada@example.com" })
     fireEvent.click(reconnect)
     expect(await screen.findByRole("button", { name: "用户菜单" })).toBeTruthy()
   })

@@ -12,7 +12,7 @@ vi.mock("@/lib/api", () => ({
 
 const createdAt = new Date(2026, 9, 1, 12, 34).toISOString()
 const user: MeResponse = {
-  id: "user-private-account-1234",
+  id: "100001",
   nickname: "",
   email: "private@example.com",
   avatar: "",
@@ -54,8 +54,7 @@ describe("dashboard account facts", () => {
     expect(screen.getByText("登录状态")).toBeTruthy()
     expect(screen.getByText("已登录")).toBeTruthy()
     expect(screen.getByRole("heading", { name: "PigClaude 用户" })).toBeTruthy()
-    expect(screen.getByText("user••••1234")).toBeTruthy()
-    expect(screen.queryByText(user.id)).toBeNull()
+    expect(screen.getByText("100001")).toBeTruthy()
     expect(screen.queryByText(user.email)).toBeNull()
   })
 

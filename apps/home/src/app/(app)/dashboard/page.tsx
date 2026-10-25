@@ -8,7 +8,7 @@ import { MembershipCard } from "@pigclaude/web-ui/components/membership-card"
 import { formatDurationSeconds, formatTime } from "@pigclaude/web-ui/lib/format"
 import { Button } from "@pigclaude/web-ui/components/button"
 import { homeApi } from "@/lib/api"
-import { maskEmail, maskUserId } from "@/lib/identity-mask"
+import { maskEmail } from "@/lib/identity-mask"
 import { QueryEmpty, QueryError, QueryLoading } from "@/components/query-state"
 
 /** 读取 user/me 与 entitlement，并保留 loading、empty、error、retry 语义。 */
@@ -80,7 +80,7 @@ export default function DashboardPage() {
           <dl className="data-list relative">
             <div>
               <dt>用户 ID</dt>
-              <dd>{maskUserId(me.data.id)}</dd>
+              <dd>{me.data.id}</dd>
             </div>
             {me.data.createdAt && (
               <div>

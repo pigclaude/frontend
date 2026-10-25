@@ -12,6 +12,7 @@
     "./oauth": "./src/oauth.ts",
     "./account-status": "./src/account-status.ts",
     "./user-devices": "./src/user-devices.ts",
+    "./user-web-sessions": "./src/user-web-sessions.ts",
     "./claude-account": "./src/claude-account.ts"
   },
   "scripts": {

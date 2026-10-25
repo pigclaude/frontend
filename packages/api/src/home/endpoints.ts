@@ -3,6 +3,7 @@ import { createHomeMembershipApi } from "../membership/home"
 import type { HttpClient } from "../client"
 import type { CaptchaConfig } from "@pigclaude/contracts/captcha"
 import { createAccountCredentialApi, createCsrfWriter } from "./account-credentials"
+import { createWebSessionsApi } from "./web-sessions"
 import type * as T from "./types"
 
 /** 创建 home API，所有请求复用共享 cookie client。 */
@@ -25,6 +26,8 @@ export function createHomeApi(c: HttpClient) {
         ),
     },
     account: createAccountCredentialApi(c),
+    /** 本人网页登录会话列表与退出。 */
+    webSessions: createWebSessionsApi(c),
     membership: createHomeMembershipApi(c),
   }
 }

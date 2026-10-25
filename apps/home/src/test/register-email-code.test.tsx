@@ -110,19 +110,19 @@ describe("register email code", () => {
       await vi.advanceTimersByTimeAsync(1_000)
     })
     expect(screen.getByRole("button", { name: "59 秒后重发" })).toBeTruthy()
-    for (let tick = 0; tick < 60; tick += 1) {
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(1_000)
-      })
-    }
-    expect((screen.getByRole("button", { name: "发送验证码" }) as HTMLButtonElement).disabled).toBe(
-      false,
+    // 冷却绑定当前地址：换邮箱后立即允许为新地址发码。
+    fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "second@example.com" } })
+    await vi.waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "发送验证码" }) as HTMLButtonElement).disabled,
+      ).toBe(false),
     )
 
     codeResponse = () =>
       json({ code: "EMAIL_CODE_RATE_LIMITED", metadata: { retryAfterSeconds: 7 } }, 429)
     fireEvent.click(screen.getByRole("button", { name: "发送验证码" }))
     await vi.waitFor(() => expect(screen.getByRole("button", { name: "7 秒后重发" })).toBeTruthy())
+    expect(JSON.parse(String(posts("/email-code")[1][1]?.body)).email).toBe("second@example.com")
   })
 
   it("shows the unavailable notice when mail is not configured", async () => {

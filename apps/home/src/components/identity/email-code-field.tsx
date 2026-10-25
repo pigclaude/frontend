@@ -47,6 +47,12 @@ export function EmailCodeField({
     return () => window.clearTimeout(timer)
   }, [resendIn])
 
+  // 倒计时绑定当前邮箱；改地址后旧冷却不能继续阻塞新地址的发码。
+  useEffect(() => {
+    setResendIn(0)
+    setError(null)
+  }, [email])
+
   async function send() {
     if (disabled || resendIn > 0 || !captcha.ready || email.trim() === "") return
     setError(null)

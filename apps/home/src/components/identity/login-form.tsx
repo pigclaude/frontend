@@ -74,10 +74,12 @@ export function LoginForm({
     }
   }, [current])
   const blocked = pending || disabled
+  // 邮件可用性未确认前不允许发码或注册，避免提交必然失败的请求。
+  const mailPending = current === "register" && mailAvailable === null
   const codeMissing = current === "register" && !/^\d{6}$/.test(emailCode)
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (blocked || !captcha.ready || codeMissing) return
+    if (blocked || mailPending || !captcha.ready || codeMissing) return
     // 父级同步取得当前交互 owner，密码与其他 mutation 共用同一排他门禁。
     onMutate(() =>
       captcha.run((captchaToken) =>
@@ -121,7 +123,7 @@ export function LoginForm({
               email={email}
               value={emailCode}
               onChange={setEmailCode}
-              disabled={blocked}
+              disabled={blocked || mailPending}
               fieldClass={fieldClass}
               labelClass={labelClass}
             />
@@ -157,7 +159,7 @@ export function LoginForm({
           <Button
             type="submit"
             className="mt-1 h-9 w-full font-semibold hover:bg-[var(--btn-primary-hover)] active:bg-[var(--btn-primary-active)]"
-            disabled={blocked || !captcha.ready || codeMissing}
+            disabled={blocked || mailPending || !captcha.ready || codeMissing}
           >
             {pending
               ? current === "register"

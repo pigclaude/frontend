@@ -42,7 +42,7 @@ describe("OIDC entry", () => {
   it("does not auto start with an error and retries only after an explicit click", () => {
     mocks.params = new URLSearchParams({
       oidcError: "OIDC_ACCESS_DENIED",
-      redirect: "/dashboard?x=a%2Bb%2520",
+      redirect: "/account?x=a%2Bb%2520",
     })
     render(
       <QueryClientProvider client={new QueryClient()}>
@@ -55,7 +55,7 @@ describe("OIDC entry", () => {
     expect(mocks.begin).toHaveBeenCalledWith(
       {
         site: "home",
-        returnTo: "/dashboard?x=a%2Bb%2520",
+        returnTo: "/account?x=a%2Bb%2520",
         mode: "login",
       },
       { replace: true },

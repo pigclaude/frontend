@@ -46,7 +46,7 @@ describe("Home RP login panel", () => {
   it("starts login immediately with location.replace", () => {
     render(<AuthPanel />)
     expect(mocks.begin).toHaveBeenCalledWith(
-      { site: "home", returnTo: "/dashboard", mode: "login" },
+      { site: "home", returnTo: "/account", mode: "login" },
       { replace: true },
     )
     expect(screen.getByRole("status").textContent).toBe("正在前往登录…")

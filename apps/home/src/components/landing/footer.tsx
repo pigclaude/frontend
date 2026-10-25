@@ -45,7 +45,7 @@ export function Footer() {
                 <Link href="/register">创建账户</Link>
               </li>
               <li>
-                <Link href="/dashboard">账户概览</Link>
+                <Link href="/account">个人中心</Link>
               </li>
             </ul>
           </div>

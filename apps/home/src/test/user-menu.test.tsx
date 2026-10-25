@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
   entitlement: vi.fn(),
   replace: vi.fn(),
   push: vi.fn(),
-  pathname: "/dashboard",
+  pathname: "/account",
   capture: vi.fn(),
   params: new URLSearchParams(),
 }))
@@ -83,9 +83,9 @@ async function openMenu() {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.spyOn(webOidcNavigation, "replace").mockImplementation(() => undefined)
-  mocks.pathname = "/dashboard"
+  mocks.pathname = "/account"
   mocks.params = new URLSearchParams()
-  window.history.replaceState({}, "", "/dashboard")
+  window.history.replaceState({}, "", "/account")
   mocks.me.mockResolvedValue(user)
   mocks.logout.mockResolvedValue(undefined)
   mocks.login.mockResolvedValue(user)
@@ -104,14 +104,18 @@ afterEach(() => {
 })
 
 describe("home user menu lifecycle", () => {
-  it("provides the source account and membership entries with masked email", async () => {
+  it("links to every account center page and shows the masked email", async () => {
     renderMenu()
     await openMenu()
-    expect(screen.getByRole("menuitem", { name: "账户" }).getAttribute("href")).toBe("/dashboard")
-    expect(screen.getByRole("menuitem", { name: "会员" }).getAttribute("href")).toBe("/membership")
-    expect(screen.getByRole("menuitem", { name: "设备管理" }).getAttribute("href")).toBe(
-      "/settings/devices",
-    )
+    expect(
+      screen.getAllByRole("menuitem").map((item) => [item.textContent, item.getAttribute("href")]),
+    ).toEqual([
+      ["个人资料", "/account"],
+      ["登录与安全", "/account/security"],
+      ["设备管理", "/account/devices"],
+      ["会员", "/membership"],
+      ["退出登录", null],
+    ])
     expect(screen.getByText("p•••@example.com")).toBeTruthy()
     expect(screen.getByText("100001")).toBeTruthy()
     expect(screen.queryByText(user.email)).toBeNull()
@@ -223,7 +227,7 @@ describe("home user menu lifecycle", () => {
     mocks.me.mockResolvedValue(nextUser)
     expect(client.getQueryData(["authorization", "secret-flow"])).toBeUndefined()
     // 完整 RP callback 会重载页面；这里仅验证退出后的新权威读取不会复活旧缓存。
-    mocks.pathname = "/dashboard"
+    mocks.pathname = "/account"
     view.rerender(
       <Providers>
         <Nav />

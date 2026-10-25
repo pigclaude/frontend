@@ -23,7 +23,7 @@ export function AuthPanel({ initialMode = "login" }: { initialMode?: AuthMode } 
   const params = useSearchParams()
   const errorCode = params.get("oidcError") ?? ""
   const error = Object.hasOwn(errors, errorCode) ? errors[errorCode] : undefined
-  const returnTo = params.get("redirect") ?? "/dashboard"
+  const returnTo = params.get("redirect") ?? "/account"
   const started = useRef(false)
   // 10 秒内再次自动发起时停下，改为显示「重新登录」，避免 401 与 SSO 之间来回跳转。
   const [held, setHeld] = useState(false)

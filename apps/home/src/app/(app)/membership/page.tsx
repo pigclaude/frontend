@@ -22,6 +22,7 @@ import { MembershipSkeleton } from "@/components/membership/membership-skeleton"
 import { RemainingUpgradeBanner } from "@/components/membership/remaining-upgrade-banner"
 import { PayPanel, type PaySummary } from "@/components/membership/pay-panel"
 import { QueryError, QueryLoading } from "@/components/query-state"
+import { AccountShell } from "@/components/account/account-shell"
 import { homeApi } from "@/lib/api"
 import { homeSessionGeneration } from "@/lib/session-generation"
 
@@ -39,9 +40,13 @@ export default function MembershipPage() {
     </Suspense>
   )
 }
-// 加载和错误状态与正文共用页面外壳，左右边缘和顶栏对齐。
+// 加载和错误状态与正文共用个人中心外壳，左右边缘和顶栏对齐。
 function MembershipState({ children }: { children: ReactNode }) {
-  return <main className="page-shell membership-page">{children}</main>
+  return (
+    <AccountShell compact className="membership-page">
+      {children}
+    </AccountShell>
+  )
 }
 function MembershipRoute() {
   const pathname = usePathname()
@@ -188,7 +193,7 @@ function MembershipAccount({
     })
   }
   return (
-    <main className="page-shell membership-page">
+    <AccountShell compact className="membership-page">
       <Toaster />
       <header className="membership-head">
         <h1 className="page-title">会员</h1>
@@ -273,6 +278,6 @@ function MembershipAccount({
           }}
         />
       )}
-    </main>
+    </AccountShell>
   )
 }

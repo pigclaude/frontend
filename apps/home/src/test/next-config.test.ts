@@ -1,4 +1,4 @@
-// 负责验证 Next 固定 Route Handler 代理与真实框架 callback 请求日志排除规则。
+// 负责验证 Next 固定 Route Handler 代理、真实框架 callback 请求日志排除规则和旧账户页重定向。
 // @vitest-environment node
 import { createRequire } from "node:module"
 import { describe, expect, it, vi } from "vitest"
@@ -44,16 +44,24 @@ describe("Home Next proxy/log boundary", () => {
     }
   })
 
+  it("temporarily redirects the old account pages to the account center", async () => {
+    expect(await nextConfig.redirects?.()).toEqual([
+      { source: "/dashboard", destination: "/account", permanent: false },
+      { source: "/settings/security", destination: "/account/security", permanent: false },
+      { source: "/settings/devices", destination: "/account/devices", permanent: false },
+    ])
+  })
+
   it("retains ordinary incoming path/status logs", () => {
     const stdout = vi.spyOn(process.stdout, "write").mockReturnValue(true)
     try {
       framework.logRequests({
-        request: { url: "/dashboard", method: "GET" },
+        request: { url: "/account", method: "GET" },
         response: { statusCode: 200 },
         loggingConfig: nextConfig.logging,
         requestDurationInMs: 1,
       })
-      expect(JSON.stringify(stdout.mock.calls)).toContain("/dashboard")
+      expect(JSON.stringify(stdout.mock.calls)).toContain("/account")
     } finally {
       stdout.mockRestore()
     }

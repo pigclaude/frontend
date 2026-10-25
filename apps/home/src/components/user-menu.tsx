@@ -3,7 +3,7 @@
 
 import { useLayoutEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { CircleUserRound, LogOut, ShieldCheck } from "lucide-react"
+import { LogOut } from "lucide-react"
 import type { MeResponse } from "@pigclaude/api/home/types"
 import {
   DropdownMenu,
@@ -15,8 +15,10 @@ import {
 import { homeApi } from "@/lib/api"
 import { maskEmail } from "@/lib/identity-mask"
 import { useHomeSessionActions } from "@/components/home-session-context"
+import { accountNavGroups } from "@/components/account/account-nav-items"
+import { UserAvatar } from "@/components/account/user-avatar"
 
-/** 沿用原站菜单结构，仅提供真实账户/会员入口和可重试、不可重复提交的退出。 */
+/** 沿用原站菜单结构，入口与个人中心侧栏一致，退出可重试且不可重复提交。 */
 export function UserMenu({ user }: { user: MeResponse }) {
   const { completeLogout } = useHomeSessionActions()
   const [pending, setPending] = useState(false)
@@ -29,7 +31,6 @@ export function UserMenu({ user }: { user: MeResponse }) {
       generation.current++
     }
   }, [])
-  const initial = user.nickname?.slice(0, 1) || "P"
 
   async function handleLogout() {
     if (pendingRef.current) return
@@ -52,18 +53,16 @@ export function UserMenu({ user }: { user: MeResponse }) {
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label="用户菜单"
-        className="flex size-[30px] shrink-0 items-center justify-center rounded-full border border-border bg-[var(--raise-3)] text-xs font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex size-[30px] shrink-0 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        {initial}
+        <UserAvatar id={user.id} nickname={user.nickname} avatar={user.avatar} size={30} />
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
         className="w-64 border-[var(--border-soft)] bg-[var(--topbar-bg)] backdrop-blur-[12px]"
       >
         <div className="flex items-center gap-2.5 px-2 py-2">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-[var(--raise-3)] text-sm font-semibold text-foreground">
-            {initial}
-          </span>
+          <UserAvatar id={user.id} nickname={user.nickname} avatar={user.avatar} size={36} />
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-foreground">
               {user.nickname || "PigClaude 用户"}
@@ -76,30 +75,16 @@ export function UserMenu({ user }: { user: MeResponse }) {
           <span className="font-mono text-[15px] font-medium text-foreground">{user.id}</span>
         </div>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild disabled={pending}>
-          <Link href="/dashboard">
-            <CircleUserRound />
-            账户
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild disabled={pending}>
-          <Link href="/membership">
-            <ShieldCheck />
-            会员
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild disabled={pending}>
-          <Link href="/settings/security">
-            <ShieldCheck />
-            登录方式
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild disabled={pending}>
-          <Link href="/settings/devices">
-            <ShieldCheck />
-            设备管理
-          </Link>
-        </DropdownMenuItem>
+        {accountNavGroups
+          .flatMap((group) => group.items)
+          .map((item) => (
+            <DropdownMenuItem key={item.href} asChild disabled={pending}>
+              <Link href={item.href}>
+                <item.icon />
+                {item.label}
+              </Link>
+            </DropdownMenuItem>
+          ))}
         <DropdownMenuSeparator />
         {error && (
           <p role="alert" className="px-2 py-2 text-xs text-[var(--danger-ink)]">

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { DeviceList } from "@/components/devices/device-list"
 const mocks = vi.hoisted(() => ({ fetch: vi.fn<typeof fetch>(), params: new URLSearchParams() }))
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/settings/devices",
+  usePathname: () => "/account/devices",
   useSearchParams: () => mocks.params,
 }))
 vi.mock("@/lib/api", async () => {

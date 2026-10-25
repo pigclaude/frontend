@@ -2,6 +2,7 @@
 @import "@pigclaude/web-ui/styles/globals.css";
 @import "../styles/home.css";
 @import "../styles/membership-page.css";
+@import "../styles/account.css";
 @source '../../../../packages/web-ui/src';
 
 :root {

@@ -17,7 +17,7 @@ export const webOidcNavigation = {
 /** 返回固定同源 RP start；原 returnTo 只编码一次，由服务器验证路径。 */
 export function webOidcStartPath(input: WebOidcLogin): string {
   const prefix = input.site === "admin" ? "/admin" : ""
-  const params = new URLSearchParams({ returnTo: input.returnTo ?? "/dashboard" })
+  const params = new URLSearchParams({ returnTo: input.returnTo ?? "/account" })
   // 注册必须进入本地中央表单，不能被已有 OP SSO 静默跳过。
   if (input.site === "home" && input.mode === "register") params.set("maxAge", "0")
   return `${prefix}/v1/web/oidc/start?${params}`

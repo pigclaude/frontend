@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   entitlement: vi.fn(),
   get: vi.fn(),
   replace: vi.fn(),
-  pathname: "/dashboard",
+  pathname: "/account",
 }))
 
 vi.mock("next/navigation", () => ({
@@ -58,8 +58,8 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mocks.pathname = "/dashboard"
-  window.history.replaceState({}, "", "/dashboard")
+  mocks.pathname = "/account"
+  window.history.replaceState({}, "", "/account")
   mocks.me.mockResolvedValue({ id: "u-1" })
   mocks.entitlement.mockRejectedValueOnce(new ApiError(401)).mockResolvedValue({ status: "active" })
   mocks.get.mockRejectedValueOnce(new ApiError(401)).mockResolvedValue({ status: "pending" })

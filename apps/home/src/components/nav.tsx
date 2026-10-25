@@ -18,7 +18,7 @@ import { AccentPicker } from "@pigclaude/web-ui/components/accent-picker"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 const accountLinks = [
-  { href: "/dashboard", label: "账户" },
+  { href: "/account", label: "账户" },
   { href: "/membership", label: "会员" },
 ]
 const marketingLinks = [
@@ -26,6 +26,13 @@ const marketingLinks = [
   { href: "/#workflow", label: "使用流程" },
   { href: "/#pricing", label: "会员权益" },
 ]
+
+// 「账户」覆盖整个个人中心；其余链接只在完全匹配时高亮。
+function isLinkActive(href: string, pathname: string): boolean {
+  return href === "/account"
+    ? pathname === href || pathname.startsWith("/account/")
+    : pathname === href
+}
 
 /** 按当前路由呈现成熟原站顶栏，未实现的业务入口不出现；`tag` 紧贴品牌显示站点标记。 */
 export function Nav({
@@ -64,7 +71,7 @@ export function Nav({
       <div className="mx-auto flex h-[56px] max-w-[var(--container-max)] items-center gap-[var(--space-6)] px-[var(--container-gutter-desktop)]">
         <div className="flex shrink-0 items-center gap-2.5">
           <Link
-            href={variant === "app" ? "/dashboard" : "/"}
+            href={variant === "app" ? "/account" : "/"}
             className="inline-flex shrink-0 items-center gap-2.5 text-[15px] font-semibold tracking-tight text-foreground"
           >
             <BrandMark className="size-[26px] shrink-0" tone="brand" />
@@ -94,10 +101,10 @@ export function Nav({
                 <Link
                   key={link.href}
                   href={link.href}
-                  aria-current={pathname === link.href ? "page" : undefined}
+                  aria-current={isLinkActive(link.href, pathname) ? "page" : undefined}
                   className={cn(
                     "rounded-md px-3 py-1.5 text-[13px] font-medium text-muted-foreground hover:bg-accent-ui hover:text-foreground",
-                    pathname === link.href && "bg-[var(--raise-2)] text-foreground",
+                    isLinkActive(link.href, pathname) && "bg-[var(--raise-2)] text-foreground",
                   )}
                 >
                   {link.label}

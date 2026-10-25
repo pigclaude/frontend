@@ -13,13 +13,13 @@ import {
 
 describe("home auth query recovery", () => {
   beforeEach(() => {
-    window.history.replaceState({}, "", "/dashboard")
+    window.history.replaceState({}, "", "/account")
   })
 
   it("redirects only for the authoritative me query", () => {
     const unauthorized = new ApiError(401)
-    expect(unauthorizedQueryAction(unauthorized, ["me"], "/dashboard")).toBe("redirect")
-    expect(unauthorizedQueryAction(unauthorized, ["entitlement"], "/dashboard")).toBe("revalidate")
+    expect(unauthorizedQueryAction(unauthorized, ["me"], "/account")).toBe("redirect")
+    expect(unauthorizedQueryAction(unauthorized, ["entitlement"], "/account")).toBe("revalidate")
     expect(unauthorizedQueryAction(unauthorized, ["me"], "/login")).toBe("ignore")
     expect(unauthorizedQueryAction(unauthorized, ["me"], "/")).toBe("ignore")
     expect(unauthorizedQueryAction(unauthorized, ["me"], "/register")).toBe("ignore")

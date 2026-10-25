@@ -84,6 +84,7 @@ beforeEach(() => {
         siteKey: "test-key",
         mode: "testing",
       })
+    if (String(url).endsWith("/v1/auth/mail-status")) return response({ available: true })
     if (init?.method === "POST") return response({ code: "INVALID_CREDENTIALS" }, 401)
     return response(interaction())
   })
@@ -187,16 +188,24 @@ describe("home Turnstile auth boundary", () => {
     await waitFor(() => expect(widgets).toHaveLength(2))
     act(() => widgets[1].callback("login-only-token"))
     fireEvent.click(screen.getByRole("button", { name: "注册" }))
-    await waitFor(() => expect(widgets).toHaveLength(3))
-    expect(widgets[2].action).toBe("home_register")
+    await waitFor(() => expect(widgets.some((widget) => widget.action === "email_code")).toBe(true))
+    await waitFor(() =>
+      expect(widgets.some((widget) => widget.action === "home_register")).toBe(true),
+    )
+    fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
+    fireEvent.change(screen.getByLabelText("验证码"), { target: { value: "123456" } })
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
     act(() => widgets[1].callback("late-login-token"))
     submit()
     expect(posts()).toHaveLength(0)
-    act(() => widgets[2].callback("register-token"))
+    const registerIndex = widgets.findIndex((widget) => widget.action === "home_register")
+    act(() => widgets[registerIndex].callback("register-token"))
     submit()
     await waitFor(() => expect(posts()).toHaveLength(1))
     expect(posts()[0][0]).toBe("/v1/identity/interactions/interaction-1/password")
-    expect(JSON.parse(String(posts()[0][1]?.body)).captchaToken).toBe("register-token")
+    const body = JSON.parse(String(posts()[0][1]?.body))
+    expect(body.captchaToken).toBe("register-token")
+    expect(body.emailCode).toBe("123456")
   })
 
   it.each([
@@ -231,8 +240,14 @@ describe("home Turnstile auth boundary", () => {
         init?.method === "POST" ? response({ type: "redirect", redirect }) : get!(url, init),
       )
       await mount(mode)
-      await waitFor(() => expect(widgets).toHaveLength(1))
-      act(() => widgets[0].callback("redirect-token"))
+      fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
+      fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
+      if (mode === "register")
+        fireEvent.change(screen.getByLabelText("验证码"), { target: { value: "123456" } })
+      const action = mode === "register" ? "home_register" : "home_login"
+      await waitFor(() => expect(widgets.some((widget) => widget.action === action)).toBe(true))
+      const index = widgets.findIndex((widget) => widget.action === action)
+      act(() => widgets[index].callback("redirect-token"))
       submit()
       await waitFor(() => expect(mocks.push).toHaveBeenCalledWith(redirect))
       expect(mocks.fetch.mock.calls.map(([url]) => url)).not.toContain("/v1/user/me")
@@ -263,11 +278,13 @@ describe("home Turnstile auth boundary", () => {
       await mount(mode)
       fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
       fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
-      await waitFor(() => expect(widgets).toHaveLength(1))
-      expect(widgets[0].action).toBe(action)
+      if (mode === "register")
+        fireEvent.change(screen.getByLabelText("验证码"), { target: { value: "123456" } })
+      await waitFor(() => expect(widgets.some((widget) => widget.action === action)).toBe(true))
+      const first = widgets.findIndex((widget) => widget.action === action)
       submit()
       expect(posts()).toHaveLength(0)
-      act(() => widgets[0].callback("first-token"))
+      act(() => widgets[first].callback("first-token"))
       submit()
       submit()
       await waitFor(() => expect(posts()).toHaveLength(1))
@@ -278,13 +295,20 @@ describe("home Turnstile auth boundary", () => {
         realm: "User",
         csrf: "csrf-marker",
         mode,
+        ...(mode === "register" ? { emailCode: "123456" } : {}),
         captchaToken: "first-token",
       })
-      await waitFor(() => expect(widgets).toHaveLength(2))
-      act(() => widgets[0].callback("late-old-token"))
+      await waitFor(() =>
+        expect(widgets.filter((widget) => widget.action === action)).toHaveLength(2),
+      )
+      act(() => widgets[first].callback("late-old-token"))
       submit()
       expect(posts()).toHaveLength(1)
-      act(() => widgets[1].callback("new-token"))
+      const second = widgets.reduce(
+        (last, widget, index) => (widget.action === action ? index : last),
+        -1,
+      )
+      act(() => widgets[second].callback("new-token"))
       submit()
       await waitFor(() => expect(posts()).toHaveLength(2))
       expect(JSON.parse(String(posts()[1][1]?.body)).captchaToken).toBe("new-token")

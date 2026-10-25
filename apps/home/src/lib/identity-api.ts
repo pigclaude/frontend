@@ -40,6 +40,21 @@ export interface IdentityPassword {
   email: string
   password: string
   captchaToken?: string
+  /** 注册时与服务端验证码绑定的一次性邮箱验证码。 */
+  emailCode?: string
+}
+
+/** 发码请求；响应不区分邮箱是否已经注册。 */
+export interface IdentityEmailCodeInput {
+  purpose: "register" | "reset_password"
+  email: string
+  captchaToken?: string
+}
+
+/** 发码成功响应；倒计时应以服务端给出的秒数为准。 */
+export interface IdentityEmailCodeSent {
+  type: "sent"
+  resendAfterSeconds: number
 }
 
 const client = createClient({ fetch: (...args) => fetch(...args) })
@@ -64,6 +79,14 @@ export const identityApi = {
   /** 密码认证只验证 OP 身份，不创建网站会话。 */
   password: (view: IdentityInteraction, values: IdentityPassword) =>
     client.post<IdentityContinuation>(`${path(view)}/password`, { ...proof(view), ...values }),
+  /** 读取公开邮件可用性；注册模式据此决定是否开放邮箱注册。 */
+  mailStatus: () => client.get<{ available: boolean }>("/v1/auth/mail-status"),
+  /** 在交互内请求邮箱验证码，响应固定为已发送。 */
+  emailCode: (view: IdentityInteraction, input: IdentityEmailCodeInput) =>
+    client.post<IdentityEmailCodeSent>(`${path(view)}/email-code`, {
+      ...proof(view),
+      ...input,
+    }),
   /** 社交启动独立于密码验证码。 */
   provider: (view: IdentityInteraction, provider: "google" | "github") =>
     client.post<IdentityContinuation>(`${path(view)}/providers/${provider}/start`, proof(view)),
@@ -107,6 +130,10 @@ export function identityErrorMessage(reason: unknown): string {
       invalid_request: "交互已失效或不可用，请重新发起登录",
       access_denied: "此次操作未获授权，请重新发起登录",
       membership_required: "这个账号还没有可用会员，开通会员后再授权，或切换到已有会员的账号",
+      EMAIL_CODE_INVALID: "验证码错误或已失效，请重新获取",
+      EMAIL_CODE_RATE_LIMITED: "发送太频繁，请稍后重试",
+      MAIL_UNAVAILABLE: "邮件服务暂不可用，请稍后重试",
+      MAIL_SEND_FAILED: "邮件发送失败，请稍后重试",
     }
     const code = String(reason.code)
     const message = Object.hasOwn(messages, code) ? messages[code] : undefined

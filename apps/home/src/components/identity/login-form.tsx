@@ -1,7 +1,7 @@
 // 负责中央页一步式邮箱密码表单：验证码门禁、登录/注册提交、密码显隐和底部切换入口。
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import Link from "next/link"
 import { Button } from "@pigclaude/web-ui/components/button"
 import { Input } from "@pigclaude/web-ui/components/input"
@@ -14,6 +14,7 @@ import {
   type IdentityContinuation,
   type IdentityInteraction,
 } from "@/lib/identity-api"
+import { EmailCodeField } from "./email-code-field"
 
 /** 中央页表单所处的布局：登录或注册。 */
 export type LoginMode = "login" | "register"
@@ -46,6 +47,8 @@ export function LoginForm({
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [emailCode, setEmailCode] = useState("")
+  const [mailAvailable, setMailAvailable] = useState<boolean | null>(null)
   const admin = interaction.realm === "Admin"
   const register = !admin && interaction.registrationAllowed
   const current: LoginMode = register ? mode : "login"
@@ -53,10 +56,28 @@ export function LoginForm({
     loadConfig: admin ? identityApi.adminCaptcha : identityApi.captcha,
     action: admin ? "admin_login" : current === "register" ? "home_register" : "home_login",
   })
+  useEffect(() => {
+    if (current !== "register") return
+    let active = true
+    setMailAvailable(null)
+    void identityApi.mailStatus().then(
+      (status) => {
+        if (active) setMailAvailable(status.available)
+      },
+      () => {
+        // 读取失败按不可用处理，避免把用户带进必然失败的注册提交。
+        if (active) setMailAvailable(false)
+      },
+    )
+    return () => {
+      active = false
+    }
+  }, [current])
   const blocked = pending || disabled
+  const codeMissing = current === "register" && !/^\d{6}$/.test(emailCode)
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (blocked || !captcha.ready) return
+    if (blocked || !captcha.ready || codeMissing) return
     // 父级同步取得当前交互 owner，密码与其他 mutation 共用同一排他门禁。
     onMutate(() =>
       captcha.run((captchaToken) =>
@@ -64,6 +85,7 @@ export function LoginForm({
           mode: current,
           email,
           password,
+          ...(current === "register" ? { emailCode } : {}),
           ...(captchaToken ? { captchaToken } : {}),
         }),
       ),
@@ -71,65 +93,82 @@ export function LoginForm({
   }
   return (
     <div className="flex flex-col gap-6">
-      <form className="flex flex-col gap-4" onSubmit={submit} aria-busy={pending} noValidate>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="email" className={labelClass}>
-            邮箱
-          </Label>
-          <Input
-            id="email"
-            type="email"
-            className={fieldClass}
-            placeholder={admin ? "admin@pigclaude.com" : "you@example.com"}
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            autoComplete={admin ? "username" : "email"}
-            spellCheck={false}
-            required
-          />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="password" className={labelClass}>
-            密码
-          </Label>
-          <div className="relative">
+      {current === "register" && mailAvailable === false ? (
+        <p className="text-[13px] leading-5 text-muted-foreground">
+          邮箱注册暂未开放，可以用 Google 或 GitHub 注册
+        </p>
+      ) : (
+        <form className="flex flex-col gap-4" onSubmit={submit} aria-busy={pending} noValidate>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="email" className={labelClass}>
+              邮箱
+            </Label>
             <Input
-              id="password"
-              className={`${fieldClass} pr-10`}
-              type={showPassword ? "text" : "password"}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              autoComplete={current === "login" ? "current-password" : "new-password"}
+              id="email"
+              type="email"
+              className={fieldClass}
+              placeholder={admin ? "admin@pigclaude.com" : "you@example.com"}
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              autoComplete={admin ? "username" : "email"}
+              spellCheck={false}
               required
             />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              aria-label={showPassword ? "隐藏密码" : "显示密码"}
-              aria-pressed={showPassword}
-              onClick={() => setShowPassword((value) => !value)}
-              className="absolute top-1/2 right-2 size-7 -translate-y-1/2 text-muted-foreground hover:bg-[var(--raise-2)] hover:text-foreground dark:hover:bg-[var(--raise-2)]"
-            >
-              <LineIcon name={showPassword ? "eye-off" : "eye"} className="size-4" />
-            </Button>
           </div>
-        </div>
-        <TurnstileCaptcha {...captcha.field} />
-        <Button
-          type="submit"
-          className="mt-1 h-9 w-full font-semibold hover:bg-[var(--btn-primary-hover)] active:bg-[var(--btn-primary-active)]"
-          disabled={blocked || !captcha.ready}
-        >
-          {pending
-            ? current === "register"
-              ? "正在创建账号…"
-              : "正在登录…"
-            : current === "register"
-              ? "创建账号"
-              : "登录"}
-        </Button>
-      </form>
+          {current === "register" && (
+            <EmailCodeField
+              interaction={interaction}
+              email={email}
+              value={emailCode}
+              onChange={setEmailCode}
+              disabled={blocked}
+              fieldClass={fieldClass}
+              labelClass={labelClass}
+            />
+          )}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="password" className={labelClass}>
+              密码
+            </Label>
+            <div className="relative">
+              <Input
+                id="password"
+                className={`${fieldClass} pr-10`}
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete={current === "login" ? "current-password" : "new-password"}
+                required
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label={showPassword ? "隐藏密码" : "显示密码"}
+                aria-pressed={showPassword}
+                onClick={() => setShowPassword((value) => !value)}
+                className="absolute top-1/2 right-2 size-7 -translate-y-1/2 text-muted-foreground hover:bg-[var(--raise-2)] hover:text-foreground dark:hover:bg-[var(--raise-2)]"
+              >
+                <LineIcon name={showPassword ? "eye-off" : "eye"} className="size-4" />
+              </Button>
+            </div>
+          </div>
+          <TurnstileCaptcha {...captcha.field} />
+          <Button
+            type="submit"
+            className="mt-1 h-9 w-full font-semibold hover:bg-[var(--btn-primary-hover)] active:bg-[var(--btn-primary-active)]"
+            disabled={blocked || !captcha.ready || codeMissing}
+          >
+            {pending
+              ? current === "register"
+                ? "正在创建账号…"
+                : "正在登录…"
+              : current === "register"
+                ? "创建账号"
+                : "登录"}
+          </Button>
+        </form>
+      )}
       {admin ? (
         <p className="text-center">
           <Link

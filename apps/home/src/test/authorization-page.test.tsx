@@ -262,6 +262,7 @@ describe("desktop authorization page", () => {
         await captchaReady
         return json({ enabled: false, provider: "turnstile", siteKey: null, mode: "disabled" })
       }
+      if (target.endsWith("/v1/auth/mail-status")) return json({ available: true })
       if (target.endsWith("/password"))
         return json({ type: "require_device_approval", interaction: approvalView() })
       if (target.endsWith("/switch-account"))
@@ -273,6 +274,7 @@ describe("desktop authorization page", () => {
     fireEvent.click(screen.getByRole("button", { name: "注册" }))
     expect(screen.getByRole("heading").textContent).toBe("注册 PigClaude")
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "new@example.com" } })
+    fireEvent.change(screen.getByLabelText("验证码"), { target: { value: "123456" } })
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "valid-password" } })
     expect((screen.getByRole("button", { name: "创建账号" }) as HTMLButtonElement).disabled).toBe(
       true,

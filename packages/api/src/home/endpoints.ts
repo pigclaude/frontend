@@ -10,6 +10,8 @@ export function createHomeApi(c: HttpClient) {
     auth: {
       /** 读取公开验证码配置，保留共享 cookie 和错误处理边界。 */
       captcha: () => c.get<CaptchaConfig>("/v1/auth/captcha"),
+      /** 读取公开邮件可用性；注册入口据此决定是否开放邮箱注册。 */
+      mailStatus: () => c.get<{ available: boolean }>("/v1/auth/mail-status"),
     },
     user: { me: () => c.get<T.MeResponse>("/v1/user/me") },
     membership: createHomeMembershipApi(c),

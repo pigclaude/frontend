@@ -15,12 +15,14 @@ beforeEach(() => {
   mocks.fetch.mockImplementation(async (url, init) =>
     String(url).endsWith("/auth/captcha")
       ? json({ enabled: false, provider: "turnstile", siteKey: null, mode: "disabled" })
-      : init?.method === "POST"
-        ? json({
-            type: "redirect",
-            redirect: "/v1/web/oidc/callback?code=synthetic&state=a%2Bb%2520",
-          })
-        : json(interaction()),
+      : String(url).endsWith("/v1/auth/mail-status")
+        ? json({ available: true })
+        : init?.method === "POST"
+          ? json({
+              type: "redirect",
+              redirect: "/v1/web/oidc/callback?code=synthetic&state=a%2Bb%2520",
+            })
+          : json(interaction()),
   )
   vi.spyOn(identityNavigation, "assign").mockImplementation(() => undefined)
 })
@@ -41,6 +43,7 @@ describe("identity interaction", () => {
     expect((screen.getByLabelText("密码") as HTMLInputElement).type).toBe("text")
     fireEvent.click(screen.getByRole("button", { name: "注册" }))
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
+    fireEvent.change(screen.getByLabelText("验证码"), { target: { value: "123456" } })
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
     await waitFor(() =>
       expect((screen.getByRole("button", { name: "创建账号" }) as HTMLButtonElement).disabled).toBe(
@@ -56,6 +59,7 @@ describe("identity interaction", () => {
       mode: "register",
       email: "ada@example.com",
       password: "password",
+      emailCode: "123456",
     })
     await waitFor(() =>
       expect(identityNavigation.assign).toHaveBeenCalledWith(

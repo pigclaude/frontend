@@ -12,7 +12,6 @@ function fixtureClient(): HttpClient {
           nickname: "Ada",
           avatar: "",
           email: "ada@example.com",
-          balance: "0",
           createdAt: "2026-01-01T00:00:00Z",
         } as T
       if (path === "/v1/entitlement")

@@ -13,7 +13,6 @@ export function accountUser(overrides: Partial<MeResponse> = {}): MeResponse {
     nickname: "林小猪",
     avatar: "",
     email: "lin@example.com",
-    balance: "0",
     createdAt: localIso(2026, 10, 3),
     emailVerified: true,
     hasPassword: true,

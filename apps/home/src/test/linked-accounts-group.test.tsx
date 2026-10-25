@@ -1,8 +1,12 @@
-// 负责验证真实身份 HTTP facade、近期核验与安全回跳反馈。
+// 负责验证第三方账号分组经真实身份 HTTP facade 完成近期核验、绑定、解绑与并发守卫。
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { LinkedIdentities } from "@/components/identity/linked-identities"
+import {
+  LinkedAccountsGroup,
+  linkedIdentitiesKey,
+} from "@/components/account/linked-accounts-group"
+import { identityManagement } from "@/components/identity/identity-management"
 
 const mocks = vi.hoisted(() => ({ fetch: vi.fn<typeof fetch>(), params: new URLSearchParams() }))
 vi.mock("next/navigation", () => ({ useSearchParams: () => mocks.params }))
@@ -13,12 +17,17 @@ vi.mock("@/lib/api", async () => {
 function json(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), { status })
 }
+// 与页面一样从服务器读取真实列表，解绑后重新读取。
+function Harness() {
+  const list = useQuery({ queryKey: linkedIdentitiesKey, queryFn: identityManagement.list })
+  return list.data ? <LinkedAccountsGroup identities={list.data} hasPassword /> : null
+}
 function mount() {
   return render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <LinkedIdentities />
+      <Harness />
     </QueryClientProvider>,
   )
 }
@@ -38,7 +47,12 @@ describe("linked identities", () => {
   it("uses actual linked credentials and preserves the last available credential", async () => {
     mount()
     expect(await screen.findByText("github · ••••")).toBeTruthy()
-    expect(screen.getByRole("button", { name: "解绑 GitHub" }).hasAttribute("disabled")).toBe(true)
+    const blocked = screen.getByRole("button", { name: "解绑 GitHub" })
+    // 保持可聚焦以便读出原因，但点击不会打开核验。
+    expect(blocked.getAttribute("aria-disabled")).toBe("true")
+    expect(blocked.hasAttribute("disabled")).toBe(false)
+    fireEvent.click(blocked)
+    expect(screen.queryByRole("dialog")).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "绑定 Google" }))
     expect(await screen.findByRole("dialog", { name: "近期身份核验" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "使用已绑定 GitHub 核验" })).toBeTruthy()
@@ -77,19 +91,14 @@ describe("linked identities", () => {
     expect(JSON.parse(String(writes[1][1]?.body))).toEqual({ csrf: "session-csrf" })
     expect(screen.queryByText("secret upstream")).toBeNull()
   })
-  it.each(["__proto__", "constructor", "toString", "attacker text"])(
-    "ignores unowned query %s and never auto-mutates",
-    async (value) => {
-      mocks.params = new URLSearchParams({ identityError: value, identityResult: "verified" })
-      mount()
-      await screen.findByText("github · ••••")
-      expect(
-        mocks.fetch.mock.calls.every(([, init]) => !init?.method || init.method === "GET"),
-      ).toBe(true)
-      expect(screen.queryByText(value)).toBeNull()
-      expect(screen.queryByRole("dialog")).toBeNull()
-    },
-  )
+  it("never writes anything just by rendering the list", async () => {
+    mount()
+    await screen.findByText("github · ••••")
+    expect(mocks.fetch.mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(
+      true,
+    )
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
 })
 
 it.each(["bootstrap", "reauth"])(
@@ -162,8 +171,7 @@ it("sends only an already-bound provider as reauthentication for the exact new t
   expect(mocks.fetch.mock.calls.some(([url]) => String(url).endsWith("/google/link"))).toBe(false)
   assign.mockRestore()
 })
-it("treats a forged verified query only as feedback and still obeys the protected API denial", async () => {
-  mocks.params = new URLSearchParams("identityResult=verified")
+it("continuing with an existing proof still obeys the protected API denial", async () => {
   const original = mocks.fetch.getMockImplementation()!
   mocks.fetch.mockImplementation(async (url, init) =>
     String(url).endsWith("/google/link")
@@ -241,12 +249,11 @@ it("keeps the new page mutation pending when an old reauthentication fails and f
   }
   await start()
   await waitFor(() => expect(count).toBe(1))
-  mocks.params = new URLSearchParams("identityError=FEDERATION_UNAVAILABLE")
   view.rerender(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <LinkedIdentities />
+      <Harness key="new-page" />
     </QueryClientProvider>,
   )
   await start()

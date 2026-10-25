@@ -13,6 +13,7 @@ import type {
 } from "./types"
 import type { SecretVault } from "../secret-vault"
 import { DeviceIdentityService } from "../device-identity"
+import { readDeviceInfo, type DeviceInfo } from "../device-identity/device-info"
 import type { DeviceAuthorizationInput, DeviceAuthorizationContext } from "../api/oauth-client"
 import { NATIVE_SCOPES } from "../api/oauth-client"
 
@@ -39,6 +40,8 @@ export type AuthorizationServiceOptions = {
   startAuthorization?: AuthorizationStart
   /** 设备身份只由主进程平台服务读取，不从 renderer 或旧仓库恢复。 */
   deviceIdentity?: Pick<DeviceIdentityService, "read">
+  /** 电脑名、系统版本和应用版本读取，默认读取当前系统。 */
+  deviceInfo?: () => Promise<DeviceInfo>
   /** Rust exchange 完成后把脱敏设备元数据交给会员 gate。 */
   onCompleted?: (input: {
     session: AuthorizationSession
@@ -81,6 +84,7 @@ export class AuthorizationService {
   readonly #exchangeCode: AuthorizationServiceOptions["exchangeCode"]
   readonly #startAuthorization: AuthorizationServiceOptions["startAuthorization"]
   readonly #deviceIdentity: Pick<DeviceIdentityService, "read">
+  readonly #deviceInfo: () => Promise<DeviceInfo>
   readonly #onCompleted: NonNullable<AuthorizationServiceOptions["onCompleted"]>
   readonly #claudeAuthorization: AuthorizationServiceOptions["claudeAuthorization"]
   readonly #commitAuthorization: AuthorizationServiceOptions["commitAuthorization"]
@@ -100,6 +104,7 @@ export class AuthorizationService {
     this.#exchangeCode = options.exchangeCode
     this.#startAuthorization = options.startAuthorization
     this.#deviceIdentity = options.deviceIdentity ?? new DeviceIdentityService()
+    this.#deviceInfo = options.deviceInfo ?? readDeviceInfo
     this.#onCompleted = options.onCompleted ?? (async () => undefined)
     this.#now = options.now ?? Date.now
   }
@@ -134,8 +139,12 @@ export class AuthorizationService {
     }
     if (request.purpose === "pigclaude-login" && this.#startAuthorization) {
       let identity: Awaited<ReturnType<DeviceIdentityService["read"]>>
+      let deviceInfo: DeviceInfo
       try {
-        identity = await this.#deviceIdentity.read()
+        ;[identity, deviceInfo] = await Promise.all([
+          this.#deviceIdentity.read(),
+          this.#deviceInfo(),
+        ])
       } catch (error: unknown) {
         if (this.isCurrent(generation)) this.#pendingSession = null
         throw error
@@ -146,7 +155,9 @@ export class AuthorizationService {
       const started = await this.#startAuthorization({
         deviceId: identity.deviceId,
         platform: identity.platform,
-        name: "Pigclaude Desktop",
+        name: deviceInfo.name,
+        osVersion: deviceInfo.osVersion,
+        appVersion: deviceInfo.appVersion,
         scopes: NATIVE_SCOPES,
         codeChallenge: session.codeChallenge,
         state: session.state,

@@ -31,6 +31,11 @@ describe("fixed platform readers", () => {
     const composition = createDesktopComposition({
       vault: new ProfileVault(),
       authOrigin: "http://127.0.0.1:8788",
+      deviceInfo: async () => ({
+        name: "fixture",
+        osVersion: "macOS 15.4",
+        appVersion: "1.3.0",
+      }),
       api: profileApi({
         prepareDeviceAuthorization: async (input) => {
           sent = input

@@ -1,4 +1,5 @@
 // 负责定义标准 native OAuth public client 的主进程网络边界。
+import type { DeviceInfo } from "../device-identity/device-info"
 import type { DevicePlatform } from "../device-identity/platform-reader"
 import { MAX_ACCESS_TOKEN_SECONDS } from "@pigclaude/contracts/oauth"
 
@@ -7,6 +8,8 @@ export type DeviceAuthorizationInput = {
   deviceId: string
   platform: DevicePlatform
   name: string
+  osVersion: string
+  appVersion: string
   clientId: string
   redirectUri: string
   codeChallenge: string
@@ -103,6 +106,8 @@ export class OAuthClient {
         deviceId: input.deviceId,
         platform,
         name: input.name,
+        osVersion: input.osVersion,
+        appVersion: input.appVersion,
         clientId: input.clientId,
         redirectUri: input.redirectUri,
         codeChallenge: input.codeChallenge,
@@ -155,6 +160,19 @@ export class OAuthClient {
       authorizationUrl: url.toString(),
       expiresAt: response.expiresAt,
     }
+  }
+
+  /** 上报当前设备的系统与应用版本，不修改设备名，也不重试失败请求。 */
+  async reportDeviceInfo(
+    info: Pick<DeviceInfo, "osVersion" | "appVersion">,
+    accessToken?: string,
+  ): Promise<void> {
+    await this.request("/v1/desktop/device-info", {
+      method: "POST",
+      body: JSON.stringify({ osVersion: info.osVersion, appVersion: info.appVersion }),
+      contentType: "application/json",
+      accessToken: accessToken ?? (await this.bearer()),
+    })
   }
 
   /** 使用标准表单兑换 code，不发送 state、私有 flow 或 client_secret。 */

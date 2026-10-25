@@ -33,6 +33,7 @@ import { ProxyService } from "./claude/proxy-service"
 import { SubscriptionOAuth } from "./claude/subscription-oauth"
 import { createDesktopComposition, type DesktopComposition } from "./composition"
 import { DeviceIdentityService } from "./device-identity"
+import { readDeviceInfo } from "./device-identity/device-info"
 import { readDockIconDataUrl } from "./dock-icon"
 import { configureRuntimeProfile } from "./runtime-profile"
 import { readDesktopRuntimeEndpoints } from "./runtime-endpoints"
@@ -83,6 +84,7 @@ if (!hasSingleInstanceLock) {
     }
     createWindow()
     void desktopComposition?.membershipGate.inspect()
+    void reportDeviceInfoOnStartup()
     const callbacks = pendingCallbackUrls
     pendingCallbackUrls = []
     for (const url of callbacks) await handleCallbackUrl(url)
@@ -224,6 +226,20 @@ function registerIpcHandlers(): void {
     getProxyService: () => proxyService,
     isTrusted: isTrustedSender,
   })
+}
+
+/** 启动后已有授权时上报一次设备版本；失败只记日志，不重试也不提示用户。 */
+async function reportDeviceInfoOnStartup(): Promise<void> {
+  const composition = desktopComposition
+  if (!composition) return
+  try {
+    const snapshot = await composition.tokenManager.snapshot()
+    if (!snapshot) return
+    const info = await readDeviceInfo()
+    await composition.api.reportDeviceInfo(info, snapshot.record.accessToken)
+  } catch (error: unknown) {
+    console.error(errorMessage(error))
+  }
 }
 
 async function setupAuthorization(): Promise<void> {

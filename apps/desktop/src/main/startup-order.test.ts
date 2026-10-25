@@ -3,6 +3,8 @@ import { expect, it, vi } from "vitest"
 const fixture = vi.hoisted(() => ({
   windows: 0,
   inspect: vi.fn(() => new Promise<void>(() => {})),
+  snapshot: vi.fn(async () => null),
+  reportDeviceInfo: vi.fn(async () => undefined),
 }))
 vi.mock("electron", () => ({
   powerMonitor: { on: () => {}, removeListener: () => {} },
@@ -51,6 +53,8 @@ vi.mock("./composition", () => ({
   createDesktopComposition: () => ({
     authorizationService: {},
     membershipGate: { inspect: fixture.inspect },
+    tokenManager: { snapshot: fixture.snapshot },
+    api: { reportDeviceInfo: fixture.reportDeviceInfo },
   }),
 }))
 vi.mock("./window-options", () => ({
@@ -63,5 +67,6 @@ it("creates checking window before an existing profile's remote inspect settles"
   await import("./index")
   await new Promise((resolve) => setTimeout(resolve, 0))
   expect(fixture.inspect).toHaveBeenCalledOnce()
+  expect(fixture.reportDeviceInfo).not.toHaveBeenCalled()
   expect(fixture.windows).toBe(1)
 })

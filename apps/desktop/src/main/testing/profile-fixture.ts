@@ -50,6 +50,7 @@ export function profileApi(overrides: Partial<PigclaudeApi> = {}): PigclaudeApi 
       bindingEpoch: "2",
       authVersion: "1",
     }),
+    reportDeviceInfo: async () => undefined,
     refreshToken: async () => {
       throw new Error("unused refresh")
     },

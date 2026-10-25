@@ -6,6 +6,7 @@ import {
   type AuthorizationExchange,
 } from "./service"
 import type { AuthorizationRequest, AuthorizationToken } from "./types"
+import type { DeviceAuthorizationInput } from "../api/oauth-client"
 import type { SecretVault } from "../secret-vault"
 
 class MemoryVault implements SecretVault {
@@ -98,6 +99,44 @@ describe("AuthorizationService", () => {
     expect(exchangeInput?.code).toBe("one-time-code")
     expect(await vault.get("authorization:pigclaude-login:account-1")).toContain("refresh-secret")
     expect(service.getActiveSession()).toBeNull()
+  })
+
+  it("sends the computer name, os and app version in the authorization context", async () => {
+    const vault = new MemoryVault()
+    let sent: DeviceAuthorizationInput | undefined
+    const service = new AuthorizationService({
+      authOrigin: "http://localhost:5173",
+      vault,
+      exchangeCode: async () => tokenFor(loginRequest),
+      deviceIdentity: {
+        read: async () => ({ deviceId: "pcd_" + "1".repeat(64), platform: "darwin" }),
+      },
+      deviceInfo: async () => ({
+        name: "Lin 的 MacBook Pro",
+        osVersion: "macOS 15.4",
+        appVersion: "1.3.0",
+      }),
+      startAuthorization: async (input) => {
+        sent = input
+        return {
+          contextId: "context",
+          authorizationUrl: "http://localhost:5173/oauth2/authorize?state=state",
+          expiresAt: new Date(2_000_000).toISOString(),
+        }
+      },
+      now: () => 1_000,
+    })
+
+    await service.start(loginRequest, "http://127.0.0.1:43123/oauth/callback")
+
+    expect(sent).toMatchObject({
+      deviceId: "pcd_" + "1".repeat(64),
+      platform: "darwin",
+      name: "Lin 的 MacBook Pro",
+      osVersion: "macOS 15.4",
+      appVersion: "1.3.0",
+    })
+    expect(JSON.stringify(sent)).not.toContain("Pigclaude Desktop")
   })
 
   it("rejects a mismatched state and never calls exchange", async () => {

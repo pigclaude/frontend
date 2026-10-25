@@ -6,6 +6,8 @@ const input = {
   deviceId: "pcd_" + "1".repeat(64),
   platform: "darwin" as const,
   name: "桌面",
+  osVersion: "macOS 15.4",
+  appVersion: "1.3.0",
   clientId: "pigclaude-desktop",
   redirectUri: "pigclaude://authorize/callback",
   codeChallenge: "challenge",

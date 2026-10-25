@@ -18,6 +18,7 @@ export type PigclaudeApi = Pick<
   | "refreshToken"
   | "revokeToken"
   | "readDesktopSession"
+  | "reportDeviceInfo"
   | "inspectMembership"
   | "revokeDeviceBinding"
 >

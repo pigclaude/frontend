@@ -10,6 +10,7 @@ import {
 } from "./api/pigclaude-api-client"
 import { MembershipGate } from "./membership/membership-gate"
 import type { DeviceIdentityService } from "./device-identity"
+import type { DeviceInfo } from "./device-identity/device-info"
 
 /** composition 的依赖，Claude adapter 与第一方 OAuth API 必须独立。 */
 export type DesktopCompositionOptions = {
@@ -18,6 +19,7 @@ export type DesktopCompositionOptions = {
   vault: SecretVault
   authOrigin: string
   deviceIdentity?: Pick<DeviceIdentityService, "read">
+  deviceInfo?: () => Promise<DeviceInfo>
   claudeAuthorization?: ClaudeAuthorizationAdapter
   now?: () => number
   onMembershipView?: (view: MembershipView) => void
@@ -97,6 +99,7 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
     vault: options.vault,
     now,
     deviceIdentity: options.deviceIdentity,
+    deviceInfo: options.deviceInfo,
     claudeAuthorization,
     startAuthorization: (input) => api.prepareDeviceAuthorization(input),
     exchangeCode: async (input) => {

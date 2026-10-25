@@ -54,6 +54,8 @@ describe("OAuthClient native public protocol", () => {
       ...session,
       platform,
       name: "桌面",
+      osVersion: "macOS 15.4",
+      appVersion: "1.3.0",
       clientId: "pigclaude-desktop",
       redirectUri,
       codeChallenge: "challenge",
@@ -65,6 +67,8 @@ describe("OAuthClient native public protocol", () => {
       deviceId: session.deviceId,
       platform: expected,
       name: "桌面",
+      osVersion: "macOS 15.4",
+      appVersion: "1.3.0",
       clientId: "pigclaude-desktop",
       redirectUri,
       codeChallenge: "challenge",
@@ -72,6 +76,44 @@ describe("OAuthClient native public protocol", () => {
       scopes,
     })
     expect(new Headers(calls[0]?.init?.headers).has("authorization")).toBe(false)
+  })
+  it("reports only os and app version through the captured Bearer", async () => {
+    const calls: { url: string; init?: RequestInit }[] = []
+    const client = new OAuthClient({
+      baseUrl,
+      accessToken: async () => "pc_at_fixture",
+      fetcher: async (url, init) => {
+        calls.push({ url: String(url), init })
+        return new Response(null, { status: 204 })
+      },
+    })
+    await client.reportDeviceInfo({ osVersion: "macOS 15.4", appVersion: "1.3.0" })
+    expect(calls[0]?.url).toBe(baseUrl + "/v1/desktop/device-info")
+    expect(calls[0]?.init?.method).toBe("POST")
+    expect(new Headers(calls[0]?.init?.headers).get("authorization")).toBe("Bearer pc_at_fixture")
+    expect(new Headers(calls[0]?.init?.headers).has("cookie")).toBe(false)
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      osVersion: "macOS 15.4",
+      appVersion: "1.3.0",
+    })
+  })
+  it("uses an explicitly captured token for the startup report", async () => {
+    let reads = 0
+    let authorization: string | null = null
+    const client = new OAuthClient({
+      baseUrl,
+      accessToken: async () => {
+        reads++
+        return "unused"
+      },
+      fetcher: async (_url, init) => {
+        authorization = new Headers(init?.headers).get("authorization")
+        return new Response(null, { status: 204 })
+      },
+    })
+    await client.reportDeviceInfo({ osVersion: "Windows 11", appVersion: "1.3.1" }, "pc_at_startup")
+    expect(reads).toBe(0)
+    expect(authorization).toBe("Bearer pc_at_startup")
   })
   it("exchanges, rotates and revokes with form bodies and no cookies or client secret", async () => {
     const calls: { url: string; init?: RequestInit }[] = []

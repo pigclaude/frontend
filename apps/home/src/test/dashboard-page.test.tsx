@@ -18,6 +18,9 @@ const user: MeResponse = {
   avatar: "",
   balance: "0",
   createdAt,
+  emailVerified: true,
+  hasPassword: true,
+  passwordChangedAt: null,
 }
 const membership: EntitlementResponse = {
   status: "none",

@@ -12,6 +12,7 @@ export interface LinkedIdentity {
 /** 近期核验目标严格复用服务端 action 字段，版本始终为原始字符串。 */
 export type SensitiveOperation =
   | { operation: "link" | "unlink"; provider: IdentityProvider }
+  | { operation: "change_email" }
   | { operation: "revoke_device"; device_id: string; expected_binding_epoch: string }
   | { operation: "revoke_all_devices" }
 /** 近期核验只返回状态或受信供应商接续，不暴露 proof。 */

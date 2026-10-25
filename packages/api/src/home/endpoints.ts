@@ -1,7 +1,8 @@
-// 负责封装 Home 会员和账户查询；登录身份只经中央 OIDC 交互确认。
+// 负责封装 Home 会员、账户查询与已登录账号凭据写入；登录身份只经中央 OIDC 交互确认。
 import { createHomeMembershipApi } from "../membership/home"
 import type { HttpClient } from "../client"
 import type { CaptchaConfig } from "@pigclaude/contracts/captcha"
+import { createAccountCredentialApi } from "./account-credentials"
 import type * as T from "./types"
 
 /** 创建 home API，所有请求复用共享 cookie client。 */
@@ -14,6 +15,7 @@ export function createHomeApi(c: HttpClient) {
       mailStatus: () => c.get<{ available: boolean }>("/v1/auth/mail-status"),
     },
     user: { me: () => c.get<T.MeResponse>("/v1/user/me") },
+    account: createAccountCredentialApi(c),
     membership: createHomeMembershipApi(c),
   }
 }

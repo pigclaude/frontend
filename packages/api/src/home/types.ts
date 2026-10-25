@@ -7,6 +7,9 @@ export interface AuthUserView {
   email: string
   balance: string
   createdAt: string
+  emailVerified: boolean
+  hasPassword: boolean
+  passwordChangedAt: string | null
 }
 
 /** user/me 端点只返回用户摘要。 */

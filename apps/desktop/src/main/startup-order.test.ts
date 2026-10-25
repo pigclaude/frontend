@@ -53,7 +53,7 @@ vi.mock("./composition", () => ({
   createDesktopComposition: () => ({
     authorizationService: {},
     membershipGate: { inspect: fixture.inspect },
-    tokenManager: { snapshot: fixture.snapshot },
+    tokenManager: { snapshot: fixture.snapshot, run: vi.fn() },
     api: { reportDeviceInfo: fixture.reportDeviceInfo },
   }),
 }))

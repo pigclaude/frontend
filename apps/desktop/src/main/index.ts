@@ -236,7 +236,9 @@ async function reportDeviceInfoOnStartup(): Promise<void> {
     const snapshot = await composition.tokenManager.snapshot()
     if (!snapshot) return
     const info = await readDeviceInfo()
-    await composition.api.reportDeviceInfo(info, snapshot.record.accessToken)
+    await composition.tokenManager.run((current) =>
+      composition.api.reportDeviceInfo(info, current.record.accessToken),
+    )
   } catch (error: unknown) {
     console.error(errorMessage(error))
   }

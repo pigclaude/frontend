@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from "vitest"
 
 const fixture = vi.hoisted(() => ({
   snapshot: vi.fn(),
+  run: vi.fn(),
   readDeviceInfo: vi.fn(),
   reportDeviceInfo: vi.fn(),
 }))
@@ -54,7 +55,7 @@ vi.mock("./composition", () => ({
   createDesktopComposition: () => ({
     authorizationService: {},
     membershipGate: { inspect: async () => undefined },
-    tokenManager: { snapshot: fixture.snapshot },
+    tokenManager: { snapshot: fixture.snapshot, run: fixture.run },
     api: { reportDeviceInfo: fixture.reportDeviceInfo },
   }),
 }))
@@ -72,12 +73,28 @@ afterEach(() => {
 
 it("reports device info once when an authorization exists", async () => {
   fixture.snapshot.mockResolvedValue({ owner: 1, record: { accessToken: "pc_at_startup" } })
+  fixture.run.mockImplementation(async (operation) =>
+    operation({ owner: 1, record: { accessToken: "pc_at_startup" } }),
+  )
   fixture.readDeviceInfo.mockResolvedValue(info)
   fixture.reportDeviceInfo.mockResolvedValue(undefined)
   await import("./index")
   await vi.waitFor(() => expect(fixture.reportDeviceInfo).toHaveBeenCalledOnce())
   expect(fixture.readDeviceInfo).toHaveBeenCalledOnce()
   expect(fixture.reportDeviceInfo).toHaveBeenCalledExactlyOnceWith(info, "pc_at_startup")
+})
+
+it("refreshes an expired access token before reporting", async () => {
+  fixture.snapshot.mockResolvedValue({ owner: 1, record: { accessToken: "pc_at_expired" } })
+  fixture.run.mockImplementation(async (operation) =>
+    operation({ owner: 1, record: { accessToken: "pc_at_refreshed" } }),
+  )
+  fixture.readDeviceInfo.mockResolvedValue(info)
+  fixture.reportDeviceInfo.mockResolvedValue(undefined)
+  await import("./index")
+  await vi.waitFor(() => expect(fixture.reportDeviceInfo).toHaveBeenCalledOnce())
+  expect(fixture.run).toHaveBeenCalledOnce()
+  expect(fixture.reportDeviceInfo).toHaveBeenCalledExactlyOnceWith(info, "pc_at_refreshed")
 })
 
 it("skips reporting when there is no authorization", async () => {
@@ -92,6 +109,9 @@ it("logs a failed report without retrying", async () => {
   const log = vi.spyOn(console, "error").mockImplementation(() => undefined)
   try {
     fixture.snapshot.mockResolvedValue({ owner: 1, record: { accessToken: "pc_at_startup" } })
+    fixture.run.mockImplementation(async (operation) =>
+      operation({ owner: 1, record: { accessToken: "pc_at_startup" } }),
+    )
     fixture.readDeviceInfo.mockResolvedValue(info)
     fixture.reportDeviceInfo.mockRejectedValue(new Error("report failed"))
     await import("./index")

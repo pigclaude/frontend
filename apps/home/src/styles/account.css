@@ -317,3 +317,46 @@
   color: var(--fg-2);
   font-size: 13px;
 }
+
+/* ─── 设备管理：活跃状态、空状态、加载更多和红色文字按钮 ─── */
+.activity-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.activity-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--success);
+}
+.set-empty {
+  padding: 18px 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.set-more {
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+  border-top: 1px solid var(--border-soft);
+}
+.set-danger-link {
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  color: var(--danger-ink);
+  font-size: 12px;
+  font-weight: 500;
+  outline: none;
+  cursor: pointer;
+}
+.set-danger-link:hover {
+  text-decoration: underline;
+}
+.set-danger-link:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+.set-danger-link:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

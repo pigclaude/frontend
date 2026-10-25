@@ -1,4 +1,4 @@
-// 负责验证本人设备的精确关系、近期核验、私有名称及迟到请求归属。
+// 负责验证本人电脑列表的精确关系、近期核验、私有名称及迟到请求归属。
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -6,11 +6,15 @@ import { DeviceList } from "@/components/devices/device-list"
 const mocks = vi.hoisted(() => ({ fetch: vi.fn<typeof fetch>(), params: new URLSearchParams() }))
 vi.mock("next/navigation", () => ({
   usePathname: () => "/account/devices",
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
   useSearchParams: () => mocks.params,
 }))
 vi.mock("@/lib/api", async () => {
   const { createClient } = await import("@pigclaude/api/client")
-  return { homeClient: createClient({ fetch: mocks.fetch }), homeApi: {} }
+  return {
+    homeClient: createClient({ fetch: mocks.fetch }),
+    homeApi: { user: { me: async () => ({ hasPassword: true }) } },
+  }
 })
 const a = "pcd_" + "a".repeat(64)
 const b = "pcd_" + "b".repeat(64)
@@ -25,6 +29,9 @@ function device(deviceId = a, displayName = "我的 Mac") {
     firstAuthorizedAt: "2026-10-18T00:00:00Z",
     lastSeenAt: "2026-10-19T00:00:00Z",
     isCurrentDevice: null,
+    osVersion: null,
+    appVersion: null,
+    lastIp: null,
   }
 }
 function json(body: unknown, status = 200) {
@@ -35,7 +42,7 @@ function mount(client = new QueryClient({ defaultOptions: { queries: { retry: fa
     client,
     ...render(
       <QueryClientProvider client={client}>
-        <DeviceList />
+        <DeviceList now={new Date()} />
       </QueryClientProvider>,
     ),
   }
@@ -43,12 +50,24 @@ function mount(client = new QueryClient({ defaultOptions: { queries: { retry: fa
 function posts() {
   return mocks.fetch.mock.calls.filter(([, init]) => init?.method === "POST")
 }
+// 沿用旧用例的动作名：「撤销 X」「命名 X」走该电脑的「⋯」菜单，「撤销全部设备」走分组标题的按钮。
 async function choose(name = "撤销 我的 Mac") {
-  const button = await screen.findByRole("button", { name })
-  await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false))
-  fireEvent.click(button)
+  if (name === "撤销全部设备") {
+    const button = await screen.findByRole("button", { name: "全部移除" })
+    await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false))
+    fireEvent.click(button)
+    return
+  }
+  const [verb, ...rest] = name.split(" ")
+  const trigger = await screen.findByRole("button", { name: `更多操作：${rest.join(" ")}` })
+  await waitFor(() => expect(trigger.hasAttribute("disabled")).toBe(false))
+  fireEvent.keyDown(trigger, { key: "Enter" })
+  fireEvent.click(
+    await screen.findByRole("menuitem", { name: verb === "命名" ? "重命名" : "移除这台电脑" }),
+  )
 }
 beforeEach(() => {
+  sessionStorage.clear()
   mocks.params = new URLSearchParams()
   mocks.fetch.mockReset().mockImplementation(async (url) => {
     if (String(url).startsWith("/v1/user/devices")) return json([device(), device(b, "我的 Linux")])
@@ -66,8 +85,9 @@ describe("本人设备", () => {
     mount()
     expect(await screen.findByText("我的 Mac")).toBeTruthy()
     expect(screen.getByText("我的 Linux")).toBeTruthy()
-    expect(screen.getByText(a)).toBeTruthy()
+    expect(screen.queryByText(a)).toBeNull()
     expect(screen.queryByText("当前设备")).toBeNull()
+    expect(screen.queryByText("这台电脑")).toBeNull()
     expect(posts()).toHaveLength(0)
   })
   it("reauthenticates the exact lossless epoch before single revoke and preserves B", async () => {
@@ -167,7 +187,7 @@ describe("本人设备", () => {
     mount()
     await choose("命名 我的 Mac")
     fireEvent.change(screen.getByLabelText("设备名称"), { target: { value: "私人名称" } })
-    fireEvent.click(screen.getByRole("button", { name: "保存名称" }))
+    fireEvent.click(screen.getByRole("button", { name: "保存" }))
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
     const call = mocks.fetch.mock.calls.find(([, init]) => init?.method === "PATCH")!
     expect(call[0]).toBe(`/v1/user/devices/${a}`)
@@ -285,7 +305,7 @@ it("loads every further device page without an account-wide device cap", async (
       : original(url, init),
   )
   mount()
-  fireEvent.click(await screen.findByRole("button", { name: "加载更多设备" }))
+  fireEvent.click(await screen.findByRole("button", { name: "加载更多电脑" }))
   expect(await screen.findByText("第51台设备")).toBeTruthy()
   expect(screen.getByText("设备0")).toBeTruthy()
   const request = mocks.fetch.mock.calls.find(([url]) => String(url).includes("afterDeviceId="))
@@ -314,7 +334,7 @@ it.each(["", "a".repeat(65), "含\u0001控制字符"])(
     mount()
     await choose("命名 我的 Mac")
     fireEvent.change(screen.getByLabelText("设备名称"), { target: { value: name } })
-    expect(screen.getByRole("button", { name: "保存名称" }).hasAttribute("disabled")).toBe(true)
+    expect(screen.getByRole("button", { name: "保存" }).hasAttribute("disabled")).toBe(true)
     expect(mocks.fetch.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false)
   },
 )
@@ -360,7 +380,7 @@ it("uses the next account private name for the same hardware without retaining a
   mount()
   expect(await screen.findByText("另一个账号私有名称")).toBeTruthy()
   expect(screen.queryByText("我的 Mac")).toBeNull()
-  expect(screen.getByText(a)).toBeTruthy()
+  expect(screen.queryByText(a)).toBeNull()
 })
 
 it("invalidates the actual device consumer owner on a query-only route change", async () => {
@@ -382,7 +402,7 @@ it("invalidates the actual device consumer owner on a query-only route change", 
   mocks.params = new URLSearchParams("currentDeviceId=untrusted&identityResult=verified")
   view.rerender(
     <QueryClientProvider client={view.client}>
-      <DeviceList />
+      <DeviceList now={new Date()} />
     </QueryClientProvider>,
   )
   complete(json({ csrf: "old-route" }))

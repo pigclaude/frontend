@@ -73,3 +73,56 @@ export function CloseIcon() {
     </svg>
   )
 }
+
+/** macOS 电脑标记：手绘苹果轮廓加叶子，颜色由外层决定。 */
+export function AppleMark() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M15.2 3.6c-1.4.2-2.6 1.2-2.9 2.6 1.4-.1 2.6-1.1 2.9-2.6Z" />
+      <path d="M12 8c-.9-.5-1.9-.9-2.9-.9-2.4 0-4.4 2-4.4 5.2 0 3.6 2.4 8.1 4.6 8.1.9 0 1.6-.5 2.7-.5s1.8.5 2.7.5c1.6 0 3.3-2.3 4.1-4.7-1.6-.8-2.6-2.2-2.6-3.9 0-1.5.8-2.8 2-3.5-.9-1-2.1-1.6-3.4-1.6-1.1 0-2 .5-2.8 1.3Z" />
+    </svg>
+  )
+}
+
+/** Windows 电脑标记：手绘四块略带透视的窗格，颜色由外层决定。 */
+export function WindowsMark() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 6 10.5 5v6H4zM13 4.6 20 3.5V11h-7zM4 13h6.5v6L4 18zM13 13h7v7.5l-7-1.1z" />
+    </svg>
+  )
+}
+
+/** Linux 电脑标记：手绘企鹅轮廓、肚皮和嘴，颜色由外层决定。 */
+export function LinuxMark() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 3c-2.1 0-3.4 1.8-3.4 4.2 0 1.5-.6 2.6-1.6 4-1.2 1.6-2.2 3.4-2.2 5.3 0 2.1 3.2 3.9 7.2 3.9s7.2-1.8 7.2-3.9c0-1.9-1-3.7-2.2-5.3-1-1.4-1.6-2.5-1.6-4C15.4 4.8 14.1 3 12 3Z" />
+      <path d="M9.4 14.2c.6-1.4 1.5-2.1 2.6-2.1s2 .7 2.6 2.1M10.6 6.9h.01M13.4 6.9h.01M11 8.9l1 .8 1-.8" />
+    </svg>
+  )
+}

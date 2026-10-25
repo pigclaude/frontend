@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import type { SensitiveOperation } from "@pigclaude/api/home/identity"
 import { homeApi } from "@/lib/api"
-import { takePending } from "@/lib/pending-sensitive-operation"
+import { savePending, takePending } from "@/lib/pending-sensitive-operation"
 import { QueryError, QueryLoading } from "@/components/query-state"
 import { AccountPageHeader } from "@/components/account/account-page-header"
 import { EmailPasswordGroup } from "@/components/account/email-password-group"
@@ -58,7 +58,16 @@ function useProviderReturn() {
   useEffect(() => {
     if (handled.current) return
     handled.current = true
-    if (state.result === "verified") setResume(takePending())
+    if (state.result === "verified") {
+      const op = takePending()
+      // 供应商核验固定回到本页；移除电脑的续接交给设备管理页。
+      if (op?.operation === "revoke_device" || op?.operation === "revoke_all_devices") {
+        savePending(op)
+        router.replace("/account/devices?identityResult=verified")
+        return
+      }
+      setResume(op)
+    }
     if (state.result || state.error) router.replace(pathname)
   }, [pathname, router, state])
   return { ...state, resume }

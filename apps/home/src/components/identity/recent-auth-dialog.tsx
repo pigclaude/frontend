@@ -10,6 +10,10 @@ import {
 import { RecentAuthForm } from "./recent-auth-form"
 
 function description(action: SensitiveOperation): string {
+  if (action.operation === "revoke_device")
+    return "移除这台电脑前需要确认是你本人。本次核验只用于移除这台电脑，五分钟内有效且只能使用一次。"
+  if (action.operation === "revoke_all_devices")
+    return "移除全部电脑前需要确认是你本人。本次核验只用于这次移除，五分钟内有效且只能使用一次。"
   if (action.operation === "change_email")
     return "修改登录邮箱前需要确认是你本人。本次核验只用于修改邮箱，五分钟内有效且只能使用一次。"
   return "使用当前账号的密码或已绑定登录方式核验。本次核验只适用于所选操作，五分钟内有效且只能使用一次。"

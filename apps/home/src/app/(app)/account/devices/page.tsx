@@ -1,12 +1,28 @@
-// 负责设备管理页路由；页面内容在后续任务中补齐。
-import { AccountPageHeader } from "@/components/account/account-page-header"
+// 负责设备管理页：登录过这个账号的电脑和浏览器。
+"use client"
 
-/** 设备管理占位页，只显示标题。 */
+import { Suspense, useState } from "react"
+import { AccountPageHeader } from "@/components/account/account-page-header"
+import { WebSessionGroup } from "@/components/account/web-session-group"
+import { DeviceList } from "@/components/devices/device-list"
+
+const header = (
+  <AccountPageHeader
+    title="设备管理"
+    subtitle="登录过你账号的电脑和浏览器。看到不认识的，移除它即可。"
+  />
+)
+
+/** 两个分组共用同一个「现在」，活跃文案在一次渲染里保持一致。 */
 export default function AccountDevicesPage() {
+  const [now] = useState(() => new Date())
   return (
-    <AccountPageHeader
-      title="设备管理"
-      subtitle="登录过你账号的电脑和浏览器。看到不认识的，移除它即可。"
-    />
+    <>
+      {header}
+      <Suspense>
+        <DeviceList now={now} />
+      </Suspense>
+      <WebSessionGroup now={now} />
+    </>
   )
 }

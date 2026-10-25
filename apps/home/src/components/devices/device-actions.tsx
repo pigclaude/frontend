@@ -18,6 +18,7 @@ export type DeviceAction = { type: "rename" | "revoke"; device: UserDeviceView }
 export function DeviceActions({
   action,
   identities,
+  hasPassword,
   pending,
   error,
   run,
@@ -26,6 +27,7 @@ export function DeviceActions({
 }: {
   action: DeviceAction
   identities: LinkedIdentity[]
+  hasPassword?: boolean
   pending: boolean
   error: string | null
   run: (request: (isCurrent: () => boolean) => Promise<void>) => void
@@ -46,6 +48,7 @@ export function DeviceActions({
               }
         }
         identities={identities}
+        hasPassword={hasPassword}
         pending={pending}
         error={error}
         onRun={run}
@@ -62,7 +65,7 @@ export function DeviceActions({
       }}
     >
       <DialogContent showCloseButton={!pending}>
-        <DialogTitle>设备命名</DialogTitle>
+        <DialogTitle>重命名这台电脑</DialogTitle>
         <DialogDescription>名称仅对当前账号可见，不影响共享设备上的其他账号。</DialogDescription>
         {error && (
           <p role="alert" className="query-error">
@@ -80,7 +83,7 @@ export function DeviceActions({
           <Input id="device-name" value={name} onChange={(event) => setName(event.target.value)} />
           <p className="text-sm text-muted-foreground">1–64 个字符，不含控制字符。</p>
           <Button type="submit" disabled={pending || !valid}>
-            保存名称
+            保存
           </Button>
           <Button type="button" variant="ghost" disabled={pending} onClick={close}>
             取消

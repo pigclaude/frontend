@@ -19,6 +19,7 @@ import { securitySettingsErrorMessage } from "@/lib/security-settings-errors"
 import { useSecuritySettings } from "@/hooks/use-security-settings"
 import { useAdminMe } from "@/hooks/use-admin-me"
 import { SettingsPaymentPage } from "./settings-payment"
+import { SettingsMailPage } from "./settings-mail"
 import { adminSessionGeneration } from "@/lib/session-generation"
 /** 设置入口按精确读取权限挂载唯一分区，不触发未授权接口。 */
 export default function SettingsSecurityPage() {
@@ -29,7 +30,10 @@ export default function SettingsSecurityPage() {
     me?.status === "active"
       ? [
           ...(me.permissions.includes("settings:read")
-            ? [{ id: "security", title: "安全风控" }]
+            ? [
+                { id: "security", title: "安全风控" },
+                { id: "mail", title: "邮件" },
+              ]
             : []),
           ...(me.permissions.includes("payment:read") ? [{ id: "payment", title: "易支付" }] : []),
         ]
@@ -45,11 +49,11 @@ export default function SettingsSecurityPage() {
     adminSessionGeneration.current(),
   ])
   if (!active) return <p role="alert">无权查看系统设置</p>
-  return active === "payment" ? (
-    <SettingsPaymentPage key={identity} panels={panels} onSelect={onSelect} />
-  ) : (
-    <SecuritySection key={identity} panels={panels} onSelect={onSelect} />
-  )
+  if (active === "payment")
+    return <SettingsPaymentPage key={identity} panels={panels} onSelect={onSelect} />
+  if (active === "mail")
+    return <SettingsMailPage key={identity} panels={panels} onSelect={onSelect} />
+  return <SecuritySection key={identity} panels={panels} onSelect={onSelect} />
 }
 /** 拒绝无读权限页面与加载失败空默认值，路由跳转使用 data router blocker。 */
 function SecuritySection({

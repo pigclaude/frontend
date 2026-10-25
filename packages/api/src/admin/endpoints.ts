@@ -3,6 +3,7 @@ import { createAdminMembershipApi } from "../membership/admin"
 import { createPaymentSettingsApi } from "../membership/payment-settings"
 import { createAccountModerationApi } from "./account-moderation"
 import type { AdminUserDevicesView } from "@pigclaude/contracts/user-devices"
+import { createMailSettingsApi } from "./mail-settings"
 import { createSecuritySettingsApi } from "./security-settings"
 import type { HttpClient } from "../client"
 import { createAdminSessionWriter } from "./session"
@@ -13,7 +14,11 @@ import type * as T from "./types"
 export function createAdminApi(c: HttpClient) {
   const write = createAdminSessionWriter(c)
   return {
-    settings: { turnstile: createSecuritySettingsApi(c), payment: createPaymentSettingsApi(c) },
+    settings: {
+      turnstile: createSecuritySettingsApi(c),
+      payment: createPaymentSettingsApi(c),
+      mail: createMailSettingsApi(c),
+    },
     auth: {
       /** 读取管理员登录的公开验证码配置，不依赖管理员会话。 */
       captcha: () => c.get<CaptchaConfig>("/admin/v1/auth/captcha"),

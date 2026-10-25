@@ -3,10 +3,11 @@ import { StaleSessionResponse, type HttpClient } from "../client"
 import type { WebSessionBootstrap } from "../web-oidc"
 /** 受支持的外部登录方式。 */
 export type IdentityProvider = "google" | "github"
-/** 服务端脱敏列表及最后凭据可解绑判断。 */
+/** 服务端返回的已绑定账号、绑定时间及最后凭据可解绑判断。 */
 export interface LinkedIdentity {
   provider: IdentityProvider
   display: string
+  linkedAt: string
   canUnlink: boolean
 }
 /** 近期核验目标严格复用服务端 action 字段，版本始终为原始字符串。 */

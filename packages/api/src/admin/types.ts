@@ -26,7 +26,6 @@ export interface AdminUserItem extends UserAccountView {
   email: string
   avatar: string
   githubLogin: string
-  balance: string
   createdAt: string
   lastLoginAt: string | null
 }

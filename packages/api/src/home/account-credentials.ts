@@ -17,12 +17,9 @@ export interface EmailChanged {
   email: string
 }
 
-/** 创建账号凭据 facade，所有写入绑定当前 RP 会话与界面 owner。 */
-export function createAccountCredentialApi(client: HttpClient) {
-  const withCsrf = async <T>(
-    request: (csrf: string) => Promise<T>,
-    isCurrent: () => boolean,
-  ): Promise<T> => {
+/** 创建绑定当前 RP 会话的 CSRF 写入器；会话或 owner 失效时拒绝发出写入。 */
+export function createCsrfWriter(client: HttpClient) {
+  return async <T>(request: (csrf: string) => Promise<T>, isCurrent: () => boolean): Promise<T> => {
     const sameSession = client.captureSession?.() ?? (() => true)
     const check = () => {
       if (!isCurrent() || !sameSession()) throw new StaleSessionResponse()
@@ -34,6 +31,11 @@ export function createAccountCredentialApi(client: HttpClient) {
       throw new Error("会话校验失败，请重新登录")
     return request(session.csrf)
   }
+}
+
+/** 创建账号凭据 facade，所有写入绑定当前 RP 会话与界面 owner。 */
+export function createAccountCredentialApi(client: HttpClient) {
+  const withCsrf = createCsrfWriter(client)
 
   return {
     /** 请求改邮箱或密码验证码；邮箱占用时服务端仍返回同一 202。 */

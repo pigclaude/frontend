@@ -70,12 +70,6 @@ export function UserDrawer({
                   </p>
                   <p className="mt-0.5 font-mono text-xs text-meta">UID {user.id}</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs text-muted-foreground">余额</p>
-                  <p className="font-mono text-lg font-medium text-foreground tabular-nums">
-                    {user.balance}
-                  </p>
-                </div>
               </div>
 
               <DetailList>

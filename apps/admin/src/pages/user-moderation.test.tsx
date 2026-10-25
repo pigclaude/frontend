@@ -49,7 +49,6 @@ beforeEach(() => {
             email: "masked@example.test",
             status: "active",
             authVersion: version,
-            balance: "0",
             createdAt: "2026-10-18T00:00:00Z",
             lastLoginAt: null,
             avatar: "",

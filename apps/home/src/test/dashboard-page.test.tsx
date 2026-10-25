@@ -16,7 +16,6 @@ const user: MeResponse = {
   nickname: "",
   email: "private@example.com",
   avatar: "",
-  balance: "0",
   createdAt,
   emailVerified: true,
   hasPassword: true,

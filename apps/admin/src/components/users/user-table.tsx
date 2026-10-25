@@ -19,7 +19,7 @@ interface UserTableProps {
   onDetail: (u: AdminUserItem) => void
 }
 
-// UID/头像+昵称+邮箱/GitHub/余额/状态 pill/操作 六列，对照
+// UID/头像+昵称+邮箱/GitHub/状态 pill/操作 五列，对照
 // `$PROTO/admin-users.html` `#users-table` + 内联 `.u-cell`/`.row-actions` 样式。
 /** UserTable 保持用户摘要展示与可访问交互。 */
 export function UserTable({ items, isPending, onDetail }: UserTableProps) {
@@ -30,17 +30,16 @@ export function UserTable({ items, isPending, onDetail }: UserTableProps) {
           <TableHead>UID</TableHead>
           <TableHead>用户</TableHead>
           <TableHead>GitHub</TableHead>
-          <TableHead className="text-right">余额</TableHead>
           <TableHead>状态</TableHead>
           <TableHead className="text-right">操作</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {isPending ? (
-          <TableLoadingRows columns={6} rows={6} />
+          <TableLoadingRows columns={5} rows={6} />
         ) : items.length === 0 ? (
           <TableEmptyRow
-            columns={6}
+            columns={5}
             icon={SearchX}
             title="暂无用户"
             description="稍后点击刷新，查看最新用户列表。"
@@ -70,9 +69,6 @@ export function UserTable({ items, isPending, onDetail }: UserTableProps) {
               </TableCell>
               <TableCell className="font-mono text-xs text-muted-foreground">
                 {u.githubLogin ? `@${u.githubLogin}` : "—"}
-              </TableCell>
-              <TableCell className="text-right font-mono text-foreground tabular-nums">
-                {u.balance}
               </TableCell>
               <TableCell>
                 {u.status === "active" ? (

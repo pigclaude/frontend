@@ -5,7 +5,6 @@ export interface AuthUserView {
   nickname: string
   avatar: string
   email: string
-  balance: string
   createdAt: string
   emailVerified: boolean
   hasPassword: boolean

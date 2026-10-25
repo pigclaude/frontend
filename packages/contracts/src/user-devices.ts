@@ -8,6 +8,12 @@ export interface UserDeviceView {
   bindingEpoch: string
   firstAuthorizedAt: string
   lastSeenAt: string | null
+  /** 桌面端上报的系统与版本；旧关系或未上报时为 null。 */
+  osVersion: string | null
+  /** 桌面端上报的应用版本；旧关系或未上报时为 null。 */
+  appVersion: string | null
+  /** 最近一次桌面端活跃写入的公网 IP，受信任代理解析。 */
+  lastIp: string | null
   isCurrentDevice: boolean | null
 }
 /** 管理员设备读取同时给出账号 CAS 版本；本人读取仍是数组。 */

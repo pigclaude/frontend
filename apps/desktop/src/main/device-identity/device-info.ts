@@ -33,7 +33,7 @@ export type DeviceInfoDeps = {
 const DEFAULT_NAME = "PigClaude 电脑"
 const MAX_NAME_LENGTH = 64
 const MAX_VERSION_LENGTH = 64
-const MAX_APP_VERSION_LENGTH = 32
+const APP_VERSION_PATTERN = /^[0-9A-Za-z.+-]{1,32}$/
 const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F-\u009F]/g
 
 let defaultInfo: Promise<DeviceInfo> | null = null
@@ -53,9 +53,13 @@ async function loadDeviceInfo(deps: DeviceInfoDeps): Promise<DeviceInfo> {
   return {
     name: cleanText(computerName ?? fallbackName, MAX_NAME_LENGTH) || DEFAULT_NAME,
     osVersion: await readOsVersion(platform, deps),
-    appVersion:
-      cleanText(safeCall(deps.appVersion ?? readAppVersion, ""), MAX_APP_VERSION_LENGTH) || "0.0.0",
+    appVersion: validAppVersion(safeCall(deps.appVersion ?? readAppVersion, "")),
   }
+}
+
+/** 只把后端接受的版本号送进授权请求，避免整笔登录被 400 拒绝。 */
+function validAppVersion(raw: string): string {
+  return APP_VERSION_PATTERN.test(raw) ? raw : "0.0.0"
 }
 
 async function readComputerName(

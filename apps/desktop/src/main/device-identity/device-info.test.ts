@@ -77,6 +77,17 @@ describe("readDeviceInfo", () => {
     )
   })
 
+  it("falls back to 0.0.0 when the app version would be rejected", async () => {
+    for (const appVersion of ["1.0;rm", "x".repeat(33), ""]) {
+      expect((await readDeviceInfo(deps({ appVersion: () => appVersion }))).appVersion).toBe(
+        "0.0.0",
+      )
+    }
+    expect((await readDeviceInfo(deps({ appVersion: () => "1.3.0-beta+1" }))).appVersion).toBe(
+      "1.3.0-beta+1",
+    )
+  })
+
   it("uses scutil with a fixed read-only command and a two-second limit", async () => {
     processFixture.execFile.mockImplementationOnce((file, args, options, callback) => {
       expect(file).toBe("scutil")

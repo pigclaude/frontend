@@ -5,8 +5,8 @@ export type CaptchaConfig =
   | { enabled: false; provider: "turnstile"; siteKey: null; mode: "disabled" }
   | { enabled: true; provider: "turnstile"; siteKey: string; mode: "testing" | "required" }
 
-/** 三个认证入口使用独立 action，服务端根据路由核验。 */
-export type CaptchaAction = "home_login" | "home_register" | "admin_login"
+/** 各入口使用独立 action，服务端根据路由核验。 */
+export type CaptchaAction = "home_login" | "home_register" | "admin_login" | "email_code"
 
 /** 验证公开配置的组合完整性，异常响应不能退化为关闭验证码。 */
 export function isCaptchaConfig(value: unknown): value is CaptchaConfig {

@@ -40,7 +40,7 @@ export function EmailPasswordGroup({
     { kind: "email"; step: ChangeEmailStep } | { kind: "password" } | null
   >(resumeEmailStep ? { kind: "email", step: resumeEmailStep } : null)
   const passwordDescription = me.hasPassword
-    ? changedLabel(me.passwordChangedAt)
+    ? (changedLabel(me.passwordChangedAt) ?? "已设置，可以用邮箱和密码登录")
     : "还没有设置密码，设置后可以用邮箱和密码登录"
   return (
     <>

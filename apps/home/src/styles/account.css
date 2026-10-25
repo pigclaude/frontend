@@ -28,11 +28,6 @@
   flex-shrink: 0;
   gap: 2px;
   width: 216px;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--card-bg);
-  box-shadow: var(--card-shadow);
 }
 .account-nav-group {
   padding: 10px 12px 4px;
@@ -112,6 +107,10 @@
     max-width: 100%;
     padding: 4px;
     overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card-bg);
+    box-shadow: var(--card-shadow);
     scrollbar-width: none;
   }
   .account-nav[data-variant="side"] .account-nav-group {

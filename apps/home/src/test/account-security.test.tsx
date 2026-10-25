@@ -243,6 +243,12 @@ describe("account security page", () => {
     expect(screen.getByRole("button", { name: "修改密码" })).toBeTruthy()
   })
 
+  it("still explains the password row when it was never changed", async () => {
+    mocks.me.mockResolvedValue(accountUser({ passwordChangedAt: null }))
+    renderPage()
+    expect(await screen.findByText("已设置，可以用邮箱和密码登录")).toBeTruthy()
+  })
+
   it("disables both rows when mail is unavailable", async () => {
     mocks.mailStatus.mockResolvedValue({ available: false })
     renderPage()

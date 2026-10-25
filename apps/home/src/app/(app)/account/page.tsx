@@ -68,7 +68,7 @@ export default function AccountProfilePage() {
           trailing={
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
               aria-label="复制用户 ID"
               onClick={() => void copyUserId(user.id)}

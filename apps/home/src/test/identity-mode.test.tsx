@@ -59,7 +59,7 @@ describe("central one-step login page", () => {
     expect(screen.getByText("还没有账号？")).toBeTruthy()
     expect(screen.getByRole("button", { name: "注册" })).toBeTruthy()
     expect(screen.queryByRole("tablist")).toBeNull()
-    expect(screen.queryByText(/忘记密码/)).toBeNull()
+    expect(screen.getByRole("button", { name: "忘记密码？" })).toBeTruthy()
   })
 
   it("switches to the register layout inside the same interaction", async () => {

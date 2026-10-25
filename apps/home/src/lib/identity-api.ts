@@ -57,6 +57,18 @@ export interface IdentityEmailCodeSent {
   resendAfterSeconds: number
 }
 
+/** 重设密码成功响应；只确认事务完成，不创建网站会话。 */
+export interface IdentityPasswordResetDone {
+  type: "password_reset"
+}
+
+/** 重设密码提交：验证码与最终密码一次提交，账号错误与错码同形。 */
+export interface IdentityPasswordResetInput {
+  email: string
+  emailCode: string
+  newPassword: string
+}
+
 const client = createClient({ fetch: (...args) => fetch(...args) })
 const path = (view: IdentityInteraction) =>
   `/v1/identity/interactions/${encodeURIComponent(view.interactionId)}`
@@ -84,6 +96,12 @@ export const identityApi = {
   /** 在交互内请求邮箱验证码，响应固定为已发送。 */
   emailCode: (view: IdentityInteraction, input: IdentityEmailCodeInput) =>
     client.post<IdentityEmailCodeSent>(`${path(view)}/email-code`, {
+      ...proof(view),
+      ...input,
+    }),
+  /** 用已验证邮箱一次性重设密码；成功不推进交互也不创建会话。 */
+  resetPassword: (view: IdentityInteraction, input: IdentityPasswordResetInput) =>
+    client.post<IdentityPasswordResetDone>(`${path(view)}/password-reset`, {
       ...proof(view),
       ...input,
     }),

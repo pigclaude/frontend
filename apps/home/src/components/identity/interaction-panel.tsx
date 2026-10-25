@@ -8,6 +8,7 @@ import { Button } from "@pigclaude/web-ui/components/button"
 import { LineIcon } from "@pigclaude/web-ui/components/line-icon"
 import { PigclaudeMark } from "@pigclaude/web-ui/components/pigclaude-mark"
 import { LoginForm, type LoginMode } from "./login-form"
+import { PasswordResetForm } from "./password-reset-form"
 import { ProviderButtons } from "./provider-buttons"
 import { DeviceApproval } from "./device-approval"
 import { ConsentApproval } from "./consent-approval"
@@ -55,6 +56,10 @@ function InteractionSession({
   const [pending, setPending] = useState<"password" | "other" | null>(null)
   const [reload, setReload] = useState(0)
   const [mode, setMode] = useState<LoginMode>("login")
+  // 忘记密码复用当前登录交互；完成后只带回邮箱和成功提示，不创建会话。
+  const [resetting, setResetting] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [prefillEmail, setPrefillEmail] = useState("")
   const hintRead = useRef(false)
   const mutationOwner = useRef<symbol | null>(null)
   const generation = useRef(0)
@@ -204,6 +209,7 @@ function InteractionSession({
     )
   if (view.phase === "login") {
     const admin = view.realm === "Admin"
+    const resettingPassword = !admin && resetting
     const register = !admin && view.registrationAllowed && mode === "register"
     return (
       <section
@@ -212,10 +218,20 @@ function InteractionSession({
       >
         <header className="flex flex-col gap-1.5">
           <h1 id="identity-title" className="text-xl font-semibold tracking-tight">
-            {admin ? "登录管理后台" : register ? "注册 PigClaude" : "登录 PigClaude"}
+            {admin
+              ? "登录管理后台"
+              : resettingPassword
+                ? "重设密码"
+                : register
+                  ? "注册 PigClaude"
+                  : "登录 PigClaude"}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {admin ? "仅限运营人员使用管理员账号" : "管理会员和桌面设备"}
+            {admin
+              ? "仅限运营人员使用管理员账号"
+              : resettingPassword
+                ? "用邮箱验证码设置新密码"
+                : "管理会员和桌面设备"}
           </p>
         </header>
         {error && !expired && (
@@ -227,24 +243,47 @@ function InteractionSession({
           <ExpiredNotice restartUrl={view.restartUrl} className={alertClass} />
         ) : (
           <div className="mt-6 flex flex-col gap-5">
-            <ProviderButtons
-              interaction={view}
-              disabled={pending !== null}
-              onStart={(provider) => {
-                void act(() => identityApi.provider(view, provider))
-              }}
-            />
-            <LoginForm
-              key={view.interactionId}
-              interaction={view}
-              mode={mode}
-              onModeChange={setMode}
-              onMutate={(request) => {
-                void act(request, "password")
-              }}
-              pending={pending === "password"}
-              disabled={pending !== null}
-            />
+            {resettingPassword ? (
+              <PasswordResetForm
+                interaction={view}
+                disabled={pending !== null}
+                onCancel={() => setResetting(false)}
+                onDone={(email) => {
+                  setResetting(false)
+                  setMode("login")
+                  setNotice("密码已重设，请用新密码登录")
+                  setPrefillEmail(email)
+                }}
+              />
+            ) : (
+              <>
+                <ProviderButtons
+                  interaction={view}
+                  disabled={pending !== null}
+                  onStart={(provider) => {
+                    void act(() => identityApi.provider(view, provider))
+                  }}
+                />
+                <LoginForm
+                  key={view.interactionId}
+                  interaction={view}
+                  mode={mode}
+                  initialEmail={prefillEmail}
+                  notice={notice}
+                  onModeChange={setMode}
+                  onForgotPassword={() => {
+                    setError(null)
+                    setNotice(null)
+                    setResetting(true)
+                  }}
+                  onMutate={(request) => {
+                    void act(request, "password")
+                  }}
+                  pending={pending === "password"}
+                  disabled={pending !== null}
+                />
+              </>
+            )}
           </div>
         )}
       </section>

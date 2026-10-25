@@ -33,19 +33,27 @@ export function LoginForm({
   interaction,
   mode,
   onModeChange,
+  onForgotPassword,
   onMutate,
   pending,
   disabled,
+  initialEmail = "",
+  notice = null,
 }: {
   interaction: IdentityInteraction
   mode: LoginMode
   onModeChange: (mode: LoginMode) => void
+  onForgotPassword: () => void
   onMutate: (request: () => Promise<IdentityContinuation>) => void
   pending: boolean
   disabled: boolean
+  /** 重设密码成功后带回来的邮箱，保证用户不必重新输入。 */
+  initialEmail?: string
+  /** 重设密码成功提示；只在回到登录表单后展示。 */
+  notice?: string | null
 }) {
   const [showPassword, setShowPassword] = useState(false)
-  const [email, setEmail] = useState("")
+  const [email, setEmail] = useState(initialEmail)
   const [password, setPassword] = useState("")
   const [emailCode, setEmailCode] = useState("")
   const [mailAvailable, setMailAvailable] = useState<boolean | null>(null)
@@ -95,6 +103,11 @@ export function LoginForm({
   }
   return (
     <div className="flex flex-col gap-6">
+      {notice && (
+        <p role="status" className="text-[13px] leading-5 text-[var(--success-ink)]">
+          {notice}
+        </p>
+      )}
       {current === "register" && mailAvailable === false ? (
         <p className="text-[13px] leading-5 text-muted-foreground">
           邮箱注册暂未开放，可以用 Google 或 GitHub 注册
@@ -155,6 +168,19 @@ export function LoginForm({
               </Button>
             </div>
           </div>
+          {current === "login" && !admin && (
+            <p className="text-right">
+              <Button
+                type="button"
+                variant="link"
+                className={linkClass}
+                disabled={blocked}
+                onClick={onForgotPassword}
+              >
+                忘记密码？
+              </Button>
+            </p>
+          )}
           <TurnstileCaptcha {...captcha.field} />
           <Button
             type="submit"

@@ -107,7 +107,12 @@ export function WebSessionGroup({ now }: { now: Date }) {
               description={
                 <MetaLine
                   parts={[
-                    <ActivityLabel key="seen" lastSeenAt={session.lastSeenAt} now={now} />,
+                    // 服务端活跃写入有节流且遇锁跳过，可能滞后；正在看这页的浏览器一定在使用。
+                    <ActivityLabel
+                      key="seen"
+                      lastSeenAt={session.isCurrent ? now.toISOString() : session.lastSeenAt}
+                      now={now}
+                    />,
                     session.lastIp,
                     signedInLabel(session.createdAt),
                   ]}

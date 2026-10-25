@@ -209,6 +209,13 @@ describe("account devices page", () => {
     )
   })
 
+  it("always shows the current browser as in use even if the server lags", async () => {
+    mocks.list.mockResolvedValue([session({ lastSeenAt: localIso(2026, 10, 21, 9) })])
+    renderPage()
+    await screen.findByRole("heading", { name: "网页登录 · 1 个" })
+    expect(rowOf("Chrome · macOS").textContent).toContain("正在使用 · 112.64.12.8")
+  })
+
   it("signs out another browser after confirmation and refreshes", async () => {
     renderPage()
     fireEvent.click(await screen.findByRole("button", { name: "退出 Safari · iPhone" }))

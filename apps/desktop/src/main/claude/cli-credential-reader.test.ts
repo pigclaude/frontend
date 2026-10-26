@@ -117,8 +117,8 @@ describe("readClaudeCliCredential", () => {
         args: ["find-generic-password", "-a", "tester", "-w", "-s", "Claude Code-credentials"],
         options: {
           encoding: "utf8",
-          timeout: 10_000,
-          maxBuffer: 64 * 1024,
+          timeout: 60_000,
+          maxBuffer: 1024 * 1024,
           windowsHide: true,
           shell: false,
         },
@@ -155,6 +155,12 @@ describe("readClaudeCliCredential", () => {
       configDir: null,
     })
     expect(forcedDefault.calls[0]?.args).toContain("Claude Code-credentials")
+  })
+
+  it("treats a whitespace-only config dir as absent", async () => {
+    const { execFile, calls } = fakeExec(payload())
+    await read({ execFile, env: { CLAUDE_CONFIG_DIR: "   " } })
+    expect(calls[0]?.args).toContain("Claude Code-credentials")
   })
 
   it("falls back to USER when no user is injected", async () => {
@@ -217,10 +223,28 @@ describe("readClaudeCliCredential", () => {
       expect(error.message).toBe("无法读取 Claude CLI 凭据，请允许访问钥匙串后重试")
       expectNoLeak(error)
     }
-    const timedOut = new Error(stderrSecret)
-    Object.assign(timedOut, { code: "ETIMEDOUT", killed: true })
-    const error = await readError(fakeExec(accessToken, timedOut, stderrSecret).execFile)
-    expect(error.code).toBe("CLI_KEYCHAIN_DENIED")
+  })
+
+  it("maps a timeout to a retry message instead of a plain denial", async () => {
+    for (const failure of [
+      { code: null, killed: true, signal: "SIGTERM" },
+      { code: "ETIMEDOUT" },
+    ]) {
+      const timedOut = new Error(stderrSecret)
+      Object.assign(timedOut, failure)
+      const error = await readError(fakeExec(accessToken, timedOut, stderrSecret).execFile)
+      expect(error.code).toBe("CLI_KEYCHAIN_DENIED")
+      expect(error.message).toBe("读取钥匙串超时，请重试并允许访问")
+      expectNoLeak(error)
+    }
+  })
+
+  it("maps a maxBuffer overflow to a fixed credential error without leaking output", async () => {
+    const overflow = new Error(stderrSecret)
+    Object.assign(overflow, { code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER", killed: true })
+    const error = await readError(fakeExec(accessToken, overflow, stderrSecret).execFile)
+    expect(error.code).toBe("CLI_CREDENTIAL_INVALID")
+    expect(error.message).toBe("Claude CLI 凭据过大，无法读取")
     expectNoLeak(error)
   })
 

@@ -91,6 +91,14 @@ describe("readClaudeCliAccountMetadata", () => {
     expect(forcedDefault.paths).toEqual(["/Users/tester/.claude.json"])
   })
 
+  it("treats a whitespace-only config dir as absent", async () => {
+    const { paths } = read('{"oauthAccount":{}}', {
+      homeDir: "/Users/tester",
+      env: { CLAUDE_CONFIG_DIR: "   " },
+    })
+    expect(paths).toEqual(["/Users/tester/.claude.json"])
+  })
+
   it("returns null when the file is missing", async () => {
     const { result } = read(new Error("ENOENT"), { homeDir: "/Users/tester" })
     expect(await result).toBeNull()

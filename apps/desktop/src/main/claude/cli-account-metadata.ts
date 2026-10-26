@@ -3,6 +3,7 @@
 import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { resolveClaudeCliConfigDir } from "./cli-config-dir"
 
 const metadataFileName = ".claude.json"
 
@@ -59,22 +60,13 @@ export async function readClaudeCliAccountMetadata(
 }
 
 function metadataPath(options: ClaudeCliAccountMetadataOptions): string | null {
-  const configDir = resolveConfigDir(options, options.env ?? process.env)
+  const configDir = resolveClaudeCliConfigDir(options)
   if (configDir !== null) return join(configDir, metadataFileName)
   try {
     return join(options.homeDir ?? homedir(), metadataFileName)
   } catch {
     return null
   }
-}
-
-function resolveConfigDir(
-  options: ClaudeCliAccountMetadataOptions,
-  env: NodeJS.ProcessEnv,
-): string | null {
-  const value = options.configDir !== undefined ? options.configDir : env.CLAUDE_CONFIG_DIR
-  if (value === undefined || value === null || value.trim() === "") return null
-  return value
 }
 
 function readFileUtf8(path: string): Promise<string> {

@@ -3,18 +3,21 @@
 import { execFile as nodeExecFile } from "node:child_process"
 import { createHash } from "node:crypto"
 import { userInfo } from "node:os"
+import { resolveClaudeCliConfigDir } from "./cli-config-dir"
 import { ClaudeAccountError } from "./errors"
 
 const defaultKeychainService = "Claude Code-credentials"
 const securityPath = "/usr/bin/security"
-const commandTimeoutMs = 10_000
-const commandMaxBuffer = 64 * 1024
+const commandTimeoutMs = 60_000
+const commandMaxBuffer = 1024 * 1024
 
 const messages = {
   notFound: "未找到 Claude CLI 凭据，请先在 Claude CLI 中登录",
   denied: "无法读取 Claude CLI 凭据，请允许访问钥匙串后重试",
+  timeout: "读取钥匙串超时，请重试并允许访问",
   locked: "钥匙串已锁定，请解锁后重试",
   invalid: "Claude CLI 凭据格式无效",
+  tooLarge: "Claude CLI 凭据过大，无法读取",
   expired: "Claude CLI 凭据已过期，请先在 Claude CLI 中刷新",
   unsupported: "仅支持在 macOS 上从 Claude CLI 导入账号",
 } as const
@@ -77,7 +80,8 @@ export async function readClaudeCliCredential(
     throw new ClaudeAccountError("CLI_IMPORT_UNSUPPORTED_PLATFORM", messages.unsupported)
   }
   const env = options.env ?? process.env
-  const service = claudeCliKeychainService(resolveConfigDir(options, env))
+  const configDir = resolveClaudeCliConfigDir({ configDir: options.configDir, env })
+  const service = claudeCliKeychainService(configDir)
   let user: string
   try {
     user = resolveUser(options, env)
@@ -93,15 +97,6 @@ export async function readClaudeCliCredential(
 
 const defaultExecFile: ClaudeCliExecFile = (file, args, options, callback) => {
   nodeExecFile(file, args, options, callback)
-}
-
-function resolveConfigDir(
-  options: ClaudeCliCredentialReaderOptions,
-  env: NodeJS.ProcessEnv,
-): string | null {
-  const value = options.configDir !== undefined ? options.configDir : env.CLAUDE_CONFIG_DIR
-  if (value === undefined || value === null || value.trim() === "") return null
-  return value
 }
 
 function resolveUser(options: ClaudeCliCredentialReaderOptions, env: NodeJS.ProcessEnv): string {
@@ -138,21 +133,34 @@ function readKeychainValue(
   })
 }
 
-// 只保留退出码，不把 security 的 stdout、stderr 或原始错误挂到新错误上。
+// 只保留退出码或错误类型，不把 security 的 stdout、stderr 或原始错误挂到新错误上。
 function keychainError(error: Error): ClaudeAccountError {
-  const exitCode = readExitCode(error)
-  if (exitCode === 44) {
+  const code = readErrorCode(error)
+  if (code === 44) {
     return new ClaudeAccountError("CLI_CREDENTIAL_NOT_FOUND", messages.notFound)
   }
-  if (exitCode === 36) {
+  if (code === 36) {
     return new ClaudeAccountError("CLI_KEYCHAIN_LOCKED", messages.locked)
+  }
+  if (code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+    return new ClaudeAccountError("CLI_CREDENTIAL_INVALID", messages.tooLarge)
+  }
+  if (isTimeout(error, code)) {
+    return new ClaudeAccountError("CLI_KEYCHAIN_DENIED", messages.timeout)
   }
   return new ClaudeAccountError("CLI_KEYCHAIN_DENIED", messages.denied)
 }
 
-function readExitCode(error: Error): number | null {
+function readErrorCode(error: Error): string | number | null {
   const code = (error as { code?: unknown }).code
-  return typeof code === "number" ? code : null
+  return typeof code === "string" || typeof code === "number" ? code : null
+}
+
+function isTimeout(error: Error, code: string | number | null): boolean {
+  if (code === "ETIMEDOUT") return true
+  const killed = (error as { killed?: unknown }).killed
+  const signal = (error as { signal?: unknown }).signal
+  return killed === true || signal === "SIGTERM"
 }
 
 function parsePayload(stdout: string): Record<string, unknown> {

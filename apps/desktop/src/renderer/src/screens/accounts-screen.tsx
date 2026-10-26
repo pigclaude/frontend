@@ -119,7 +119,11 @@ export function AccountsScreen({
         <AccountDetailScreen
           account={selected}
           onBack={() => setSelectedId(null)}
-          onReauthorize={() => onReauthorize?.(selected.id) ?? onOpenAuthorize()}
+          onReauthorize={() => {
+            // 先判断回调是否存在；回调返回 void，不能用 ?? 兜底，否则会同时打开添加向导并清掉账号 id。
+            if (onReauthorize) onReauthorize(selected.id)
+            else onOpenAuthorize()
+          }}
           onDelete={() => setDeleteId(selected.id)}
           onToggleEnabled={() => onUpdate?.({ accountId: selected.id, enabled: !selected.enabled })}
           onChangeProxy={() => setProxyId(selected.id)}

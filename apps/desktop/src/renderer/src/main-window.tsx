@@ -13,7 +13,7 @@ import { UsageScreen } from "./screens/usage-screen"
 import { AddProjectDialog } from "./components/add-project-dialog"
 import { ScrollPanel, Sidebar, WindowControls } from "./components/shell"
 import { useToast } from "./components/toast"
-import { useClaudeAccounts } from "./hooks/use-claude-accounts"
+import type { ClaudeAccountsController } from "./hooks/use-claude-accounts"
 import { useSession } from "./hooks/use-session"
 import { useWorkspaces } from "./hooks/use-workspaces"
 import { projectNameFromPath, type Project } from "./models/project-model"
@@ -27,12 +27,13 @@ import { Button } from "./components/ui/button"
 
 const narrowQuery = "(max-width: 960px)"
 
-/** 主窗口需要的页面状态与事件。 */
+/** 主窗口需要的页面状态与事件；账号控制器由 App 持有，避免同一页面出现两份陈旧列表。 */
 export type MainWindowProps = {
   screen: Screen
   canGoBack: boolean
   canGoForward: boolean
   membership: MembershipView
+  claudeAccounts: ClaudeAccountsController
   onNavigate: (screen: Screen) => void
   onBack: () => void
   onForward: () => void
@@ -49,6 +50,7 @@ export function MainWindow({
   canGoBack,
   canGoForward,
   membership,
+  claudeAccounts,
   onNavigate,
   onBack,
   onForward,
@@ -66,7 +68,7 @@ export function MainWindow({
   const [addingProject, setAddingProject] = useState(false)
   const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null)
   const toast = useToast()
-  const pool = useClaudeAccounts()
+  const pool = claudeAccounts
   const session = useSession()
   const workspaces = useWorkspaces()
   const accounts = pool.accounts.map((account) => toPoolAccount(account, pool.proxies))
@@ -227,7 +229,10 @@ export function MainWindow({
               proxies={proxies}
               error={pool.error}
               onOpenAuthorize={onOpenAuthorize}
-              onReauthorize={(accountId) => onReauthorizeAccount?.(accountId) ?? onOpenAuthorize()}
+              onReauthorize={(accountId) => {
+                if (onReauthorizeAccount) onReauthorizeAccount(accountId)
+                else onOpenAuthorize()
+              }}
               onRemove={(accountId) => void pool.remove(accountId)}
               onUpdate={(input) => void pool.update(input)}
               onImportFromClaudeCli={() => pool.importFromClaudeCli({ confirmCopy: true })}

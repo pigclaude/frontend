@@ -395,6 +395,7 @@ export function DesktopApp() {
           canGoBack={canGoBack(history)}
           canGoForward={canGoForward(history)}
           membership={membership}
+          claudeAccounts={claudeAccounts}
           onNavigate={setScreen}
           onBack={() => setHistory(goBack)}
           onForward={() => setHistory(goForward)}

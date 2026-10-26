@@ -30,10 +30,15 @@ export type SessionController = {
   respondPermission: (requestId: string, decision: "allow" | "deny") => Promise<void>
   setMode: (mode: SessionUiState["permissionMode"]) => Promise<void>
   setModel: (model: string) => Promise<void>
-  refreshModels: () => Promise<void>
+  /** force 为 true 时忽略缓存重新查询；成功一次后默认不重复启动 CLI。 */
+  refreshModels: (force?: boolean) => Promise<void>
+  /** 放弃当前模型查询等待；迟到结果不会再写入状态。 */
+  cancelModels: () => void
   refreshStatus: () => Promise<void>
   clearError: () => void
 }
+
+const modelsTimeoutMs = 20_000
 
 /** 订阅会话事件。传入 null 表示桌面桥不可用，所有命令都会给出可读错误。 */
 export function useSession(bridge?: SessionBridge | null): SessionController {
@@ -44,6 +49,9 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
   const [modelsLoading, setModelsLoading] = useState(false)
   const [modelsError, setModelsError] = useState<string | null>(null)
   const turnSeq = useRef(0)
+  const modelsLoaded = useRef(false)
+  const modelsLoadingRef = useRef(false)
+  const modelsRequest = useRef(0)
 
   const refreshStatus = useCallback(async () => {
     if (resolved === null || resolved === undefined) return
@@ -54,30 +62,59 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
     }
   }, [resolved])
 
-  const refreshModels = useCallback(async () => {
-    if (resolved === null || resolved === undefined) {
-      setModelsError("桌面会话服务不可用")
-      return
-    }
-    setModelsLoading(true)
-    setModelsError(null)
-    try {
-      setModels(await resolved.models())
-    } catch (error: unknown) {
-      setModels([])
-      setModelsError(sessionErrorText(sessionErrorFrom(error) || "SDK_ERROR: 模型列表加载失败"))
-    } finally {
-      setModelsLoading(false)
-    }
-  }, [resolved])
+  const refreshModels = useCallback(
+    async (force = false) => {
+      if (resolved === null || resolved === undefined) {
+        setModelsError("桌面会话服务不可用")
+        return
+      }
+      if (modelsLoadingRef.current) return
+      if (modelsLoaded.current && !force) return
+      const request = ++modelsRequest.current
+      modelsLoadingRef.current = true
+      setModelsLoading(true)
+      setModelsError(null)
+      const timer = setTimeout(() => {
+        if (request !== modelsRequest.current) return
+        modelsRequest.current += 1
+        modelsLoadingRef.current = false
+        setModelsLoading(false)
+        setModelsError("模型查询超时，请重试")
+      }, modelsTimeoutMs)
+      try {
+        const list = await resolved.models()
+        if (request !== modelsRequest.current) return
+        modelsLoaded.current = true
+        setModels(list)
+      } catch (error: unknown) {
+        if (request !== modelsRequest.current) return
+        setModels([])
+        setModelsError(sessionErrorText(sessionErrorFrom(error) || "SDK_ERROR: 模型列表加载失败"))
+      } finally {
+        clearTimeout(timer)
+        if (request === modelsRequest.current) {
+          modelsLoadingRef.current = false
+          setModelsLoading(false)
+        }
+      }
+    },
+    [resolved],
+  )
+
+  const cancelModels = useCallback(() => {
+    if (!modelsLoadingRef.current) return
+    modelsRequest.current += 1
+    modelsLoadingRef.current = false
+    setModelsLoading(false)
+    setModelsError("已取消模型查询")
+  }, [])
 
   useEffect(() => {
     if (resolved === null || resolved === undefined) return
     const unsubscribe = resolved.subscribe((event) => dispatch({ type: "event", event }))
     void refreshStatus()
-    void refreshModels()
     return unsubscribe
-  }, [refreshModels, refreshStatus, resolved])
+  }, [refreshStatus, resolved])
 
   const start = useCallback(
     async (input: SessionStartInput): Promise<boolean> => {
@@ -130,6 +167,7 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
       await resolved?.stop()
     } catch (error: unknown) {
       dispatch({ type: "failed", message: sessionErrorFrom(error) })
+      return
     }
     dispatch({ type: "stopped" })
     void refreshStatus()
@@ -187,6 +225,7 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
     setMode,
     setModel,
     refreshModels,
+    cancelModels,
     refreshStatus,
     clearError,
   }

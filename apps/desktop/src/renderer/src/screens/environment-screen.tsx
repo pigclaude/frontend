@@ -1,7 +1,7 @@
 // 负责逐项展示本机中继、Claude Code CLI、账号、代理和出口检测结果；
 // 数据来自 session.status、session.models、claudeAccounts 和 proxies，不显示 token、代理地址或环境变量。
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import type { ClaudeAccountView, EgressView, ProxyView } from "@pigclaude/contracts/claude-account"
 import { Button } from "../components/ui/button"
 import {
@@ -21,6 +21,8 @@ export type EnvironmentScreenProps = {
   models: ClaudeModel[]
   modelsLoading: boolean
   modelsError: string | null
+  onLoadModels: () => void
+  onCancelModels: () => void
   onRecheck: () => void
   onCheckEgress: (proxyId: string) => Promise<EgressView>
 }
@@ -33,6 +35,8 @@ export function EnvironmentScreen({
   models,
   modelsLoading,
   modelsError,
+  onLoadModels,
+  onCancelModels,
   onRecheck,
   onCheckEgress,
 }: EnvironmentScreenProps) {
@@ -41,9 +45,16 @@ export function EnvironmentScreen({
   const [egressLoading, setEgressLoading] = useState(false)
   const [egressError, setEgressError] = useState<string | null>(null)
   const proxy = proxies.find((item) => item.id === proxyId) ?? proxies[0] ?? null
-  const availableAccounts = accounts.filter((account) => account.enabled && !account.needsReauth)
+  const availableAccounts = accounts.filter(
+    (account) => account.enabled && !account.needsReauth && !isCoolingDown(account.exhaustedUntil),
+  )
   const cli = cliState(models, modelsLoading, modelsError)
   const daemon = daemonState(status, models, modelsLoading, modelsError)
+
+  useEffect(() => {
+    if (models.length > 0 || modelsLoading || modelsError !== null) return
+    onLoadModels()
+  }, [models.length, modelsError, modelsLoading, onLoadModels])
 
   async function checkEgress(): Promise<void> {
     if (proxy === null) return
@@ -69,6 +80,11 @@ export function EnvironmentScreen({
           <Button variant="primary" onClick={onRecheck} disabled={modelsLoading}>
             {modelsLoading ? "检测中…" : "重新检测"}
           </Button>
+          {modelsLoading ? (
+            <Button variant="ghost" onClick={onCancelModels}>
+              取消检测
+            </Button>
+          ) : null}
         </div>
       </header>
       <section className="section">
@@ -218,4 +234,10 @@ function egressValue(egress: EgressView | null, loading: boolean, error: string 
   if (error !== null) return error
   if (egress === null) return "尚未检测"
   return egress.ok ? `出口 IP ${egress.ip}` : egress.message
+}
+
+function isCoolingDown(value: string | null | undefined): boolean {
+  if (value === null || value === undefined) return false
+  const until = Date.parse(value)
+  return Number.isFinite(until) && until > Date.now()
 }

@@ -41,6 +41,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount())
   container.remove()
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -86,10 +87,16 @@ async function render(bridge: SessionBridge): Promise<void> {
 }
 
 describe("useSession", () => {
-  it("subscribes to bridge events, loads status and models", async () => {
+  it("subscribes to bridge events, loads status and models on demand", async () => {
     const { bridge, emit } = fakeBridge()
     await render(bridge)
 
+    expect(bridge.status).toHaveBeenCalledTimes(1)
+    expect(bridge.models).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await controller?.refreshModels()
+    })
     await act(async () => {
       emit({
         type: "started",
@@ -104,7 +111,6 @@ describe("useSession", () => {
     })
 
     expect(bridge.subscribe).toHaveBeenCalledTimes(1)
-    expect(bridge.status).toHaveBeenCalledTimes(1)
     expect(bridge.models).toHaveBeenCalledTimes(1)
     expect(controller?.status).toMatchObject({ active: false })
     expect(controller?.models).toEqual(models)
@@ -187,6 +193,9 @@ describe("useSession", () => {
         }),
     })
     await render(bridge)
+    await act(async () => {
+      void controller?.refreshModels()
+    })
 
     expect(controller?.modelsLoading).toBe(true)
     await act(async () => reject?.(new Error("CLAUDE_RUNTIME_UNAVAILABLE: 找不到 CLI")))
@@ -194,6 +203,78 @@ describe("useSession", () => {
 
     expect(controller?.modelsLoading).toBe(false)
     expect(controller?.modelsError).toBe("Claude Code 不可用，请检查安装")
+  })
+
+  it("caches a successful model list until a forced refresh", async () => {
+    const listModels = vi.fn(async () => models)
+    const { bridge } = fakeBridge({ models: listModels })
+    await render(bridge)
+
+    await act(async () => {
+      await controller?.refreshModels()
+    })
+    await act(async () => {
+      await controller?.refreshModels()
+    })
+    expect(listModels).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await controller?.refreshModels(true)
+    })
+    expect(listModels).toHaveBeenCalledTimes(2)
+  })
+
+  it("times out a hanging model probe and can cancel it", async () => {
+    vi.useFakeTimers()
+    let finish: ((list: ClaudeModel[]) => void) | null = null
+    const { bridge } = fakeBridge({
+      models: () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    })
+    await render(bridge)
+
+    await act(async () => {
+      void controller?.refreshModels()
+    })
+    expect(controller?.modelsLoading).toBe(true)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000)
+    })
+    expect(controller?.modelsLoading).toBe(false)
+    expect(controller?.modelsError).toBe("模型查询超时，请重试")
+
+    await act(async () => {
+      void controller?.refreshModels(true)
+    })
+    expect(controller?.modelsLoading).toBe(true)
+    await act(async () => controller?.cancelModels())
+    expect(controller?.modelsLoading).toBe(false)
+    expect(controller?.modelsError).toBe("已取消模型查询")
+
+    await act(async () => finish?.(models))
+    expect(controller?.models).toEqual([])
+    vi.useRealTimers()
+  })
+
+  it("keeps the session active when stop fails", async () => {
+    const { bridge } = fakeBridge({
+      stop: async () => {
+        throw new Error("SDK_ERROR: 停止失败")
+      },
+    })
+    await render(bridge)
+    await act(async () => {
+      await controller?.start({ workspace: "/Users/me/app", permissionMode: "default" })
+    })
+    await act(async () => {
+      await controller?.stop()
+    })
+
+    expect(controller?.state.ended).toBe(false)
+    expect(controller?.state.started).toBe(true)
+    expect(controller?.state.error?.message).toBe("Claude 返回错误")
   })
 
   it("reports a missing bridge instead of throwing", async () => {

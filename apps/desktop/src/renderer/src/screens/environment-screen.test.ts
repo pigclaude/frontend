@@ -77,6 +77,8 @@ async function render(overrides: Partial<EnvironmentScreenProps> = {}): Promise<
     models,
     modelsLoading: false,
     modelsError: null,
+    onLoadModels: () => undefined,
+    onCancelModels: () => undefined,
     onRecheck: () => undefined,
     onCheckEgress: vi.fn(async (): Promise<EgressView> => ({ ok: true, ip: "203.0.113.42" })),
     ...overrides,

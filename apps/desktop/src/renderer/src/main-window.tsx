@@ -169,14 +169,13 @@ export function MainWindow({
         open={addingProject}
         onOpenChange={setAddingProject}
         onAdd={(path) => {
-          void workspaces.add(path).then((added) => {
-            if (!added) {
-              toast("工作区必须是已存在的绝对路径", "info")
-              return
-            }
-            setSelectedWorkspace(path)
-            toast(`已添加工作区 ${projectNameFromPath(path)}`, "folder")
-          })
+          void workspaces
+            .add(path)
+            .then(() => {
+              setSelectedWorkspace(path)
+              toast(`已添加工作区 ${projectNameFromPath(path)}`, "folder")
+            })
+            .catch((error: unknown) => toast(workspaceErrorMessage(error), "info"))
         }}
       />
       <Button
@@ -196,14 +195,17 @@ export function MainWindow({
             workspaceOptions={workspaces.paths}
             accounts={pool.accounts}
             onPickWorkspace={() => {
-              void workspaces.pick().then((path) => {
-                if (path !== null) setSelectedWorkspace(path)
-              })
+              void workspaces
+                .pick()
+                .then((path) => {
+                  if (path !== null) setSelectedWorkspace(path)
+                })
+                .catch((error: unknown) => toast(workspaceErrorMessage(error), "info"))
             }}
             onSelectWorkspace={setSelectedWorkspace}
             onWorkspaceUsed={(path) => {
               setSelectedWorkspace(path)
-              void workspaces.add(path)
+              void workspaces.add(path).catch(() => undefined)
             }}
             onOpen={onNavigate}
             smartPunctuation={appearance.settings.smartPunctuation}
@@ -255,9 +257,11 @@ export function MainWindow({
               models={session.models}
               modelsLoading={session.modelsLoading}
               modelsError={session.modelsError}
+              onLoadModels={() => void session.refreshModels()}
+              onCancelModels={session.cancelModels}
               onRecheck={() => {
                 void session.refreshStatus()
-                void session.refreshModels()
+                void session.refreshModels(true)
                 void pool.refresh()
               }}
               onCheckEgress={(proxyId) => pool.checkEgress(proxyId)}
@@ -276,4 +280,8 @@ export function MainWindow({
       </main>
     </div>
   )
+}
+
+function workspaceErrorMessage(error: unknown): string {
+  return error instanceof Error && error.message !== "" ? error.message : "工作区不可用"
 }

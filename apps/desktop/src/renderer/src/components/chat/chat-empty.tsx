@@ -19,6 +19,7 @@ export type ChatEmptyProps = {
   onStart: () => void
   onSubmit: (text: string) => void
   onRetryModels: () => void
+  onCancelModels: () => void
   onOpen: (screen: Screen) => void
 }
 
@@ -35,6 +36,7 @@ export function ChatEmpty({
   onStart,
   onSubmit,
   onRetryModels,
+  onCancelModels,
   onOpen,
 }: ChatEmptyProps) {
   return (
@@ -59,7 +61,11 @@ export function ChatEmpty({
               {workspace === null ? "选择工作区" : projectNameFromPath(workspace)}
               <Icon name="down" small />
             </Button>
-            {modelsLoading ? <span className="chip-btn">模型加载中…</span> : null}
+            {modelsLoading ? (
+              <Button variant="plain" className="chip-btn" type="button" onClick={onCancelModels}>
+                模型加载中… 取消
+              </Button>
+            ) : null}
           </div>
           <h1 style={{ fontSize: 22, margin: "8px 0 0" }}>
             {workspace === null ? "先选择一个工作区" : "让 Claude 在这个文件夹里工作"}

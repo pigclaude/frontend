@@ -1,7 +1,7 @@
 // 负责把流式增量和完整 assistant 消息合并进一轮对话；按消息 id 去重，工具按 id 只保留一条。
 
 import type { SessionHostEvent } from "../../../main/session/session-types"
-import type { SessionBlock, SessionTurn } from "./session-model"
+import type { SessionTurn } from "./session-model"
 
 /** 把文本或思考增量追加到最后一个同类型块；没有同类型块时新建。 */
 export function appendDelta(turn: SessionTurn, text: string, thinking: boolean): SessionTurn {
@@ -38,17 +38,18 @@ export function appendMessage(
 
 function mergeFullText(turn: SessionTurn, kind: "text" | "thinking", text: string): SessionTurn {
   if (text === "") return turn
-  const index = findLastBlock(turn.blocks, kind)
-  if (index === -1) {
-    return { ...turn, blocks: [...turn.blocks, { type: kind, text }] }
+  const index = turn.blocks.length - 1
+  const last = turn.blocks[index]
+  if (last?.type === kind) {
+    const merged = mergeText(last.text, text)
+    if (merged === last.text) return turn
+    const blocks = [...turn.blocks]
+    blocks[index] = { type: kind, text: merged }
+    return { ...turn, blocks }
   }
-  const current = turn.blocks[index]
-  if (current?.type !== kind) return turn
-  const merged = mergeText(current.text, text)
-  if (merged === current.text) return turn
-  const blocks = [...turn.blocks]
-  blocks[index] = { type: kind, text: merged }
-  return { ...turn, blocks }
+  // 只合并紧邻的同类块；已经通过增量到达的同一段文本不再重复追加。
+  if (turn.blocks.some((block) => block.type === kind && block.text.startsWith(text))) return turn
+  return { ...turn, blocks: [...turn.blocks, { type: kind, text }] }
 }
 
 // 流式增量已经到达时，完整消息只补齐缺失的后缀，避免界面重复。
@@ -57,13 +58,6 @@ function mergeText(streamed: string, full: string): string {
   if (full === "" || streamed.endsWith(full) || streamed.startsWith(full)) return streamed
   if (full.startsWith(streamed)) return full
   return `${streamed}${full}`
-}
-
-function findLastBlock(blocks: SessionBlock[], kind: "text" | "thinking"): number {
-  for (let index = blocks.length - 1; index >= 0; index -= 1) {
-    if (blocks[index]?.type === kind) return index
-  }
-  return -1
 }
 
 function upsertTool(turn: SessionTurn, id: string, name: string, input: unknown): SessionTurn {

@@ -72,6 +72,33 @@ describe("session model", () => {
     expect(activeTurn(state).seenMessageIds).toEqual(["m1"])
   })
 
+  it("appends later text after a tool call instead of merging into earlier text", () => {
+    let state = startedTurn()
+    state = emit(state, {
+      type: "message",
+      messageId: "m1",
+      model: "claude-sonnet",
+      parentToolUseId: null,
+      blocks: [
+        { type: "text", text: "先读文件" },
+        { type: "tool-use", id: "tool-1", name: "Read", input: { file: "a.ts" } },
+      ],
+    })
+    state = emit(state, {
+      type: "message",
+      messageId: "m2",
+      model: "claude-sonnet",
+      parentToolUseId: null,
+      blocks: [{ type: "text", text: "读完了" }],
+    })
+
+    expect(activeTurn(state).blocks).toEqual([
+      { type: "text", text: "先读文件" },
+      { type: "tool", id: "tool-1" },
+      { type: "text", text: "读完了" },
+    ])
+  })
+
   it("deduplicates assistant messages and tool calls by id", () => {
     let state = startedTurn()
     const message: SessionHostEvent = {
@@ -194,6 +221,25 @@ describe("session model", () => {
     state = emit(state, { type: "ended", reason: "completed" })
     expect(state.ended).toBe(true)
     expect(state.endedReason).toBe("completed")
+    expect(state.started).toBe(false)
+  })
+
+  it("allows a new session after the previous one ended or stopped", () => {
+    let ended = startedTurn()
+    ended = emit(ended, { type: "ended", reason: "completed" })
+    ended = apply(ended, { type: "starting" })
+    ended = apply(ended, { type: "opened", sessionId: "session-2" })
+    expect(ended.started).toBe(true)
+    expect(ended.sessionId).toBe("session-2")
+    expect(ended.turns).toEqual([])
+
+    let stopped = startedTurn()
+    stopped = apply(stopped, { type: "stopped" })
+    expect(stopped.started).toBe(false)
+    stopped = apply(stopped, { type: "starting" })
+    stopped = apply(stopped, { type: "opened", sessionId: "session-3" })
+    expect(stopped.started).toBe(true)
+    expect(stopped.turns).toEqual([])
   })
 
   it("marks the turn cancelled on cancel and stopped on stop", () => {
@@ -269,5 +315,27 @@ describe("session error text", () => {
 
     expect(state.error).toBeNull()
     expect(activeTurn(state).errors.at(-1)).toMatchObject({ warning: true })
+  })
+
+  it("attaches a late usage warning to the finished turn instead of adding a ghost turn", () => {
+    let state = startedTurn()
+    state = emit(state, {
+      type: "result",
+      subtype: "success",
+      isError: false,
+      durationMs: 500,
+      numTurns: 1,
+      stopReason: "end_turn",
+      usage: {
+        inputTokens: 1,
+        outputTokens: 1,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+      },
+    })
+    state = emit(state, { type: "error", code: "usage_write_failed", message: "用量记录写入失败" })
+
+    expect(state.turns).toHaveLength(1)
+    expect(state.turns[0]?.errors.at(-1)).toMatchObject({ warning: true })
   })
 })

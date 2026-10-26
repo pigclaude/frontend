@@ -2,7 +2,7 @@
 // 最新在前、去重、最多 10 条，不写提示词、回复或任何凭据。
 
 import { randomUUID } from "node:crypto"
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute } from "node:path"
 
 const defaultMaxEntries = 10
@@ -42,10 +42,13 @@ export class WorkspaceStore {
     return paths
   }
 
-  /** 把路径放到最前并去重；拒绝相对路径，返回写入后的完整列表。 */
+  /** 把路径放到最前并去重；拒绝相对路径、不存在的路径和非目录，返回写入后的完整列表。 */
   async add(value: string): Promise<string[]> {
     const path = normalizeWorkspacePath(value)
     if (path === null) throw new Error("WORKSPACE_UNAVAILABLE: 工作区必须是绝对路径")
+    if (!(await isDirectory(path))) {
+      throw new Error("WORKSPACE_UNAVAILABLE: 工作区不存在或不是目录")
+    }
     const current = await this.list()
     const next = [path, ...current.filter((item) => item !== path)].slice(0, this.#maxEntries)
     await this.#write(next)
@@ -66,4 +69,12 @@ function normalizeWorkspacePath(value: string): string | null {
   if (trimmed === "" || !isAbsolute(trimmed)) return null
   const withoutTrailing = trimmed.replace(/[\\/]+$/, "")
   return withoutTrailing === "" ? trimmed : withoutTrailing
+}
+
+async function isDirectory(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory()
+  } catch {
+    return false
+  }
 }

@@ -1,7 +1,7 @@
 // 负责聊天页：空状态选工作区、开始会话、流式消息、工具折叠、权限回答、换号提示、
 // 取消/停止和错误展示。页面只消费 useSession 控制器，不直接调用 preload。
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import type { ClaudeAccountView } from "@pigclaude/contracts/claude-account"
 import { ChatDrawer } from "../components/chat/chat-drawer"
 import { ChatEmpty } from "../components/chat/chat-empty"
@@ -51,21 +51,31 @@ export function ChatScreen({
   const [localError, setLocalError] = useState<string | null>(null)
 
   const { state } = session
-  const blockedByActive = fresh && state.started
+  const live = state.started && !state.ended
   const defaultModel = session.models.find((model) => model.isDefault) ?? session.models[0]
   const selectedModel = state.model ?? (modelId || defaultModel?.id || "")
-  const activeMode = state.started ? state.permissionMode : permissionMode
-  const activeAccount = state.started ? (state.accountId ?? "") : accountId
-  const availableAccounts = accounts.filter((account) => account.enabled && !account.needsReauth)
-  const error = blockedByActive
-    ? "已有一个活动会话，先停止它再开始新会话"
-    : (localError ?? session.state.error?.message ?? null)
+  const activeMode = live ? state.permissionMode : permissionMode
+  const activeAccount = live ? (state.accountId ?? "") : accountId
+  const availableAccounts = accounts.filter(
+    (account) => account.enabled && !account.needsReauth && !isCoolingDown(account.exhaustedUntil),
+  )
+  const error = localError ?? session.state.error?.message ?? null
+
+  useEffect(() => {
+    if (session.models.length > 0 || session.modelsLoading || session.modelsError !== null) return
+    void session.refreshModels()
+  }, [session.models.length, session.modelsLoading, session.modelsError, session.refreshModels])
+
+  useEffect(() => {
+    if (!live) setLocalError(null)
+  }, [live])
+
   const composer: ComposerSettings = {
     model: selectedModel,
     modelOptions: session.models.map((model) => ({ id: model.id, label: model.displayName })),
     onModel: (next) => {
       setModelId(next)
-      if (state.started) void session.setModel(next)
+      if (live) void session.setModel(next)
     },
     account: activeAccount,
     accountOptions: availableAccounts.map((account) => ({
@@ -73,7 +83,7 @@ export function ChatScreen({
       label: account.displayName,
     })),
     onAccount: (next) => {
-      if (state.started) {
+      if (live) {
         setLocalError("会话开始后不支持换号")
         return
       }
@@ -90,7 +100,7 @@ export function ChatScreen({
 
   function chooseMode(next: PermissionMode): void {
     setLocalError(null)
-    if (!state.started) {
+    if (!live) {
       setPermissionMode(next)
       return
     }
@@ -109,37 +119,42 @@ export function ChatScreen({
       permissionMode,
       ...(accountId === "" ? {} : { accountId }),
     })
-    if (ok) onWorkspaceUsed(target)
+    if (ok) {
+      onWorkspaceUsed(target)
+      if (fresh) onOpen("chat")
+    }
     return ok
   }
 
   async function startOnly(): Promise<void> {
-    if (blockedByActive) return
+    if (live) return
     const target = workspace ?? workspaceOptions[0] ?? null
     if (target === null) {
       setLocalError("先选择一个工作区")
       return
     }
     setLocalError(null)
-    if (!state.started) await startSession(target)
+    await startSession(target)
   }
 
   async function submit(text: string): Promise<void> {
-    if (blockedByActive) return
+    if (live) {
+      setLocalError(null)
+      await session.send(text)
+      return
+    }
     const target = workspace ?? workspaceOptions[0] ?? null
     if (target === null) {
       setLocalError("先选择一个工作区")
       return
     }
     setLocalError(null)
-    if (!state.started) {
-      const ok = await startSession(target)
-      if (!ok) return
-    }
+    const ok = await startSession(target)
+    if (!ok) return
     await session.send(text)
   }
 
-  if (fresh || !state.started) {
+  if (!live) {
     return (
       <>
         <ChatEmpty
@@ -156,7 +171,8 @@ export function ChatScreen({
           }}
           onStart={() => void startOnly()}
           onSubmit={(text) => void submit(text)}
-          onRetryModels={() => void session.refreshModels()}
+          onRetryModels={() => void session.refreshModels(true)}
+          onCancelModels={session.cancelModels}
           onOpen={onOpen}
         />
         <BypassDialog
@@ -165,7 +181,7 @@ export function ChatScreen({
           onConfirm={() => {
             setPermissionMode("bypassPermissions")
             setPendingBypass(false)
-            if (state.started) void session.setMode("bypassPermissions")
+            if (live) void session.setMode("bypassPermissions")
           }}
         />
       </>
@@ -212,8 +228,21 @@ export function ChatScreen({
           {error}
         </p>
       )}
+      {session.modelsLoading ? (
+        <p className="note">
+          模型加载中…{" "}
+          <Button variant="ghost" size="sm" onClick={session.cancelModels}>
+            取消
+          </Button>
+        </p>
+      ) : null}
       {session.modelsError === null ? null : (
-        <p className="note">模型列表不可用：{session.modelsError}</p>
+        <p className="note">
+          模型列表不可用：{session.modelsError}{" "}
+          <Button variant="ghost" size="sm" onClick={() => void session.refreshModels(true)}>
+            重试
+          </Button>
+        </p>
       )}
       <ChatThread
         state={state}
@@ -243,6 +272,13 @@ export function ChatScreen({
       />
     </section>
   )
+}
+
+/** 判断账号是否还在额度冷却中；冷却账号不进入启动账号菜单。 */
+function isCoolingDown(value: string | null | undefined): boolean {
+  if (value === null || value === undefined) return false
+  const until = Date.parse(value)
+  return Number.isFinite(until) && until > Date.now()
 }
 
 function BypassDialog({

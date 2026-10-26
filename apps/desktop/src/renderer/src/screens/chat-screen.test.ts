@@ -1,7 +1,7 @@
 // 负责验证聊天页：空状态、开始会话、流式文本、工具折叠、权限卡片、换号提示、取消/停止和错误提示，且页面不出现凭据。
 
 // @vitest-environment jsdom
-import { act, createElement } from "react"
+import { act, createElement, useState } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ClaudeAccountView } from "@pigclaude/contracts/claude-account"
@@ -70,6 +70,7 @@ function controller(overrides: Partial<SessionController> = {}): SessionControll
     setMode: vi.fn(async () => undefined),
     setModel: vi.fn(async () => undefined),
     refreshModels: vi.fn(async () => undefined),
+    cancelModels: vi.fn(() => undefined),
     refreshStatus: vi.fn(async () => undefined),
     clearError: vi.fn(() => undefined),
     ...overrides,
@@ -116,7 +117,8 @@ describe("chat screen", () => {
 
   it("starts a session with the selected workspace and session options", async () => {
     const session = controller()
-    await render({ session, workspace: "/Users/me/app" })
+    const onOpen = vi.fn()
+    await render({ session, workspace: "/Users/me/app", onOpen })
 
     await clickButton(button("开始会话"), "开始会话")
 
@@ -128,6 +130,59 @@ describe("chat screen", () => {
       }),
     )
     expect(session.send).not.toHaveBeenCalled()
+    expect(onOpen).toHaveBeenCalledWith("chat")
+  })
+
+  it("shows the live thread even when the route is still chat-new", async () => {
+    const onOpen = vi.fn()
+
+    function Harness() {
+      const [state, setState] = useState(createSessionState)
+      const session = controller({
+        state,
+        start: async () => {
+          setState((current) => {
+            let next = reduceSession(current, { type: "starting" })
+            next = reduceSession(next, { type: "opened", sessionId: "session-1" })
+            next = reduceSession(next, { type: "user-message", text: "改一下", turnId: "turn-1" })
+            return reduceSession(next, {
+              type: "event",
+              event: { type: "delta", text: "先看", thinking: false, blockIndex: 0 },
+            })
+          })
+          return true
+        },
+      })
+      return createElement(ChatScreen, {
+        fresh: true,
+        session,
+        workspace: "/Users/me/app",
+        workspaceOptions: ["/Users/me/app"],
+        accounts: [account("account-a", "主力 Max")],
+        onPickWorkspace: () => undefined,
+        onSelectWorkspace: () => undefined,
+        onWorkspaceUsed: () => undefined,
+        onOpen,
+        smartPunctuation: false,
+      })
+    }
+
+    await act(async () => root.render(createElement(Harness)))
+    await clickButton(button("开始会话"), "开始会话")
+
+    expect(onOpen).toHaveBeenCalledWith("chat")
+    expect(container.textContent).toContain("先看")
+    expect(container.textContent).not.toContain("先选择一个工作区")
+  })
+
+  it("offers a new session after the previous one is stopped", async () => {
+    const stopped = reduceSession(startingState(), { type: "stopped" })
+    const start = vi.fn(async () => true)
+    await render({ fresh: false, session: controller({ state: stopped, start }) })
+
+    expect(container.textContent).toContain("开始会话")
+    await clickButton(button("开始会话"), "开始会话")
+    expect(start).toHaveBeenCalledTimes(1)
   })
 
   it("renders streamed assistant text", async () => {

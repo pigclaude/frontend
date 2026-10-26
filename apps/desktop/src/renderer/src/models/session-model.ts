@@ -153,6 +153,7 @@ export function reduceSession(state: SessionUiState, action: SessionAction): Ses
     case "stopped":
       return {
         ...state,
+        started: false,
         ended: true,
         endedReason: "stopped",
         activeTurnId: null,
@@ -273,6 +274,19 @@ function updateActiveTurn(
   return { ...state, turns: [...state.turns, turn], activeTurnId: implicitId }
 }
 
+// 迟到事件优先落到最后一轮，避免在 result 之后凭空多出一轮没有提问的对话。
+function updateLatestTurn(
+  state: SessionUiState,
+  update: (turn: SessionTurn) => SessionTurn,
+): SessionUiState {
+  if (state.turns.length === 0) return state
+  const index = state.turns.length - 1
+  return {
+    ...state,
+    turns: state.turns.map((turn, current) => (current === index ? update(turn) : turn)),
+  }
+}
+
 function applyToolResult(
   state: SessionUiState,
   toolUseId: string,
@@ -365,7 +379,7 @@ function applyAccountSwitch(
 function applyError(state: SessionUiState, code: string, message: string): SessionUiState {
   const error = sessionErrorView(message.startsWith(code) ? message : `${code}: ${message}`)
   if (error.warning) {
-    return updateActiveTurn(state, (turn) => ({ ...turn, errors: [...turn.errors, error] }))
+    return updateLatestTurn(state, (turn) => ({ ...turn, errors: [...turn.errors, error] }))
   }
   const isCancelled = code === "SESSION_CANCELLED" || error.code === "SESSION_CANCELLED"
   const isTimeout = code === "PERMISSION_TIMEOUT" || error.code === "PERMISSION_TIMEOUT"
@@ -387,6 +401,7 @@ function applyEnded(
 ): SessionUiState {
   return {
     ...state,
+    started: false,
     ended: true,
     endedReason: reason,
     activeTurnId: null,

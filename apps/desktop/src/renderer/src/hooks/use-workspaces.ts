@@ -1,6 +1,7 @@
 // 负责加载最近工作区、选择文件夹并写回 <userData>/workspaces.json；页面只拿到路径列表。
 
 import { useCallback, useEffect, useState } from "react"
+import { sessionErrorText } from "../models/session-model"
 
 /** preload 暴露的最近工作区命令；测试可注入假实现。 */
 export type WorkspacesBridge = {
@@ -14,7 +15,7 @@ export type WorkspacesController = {
   loading: boolean
   error: string | null
   refresh: () => Promise<void>
-  add: (path: string) => Promise<boolean>
+  add: (path: string) => Promise<void>
   pick: () => Promise<string | null>
 }
 
@@ -50,18 +51,20 @@ export function useWorkspaces(
   }, [refresh])
 
   const add = useCallback(
-    async (path: string): Promise<boolean> => {
+    async (path: string): Promise<void> => {
       if (resolved === null || resolved === undefined) {
         setError("最近工作区不可用")
-        return false
+        throw new Error("最近工作区不可用")
       }
       try {
         setPaths(await resolved.add(path))
         setError(null)
-        return true
-      } catch {
-        setError("工作区必须是已存在的绝对路径")
-        return false
+      } catch (caught: unknown) {
+        const message = sessionErrorText(
+          caught instanceof Error ? caught.message : "工作区必须是已存在的绝对目录",
+        )
+        setError(message)
+        throw new Error(message)
       }
     },
     [resolved],
@@ -71,7 +74,8 @@ export function useWorkspaces(
     if (resolvedPick === null || resolvedPick === undefined) return null
     const path = await resolvedPick()
     if (path === null) return null
-    return (await add(path)) ? path : null
+    await add(path)
+    return path
   }, [add, resolvedPick])
 
   return { paths, loading, error, refresh, add, pick }

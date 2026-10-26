@@ -2,7 +2,7 @@
 // NODE_OPTIONS 的 --require 只在 Node 运行时生效；SDK 0.3.310 启动原生/Bun CLI 时会删除该变量，
 // 因此原生 CLI 的实际时区来源是 TZ，intl-preload.cjs 只是为 Node 运行时保留的兜底。
 
-import { chmod, mkdir, rm, writeFile } from "node:fs/promises"
+import { chmod, mkdir, readdir, rm, writeFile } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
 import { buildSessionEnv } from "@pigclaude/session-env"
 
@@ -105,6 +105,34 @@ export class SessionEnvironment {
     await rm(this.sessionDir, { recursive: true, force: true })
     this.#cleaned = true
   }
+}
+
+/**
+ * 清理本次启动前已存在的 sessions/<id> 目录，保留 keep 中列出的当前会话。
+ * 保证 sessions 父目录不存在时不报错，也不会删除父目录本身。
+ */
+export async function cleanupStaleSessionDirs(
+  userDataPath: string,
+  keep: readonly string[] = [],
+): Promise<void> {
+  const sessionsDir = join(userDataPath, "sessions")
+  let entries: string[]
+  try {
+    entries = await readdir(sessionsDir)
+  } catch (error: unknown) {
+    if (isEnoent(error)) return
+    throw error
+  }
+  const kept = new Set(keep)
+  await Promise.all(
+    entries
+      .filter((name) => !kept.has(name))
+      .map((name) => rm(join(sessionsDir, name), { recursive: true, force: true })),
+  )
+}
+
+function isEnoent(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
 }
 
 function buildEnvironment(

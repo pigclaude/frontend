@@ -4,7 +4,11 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
-import { SessionEnvironment, placeholderOAuthToken } from "./session-environment"
+import {
+  cleanupStaleSessionDirs,
+  SessionEnvironment,
+  placeholderOAuthToken,
+} from "./session-environment"
 
 const temporaryDirs: string[] = []
 const originalHome = process.env.HOME
@@ -158,6 +162,29 @@ describe("SessionEnvironment", () => {
     await expect(stat(environment.sessionDir)).rejects.toMatchObject({ code: "ENOENT" })
     await expect(stat(preloadPath)).rejects.toMatchObject({ code: "ENOENT" })
     expect((await stat(join(userDataPath, "sessions"))).isDirectory()).toBe(true)
+  })
+
+  it("removes stale session directories at startup but keeps the current session", async () => {
+    const userDataPath = await tempDir()
+    const sessionsDir = join(userDataPath, "sessions")
+    const stale = join(sessionsDir, "stale-session")
+    const active = join(sessionsDir, "active-session")
+    await mkdir(stale, { recursive: true })
+    await mkdir(active, { recursive: true })
+
+    await cleanupStaleSessionDirs(userDataPath, ["active-session"])
+    await expect(stat(stale)).rejects.toMatchObject({ code: "ENOENT" })
+    expect((await stat(active)).isDirectory()).toBe(true)
+
+    await cleanupStaleSessionDirs(userDataPath)
+    await expect(stat(active)).rejects.toMatchObject({ code: "ENOENT" })
+    expect((await stat(sessionsDir)).isDirectory()).toBe(true)
+  })
+
+  it("does nothing when the sessions directory does not exist", async () => {
+    const userDataPath = await tempDir()
+
+    await expect(cleanupStaleSessionDirs(userDataPath)).resolves.toBeUndefined()
   })
 
   it("rejects session ids and tokens that could escape the session directory or inject headers", async () => {

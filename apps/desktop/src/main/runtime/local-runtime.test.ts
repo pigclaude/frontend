@@ -156,6 +156,56 @@ describe("LocalRuntime", () => {
     expect((await h.runtime.chooser.choose({ rejectedIds: [] }))?.id).toBe("b")
     await h.cleanup()
   })
+
+  it("does not emit an event for repeated selections of the same account", async () => {
+    const h = await harness()
+    const events: LocalRuntimeEvent[] = []
+    h.runtime.subscribe((event) => events.push(event))
+    await h.runtime.start()
+    const daemon = h.daemons[0]
+    if (daemon === undefined) throw new Error("daemon not started")
+
+    daemon.options.onAccountSelected("a", undefined)
+    daemon.options.onAccountSelected("a", undefined)
+    expect(events).toEqual([{ type: "account-switched", from: null, to: "a", reason: "initial" }])
+    await h.cleanup()
+  })
+
+  it("reports a cross-request switch from the previously selected account", async () => {
+    const h = await harness()
+    const events: LocalRuntimeEvent[] = []
+    h.runtime.subscribe((event) => events.push(event))
+    await h.runtime.start()
+    const daemon = h.daemons[0]
+    if (daemon === undefined) throw new Error("daemon not started")
+
+    daemon.options.onAccountSelected("a", undefined)
+    daemon.options.onAccountSelected("b", undefined)
+    expect(events).toEqual([
+      { type: "account-switched", from: null, to: "a", reason: "initial" },
+      { type: "account-switched", from: "a", to: "b", reason: "switch" },
+    ])
+    await h.cleanup()
+  })
+
+  it("clears the quota marker when the marked account is selected again", async () => {
+    const h = await harness()
+    const events: LocalRuntimeEvent[] = []
+    h.runtime.subscribe((event) => events.push(event))
+    await h.runtime.start()
+    const daemon = h.daemons[0]
+    if (daemon === undefined) throw new Error("daemon not started")
+
+    daemon.options.onAccountSelected("a", undefined)
+    daemon.options.onAccountRejected("a", "quota")
+    daemon.options.onAccountSelected("a", undefined)
+    daemon.options.onAccountSelected("b", undefined)
+    expect(events).toEqual([
+      { type: "account-switched", from: null, to: "a", reason: "initial" },
+      { type: "account-switched", from: "a", to: "b", reason: "switch" },
+    ])
+    await h.cleanup()
+  })
 })
 
 type FakeDaemon = LocalDaemonHandle & {

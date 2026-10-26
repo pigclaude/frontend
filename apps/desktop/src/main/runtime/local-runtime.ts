@@ -90,6 +90,7 @@ export class LocalRuntime {
   #starting: { promise: Promise<void> } | null = null
   #state: LocalDaemonState = "starting"
   #preferredId: string | null = null
+  #currentAccountId: string | null = null
   #crashAttempts = 0
   #disposed = false
 
@@ -214,7 +215,7 @@ export class LocalRuntime {
       runAuthorized: <T>(operation: (signal: AbortSignal) => Promise<T>): Promise<T> =>
         this.#authorized((signal) => operation(AbortSignal.any([signal, lifecycle.abort.signal]))),
       onAccountRejected: (accountId, reason) => this.#handleRejected(accountId, reason),
-      onAccountSelected: (accountId, previousId) => this.#handleSelected(accountId, previousId),
+      onAccountSelected: (accountId) => this.#handleSelected(accountId),
       onExit: () => this.#handleDaemonExit(lifecycle),
     }
   }
@@ -277,15 +278,20 @@ export class LocalRuntime {
     })
   }
 
-  #handleSelected(accountId: string, previousId: string | undefined): void {
+  // 连续两次 choose 返回同一账号时不广播；跨请求换号用上一次实际选中的账号作为 from。
+  #handleSelected(accountId: string): void {
+    const from = this.#currentAccountId
     const reason =
-      previousId === undefined
-        ? "initial"
-        : this.#quotaRejections.has(previousId)
-          ? "quota"
+      from !== null && this.#quotaRejections.has(from)
+        ? "quota"
+        : from === null
+          ? "initial"
           : "switch"
-    if (previousId !== undefined) this.#quotaRejections.delete(previousId)
-    this.#emit({ type: "account-switched", from: previousId ?? null, to: accountId, reason })
+    this.#quotaRejections.delete(accountId)
+    if (from !== null) this.#quotaRejections.delete(from)
+    this.#currentAccountId = accountId
+    if (accountId === from) return
+    this.#emit({ type: "account-switched", from, to: accountId, reason })
   }
 
   #emit(event: LocalRuntimeEvent): void {

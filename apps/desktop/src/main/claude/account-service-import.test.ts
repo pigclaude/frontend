@@ -113,6 +113,21 @@ describe("ClaudeAccountService.importFromClaudeCli", () => {
     })
   })
 
+  it("falls back to the metadata organization type when neither profile nor CLI has one", async () => {
+    const harness = await createHarness({
+      credential: cliCredential({ subscriptionType: null }),
+      metadata: metadata({ organizationType: "claude_max" }),
+      profileError: new Error("profile unavailable"),
+    })
+
+    const view = await harness.service.importFromClaudeCli({ confirmCopy: true })
+
+    expect(view.subscriptionType).toBe("claude_max")
+    expect((await harness.store.getAccount("imported-id"))?.credential).toMatchObject({
+      subscriptionType: "claude_max",
+    })
+  })
+
   it("uses the email local part or the fixed fallback for the display name", async () => {
     const withEmail = await createHarness({
       profile: profile({ email: "local-part@example.com" }),

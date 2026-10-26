@@ -23,7 +23,11 @@ export type ClaudeCliImportIdentity = {
   rateLimitTier: string | null
 }
 
-/** 合并账号身份。保证 profile 优先，缺失字段回退 oauthAccount；rateLimitTier 顺序为 profile > metadata > CLI。 */
+/**
+ * 合并账号身份。保证 profile 优先，缺失字段回退 oauthAccount；
+ * subscriptionType 顺序为 profile > CLI > metadata.organizationType；
+ * rateLimitTier 顺序为 profile > metadata > CLI。
+ */
 export function mergeClaudeCliIdentity(
   cli: ClaudeCliCredential,
   metadata: ClaudeCliAccountMetadata | null,
@@ -33,7 +37,8 @@ export function mergeClaudeCliIdentity(
     accountUuid: profile?.accountUuid ?? metadata?.accountUuid ?? null,
     email: profile?.email ?? metadata?.emailAddress ?? null,
     organizationUuid: profile?.organizationUuid ?? metadata?.organizationUuid ?? null,
-    subscriptionType: profile?.subscriptionType ?? cli.subscriptionType,
+    subscriptionType:
+      profile?.subscriptionType ?? cli.subscriptionType ?? metadata?.organizationType ?? null,
     rateLimitTier:
       profile?.rateLimitTier ?? metadata?.organizationRateLimitTier ?? cli.rateLimitTier ?? null,
   }

@@ -169,6 +169,18 @@ describe("readClaudeCliCredential", () => {
     expect(calls[0]?.args).toContain("env-user")
   })
 
+  it("replaces a user name Claude Code would reject with the fixed fallback", async () => {
+    for (const user of ["tester name", "tester;rm", "用户", "/Users/me"]) {
+      const { execFile, calls } = fakeExec(payload())
+      await read({ execFile, user })
+      expect(calls[0]?.args, user).toContain("claude-code-user")
+    }
+
+    const fromEnv = fakeExec(payload())
+    await read({ execFile: fromEnv.execFile, user: "", env: { USER: "bad/user" } })
+    expect(fromEnv.calls[0]?.args).toContain("claude-code-user")
+  })
+
   it("returns only the claudeAiOauth whitelist", async () => {
     const stdout = JSON.stringify({
       mcpOAuth: { token: accessToken },

@@ -10,6 +10,9 @@ const defaultKeychainService = "Claude Code-credentials"
 const securityPath = "/usr/bin/security"
 const commandTimeoutMs = 60_000
 const commandMaxBuffer = 1024 * 1024
+// Claude Code 只接受这些字符作为 Keychain 账号名；不合法时使用固定回退名。
+const userPattern = /^[a-zA-Z0-9._-]+$/
+const fallbackUser = "claude-code-user"
 
 const messages = {
   notFound: "未找到 Claude CLI 凭据，请先在 Claude CLI 中登录",
@@ -100,9 +103,13 @@ const defaultExecFile: ClaudeCliExecFile = (file, args, options, callback) => {
 }
 
 function resolveUser(options: ClaudeCliCredentialReaderOptions, env: NodeJS.ProcessEnv): string {
-  if (options.user !== undefined && options.user !== "") return options.user
-  if (env.USER !== undefined && env.USER !== "") return env.USER
-  return userInfo().username
+  const candidate =
+    options.user !== undefined && options.user !== ""
+      ? options.user
+      : env.USER !== undefined && env.USER !== ""
+        ? env.USER
+        : userInfo().username
+  return userPattern.test(candidate) ? candidate : fallbackUser
 }
 
 function readKeychainValue(

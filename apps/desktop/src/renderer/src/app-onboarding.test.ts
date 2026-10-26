@@ -115,6 +115,7 @@ function installBridge(userId = "u1"): (event: ClaudeAccountEvent) => void {
       cancelAuthorization: async () => undefined,
       update: async () => account ?? view(),
       remove: async () => undefined,
+      importFromClaudeCli: async () => account ?? view(),
       subscribe: (listener) => {
         publish = listener
         return () => undefined

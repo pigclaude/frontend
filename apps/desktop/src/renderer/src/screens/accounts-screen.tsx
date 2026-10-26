@@ -3,6 +3,7 @@
 import { useState } from "react"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { Button } from "../components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog"
 import { AccountDeleteDialog, AccountProxyDialog } from "../components/account-dialogs"
 import { FingerprintDialog } from "../components/fingerprint-dialog"
 import type { PoolAccount, PoolProxy } from "../fixtures/pool-fixtures"
@@ -26,6 +27,8 @@ export type AccountsScreenProps = {
   onReauthorize?: (accountId: string) => void
   onRemove?: (accountId: string) => void
   onUpdate?: (input: ClaudeAccountUpdate) => void
+  /** 从 Claude CLI 导入账号；返回 false 表示失败，页面继续显示父组件传入的错误。 */
+  onImportFromClaudeCli?: () => Promise<boolean>
   /** 最近一次账号操作的错误，例如删除时浏览器配置目录清理失败。 */
   error?: string | null
 }
@@ -38,12 +41,15 @@ export function AccountsScreen({
   onReauthorize,
   onRemove,
   onUpdate,
+  onImportFromClaudeCli,
   error,
 }: AccountsScreenProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [proxyId, setProxyId] = useState<string | null>(null)
   const [fingerprintId, setFingerprintId] = useState<string | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
+  const [imported, setImported] = useState(false)
 
   const selected = accounts.find((account) => account.id === selectedId) ?? null
   const attention = accounts.filter((account) => account.statusKind !== "ready")
@@ -87,6 +93,17 @@ export function AccountsScreen({
           setFingerprintId(null)
         }}
       />
+      <ClaudeCliImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onConfirm={() => {
+          setImportOpen(false)
+          setImported(false)
+          void onImportFromClaudeCli?.().then((ok) => {
+            if (ok) setImported(true)
+          })
+        }}
+      />
     </>
   )
   if (selected) {
@@ -112,10 +129,20 @@ export function AccountsScreen({
           <h1>Claude 账号</h1>
           <p className="sub">需要处理的事、自动切换顺序</p>
         </div>
-        <Button variant="primary" onClick={onOpenAuthorize}>
-          添加账号
-        </Button>
+        <div className="actions">
+          <Button variant="secondary" onClick={() => setImportOpen(true)}>
+            从 Claude CLI 导入
+          </Button>
+          <Button variant="primary" onClick={onOpenAuthorize}>
+            添加账号
+          </Button>
+        </div>
       </header>
+      {imported ? (
+        <p className="note" role="status">
+          已从 Claude CLI 导入账号
+        </p>
+      ) : null}
       {error ? (
         <p className="error-text" role="alert">
           {error}
@@ -196,6 +223,40 @@ export function AccountsScreen({
       </section>
       {dialogs}
     </div>
+  )
+}
+
+/** 从 Claude CLI 导入账号的确认弹层，说明复制范围、共享会话和 Keychain 弹窗。 */
+function ClaudeCliImportDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onConfirm: () => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <div className="dialog-head">
+          <DialogTitle>从 Claude CLI 导入账号？</DialogTitle>
+          <DialogDescription>
+            将读取并复制 macOS 钥匙串中的 Claude CLI OAuth 凭据到本机账号库。原 CLI
+            凭据不会删除，两个应用共享同一登录会话。读取时 Keychain 可能弹窗，显示
+            security。导入后的账号默认使用系统网络和默认指纹。
+          </DialogDescription>
+        </div>
+        <div className="dialog-foot">
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            取消
+          </Button>
+          <Button variant="primary" onClick={onConfirm}>
+            确认导入
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 

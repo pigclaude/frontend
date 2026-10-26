@@ -2,12 +2,14 @@
 
 import { ipcMain, type IpcMainInvokeEvent } from "electron"
 import {
+  isClaudeAccountView,
   isClaudeFingerprintView,
   type ClaudeFingerprintView,
 } from "@pigclaude/contracts/claude-account"
 import type {
   AuthorizeClaudeAccountInput,
   ClaudeAccountService,
+  ImportClaudeCliAccountInput,
   UpdateClaudeAccountInput,
 } from "./account-service"
 import { ClaudeAccountError } from "./errors"
@@ -41,6 +43,15 @@ export function registerClaudeIpc(options: ClaudeIpcOptions): void {
   ipcMain.handle("pigclaude:claude-accounts-remove", async (event, value: unknown) => {
     assertTrusted(options, event)
     await requireService(options).remove(readAccountId(value))
+  })
+  ipcMain.handle("pigclaude:claude-accounts-import-cli", async (event, value: unknown) => {
+    assertTrusted(options, event)
+    const service = requireService(options)
+    const view: unknown = await service.importFromClaudeCli(readImportInput(value))
+    if (!isClaudeAccountView(view)) {
+      throw new ClaudeAccountError("UNEXPECTED_ERROR", "导入结果无效")
+    }
+    return view
   })
   ipcMain.handle("pigclaude:proxies-list", async () => {
     return (await options.getProxyService()?.list()) ?? []
@@ -113,6 +124,16 @@ export function readUpdateInput(value: unknown): UpdateClaudeAccountInput {
     ...(proxyId === undefined ? {} : { proxyId }),
     ...(fingerprint === undefined ? {} : { fingerprint: fingerprint as ClaudeFingerprintView }),
   }
+}
+
+/** 解析从 Claude CLI 导入的请求。保证 confirmCopy 必须显式为 true，displayName 省略或为非空字符串。 */
+export function readImportInput(value: unknown): ImportClaudeCliAccountInput {
+  if (!isRecord(value) || value.confirmCopy !== true) throw invalidInput()
+  if (value.displayName === undefined) return { confirmCopy: true }
+  if (typeof value.displayName !== "string" || value.displayName.trim() === "") {
+    throw invalidInput()
+  }
+  return { confirmCopy: true, displayName: value.displayName.trim() }
 }
 
 /** 解析授权请求的 proxyId。保证 null 和空字符串都表示直连，缺省或其他类型不合法。 */

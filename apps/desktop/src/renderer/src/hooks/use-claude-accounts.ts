@@ -39,6 +39,8 @@ export type ClaudeAccountsController = {
     fingerprint?: ClaudeFingerprintView
   }) => Promise<void>
   remove: (accountId: string) => Promise<void>
+  /** 从 Claude CLI 导入账号；返回是否成功，成功后已刷新列表。 */
+  importFromClaudeCli: (input: { confirmCopy: boolean; displayName?: string }) => Promise<boolean>
   saveProxy: (input: { id?: string; name: string; url: string }) => Promise<void>
   removeProxy: (id: string) => Promise<void>
   testProxy: (id: string) => Promise<void>
@@ -189,6 +191,26 @@ export function useClaudeAccounts(): ClaudeAccountsController {
     [previewBridge, wrap],
   )
 
+  const importFromClaudeCli = useCallback(
+    async (input: { confirmCopy: boolean; displayName?: string }): Promise<boolean> => {
+      setError(null)
+      try {
+        if (previewBridge !== null) {
+          await previewBridge.importFromClaudeCli(input)
+        } else {
+          await window.pigclaude?.claudeAccounts?.importFromClaudeCli(input)
+        }
+        return true
+      } catch (caught: unknown) {
+        if (mounted.current) setError(errorMessage(caught))
+        return false
+      } finally {
+        await refresh()
+      }
+    },
+    [previewBridge, refresh],
+  )
+
   const saveProxy = useCallback(
     async (input: { id?: string; name: string; url: string }) => {
       await wrap(async () => {
@@ -244,6 +266,7 @@ export function useClaudeAccounts(): ClaudeAccountsController {
     cancelAuthorization,
     update,
     remove,
+    importFromClaudeCli,
     saveProxy,
     removeProxy,
     testProxy,

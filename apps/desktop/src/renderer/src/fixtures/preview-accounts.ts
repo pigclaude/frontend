@@ -1,11 +1,12 @@
 // 负责浏览器预览用的演示账号、代理和登录流程，只用于没有桌面桥的本地预览。
 
-import type {
-  ClaudeAccountEvent,
-  ClaudeAccountView,
-  ClaudeFingerprintView,
-  EgressView,
-  ProxyView,
+import {
+  defaultClaudeFingerprint,
+  type ClaudeAccountEvent,
+  type ClaudeAccountView,
+  type ClaudeFingerprintView,
+  type EgressView,
+  type ProxyView,
 } from "@pigclaude/contracts/claude-account"
 
 const previewFingerprint: ClaudeFingerprintView = {
@@ -163,6 +164,26 @@ export function createPreviewAccountsBridge(input: {
     remove: async (accountId: string) => {
       accounts = accounts.filter((account) => account.id !== accountId)
       input.onAccounts(accounts)
+    },
+    importFromClaudeCli: async (request: { confirmCopy: boolean; displayName?: string }) => {
+      if (request.confirmCopy !== true) throw new Error("请先确认复制 Claude CLI 凭据")
+      const timestamp = new Date().toISOString()
+      const created: ClaudeAccountView = {
+        id: "preview-cli",
+        displayName: request.displayName ?? "Claude CLI 账号",
+        enabled: true,
+        email: "cli•••@example.com",
+        subscriptionType: "pro",
+        needsReauth: false,
+        credentialExpiresAt: Date.now() + 60 * 60 * 1_000,
+        proxyId: null,
+        fingerprint: defaultClaudeFingerprint(),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }
+      accounts = [...accounts.filter((account) => account.id !== created.id), created]
+      input.onAccounts(accounts)
+      return created
     },
   }
 }

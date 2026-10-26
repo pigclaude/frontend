@@ -64,6 +64,10 @@ export type PigclaudeBridge = {
       fingerprint?: ClaudeFingerprintView
     }) => Promise<ClaudeAccountView>
     remove: (accountId: string) => Promise<void>
+    importFromClaudeCli: (input: {
+      confirmCopy: boolean
+      displayName?: string
+    }) => Promise<ClaudeAccountView>
     subscribe: (listener: (event: ClaudeAccountEvent) => void) => () => void
   }
   proxies: {
@@ -128,6 +132,11 @@ const bridge: PigclaudeBridge = {
       return value
     },
     remove: (accountId) => ipcRenderer.invoke("pigclaude:claude-accounts-remove", accountId),
+    importFromClaudeCli: async (input) => {
+      const value: unknown = await ipcRenderer.invoke("pigclaude:claude-accounts-import-cli", input)
+      if (!isClaudeAccountView(value)) throw new Error("INVALID_CLAUDE_ACCOUNT_RESPONSE")
+      return value
+    },
     subscribe: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, value: unknown) => {
         if (isClaudeAccountEvent(value)) listener(value)

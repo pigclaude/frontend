@@ -350,6 +350,46 @@ describe("accounts screen", () => {
     expect(container.textContent).toContain("工作 Max")
   })
 
+  it("imports from Claude CLI only after the confirmation dialog", async () => {
+    const onImportFromClaudeCli = vi.fn(async () => true)
+    await render([], { onImportFromClaudeCli })
+
+    await clickButton(button("从 Claude CLI 导入"), "从 Claude CLI 导入")
+    const copy = dialog()?.textContent ?? ""
+    expect(copy).toContain("读取并复制 macOS 钥匙串中的 Claude CLI OAuth")
+    expect(copy).toContain("原 CLI 凭据不会删除")
+    expect(copy).toContain("两个应用共享同一登录会话")
+    expect(copy).toContain("security")
+    expect(copy).toContain("系统网络和默认指纹")
+    expect(onImportFromClaudeCli).not.toHaveBeenCalled()
+
+    await clickButton(button("取消", dialog() ?? document.body), "取消")
+    expect(onImportFromClaudeCli).not.toHaveBeenCalled()
+
+    await clickButton(button("从 Claude CLI 导入"), "从 Claude CLI 导入")
+    await clickButton(button("确认导入", dialog() ?? document.body), "确认导入")
+    expect(onImportFromClaudeCli).toHaveBeenCalledTimes(1)
+    await act(async () => undefined)
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("已从 Claude CLI 导入账号")
+  })
+
+  it("shows the fixed error and no success note when the CLI import fails", async () => {
+    const onImportFromClaudeCli = vi.fn(async () => false)
+    await render([], { onImportFromClaudeCli })
+    await clickButton(button("从 Claude CLI 导入"), "从 Claude CLI 导入")
+    await clickButton(button("确认导入", dialog() ?? document.body), "确认导入")
+    await act(async () => undefined)
+    expect(container.querySelector('[role="status"]')).toBeNull()
+
+    await render([], {
+      onImportFromClaudeCli,
+      error: "Claude CLI 凭据已过期，请先在 Claude CLI 中刷新",
+    })
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+      "Claude CLI 凭据已过期，请先在 Claude CLI 中刷新",
+    )
+  })
+
   it("never puts credentials into the page or localStorage", async () => {
     await render([ready, expired])
     await openAccount("工作 Max")

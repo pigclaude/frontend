@@ -38,9 +38,35 @@ function remoteError(channel: string, message: string): Error {
 function installBridge(overrides: {
   remove?: (accountId: string) => Promise<void>
   save?: (input: { name: string; url: string }) => Promise<ProxyView>
-}): { list: ReturnType<typeof vi.fn> } {
+  importFromClaudeCli?: (input: {
+    confirmCopy: boolean
+    displayName?: string
+  }) => Promise<ClaudeAccountView>
+}): { list: ReturnType<typeof vi.fn>; importFromClaudeCli: ReturnType<typeof vi.fn> } {
   const list = vi.fn(async (): Promise<ClaudeAccountView[]> => [])
   const proxy: ProxyView = { id: "p1", name: "LA-01", url: "http://127.0.0.1:1", lastTest: null }
+  const imported: ClaudeAccountView = {
+    id: "acc-imported",
+    displayName: "CLI 账号",
+    enabled: true,
+    email: "cli@example.com",
+    subscriptionType: "pro",
+    needsReauth: false,
+    credentialExpiresAt: Date.now() + 60_000,
+    proxyId: null,
+    fingerprint: {
+      seed: "",
+      brand: "Chrome",
+      platform: "macos",
+      lang: "",
+      timezone: "",
+      canvasNoise: "",
+      clientRectsNoise: "",
+    },
+    createdAt: "2026-10-26T00:00:00.000Z",
+    updatedAt: "2026-10-26T00:00:00.000Z",
+  }
+  const importFromClaudeCli = vi.fn(overrides.importFromClaudeCli ?? (async () => imported))
   window.pigclaude = {
     platform: "darwin",
     claudeAccounts: {
@@ -53,6 +79,7 @@ function installBridge(overrides: {
         throw new Error("not used")
       },
       remove: overrides.remove ?? (async () => undefined),
+      importFromClaudeCli,
       subscribe: () => () => undefined,
     },
     proxies: {
@@ -63,7 +90,7 @@ function installBridge(overrides: {
     },
     egress: { check: async () => ({ ok: true, ip: "203.0.113.42" }) },
   }
-  return { list }
+  return { list, importFromClaudeCli }
 }
 
 describe("useClaudeAccounts errors", () => {
@@ -110,5 +137,41 @@ describe("useClaudeAccounts errors", () => {
     await act(async () => controller?.remove("acc-1"))
 
     expect(controller?.error).toBe("账号操作失败")
+  })
+
+  it("imports from Claude CLI and refreshes the list", async () => {
+    const { list, importFromClaudeCli } = installBridge({})
+    await act(async () => root.render(createElement(Probe)))
+    const listCalls = list.mock.calls.length
+
+    let imported = false
+    await act(async () => {
+      imported = (await controller?.importFromClaudeCli({ confirmCopy: true })) ?? false
+    })
+
+    expect(imported).toBe(true)
+    expect(importFromClaudeCli).toHaveBeenCalledWith({ confirmCopy: true })
+    expect(list.mock.calls.length).toBeGreaterThan(listCalls)
+    expect(controller?.error).toBeNull()
+  })
+
+  it("returns false and shows the fixed message when the import fails", async () => {
+    installBridge({
+      importFromClaudeCli: async () => {
+        throw remoteError(
+          "pigclaude:claude-accounts-import-cli",
+          "Claude CLI 凭据已过期，请先在 Claude CLI 中刷新",
+        )
+      },
+    })
+    await act(async () => root.render(createElement(Probe)))
+
+    let imported = true
+    await act(async () => {
+      imported = (await controller?.importFromClaudeCli({ confirmCopy: true })) ?? true
+    })
+
+    expect(imported).toBe(false)
+    expect(controller?.error).toBe("Claude CLI 凭据已过期，请先在 Claude CLI 中刷新")
   })
 })

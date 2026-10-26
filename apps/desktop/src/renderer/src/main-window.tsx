@@ -230,6 +230,7 @@ export function MainWindow({
               onReauthorize={(accountId) => onReauthorizeAccount?.(accountId) ?? onOpenAuthorize()}
               onRemove={(accountId) => void pool.remove(accountId)}
               onUpdate={(input) => void pool.update(input)}
+              onImportFromClaudeCli={() => pool.importFromClaudeCli({ confirmCopy: true })}
             />
           </ScrollPanel>
         ) : null}

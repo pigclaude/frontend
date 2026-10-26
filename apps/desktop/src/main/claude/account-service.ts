@@ -11,6 +11,17 @@ import type { AccountRecord, ClaudeCredential, LocalStore } from "@pigclaude/loc
 import type { EgressResult } from "@pigclaude/login-gate/egress-check"
 import { ProxyBridgeError, type ProxyBridge } from "@pigclaude/login-gate/proxy-bridge"
 import { ProxyAgent } from "undici"
+import {
+  assertClaudeCliIdentity,
+  buildClaudeCliAccountRecord,
+  buildClaudeCliCredential,
+  claudeCliDisplayName,
+  claudeCliImportMessages,
+  findClaudeCliAccount,
+  mergeClaudeCliIdentity,
+} from "./claude-cli-import"
+import { readClaudeCliAccountMetadata, type ClaudeCliAccountMetadata } from "./cli-account-metadata"
+import { readClaudeCliCredential, type ClaudeCliCredential } from "./cli-credential-reader"
 import { ClaudeAccountError } from "./errors"
 import { BrowserLaunchError, type FingerprintChromiumAdapter } from "./fingerprint-chromium"
 import { ensureFingerprint } from "./fingerprint-args"
@@ -42,6 +53,12 @@ export type UpdateClaudeAccountInput = {
   fingerprint?: ClaudeFingerprintView
 }
 
+/** 从 Claude CLI 导入账号的输入。confirmCopy 必须为 true，表示用户已确认复制凭据。 */
+export type ImportClaudeCliAccountInput = {
+  confirmCopy: boolean
+  displayName?: string
+}
+
 /** 账号服务依赖。所有外部副作用都通过端口注入。 */
 export type ClaudeAccountServiceDeps = {
   store: LocalStore
@@ -60,6 +77,10 @@ export type ClaudeAccountServiceDeps = {
     checkUrl: string
   }) => Promise<EgressResult>
   ensureMembership: () => Promise<void>
+  /** 读取 Claude CLI Keychain 凭据；测试注入假实现，避免访问真实钥匙串。 */
+  readCliCredential?: () => Promise<ClaudeCliCredential>
+  /** 读取 Claude CLI 的 oauthAccount 元数据；返回 null 表示文件缺失或不可读。 */
+  readCliAccountMetadata?: () => Promise<ClaudeCliAccountMetadata | null>
   egressCheckUrl?: string
   now?: () => number
   id?: () => string
@@ -77,6 +98,8 @@ export class ClaudeAccountService {
   readonly #now: () => number
   readonly #id: () => string
   readonly #egressCheckUrl: string
+  readonly #readCliCredential: () => Promise<ClaudeCliCredential>
+  readonly #readCliAccountMetadata: () => Promise<ClaudeCliAccountMetadata | null>
   #active: ActiveAuthorization | null = null
 
   /** 创建绑定到账号库、fingerprint-chromium、OAuth 和出口检查端口的服务。 */
@@ -85,6 +108,11 @@ export class ClaudeAccountService {
     this.#now = deps.now ?? Date.now
     this.#id = deps.id ?? randomUUID
     this.#egressCheckUrl = deps.egressCheckUrl ?? defaultEgressCheckUrl
+    // v1 只读默认 Keychain 项和默认 ~/.claude.json，不跟随 CLAUDE_CONFIG_DIR 的多候选。
+    this.#readCliCredential =
+      deps.readCliCredential ?? (() => readClaudeCliCredential({ configDir: null }))
+    this.#readCliAccountMetadata =
+      deps.readCliAccountMetadata ?? (() => readClaudeCliAccountMetadata({ configDir: null }))
   }
 
   /** 返回脱敏账号列表。保证不包含 token。 */
@@ -211,6 +239,48 @@ export class ClaudeAccountService {
     }
   }
 
+  /**
+   * 从 Claude CLI 导入账号。保证只复制 OAuth 凭据，不写回或删除 CLI 凭据；
+   * 命中已有账号时保留 id、指纹、代理、启用状态、冷却时间和创建时间。
+   */
+  async importFromClaudeCli(input: ImportClaudeCliAccountInput): Promise<ClaudeAccountView> {
+    if (input.confirmCopy !== true) {
+      throw new ClaudeAccountError("INVALID_INPUT", claudeCliImportMessages.confirmCopy)
+    }
+    const fallbackId = this.#id()
+    let eventId = fallbackId
+    try {
+      await this.#ensureMembership()
+      const cli = await this.#readCliCredential()
+      const metadata = await this.#readCliAccountMetadata()
+      if (!Number.isFinite(cli.expiresAt) || cli.expiresAt <= this.#now()) {
+        throw new ClaudeAccountError("CLI_CREDENTIAL_EXPIRED", claudeCliImportMessages.expired)
+      }
+      const profile = await this.#readProfile(cli.accessToken)
+      const identity = mergeClaudeCliIdentity(cli, metadata, profile)
+      const existing = findClaudeCliAccount(await this.#deps.store.listAccounts(), identity)
+      eventId = existing?.id ?? fallbackId
+      assertClaudeCliIdentity(existing, identity)
+      const credential = buildClaudeCliCredential(cli, identity, existing?.credential ?? null)
+      const record = buildClaudeCliAccountRecord({
+        existing,
+        newId: fallbackId,
+        displayName: claudeCliDisplayName(input.displayName ?? "", metadata, identity.email),
+        credential,
+        browserProfileDir: existing?.browserProfileDir ?? this.#deps.browser.profileDir(fallbackId),
+        now: new Date(this.#now()).toISOString(),
+      })
+      this.#emit(record.id, "saving")
+      await this.#deps.store.saveAccount(record)
+      this.#emit(record.id, "authorized")
+      return toView(record)
+    } catch (error: unknown) {
+      const mapped = mapError(error)
+      this.#emit(eventId, phaseFor(mapped.code), mapped.code, mapped.message)
+      throw mapped
+    }
+  }
+
   /** 取消正在等待的浏览器授权。保证授权 promise 以 cancelled 结束。 */
   async cancel(): Promise<void> {
     const active = this.#active
@@ -271,6 +341,15 @@ export class ClaudeAccountService {
   async dispose(): Promise<void> {
     await this.cancel()
     await this.#deps.browser.stopAll()
+  }
+
+  /** 读取 profile 用于校正身份。保证失败时返回 null，不影响导入。 */
+  async #readProfile(accessToken: string): Promise<ClaudeOAuthProfile | null> {
+    try {
+      return await this.#deps.oauth.readProfile({ accessToken })
+    } catch {
+      return null
+    }
   }
 
   async #ensureMembership(): Promise<void> {

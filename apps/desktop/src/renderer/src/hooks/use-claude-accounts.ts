@@ -198,7 +198,9 @@ export function useClaudeAccounts(): ClaudeAccountsController {
         if (previewBridge !== null) {
           await previewBridge.importFromClaudeCli(input)
         } else {
-          await window.pigclaude?.claudeAccounts?.importFromClaudeCli(input)
+          const importFromClaudeCli = window.pigclaude?.claudeAccounts?.importFromClaudeCli
+          if (importFromClaudeCli === undefined) throw new Error("桌面账号服务不可用")
+          await importFromClaudeCli(input)
         }
         return true
       } catch (caught: unknown) {

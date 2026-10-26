@@ -155,6 +155,22 @@ describe("useClaudeAccounts errors", () => {
     expect(controller?.error).toBeNull()
   })
 
+  it("returns false when the bridge exists but has no import command", async () => {
+    installBridge({})
+    if (window.pigclaude?.claudeAccounts === undefined) throw new Error("bridge missing")
+    ;(window.pigclaude.claudeAccounts as unknown as Record<string, unknown>).importFromClaudeCli =
+      undefined
+    await act(async () => root.render(createElement(Probe)))
+
+    let imported = true
+    await act(async () => {
+      imported = (await controller?.importFromClaudeCli({ confirmCopy: true })) ?? true
+    })
+
+    expect(imported).toBe(false)
+    expect(controller?.error).toBe("桌面账号服务不可用")
+  })
+
   it("returns false and shows the fixed message when the import fails", async () => {
     installBridge({
       importFromClaudeCli: async () => {

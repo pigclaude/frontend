@@ -259,7 +259,8 @@ function ClaudeCliImportDialog({
           <DialogTitle>从 Claude CLI 导入账号？</DialogTitle>
           <DialogDescription>
             将读取并复制 macOS 钥匙串中的 Claude CLI OAuth 凭据到本机账号库。原 CLI
-            凭据不会删除，两个应用共享同一登录会话。读取时 Keychain 可能弹窗，显示
+            凭据不会删除，两个应用共享同一登录会话。两个应用共用同一个 refresh
+            token，任一方刷新都可能让另一方需要重新登录或重新导入。读取时 Keychain 可能弹窗，显示
             security。导入后的账号默认使用系统网络和默认指纹。
           </DialogDescription>
         </div>

@@ -359,6 +359,8 @@ describe("accounts screen", () => {
     expect(copy).toContain("读取并复制 macOS 钥匙串中的 Claude CLI OAuth")
     expect(copy).toContain("原 CLI 凭据不会删除")
     expect(copy).toContain("两个应用共享同一登录会话")
+    expect(copy).toContain("两个应用共用同一个 refresh token")
+    expect(copy).toContain("任一方刷新都可能让另一方需要重新登录或重新导入")
     expect(copy).toContain("security")
     expect(copy).toContain("系统网络和默认指纹")
     expect(onImportFromClaudeCli).not.toHaveBeenCalled()
@@ -404,6 +406,8 @@ describe("accounts screen", () => {
     await clickButton(button("确认导入", dialog() ?? document.body), "确认导入")
     await act(async () => undefined)
     expect(container.querySelector('[role="status"]')).toBeNull()
+    expect(button("从 Claude CLI 导入")?.disabled).toBe(false)
+    expect(button("从 Claude CLI 导入")?.getAttribute("aria-busy")).toBe("false")
 
     await render([], {
       onImportFromClaudeCli,

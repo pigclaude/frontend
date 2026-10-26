@@ -1,4 +1,4 @@
-// 负责直接启动 fingerprint-chromium 内核：每个账号一个 user-data-dir，CLI 传指纹和代理。
+// 负责直接启动 fingerprint-chromium 内核：每个账号一个 user-data-dir，CLI 传指纹，代理参数可选。
 
 import { spawn, type ChildProcess } from "node:child_process"
 import { constants } from "node:fs"

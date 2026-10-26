@@ -131,7 +131,7 @@ function ProxyStep({ onAdded, onSkip }: { onAdded: () => void; onSkip: () => voi
         onChange={(event) => setAddress(event.target.value)}
       />
       <p className="onboarding-hint" id="onboarding-proxy-hint">
-        支持 http、https、socks5，添加前会先测试一次；也可以跳过，让账号使用系统网络
+        支持 http、https，添加前会先测试一次；也可以跳过，让账号使用系统网络
       </p>
       <StepFoot onSkip={onSkip}>
         <Button variant="primary" size="lg" type="submit" disabled={!ready}>

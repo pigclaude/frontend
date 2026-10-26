@@ -71,7 +71,7 @@ type ActiveAuthorization = {
   callback: OAuthCallbackServer
 }
 
-/** Claude 账号服务。保证先核对出口再打开授权页，凭据只在全部成功后写入本机。 */
+/** Claude 账号服务。保证绑定代理时先核对出口；未绑定代理时直接使用系统网络，凭据只在全部成功后写入本机。 */
 export class ClaudeAccountService {
   readonly #deps: ClaudeAccountServiceDeps
   readonly #now: () => number

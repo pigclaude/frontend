@@ -103,11 +103,8 @@ export function SessionSettings() {
         >
           <LockedValue>始终关闭</LockedValue>
         </SettingRow>
-        <SettingRow
-          title="时区与语言"
-          description="已绑定代理时跟随代理出口，未绑定代理时使用系统网络"
-        >
-          <LockedValue>跟随网络出口</LockedValue>
+        <SettingRow title="时区与语言" description="时区与语言来自账号指纹">
+          <LockedValue>跟随账号指纹</LockedValue>
         </SettingRow>
       </SettingSection>
     </SettingPage>

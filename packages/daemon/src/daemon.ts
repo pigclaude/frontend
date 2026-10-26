@@ -119,7 +119,7 @@ export class LocalDaemon {
         const stop = () => response.destroy()
         signal.addEventListener("abort", stop, { once: true })
         try {
-          // 外层兜底只承担代理连接失败；直连失败在下面单独写成 upstream_unavailable。
+          // 未分类错误的兜底；直连错误在 #forward 内单独分类。
           await this.#forward(request, response).catch(() =>
             writeErrorResponse(response, 503, "proxy_unavailable"),
           )

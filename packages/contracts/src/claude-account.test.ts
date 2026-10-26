@@ -2,9 +2,11 @@
 
 import { describe, expect, it } from "vitest"
 import {
+  defaultClaudeFingerprint,
   isAccountSelectable,
   isClaudeAccountEvent,
   isClaudeAccountView,
+  isClaudeFingerprintView,
   isProxyView,
   type ClaudeAccountView,
 } from "./claude-account"
@@ -24,8 +26,8 @@ const account: ClaudeAccountView = {
     platform: "macos",
     lang: "en-US",
     timezone: "America/Los_Angeles",
-    canvasNoise: true,
-    clientRectsNoise: true,
+    canvasNoise: "1",
+    clientRectsNoise: "1",
   },
   createdAt: "2026-10-21T00:00:00.000Z",
   updatedAt: "2026-10-21T00:00:00.000Z",
@@ -128,5 +130,93 @@ describe("claude account contracts", () => {
         message: null,
       }),
     ).toBe(false)
+  })
+})
+
+describe("fingerprint contract", () => {
+  const legacyFingerprint = {
+    seed: "123456",
+    brand: "Chrome",
+    platform: "macos",
+    lang: "en-US",
+    timezone: "America/Los_Angeles",
+    canvasNoise: "",
+    clientRectsNoise: "0",
+  }
+
+  it("accepts a legacy seven-field view and an extended view", () => {
+    expect(isClaudeFingerprintView(legacyFingerprint)).toBe(true)
+    expect(
+      isClaudeFingerprintView({
+        ...legacyFingerprint,
+        brandVersion: "144.0.7559.0",
+        platformVersion: "15.0.0",
+        acceptLang: "en-US,en",
+        resolution: "1920,1080",
+        customResolution: "2560,1440",
+        hardwareConcurrency: "8",
+        webrtcPolicy: "disable_non_proxied_udp",
+        disableSpoofing: ["font", "audio", "canvas", "clientrects", "gpu"],
+        colorDepth: "24",
+        deviceMemory: "8",
+        touchPoints: "5",
+        doNotTrack: "1",
+        mediaDevices: "1",
+        audioNoise: "1",
+        fontList: "Arial",
+        webglVendor: "Google Inc.",
+        webglRenderer: "ANGLE",
+        unknownArgs: ["--disable-gpu"],
+      }),
+    ).toBe(true)
+  })
+
+  it("allows unknown keys and lets normalization drop them", () => {
+    expect(isClaudeFingerprintView({ ...legacyFingerprint, futureField: true })).toBe(true)
+  })
+
+  it("rejects wrong required and optional types or enum values", () => {
+    expect(isClaudeFingerprintView({ ...legacyFingerprint, seed: 123456 })).toBe(false)
+    expect(isClaudeFingerprintView({ ...legacyFingerprint, canvasNoise: true })).toBe(false)
+    expect(isClaudeFingerprintView({ ...legacyFingerprint, clientRectsNoise: "2" })).toBe(false)
+    expect(isClaudeFingerprintView({ ...legacyFingerprint, brandVersion: 144 })).toBe(false)
+    expect(isClaudeFingerprintView({ ...legacyFingerprint, webrtcPolicy: "unknown" })).toBe(false)
+    expect(isClaudeFingerprintView({ ...legacyFingerprint, disableSpoofing: "font" })).toBe(false)
+    expect(
+      isClaudeFingerprintView({ ...legacyFingerprint, disableSpoofing: ["font", "webgl"] }),
+    ).toBe(false)
+    expect(isClaudeFingerprintView({ ...legacyFingerprint, unknownArgs: ["--foo", 1] })).toBe(false)
+    expect(isClaudeFingerprintView({ ...legacyFingerprint, unknownArgs: "--foo" })).toBe(false)
+    expect(isClaudeFingerprintView(null)).toBe(false)
+  })
+
+  it("provides AntBrowser defaults without language, timezone or seed", () => {
+    expect(defaultClaudeFingerprint()).toEqual({
+      seed: "",
+      brand: "Chrome",
+      platform: "macos",
+      lang: "",
+      timezone: "",
+      canvasNoise: "",
+      clientRectsNoise: "",
+      brandVersion: "",
+      platformVersion: "",
+      acceptLang: "",
+      resolution: "",
+      customResolution: "",
+      hardwareConcurrency: "",
+      webrtcPolicy: "",
+      disableSpoofing: [],
+      colorDepth: "",
+      deviceMemory: "",
+      touchPoints: "",
+      doNotTrack: "",
+      mediaDevices: "",
+      audioNoise: "",
+      fontList: "",
+      webglVendor: "",
+      webglRenderer: "",
+      unknownArgs: [],
+    })
   })
 })

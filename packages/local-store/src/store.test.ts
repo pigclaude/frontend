@@ -4,16 +4,66 @@ import { mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
-import { LocalStore, type AccountRecord, type ClaudeCredential, type IpProxy } from "./store.ts"
+import {
+  LocalStore,
+  normalizeFingerprint,
+  type AccountRecord,
+  type ClaudeCredential,
+  type FingerprintConfig,
+  type IpProxy,
+} from "./store.ts"
 
-const fingerprint = {
+const fingerprint: FingerprintConfig = {
   seed: "123456",
   brand: "Chrome",
   platform: "macos",
   lang: "en-US",
   timezone: "America/Los_Angeles",
-  canvasNoise: true,
-  clientRectsNoise: true,
+  canvasNoise: "1",
+  clientRectsNoise: "1",
+}
+
+const extendedFingerprint: FingerprintConfig = {
+  ...fingerprint,
+  brandVersion: "144.0.7559.0",
+  platformVersion: "15.0.0",
+  acceptLang: "en-US,en",
+  resolution: "1920,1080",
+  customResolution: "2560,1440",
+  hardwareConcurrency: "8",
+  webrtcPolicy: "disable_non_proxied_udp",
+  disableSpoofing: ["font", "audio", "canvas"],
+  colorDepth: "24",
+  deviceMemory: "8",
+  touchPoints: "5",
+  doNotTrack: "1",
+  mediaDevices: "1",
+  audioNoise: "1",
+  fontList: "Arial",
+  webglVendor: "Google Inc.",
+  webglRenderer: "ANGLE",
+  unknownArgs: ["--disable-gpu", "--js-flags=--max-old-space-size=4096"],
+}
+
+const emptyExtras = {
+  brandVersion: "",
+  platformVersion: "",
+  acceptLang: "",
+  resolution: "",
+  customResolution: "",
+  hardwareConcurrency: "",
+  webrtcPolicy: "" as const,
+  disableSpoofing: [] as [],
+  colorDepth: "",
+  deviceMemory: "",
+  touchPoints: "",
+  doNotTrack: "",
+  mediaDevices: "",
+  audioNoise: "",
+  fontList: "",
+  webglVendor: "",
+  webglRenderer: "",
+  unknownArgs: [] as string[],
 }
 
 const credential: ClaudeCredential = {
@@ -84,7 +134,7 @@ describe("LocalStore", () => {
       credential: null,
       needsReauth: true,
       proxyId: "p1",
-      fingerprint,
+      fingerprint: { ...fingerprint, ...emptyExtras },
       browserProfileDir: "",
       exhaustedUntil: null,
       createdAt: "",
@@ -248,6 +298,150 @@ describe("LocalStore", () => {
     expect(raw).toContain('"proxyId":null')
     const again = new LocalStore(dir)
     expect((await again.getAccount("acc-1"))?.proxyId).toBeNull()
+  })
+
+  it("normalizes old boolean noise and fills new defaults for seven-field records", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "store-"))
+    await writeFile(
+      join(dir, "accounts.json"),
+      JSON.stringify([
+        {
+          ...account("acc-old"),
+          fingerprint: {
+            ...fingerprint,
+            canvasNoise: true,
+            clientRectsNoise: false,
+            unknownField: "drop-me",
+          },
+        },
+      ]),
+      "utf8",
+    )
+    const accountRecord = await new LocalStore(dir).getAccount("acc-old")
+    expect(accountRecord?.fingerprint).toEqual({
+      ...fingerprint,
+      canvasNoise: "1",
+      clientRectsNoise: "0",
+      ...emptyExtras,
+    })
+  })
+
+  it("round-trips every extended fingerprint field after reopening", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "store-"))
+    const record = { ...account("acc-full"), fingerprint: extendedFingerprint }
+    await new LocalStore(dir).saveAccount(record)
+    expect(await new LocalStore(dir).getAccount("acc-full")).toEqual(record)
+  })
+
+  it("filters invalid optional fingerprint values without failing the file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "store-"))
+    await writeFile(
+      join(dir, "accounts.json"),
+      JSON.stringify([
+        {
+          ...account("acc-junk"),
+          fingerprint: {
+            ...fingerprint,
+            brandVersion: 144,
+            platformVersion: null,
+            hardwareConcurrency: ["8"],
+            webrtcPolicy: "bogus",
+            disableSpoofing: ["font", "webgl", "font", "audio", 3],
+            unknownArgs: ["--foo", 2, null, "--bar"],
+            extraKey: "drop-me",
+          },
+        },
+      ]),
+      "utf8",
+    )
+    const accountRecord = await new LocalStore(dir).getAccount("acc-junk")
+    expect(accountRecord?.fingerprint).toEqual({
+      ...fingerprint,
+      ...emptyExtras,
+      disableSpoofing: ["font", "audio"],
+      unknownArgs: ["--foo", "--bar"],
+    })
+    expect(accountRecord?.fingerprint).not.toHaveProperty("extraKey")
+  })
+
+  it("writes a normalized seven-field record back so it survives reopening", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "store-"))
+    await writeFile(
+      join(dir, "accounts.json"),
+      JSON.stringify([
+        {
+          ...account("acc-old"),
+          fingerprint: { ...fingerprint, canvasNoise: true, clientRectsNoise: true },
+        },
+      ]),
+      "utf8",
+    )
+    const store = new LocalStore(dir)
+    const loaded = await store.getAccount("acc-old")
+    expect(loaded).not.toBeNull()
+    if (loaded === null) return
+    await store.saveAccount(loaded)
+    expect(await new LocalStore(dir).getAccount("acc-old")).toEqual(loaded)
+  })
+
+  it("reads legacy v2 accounts through the same fingerprint normalization", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "store-"))
+    await writeFile(
+      join(dir, "accounts.json"),
+      JSON.stringify([
+        {
+          schemaVersion: 2,
+          id: "acc-v2",
+          displayName: "旧账号",
+          enabled: true,
+          credential,
+          needsReauth: false,
+          proxyId: "p1",
+          fingerprint: { ...fingerprint, canvasNoise: false, clientRectsNoise: true },
+          antProfileId: "ant-1",
+          antLaunchCode: "PIGCLAUDE_ACC-V2",
+          exhaustedUntil: null,
+          createdAt: "2026-10-21T00:00:00.000Z",
+          updatedAt: "2026-10-21T00:00:00.000Z",
+        },
+      ]),
+      "utf8",
+    )
+    const accountRecord = await new LocalStore(dir).getAccount("acc-v2")
+    expect(accountRecord).toMatchObject({
+      schemaVersion: 3,
+      credential,
+      proxyId: "p1",
+      browserProfileDir: "",
+      fingerprint: {
+        ...fingerprint,
+        canvasNoise: "0",
+        clientRectsNoise: "1",
+        ...emptyExtras,
+      },
+    })
+  })
+})
+
+describe("normalizeFingerprint", () => {
+  it("uses the fallback seed when the stored seed is missing", () => {
+    const withoutSeed = { ...fingerprint, seed: undefined }
+    expect(normalizeFingerprint(withoutSeed, "acc-1")).toMatchObject({ seed: "acc-1" })
+    expect(normalizeFingerprint({ ...withoutSeed, seed: 42 }, "acc-2")).toMatchObject({
+      seed: "acc-2",
+    })
+  })
+
+  it("rejects values that are not a fingerprint record", () => {
+    expect(normalizeFingerprint(null)).toBeNull()
+    expect(normalizeFingerprint([])).toBeNull()
+    expect(normalizeFingerprint({ ...fingerprint, brand: 42 })).toBeNull()
+    expect(normalizeFingerprint({ ...fingerprint, timezone: undefined })).toBeNull()
+  })
+
+  it("maps every unknown noise value to the empty tri-state", () => {
+    expect(normalizeFingerprint({ ...fingerprint, canvasNoise: "yes" })?.canvasNoise).toBe("")
+    expect(normalizeFingerprint({ ...fingerprint, clientRectsNoise: 1 })?.clientRectsNoise).toBe("")
   })
 })
 

@@ -3,9 +3,19 @@
 import { randomUUID } from "node:crypto"
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { basename, dirname, join } from "node:path"
-import { parseAccountRecord, parseProxy, type AccountRecord, type IpProxy } from "./schema"
+import { normalizeFingerprint, parseAccountRecord, parseProxy } from "./schema"
+import type { AccountRecord, IpProxy } from "./schema"
 
-export type { AccountRecord, FingerprintConfig, IpProxy, ProxyTestResult } from "./schema"
+export { normalizeFingerprint }
+export type {
+  AccountRecord,
+  FingerprintConfig,
+  FingerprintNoise,
+  FingerprintSpoofingCategory,
+  FingerprintWebrtcPolicy,
+  IpProxy,
+  ProxyTestResult,
+} from "./schema"
 export type { ClaudeCredential } from "./credential"
 
 /** 账号局部更新或按当前记录计算新记录；updater 返回 null 表示跳过这次写入。 */

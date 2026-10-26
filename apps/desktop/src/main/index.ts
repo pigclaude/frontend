@@ -252,17 +252,18 @@ async function setupAuthorization(): Promise<void> {
   const deviceIdentity = new DeviceIdentityService()
   await deviceIdentity.read()
   callbackServer = await createCallbackServer(handleCallbackUrl)
+  const localStore = new LocalStore(join(app.getPath("userData"), "local"))
   const composition = createDesktopComposition({
     authOrigin,
     apiOptions: { baseUrl: rustBaseUrl, authorizationOrigin: authOrigin },
     vault,
     deviceIdentity,
     onMembershipView: sendMembershipView,
+    localStore,
   })
   desktopComposition = composition
   authorizationService = composition.authorizationService
 
-  const localStore = new LocalStore(join(app.getPath("userData"), "local"))
   const browser = new FingerprintChromiumAdapter({
     profilesRoot: join(app.getPath("userData"), "local", "browser-profiles"),
     binaryPath: process.env["PIGCLAUDE_FINGERPRINT_CHROMIUM_BIN"],

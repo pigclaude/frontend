@@ -56,6 +56,45 @@ describe("account callbacks", () => {
     }
   })
 
+  it("awaits an asynchronous chooser before forwarding", async () => {
+    const seen: Array<{ path: string; authorization: string | undefined }> = []
+    const proxy = await startRecordingProxy(seen)
+    let settled = false
+    const daemon = new LocalDaemon({
+      port: 0,
+      sessionToken,
+      runAuthorized: async (operation) => operation(new AbortController().signal),
+      choose: async () => {
+        await Promise.resolve()
+        settled = true
+        return { id: "a", authorization: "token-a", proxyUrl: proxy.url }
+      },
+    })
+    await daemon.start()
+    try {
+      const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/messages`, {
+        method: "POST",
+        headers: { "x-pigclaude-session": sessionToken },
+        body: "{}",
+      })
+      expect(await response.text()).toBe("ok")
+      expect(settled).toBe(true)
+      expect(seen).toEqual([
+        {
+          path: "/v1/messages",
+          authorization: "Bearer token-a",
+          beta: "oauth-2025-04-20",
+        },
+      ])
+    } finally {
+      try {
+        await daemon.stop()
+      } finally {
+        await proxy.stop()
+      }
+    }
+  })
+
   it("does not select another account after the response body has started", async () => {
     let calls = 0
     const selected: Array<[string, string | undefined]> = []

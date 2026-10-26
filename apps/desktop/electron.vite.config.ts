@@ -11,8 +11,10 @@ const stripComments = { legalComments: "none" as const }
 // 里的依赖全部 external，运行时加载 .ts 会失败。
 const bundledWorkspacePackages = [
   "@pigclaude/contracts",
+  "@pigclaude/daemon",
   "@pigclaude/local-store",
   "@pigclaude/login-gate",
+  "@pigclaude/switcher",
 ]
 
 /** 开发时让系统浏览器里的授权页通知桌面端。正式环境由权限服务接管。 */

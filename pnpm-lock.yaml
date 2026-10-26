@@ -111,12 +111,18 @@ importers:
       '@pigclaude/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@pigclaude/daemon':
+        specifier: workspace:*
+        version: link:../../packages/daemon
       '@pigclaude/local-store':
         specifier: workspace:*
         version: link:../../packages/local-store
       '@pigclaude/login-gate':
         specifier: workspace:*
         version: link:../../packages/login-gate
+      '@pigclaude/switcher':
+        specifier: workspace:*
+        version: link:../../packages/switcher
       '@radix-ui/react-collapsible':
         specifier: 1.1.12
         version: 1.1.12(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)

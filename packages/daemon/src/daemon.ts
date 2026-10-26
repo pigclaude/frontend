@@ -24,7 +24,9 @@ type ChosenAccount = {
   proxyUrl: string
 }
 
-type ChooseAccount = (attempt: { rejectedIds: string[] }) => ChosenAccount | null
+type ChooseAccount = (attempt: {
+  rejectedIds: string[]
+}) => ChosenAccount | null | Promise<ChosenAccount | null>
 
 /** 本机 Anthropic 转发。保证只听 127.0.0.1，先用会话令牌拒绝其他本机进程，上游都走账号代理，代理不可用时返回 proxy_unavailable。消息接口在写出响应体前遇到额度用尽时换下一个账号；此时如果下一个代理抛错，就拒绝该账号并继续选号。 */
 export class LocalDaemon {
@@ -36,7 +38,9 @@ export class LocalDaemon {
   readonly #choose: ChooseAccount
   readonly #onAccountRejected: (accountId: string, reason: string) => void
   readonly #onAccountSelected: (accountId: string, previousId: string | undefined) => void
+  readonly #onExit: () => void
   readonly #server: Server
+  #stopping = false
 
   /** 保证用给定端口、会话令牌、选号函数和回调准备服务，此时尚未监听。 */
   constructor(options: {
@@ -46,6 +50,7 @@ export class LocalDaemon {
     runAuthorized: <T>(operation: (signal: AbortSignal) => Promise<T>) => Promise<T>
     onAccountRejected?: (accountId: string, reason: string) => void
     onAccountSelected?: (accountId: string, previousId: string | undefined) => void
+    onExit?: () => void
   }) {
     this.port = options.port
     this.#sessionToken = options.sessionToken
@@ -53,6 +58,7 @@ export class LocalDaemon {
     this.#runAuthorized = options.runAuthorized
     this.#onAccountRejected = options.onAccountRejected ?? (() => undefined)
     this.#onAccountSelected = options.onAccountSelected ?? (() => undefined)
+    this.#onExit = options.onExit ?? (() => undefined)
     this.#server = createServer((request, response) => {
       response.on("error", () => undefined)
       request.on("error", () => undefined)
@@ -60,8 +66,9 @@ export class LocalDaemon {
     })
   }
 
-  /** 保证开始在 127.0.0.1 上接受连接，并把 port 设为实际端口。 */
+  /** 保证开始在 127.0.0.1 上接受连接，并把 port 设为实际端口；监听后意外关闭会触发 onExit。 */
   async start(): Promise<void> {
+    this.#stopping = false
     await new Promise<void>((resolve, reject) => {
       const onError = (error: Error): void => {
         reject(error)
@@ -75,14 +82,18 @@ export class LocalDaemon {
           return
         }
         this.port = address.port
+        this.#server.once("close", () => {
+          if (!this.#stopping) this.#onExit()
+        })
         resolve()
       })
     })
   }
 
-  /** 保证停止接受连接并断开已经连上的客户端。 */
+  /** 保证停止接受连接并断开已经连上的客户端，且主动停止不触发 onExit。 */
   async stop(): Promise<void> {
     if (!this.#server.listening) return
+    this.#stopping = true
     this.#server.closeAllConnections()
     await new Promise<void>((resolve, reject) => {
       this.#server.close((error) => {
@@ -141,7 +152,10 @@ export class LocalDaemon {
       if (request.aborted || response.destroyed || response.headersSent || response.writableEnded) {
         return
       }
-      const chosen = this.#choose({ rejectedIds: rejectedIds.slice() })
+      const chosen = await this.#choose({ rejectedIds: rejectedIds.slice() })
+      if (request.aborted || response.destroyed || response.headersSent || response.writableEnded) {
+        return
+      }
       if (chosen === null || chosen.proxyUrl === "" || rejectedIds.includes(chosen.id)) {
         if (savedQuota !== null) writeBuffered(response, savedQuota)
         else {

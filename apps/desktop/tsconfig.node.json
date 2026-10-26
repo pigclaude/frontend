@@ -8,6 +8,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "isolatedModules": true,
+    "allowImportingTsExtensions": true,
     "removeComments": true,
     "noEmit": true,
     "types": ["node", "electron-vite/node"]

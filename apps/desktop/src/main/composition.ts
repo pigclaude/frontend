@@ -1,6 +1,7 @@
-// 负责组合第一方 OAuth、独立 Claude provider 端口和本机会员写入生命周期。
+// 负责组合第一方 OAuth、独立 Claude provider 端口、本机会员写入生命周期和本机 daemon。
 import type { SecretVault } from "./secret-vault"
 import type { MembershipView } from "@pigclaude/contracts/membership"
+import type { LocalStore } from "@pigclaude/local-store"
 import { AuthorizationService, type ClaudeAuthorizationAdapter } from "./authorization/service"
 import { OAuthTokenManager } from "./authorization/oauth-token-manager"
 import {
@@ -8,7 +9,11 @@ import {
   type PigclaudeApi,
   type PigclaudeApiClientOptions,
 } from "./api/pigclaude-api-client"
+import { CredentialRefresher } from "./claude/credential-refresher"
+import { SubscriptionOAuth } from "./claude/subscription-oauth"
 import { MembershipGate } from "./membership/membership-gate"
+import { AccountChooser } from "./runtime/account-chooser"
+import { LocalRuntime } from "./runtime/local-runtime"
 import type { DeviceIdentityService } from "./device-identity"
 import type { DeviceInfo } from "./device-identity/device-info"
 
@@ -23,6 +28,8 @@ export type DesktopCompositionOptions = {
   claudeAuthorization?: ClaudeAuthorizationAdapter
   now?: () => number
   onMembershipView?: (view: MembershipView) => void
+  /** 提供本机账号库时才装配 daemon 和选号；测试可省略。 */
+  localStore?: LocalStore
 }
 /** composition 提供脱敏服务与本机退出，不跨 profile 或 Claude namespace 清理。 */
 export type DesktopComposition = {
@@ -36,6 +43,8 @@ export type DesktopComposition = {
   resume: () => Promise<MembershipView>
   /** 本机第一方退出同步失效代次，不等待远端。 */
   signOut: () => Promise<MembershipView>
+  /** 本机 daemon 和选号；未提供 localStore 时为 null。 */
+  runtime: LocalRuntime | null
   /** 按顺序释放本机授权和会员订阅。 */
   dispose: () => Promise<void>
 }
@@ -86,6 +95,24 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
       operations.delete(controller)
     }
   }
+  const runtime = options.localStore
+    ? new LocalRuntime({
+        store: options.localStore,
+        chooser: new AccountChooser({
+          store: options.localStore,
+          refresher: new CredentialRefresher({
+            store: options.localStore,
+            oauth: new SubscriptionOAuth(),
+            now,
+          }),
+          now,
+        }),
+        membership: membershipGate,
+        runAuthorized,
+        now,
+      })
+    : null
+  void runtime?.start()
   const claudeAuthorization = options.claudeAuthorization
     ? {
         start: (session: Parameters<ClaudeAuthorizationAdapter["start"]>[0]) =>
@@ -157,6 +184,7 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
     membershipGate,
     authorizationService,
     tokenManager,
+    runtime,
     resume: () => membershipGate.inspect(),
     runAuthorized,
     signOut: () => {
@@ -179,6 +207,7 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
       if (disposed) return
       disposed = true
       clearInterval(heartbeat)
+      await runtime?.dispose()
       stopOperations()
       unsubscribeOperations()
       const writes = tokenManager.suspend()

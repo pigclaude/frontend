@@ -50,6 +50,7 @@ export function AccountsScreen({
   const [fingerprintId, setFingerprintId] = useState<string | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [imported, setImported] = useState(false)
+  const [importing, setImporting] = useState(false)
 
   const selected = accounts.find((account) => account.id === selectedId) ?? null
   const attention = accounts.filter((account) => account.statusKind !== "ready")
@@ -97,11 +98,17 @@ export function AccountsScreen({
         open={importOpen}
         onOpenChange={setImportOpen}
         onConfirm={() => {
+          if (importing) return
           setImportOpen(false)
           setImported(false)
-          void onImportFromClaudeCli?.().then((ok) => {
-            if (ok) setImported(true)
-          })
+          setImporting(true)
+          const pending = onImportFromClaudeCli?.() ?? Promise.resolve(false)
+          void pending
+            .then((ok) => {
+              if (ok) setImported(true)
+            })
+            .catch(() => undefined)
+            .finally(() => setImporting(false))
         }}
       />
     </>
@@ -130,8 +137,13 @@ export function AccountsScreen({
           <p className="sub">需要处理的事、自动切换顺序</p>
         </div>
         <div className="actions">
-          <Button variant="secondary" onClick={() => setImportOpen(true)}>
-            从 Claude CLI 导入
+          <Button
+            variant="secondary"
+            disabled={importing}
+            aria-busy={importing}
+            onClick={() => setImportOpen(true)}
+          >
+            {importing ? "正在导入…" : "从 Claude CLI 导入"}
           </Button>
           <Button variant="primary" onClick={onOpenAuthorize}>
             添加账号

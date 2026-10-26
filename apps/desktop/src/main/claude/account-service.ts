@@ -35,6 +35,8 @@ import {
 } from "./subscription-oauth"
 
 const defaultEgressCheckUrl = "https://www.cloudflare.com/cdn-cgi/trace"
+// 导入时 access token 至少还要有 60 秒有效期，避免刚导入就过期。
+const cliImportExpiryMarginMs = 60_000
 
 /** 添加或重新授权 Claude 账号的输入。proxyId 为 null 表示使用系统网络。 */
 export type AuthorizeClaudeAccountInput = {
@@ -241,43 +243,45 @@ export class ClaudeAccountService {
 
   /**
    * 从 Claude CLI 导入账号。保证只复制 OAuth 凭据，不写回或删除 CLI 凭据；
-   * 命中已有账号时保留 id、指纹、代理、启用状态、冷却时间和创建时间。
+   * 命中已有账号时保留 id、指纹、代理、启用状态、冷却时间、创建时间和自定义名称。
+   * 导入不发送授权阶段事件，避免驱动全局授权向导。
    */
   async importFromClaudeCli(input: ImportClaudeCliAccountInput): Promise<ClaudeAccountView> {
     if (input.confirmCopy !== true) {
       throw new ClaudeAccountError("INVALID_INPUT", claudeCliImportMessages.confirmCopy)
     }
-    const fallbackId = this.#id()
-    let eventId = fallbackId
+    const newId = this.#id()
     try {
       await this.#ensureMembership()
       const cli = await this.#readCliCredential()
       const metadata = await this.#readCliAccountMetadata()
-      if (!Number.isFinite(cli.expiresAt) || cli.expiresAt <= this.#now()) {
+      if (
+        !Number.isFinite(cli.expiresAt) ||
+        cli.expiresAt <= this.#now() + cliImportExpiryMarginMs
+      ) {
         throw new ClaudeAccountError("CLI_CREDENTIAL_EXPIRED", claudeCliImportMessages.expired)
       }
       const profile = await this.#readProfile(cli.accessToken)
       const identity = mergeClaudeCliIdentity(cli, metadata, profile)
       const existing = findClaudeCliAccount(await this.#deps.store.listAccounts(), identity)
-      eventId = existing?.id ?? fallbackId
       assertClaudeCliIdentity(existing, identity)
       const credential = buildClaudeCliCredential(cli, identity, existing?.credential ?? null)
+      const displayName =
+        existing !== null && input.displayName === undefined
+          ? existing.displayName
+          : claudeCliDisplayName(input.displayName ?? "", metadata, identity.email)
       const record = buildClaudeCliAccountRecord({
         existing,
-        newId: fallbackId,
-        displayName: claudeCliDisplayName(input.displayName ?? "", metadata, identity.email),
+        newId,
+        displayName,
         credential,
-        browserProfileDir: existing?.browserProfileDir ?? this.#deps.browser.profileDir(fallbackId),
+        browserProfileDir: existing?.browserProfileDir ?? this.#deps.browser.profileDir(newId),
         now: new Date(this.#now()).toISOString(),
       })
-      this.#emit(record.id, "saving")
       await this.#deps.store.saveAccount(record)
-      this.#emit(record.id, "authorized")
       return toView(record)
     } catch (error: unknown) {
-      const mapped = mapError(error)
-      this.#emit(eventId, phaseFor(mapped.code), mapped.code, mapped.message)
-      throw mapped
+      throw mapError(error)
     }
   }
 

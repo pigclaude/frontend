@@ -373,6 +373,30 @@ describe("accounts screen", () => {
     expect(container.querySelector('[role="status"]')?.textContent).toBe("已从 Claude CLI 导入账号")
   })
 
+  it("keeps the import button busy and ignores repeated clicks while importing", async () => {
+    let resolveImport: (ok: boolean) => void = () => undefined
+    const onImportFromClaudeCli = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveImport = resolve
+        }),
+    )
+    await render([], { onImportFromClaudeCli })
+
+    await clickButton(button("从 Claude CLI 导入"), "从 Claude CLI 导入")
+    await clickButton(button("确认导入", dialog() ?? document.body), "确认导入")
+
+    const busy = button("正在导入…")
+    expect(busy?.disabled).toBe(true)
+    await clickButton(busy, "正在导入…")
+    expect(dialog()).toBeNull()
+    expect(onImportFromClaudeCli).toHaveBeenCalledTimes(1)
+
+    await act(async () => resolveImport(true))
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("已从 Claude CLI 导入账号")
+    expect(button("从 Claude CLI 导入")?.disabled).toBe(false)
+  })
+
   it("shows the fixed error and no success note when the CLI import fails", async () => {
     const onImportFromClaudeCli = vi.fn(async () => false)
     await render([], { onImportFromClaudeCli })

@@ -78,15 +78,15 @@ describe("ClaudeAccountService.importFromClaudeCli", () => {
     expect(stored?.updatedAt).toBe(new Date(now).toISOString())
     await expect(stat(stored?.browserProfileDir ?? "")).rejects.toThrow()
 
-    expect(harness.events.map((event) => event.phase)).toEqual(["saving", "authorized"])
+    expect(harness.events).toEqual([])
     const exposed = JSON.stringify({ view, events: harness.events })
     expect(exposed).not.toContain(accessToken)
     expect(exposed).not.toContain(refreshToken)
   })
 
-  it("falls back to oauthAccount metadata and CLI tier when profile fails", async () => {
+  it("falls back to oauthAccount metadata and prefers metadata over the CLI rate limit tier", async () => {
     const harness = await createHarness({
-      credential: cliCredential({ rateLimitTier: null }),
+      credential: cliCredential({ rateLimitTier: "cli-tier" }),
       metadata: metadata({
         accountUuid: "metadata-uuid",
         emailAddress: "cli-user@example.com",
@@ -178,6 +178,37 @@ describe("ClaudeAccountService.importFromClaudeCli", () => {
     expect(stored?.browserProfileDir).toBe("/old/browser-profiles/existing-id")
     expect(stored?.updatedAt).toBe(new Date(now).toISOString())
     expect(await harness.store.listAccounts()).toHaveLength(1)
+    expect(harness.events).toEqual([])
+  })
+
+  it("keeps the custom display name of an existing account without an explicit name", async () => {
+    const harness = await createHarness({
+      metadata: metadata({ fullName: "CLI 姓名" }),
+      profile: profile({ accountUuid: "shared-uuid", email: "new@example.com" }),
+    })
+    await harness.store.saveAccount(
+      seedAccount({
+        displayName: "工作 Max",
+        credential: {
+          schemaVersion: 1,
+          accessToken: "old-access",
+          refreshToken: "old-refresh",
+          expiresAt: now + 60_000,
+          scopes: ["user:inference"],
+          accountUuid: "shared-uuid",
+          email: "old@example.com",
+          organizationUuid: null,
+          subscriptionType: null,
+          rateLimitTier: null,
+        },
+      }),
+    )
+
+    const view = await harness.service.importFromClaudeCli({ confirmCopy: true })
+
+    expect(view.displayName).toBe("工作 Max")
+    expect((await harness.store.getAccount("existing-id"))?.displayName).toBe("工作 Max")
+    expect(harness.events).toEqual([])
   })
 
   it("deduplicates by email and fills a missing accountUuid", async () => {
@@ -240,13 +271,7 @@ describe("ClaudeAccountService.importFromClaudeCli", () => {
     expect((await harness.store.getAccount("existing-id"))?.credential?.accessToken).toBe(
       "old-access",
     )
-    expect(harness.events.at(-1)).toMatchObject({
-      accountId: "existing-id",
-      phase: "failed",
-      errorCode: "ACCOUNT_MISMATCH",
-      message: "已有账号绑定了另一个 Claude 账号",
-    })
-    expect(JSON.stringify(harness.events)).not.toContain(accessToken)
+    expect(harness.events).toEqual([])
   })
 
   it.each([
@@ -262,9 +287,12 @@ describe("ClaudeAccountService.importFromClaudeCli", () => {
     expect(harness.events).toEqual([])
   })
 
-  it("rejects an expired CLI credential without calling profile or saving", async () => {
+  it.each([
+    ["already expired", now],
+    ["within the safety margin", now + 30_000],
+  ] as const)("rejects a CLI credential that is %s", async (_label, expiresAt) => {
     const harness = await createHarness({
-      credential: cliCredential({ expiresAt: now }),
+      credential: cliCredential({ expiresAt }),
     })
     await expect(harness.service.importFromClaudeCli({ confirmCopy: true })).rejects.toMatchObject({
       code: "CLI_CREDENTIAL_EXPIRED",
@@ -272,10 +300,7 @@ describe("ClaudeAccountService.importFromClaudeCli", () => {
     })
     expect(harness.profileTokens).toEqual([])
     expect(await harness.store.listAccounts()).toEqual([])
-    expect(harness.events.at(-1)).toMatchObject({
-      phase: "failed",
-      errorCode: "CLI_CREDENTIAL_EXPIRED",
-    })
+    expect(harness.events).toEqual([])
   })
 
   it("checks membership before reading the keychain", async () => {
@@ -300,7 +325,7 @@ describe("ClaudeAccountService.importFromClaudeCli", () => {
       code: "CLI_KEYCHAIN_DENIED",
       message: "无法读取 Claude CLI 凭据，请允许访问钥匙串后重试",
     })
-    expect(JSON.stringify(harness.events)).not.toContain(accessToken)
+    expect(harness.events).toEqual([])
   })
 })
 

@@ -79,7 +79,8 @@ function requireProxyService(options: ClaudeIpcOptions): ProxyService {
   return service
 }
 
-function readAuthorizeInput(value: unknown): AuthorizeClaudeAccountInput {
+/** 解析授权请求。保证 proxyId 为 null 或空字符串时走系统网络，缺失或其他类型返回 INVALID_INPUT。 */
+export function readAuthorizeInput(value: unknown): AuthorizeClaudeAccountInput {
   if (!isRecord(value)) throw invalidInput()
   const displayName = readString(value.displayName)
   const fingerprint = value.fingerprint
@@ -94,7 +95,8 @@ function readAuthorizeInput(value: unknown): AuthorizeClaudeAccountInput {
   }
 }
 
-function readUpdateInput(value: unknown): UpdateClaudeAccountInput {
+/** 解析更新请求。保证 proxyId 缺省时输出不带该键，null 或空字符串表示解绑，其他类型返回 INVALID_INPUT。 */
+export function readUpdateInput(value: unknown): UpdateClaudeAccountInput {
   if (!isRecord(value)) throw invalidInput()
   const accountId = readString(value.accountId)
   if (accountId === null) throw invalidInput()

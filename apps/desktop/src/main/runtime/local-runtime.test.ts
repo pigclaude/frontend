@@ -59,6 +59,17 @@ describe("LocalRuntime", () => {
     await h.cleanup()
   })
 
+  it("reports and selects a direct account without a proxy", async () => {
+    const h = await harness({ state: "connecting", accounts: [account("a", { proxyId: null })] })
+    await expect(h.runtime.hasAvailableAccount()).resolves.toBe(true)
+    expect(await h.runtime.chooser.choose({ rejectedIds: [] })).toEqual({
+      id: "a",
+      authorization: "token-a",
+      proxyUrl: null,
+    })
+    await h.cleanup()
+  })
+
   it("binds only loopback and releases the port on stop", async () => {
     const h = await harness({ realDaemon: true })
     await h.runtime.start()

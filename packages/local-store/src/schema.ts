@@ -30,7 +30,7 @@ export type IpProxy = {
   lastTest: ProxyTestResult | null
 }
 
-/** 本机一条账号记录。保证凭据可空、需要重新授权时有明确标记，并绑定一条代理和一份指纹。 */
+/** 本机一条账号记录。保证凭据可空、需要重新授权时有明确标记；proxyId 为 null 表示不使用代理并走系统网络。 */
 export type AccountRecord = {
   schemaVersion: 3
   id: string
@@ -38,13 +38,16 @@ export type AccountRecord = {
   enabled: boolean
   credential: ClaudeCredential | null
   needsReauth: boolean
-  proxyId: string
+  proxyId: string | null
   fingerprint: FingerprintConfig
   browserProfileDir: string
   exhaustedUntil: string | null
   createdAt: string
   updatedAt: string
 }
+
+/** v3 记录的读取形态。proxyId 可能缺失或为 null，解析时统一归一为 null。 */
+type StoredAccountV3 = Omit<AccountRecord, "proxyId"> & { proxyId?: string | null }
 
 /** 旧版 v1 账号记录。旧字符串凭据不迁移，只标记为需要重新授权。 */
 type LegacyAccountRecordV1 = {
@@ -76,9 +79,9 @@ type LegacyIpProxy = {
   url: string
 }
 
-/** 解析一条账号记录。保证 v1/v2 旧记录迁移为 v3，无法识别的记录返回 null。 */
+/** 解析一条账号记录。保证 v1/v2 旧记录迁移为 v3，v3 缺失或为 null 的 proxyId 归一为 null，无法识别的记录返回 null。 */
 export function parseAccountRecord(value: unknown): AccountRecord | null {
-  if (isV3Account(value)) return value
+  if (isV3Account(value)) return normalizeV3(value)
   if (isV2Account(value)) return migrateV2(value)
   if (isV1Account(value)) return migrateV1(value)
   return null
@@ -113,7 +116,7 @@ export function isFingerprint(value: unknown): value is FingerprintConfig {
   )
 }
 
-function isV3Account(value: unknown): value is AccountRecord {
+function isV3Account(value: unknown): value is StoredAccountV3 {
   if (!isRecord(value)) return false
   if (value.schemaVersion !== 3) return false
   return (
@@ -122,13 +125,17 @@ function isV3Account(value: unknown): value is AccountRecord {
     typeof value.enabled === "boolean" &&
     (value.credential === null || isClaudeCredential(value.credential)) &&
     typeof value.needsReauth === "boolean" &&
-    typeof value.proxyId === "string" &&
+    (value.proxyId === undefined || value.proxyId === null || typeof value.proxyId === "string") &&
     isFingerprint(value.fingerprint) &&
     typeof value.browserProfileDir === "string" &&
     (value.exhaustedUntil === null || typeof value.exhaustedUntil === "string") &&
     typeof value.createdAt === "string" &&
     typeof value.updatedAt === "string"
   )
+}
+
+function normalizeV3(value: StoredAccountV3): AccountRecord {
+  return { ...value, proxyId: value.proxyId ?? null }
 }
 
 function isV2Account(value: unknown): value is LegacyAccountRecordV2 {

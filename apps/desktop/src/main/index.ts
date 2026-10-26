@@ -353,7 +353,7 @@ async function setupAuthorization(): Promise<void> {
               needsReauth: item.needsReauth,
               hasCredential: item.credential !== null,
               exhaustedUntil: item.exhaustedUntil,
-              proxyUrl: proxies.get(item.proxyId),
+              proxyUrl: item.proxyId === null ? null : proxies.get(item.proxyId),
             },
             Date.now(),
           ),

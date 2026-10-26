@@ -53,6 +53,16 @@ describe("AccountChooser", () => {
     })
   })
 
+  it("selects a direct account without a proxy binding", async () => {
+    const store = await storeWith([account("a", { proxyId: null })])
+    const chooser = new AccountChooser({ store, refresher: passThrough(), now: () => now })
+    expect(await chooser.choose({ rejectedIds: [] })).toEqual({
+      id: "a",
+      authorization: "token-a",
+      proxyUrl: null,
+    })
+  })
+
   it("falls back to user order when the preferred account is unavailable", async () => {
     const store = await storeWith([account("a"), account("b", { enabled: false })])
     const chooser = new AccountChooser({ store, refresher: passThrough(), now: () => now })
@@ -114,6 +124,12 @@ describe("AccountChooser", () => {
 
     await expect(chooser.hasAvailableAccount()).resolves.toBe(true)
     expect(refreshes).toBe(0)
+  })
+
+  it("reports a direct account as available without proxies", async () => {
+    const store = await storeWith([account("a", { proxyId: null })], [])
+    const chooser = new AccountChooser({ store, refresher: passThrough(), now: () => now })
+    await expect(chooser.hasAvailableAccount()).resolves.toBe(true)
   })
 
   it.each([

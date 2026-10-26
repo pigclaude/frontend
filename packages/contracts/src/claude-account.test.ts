@@ -45,16 +45,20 @@ describe("isAccountSelectable", () => {
     expect(isAccountSelectable(base, now)).toBe(true)
   })
 
-  it("requires a credential, a non-empty proxy and no cooldown", () => {
+  it("requires a credential, rejects a missing or empty proxy and respects cooldown", () => {
     expect(isAccountSelectable({ ...base, hasCredential: false }, now)).toBe(false)
     expect(isAccountSelectable({ ...base, proxyUrl: "" }, now)).toBe(false)
-    expect(isAccountSelectable({ ...base, proxyUrl: null }, now)).toBe(false)
+    expect(isAccountSelectable({ ...base, proxyUrl: undefined }, now)).toBe(false)
     expect(
       isAccountSelectable({ ...base, exhaustedUntil: new Date(now + 1_000).toISOString() }, now),
     ).toBe(false)
     expect(
       isAccountSelectable({ ...base, exhaustedUntil: new Date(now - 1_000).toISOString() }, now),
     ).toBe(true)
+  })
+
+  it("accepts a direct account without a proxy binding", () => {
+    expect(isAccountSelectable({ ...base, proxyUrl: null }, now)).toBe(true)
   })
 
   it("rejects disabled and reauthorization accounts", () => {
@@ -72,6 +76,11 @@ describe("claude account contracts", () => {
   it("rejects an account view that carries credentials", () => {
     expect(isClaudeAccountView({ ...account, accessToken: "secret" })).toBe(false)
     expect(isClaudeAccountView({ ...account, email: undefined })).toBe(false)
+  })
+
+  it("accepts a direct account view without a proxy id", () => {
+    expect(isClaudeAccountView({ ...account, proxyId: null })).toBe(true)
+    expect(isClaudeAccountView({ ...account, proxyId: undefined })).toBe(false)
   })
 
   it("accepts a redacted proxy view and rejects a password field", () => {

@@ -22,7 +22,8 @@ export type ClaudeAccountView = {
   credentialExpiresAt: number | null
   /** 额度冷却结束时间；null 表示未冷却，缺省表示旧版主进程没有提供。 */
   exhaustedUntil?: string | null
-  proxyId: string
+  /** 绑定的代理 id；null 表示不使用代理，走系统网络。 */
+  proxyId: string | null
   fingerprint: ClaudeFingerprintView
   createdAt: string
   updatedAt: string
@@ -34,14 +35,16 @@ export type AccountAvailability = {
   needsReauth: boolean
   hasCredential: boolean
   exhaustedUntil: string | null | undefined
+  /** 三个状态：null 表示直连可用；undefined 表示没有代理信息；"" 表示代理地址为空。 */
   proxyUrl: string | null | undefined
 }
 
-// 保证账号启用、无需重新授权、有凭据、未在额度冷却中，并且绑定了非空代理。
+// 保证账号启用、无需重新授权、有凭据、未在额度冷却中，并且网络出口可用。
+// proxyUrl 为 null 表示走系统网络；undefined 或空字符串表示代理不可用，绝不回退直连。
 // 选号器和界面都调用这个谓词，避免界面显示可用但启动时报 NO_AVAILABLE_ACCOUNT。
 export function isAccountSelectable(input: AccountAvailability, nowMs: number): boolean {
   if (!input.enabled || input.needsReauth || !input.hasCredential) return false
-  if (input.proxyUrl === null || input.proxyUrl === undefined || input.proxyUrl === "") return false
+  if (input.proxyUrl === undefined || input.proxyUrl === "") return false
   if (input.exhaustedUntil === null || input.exhaustedUntil === undefined) return true
   const until = Date.parse(input.exhaustedUntil)
   return !Number.isFinite(until) || until <= nowMs
@@ -130,7 +133,7 @@ export function isClaudeAccountView(value: unknown): value is ClaudeAccountView 
     (value.exhaustedUntil === undefined ||
       value.exhaustedUntil === null ||
       typeof value.exhaustedUntil === "string") &&
-    typeof value.proxyId === "string" &&
+    (value.proxyId === null || typeof value.proxyId === "string") &&
     isClaudeFingerprintView(value.fingerprint) &&
     typeof value.createdAt === "string" &&
     typeof value.updatedAt === "string"

@@ -119,8 +119,26 @@ describe("LocalStore", () => {
     expect(await store.getAccount("acc-2")).toMatchObject({
       schemaVersion: 3,
       credential,
+      proxyId: "p1",
       browserProfileDir: "",
     })
+  })
+
+  it("reads v3 accounts with a missing or null proxy id as direct", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "store-"))
+    await writeFile(
+      join(dir, "accounts.json"),
+      JSON.stringify([
+        storedAccount("missing"),
+        storedAccount("direct", null),
+        storedAccount("bound", "p1"),
+      ]),
+      "utf8",
+    )
+    const store = new LocalStore(dir)
+    expect((await store.getAccount("missing"))?.proxyId).toBeNull()
+    expect((await store.getAccount("direct"))?.proxyId).toBeNull()
+    expect((await store.getAccount("bound"))?.proxyId).toBe("p1")
   })
 
   it("migrates legacy proxies with a name and no test result", async () => {
@@ -236,6 +254,14 @@ function account(id: string): AccountRecord {
     createdAt: "2026-10-21T00:00:00.000Z",
     updatedAt: "2026-10-21T00:00:00.000Z",
   }
+}
+
+// proxyId 缺省时生成不含该字段的 v3 记录，用来验证读取时的归一化。
+function storedAccount(id: string, proxyId?: string | null): Record<string, unknown> {
+  const record: Record<string, unknown> = { ...account(id) }
+  delete record.proxyId
+  if (proxyId !== undefined) record.proxyId = proxyId
+  return record
 }
 
 function proxy(id: string): IpProxy {

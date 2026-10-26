@@ -12,11 +12,11 @@ export type ChooseAccountInput = {
   preferredId?: string
 }
 
-/** daemon 需要的账号材料。保证只包含账号 id、Bearer 凭据和代理地址。 */
+/** daemon 需要的账号材料。保证只包含账号 id、Bearer 凭据和代理地址；proxyUrl 为 null 表示走系统网络。 */
 export type ChosenAccount = {
   id: string
   authorization: string
-  proxyUrl: string
+  proxyUrl: string | null
 }
 
 /** 选号依赖。保证账号和代理每次从 store 读取，凭据刷新可注入。 */
@@ -28,14 +28,14 @@ export type AccountChooserOptions = {
 
 type EligibleAccount = {
   account: AccountRecord
-  proxy: IpProxy
+  proxy: IpProxy | null
   authorization: string
 }
 
 // 第一版没有完整用量窗口，所有已授权且未冷却的账号都可通过这两个阈值。
 const thresholds = { fiveHour: 1, sevenDay: 1 }
 
-/** 按用户顺序选择第一个可用账号。保证过滤禁用、需重新授权、无凭据、冷却、已拒绝和代理缺失的账号；与界面共用 isAccountSelectable；没有可用账号时返回 null。 */
+/** 按用户顺序选择第一个可用账号。保证过滤禁用、需重新授权、无凭据、冷却、已拒绝和代理不可用的账号；proxyId 为 null 的账号走系统网络；与界面共用 isAccountSelectable；没有可用账号时返回 null。 */
 export class AccountChooser {
   readonly #store: AccountChooserOptions["store"]
   readonly #refresher: AccountChooserOptions["refresher"]
@@ -83,7 +83,7 @@ export class AccountChooser {
     )
   }
 
-  // 只刷新通过静态过滤的账号；刷新失败或刷新后凭据为空时跳过，不影响其他账号。
+  // 只刷新通过静态过滤的账号；刷新失败、刷新后凭据为空或非空 proxyId 查不到代理时跳过，不影响其他账号。
   async #refresh(
     eligible: AccountRecord[],
     proxies: Map<string, IpProxy>,
@@ -92,7 +92,7 @@ export class AccountChooser {
     for (const account of eligible) {
       try {
         const updated = await this.#refresher.refreshIfNeeded(account)
-        const proxy = proxies.get(updated.proxyId)
+        const proxy = updated.proxyId === null ? null : proxies.get(updated.proxyId)
         const authorization = updated.credential?.accessToken
         if (authorization === undefined || proxy === undefined) continue
         refreshed.push({ account: updated, proxy, authorization })
@@ -117,7 +117,7 @@ function isEligible(
       needsReauth: account.needsReauth,
       hasCredential: account.credential !== null,
       exhaustedUntil: account.exhaustedUntil,
-      proxyUrl: proxies.get(account.proxyId)?.url,
+      proxyUrl: account.proxyId === null ? null : proxies.get(account.proxyId)?.url,
     },
     nowMs,
   )
@@ -138,6 +138,6 @@ function toChosen({ account, proxy, authorization }: EligibleAccount): ChosenAcc
   return {
     id: account.id,
     authorization,
-    proxyUrl: proxy.url,
+    proxyUrl: proxy?.url ?? null,
   }
 }

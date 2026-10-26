@@ -164,6 +164,12 @@ export type ClaudeAccountErrorCode =
   | "STORAGE_FAILED"
   | "CREDENTIAL_REFRESH_FAILED"
   | "MEMBERSHIP_REQUIRED"
+  | "CLI_CREDENTIAL_NOT_FOUND"
+  | "CLI_KEYCHAIN_DENIED"
+  | "CLI_KEYCHAIN_LOCKED"
+  | "CLI_CREDENTIAL_INVALID"
+  | "CLI_CREDENTIAL_EXPIRED"
+  | "CLI_IMPORT_UNSUPPORTED_PLATFORM"
 
 /** 出口核对结果。字段与 login-gate 的 EgressResult 保持一致。 */
 export type EgressView =
@@ -344,6 +350,12 @@ const accountErrorCodes = new Set<ClaudeAccountErrorCode>([
   "STORAGE_FAILED",
   "CREDENTIAL_REFRESH_FAILED",
   "MEMBERSHIP_REQUIRED",
+  "CLI_CREDENTIAL_NOT_FOUND",
+  "CLI_KEYCHAIN_DENIED",
+  "CLI_KEYCHAIN_LOCKED",
+  "CLI_CREDENTIAL_INVALID",
+  "CLI_CREDENTIAL_EXPIRED",
+  "CLI_IMPORT_UNSUPPORTED_PLATFORM",
 ])
 
 function isAccountErrorCode(value: unknown): value is ClaudeAccountErrorCode {

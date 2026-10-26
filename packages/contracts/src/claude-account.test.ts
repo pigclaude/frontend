@@ -105,6 +105,26 @@ describe("claude account contracts", () => {
     ).toBe(false)
   })
 
+  it("accepts every CLI import error code", () => {
+    for (const errorCode of [
+      "CLI_CREDENTIAL_NOT_FOUND",
+      "CLI_KEYCHAIN_DENIED",
+      "CLI_KEYCHAIN_LOCKED",
+      "CLI_CREDENTIAL_INVALID",
+      "CLI_CREDENTIAL_EXPIRED",
+      "CLI_IMPORT_UNSUPPORTED_PLATFORM",
+    ]) {
+      expect(
+        isClaudeAccountEvent({
+          accountId: "acc-1",
+          phase: "failed",
+          errorCode,
+          message: null,
+        }),
+      ).toBe(true)
+    }
+  })
+
   it("accepts only known phases and error codes in login events", () => {
     expect(
       isClaudeAccountEvent({

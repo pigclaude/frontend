@@ -161,6 +161,56 @@ describe("LocalStore", () => {
     expect((await store.listProxies()).map((item) => item.id)).toEqual(["p2"])
   })
 
+  it("merges concurrent account updates without losing either field", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "store-"))
+    const store = new LocalStore(dir)
+    await store.saveAccount(account("acc-1"))
+
+    const first = store.updateAccount("acc-1", { displayName: "新名字" })
+    const second = store.updateAccount("acc-1", { enabled: false })
+    await Promise.all([first, second])
+
+    expect(await store.getAccount("acc-1")).toMatchObject({
+      displayName: "新名字",
+      enabled: false,
+      credential,
+    })
+  })
+
+  it("applies an updater against the latest record inside the write queue", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "store-"))
+    const store = new LocalStore(dir)
+    await store.saveAccount(account("acc-1"))
+
+    const first = store.updateAccount("acc-1", (current) => ({
+      ...current,
+      exhaustedUntil: "2026-10-26T00:05:00.000Z",
+    }))
+    const second = store.updateAccount("acc-1", (current) => ({
+      ...current,
+      needsReauth: true,
+    }))
+    await Promise.all([first, second])
+
+    expect(await store.getAccount("acc-1")).toMatchObject({
+      exhaustedUntil: "2026-10-26T00:05:00.000Z",
+      needsReauth: true,
+    })
+  })
+
+  it("does not resurrect an account deleted before the update reaches the queue", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "store-"))
+    const store = new LocalStore(dir)
+    await store.saveAccount(account("acc-1"))
+
+    const removal = store.removeAccount("acc-1")
+    const update = store.updateAccount("acc-1", { enabled: false })
+    await Promise.all([removal, update])
+
+    expect(await update).toBeNull()
+    expect(await store.getAccount("acc-1")).toBeNull()
+  })
+
   it("keeps the raw file readable as a plain JSON list", async () => {
     const dir = await mkdtemp(join(tmpdir(), "store-"))
     const store = new LocalStore(dir)

@@ -79,11 +79,15 @@ export class CredentialRefresher {
       })
     } catch (error: unknown) {
       if (error instanceof SubscriptionOAuthError && error.invalidGrant) {
-        await this.#store.saveAccount({
-          ...account,
-          credential: null,
-          needsReauth: true,
-          updatedAt: new Date(this.#now()).toISOString(),
+        await this.#store.updateAccount(account.id, (current) => {
+          // 只处理仍是这次刷新所用 refresh token 的记录，避免清掉并发刷新写入的新凭据。
+          if (current.credential?.refreshToken !== credential.refreshToken) return null
+          return {
+            ...current,
+            credential: null,
+            needsReauth: true,
+            updatedAt: new Date(this.#now()).toISOString(),
+          }
         })
         throw new ClaudeAccountError("CREDENTIAL_REFRESH_FAILED", "需要重新授权")
       }
@@ -98,15 +102,17 @@ export class CredentialRefresher {
       expiresAt: tokens.expiresAt,
       scopes: tokens.scopes,
     }
-    const updated: AccountRecord = {
-      ...account,
-      credential: updatedCredential,
-      needsReauth: false,
-      updatedAt: new Date(this.#now()).toISOString(),
-    }
-    try {
-      await this.#store.saveAccount(updated)
-    } catch {
+    const updated = await this.#store.updateAccount(account.id, (current) => {
+      // 账号已删除或凭据已被其他刷新轮换时不复活旧记录。
+      if (current.credential?.refreshToken !== credential.refreshToken) return null
+      return {
+        ...current,
+        credential: { ...current.credential, ...updatedCredential },
+        needsReauth: false,
+        updatedAt: new Date(this.#now()).toISOString(),
+      }
+    })
+    if (updated === null) {
       throw new ClaudeAccountError("STORAGE_FAILED", "保存刷新后的凭据失败")
     }
     return updated

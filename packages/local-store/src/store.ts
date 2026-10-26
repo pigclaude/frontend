@@ -8,6 +8,10 @@ import { parseAccountRecord, parseProxy, type AccountRecord, type IpProxy } from
 export type { AccountRecord, FingerprintConfig, IpProxy, ProxyTestResult } from "./schema"
 export type { ClaudeCredential } from "./credential"
 
+/** 账号局部更新或按当前记录计算新记录；updater 返回 null 表示跳过这次写入。 */
+export type AccountUpdate =
+  Partial<Omit<AccountRecord, "id">> | ((account: AccountRecord) => AccountRecord | null)
+
 /** 读写本机 proxies.json 与 accounts.json。保证按 id 覆盖，同一文件的保存排队，凭据不加密，文件留在本机。 */
 export class LocalStore {
   readonly #dataDir: string
@@ -54,6 +58,30 @@ export class LocalStore {
       const accounts = replaceById(await readAccounts(this.accountsPath()), account)
       await writeJson(this.accountsPath(), accounts)
     })
+  }
+
+  /**
+   * 在写入队列内原子更新一条账号：读取最新记录、应用局部字段或 updater，再整体写回。
+   * 保证账号已被删除时返回 null 且不复活；updater 返回 null 时跳过写入。
+   */
+  async updateAccount(id: string, update: AccountUpdate): Promise<AccountRecord | null> {
+    let updated: AccountRecord | null = null
+    await this.enqueue(this.accountsPath(), async () => {
+      const accounts = await readAccounts(this.accountsPath())
+      const index = accounts.findIndex((account) => account.id === id)
+      if (index < 0) return
+      const current = accounts[index]
+      if (current === undefined) return
+      const next = typeof update === "function" ? update(current) : { ...current, ...update }
+      if (next === null) return
+      const committed: AccountRecord = { ...next, id: current.id }
+      updated = committed
+      await writeJson(
+        this.accountsPath(),
+        accounts.map((account, itemIndex) => (itemIndex === index ? committed : account)),
+      )
+    })
+    return updated
   }
 
   /** 按 id 删除一条账号。保证文件不存在或记录不存在时不报错。 */

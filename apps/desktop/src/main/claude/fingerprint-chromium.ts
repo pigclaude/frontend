@@ -6,7 +6,7 @@ import { access, mkdir, rm } from "node:fs/promises"
 import { homedir } from "node:os"
 import { isAbsolute, join, relative } from "node:path"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
-import { buildFingerprintArgs } from "./fingerprint-args"
+import { buildFingerprintArgs, ensureFingerprint, type ScreenSize } from "./fingerprint-args"
 
 const defaultStopTimeoutMs = 3_000
 
@@ -37,6 +37,8 @@ export type FingerprintChromiumConfig = {
   homeDir?: string
   spawn?: typeof spawn
   stopTimeoutMs?: number
+  /** 宿主屏幕可用区域，用于计算默认窗口大小；缺省按 1920x1080。 */
+  screenSize?: ScreenSize
 }
 
 /** 启动一次登录需要的输入。bridgeUrl 缺省表示不使用代理桥，直接走系统网络。 */
@@ -66,6 +68,7 @@ export class FingerprintChromiumAdapter {
   readonly #homeDir: string
   readonly #spawn: typeof spawn
   readonly #stopTimeoutMs: number
+  readonly #screenSize: ScreenSize | undefined
   readonly #processes = new Map<string, ManagedProcess>()
 
   /** 创建绑定到账号配置根目录的启动器。 */
@@ -76,6 +79,7 @@ export class FingerprintChromiumAdapter {
     this.#homeDir = config.homeDir ?? homedir()
     this.#spawn = config.spawn ?? spawn
     this.#stopTimeoutMs = config.stopTimeoutMs ?? defaultStopTimeoutMs
+    this.#screenSize = config.screenSize
   }
 
   /** 返回账号的浏览器配置目录。保证目录名只来自账号 ID，不能越出 profilesRoot。 */
@@ -115,13 +119,17 @@ export class FingerprintChromiumAdapter {
     )
   }
 
-  /** 启动内核并打开授权 URL。保证同一账号旧的浏览器进程先被停止。 */
+  /** 启动内核并打开授权 URL。保证同一账号旧的浏览器进程先被停止，种子由账号 ID 稳定生成。 */
   async launch(input: LaunchBrowserInput): Promise<LaunchedBrowser> {
+    const validation = ensureFingerprint(input.fingerprint, input.accountId)
+    if (!validation.ok) {
+      throw new BrowserLaunchError("BROWSER_START_FAILED", validation.message)
+    }
     const binary = await this.ensureAvailable()
     await this.stop(input.accountId)
     const profileDir = this.profileDir(input.accountId)
     await mkdir(profileDir, { recursive: true, mode: 0o700 })
-    const args = buildLaunchArgs(input, profileDir)
+    const args = buildLaunchArgs(input, validation.fingerprint, profileDir, this.#screenSize)
     let child: ChildProcess
     try {
       child = this.#spawn(binary, args, { detached: true, stdio: "ignore" })
@@ -183,7 +191,12 @@ export class FingerprintChromiumAdapter {
   }
 }
 
-function buildLaunchArgs(input: LaunchBrowserInput, profileDir: string): string[] {
+function buildLaunchArgs(
+  input: LaunchBrowserInput,
+  fingerprint: ClaudeFingerprintView,
+  profileDir: string,
+  screenSize: ScreenSize | undefined,
+): string[] {
   const args = [`--user-data-dir=${profileDir}`]
   if (input.bridgeUrl !== undefined && input.bridgeUrl !== "") {
     args.push(`--proxy-server=${input.bridgeUrl}`, "--proxy-bypass-list=localhost;127.0.0.1")
@@ -192,7 +205,7 @@ function buildLaunchArgs(input: LaunchBrowserInput, profileDir: string): string[
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-sync",
-    ...buildFingerprintArgs(input.fingerprint),
+    ...buildFingerprintArgs(fingerprint, { screen: screenSize }),
     input.authorizeUrl,
   )
   return args

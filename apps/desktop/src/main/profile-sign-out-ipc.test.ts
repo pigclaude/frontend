@@ -88,6 +88,7 @@ vi.mock("electron", () => ({
     exposeInMainWorld: (_name: string, bridge: unknown) => (fixture.bridge = bridge),
   },
   nativeTheme: { on: () => {}, shouldUseDarkColors: false },
+  screen: { getPrimaryDisplay: () => ({ workAreaSize: { width: 1920, height: 1080 } }) },
   safeStorage: {
     isEncryptionAvailable: () => true,
     encryptString: (value: string) => Buffer.from(`fixture-encrypted:${value}`),

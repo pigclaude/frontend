@@ -29,6 +29,7 @@ vi.mock("electron", () => ({
       fixture.handlers.set(name, handler),
   },
   nativeTheme: { on: vi.fn() },
+  screen: { getPrimaryDisplay: () => ({ workAreaSize: { width: 1920, height: 1080 } }) },
   safeStorage: {},
   shell: {},
 }))

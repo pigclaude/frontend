@@ -8,6 +8,7 @@ import {
   nativeTheme,
   powerMonitor,
   safeStorage,
+  screen,
   shell,
 } from "electron"
 import { join } from "node:path"
@@ -316,6 +317,7 @@ async function setupAuthorization(): Promise<void> {
   const browser = new FingerprintChromiumAdapter({
     profilesRoot: join(app.getPath("userData"), "local", "browser-profiles"),
     binaryPath: process.env["PIGCLAUDE_FINGERPRINT_CHROMIUM_BIN"],
+    screenSize: screen.getPrimaryDisplay().workAreaSize,
   })
   claudeAccountService = new ClaudeAccountService({
     store: localStore,

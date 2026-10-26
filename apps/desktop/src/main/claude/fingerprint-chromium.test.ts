@@ -6,6 +6,7 @@ import { chmod, mkdtemp, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { BrowserLaunchError, FingerprintChromiumAdapter } from "./fingerprint-chromium"
 
 const cleanups: Array<() => Promise<void>> = []
@@ -14,14 +15,18 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup()
 })
 
-const fingerprint = {
+const fingerprint: ClaudeFingerprintView = {
   seed: "123456",
   brand: "Chrome",
   platform: "macos",
   lang: "en-US",
   timezone: "America/Los_Angeles",
-  canvasNoise: true,
-  clientRectsNoise: false,
+  canvasNoise: "1",
+  clientRectsNoise: "0",
+  resolution: "1920,1080",
+  hardwareConcurrency: "8",
+  webrtcPolicy: "disable_non_proxied_udp",
+  disableSpoofing: ["font"],
 }
 
 describe("FingerprintChromiumAdapter", () => {
@@ -58,19 +63,108 @@ describe("FingerprintChromiumAdapter", () => {
     expect(launched).toMatchObject({ pid: 4321 })
     expect(launched.profileDir).toBe(join(root, "acc-1"))
     expect((await stat(launched.profileDir)).isDirectory()).toBe(true)
-    const args = calls[0]?.args ?? []
     expect(calls[0]?.binary).toBe(binary)
-    expect(args).toContain(`--user-data-dir=${join(root, "acc-1")}`)
-    expect(args).toContain("--proxy-server=http://127.0.0.1:9000")
-    expect(args).toContain("--proxy-bypass-list=localhost;127.0.0.1")
-    expect(args).toContain("--fingerprint=123456")
-    expect(args).toContain("--fingerprint-brand=Chrome")
-    expect(args).toContain("--fingerprint-platform=macos")
-    expect(args).toContain("--lang=en-US")
-    expect(args).toContain("--accept-lang=en-US,en")
-    expect(args).toContain("--timezone=America/Los_Angeles")
-    expect(args).toContain("--disable-spoofing=clientrects")
-    expect(args.at(-1)).toBe("https://claude.test/authorize")
+    expect(calls[0]?.args).toEqual([
+      `--user-data-dir=${join(root, "acc-1")}`,
+      "--proxy-server=http://127.0.0.1:9000",
+      "--proxy-bypass-list=localhost;127.0.0.1",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-sync",
+      "--fingerprint=123456",
+      "--fingerprint-brand=Chrome",
+      "--fingerprint-platform=macos",
+      "--lang=en-US",
+      "--accept-lang=en-US,en",
+      "--timezone=America/Los_Angeles",
+      "--window-size=1920,1080",
+      "--fingerprint-hardware-concurrency=8",
+      "--disable-non-proxied-udp",
+      "--fingerprinting-canvas-image-data-noise",
+      "--fingerprinting-client-rects-noise=0",
+      "--disable-spoofing=font",
+      "https://claude.test/authorize",
+    ])
+  })
+
+  it("computes the default window size from the injected host screen", async () => {
+    const binary = await fakeBinary()
+    const root = await tempRoot()
+    const calls: string[][] = []
+    const adapter = new FingerprintChromiumAdapter({
+      binaryPath: binary,
+      profilesRoot: root,
+      screenSize: { width: 2560, height: 1440 },
+      spawn: fakeSpawn((_command, args) => {
+        calls.push(args)
+        return new FakeChild()
+      }),
+    })
+    await adapter.launch({
+      accountId: "acc-1",
+      authorizeUrl: "https://claude.test/authorize",
+      fingerprint: { ...fingerprint, resolution: "" },
+    })
+    expect(calls[0]).toContain("--window-size=1075,605")
+  })
+
+  it("generates a stable seed from the account id when none is stored", async () => {
+    const binary = await fakeBinary()
+    const root = await tempRoot()
+    const calls: string[][] = []
+    const adapter = new FingerprintChromiumAdapter({
+      binaryPath: binary,
+      profilesRoot: root,
+      spawn: fakeSpawn((_command, args) => {
+        calls.push(args)
+        return new FakeChild()
+      }),
+    })
+    const emptySeed = { ...fingerprint, seed: "" }
+    await adapter.launch({
+      accountId: "acc-1",
+      authorizeUrl: "https://claude.test/1",
+      fingerprint: emptySeed,
+    })
+    await adapter.launch({
+      accountId: "acc-1",
+      authorizeUrl: "https://claude.test/2",
+      fingerprint: emptySeed,
+    })
+    await adapter.launch({
+      accountId: "acc-2",
+      authorizeUrl: "https://claude.test/3",
+      fingerprint: emptySeed,
+    })
+    const seeds = calls.map((args) => args.find((arg) => arg.startsWith("--fingerprint=")))
+    expect(seeds[0]).toMatch(/^--fingerprint=\d+$/)
+    expect(seeds[1]).toBe(seeds[0])
+    expect(seeds[2]).not.toBe(seeds[0])
+  })
+
+  it("rejects an invalid fingerprint before spawning", async () => {
+    const binary = await fakeBinary()
+    const root = await tempRoot()
+    let spawnCount = 0
+    const adapter = new FingerprintChromiumAdapter({
+      binaryPath: binary,
+      profilesRoot: root,
+      spawn: fakeSpawn(() => {
+        spawnCount += 1
+        return new FakeChild()
+      }),
+    })
+    await expect(
+      adapter.launch({
+        accountId: "acc-1",
+        authorizeUrl: "https://claude.test/authorize",
+        fingerprint: { ...fingerprint, hardwareConcurrency: "999" },
+      }),
+    ).rejects.toMatchObject({
+      code: "BROWSER_START_FAILED",
+      message: "CPU 核心数必须是 1 到 128 的整数",
+    })
+    expect(spawnCount).toBe(0)
   })
 
   it("launches without proxy arguments when no bridge is given", async () => {

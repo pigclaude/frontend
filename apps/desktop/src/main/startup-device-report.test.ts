@@ -31,6 +31,7 @@ vi.mock("electron", () => ({
   dialog: {},
   ipcMain: { handle: vi.fn() },
   nativeTheme: { on: vi.fn() },
+  screen: { getPrimaryDisplay: () => ({ workAreaSize: { width: 1920, height: 1080 } }) },
   safeStorage: {},
   shell: {},
 }))

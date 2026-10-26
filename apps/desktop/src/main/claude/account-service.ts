@@ -111,7 +111,7 @@ export class ClaudeAccountService {
       if (input.accountId !== undefined && existing === null) {
         throw new ClaudeAccountError("ACCOUNT_NOT_FOUND", "账号不存在")
       }
-      const validation = ensureFingerprint(input.fingerprint)
+      const validation = ensureFingerprint(input.fingerprint, accountId)
       if (!validation.ok) {
         throw new ClaudeAccountError("FINGERPRINT_INVALID", validation.message)
       }
@@ -239,7 +239,7 @@ export class ClaudeAccountService {
     }
     let fingerprint = account.fingerprint
     if (input.fingerprint !== undefined) {
-      const validation = ensureFingerprint(input.fingerprint)
+      const validation = ensureFingerprint(input.fingerprint, input.accountId)
       if (!validation.ok) throw new ClaudeAccountError("FINGERPRINT_INVALID", validation.message)
       fingerprint = validation.fingerprint
     }

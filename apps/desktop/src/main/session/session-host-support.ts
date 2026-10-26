@@ -212,16 +212,6 @@ export function hostError(
   return new SessionHostError(code, redactSessionToken(message, token))
 }
 
-/** 返回宿主系统的 IANA 时区；取不到时回退 UTC。 */
-export function systemTimezone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
-}
-
-/** 返回宿主系统的 locale；取不到时回退 en-US。 */
-export function systemLocale(): string {
-  return Intl.DateTimeFormat().resolvedOptions().locale || "en-US"
-}
-
 /** 提取可展示的错误文本；非 Error 值转成字符串。 */
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)

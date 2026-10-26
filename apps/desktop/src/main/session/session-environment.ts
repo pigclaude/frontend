@@ -5,6 +5,7 @@
 import { chmod, mkdir, readdir, rm, writeFile } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
 import { buildSessionEnv } from "@pigclaude/session-env"
+import { normalizeSessionLocale, normalizeSessionTimezone } from "./session-locale"
 
 /** 会话环境里的非秘密占位 token；真实 access token 只留在 daemon 内。 */
 export const placeholderOAuthToken = "pigclaude-local"
@@ -65,11 +66,17 @@ export class SessionEnvironment {
     const sessionDir = join(sessionsDir, input.sessionId)
     const configDir = join(sessionDir, "claude")
     const preloadPath = join(sessionDir, "intl-preload.cjs")
-    const env = buildEnvironment(input, configDir, preloadPath)
+    // 这里是环境的最后一道关口：空语言和 system 时区不能进入 TZ、LANG 或 Intl 预加载。
+    const normalized: SessionEnvironmentInput = {
+      ...input,
+      timezone: normalizeSessionTimezone(input.timezone),
+      locale: normalizeSessionLocale(input.locale),
+    }
+    const env = buildEnvironment(normalized, configDir, preloadPath)
     const preloadSource = buildSessionEnv({
-      daemonBaseUrl: input.daemonBaseUrl,
-      timezone: input.timezone,
-      locale: input.locale,
+      daemonBaseUrl: normalized.daemonBaseUrl,
+      timezone: normalized.timezone,
+      locale: normalized.locale,
       userSettingsEnv: {},
     }).preloadSource
 
@@ -95,7 +102,7 @@ export class SessionEnvironment {
       sessionDir,
       workspace: input.workspace,
       binaryPath: input.binaryPath,
-      timezone: input.timezone,
+      timezone: normalized.timezone,
     })
   }
 

@@ -21,10 +21,9 @@ import {
   sanitizeSessionEvent,
   sanitizeStartError,
   assertMembershipActive,
-  systemLocale,
-  systemTimezone,
 } from "./session-host-support"
 import type { ActiveSession } from "./session-host-support"
+import { normalizeSessionLocale, normalizeSessionTimezone } from "./session-locale"
 import { queryModels } from "./session-models"
 import type {
   ClaudeModel,
@@ -163,8 +162,8 @@ export class SessionHost {
         workspace: input.workspace,
         daemonBaseUrl,
         sessionToken: this.#runtime.sessionToken,
-        timezone: profile?.timezone ?? systemTimezone(),
-        locale: profile?.locale ?? systemLocale(),
+        timezone: normalizeSessionTimezone(profile?.timezone),
+        locale: normalizeSessionLocale(profile?.locale),
         binaryPath,
         userDataPath: this.#userDataPath,
       },

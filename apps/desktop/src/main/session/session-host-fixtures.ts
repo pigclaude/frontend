@@ -13,6 +13,7 @@ import type {
   SessionHostEvent,
   SessionMembership,
   SessionRuntime,
+  SessionProfile,
   SessionRuntimeEvent,
   SessionUsagePort,
 } from "./session-types"
@@ -315,6 +316,7 @@ export type HarnessOptions = {
   permissionTimeoutMs?: number
   holdAdapterStart?: boolean
   resolveBinaryPath?: () => string
+  resolveProfile?: SessionProfile
   modelsError?: Error
 }
 
@@ -355,7 +357,8 @@ export function createHarness(options: HarnessOptions): SessionHarness {
     userDataPath,
     createAdapter: adapters.create,
     resolveBinaryPath: options.resolveBinaryPath ?? (() => "/fake/claude"),
-    resolveProfile: async () => ({ timezone: "America/Los_Angeles", locale: "en-US" }),
+    resolveProfile: async () =>
+      options.resolveProfile ?? { timezone: "America/Los_Angeles", locale: "en-US" },
     defaultWorkspace: () => options.workspace,
     permissionTimeoutMs: options.permissionTimeoutMs ?? 10 * 60 * 1_000,
     now: () => fixedNow,

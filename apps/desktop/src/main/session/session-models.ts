@@ -11,13 +11,8 @@ import type {
   SessionRuntime,
 } from "./session-types"
 import type { ActiveSession } from "./session-host-support"
-import {
-  assertWorkspace,
-  createEnvironmentOrThrow,
-  errorMessage,
-  systemLocale,
-  systemTimezone,
-} from "./session-host-support"
+import { assertWorkspace, createEnvironmentOrThrow, errorMessage } from "./session-host-support"
+import { normalizeSessionLocale, normalizeSessionTimezone } from "./session-locale"
 
 /** 模型查询依赖；所有会话状态通过参数传入，避免 SessionHost 主文件继续膨胀。 */
 export type SessionModelQueryOptions = {
@@ -60,8 +55,8 @@ export async function queryModels(options: SessionModelQueryOptions): Promise<Cl
         workspace,
         daemonBaseUrl,
         sessionToken: options.runtime.sessionToken,
-        timezone: profile?.timezone ?? systemTimezone(),
-        locale: profile?.locale ?? systemLocale(),
+        timezone: normalizeSessionTimezone(profile?.timezone),
+        locale: normalizeSessionLocale(profile?.locale),
         binaryPath: options.readBinaryPath(),
         userDataPath: options.userDataPath,
       },

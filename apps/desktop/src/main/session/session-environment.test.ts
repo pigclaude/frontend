@@ -9,6 +9,7 @@ import {
   SessionEnvironment,
   placeholderOAuthToken,
 } from "./session-environment"
+import { systemLocale, systemTimezone } from "./session-locale"
 
 const temporaryDirs: string[] = []
 const originalHome = process.env.HOME
@@ -71,6 +72,38 @@ describe("SessionEnvironment", () => {
 
     await environment.cleanup()
   })
+
+  it.each([
+    ["empty", "", "", systemTimezone(), systemLocale()],
+    ["system", "system", "", systemTimezone(), systemLocale()],
+    ["explicit", "Asia/Tokyo", "ja-JP", "Asia/Tokyo", "ja-JP"],
+  ])(
+    "never puts a %s locale or timezone into TZ, LANG or the preload",
+    async (label, timezone, locale, expectedTimezone, expectedLocale) => {
+      const userDataPath = await tempDir()
+      const environment = await SessionEnvironment.create({
+        sessionId: `session-locale-${label}`,
+        workspace: "/tmp/workspace",
+        daemonBaseUrl: "http://127.0.0.1:47825",
+        sessionToken: "session-token-locale",
+        timezone,
+        locale,
+        binaryPath: "/opt/claude/bin/claude",
+        userDataPath,
+      })
+
+      expect(environment.timezone).toBe(expectedTimezone)
+      expect(environment.env.TZ).toBe(expectedTimezone)
+      expect(environment.env.LANG).toBe(expectedLocale)
+      const preload = await readFile(join(environment.sessionDir, "intl-preload.cjs"), "utf8")
+      expect(preload).toContain(JSON.stringify(expectedTimezone))
+      expect(environment.env.TZ).not.toBe("")
+      expect(environment.env.LANG).not.toBe("")
+      expect(environment.env.TZ.toLowerCase()).not.toBe("system")
+
+      await environment.cleanup()
+    },
+  )
 
   it("does not copy user settings, proxies or real credentials into the session", async () => {
     const userDataPath = await tempDir()

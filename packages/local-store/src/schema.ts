@@ -46,7 +46,7 @@ export type AccountRecord = {
   updatedAt: string
 }
 
-/** v3 记录的读取形态。proxyId 可能缺失或为 null，解析时统一归一为 null。 */
+/** v3 记录的读取形态。proxyId 可能缺失、为 null 或空字符串，解析时统一归一为 null。 */
 type StoredAccountV3 = Omit<AccountRecord, "proxyId"> & { proxyId?: string | null }
 
 /** 旧版 v1 账号记录。旧字符串凭据不迁移，只标记为需要重新授权。 */
@@ -79,7 +79,7 @@ type LegacyIpProxy = {
   url: string
 }
 
-/** 解析一条账号记录。保证 v1/v2 旧记录迁移为 v3，v3 缺失或为 null 的 proxyId 归一为 null，无法识别的记录返回 null。 */
+/** 解析一条账号记录。保证 v1/v2 旧记录迁移为 v3，v3 缺失、为 null 或空字符串的 proxyId 归一为 null，无法识别的记录返回 null。 */
 export function parseAccountRecord(value: unknown): AccountRecord | null {
   if (isV3Account(value)) return normalizeV3(value)
   if (isV2Account(value)) return migrateV2(value)
@@ -135,7 +135,11 @@ function isV3Account(value: unknown): value is StoredAccountV3 {
 }
 
 function normalizeV3(value: StoredAccountV3): AccountRecord {
-  return { ...value, proxyId: value.proxyId ?? null }
+  const proxyId = value.proxyId
+  return {
+    ...value,
+    proxyId: proxyId === undefined || proxyId === null || proxyId === "" ? null : proxyId,
+  }
 }
 
 function isV2Account(value: unknown): value is LegacyAccountRecordV2 {

@@ -83,7 +83,7 @@ export class AccountChooser {
     )
   }
 
-  // 只刷新通过静态过滤的账号；刷新失败、刷新后凭据为空或非空 proxyId 查不到代理时跳过，不影响其他账号。
+  // 只刷新通过静态过滤的账号；刷新失败、刷新后凭据为空、非空 proxyId 查不到代理或代理地址为空时跳过，不影响其他账号。
   async #refresh(
     eligible: AccountRecord[],
     proxies: Map<string, IpProxy>,
@@ -94,7 +94,7 @@ export class AccountChooser {
         const updated = await this.#refresher.refreshIfNeeded(account)
         const proxy = updated.proxyId === null ? null : proxies.get(updated.proxyId)
         const authorization = updated.credential?.accessToken
-        if (authorization === undefined || proxy === undefined) continue
+        if (authorization === undefined || proxy === undefined || proxy?.url === "") continue
         refreshed.push({ account: updated, proxy, authorization })
       } catch {
         continue

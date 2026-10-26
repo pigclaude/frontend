@@ -131,6 +131,7 @@ describe("LocalStore", () => {
       JSON.stringify([
         storedAccount("missing"),
         storedAccount("direct", null),
+        storedAccount("empty", ""),
         storedAccount("bound", "p1"),
       ]),
       "utf8",
@@ -138,6 +139,7 @@ describe("LocalStore", () => {
     const store = new LocalStore(dir)
     expect((await store.getAccount("missing"))?.proxyId).toBeNull()
     expect((await store.getAccount("direct"))?.proxyId).toBeNull()
+    expect((await store.getAccount("empty"))?.proxyId).toBeNull()
     expect((await store.getAccount("bound"))?.proxyId).toBe("p1")
   })
 
@@ -236,6 +238,16 @@ describe("LocalStore", () => {
     const parsed: unknown = JSON.parse(await readFile(join(dir, "accounts.json"), "utf8"))
     expect(Array.isArray(parsed)).toBe(true)
     expect(JSON.stringify(parsed)).toContain("access-token")
+  })
+
+  it("writes a null proxy id back so a reopened store still reads direct", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "store-"))
+    const store = new LocalStore(dir)
+    await store.saveAccount({ ...account("acc-1"), proxyId: null })
+    const raw = await readFile(join(dir, "accounts.json"), "utf8")
+    expect(raw).toContain('"proxyId":null')
+    const again = new LocalStore(dir)
+    expect((await again.getAccount("acc-1"))?.proxyId).toBeNull()
   })
 })
 

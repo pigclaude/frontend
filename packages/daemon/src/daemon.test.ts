@@ -188,7 +188,7 @@ describe("LocalDaemon", () => {
     }
   })
 
-  it("returns proxy_unavailable when choose returns null", async () => {
+  it("returns no_available_account when choose returns null", async () => {
     const daemon = new LocalDaemon({
       runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
@@ -201,7 +201,7 @@ describe("LocalDaemon", () => {
         headers: sessionHeaders,
       })
       expect(response.status).toBe(503)
-      expect(await response.json()).toEqual({ error: "proxy_unavailable" })
+      expect(await response.json()).toEqual({ error: "no_available_account" })
     } finally {
       await daemon.stop()
     }

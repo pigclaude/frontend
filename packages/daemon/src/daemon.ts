@@ -1,6 +1,7 @@
 // 本机转发 daemon。只监听 127.0.0.1，先校验本机会话令牌，再把请求经账号代理送到 Anthropic，
 // 并且只在消息接口替换凭据、合并 OAuth beta 头。
-// 额度用尽且尚未向调用方写出响应体时，用下一个账号重试同一条消息请求，并把选号和拒绝交给回调。
+// 额度用尽或消息请求在写出正文前收到 401/403 时，用下一个账号重试同一条消息请求，并把选号和拒绝交给回调。
+// 没有可用账号返回 no_available_account，代理为空返回 proxy_unavailable，认证全部失败返回 auth_expired。
 // 已经保存额度用尽响应后，代理抛错会拒绝这个账号并继续选号；还没有保存的 429 时，代理抛错仍返回 proxy_unavailable。
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
@@ -145,6 +146,7 @@ export class LocalDaemon {
     let body: Buffer | null = null
     let savedQuota: BufferedUpstream | null = null
     let switchAccount = true
+    let authRejected = false
     let previousId: string | undefined
 
     while (switchAccount) {
@@ -156,12 +158,16 @@ export class LocalDaemon {
       if (request.aborted || response.destroyed || response.headersSent || response.writableEnded) {
         return
       }
-      if (chosen === null || chosen.proxyUrl === "" || rejectedIds.includes(chosen.id)) {
-        if (savedQuota !== null) writeBuffered(response, savedQuota)
-        else {
-          request.resume()
-          writeErrorResponse(response, 503, "proxy_unavailable")
-        }
+      if (chosen === null || rejectedIds.includes(chosen.id)) {
+        request.resume()
+        if (authRejected) writeErrorResponse(response, 503, "auth_expired")
+        else if (savedQuota !== null) writeBuffered(response, savedQuota)
+        else writeErrorResponse(response, 503, "no_available_account")
+        return
+      }
+      if (chosen.proxyUrl === "") {
+        request.resume()
+        writeErrorResponse(response, 503, authRejected ? "auth_expired" : "proxy_unavailable")
         return
       }
       this.#onAccountSelected(chosen.id, previousId)
@@ -202,6 +208,15 @@ export class LocalDaemon {
           if (abort.signal.aborted || response.destroyed || response.headersSent) {
             await upstream.body?.cancel().catch(() => undefined)
             return
+          }
+          // 消息请求在写出正文前收到 401/403：标记账号失效并换下一个，不重放同一账号。
+          if (messagePost && isAuthStatus(upstream.status)) {
+            await upstream.body?.cancel().catch(() => undefined)
+            this.#onAccountRejected(chosen.id, "auth")
+            rejectedIds.push(chosen.id)
+            authRejected = true
+            switchAccount = true
+            continue
           }
           if (canSwitchBeforeBody(messagePost, body.length, upstream, response)) {
             const switched = await takeQuotaResponse(response, upstream, method)
@@ -311,6 +326,10 @@ function readBody(request: IncomingMessage): Promise<Buffer> {
     request.on("aborted", onAbort)
     request.on("close", onClose)
   })
+}
+
+function isAuthStatus(status: number): boolean {
+  return status === 401 || status === 403
 }
 
 function canSwitchBeforeBody(

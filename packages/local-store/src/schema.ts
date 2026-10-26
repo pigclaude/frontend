@@ -362,8 +362,10 @@ function isV1Proxy(value: unknown): value is IpProxy {
   )
 }
 
+// 旧代理没有 schemaVersion；显式写了其它版本号的记录视为未知记录，保留原始 JSON 而不是误迁移。
 function isLegacyProxy(value: unknown): value is LegacyIpProxy {
   if (!isRecord(value)) return false
+  if (value.schemaVersion !== undefined) return false
   return typeof value.id === "string" && typeof value.url === "string"
 }
 

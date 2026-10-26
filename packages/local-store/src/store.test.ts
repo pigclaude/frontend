@@ -258,6 +258,58 @@ describe("LocalStore", () => {
     expect(await store.getAccount("acc-1")).toBeNull()
   })
 
+  it("preserves unparsed account and proxy records when a valid record is saved", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "store-"))
+    const futureAccount = {
+      schemaVersion: 4,
+      id: "future-account",
+      displayName: "未来账号",
+      enabled: true,
+      credential: null,
+      needsReauth: false,
+      proxyId: null,
+      fingerprint,
+      browserProfileDir: "",
+      exhaustedUntil: null,
+      createdAt: "2026-10-26T00:00:00.000Z",
+      updatedAt: "2026-10-26T00:00:00.000Z",
+      newField: "keep me",
+    }
+    const futureProxy = {
+      schemaVersion: 4,
+      id: "future-proxy",
+      name: "未来代理",
+      url: "http://127.0.0.1:18080",
+      lastTest: null,
+      newField: "keep me too",
+    }
+    await writeFile(join(dir, "accounts.json"), JSON.stringify([account("acc-1"), futureAccount]))
+    await writeFile(join(dir, "proxies.json"), JSON.stringify([proxy("p1"), futureProxy]))
+
+    const store = new LocalStore(dir)
+    await store.saveAccount(account("acc-2"))
+    await store.saveProxy(proxy("p2"))
+
+    const savedAccounts: unknown[] = JSON.parse(
+      await readFile(join(dir, "accounts.json"), "utf8"),
+    ) as unknown[]
+    const savedProxies: unknown[] = JSON.parse(
+      await readFile(join(dir, "proxies.json"), "utf8"),
+    ) as unknown[]
+    expect(savedAccounts).toContainEqual(futureAccount)
+    expect(savedProxies).toContainEqual(futureProxy)
+    expect((await store.listAccounts()).map((item) => item.id)).toEqual(["acc-1", "acc-2"])
+    expect((await store.listProxies()).map((item) => item.id)).toEqual(["p1", "p2"])
+  })
+
+  it("still rejects a top-level accounts file that is not valid JSON", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "store-"))
+    await writeFile(join(dir, "accounts.json"), '[{"id":"broken"', "utf8")
+    const store = new LocalStore(dir)
+
+    await expect(store.listAccounts()).rejects.toThrow()
+  })
+
   it("keeps the raw file readable as a plain JSON list", async () => {
     const dir = await mkdtemp(join(tmpdir(), "store-"))
     const store = new LocalStore(dir)

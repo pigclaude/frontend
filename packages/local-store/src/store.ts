@@ -32,41 +32,47 @@ export class LocalStore {
     this.#dataDir = dataDir
   }
 
-  /** 按 id 保存或覆盖一条代理。保证同一文件里交错的保存不会丢掉另一条，并且文件被完整替换。 */
+  /** 按 id 保存或覆盖一条代理。保证同一文件里交错的保存不会丢掉另一条，未解析记录原样保留。 */
   async saveProxy(proxy: IpProxy): Promise<void> {
     await this.enqueue(this.proxiesPath(), async () => {
-      const proxies = replaceById(await readProxies(this.proxiesPath()), proxy)
-      await writeJson(this.proxiesPath(), proxies)
+      const stored = await readProxies(this.proxiesPath())
+      await writeStored(this.proxiesPath(), {
+        items: replaceById(stored.items, proxy),
+        invalid: stored.invalid,
+      })
     })
   }
 
-  /** 按 id 删除一条代理。保证文件不存在或记录不存在时不报错。 */
+  /** 按 id 删除一条代理。保证文件不存在或记录不存在时不报错，未解析记录原样保留。 */
   async removeProxy(id: string): Promise<void> {
     await this.enqueue(this.proxiesPath(), async () => {
-      const proxies = await readProxies(this.proxiesPath())
-      await writeJson(
-        this.proxiesPath(),
-        proxies.filter((proxy) => proxy.id !== id),
-      )
+      const stored = await readProxies(this.proxiesPath())
+      await writeStored(this.proxiesPath(), {
+        items: stored.items.filter((proxy) => proxy.id !== id),
+        invalid: stored.invalid,
+      })
     })
   }
 
   /** 按 id 读取代理。保证没有这条记录时返回 null。 */
   async getProxy(id: string): Promise<IpProxy | null> {
-    const proxies = await readProxies(this.proxiesPath())
-    return proxies.find((proxy) => proxy.id === id) ?? null
+    const stored = await readProxies(this.proxiesPath())
+    return stored.items.find((proxy) => proxy.id === id) ?? null
   }
 
   /** 返回全部已保存代理。保证文件不存在时返回空数组。 */
   async listProxies(): Promise<IpProxy[]> {
-    return readProxies(this.proxiesPath())
+    return (await readProxies(this.proxiesPath())).items
   }
 
   /** 按 id 保存或覆盖一条账号。保证明文写入 credential，保留指纹，同一文件里交错的保存不会丢掉另一条。 */
   async saveAccount(account: AccountRecord): Promise<void> {
     await this.enqueue(this.accountsPath(), async () => {
-      const accounts = replaceById(await readAccounts(this.accountsPath()), account)
-      await writeJson(this.accountsPath(), accounts)
+      const stored = await readAccounts(this.accountsPath())
+      await writeStored(this.accountsPath(), {
+        items: replaceById(stored.items, account),
+        invalid: stored.invalid,
+      })
     })
   }
 
@@ -77,43 +83,45 @@ export class LocalStore {
   async updateAccount(id: string, update: AccountUpdate): Promise<AccountRecord | null> {
     let updated: AccountRecord | null = null
     await this.enqueue(this.accountsPath(), async () => {
-      const accounts = await readAccounts(this.accountsPath())
-      const index = accounts.findIndex((account) => account.id === id)
+      const stored = await readAccounts(this.accountsPath())
+      const index = stored.items.findIndex((account) => account.id === id)
       if (index < 0) return
-      const current = accounts[index]
+      const current = stored.items[index]
       if (current === undefined) return
       const next = typeof update === "function" ? update(current) : { ...current, ...update }
       if (next === null) return
       const committed: AccountRecord = { ...next, id: current.id }
       updated = committed
-      await writeJson(
-        this.accountsPath(),
-        accounts.map((account, itemIndex) => (itemIndex === index ? committed : account)),
-      )
+      await writeStored(this.accountsPath(), {
+        items: stored.items.map((account, itemIndex) =>
+          itemIndex === index ? committed : account,
+        ),
+        invalid: stored.invalid,
+      })
     })
     return updated
   }
 
-  /** 按 id 删除一条账号。保证文件不存在或记录不存在时不报错。 */
+  /** 按 id 删除一条账号。保证文件不存在或记录不存在时不报错，未解析记录原样保留。 */
   async removeAccount(id: string): Promise<void> {
     await this.enqueue(this.accountsPath(), async () => {
-      const accounts = await readAccounts(this.accountsPath())
-      await writeJson(
-        this.accountsPath(),
-        accounts.filter((account) => account.id !== id),
-      )
+      const stored = await readAccounts(this.accountsPath())
+      await writeStored(this.accountsPath(), {
+        items: stored.items.filter((account) => account.id !== id),
+        invalid: stored.invalid,
+      })
     })
   }
 
   /** 按 id 读取账号。保证没有这条记录时返回 null。 */
   async getAccount(id: string): Promise<AccountRecord | null> {
-    const accounts = await readAccounts(this.accountsPath())
-    return accounts.find((account) => account.id === id) ?? null
+    const stored = await readAccounts(this.accountsPath())
+    return stored.items.find((account) => account.id === id) ?? null
   }
 
-  /** 返回全部已保存账号。保证文件不存在时返回空数组，旧记录在读取时迁移为 v2。 */
+  /** 返回全部已保存账号。保证文件不存在时返回空数组，旧记录在读取时迁移为 v3。 */
   async listAccounts(): Promise<AccountRecord[]> {
-    return readAccounts(this.accountsPath())
+    return (await readAccounts(this.accountsPath())).items
   }
 
   private accountsPath(): string {
@@ -145,25 +153,38 @@ function replaceById<T extends { id: string }>(items: readonly T[], next: T): T[
   return items.map((item, itemIndex) => (itemIndex === index ? next : item))
 }
 
-async function readAccounts(path: string): Promise<AccountRecord[]> {
+// 读取结果同时保留无法解析的原始条目；写回时把它们原样追加，避免未知/未来 schema 被静默删除。
+type StoredList<T> = { items: T[]; invalid: unknown[] }
+
+async function readAccounts(path: string): Promise<StoredList<AccountRecord>> {
   return readList(path, parseAccountRecord)
 }
 
-async function readProxies(path: string): Promise<IpProxy[]> {
+async function readProxies(path: string): Promise<StoredList<IpProxy>> {
   return readList(path, parseProxy)
 }
 
-async function readList<T>(path: string, parse: (value: unknown) => T | null): Promise<T[]> {
+async function readList<T>(
+  path: string,
+  parse: (value: unknown) => T | null,
+): Promise<StoredList<T>> {
   const parsed = await readJson(path)
-  if (parsed === undefined) return []
+  if (parsed === undefined) return { items: [], invalid: [] }
   if (!Array.isArray(parsed)) throw new Error(`${basename(path)} 不是列表`)
   const items: T[] = []
+  const invalid: unknown[] = []
   for (const item of parsed) {
     const record = parse(item)
-    // 跳过坏记录，避免一条损坏数据让整个账号库或代理库不可读；坏记录会在下一次保存时消失。
-    if (record !== null) items.push(record)
+    // 跳过坏记录，避免一条损坏数据让整个账号库或代理库不可读；原始值留给下一次写回。
+    if (record === null) invalid.push(item)
+    else items.push(record)
   }
-  return items
+  return { items, invalid }
+}
+
+// 有效条目按调用方的顺序写回，未解析条目统一追加在末尾。
+async function writeStored<T>(path: string, stored: StoredList<T>): Promise<void> {
+  await writeJson(path, [...stored.items, ...stored.invalid])
 }
 
 async function readJson(path: string): Promise<unknown> {

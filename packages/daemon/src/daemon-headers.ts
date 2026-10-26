@@ -1,6 +1,13 @@
 // 整理转发时的请求头和响应头。丢掉逐跳头；正文已被 undici 解码时不再保留压缩头和原来的长度。
+// 同时负责本机会话头的删除和 Anthropic OAuth beta 值的合并。
 
 import type { IncomingMessage } from "node:http"
+
+/** 本机会话令牌的请求头名。daemon 校验之后必须删除，不能交给上游。 */
+export const sessionHeaderName = "x-pigclaude-session"
+
+/** OAuth 会话需要的 Anthropic beta 值。 */
+export const oauthBetaValue = "oauth-2025-04-20"
 
 const skipRequestHeader = new Set([
   "connection",
@@ -37,8 +44,11 @@ type HeaderSource = {
   }
 }
 
-/** 保证交给上游的请求头不含逐跳头。 */
-export function requestHeaders(request: IncomingMessage): Headers {
+/** 保证交给上游的请求头不含逐跳头；传入 sessionToken 时同时删除本机会话头。 */
+export function requestHeaders(
+  request: IncomingMessage,
+  options?: { sessionToken?: string },
+): Headers {
   const headers = new Headers()
   for (const [name, value] of Object.entries(request.headers)) {
     if (value === undefined || skipRequestHeader.has(name)) continue
@@ -48,7 +58,20 @@ export function requestHeaders(request: IncomingMessage): Headers {
       headers.set(name, value)
     }
   }
+  if (options?.sessionToken !== undefined) headers.delete(sessionHeaderName)
   return headers
+}
+
+/** 保证返回的 anthropic-beta 值保留已有项、按逗号去重，并且一定包含 oauth-2025-04-20。 */
+export function oauthBetaHeader(existing: string | null): string {
+  const values: string[] = []
+  for (const item of (existing ?? "").split(",")) {
+    const value = item.trim()
+    if (value.length === 0 || values.includes(value)) continue
+    values.push(value)
+  }
+  if (!values.includes(oauthBetaValue)) values.push(oauthBetaValue)
+  return values.join(", ")
 }
 
 // undici 会解开 gzip、x-gzip、deflate 和 br，但留下压缩时的 content-encoding 与 content-length。

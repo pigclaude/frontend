@@ -1,11 +1,18 @@
-// 本机转发 daemon。只监听 127.0.0.1，把请求经账号代理送到 Anthropic，并且只在消息接口替换凭据。
-// 额度用尽且尚未向调用方写出响应体时，用下一个账号重试同一条消息请求。
+// 本机转发 daemon。只监听 127.0.0.1，先校验本机会话令牌，再把请求经账号代理送到 Anthropic，
+// 并且只在消息接口替换凭据、合并 OAuth beta 头。
+// 额度用尽且尚未向调用方写出响应体时，用下一个账号重试同一条消息请求，并把选号和拒绝交给回调。
 // 已经保存额度用尽响应后，代理抛错会拒绝这个账号并继续选号；还没有保存的 429 时，代理抛错仍返回 proxy_unavailable。
 
-import { once } from "node:events"
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import { ProxyAgent, fetch as undiciFetch } from "undici"
-import { forwardHeaders, requestHeaders } from "./daemon-headers.ts"
+import { oauthBetaHeader, requestHeaders, sessionHeaderName } from "./daemon-headers.ts"
+import {
+  takeQuotaResponse,
+  writeBuffered,
+  writeErrorResponse,
+  writeUpstream,
+  type BufferedUpstream,
+} from "./daemon-response.ts"
 
 const upstreamOrigin = "https://api.anthropic.com"
 // 超过 32 MiB 的消息请求体直接返回这次 429，不再为换号重发。
@@ -19,30 +26,33 @@ type ChosenAccount = {
 
 type ChooseAccount = (attempt: { rejectedIds: string[] }) => ChosenAccount | null
 
-type BufferedUpstream = {
-  status: number
-  headers: Record<string, string>
-  body: Buffer
-}
-
-/** 本机 Anthropic 转发。保证只听 127.0.0.1，上游都走账号代理，代理不可用时返回 proxy_unavailable。消息接口在写出响应体前遇到额度用尽时换下一个账号；此时如果下一个代理抛错，就拒绝该账号并继续选号。 */
+/** 本机 Anthropic 转发。保证只听 127.0.0.1，先用会话令牌拒绝其他本机进程，上游都走账号代理，代理不可用时返回 proxy_unavailable。消息接口在写出响应体前遇到额度用尽时换下一个账号；此时如果下一个代理抛错，就拒绝该账号并继续选号。 */
 export class LocalDaemon {
   /** 监听端口。start 完成之后保证是 127.0.0.1 上的实际端口。 */
   port: number
 
+  readonly #sessionToken: string
   readonly #runAuthorized: <T>(operation: (signal: AbortSignal) => Promise<T>) => Promise<T>
   readonly #choose: ChooseAccount
+  readonly #onAccountRejected: (accountId: string, reason: string) => void
+  readonly #onAccountSelected: (accountId: string, previousId: string | undefined) => void
   readonly #server: Server
 
-  /** 保证用给定端口和选号函数准备服务，此时尚未监听。 */
+  /** 保证用给定端口、会话令牌、选号函数和回调准备服务，此时尚未监听。 */
   constructor(options: {
     port: number
+    sessionToken: string
     choose: ChooseAccount
     runAuthorized: <T>(operation: (signal: AbortSignal) => Promise<T>) => Promise<T>
+    onAccountRejected?: (accountId: string, reason: string) => void
+    onAccountSelected?: (accountId: string, previousId: string | undefined) => void
   }) {
     this.port = options.port
+    this.#sessionToken = options.sessionToken
     this.#choose = options.choose
     this.#runAuthorized = options.runAuthorized
+    this.#onAccountRejected = options.onAccountRejected ?? (() => undefined)
+    this.#onAccountSelected = options.onAccountSelected ?? (() => undefined)
     this.#server = createServer((request, response) => {
       response.on("error", () => undefined)
       request.on("error", () => undefined)
@@ -89,7 +99,9 @@ export class LocalDaemon {
         const stop = () => response.destroy()
         signal.addEventListener("abort", stop, { once: true })
         try {
-          await this.#forward(request, response).catch(() => writeUnavailable(response))
+          await this.#forward(request, response).catch(() =>
+            writeErrorResponse(response, 503, "proxy_unavailable"),
+          )
         } finally {
           signal.removeEventListener("abort", stop)
         }
@@ -104,19 +116,25 @@ export class LocalDaemon {
   }
 
   async #forward(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    if (request.headers[sessionHeaderName] !== this.#sessionToken) {
+      request.resume()
+      writeErrorResponse(response, 403, "invalid_session_token")
+      return
+    }
     const upstreamUrl = upstreamUrlFor(request.url)
     if (upstreamUrl === null) {
       request.resume()
-      writeUnavailable(response)
+      writeErrorResponse(response, 503, "proxy_unavailable")
       return
     }
     const method = request.method ?? "GET"
-    const clientHeaders = requestHeaders(request)
+    const clientHeaders = requestHeaders(request, { sessionToken: this.#sessionToken })
     const messagePost = method === "POST" && upstreamUrl.pathname === "/v1/messages"
     const rejectedIds: string[] = []
     let body: Buffer | null = null
     let savedQuota: BufferedUpstream | null = null
     let switchAccount = true
+    let previousId: string | undefined
 
     while (switchAccount) {
       switchAccount = false
@@ -128,16 +146,21 @@ export class LocalDaemon {
         if (savedQuota !== null) writeBuffered(response, savedQuota)
         else {
           request.resume()
-          writeUnavailable(response)
+          writeErrorResponse(response, 503, "proxy_unavailable")
         }
         return
       }
+      this.#onAccountSelected(chosen.id, previousId)
+      previousId = chosen.id
       if (body === null) {
         body = await readBody(request)
         if (request.aborted || response.destroyed || response.headersSent) return
       }
       const headers = new Headers(clientHeaders)
-      if (messagePost) headers.set("authorization", `Bearer ${chosen.authorization}`)
+      if (messagePost) {
+        headers.set("authorization", `Bearer ${chosen.authorization}`)
+        headers.set("anthropic-beta", oauthBetaHeader(headers.get("anthropic-beta")))
+      }
       const abort = new AbortController()
       const stopWatching = watchClient(request, response, abort)
       let agent: ProxyAgent | undefined
@@ -169,6 +192,7 @@ export class LocalDaemon {
           if (canSwitchBeforeBody(messagePost, body.length, upstream, response)) {
             const switched = await takeQuotaResponse(response, upstream, method)
             if (switched === null) return
+            this.#onAccountRejected(chosen.id, "quota")
             rejectedIds.push(chosen.id)
             savedQuota = switched
             switchAccount = true
@@ -292,125 +316,6 @@ function canSwitchBeforeBody(
   )
 }
 
-async function takeQuotaResponse(
-  response: ServerResponse,
-  upstream: Awaited<ReturnType<typeof undiciFetch>>,
-  method: string,
-): Promise<BufferedUpstream | null> {
-  try {
-    const buffered = await bufferUpstream(upstream, method)
-    if (response.destroyed || response.headersSent || response.writableEnded) return null
-    return buffered
-  } catch {
-    if (!response.headersSent && !response.destroyed) {
-      writeHeadOrIgnore(response, upstream.status, forwardHeaders(upstream, method))
-    }
-    if (!response.destroyed) response.destroy()
-    return null
-  }
-}
-
-async function bufferUpstream(
-  upstream: Awaited<ReturnType<typeof undiciFetch>>,
-  method: string,
-): Promise<BufferedUpstream> {
-  const headers = forwardHeaders(upstream, method)
-  const chunks: Buffer[] = []
-  const body = upstream.body
-  if (body !== null) {
-    const reader = body.getReader()
-    try {
-      let result = await reader.read()
-      while (!result.done) {
-        chunks.push(Buffer.from(result.value))
-        result = await reader.read()
-      }
-    } finally {
-      await reader.cancel().catch(() => undefined)
-    }
-  }
-  return { status: upstream.status, headers, body: Buffer.concat(chunks) }
-}
-
-function writeBuffered(response: ServerResponse, buffered: BufferedUpstream): void {
-  if (response.destroyed || response.writableEnded) return
-  if (response.headersSent) {
-    response.destroy()
-    return
-  }
-  try {
-    response.writeHead(buffered.status, buffered.headers)
-    response.end(buffered.body)
-  } catch {
-    // The client socket is already gone.
-  }
-}
-
-async function writeUpstream(
-  response: ServerResponse,
-  upstream: Awaited<ReturnType<typeof undiciFetch>>,
-  method: string,
-): Promise<void> {
-  const headers = forwardHeaders(upstream, method)
-  const body = upstream.body
-  if (body === null) {
-    writeHeadOrIgnore(response, upstream.status, headers)
-    endOrIgnore(response)
-    return
-  }
-  const reader = body.getReader()
-  const gone = clientGone(response)
-  try {
-    if (!response.destroyed) writeHeadOrIgnore(response, upstream.status, headers)
-    while (!response.destroyed && !response.writableEnded) {
-      const outcome = await Promise.race([
-        readChunk(reader),
-        gone.then(() => ({ type: "gone" as const })),
-      ])
-      if (outcome.type !== "chunk") break
-      let wrote = true
-      try {
-        wrote = response.write(outcome.value)
-      } catch {
-        break
-      }
-      if (wrote) continue
-      const drained = await Promise.race([
-        once(response, "drain").then(
-          () => true,
-          () => false,
-        ),
-        gone.then(() => false),
-      ])
-      if (!drained || response.destroyed) break
-    }
-  } finally {
-    await reader.cancel().catch(() => undefined)
-  }
-  endOrIgnore(response)
-}
-
-function readChunk(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-): Promise<{ type: "chunk"; value: Uint8Array } | { type: "done" }> {
-  return reader
-    .read()
-    .then((result) => (result.done ? { type: "done" } : { type: "chunk", value: result.value }))
-}
-
-function clientGone(response: ServerResponse): Promise<void> {
-  if (response.destroyed) return Promise.resolve()
-  return new Promise((resolve) => {
-    const done = (): void => {
-      response.off("close", done)
-      response.off("error", done)
-      resolve()
-    }
-    response.on("close", done)
-    response.on("error", done)
-  })
-}
-
 function watchClient(
   request: IncomingMessage,
   response: ServerResponse,
@@ -435,42 +340,5 @@ function watchClient(
     request.off("aborted", onAbort)
     request.off("close", onRequestClose)
     response.off("close", onResponseClose)
-  }
-}
-
-function writeHeadOrIgnore(
-  response: ServerResponse,
-  status: number,
-  headers: Record<string, string>,
-): void {
-  if (response.destroyed || response.headersSent || response.writableEnded) return
-  try {
-    response.writeHead(status, headers)
-  } catch {
-    // The client socket is already gone.
-  }
-}
-
-function endOrIgnore(response: ServerResponse): void {
-  if (response.destroyed || response.writableEnded) return
-  try {
-    response.end()
-  } catch {
-    // The client socket is already gone.
-  }
-}
-
-function writeUnavailable(response: ServerResponse): void {
-  response.on("error", () => undefined)
-  if (response.writableEnded || response.destroyed) return
-  if (response.headersSent) {
-    response.destroy()
-    return
-  }
-  try {
-    response.writeHead(503, { "content-type": "application/json" })
-    response.end(JSON.stringify({ error: "proxy_unavailable" }))
-  } catch {
-    // writeHead throws ERR_STREAM_DESTROYED once the socket is gone.
   }
 }

@@ -6,6 +6,9 @@ import { startRecordingProxy } from "./daemon-proxy-fixture.test.ts"
 
 const directConnections = vi.hoisted(() => [] as string[])
 
+const sessionToken = "quota-proxy-session-token"
+const sessionHeaders = { "x-pigclaude-session": sessionToken }
+
 vi.mock("undici", async () => {
   const actual = await vi.importActual<typeof import("undici")>("undici")
   return {
@@ -39,8 +42,9 @@ describe("quota proxy failover", () => {
       return { status: 200, body: "from-c" }
     })
     const daemon = new LocalDaemon({
-      runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
+      sessionToken,
+      runAuthorized: async (operation) => operation(new AbortController().signal),
       choose: ({ rejectedIds }) => {
         attempts.push([...rejectedIds])
         if (!rejectedIds.includes("a")) {
@@ -56,6 +60,7 @@ describe("quota proxy failover", () => {
     try {
       const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/messages`, {
         method: "POST",
+        headers: sessionHeaders,
         body: "{}",
       })
       expect(response.status).toBe(200)
@@ -75,8 +80,9 @@ describe("quota proxy failover", () => {
   it("returns proxy_unavailable when the first proxy throws and no quota response is saved", async () => {
     const attempts: string[][] = []
     const daemon = new LocalDaemon({
-      runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
+      sessionToken,
+      runAuthorized: async (operation) => operation(new AbortController().signal),
       choose: ({ rejectedIds }) => {
         attempts.push([...rejectedIds])
         return { id: "a", authorization: "pool-token", proxyUrl: "http://127.0.0.1:1" }
@@ -86,6 +92,7 @@ describe("quota proxy failover", () => {
     try {
       const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/messages`, {
         method: "POST",
+        headers: sessionHeaders,
         body: "{}",
       })
       expect(response.status).toBe(503)

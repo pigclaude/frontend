@@ -28,7 +28,12 @@ type ScriptedReply = {
   trickle?: boolean
 }
 type UpstreamScript = () => ScriptedReply | Promise<ScriptedReply>
-type SeenRequest = { path: string; authorization: string | undefined }
+type SeenRequest = {
+  path: string
+  authorization: string | undefined
+  session?: string | undefined
+  beta?: string | undefined
+}
 
 /** 保证记下隧道里的路径和 Authorization，并按选项或脚本响应上游。 */
 export function startRecordingProxy(
@@ -94,7 +99,9 @@ async function handleProxiedRequest(
 ): Promise<void> {
   seen.push({
     path: request.url ?? "",
-    authorization: authorizationHeader(request),
+    authorization: headerValue(request, "authorization"),
+    session: headerValue(request, "x-pigclaude-session"),
+    beta: headerValue(request, "anthropic-beta"),
   })
   request.resume()
   if (typeof options === "function") {
@@ -170,8 +177,8 @@ function tunnel(clientSocket: Duplex, head: Buffer, upstream: Server): void {
   clientSocket.on("error", closeBoth)
 }
 
-function authorizationHeader(request: IncomingMessage): string | undefined {
-  const value = request.headers.authorization
+function headerValue(request: IncomingMessage, name: string): string | undefined {
+  const value = request.headers[name]
   return Array.isArray(value) ? value[0] : value
 }
 

@@ -2,6 +2,9 @@
 import { expect, it, vi } from "vitest"
 import { LocalDaemon } from "./daemon.ts"
 
+const sessionToken = "authorization-session-token"
+const sessionHeaders = { "x-pigclaude-session": sessionToken }
+
 it("denies new requests when the required live authorization port rejects", async () => {
   const choose = vi.fn(() => ({
     id: "a",
@@ -11,11 +14,13 @@ it("denies new requests when the required live authorization port rejects", asyn
   const runAuthorized = vi.fn(async () => {
     throw new Error("MEMBERSHIP_REQUIRED")
   })
-  const daemon = new LocalDaemon({ port: 0, choose, runAuthorized })
+  const daemon = new LocalDaemon({ port: 0, sessionToken, choose, runAuthorized })
   await daemon.start()
   try {
     for (const path of ["/v1/messages", "/v1/models"]) {
-      const response = await fetch(`http://127.0.0.1:${daemon.port}${path}`)
+      const response = await fetch(`http://127.0.0.1:${daemon.port}${path}`, {
+        headers: sessionHeaders,
+      })
       expect(response.status).toBe(403)
       expect(await response.json()).toEqual({ error: "membership_required" })
     }
@@ -32,12 +37,15 @@ it("already aborted authorization cannot forward even when a caller invokes the 
   const choose = vi.fn(() => null)
   const daemon = new LocalDaemon({
     port: 0,
+    sessionToken,
     choose,
     runAuthorized: async (operation) => operation(controller.signal),
   })
   await daemon.start()
   try {
-    const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/messages`)
+    const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/messages`, {
+      headers: sessionHeaders,
+    })
     expect(response.status).toBe(403)
     expect(choose).not.toHaveBeenCalled()
   } finally {
@@ -53,6 +61,7 @@ it("abort stops an already entered request while stop remains available without 
   const controller = new AbortController()
   const daemon = new LocalDaemon({
     port: 0,
+    sessionToken,
     runAuthorized: async (operation) => operation(controller.signal),
     choose: () => {
       entered()
@@ -68,7 +77,7 @@ it("abort stops an already entered request while stop remains available without 
       port: daemon.port,
       path: "/v1/messages",
       method: "POST",
-      headers: { "transfer-encoding": "chunked" },
+      headers: { "transfer-encoding": "chunked", ...sessionHeaders },
     })
     client.on("error", () => resolve("closed"))
     client.flushHeaders()

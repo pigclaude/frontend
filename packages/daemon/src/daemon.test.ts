@@ -5,19 +5,27 @@ import { describe, expect, it } from "vitest"
 import { LocalDaemon } from "./daemon.ts"
 import { startRecordingProxy, startScriptedProxy } from "./daemon-proxy-fixture.test.ts"
 
+const sessionToken = "test-session-token"
+const sessionHeaders = { "x-pigclaude-session": sessionToken }
+
 describe("LocalDaemon", () => {
   it("replaces authorization only for message requests and fails closed when the proxy is down", async () => {
     const seen: string[] = []
     const daemon = new LocalDaemon({
       runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
+      sessionToken,
       choose: () => ({ id: "a", authorization: "pool-token", proxyUrl: "http://127.0.0.1:1" }),
     })
     await daemon.start()
     try {
       const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/messages`, {
         method: "POST",
-        headers: { authorization: "Bearer from-claude", "content-type": "application/json" },
+        headers: {
+          authorization: "Bearer from-claude",
+          "content-type": "application/json",
+          ...sessionHeaders,
+        },
         body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }),
       })
       expect(response.status).toBe(503)
@@ -34,6 +42,7 @@ describe("LocalDaemon", () => {
     const daemon = new LocalDaemon({
       runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
+      sessionToken,
       choose: (attempt) => {
         expect(attempt).toEqual({ rejectedIds: [] })
         return { id: "a", authorization: "pool-token", proxyUrl: proxy.url }
@@ -43,14 +52,18 @@ describe("LocalDaemon", () => {
     try {
       await fetch(`http://127.0.0.1:${daemon.port}/v1/messages`, {
         method: "POST",
-        headers: { authorization: "Bearer from-claude" },
+        headers: { authorization: "Bearer from-claude", ...sessionHeaders },
         body: "{}",
       })
       await fetch(`http://127.0.0.1:${daemon.port}/v1/models`, {
-        headers: { authorization: "Bearer from-claude" },
+        headers: { authorization: "Bearer from-claude", ...sessionHeaders },
       })
       expect(seen).toEqual([
-        { path: "/v1/messages", authorization: "Bearer pool-token" },
+        {
+          path: "/v1/messages",
+          authorization: "Bearer pool-token",
+          beta: "oauth-2025-04-20",
+        },
         { path: "/v1/models", authorization: "Bearer from-claude" },
       ])
     } finally {
@@ -69,6 +82,7 @@ describe("LocalDaemon", () => {
     const daemon = new LocalDaemon({
       runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
+      sessionToken,
       choose: () => ({ id: "a", authorization: "pool-token", proxyUrl: proxy.url }),
     })
     await daemon.start()
@@ -98,6 +112,7 @@ describe("LocalDaemon", () => {
     const daemon = new LocalDaemon({
       runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
+      sessionToken,
       choose: () => ({ id: "a", authorization: "pool-token", proxyUrl: proxy.url }),
     })
     await daemon.start()
@@ -128,6 +143,7 @@ describe("LocalDaemon", () => {
     const daemon = new LocalDaemon({
       runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
+      sessionToken,
       choose: () => ({ id: "a", authorization: "pool-token", proxyUrl: proxy.url }),
     })
     await daemon.start()
@@ -156,6 +172,7 @@ describe("LocalDaemon", () => {
     const daemon = new LocalDaemon({
       runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
+      sessionToken,
       choose: () => ({ id: "a", authorization: "pool-token", proxyUrl: proxy.url }),
     })
     await daemon.start()
@@ -175,11 +192,14 @@ describe("LocalDaemon", () => {
     const daemon = new LocalDaemon({
       runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
+      sessionToken,
       choose: () => null,
     })
     await daemon.start()
     try {
-      const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/models`)
+      const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/models`, {
+        headers: sessionHeaders,
+      })
       expect(response.status).toBe(503)
       expect(await response.json()).toEqual({ error: "proxy_unavailable" })
     } finally {
@@ -198,6 +218,7 @@ describe("LocalDaemon", () => {
     const daemon = new LocalDaemon({
       runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
+      sessionToken,
       choose: ({ rejectedIds }) =>
         rejectedIds.includes("a")
           ? { id: "b", authorization: "token-b", proxyUrl: proxy.url }
@@ -207,6 +228,7 @@ describe("LocalDaemon", () => {
     try {
       const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/messages`, {
         method: "POST",
+        headers: sessionHeaders,
         body: "{}",
       })
       expect(response.status).toBe(200)
@@ -230,12 +252,14 @@ describe("LocalDaemon", () => {
     const daemon = new LocalDaemon({
       runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
+      sessionToken,
       choose: () => ({ id: "a", authorization: "token-a", proxyUrl: proxy.url }),
     })
     await daemon.start()
     try {
       const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/messages`, {
         method: "POST",
+        headers: sessionHeaders,
         body: "{}",
       })
       const reader = response.body!.getReader()
@@ -269,6 +293,7 @@ describe("LocalDaemon", () => {
     const daemon = new LocalDaemon({
       runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
+      sessionToken,
       choose: ({ rejectedIds }) => {
         attempts.push([...rejectedIds])
         return rejectedIds.includes("a")
@@ -280,6 +305,7 @@ describe("LocalDaemon", () => {
     try {
       const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/messages`, {
         method: "POST",
+        headers: sessionHeaders,
         body: "{}",
       })
       expect(response.status).toBe(429)
@@ -306,6 +332,7 @@ describe("LocalDaemon", () => {
     const daemon = new LocalDaemon({
       runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
+      sessionToken,
       choose: ({ rejectedIds }) => {
         attempts.push([...rejectedIds])
         return rejectedIds.includes("a")
@@ -318,7 +345,7 @@ describe("LocalDaemon", () => {
       const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/messages`, {
         method: "POST",
         body: Buffer.alloc(32 * 1024 * 1024 + 1),
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...sessionHeaders },
       })
       expect(response.status).toBe(429)
       expect(await response.text()).toBe("full")
@@ -339,25 +366,28 @@ function readHttp(
   path: string,
 ): Promise<{ headers: IncomingHttpHeaders; body: Buffer }> {
   return new Promise((resolve, reject) => {
-    const req = request({ hostname: "127.0.0.1", port, path, method: "GET" }, (response) => {
-      const chunks: Buffer[] = []
-      let settled = false
-      const finish = (): void => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        resolve({ headers: response.headers, body: Buffer.concat(chunks) })
-      }
-      const timer = setTimeout(() => {
-        req.destroy()
-        finish()
-      }, 300)
-      response.on("data", (chunk: Buffer) => {
-        chunks.push(chunk)
-      })
-      response.on("end", finish)
-      response.on("error", finish)
-    })
+    const req = request(
+      { hostname: "127.0.0.1", port, path, method: "GET", headers: sessionHeaders },
+      (response) => {
+        const chunks: Buffer[] = []
+        let settled = false
+        const finish = (): void => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          resolve({ headers: response.headers, body: Buffer.concat(chunks) })
+        }
+        const timer = setTimeout(() => {
+          req.destroy()
+          finish()
+        }, 300)
+        response.on("data", (chunk: Buffer) => {
+          chunks.push(chunk)
+        })
+        response.on("end", finish)
+        response.on("error", finish)
+      },
+    )
     req.on("error", reject)
     req.end()
   })
@@ -370,12 +400,15 @@ function readUntilClose(port: number, path: string): Promise<{ complete: boolean
       clearTimeout(timer)
       resolve({ complete })
     }
-    const req = request({ hostname: "127.0.0.1", port, path, method: "GET" }, (response) => {
-      sawResponse = true
-      response.on("data", () => undefined)
-      response.on("error", () => undefined)
-      response.on("close", () => finish(response.complete))
-    })
+    const req = request(
+      { hostname: "127.0.0.1", port, path, method: "GET", headers: sessionHeaders },
+      (response) => {
+        sawResponse = true
+        response.on("data", () => undefined)
+        response.on("error", () => undefined)
+        response.on("close", () => finish(response.complete))
+      },
+    )
     req.on("error", () => {
       if (!sawResponse) finish(false)
     })
@@ -387,17 +420,20 @@ function readFirstChunk(
   path: string,
 ): Promise<{ chunk: Buffer; destroy: () => void }> {
   return new Promise((resolve, reject) => {
-    const req = request({ hostname: "127.0.0.1", port, path, method: "GET" }, (response) => {
-      const timer = setTimeout(() => {
-        req.destroy()
-        reject(new Error("no streamed bytes"))
-      }, 500)
-      response.once("data", (chunk: Buffer) => {
-        clearTimeout(timer)
-        resolve({ chunk, destroy: () => req.destroy() })
-      })
-      response.on("error", () => undefined)
-    })
+    const req = request(
+      { hostname: "127.0.0.1", port, path, method: "GET", headers: sessionHeaders },
+      (response) => {
+        const timer = setTimeout(() => {
+          req.destroy()
+          reject(new Error("no streamed bytes"))
+        }, 500)
+        response.once("data", (chunk: Buffer) => {
+          clearTimeout(timer)
+          resolve({ chunk, destroy: () => req.destroy() })
+        })
+        response.on("error", () => undefined)
+      },
+    )
     req.on("error", reject)
     req.end()
   })
@@ -410,7 +446,11 @@ function abortPartialPost(port: number): Promise<void> {
         port,
         path: "/v1/messages",
         method: "POST",
-        headers: { "content-type": "application/json", "content-length": "32" },
+        headers: {
+          "content-type": "application/json",
+          "content-length": "32",
+          ...sessionHeaders,
+        },
       },
       () => undefined,
     )

@@ -1,4 +1,5 @@
-// 额度用尽之后的代理失败测试。保存过 429 时，抛错的代理会换下一个账号；第一次就没有代理时仍返回 proxy_unavailable，并且不会直连上游。
+// 额度用尽之后的代理失败测试。保存过 429 时，抛错的代理会换下一个账号；
+// 第一次就没有代理时仍返回 proxy_unavailable，并且不会回退成直连：这里的无 dispatcher 请求会被记录并拒绝。
 
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { LocalDaemon } from "./daemon.ts"

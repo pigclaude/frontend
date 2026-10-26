@@ -1,8 +1,8 @@
-// 本机转发 daemon。只监听 127.0.0.1，先校验本机会话令牌，再把请求经账号代理送到 Anthropic，
+// 本机转发 daemon。只监听 127.0.0.1，先校验本机会话令牌，再把请求经账号代理或系统网络送到 Anthropic，
 // 并且只在消息接口替换凭据、合并 OAuth beta 头。
 // 额度用尽或消息请求在写出正文前收到 401/403 时，用下一个账号重试同一条消息请求，并把选号和拒绝交给回调。
-// 没有可用账号返回 no_available_account，代理为空返回 proxy_unavailable，认证全部失败返回 auth_expired。
-// 已经保存额度用尽响应后，代理抛错会拒绝这个账号并继续选号；还没有保存的 429 时，代理抛错仍返回 proxy_unavailable。
+// 没有可用账号返回 no_available_account，代理为空返回 proxy_unavailable，直连失败返回 upstream_unavailable，认证全部失败返回 auth_expired。
+// 已经保存额度用尽响应后，代理或直连抛错会拒绝这个账号并继续选号；还没有保存的 429 时，代理抛错仍返回 proxy_unavailable。
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import { ProxyAgent, fetch as undiciFetch } from "undici"
@@ -22,14 +22,22 @@ const maxRetryBodyBytes = 32 * 1024 * 1024
 type ChosenAccount = {
   id: string
   authorization: string
-  proxyUrl: string
+  proxyUrl: string | null
+}
+
+type UpstreamRequest = {
+  url: URL
+  method: string
+  headers: Headers
+  body: Buffer | undefined
+  signal: AbortSignal
 }
 
 type ChooseAccount = (attempt: {
   rejectedIds: string[]
 }) => ChosenAccount | null | Promise<ChosenAccount | null>
 
-/** 本机 Anthropic 转发。保证只听 127.0.0.1，先用会话令牌拒绝其他本机进程，上游都走账号代理，代理不可用时返回 proxy_unavailable。消息接口在写出响应体前遇到额度用尽时换下一个账号；此时如果下一个代理抛错，就拒绝该账号并继续选号。 */
+/** 本机 Anthropic 转发。保证只听 127.0.0.1，先用会话令牌拒绝其他本机进程；proxyUrl 为 null 时直连上游，否则经账号代理，代理不可用时返回 proxy_unavailable，直连失败返回 upstream_unavailable。消息接口在写出响应体前遇到额度用尽时换下一个账号；此时如果下一个代理或直连抛错，就拒绝该账号并继续选号。 */
 export class LocalDaemon {
   /** 监听端口。start 完成之后保证是 127.0.0.1 上的实际端口。 */
   port: number
@@ -111,6 +119,7 @@ export class LocalDaemon {
         const stop = () => response.destroy()
         signal.addEventListener("abort", stop, { once: true })
         try {
+          // 外层兜底只承担代理连接失败；直连失败在下面单独写成 upstream_unavailable。
           await this.#forward(request, response).catch(() =>
             writeErrorResponse(response, 503, "proxy_unavailable"),
           )
@@ -183,21 +192,30 @@ export class LocalDaemon {
       }
       const abort = new AbortController()
       const stopWatching = watchClient(request, response, abort)
+      const upstreamRequest: UpstreamRequest = {
+        url: upstreamUrl,
+        method,
+        headers,
+        body: method === "GET" || method === "HEAD" || body.length === 0 ? undefined : body,
+        signal: abort.signal,
+      }
       let agent: ProxyAgent | undefined
       let continueWithNext = false
       try {
         let upstream: Awaited<ReturnType<typeof undiciFetch>> | undefined
         try {
-          agent = new ProxyAgent(chosen.proxyUrl)
-          upstream = await fetchThroughProxy(agent, {
-            url: upstreamUrl,
-            method,
-            headers,
-            body: method === "GET" || method === "HEAD" || body.length === 0 ? undefined : body,
-            signal: abort.signal,
-          })
+          if (chosen.proxyUrl === null) {
+            upstream = await fetchDirect(upstreamRequest)
+          } else {
+            agent = new ProxyAgent(chosen.proxyUrl)
+            upstream = await fetchThroughProxy(agent, upstreamRequest)
+          }
         } catch (error) {
-          if (!continueAfterThrownProxy(savedQuota !== null, request, response, abort.signal)) {
+          if (!continueAfterThrownUpstream(savedQuota !== null, request, response, abort.signal)) {
+            if (chosen.proxyUrl === null) {
+              writeErrorResponse(response, 502, "upstream_unavailable")
+              return
+            }
             throw error
           }
           rejectedIds.push(chosen.id)
@@ -242,8 +260,8 @@ export class LocalDaemon {
   }
 }
 
-// 已经记下额度用尽响应、并且调用方还在等时，这次代理抛错才换下一个账号。
-function continueAfterThrownProxy(
+// 已经记下额度用尽响应、并且调用方还在等时，这次代理或直连抛错才换下一个账号。
+function continueAfterThrownUpstream(
   hasSavedQuota: boolean,
   request: IncomingMessage,
   response: ServerResponse,
@@ -255,16 +273,21 @@ function continueAfterThrownProxy(
   return true
 }
 
-// 只有带上代理 dispatcher 才会发出上游请求。没有 proxyUrl 时调用方直接返回 503。
+// 直连不传 dispatcher，让 undici 走系统网络；连接失败由调用方按 upstream_unavailable 处理。
+function fetchDirect(input: UpstreamRequest): ReturnType<typeof undiciFetch> {
+  return undiciFetch(input.url, {
+    method: input.method,
+    headers: input.headers,
+    body: input.body,
+    redirect: "manual",
+    signal: input.signal,
+  })
+}
+
+// 只有带上代理 dispatcher 才会经过账号代理。空 proxyUrl 在选号之后直接返回 503，null 走直连。
 function fetchThroughProxy(
   agent: ProxyAgent,
-  input: {
-    url: URL
-    method: string
-    headers: Headers
-    body: Buffer | undefined
-    signal: AbortSignal
-  },
+  input: UpstreamRequest,
 ): ReturnType<typeof undiciFetch> {
   return undiciFetch(input.url, {
     method: input.method,

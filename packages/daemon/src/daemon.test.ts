@@ -1,36 +1,90 @@
-// 本机 daemon 测试。消息请求换成号池凭据，其它路径保留调用方凭据，代理不可用时关闭失败。额度用尽且响应体尚未写出时改用下一个账号。
+// 本机 daemon 测试。消息请求换成号池凭据，其它路径保留调用方凭据；
+// 直连账号使用不带 dispatcher 的 fetch，代理或直连不可用时按各自错误码失败。
+// 额度用尽且响应体尚未写出时改用下一个账号。
 
 import { request, type IncomingHttpHeaders } from "node:http"
-import { describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { LocalDaemon } from "./daemon.ts"
-import { startRecordingProxy, startScriptedProxy } from "./daemon-proxy-fixture.test.ts"
+import { startRecordingProxy } from "./daemon-proxy-fixture.test.ts"
+
+const directUpstream = vi.hoisted(() => ({
+  calls: [] as Array<{ url: string; authorization: string | null }>,
+  fail: false,
+}))
+
+vi.mock("undici", async () => {
+  const actual = await vi.importActual<typeof import("undici")>("undici")
+  return {
+    ProxyAgent: actual.ProxyAgent,
+    fetch: (
+      input: Parameters<typeof actual.fetch>[0],
+      init?: Parameters<typeof actual.fetch>[1],
+    ): ReturnType<typeof actual.fetch> => {
+      if (init?.dispatcher !== undefined) return actual.fetch(input, init)
+      directUpstream.calls.push({
+        url: String(input),
+        authorization: new Headers(init?.headers).get("authorization"),
+      })
+      if (directUpstream.fail) return Promise.reject(new Error("direct connection refused"))
+      return Promise.resolve(new actual.Response("direct-ok", { status: 200 }))
+    },
+  }
+})
 
 const sessionToken = "test-session-token"
 const sessionHeaders = { "x-pigclaude-session": sessionToken }
 
 describe("LocalDaemon", () => {
-  it("replaces authorization only for message requests and fails closed when the proxy is down", async () => {
-    const seen: string[] = []
+  beforeEach(() => {
+    directUpstream.calls.length = 0
+    directUpstream.fail = false
+  })
+
+  it("uses fetch without a dispatcher when the chosen account has no proxy", async () => {
     const daemon = new LocalDaemon({
       runAuthorized: async (operation) => operation(new AbortController().signal),
       port: 0,
       sessionToken,
-      choose: () => ({ id: "a", authorization: "pool-token", proxyUrl: "http://127.0.0.1:1" }),
+      choose: () => ({ id: "a", authorization: "pool-token", proxyUrl: null }),
     })
     await daemon.start()
     try {
       const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/messages`, {
         method: "POST",
-        headers: {
-          authorization: "Bearer from-claude",
-          "content-type": "application/json",
-          ...sessionHeaders,
-        },
-        body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }),
+        headers: { authorization: "Bearer from-claude", ...sessionHeaders },
+        body: "{}",
       })
-      expect(response.status).toBe(503)
-      expect(await response.json()).toEqual({ error: "proxy_unavailable" })
-      expect(seen).toEqual([])
+      expect(response.status).toBe(200)
+      expect(await response.text()).toBe("direct-ok")
+      expect(directUpstream.calls).toEqual([
+        {
+          url: "https://api.anthropic.com/v1/messages",
+          authorization: "Bearer pool-token",
+        },
+      ])
+    } finally {
+      await daemon.stop()
+    }
+  })
+
+  it("returns upstream_unavailable when the direct connection fails", async () => {
+    directUpstream.fail = true
+    const daemon = new LocalDaemon({
+      runAuthorized: async (operation) => operation(new AbortController().signal),
+      port: 0,
+      sessionToken,
+      choose: () => ({ id: "a", authorization: "pool-token", proxyUrl: null }),
+    })
+    await daemon.start()
+    try {
+      const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/messages`, {
+        method: "POST",
+        headers: sessionHeaders,
+        body: "{}",
+      })
+      expect(response.status).toBe(502)
+      expect(await response.json()).toEqual({ error: "upstream_unavailable" })
+      expect(directUpstream.calls).toHaveLength(1)
     } finally {
       await daemon.stop()
     }
@@ -234,42 +288,6 @@ describe("LocalDaemon", () => {
       expect(response.status).toBe(200)
       expect(await response.text()).toBe("ok")
       expect(calls).toBe(2)
-    } finally {
-      try {
-        await daemon.stop()
-      } finally {
-        await proxy.stop()
-      }
-    }
-  })
-
-  it("does not send a second upstream request after the body has started", async () => {
-    let calls = 0
-    const proxy = await startScriptedProxy(async () => {
-      calls += 1
-      return { status: 200, body: "hello", trickle: true }
-    })
-    const daemon = new LocalDaemon({
-      runAuthorized: async (operation) => operation(new AbortController().signal),
-      port: 0,
-      sessionToken,
-      choose: () => ({ id: "a", authorization: "token-a", proxyUrl: proxy.url }),
-    })
-    await daemon.start()
-    try {
-      const response = await fetch(`http://127.0.0.1:${daemon.port}/v1/messages`, {
-        method: "POST",
-        headers: sessionHeaders,
-        body: "{}",
-      })
-      const reader = response.body!.getReader()
-      try {
-        const first = await reader.read()
-        expect(first.value?.byteLength).toBeGreaterThan(0)
-        expect(calls).toBe(1)
-      } finally {
-        await reader.cancel()
-      }
     } finally {
       try {
         await daemon.stop()

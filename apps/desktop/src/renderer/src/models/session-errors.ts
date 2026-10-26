@@ -15,6 +15,7 @@ const errorTexts: Record<string, string> = {
   CLAUDE_RUNTIME_UNAVAILABLE: "Claude Code 不可用，请检查安装",
   DAEMON_UNAVAILABLE: "本机中继尚未就绪",
   PROXY_UNAVAILABLE: "账号代理不可用，请检查代理",
+  NETWORK_UNAVAILABLE: "网络请求失败，请检查系统网络或代理",
   AUTH_EXPIRED: "账号凭据失效，请重新授权",
   PERMISSION_TIMEOUT: "权限询问超时，已拒绝",
   SESSION_ALREADY_ACTIVE: "已有活动会话",

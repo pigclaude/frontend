@@ -1,9 +1,9 @@
-// 负责验证 Claude 账号授权向导：逐步填写后提交完整指纹；重新授权沿用已保存的代理和指纹；出口核对失败时停在「请勿登录」，只能重新核对。
+// 负责验证 Claude 账号授权向导：分组指纹表单、预设、三态噪声、完整对象提交、返回修改、重新授权沿用和出口失败。
 // @vitest-environment jsdom
 import { act, createElement, useState } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import type { ClaudeAccountView } from "@pigclaude/contracts/claude-account"
+import type { ClaudeAccountView, ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import type { PoolProxy } from "../fixtures/pool-fixtures"
 import {
   createAuthorizationState,
@@ -35,6 +35,34 @@ const proxies: PoolProxy[] = [
   },
 ]
 
+const savedFingerprint: ClaudeFingerprintView = {
+  seed: "520117",
+  brand: "Edge",
+  platform: "windows",
+  lang: "ja-JP",
+  timezone: "Asia/Tokyo",
+  canvasNoise: "0",
+  clientRectsNoise: "1",
+  brandVersion: "144.0.7559.132",
+  platformVersion: "10.0.0",
+  acceptLang: "ja-JP,ja",
+  resolution: "1920,1080",
+  customResolution: "",
+  hardwareConcurrency: "8",
+  webrtcPolicy: "disable_non_proxied_udp",
+  disableSpoofing: ["font"],
+  colorDepth: "",
+  deviceMemory: "",
+  touchPoints: "",
+  doNotTrack: "",
+  mediaDevices: "",
+  audioNoise: "",
+  fontList: "",
+  webglVendor: "",
+  webglRenderer: "",
+  unknownArgs: [],
+}
+
 const savedAccount: ClaudeAccountView = {
   id: "acc-1",
   displayName: "旧号 Pro",
@@ -44,15 +72,7 @@ const savedAccount: ClaudeAccountView = {
   needsReauth: true,
   credentialExpiresAt: null,
   proxyId: "sjc-02",
-  fingerprint: {
-    seed: "520117",
-    brand: "Edge",
-    platform: "windows",
-    lang: "ja-JP",
-    timezone: "Asia/Tokyo",
-    canvasNoise: false,
-    clientRectsNoise: true,
-  },
+  fingerprint: savedFingerprint,
   createdAt: "2026-10-01T00:00:00.000Z",
   updatedAt: "2026-10-21T00:00:00.000Z",
 }
@@ -119,10 +139,22 @@ async function click(name: string): Promise<void> {
   await act(async () => target?.click())
 }
 
+async function clickId(id: string): Promise<void> {
+  const target = container.querySelector<HTMLButtonElement>(`#${id}`)
+  expect(target, id).not.toBeNull()
+  await act(async () => target?.click())
+}
+
 function input(id: string): HTMLInputElement {
   const element = container.querySelector<HTMLInputElement>(`#${id}`)
   expect(element, id).not.toBeNull()
   return element as HTMLInputElement
+}
+
+function select(id: string): HTMLSelectElement {
+  const element = container.querySelector<HTMLSelectElement>(`#${id}`)
+  expect(element, id).not.toBeNull()
+  return element as HTMLSelectElement
 }
 
 async function type(id: string, value: string): Promise<void> {
@@ -130,6 +162,14 @@ async function type(id: string, value: string): Promise<void> {
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(element, value)
     element.dispatchEvent(new Event("input", { bubbles: true }))
+  })
+}
+
+async function choose(id: string, value: string): Promise<void> {
+  const element = select(id)
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(element, value)
+    element.dispatchEvent(new Event("change", { bubbles: true }))
   })
 }
 
@@ -146,12 +186,23 @@ describe("Claude account authorization wizard", () => {
     )
     await act(async () => (sjc as HTMLButtonElement | undefined)?.click())
     await click("绑定代理")
+
+    // 指纹步骤按 AntBrowser 分组渲染，预设、身份、设备、兼容和高级参数都在同一页。
+    expect(container.textContent).toContain("快速生成")
+    expect(container.textContent).toContain("身份与定位")
+    expect(container.textContent).toContain("设备与网络")
+    expect(container.textContent).toContain("兼容伪装")
+    expect(container.textContent).toContain("高级原始参数")
+
+    await clickId("authorize-preset-win-chrome-office")
+    await type("authorize-seed", "123456")
     await type("authorize-timezone", "America/New_York")
-    const canvas = container.querySelector<HTMLInputElement>('input[type="checkbox"]')
-    await act(async () => canvas?.click())
+    await choose("authorize-webrtcPolicy", "disable_non_proxied_udp")
+    await clickId("authorize-canvasNoise-0")
     await click("保存并核对出口")
 
     expect(container.textContent).toContain("SJC-02 · 198.51.100.17")
+    expect(container.textContent).toContain("Chrome 144.0.7559.132 · Windows 10.0.0")
     await click("开始核对并授权")
     expect(onStart).toHaveBeenCalledTimes(1)
     expect(onStart).toHaveBeenCalledWith({
@@ -161,16 +212,67 @@ describe("Claude account authorization wizard", () => {
       fingerprint: {
         seed: "123456",
         brand: "Chrome",
-        platform: "macos",
+        platform: "windows",
         lang: "en-US",
         timezone: "America/New_York",
-        canvasNoise: false,
-        clientRectsNoise: true,
+        canvasNoise: "0",
+        clientRectsNoise: "1",
+        brandVersion: "144.0.7559.132",
+        platformVersion: "10.0.0",
+        acceptLang: "en-US,en",
+        resolution: "1920,1080",
+        customResolution: "",
+        hardwareConcurrency: "8",
+        webrtcPolicy: "disable_non_proxied_udp",
+        disableSpoofing: [],
+        colorDepth: "",
+        deviceMemory: "",
+        touchPoints: "",
+        doNotTrack: "",
+        mediaDevices: "",
+        audioNoise: "",
+        fontList: "",
+        webglVendor: "",
+        webglRenderer: "",
+        unknownArgs: [],
       },
     })
   })
 
-  it("reauthorizes with the saved proxy and fingerprint", async () => {
+  it("shows field-level errors and stays on the fingerprint step", async () => {
+    const onStart = vi.fn()
+    await render({ proxies: [], onStart })
+    await click("下一步")
+    await click("使用系统网络")
+
+    await type("authorize-seed", "not-a-number")
+    await type("authorize-hardwareConcurrency", "0")
+    await click("保存并继续")
+
+    expect(container.textContent).toContain("指纹种子必须是 1 到 2147483647 的整数")
+    expect(container.textContent).toContain("CPU 核心数必须是 1 到 128 的整数")
+    expect(onStart).not.toHaveBeenCalled()
+
+    await type("authorize-seed", "654321")
+    await type("authorize-hardwareConcurrency", "8")
+    await click("保存并继续")
+    expect(container.textContent).toContain("系统网络（直连）")
+  })
+
+  it("returns from the exit step to edit the fingerprint", async () => {
+    const onStart = vi.fn()
+    await render({ proxies: [], onStart })
+    await click("下一步")
+    await click("使用系统网络")
+    await type("authorize-seed", "654321")
+    await click("保存并继续")
+
+    await click("返回修改指纹")
+    expect(input("authorize-seed").value).toBe("654321")
+    expect(container.textContent).toContain("快速生成")
+  })
+
+  it("reauthorizes with the saved proxy and every saved fingerprint field", async () => {
     const onStart = vi.fn()
     await render({ proxies, account: savedAccount, onStart })
 
@@ -179,8 +281,9 @@ describe("Claude account authorization wizard", () => {
     await click("下一步")
     expect(container.querySelector("button.choice.is-selected")?.textContent).toContain("SJC-02")
     await click("绑定代理")
-    expect(input("authorize-fingerprint").value).toBe("520117")
-    expect(input("authorize-platform").value).toBe("windows")
+    expect(input("authorize-seed").value).toBe("520117")
+    expect(select("authorize-platform").value).toBe("windows")
+    expect(select("authorize-brand").value).toBe("Edge")
     await click("保存并核对出口")
     await click("开始核对并授权")
 
@@ -188,7 +291,7 @@ describe("Claude account authorization wizard", () => {
       accountId: "acc-1",
       displayName: "旧号 Pro",
       proxyId: "sjc-02",
-      fingerprint: savedAccount.fingerprint,
+      fingerprint: savedFingerprint,
     })
   })
 

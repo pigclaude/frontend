@@ -3,11 +3,8 @@
 import { useState } from "react"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { Button } from "../components/ui/button"
-import {
-  AccountDeleteDialog,
-  AccountProxyDialog,
-  FingerprintDialog,
-} from "../components/account-dialogs"
+import { AccountDeleteDialog, AccountProxyDialog } from "../components/account-dialogs"
+import { FingerprintDialog } from "../components/fingerprint-dialog"
 import type { PoolAccount, PoolProxy } from "../fixtures/pool-fixtures"
 import { accountNetworkLabel } from "../models/claude-account-view"
 import { AccountDetailScreen } from "./account-detail-screen"
@@ -85,12 +82,8 @@ export function AccountsScreen({
         onOpenChange={(open) => {
           if (!open) setFingerprintId(null)
         }}
-        onConfirm={(seed) => {
-          const account = accounts.find((item) => item.id === fingerprintId)
-          if (account !== undefined) {
-            const fingerprint = { ...fingerprintDetail(account), seed }
-            onUpdate?.({ accountId: account.id, fingerprint })
-          }
+        onConfirm={(fingerprint) => {
+          if (fingerprintId !== null) onUpdate?.({ accountId: fingerprintId, fingerprint })
           setFingerprintId(null)
         }}
       />
@@ -217,18 +210,4 @@ function statusClass(kind: PoolAccount["statusKind"]): string {
   if (kind === "cooldown") return "status warn"
   if (kind === "ready") return "status ok"
   return "status info"
-}
-
-function fingerprintDetail(account: PoolAccount): ClaudeFingerprintView {
-  return (
-    account.fingerprintDetail ?? {
-      seed: account.fingerprint,
-      brand: "Chrome",
-      platform: "macos",
-      lang: "en-US",
-      timezone: "America/Los_Angeles",
-      canvasNoise: true,
-      clientRectsNoise: true,
-    }
-  )
 }

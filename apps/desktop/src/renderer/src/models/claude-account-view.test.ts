@@ -1,17 +1,21 @@
 // 账号与代理视图映射测试。覆盖状态、代理绑定和脱敏字段。
 
 import { describe, expect, it } from "vitest"
-import type { ClaudeAccountView, ProxyView } from "@pigclaude/contracts/claude-account"
+import type {
+  ClaudeAccountView,
+  ClaudeFingerprintView,
+  ProxyView,
+} from "@pigclaude/contracts/claude-account"
 import { accountNetworkLabel, toPoolAccount, toPoolProxy } from "./claude-account-view"
 
-const fingerprint = {
+const fingerprint: ClaudeFingerprintView = {
   seed: "123456",
   brand: "Chrome",
   platform: "macos",
   lang: "en-US",
   timezone: "America/Los_Angeles",
-  canvasNoise: true,
-  clientRectsNoise: true,
+  canvasNoise: "1",
+  clientRectsNoise: "1",
 }
 
 const account: ClaudeAccountView = {

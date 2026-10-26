@@ -1,4 +1,4 @@
-// 负责添加或重新授权 Claude 账号；出口核对交给主进程，确认交给外部浏览器。
+// 负责添加或重新授权 Claude 账号；指纹步骤拆到 fingerprint-step，出口核对交给主进程。
 import { useState, type ReactNode } from "react"
 import type { ClaudeAccountView, ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { Button } from "../components/ui/button"
@@ -6,7 +6,13 @@ import { Input } from "../components/ui/input"
 import { Icon } from "../components/icon"
 import { TrafficLights } from "../components/traffic-lights"
 import type { PoolProxy } from "../fixtures/pool-fixtures"
+import {
+  fingerprintHeadline,
+  fingerprintLocaleLine,
+  normalizeFingerprintForm,
+} from "../models/fingerprint-form"
 import type { AuthorizationEvent, AuthorizationState } from "../models/authorization-model"
+import { FingerprintStep } from "./authorize/fingerprint-step"
 
 /** Claude 授权向导 props。 */
 export type AuthorizeScreenProps = {
@@ -37,17 +43,7 @@ export function AuthorizeScreen({
   const [proxyId, setProxyId] = useState<string | null>(() =>
     initialProxyChoice(state, account, proxies),
   )
-  const [fingerprint, setFingerprint] = useState<ClaudeFingerprintView>(
-    account?.fingerprint ?? {
-      seed: state.fingerprintSeed || "123456",
-      brand: "Chrome",
-      platform: "macos",
-      lang: "en-US",
-      timezone: "America/Los_Angeles",
-      canvasNoise: true,
-      clientRectsNoise: true,
-    },
-  )
+  const fingerprint = state.fingerprint ?? initialFingerprint(account)
   const selectedProxy = proxies.find((proxy) => proxy.id === proxyId) ?? null
 
   function startBrowserAuthorization() {
@@ -179,107 +175,16 @@ export function AuthorizeScreen({
             </WizardBody>
           ) : null}
           {state.step === "fingerprint" ? (
-            <WizardBody
-              title="设定这个账号的指纹"
-              description="指纹保存在本机这个账号下。以后重新授权都用同一份。"
-            >
-              <div className="field">
-                <label htmlFor="authorize-fingerprint">指纹种子</label>
-                <Input
-                  id="authorize-fingerprint"
-                  className="mono"
-                  value={fingerprint.seed}
-                  onChange={(event) =>
-                    setFingerprint((current) => ({ ...current, seed: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="authorize-brand">浏览器品牌</label>
-                <Input
-                  id="authorize-brand"
-                  value={fingerprint.brand}
-                  onChange={(event) =>
-                    setFingerprint((current) => ({ ...current, brand: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="authorize-platform">平台</label>
-                <Input
-                  id="authorize-platform"
-                  value={fingerprint.platform}
-                  onChange={(event) =>
-                    setFingerprint((current) => ({ ...current, platform: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="authorize-lang">语言</label>
-                <Input
-                  id="authorize-lang"
-                  value={fingerprint.lang}
-                  onChange={(event) =>
-                    setFingerprint((current) => ({ ...current, lang: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="authorize-timezone">时区</label>
-                <Input
-                  id="authorize-timezone"
-                  value={fingerprint.timezone}
-                  onChange={(event) =>
-                    setFingerprint((current) => ({ ...current, timezone: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="group">
-                <label className="item">
-                  <div className="main">
-                    <div className="ttl">Canvas 噪声</div>
-                    <div className="desc">关闭时传 --disable-spoofing=canvas</div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={fingerprint.canvasNoise}
-                    onChange={(event) =>
-                      setFingerprint((current) => ({
-                        ...current,
-                        canvasNoise: event.target.checked,
-                      }))
-                    }
-                  />
-                </label>
-                <label className="item">
-                  <div className="main">
-                    <div className="ttl">ClientRects 噪声</div>
-                    <div className="desc">关闭时传 --disable-spoofing=clientrects</div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={fingerprint.clientRectsNoise}
-                    onChange={(event) =>
-                      setFingerprint((current) => ({
-                        ...current,
-                        clientRectsNoise: event.target.checked,
-                      }))
-                    }
-                  />
-                </label>
-              </div>
-              <div className="wizard-foot">
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    onEvent({ type: "set-fingerprint", fingerprintSeed: fingerprint.seed })
-                    onEvent({ type: "advance" })
-                  }}
-                >
-                  {proxyId === "" ? "保存并继续" : "保存并核对出口"}
-                </Button>
-              </div>
-            </WizardBody>
+            <FingerprintStep
+              initialFingerprint={fingerprint}
+              submitLabel={proxyId === "" ? "保存并继续" : "保存并核对出口"}
+              error={state.error}
+              onSubmit={(next) => {
+                onEvent({ type: "set-fingerprint", fingerprint: next })
+                onEvent({ type: "advance" })
+              }}
+              onBack={() => onEvent({ type: "back" })}
+            />
           ) : null}
           {state.step === "exit" ? (
             <WizardBody
@@ -315,8 +220,15 @@ export function AuthorizeScreen({
                 ) : null}
                 <div className="item">
                   <div className="main">
-                    <div className="ttl">指纹</div>
-                    <div className="desc mono">{fingerprint.seed}</div>
+                    <div className="ttl">指纹种子</div>
+                    <div className="desc mono">{fingerprint.seed || "按账号 ID 生成"}</div>
+                  </div>
+                </div>
+                <div className="item">
+                  <div className="main">
+                    <div className="ttl">画像</div>
+                    <div className="desc">{fingerprintHeadline(fingerprint)}</div>
+                    <div className="desc">{fingerprintLocaleLine(fingerprint)}</div>
                   </div>
                 </div>
               </div>
@@ -327,6 +239,9 @@ export function AuthorizeScreen({
               ) : null}
               {state.error ? <p className="error-text">{state.error}</p> : null}
               <div className="wizard-foot">
+                <Button variant="ghost" onClick={() => onEvent({ type: "back" })}>
+                  返回修改指纹
+                </Button>
                 <Button
                   variant="primary"
                   disabled={name.trim() === "" || proxyId === null}
@@ -382,8 +297,15 @@ export function AuthorizeScreen({
                 </div>
                 <div className="item">
                   <div className="main">
-                    <div className="ttl">指纹</div>
-                    <div className="desc mono">{fingerprint.seed}</div>
+                    <div className="ttl">指纹种子</div>
+                    <div className="desc mono">{fingerprint.seed || "按账号 ID 生成"}</div>
+                  </div>
+                </div>
+                <div className="item">
+                  <div className="main">
+                    <div className="ttl">画像</div>
+                    <div className="desc">{fingerprintHeadline(fingerprint)}</div>
+                    <div className="desc">{fingerprintLocaleLine(fingerprint)}</div>
                   </div>
                 </div>
                 <div className="item">
@@ -463,4 +385,9 @@ function initialProxyChoice(
   if (account === null || account === undefined) return proxies[0]?.id ?? ""
   if (account.proxyId === null) return ""
   return proxies.some((proxy) => proxy.id === account.proxyId) ? account.proxyId : null
+}
+
+/** 指纹步骤的初始值：已保存的指纹优先，否则用 AntBrowser 默认值补全。 */
+function initialFingerprint(account: ClaudeAccountView | null | undefined): ClaudeFingerprintView {
+  return normalizeFingerprintForm(account?.fingerprint)
 }

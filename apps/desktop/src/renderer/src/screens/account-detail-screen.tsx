@@ -1,5 +1,6 @@
 // 负责展示单个 Claude 账号的额度、网络出口、指纹和凭据状态。
 import { Button } from "../components/ui/button"
+import { FingerprintSummary } from "../components/fingerprint-summary"
 import type { PoolAccount } from "../fixtures/pool-fixtures"
 import { accountNetworkLabel } from "../models/claude-account-view"
 
@@ -116,34 +117,10 @@ export function AccountDetailScreen({
             编辑
           </Button>
         </div>
-        <div className="group">
-          <div className="item">
-            <div className="main">
-              <div className="ttl">种子</div>
-            </div>
-            <span className="val mono">{account.fingerprint}</span>
-          </div>
-          <div className="item">
-            <div className="main">
-              <div className="ttl">浏览器</div>
-            </div>
-            <span className="val">
-              {account.fingerprintDetail
-                ? `${account.fingerprintDetail.brand} · ${account.fingerprintDetail.platform}`
-                : "Chrome · macOS"}
-            </span>
-          </div>
-          <div className="item">
-            <div className="main">
-              <div className="ttl">语言与时区</div>
-            </div>
-            <span className="val">
-              {account.fingerprintDetail
-                ? `${account.fingerprintDetail.lang} · ${account.fingerprintDetail.timezone}`
-                : "en-US · America/Los_Angeles"}
-            </span>
-          </div>
-        </div>
+        <FingerprintSummary
+          fingerprint={account.fingerprintDetail}
+          fallbackSeed={account.fingerprint}
+        />
         <p className="note">下次重新授权时生效，已有的登录不受影响。</p>
       </section>
       <section className="section">

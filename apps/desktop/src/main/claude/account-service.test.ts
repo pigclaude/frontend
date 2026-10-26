@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Dispatcher } from "undici"
 import { describe, expect, it } from "vitest"
-import type { ClaudeAccountEvent } from "@pigclaude/contracts/claude-account"
+import type { ClaudeAccountEvent, ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { LocalStore, type AccountRecord } from "@pigclaude/local-store"
 import type { EgressResult } from "@pigclaude/login-gate/egress-check"
 import { BrowserLaunchError, type LaunchBrowserInput } from "./fingerprint-chromium"
@@ -18,14 +18,14 @@ import {
 } from "./subscription-oauth"
 
 const now = Date.parse("2026-10-21T00:00:00.000Z")
-const fingerprint = {
+const fingerprint: ClaudeFingerprintView = {
   seed: "123456",
   brand: "Chrome",
   platform: "macos",
   lang: "en-US",
   timezone: "America/Los_Angeles",
-  canvasNoise: true,
-  clientRectsNoise: true,
+  canvasNoise: "1",
+  clientRectsNoise: "1",
 }
 
 type Harness = {

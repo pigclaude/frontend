@@ -14,8 +14,8 @@ const previewFingerprint: ClaudeFingerprintView = {
   platform: "macos",
   lang: "en-US",
   timezone: "America/Los_Angeles",
-  canvasNoise: true,
-  clientRectsNoise: true,
+  canvasNoise: "1",
+  clientRectsNoise: "1",
 }
 
 /** 浏览器预览里可用的演示账号。 */

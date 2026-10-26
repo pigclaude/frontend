@@ -34,8 +34,8 @@ describe("login gate", () => {
           platform: "macos",
           lang: "en-US",
           timezone: "America/Los_Angeles",
-          canvasNoise: true,
-          clientRectsNoise: true,
+          canvasNoise: "1",
+          clientRectsNoise: "1",
         },
       },
     })

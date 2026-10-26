@@ -1,8 +1,24 @@
-// 验证 Claude 账号授权的出口核对、外部等待、失败恢复和完成流程。
+// 验证 Claude 账号授权的出口核对、外部等待、失败恢复和完整指纹步骤。
 import { describe, expect, it } from "vitest"
 import { createAuthorizationState, reduceAuthorizationState } from "./authorization-model"
+import { defaultFingerprintForm } from "./fingerprint-form"
 
 describe("authorization model", () => {
+  it("保存完整指纹并支持从出口核对退回指纹步骤", () => {
+    const fingerprint = { ...defaultFingerprintForm(), seed: "520117", timezone: "Asia/Tokyo" }
+    let state = reduceAuthorizationState(createAuthorizationState(), {
+      type: "set-fingerprint",
+      fingerprint,
+    })
+    expect(state.fingerprint).toEqual(fingerprint)
+    state = reduceAuthorizationState(state, { type: "advance" })
+    state = reduceAuthorizationState(state, { type: "advance" })
+    state = reduceAuthorizationState(state, { type: "advance" })
+    expect(state.step).toBe("exit")
+    state = reduceAuthorizationState(state, { type: "back" })
+    expect(state.step).toBe("fingerprint")
+    expect(state.fingerprint).toEqual(fingerprint)
+  })
   it("出口不一致时不能生成授权链接", () => {
     let state = reduceAuthorizationState(createAuthorizationState(), {
       type: "set-exits",

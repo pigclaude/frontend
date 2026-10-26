@@ -1,5 +1,7 @@
 // 负责描述 Claude 账号授权向导、出口核对和浏览器回调状态。
 
+import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
+
 /** Claude 账号授权向导当前步骤。 */
 export type AuthorizationStep = "name" | "proxy" | "fingerprint" | "exit" | "waiting" | "completed"
 
@@ -8,7 +10,8 @@ export type AuthorizationState = {
   step: AuthorizationStep
   accountName: string
   proxyId: string | null
-  fingerprintSeed: string | null
+  /** 已确认的完整指纹；null 表示还没走到指纹步骤。 */
+  fingerprint: ClaudeFingerprintView | null
   bridgeExit: string
   daemonExit: string
   canLaunch: boolean
@@ -22,8 +25,9 @@ export type AuthorizationState = {
 export type AuthorizationEvent =
   | { type: "set-name"; accountName: string }
   | { type: "set-proxy"; proxyId: string | null }
-  | { type: "set-fingerprint"; fingerprintSeed: string }
+  | { type: "set-fingerprint"; fingerprint: ClaudeFingerprintView }
   | { type: "advance" }
+  | { type: "back" }
   | { type: "set-exits"; bridgeExit: string; daemonExit: string }
   | { type: "check-exit" }
   | { type: "start"; sessionId: string; url: string }
@@ -37,7 +41,7 @@ export function createAuthorizationState(): AuthorizationState {
     step: "name",
     accountName: "",
     proxyId: null,
-    fingerprintSeed: null,
+    fingerprint: null,
     bridgeExit: "",
     daemonExit: "",
     canLaunch: false,
@@ -56,7 +60,7 @@ export function reduceAuthorizationState(
   if (event.type === "set-name") return { ...state, accountName: event.accountName, error: null }
   if (event.type === "set-proxy") return { ...state, proxyId: event.proxyId, error: null }
   if (event.type === "set-fingerprint") {
-    return { ...state, fingerprintSeed: event.fingerprintSeed, error: null }
+    return { ...state, fingerprint: event.fingerprint, error: null }
   }
   if (event.type === "advance") {
     const next: Record<AuthorizationStep, AuthorizationStep> = {
@@ -68,6 +72,17 @@ export function reduceAuthorizationState(
       completed: "completed",
     }
     return { ...state, step: next[state.step], error: null }
+  }
+  if (event.type === "back") {
+    const previous: Record<AuthorizationStep, AuthorizationStep> = {
+      name: "name",
+      proxy: "name",
+      fingerprint: "proxy",
+      exit: "fingerprint",
+      waiting: "exit",
+      completed: "completed",
+    }
+    return { ...state, step: previous[state.step], error: null }
   }
   if (event.type === "set-exits") {
     return {

@@ -1,9 +1,8 @@
-// 负责账号删除、代理切换和指纹编辑弹层。
+// 负责账号删除和代理切换弹层；指纹编辑已拆到 fingerprint-dialog。
 import { useEffect, useRef, useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog"
 import { Button } from "./ui/button"
-import { Input } from "./ui/input"
-import type { PoolAccount, PoolProxy } from "../fixtures/pool-fixtures"
+import type { PoolProxy } from "../fixtures/pool-fixtures"
 
 /** 删除账号确认弹层。 */
 export function AccountDeleteDialog({
@@ -147,74 +146,4 @@ export function AccountProxyDialog({
 function initialSelection(currentProxyId: string | null, proxies: PoolProxy[]): string | null {
   if (currentProxyId === null) return ""
   return proxies.some((proxy) => proxy.id === currentProxyId) ? currentProxyId : null
-}
-
-/** 指纹配置编辑弹层。 */
-export function FingerprintDialog({
-  open,
-  account,
-  onOpenChange,
-  onConfirm,
-}: {
-  open: boolean
-  account: PoolAccount | null
-  onOpenChange: (open: boolean) => void
-  onConfirm: (fingerprint: string) => void
-}) {
-  const [fingerprint, setFingerprint] = useState(account?.fingerprint ?? "")
-  useEffect(() => {
-    if (open) setFingerprint(account?.fingerprint ?? "")
-  }, [open, account])
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <div className="dialog-head">
-          <DialogTitle>编辑指纹</DialogTitle>
-          <DialogDescription>保存后下次重新授权使用同一份指纹。</DialogDescription>
-        </div>
-        <div className="dialog-body">
-          <div className="field">
-            <label htmlFor="fingerprint-seed">种子</label>
-            <Input
-              id="fingerprint-seed"
-              className="mono"
-              value={fingerprint}
-              onChange={(event) => setFingerprint(event.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label>浏览器</label>
-            <Input
-              value={
-                account?.fingerprintDetail
-                  ? `${account.fingerprintDetail.brand} · ${account.fingerprintDetail.platform}`
-                  : "Chrome · macOS"
-              }
-              readOnly
-            />
-          </div>
-          <div className="field">
-            <label>语言与时区</label>
-            <Input
-              value={
-                account?.fingerprintDetail
-                  ? `${account.fingerprintDetail.lang} · ${account.fingerprintDetail.timezone}`
-                  : "en-US · America/Los_Angeles"
-              }
-              readOnly
-            />
-          </div>
-          <p className="hint">建议和网络出口保持一致。</p>
-        </div>
-        <div className="dialog-foot">
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            取消
-          </Button>
-          <Button variant="primary" onClick={() => onConfirm(fingerprint)}>
-            保存
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
 }

@@ -4,18 +4,23 @@
 import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import type { ClaudeAccountView, ProxyView } from "@pigclaude/contracts/claude-account"
+import type {
+  ClaudeAccountView,
+  ClaudeFingerprintView,
+  ProxyView,
+} from "@pigclaude/contracts/claude-account"
 import { toPoolAccount, toPoolProxy } from "../models/claude-account-view"
+import { normalizeFingerprintForm } from "../models/fingerprint-form"
 import { AccountsScreen, type AccountsScreenProps } from "./accounts-screen"
 
-const fingerprint = {
+const fingerprint: ClaudeFingerprintView = {
   seed: "123456",
   brand: "Chrome",
   platform: "macos",
   lang: "en-US",
   timezone: "America/Los_Angeles",
-  canvasNoise: true,
-  clientRectsNoise: true,
+  canvasNoise: "1",
+  clientRectsNoise: "1",
 }
 
 const proxy: ProxyView = {
@@ -160,6 +165,21 @@ function dialogChoice(text: string): HTMLButtonElement | undefined {
   )
 }
 
+async function typeDialog(selector: string, value: string): Promise<void> {
+  const element = document.body.querySelector<HTMLInputElement>(selector)
+  expect(element, selector).not.toBeNull()
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(element, value)
+    element?.dispatchEvent(new Event("input", { bubbles: true }))
+  })
+}
+
+async function clickDialog(selector: string): Promise<void> {
+  const element = document.body.querySelector<HTMLButtonElement>(selector)
+  expect(element, selector).not.toBeNull()
+  await act(async () => element?.click())
+}
+
 describe("accounts screen", () => {
   it("shows an empty state and the add button when there is no account", async () => {
     const onOpenAuthorize = vi.fn()
@@ -196,7 +216,37 @@ describe("accounts screen", () => {
     expect(container.textContent).not.toContain("需要绑定")
 
     await clickButton(button("编辑"), "编辑")
-    expect(dialog()?.textContent).toContain("建议和网络出口保持一致")
+    expect(dialog()?.textContent).toContain("保存后下次重新授权使用同一份指纹")
+    expect(dialog()?.textContent).toContain("身份与定位")
+    expect(dialog()?.textContent).toContain("兼容伪装")
+  })
+
+  it("shows the grouped fingerprint summary and saves the complete edited fingerprint", async () => {
+    const onUpdate = vi.fn()
+    await render([ready], { onUpdate })
+    await openAccount("工作 Max")
+
+    // 详情页按 AntBrowser 分组展示完整指纹，而不只是种子。
+    expect(container.textContent).toContain("身份与定位")
+    expect(container.textContent).toContain("设备与网络")
+    expect(container.textContent).toContain("兼容伪装")
+    expect(container.textContent).toContain("开启")
+
+    await clickButton(button("编辑"), "编辑")
+    await typeDialog("#fingerprint-dialog-seed", "654321")
+    await typeDialog("#fingerprint-dialog-timezone", "Asia/Tokyo")
+    await clickDialog("#fingerprint-dialog-canvasNoise-0")
+    await clickButton(button("保存", dialog() ?? document.body), "保存")
+
+    expect(onUpdate).toHaveBeenCalledWith({
+      accountId: "acc-ready",
+      fingerprint: {
+        ...normalizeFingerprintForm(fingerprint),
+        seed: "654321",
+        timezone: "Asia/Tokyo",
+        canvasNoise: "0",
+      },
+    })
   })
 
   it("unbinds a bound account from the network dialog and keeps the choice on re-render", async () => {

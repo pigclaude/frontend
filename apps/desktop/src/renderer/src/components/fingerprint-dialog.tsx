@@ -6,7 +6,7 @@ import type { PoolAccount } from "../fixtures/pool-fixtures"
 import {
   hasFingerprintFormErrors,
   normalizeFingerprintForm,
-  validateFingerprintForm,
+  prepareFingerprintSubmission,
   type FingerprintFormErrors,
 } from "../models/fingerprint-form"
 import { FingerprintForm } from "./fingerprint-form"
@@ -44,11 +44,13 @@ export function FingerprintDialog({
   }, [open, account])
 
   function confirm(): void {
-    const normalized = normalizeFingerprintForm(draft)
-    const nextErrors = validateFingerprintForm(normalized)
-    setErrors(nextErrors)
-    if (hasFingerprintFormErrors(nextErrors)) return
-    onConfirm(normalized)
+    const result = prepareFingerprintSubmission(draft)
+    if (!result.ok) {
+      setErrors(result.errors)
+      return
+    }
+    setErrors({})
+    onConfirm(result.fingerprint)
   }
 
   return (

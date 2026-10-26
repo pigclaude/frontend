@@ -43,7 +43,10 @@ export function AuthorizeScreen({
   const [proxyId, setProxyId] = useState<string | null>(() =>
     initialProxyChoice(state, account, proxies),
   )
-  const fingerprint = state.fingerprint ?? initialFingerprint(account)
+  // 草稿放在授权页而不是指纹步骤里；fingerprint → proxy → fingerprint 切换时不丢修改。
+  const [fingerprint, setFingerprint] = useState<ClaudeFingerprintView>(
+    () => state.fingerprint ?? initialFingerprint(account),
+  )
   const selectedProxy = proxies.find((proxy) => proxy.id === proxyId) ?? null
 
   function startBrowserAuthorization() {
@@ -176,10 +179,12 @@ export function AuthorizeScreen({
           ) : null}
           {state.step === "fingerprint" ? (
             <FingerprintStep
-              initialFingerprint={fingerprint}
+              value={fingerprint}
               submitLabel={proxyId === "" ? "保存并继续" : "保存并核对出口"}
               error={state.error}
+              onChange={setFingerprint}
               onSubmit={(next) => {
+                setFingerprint(next)
                 onEvent({ type: "set-fingerprint", fingerprint: next })
                 onEvent({ type: "advance" })
               }}

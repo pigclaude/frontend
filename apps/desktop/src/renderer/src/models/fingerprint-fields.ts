@@ -13,6 +13,34 @@ export type FingerprintGroupId = "identity" | "device" | "compat" | "advanced"
 /** 指纹字段键，覆盖契约里的全部 25 个字段。 */
 export type FingerprintFieldKey = keyof ClaudeFingerprintView
 
+/** 只保存和诊断、AntBrowser 1.8.0 不作为独立运行参数的 9 个旧字段。 */
+export type FingerprintLegacyFieldKey =
+  | "colorDepth"
+  | "deviceMemory"
+  | "touchPoints"
+  | "doNotTrack"
+  | "mediaDevices"
+  | "audioNoise"
+  | "fontList"
+  | "webglVendor"
+  | "webglRenderer"
+
+/** 表单里可以编辑的字段键；旧字段只在摘要/诊断里展示。 */
+export type FingerprintEditableFieldKey = Exclude<FingerprintFieldKey, FingerprintLegacyFieldKey>
+
+/** 旧字段标签；摘要里出现时统一标注不是 AntBrowser 的独立启动参数。 */
+export const fingerprintLegacyFields: { key: FingerprintLegacyFieldKey; label: string }[] = [
+  { key: "colorDepth", label: "色彩深度" },
+  { key: "deviceMemory", label: "设备内存" },
+  { key: "touchPoints", label: "触摸点数" },
+  { key: "doNotTrack", label: "Do Not Track" },
+  { key: "mediaDevices", label: "媒体设备" },
+  { key: "audioNoise", label: "音频噪声" },
+  { key: "fontList", label: "字体列表" },
+  { key: "webglVendor", label: "WebGL 厂商" },
+  { key: "webglRenderer", label: "WebGL 渲染器" },
+]
+
 /** 表单控件的渲染方式。 */
 export type FingerprintFieldControl =
   "text" | "select" | "resolution" | "custom-resolution" | "noise" | "spoofing" | "args"
@@ -35,7 +63,7 @@ export type FingerprintGroup = {
   id: FingerprintGroupId
   title: string
   description: string
-  fields: FingerprintFieldKey[]
+  fields: FingerprintEditableFieldKey[]
 }
 
 /** 品牌下拉；与 AntBrowser 支持的四个 Chromium 品牌一致。 */
@@ -98,7 +126,7 @@ export const fingerprintSpoofingCategories: {
 ]
 
 /** 全部字段元数据；表单、摘要和测试共用同一份标签。 */
-export const fingerprintFieldMeta: Record<FingerprintFieldKey, FingerprintFieldMeta> = {
+export const fingerprintFieldMeta: Record<FingerprintEditableFieldKey, FingerprintFieldMeta> = {
   seed: {
     label: "指纹种子",
     hint: "留空时按账号 ID 生成稳定整数，同一账号每次启动都一样。",
@@ -167,19 +195,6 @@ export const fingerprintFieldMeta: Record<FingerprintFieldKey, FingerprintFieldM
     hint: "与噪声开关互相独立，对应 --disable-spoofing。",
     control: "spoofing",
   },
-  colorDepth: { label: "色彩深度", placeholder: "24", mono: true, control: "text" },
-  deviceMemory: { label: "设备内存", placeholder: "8", mono: true, control: "text" },
-  touchPoints: { label: "触摸点数", placeholder: "5", mono: true, control: "text" },
-  doNotTrack: { label: "Do Not Track", placeholder: "1", mono: true, control: "text" },
-  mediaDevices: { label: "媒体设备", placeholder: "1", mono: true, control: "text" },
-  audioNoise: { label: "音频噪声", placeholder: "1", mono: true, control: "text" },
-  fontList: {
-    label: "字体列表",
-    hint: "仅保存和诊断，AntBrowser 1.8.0 不输出该参数。",
-    control: "text",
-  },
-  webglVendor: { label: "WebGL 厂商", placeholder: "Google Inc.", control: "text" },
-  webglRenderer: { label: "WebGL 渲染器", placeholder: "ANGLE", control: "text" },
   unknownArgs: {
     label: "原始参数",
     hint: "每行一个参数，按原样追加到启动命令末尾。",
@@ -221,18 +236,8 @@ export const fingerprintGroups: FingerprintGroup[] = [
   {
     id: "advanced",
     title: "高级原始参数",
-    description: "旧字段只保存和诊断；原始参数会原样追加到启动命令。",
-    fields: [
-      "colorDepth",
-      "deviceMemory",
-      "touchPoints",
-      "doNotTrack",
-      "mediaDevices",
-      "audioNoise",
-      "fontList",
-      "webglVendor",
-      "webglRenderer",
-      "unknownArgs",
-    ],
+    description:
+      "原始参数会原样追加到启动命令；9 个旧字段只保存和诊断，不作为独立控件，AntBrowser 1.8.0 也不会输出它们。",
+    fields: ["unknownArgs"],
   },
 ]

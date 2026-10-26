@@ -108,6 +108,11 @@ describe("fingerprint form", () => {
     expect(query<HTMLSelectElement>("#fp-brand").value).toBe("Chrome")
     expect(query<HTMLSelectElement>("#fp-platform").value).toBe("macos")
     expect(container.querySelector("#fp-customResolution")).toBeNull()
+    expect(container.querySelector("#fp-unknownArgs")).not.toBeNull()
+    // 9 个旧字段只保存和诊断，不作为独立可编辑控件。
+    expect(container.querySelector("#fp-colorDepth")).toBeNull()
+    expect(container.querySelector("#fp-webglRenderer")).toBeNull()
+    expect(container.textContent).toContain("本地内核生效")
   })
 
   it("applies a quick preset without replacing the seed", async () => {
@@ -117,9 +122,15 @@ describe("fingerprint form", () => {
     expect(latest.seed).toBe("777")
     expect(latest.brand).toBe("Edge")
     expect(latest.platform).toBe("windows")
-    expect(latest.timezone).toBe("America/New_York")
+    expect(latest.lang).toBe("zh-CN")
+    expect(latest.timezone).toBe("Asia/Shanghai")
+    expect(latest.resolution).toBe("1366,768")
+    expect(latest.hardwareConcurrency).toBe("4")
+    expect(latest.acceptLang).toBe("")
+    expect(latest.brandVersion).toBe("")
+    expect(latest.platformVersion).toBe("")
+    expect(latest.disableSpoofing).toEqual([])
     expect(latest.webrtcPolicy).toBe("default_public_interface_only")
-    expect(latest.disableSpoofing).toEqual(["font"])
     expect(query<HTMLSelectElement>("#fp-brand").value).toBe("Edge")
   })
 

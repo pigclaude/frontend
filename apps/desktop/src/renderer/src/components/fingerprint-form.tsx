@@ -19,7 +19,7 @@ import {
   formatUnknownArgs,
   quickFingerprintPresets,
   splitUnknownArgs,
-  type FingerprintFieldKey,
+  type FingerprintEditableFieldKey,
   type FingerprintFormErrors,
   type FingerprintPreset,
 } from "../models/fingerprint-form"
@@ -35,15 +35,15 @@ export type FingerprintFormProps = {
   onChange: (value: ClaudeFingerprintView) => void
 }
 
-/** 只接受普通字符串的字段键，排除噪声、伪装类别和原始参数。 */
+/** 只接受普通字符串的可编辑字段键，排除噪声、伪装类别和原始参数。 */
 type PlainTextFieldKey = Exclude<
-  FingerprintFieldKey,
+  FingerprintEditableFieldKey,
   "webrtcPolicy" | "canvasNoise" | "clientRectsNoise" | "disableSpoofing" | "unknownArgs"
 >
 
 /** 渲染完整指纹表单。保证所有分组和预设都来自同一份元数据。 */
 export function FingerprintForm({ value, errors = {}, idPrefix, onChange }: FingerprintFormProps) {
-  function updateField<K extends FingerprintFieldKey>(
+  function updateField<K extends FingerprintEditableFieldKey>(
     key: K,
     next: ClaudeFingerprintView[K],
   ): void {
@@ -65,7 +65,7 @@ export function FingerprintForm({ value, errors = {}, idPrefix, onChange }: Fing
     updateField(key, next)
   }
 
-  function renderField(key: FingerprintFieldKey): ReactNode {
+  function renderField(key: FingerprintEditableFieldKey): ReactNode {
     const meta = fingerprintFieldMeta[key]
     const id = `${idPrefix}-${key}`
     const error = errors[key]
@@ -179,7 +179,8 @@ export function FingerprintForm({ value, errors = {}, idPrefix, onChange }: Fing
     <div className="fingerprint-form">
       <PresetSection
         title="快速生成"
-        description="按 AntBrowser 常见画像一键填入品牌、平台、语言、时区和硬件；应用后保留当前种子。"
+        description="按 AntBrowser 常见画像一键填入品牌、平台、语言、时区、窗口大小和 CPU 核心数；应用后保留当前种子、原始参数和旧字段。"
+        note="本地内核生效：品牌、平台、语言、时区、窗口大小、CPU 核心数、WebRTC、Canvas/ClientRects 噪声和禁用伪装；高级画像额外设置系统版本。"
         presets={quickFingerprintPresets}
         idPrefix={idPrefix}
         value={value}
@@ -187,7 +188,7 @@ export function FingerprintForm({ value, errors = {}, idPrefix, onChange }: Fing
       />
       <PresetSection
         title="高级画像"
-        description="带有伪装类别组合的画像，适合需要固定禁用项的账号。"
+        description="固定系统版本与地区组合的画像；和快速预设一样保留种子、原始参数和旧字段。"
         presets={advancedFingerprintProfiles}
         idPrefix={idPrefix}
         value={value}
@@ -209,6 +210,7 @@ export function FingerprintForm({ value, errors = {}, idPrefix, onChange }: Fing
 function PresetSection({
   title,
   description,
+  note,
   presets,
   idPrefix,
   value,
@@ -216,6 +218,7 @@ function PresetSection({
 }: {
   title: string
   description: string
+  note?: string
   presets: FingerprintPreset[]
   idPrefix: string
   value: ClaudeFingerprintView
@@ -244,6 +247,7 @@ function PresetSection({
           </Button>
         ))}
       </div>
+      {note === undefined ? null : <p className="note">{note}</p>}
     </section>
   )
 }
@@ -316,7 +320,7 @@ function toggleSpoofing(
   return current.filter((item) => item !== category)
 }
 
-function isPlainTextField(key: FingerprintFieldKey): key is PlainTextFieldKey {
+function isPlainTextField(key: FingerprintEditableFieldKey): key is PlainTextFieldKey {
   return (
     key !== "webrtcPolicy" &&
     key !== "canvasNoise" &&
@@ -326,12 +330,14 @@ function isPlainTextField(key: FingerprintFieldKey): key is PlainTextFieldKey {
   )
 }
 
-function selectKey(key: FingerprintFieldKey): "brand" | "platform" | "webrtcPolicy" | "resolution" {
+function selectKey(
+  key: FingerprintEditableFieldKey,
+): "brand" | "platform" | "webrtcPolicy" | "resolution" {
   if (key === "brand" || key === "platform" || key === "resolution") return key
   return "webrtcPolicy"
 }
 
-function selectFieldValue(value: ClaudeFingerprintView, key: FingerprintFieldKey): string {
+function selectFieldValue(value: ClaudeFingerprintView, key: FingerprintEditableFieldKey): string {
   if (key === "brand") return value.brand
   if (key === "platform") return value.platform
   if (key === "resolution") return value.resolution ?? ""

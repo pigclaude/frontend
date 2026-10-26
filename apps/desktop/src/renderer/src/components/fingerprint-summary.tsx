@@ -34,6 +34,7 @@ export function FingerprintSummary({ fingerprint, fallbackSeed }: FingerprintSum
               </div>
             ))}
           </div>
+          {group.note === undefined ? null : <p className="note">{group.note}</p>}
         </div>
       ))}
     </>

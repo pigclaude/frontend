@@ -1,12 +1,12 @@
-// 负责验证授权向导的指纹步骤：完整对象提交、字段级错误、预设应用、后端错误显示和返回上一步。
+// 负责验证授权向导的指纹步骤：受控草稿、完整对象提交、字段错误、预设应用、后端错误和返回上一步。
 
 // @vitest-environment jsdom
-import { act, createElement } from "react"
+import { act, createElement, useState } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { defaultFingerprintForm } from "../../models/fingerprint-form"
-import { FingerprintStep } from "./fingerprint-step"
+import { FingerprintStep, type FingerprintStepProps } from "./fingerprint-step"
 
 let root: Root
 let container: HTMLDivElement
@@ -24,8 +24,20 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 
+/** 模拟授权页持有草稿；步骤本身只受控渲染。 */
+function Harness(
+  props: Omit<FingerprintStepProps, "value" | "onChange"> & { initial: ClaudeFingerprintView },
+) {
+  const [value, setValue] = useState(props.initial)
+  return createElement(FingerprintStep, {
+    ...props,
+    value,
+    onChange: (next: ClaudeFingerprintView) => setValue(next),
+  })
+}
+
 async function render(props: {
-  initialFingerprint?: ClaudeFingerprintView
+  initial?: ClaudeFingerprintView
   submitLabel?: string
   error?: string | null
   onSubmit: (fingerprint: ClaudeFingerprintView) => void
@@ -33,8 +45,8 @@ async function render(props: {
 }): Promise<void> {
   await act(async () =>
     root.render(
-      createElement(FingerprintStep, {
-        initialFingerprint: props.initialFingerprint ?? defaultFingerprintForm(),
+      createElement(Harness, {
+        initial: props.initial ?? defaultFingerprintForm(),
         submitLabel: props.submitLabel ?? "保存并确认",
         error: props.error ?? null,
         idPrefix: "step",
@@ -104,10 +116,15 @@ describe("fingerprint step", () => {
       expect.objectContaining({
         seed: "",
         platform: "macos",
+        platformVersion: "",
         lang: "ja-JP",
+        acceptLang: "",
         timezone: "Asia/Tokyo",
+        resolution: "1440,900",
+        hardwareConcurrency: "8",
         canvasNoise: "0",
         clientRectsNoise: "1",
+        disableSpoofing: [],
       }),
     )
   })

@@ -10,6 +10,7 @@ import {
 } from "@pigclaude/contracts/claude-account"
 import {
   fingerprintBrandOptions,
+  fingerprintLegacyFields,
   fingerprintResolutionPresets,
   fingerprintSpoofingCategories,
   fingerprintWebrtcOptions,
@@ -26,11 +27,12 @@ export type FingerprintFormErrors = Partial<Record<FingerprintFieldKey, string>>
 /** 详情页摘要的一行。block 为 true 时值换行显示，适合原始参数。 */
 export type FingerprintSummaryRow = { label: string; value: string; block?: boolean }
 
-/** 详情页摘要的一个分组。 */
+/** 详情页摘要的一个分组。note 用于标注旧字段不是独立运行参数。 */
 export type FingerprintSummaryGroup = {
   id: FingerprintGroupId
   title: string
   rows: FingerprintSummaryRow[]
+  note?: string
 }
 
 /** 默认指纹表单；直接使用契约里的 AntBrowser 新 profile 默认值。 */
@@ -161,16 +163,22 @@ export function hasFingerprintFormErrors(errors: FingerprintFormErrors): boolean
   return Object.keys(errors).length > 0
 }
 
+/** 表单提交结果；失败时带字段级错误，成功时带归一化后的完整指纹。 */
+export type FingerprintSubmitResult =
+  { ok: true; fingerprint: ClaudeFingerprintView } | { ok: false; errors: FingerprintFormErrors }
+
+/** 归一化 → 校验 → 提交的统一入口；指纹步骤和编辑弹层共用，避免两套提交逻辑漂移。 */
+export function prepareFingerprintSubmission(
+  value: ClaudeFingerprintView,
+): FingerprintSubmitResult {
+  const fingerprint = normalizeFingerprintForm(value)
+  const errors = validateFingerprintForm(fingerprint)
+  return hasFingerprintFormErrors(errors) ? { ok: false, errors } : { ok: true, fingerprint }
+}
+
 /** 把 textarea 文本拆成原始参数行；保留空行，便于继续输入。 */
 export function splitUnknownArgs(text: string): string[] {
   return text.split(/\r?\n/)
-}
-
-/** 把 textarea 文本解析成最终参数数组；去掉空行并去空白。 */
-export function parseUnknownArgs(text: string): string[] {
-  return splitUnknownArgs(text)
-    .map((line) => line.trim())
-    .filter((line) => line !== "")
 }
 
 /** 把原始参数数组格式化成每行一个参数。 */
@@ -200,6 +208,7 @@ export function fingerprintSummaryGroups(
   fingerprint: ClaudeFingerprintView | undefined,
 ): FingerprintSummaryGroup[] {
   const value = normalizeFingerprintForm(fingerprint)
+  const legacyRows = advancedLegacyRows(value)
   return [
     {
       id: "identity",
@@ -241,27 +250,18 @@ export function fingerprintSummaryGroups(
       id: "advanced",
       title: "高级原始参数",
       rows: [
-        ...advancedLegacyRows(value),
+        ...legacyRows,
         { label: "原始参数", value: value.unknownArgs?.join(" ") || "无", block: true },
       ],
+      ...(legacyRows.length === 0
+        ? {}
+        : { note: "旧字段只保存和诊断，AntBrowser 1.8.0 不作为独立运行参数。" }),
     },
   ]
 }
 
-const advancedFieldLabels: [FingerprintFieldKey, string][] = [
-  ["colorDepth", "色彩深度"],
-  ["deviceMemory", "设备内存"],
-  ["touchPoints", "触摸点数"],
-  ["doNotTrack", "Do Not Track"],
-  ["mediaDevices", "媒体设备"],
-  ["audioNoise", "音频噪声"],
-  ["fontList", "字体列表"],
-  ["webglVendor", "WebGL 厂商"],
-  ["webglRenderer", "WebGL 渲染器"],
-]
-
 function advancedLegacyRows(value: ClaudeFingerprintView): FingerprintSummaryRow[] {
-  return advancedFieldLabels.flatMap(([key, label]) => {
+  return fingerprintLegacyFields.flatMap(({ key, label }) => {
     const raw = value[key]
     const textValue = typeof raw === "string" ? raw.trim() : ""
     return textValue === "" ? [] : [{ label, value: textValue, block: true }]

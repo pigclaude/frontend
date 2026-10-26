@@ -1,8 +1,9 @@
-// 负责验证指纹表单模型：字段元数据覆盖、8+5 预设、默认值、归一化、中文校验和摘要分组。
+// 负责验证指纹表单模型：可编辑字段元数据、13 个预设权威值、默认值、归一化、中文校验和摘要分组。
 
 import { describe, expect, it } from "vitest"
 import {
   defaultClaudeFingerprint,
+  type ClaudeFingerprintView,
   type FingerprintNoise,
   type FingerprintSpoofingCategory,
   type FingerprintWebrtcPolicy,
@@ -13,29 +14,36 @@ import {
   defaultFingerprintForm,
   fingerprintFieldMeta,
   fingerprintGroups,
-  fingerprintPreset,
+  fingerprintLegacyFields,
   fingerprintResolutionPresets,
   fingerprintSummaryGroups,
   formatUnknownArgs,
   hasFingerprintFormErrors,
   normalizeFingerprintForm,
-  parseUnknownArgs,
+  prepareFingerprintSubmission,
   quickFingerprintPresets,
   validateFingerprintForm,
+  type FingerprintPreset,
 } from "./fingerprint-form"
 
 describe("fingerprint form metadata", () => {
-  it("covers every contract field exactly once across the four groups", () => {
+  it("keeps the nine legacy fields out of the editable groups", () => {
     const grouped = fingerprintGroups.flatMap((group) => group.fields)
-    expect(grouped).toHaveLength(25)
-    expect(new Set(grouped).size).toBe(25)
-    expect([...grouped].sort()).toEqual(Object.keys(defaultFingerprintForm()).sort())
+    const legacyKeys = fingerprintLegacyFields.map((field) => field.key)
+    expect(grouped).toHaveLength(16)
+    expect(new Set(grouped).size).toBe(16)
+    expect(grouped).not.toContain("colorDepth")
+    expect(grouped).not.toContain("webglRenderer")
     expect(Object.keys(fingerprintFieldMeta).sort()).toEqual([...grouped].sort())
+    expect([...grouped, ...legacyKeys].sort()).toEqual(Object.keys(defaultFingerprintForm()).sort())
     expect(fingerprintGroups.map((group) => group.title)).toEqual([
       "身份与定位",
       "设备与网络",
       "兼容伪装",
       "高级原始参数",
+    ])
+    expect(fingerprintGroups.find((group) => group.id === "advanced")?.fields).toEqual([
+      "unknownArgs",
     ])
   })
 
@@ -51,6 +59,15 @@ describe("fingerprint form metadata", () => {
     })
   })
 })
+
+/** 按 id 取预设；测试数据固定，缺失时直接失败。 */
+function presetById(id: string): FingerprintPreset {
+  const preset = [...quickFingerprintPresets, ...advancedFingerprintProfiles].find(
+    (candidate) => candidate.id === id,
+  )
+  expect(preset, id).toBeDefined()
+  return preset as FingerprintPreset
+}
 
 describe("fingerprint presets", () => {
   it("exposes the eight quick presets and five advanced profiles by id", () => {
@@ -71,44 +88,210 @@ describe("fingerprint presets", () => {
       "sg-win-chrome-business",
       "de-linux-chrome-dev",
     ])
-    expect(fingerprintPreset("win-chrome-jp")).toBeNull()
   })
 
-  it("fills a complete fingerprint and keeps the current seed when applied", () => {
-    const jp = fingerprintPreset("mac-chrome-jp")
-    expect(jp).not.toBeNull()
-    if (jp === null) return
-    expect(jp.fingerprint).toMatchObject({
-      seed: "",
-      brand: "Chrome",
-      platform: "macos",
-      platformVersion: "15.0.0",
-      lang: "ja-JP",
-      acceptLang: "ja-JP,ja",
-      timezone: "Asia/Tokyo",
-      resolution: "1440,900",
-      hardwareConcurrency: "8",
+  // 权威表：AntBrowser 1.8.0 快速预设和高级画像的逐字段值。
+  const presetTable: { id: string; expected: Partial<ClaudeFingerprintView> }[] = [
+    {
+      id: "win-chrome-office",
+      expected: {
+        brand: "Chrome",
+        platform: "windows",
+        lang: "zh-CN",
+        timezone: "Asia/Shanghai",
+        resolution: "1920,1080",
+        hardwareConcurrency: "8",
+        webrtcPolicy: "disable_non_proxied_udp",
+      },
+    },
+    {
+      id: "win-chrome-gaming",
+      expected: {
+        brand: "Chrome",
+        platform: "windows",
+        lang: "en-US",
+        timezone: "America/New_York",
+        resolution: "2560,1440",
+        hardwareConcurrency: "16",
+        webrtcPolicy: "disable_non_proxied_udp",
+      },
+    },
+    {
+      id: "mac-chrome-designer",
+      expected: {
+        brand: "Chrome",
+        platform: "macos",
+        lang: "zh-CN",
+        timezone: "Asia/Shanghai",
+        resolution: "2560,1440",
+        hardwareConcurrency: "10",
+        webrtcPolicy: "disable_non_proxied_udp",
+      },
+    },
+    {
+      id: "win-edge-enterprise",
+      expected: {
+        brand: "Edge",
+        platform: "windows",
+        lang: "zh-CN",
+        timezone: "Asia/Shanghai",
+        resolution: "1366,768",
+        hardwareConcurrency: "4",
+        webrtcPolicy: "default_public_interface_only",
+      },
+    },
+    {
+      id: "win-chrome-us-user",
+      expected: {
+        brand: "Chrome",
+        platform: "windows",
+        lang: "en-US",
+        timezone: "America/Los_Angeles",
+        resolution: "1920,1080",
+        hardwareConcurrency: "8",
+        webrtcPolicy: "disable_non_proxied_udp",
+      },
+    },
+    {
+      id: "mac-chrome-jp",
+      expected: {
+        brand: "Chrome",
+        platform: "macos",
+        lang: "ja-JP",
+        timezone: "Asia/Tokyo",
+        resolution: "1440,900",
+        hardwareConcurrency: "8",
+        webrtcPolicy: "disable_non_proxied_udp",
+      },
+    },
+    {
+      id: "win-chrome-uk-office",
+      expected: {
+        brand: "Chrome",
+        platform: "windows",
+        lang: "en-GB",
+        timezone: "Europe/London",
+        resolution: "1920,1080",
+        hardwareConcurrency: "8",
+        webrtcPolicy: "disable_non_proxied_udp",
+      },
+    },
+    {
+      id: "mac-chrome-us-edu",
+      expected: {
+        brand: "Chrome",
+        platform: "macos",
+        lang: "en-US",
+        timezone: "America/New_York",
+        resolution: "1440,900",
+        hardwareConcurrency: "8",
+        webrtcPolicy: "disable_non_proxied_udp",
+      },
+    },
+    {
+      id: "us-win-chrome-office",
+      expected: {
+        brand: "Chrome",
+        platform: "windows",
+        platformVersion: "10.0.0",
+        lang: "en-US",
+        timezone: "America/New_York",
+        resolution: "1920,1080",
+        hardwareConcurrency: "8",
+        webrtcPolicy: "disable_non_proxied_udp",
+      },
+    },
+    {
+      id: "jp-mac-chrome-light",
+      expected: {
+        brand: "Chrome",
+        platform: "macos",
+        platformVersion: "15.2.0",
+        lang: "ja-JP",
+        timezone: "Asia/Tokyo",
+        resolution: "1440,900",
+        hardwareConcurrency: "8",
+        webrtcPolicy: "disable_non_proxied_udp",
+      },
+    },
+    {
+      id: "uk-win-edge-enterprise",
+      expected: {
+        brand: "Edge",
+        platform: "windows",
+        platformVersion: "10.0.0",
+        lang: "en-GB",
+        timezone: "Europe/London",
+        resolution: "1920,1080",
+        hardwareConcurrency: "8",
+        webrtcPolicy: "disable_non_proxied_udp",
+      },
+    },
+    {
+      id: "sg-win-chrome-business",
+      expected: {
+        brand: "Chrome",
+        platform: "windows",
+        platformVersion: "10.0.0",
+        lang: "en-SG",
+        timezone: "Asia/Singapore",
+        resolution: "1920,1080",
+        hardwareConcurrency: "8",
+        webrtcPolicy: "disable_non_proxied_udp",
+      },
+    },
+    {
+      id: "de-linux-chrome-dev",
+      expected: {
+        brand: "Chrome",
+        platform: "linux",
+        lang: "de-DE",
+        timezone: "Europe/Berlin",
+        resolution: "1920,1080",
+        hardwareConcurrency: "12",
+        webrtcPolicy: "disable_non_proxied_udp",
+      },
+    },
+  ]
+
+  it.each(presetTable)("matches every field of $id", ({ id, expected }) => {
+    const preset = presetById(id)
+    const defaults = defaultClaudeFingerprint()
+    const complete = {
+      ...defaults,
+      acceptLang: "",
       canvasNoise: "1",
       clientRectsNoise: "1",
-      disableSpoofing: [],
-      unknownArgs: [],
-    })
-    const applied = applyFingerprintPreset({ ...defaultFingerprintForm(), seed: "998877" }, jp)
-    expect(applied.seed).toBe("998877")
-    expect(applied.timezone).toBe("Asia/Tokyo")
-    expect(applied.lang).toBe("ja-JP")
+      ...expected,
+    }
+    for (const key of Object.keys(defaults) as (keyof ClaudeFingerprintView)[]) {
+      expect(preset.fingerprint[key], `${id}.${key}`).toEqual(complete[key])
+    }
+    // 禁止字段：种子、品牌版本、语言列表、禁用伪装类别都不能由预设写入。
+    expect(preset.fingerprint.seed).toBe("")
+    expect(preset.fingerprint.brandVersion).toBe("")
+    expect(preset.fingerprint.acceptLang).toBe("")
+    expect(preset.fingerprint.disableSpoofing).toEqual([])
+    if (preset.tier === "quick") expect(preset.fingerprint.platformVersion).toBe("")
   })
 
-  it("keeps the disable-spoofing combination in the edge enterprise profile", () => {
-    const edge = fingerprintPreset("uk-win-edge-enterprise")
-    expect(edge?.fingerprint).toMatchObject({
-      brand: "Edge",
-      platform: "windows",
-      lang: "en-GB",
-      timezone: "Europe/London",
-      webrtcPolicy: "default_public_interface_only",
-      disableSpoofing: ["font"],
-    })
+  it("keeps the seed, raw args and legacy fields when applying a preset", () => {
+    const current = {
+      ...defaultFingerprintForm(),
+      seed: "998877",
+      timezone: "Europe/Berlin",
+      unknownArgs: ["--disable-gpu"],
+      colorDepth: "24",
+      fontList: "Arial",
+    }
+    const applied = applyFingerprintPreset(current, presetById("mac-chrome-jp"))
+    expect(applied.seed).toBe("998877")
+    expect(applied.unknownArgs).toEqual(["--disable-gpu"])
+    expect(applied.colorDepth).toBe("24")
+    expect(applied.fontList).toBe("Arial")
+    expect(applied.lang).toBe("ja-JP")
+    expect(applied.timezone).toBe("Asia/Tokyo")
+    expect(applied.canvasNoise).toBe("1")
   })
 })
 
@@ -150,10 +333,19 @@ describe("fingerprint normalization", () => {
     })
   })
 
-  it("parses and formats unknown arguments one per line", () => {
-    expect(parseUnknownArgs("--a\n\n  --b  \n")).toEqual(["--a", "--b"])
+  it("formats unknown arguments one per line", () => {
     expect(formatUnknownArgs(["--a", "--b"])).toBe("--a\n--b")
     expect(formatUnknownArgs(undefined)).toBe("")
+  })
+
+  it("prepares a normalized submission or returns field errors", () => {
+    const valid = prepareFingerprintSubmission({ ...defaultFingerprintForm(), seed: " 123 " })
+    expect(valid).toEqual({ ok: true, fingerprint: expect.objectContaining({ seed: "123" }) })
+    const invalid = prepareFingerprintSubmission({ ...defaultFingerprintForm(), seed: "0" })
+    expect(invalid).toEqual({
+      ok: false,
+      errors: { seed: "指纹种子必须是 1 到 2147483647 的整数" },
+    })
   })
 })
 
@@ -262,6 +454,7 @@ describe("fingerprint summary", () => {
     expect(text).toContain("字体、音频")
     expect(text).toContain("--disable-gpu")
     expect(text).toContain("色彩深度")
+    expect(text).toContain("AntBrowser 1.8.0 不作为独立运行参数")
   })
 
   it("shows follow-the-default labels for an empty fingerprint", () => {

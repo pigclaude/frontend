@@ -5,7 +5,7 @@ import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
-import { defaultFingerprintForm, fingerprintPreset } from "../models/fingerprint-form"
+import { defaultFingerprintForm, advancedFingerprintProfiles } from "../models/fingerprint-form"
 import { FingerprintSummary } from "./fingerprint-summary"
 
 let root: Root
@@ -32,27 +32,27 @@ async function render(fingerprint?: ClaudeFingerprintView, fallbackSeed?: string
 
 describe("fingerprint summary", () => {
   it("renders the four AntBrowser groups and the full profile", async () => {
-    const de = fingerprintPreset("de-linux-chrome-dev")
+    const de = advancedFingerprintProfiles.find((preset) => preset.id === "de-linux-chrome-dev")
     expect(de).not.toBeNull()
-    if (de === null) return
+    if (de === undefined) return
     await render({ ...de.fingerprint, seed: "520117", colorDepth: "24" })
 
     for (const title of ["身份与定位", "设备与网络", "兼容伪装", "高级原始参数"]) {
       expect(container.textContent).toContain(title)
     }
     expect(container.textContent).toContain("520117")
-    expect(container.textContent).toContain("Chrome 144.0.7559.132")
-    expect(container.textContent).toContain("Linux 6.8.0")
+    expect(container.textContent).toContain("Chrome（跟随默认版本）")
+    expect(container.textContent).toContain("Linux")
     expect(container.textContent).toContain("de-DE")
     expect(container.textContent).toContain("Europe/Berlin")
     expect(container.textContent).toContain("1920,1080")
-    expect(container.textContent).toContain("16")
+    expect(container.textContent).toContain("12")
     expect(container.textContent).toContain("禁用非代理 UDP")
-    expect(container.textContent).toContain("关闭")
     expect(container.textContent).toContain("开启")
-    expect(container.textContent).toContain("字体、音频")
+    expect(container.textContent).toContain("不额外禁用")
     expect(container.textContent).toContain("色彩深度")
     expect(container.textContent).toContain("24")
+    expect(container.textContent).toContain("AntBrowser 1.8.0 不作为独立运行参数")
     expect(container.textContent).toContain("无")
   })
 

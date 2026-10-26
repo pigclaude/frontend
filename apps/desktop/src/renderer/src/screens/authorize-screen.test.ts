@@ -196,13 +196,12 @@ describe("Claude account authorization wizard", () => {
 
     await clickId("authorize-preset-win-chrome-office")
     await type("authorize-seed", "123456")
-    await type("authorize-timezone", "America/New_York")
     await choose("authorize-webrtcPolicy", "disable_non_proxied_udp")
     await clickId("authorize-canvasNoise-0")
     await click("保存并核对出口")
 
     expect(container.textContent).toContain("SJC-02 · 198.51.100.17")
-    expect(container.textContent).toContain("Chrome 144.0.7559.132 · Windows 10.0.0")
+    expect(container.textContent).toContain("Chrome · Windows")
     await click("开始核对并授权")
     expect(onStart).toHaveBeenCalledTimes(1)
     expect(onStart).toHaveBeenCalledWith({
@@ -213,13 +212,13 @@ describe("Claude account authorization wizard", () => {
         seed: "123456",
         brand: "Chrome",
         platform: "windows",
-        lang: "en-US",
-        timezone: "America/New_York",
+        lang: "zh-CN",
+        timezone: "Asia/Shanghai",
         canvasNoise: "0",
         clientRectsNoise: "1",
-        brandVersion: "144.0.7559.132",
-        platformVersion: "10.0.0",
-        acceptLang: "en-US,en",
+        brandVersion: "",
+        platformVersion: "",
+        acceptLang: "",
         resolution: "1920,1080",
         customResolution: "",
         hardwareConcurrency: "8",
@@ -257,6 +256,20 @@ describe("Claude account authorization wizard", () => {
     await type("authorize-hardwareConcurrency", "8")
     await click("保存并继续")
     expect(container.textContent).toContain("系统网络（直连）")
+  })
+
+  it("keeps an unsaved fingerprint draft when switching to the proxy step and back", async () => {
+    const onStart = vi.fn()
+    await render({ proxies: [], onStart })
+    await click("下一步")
+    await click("使用系统网络")
+    await type("authorize-timezone", "Asia/Tokyo")
+
+    await click("返回上一步")
+    expect(container.textContent).toContain("选择网络出口")
+    await click("使用系统网络")
+
+    expect(input("authorize-timezone").value).toBe("Asia/Tokyo")
   })
 
   it("returns from the exit step to edit the fingerprint", async () => {

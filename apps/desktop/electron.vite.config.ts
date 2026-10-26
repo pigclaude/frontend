@@ -14,6 +14,7 @@ const bundledWorkspacePackages = [
   "@pigclaude/daemon",
   "@pigclaude/local-store",
   "@pigclaude/login-gate",
+  "@pigclaude/session-env",
   "@pigclaude/switcher",
 ]
 

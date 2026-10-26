@@ -39,6 +39,12 @@ describe("macOS 安装包配置", () => {
       "!**/.env*",
       "!**/*.{test,spec}.*",
       "!node_modules/**",
+      "node_modules/@anthropic-ai/claude-agent-sdk/**",
+      "node_modules/@anthropic-ai/claude-agent-sdk-*/**",
+    ])
+    expect(config.asarUnpack).toEqual([
+      "node_modules/@anthropic-ai/claude-agent-sdk/**",
+      "node_modules/@anthropic-ai/claude-agent-sdk-*/**",
     ])
     expect(config.extraMetadata.pigclaudeEndpoints).toEqual({
       rustBaseUrl: "http://127.0.0.1:8788",

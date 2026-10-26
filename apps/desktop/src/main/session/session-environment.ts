@@ -1,4 +1,6 @@
 // 负责为一个会话创建隔离的配置目录、环境变量和 Intl 预加载文件；不读用户设置，不保存真实凭据。
+// NODE_OPTIONS 的 --require 只在 Node 运行时生效；SDK 0.3.310 启动原生/Bun CLI 时会删除该变量，
+// 因此原生 CLI 的实际时区来源是 TZ，intl-preload.cjs 只是为 Node 运行时保留的兜底。
 
 import { chmod, mkdir, rm, writeFile } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
@@ -26,13 +28,15 @@ export type SessionEnvironmentInput = {
   userDataPath?: string
 }
 
-/** 一次会话的环境和目录。cleanup 删除整个 sessions/<sessionId>，可重复调用。 */
+/** 一次会话的环境和目录。timezone 供上层记录和 Task 6 验收；cleanup 删除整个 sessions/<sessionId>，可重复调用。 */
 export class SessionEnvironment {
   readonly env: Record<string, string>
   readonly configDir: string
   readonly sessionDir: string
   readonly workspace: string
   readonly binaryPath: string
+  /** 账号/代理出口时区；原生 CLI 靠 env.TZ 生效，预加载只在 Node 运行时生效。 */
+  readonly timezone: string
   #cleaned = false
 
   private constructor(input: {
@@ -41,15 +45,17 @@ export class SessionEnvironment {
     sessionDir: string
     workspace: string
     binaryPath: string
+    timezone: string
   }) {
     this.env = input.env
     this.configDir = input.configDir
     this.sessionDir = input.sessionDir
     this.workspace = input.workspace
     this.binaryPath = input.binaryPath
+    this.timezone = input.timezone
   }
 
-  /** 创建 0700 的会话目录、配置目录和 Intl 预加载，并返回本次会话的环境；失败时删除已创建的目录。 */
+  /** 创建 0700 的会话目录、配置目录和 Intl 预加载，并返回本次会话的环境和时间；失败时删除已创建的目录。 */
   static async create(input: SessionEnvironmentInput): Promise<SessionEnvironment> {
     assertSessionId(input.sessionId)
     assertSessionToken(input.sessionToken)
@@ -89,6 +95,7 @@ export class SessionEnvironment {
       sessionDir,
       workspace: input.workspace,
       binaryPath: input.binaryPath,
+      timezone: input.timezone,
     })
   }
 

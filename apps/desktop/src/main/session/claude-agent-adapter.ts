@@ -79,28 +79,25 @@ export class ClaudeAgentAdapter {
     this.#onEvent = options.onEvent
   }
 
-  /** 调用 SDK query 并开始消费消息。query 启动失败时广播 error/ended 后重新抛出。 */
+  /** 调用 SDK query 并开始消费消息。二进制解析、选项构建或 query 启动失败时广播 error/ended 后重新抛出。 */
   async start(options: ClaudeAgentStartOptions): Promise<void> {
     if (this.#started) throw new Error("SESSION_ALREADY_ACTIVE: adapter already started")
     this.#started = true
     const prompt = new PromptStream()
     this.#prompt = prompt
-    const sdkOptions = buildQueryOptions(options, options.binaryPath ?? this.#resolveBinaryPath())
 
     let query: AdapterQuery
     try {
+      const sdkOptions = buildQueryOptions(options, options.binaryPath ?? this.#resolveBinaryPath())
       query = await this.#queryFn({ prompt, options: sdkOptions })
     } catch (error) {
-      this.#prompt = null
-      this.#stopped = true
       this.#emitError(error)
-      this.#emitEnded("error")
+      this.#finish("error")
       throw error
     }
     this.#query = query
     if (this.#stopped) {
-      this.#closeQuery()
-      this.#emitEnded("stopped")
+      this.#finish("stopped")
       return
     }
     void this.#pump(query)
@@ -136,8 +133,9 @@ export class ClaudeAgentAdapter {
     return pending
   }
 
-  /** 结束输入流并关闭 SDK 进程；重复调用返回同一个 Promise，ended 只广播一次。 */
+  /** 结束输入流并关闭 SDK 进程；重复调用返回同一个 Promise，ended 只广播一次。未启动时不缓存。 */
   stop(): Promise<void> {
+    if (!this.#started) return Promise.resolve()
     if (this.#stopPromise !== null) return this.#stopPromise
     this.#stopPromise = this.#stop()
     return this.#stopPromise
@@ -179,22 +177,27 @@ export class ClaudeAgentAdapter {
 
   async #stop(): Promise<void> {
     if (!this.#started) return
+    this.#finish("stopped")
+  }
+
+  // 所有结束路径共用：清空目标、关闭查询并只广播一次 ended。
+  #finish(reason: "completed" | "stopped" | "error"): void {
     this.#stopped = true
     const prompt = this.#prompt
     this.#prompt = null
     prompt?.end()
     this.#closeQuery()
-    this.#emitEnded("stopped")
+    this.#emitEnded(reason)
   }
 
   async #pump(query: AdapterQuery): Promise<void> {
     try {
       for await (const message of query) this.#handleMessage(message)
-      if (!this.#stopped) this.#emitEnded("completed")
+      if (!this.#stopped) this.#finish("completed")
     } catch (error) {
       if (this.#stopped) return
       this.#emitError(error)
-      this.#emitEnded("error")
+      this.#finish("error")
     }
   }
 

@@ -1,19 +1,16 @@
 // 负责验证 Claude Agent SDK 适配器的固定选项、消息映射、发送、中断、停止、模型查询和二进制解析。
 
 import { describe, expect, it } from "vitest"
-import type {
-  CanUseTool,
-  ModelInfo,
-  Options,
-  SDKMessage,
-  SDKUserMessage,
-} from "@anthropic-ai/claude-agent-sdk"
+import type { CanUseTool, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
+import { ClaudeAgentAdapter, type SessionEvent } from "./claude-agent-adapter"
 import {
-  ClaudeAgentAdapter,
-  type AdapterQuery,
-  type QueryFn,
-  type SessionEvent,
-} from "./claude-agent-adapter"
+  capture,
+  collectPrompt,
+  FakeQuery,
+  startOptions,
+  waitUntil,
+  type CapturedQuery,
+} from "./claude-agent-adapter-fixtures"
 
 describe("ClaudeAgentAdapter", () => {
   it("starts the SDK with the fixed isolated options", async () => {
@@ -78,6 +75,70 @@ describe("ClaudeAgentAdapter", () => {
     expect(captured[0]?.options.allowDangerouslySkipPermissions).toBe(true)
     expect(resolved).toBe(0)
     await adapter.stop()
+  })
+
+  it("broadcasts a typed error and ends when binary resolution fails", async () => {
+    const events: SessionEvent[] = []
+    let queryFnCalls = 0
+    const adapter = new ClaudeAgentAdapter({
+      queryFn: (params) => {
+        queryFnCalls += 1
+        return capture(new FakeQuery(), [])(params)
+      },
+      resolveBinaryPath: () => {
+        throw new Error("CLAUDE_RUNTIME_UNAVAILABLE: missing binary")
+      },
+      onEvent: (event) => events.push(event),
+    })
+
+    await expect(adapter.start(startOptions())).rejects.toThrow(/CLAUDE_RUNTIME_UNAVAILABLE/)
+    expect(queryFnCalls).toBe(0)
+    expect(events).toEqual([
+      {
+        type: "error",
+        code: "SDK_ERROR",
+        message: "CLAUDE_RUNTIME_UNAVAILABLE: missing binary",
+      },
+      { type: "ended", reason: "error" },
+    ])
+    await expect(adapter.send("after failure")).rejects.toThrow(/not active/i)
+    await expect(adapter.start(startOptions())).rejects.toThrow(/SESSION_ALREADY_ACTIVE/)
+    await adapter.stop()
+  })
+
+  it("does not poison a later start when stop is called first", async () => {
+    const fake = new FakeQuery()
+    const adapter = new ClaudeAgentAdapter({
+      queryFn: capture(fake, []),
+      resolveBinaryPath: () => "/resolved/claude",
+    })
+
+    await adapter.stop()
+    await adapter.start(startOptions())
+    expect(fake.closes).toBe(0)
+    await adapter.stop()
+    expect(fake.closes).toBe(1)
+  })
+
+  it("closes the query and rejects sends after the stream ends", async () => {
+    const fake = new FakeQuery()
+    const events: SessionEvent[] = []
+    const adapter = new ClaudeAgentAdapter({
+      queryFn: capture(fake, []),
+      resolveBinaryPath: () => "/resolved/claude",
+      onEvent: (event) => events.push(event),
+    })
+    await adapter.start(startOptions())
+
+    fake.end()
+    await waitUntil(() => events.some((event) => event.type === "ended"))
+
+    expect(events.at(-1)).toEqual({ type: "ended", reason: "completed" })
+    expect(fake.closes).toBe(1)
+    await expect(adapter.send("after end")).rejects.toThrow(/not active/i)
+    await adapter.stop()
+    expect(fake.closes).toBe(1)
+    expect(events.filter((event) => event.type === "ended")).toHaveLength(1)
   })
 
   it("maps init, partial, assistant, tool result and result messages to session events", async () => {
@@ -275,109 +336,6 @@ describe("ClaudeAgentAdapter", () => {
     expect(events).toEqual([])
   })
 })
-
-type CapturedQuery = {
-  prompt: string | AsyncIterable<SDKUserMessage>
-  options: Options
-}
-
-function capture(fake: FakeQuery, captured: CapturedQuery[]): QueryFn {
-  return (params) => {
-    captured.push(params)
-    return fake
-  }
-}
-
-class AsyncQueue<T> implements AsyncIterator<T> {
-  #values: T[] = []
-  #waiters: { resolve: (result: IteratorResult<T>) => void; reject: (error: Error) => void }[] = []
-  #failure: Error | null = null
-  #done = false
-
-  push(value: T): void {
-    if (this.#done) return
-    const waiter = this.#waiters.shift()
-    if (waiter === undefined) this.#values.push(value)
-    else waiter.resolve({ done: false, value })
-  }
-
-  end(): void {
-    if (this.#done) return
-    this.#done = true
-    for (const waiter of this.#waiters.splice(0)) waiter.resolve({ done: true, value: undefined })
-  }
-
-  fail(error: Error): void {
-    if (this.#done) return
-    this.#failure = error
-    this.#done = true
-    for (const waiter of this.#waiters.splice(0)) waiter.reject(error)
-  }
-
-  next(): Promise<IteratorResult<T>> {
-    const value = this.#values.shift()
-    if (value !== undefined) return Promise.resolve({ done: false, value })
-    if (this.#failure !== null) return Promise.reject(this.#failure)
-    if (this.#done) return Promise.resolve({ done: true, value: undefined })
-    return new Promise((resolve, reject) => this.#waiters.push({ resolve, reject }))
-  }
-}
-
-class FakeQuery implements AdapterQuery {
-  readonly #messages = new AsyncQueue<SDKMessage>()
-  readonly #models: ModelInfo[]
-  interrupts = 0
-  closes = 0
-
-  constructor(models: ModelInfo[] = []) {
-    this.#models = models
-  }
-
-  emit(message: SDKMessage): void {
-    this.#messages.push(message)
-  }
-
-  end(): void {
-    this.#messages.end()
-  }
-
-  fail(error: Error): void {
-    this.#messages.fail(error)
-  }
-
-  [Symbol.asyncIterator](): AsyncIterator<SDKMessage> {
-    return this.#messages
-  }
-
-  async interrupt(): Promise<void> {
-    this.interrupts += 1
-  }
-
-  close(): void {
-    this.closes += 1
-    this.#messages.end()
-  }
-
-  async supportedModels(): Promise<ModelInfo[]> {
-    return this.#models
-  }
-}
-
-async function collectPrompt(
-  prompt: string | AsyncIterable<SDKUserMessage>,
-  messages: SDKUserMessage[],
-): Promise<void> {
-  if (typeof prompt === "string") return
-  for await (const message of prompt) messages.push(message)
-}
-
-async function waitUntil(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 0))
-  }
-  throw new Error("condition was not reached")
-}
 
 function initMessage(): SDKMessage {
   return {

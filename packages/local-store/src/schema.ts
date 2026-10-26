@@ -116,7 +116,10 @@ type LegacyIpProxy = {
   url: string
 }
 
-/** 解析一条账号记录。保证 v1/v2/v3 的指纹都经过归一化，v3 的 proxyId 归一为 null，无法识别的记录返回 null。 */
+/**
+ * 解析一条账号记录。保证 v1/v2/v3 的指纹都经过归一化；指纹损坏但账号字段完整时回退到默认指纹；
+ * v3 的 proxyId 归一为 null；账号结构本身无法识别时返回 null。
+ */
 export function parseAccountRecord(value: unknown): AccountRecord | null {
   if (isV3Account(value)) return normalizeV3(value)
   if (isV2Account(value)) return migrateV2(value)
@@ -155,7 +158,7 @@ export function normalizeFingerprint(value: unknown, fallbackSeed = ""): Fingerp
     return null
   }
   return {
-    seed: typeof value.seed === "string" ? value.seed : fallbackSeed,
+    ...defaultFingerprint(typeof value.seed === "string" ? value.seed : fallbackSeed),
     brand: value.brand,
     platform: value.platform,
     lang: value.lang,
@@ -183,8 +186,35 @@ export function normalizeFingerprint(value: unknown, fallbackSeed = ""): Fingerp
   }
 }
 
-function isStoredFingerprint(value: unknown): boolean {
-  return normalizeFingerprint(value) !== null
+// 指纹损坏或缺失时的默认值；与 contracts 的 defaultClaudeFingerprint 保持一致。
+function defaultFingerprint(seed = ""): FingerprintConfig {
+  return {
+    seed,
+    brand: "Chrome",
+    platform: "macos",
+    lang: "",
+    timezone: "",
+    canvasNoise: "",
+    clientRectsNoise: "",
+    brandVersion: "",
+    platformVersion: "",
+    acceptLang: "",
+    resolution: "",
+    customResolution: "",
+    hardwareConcurrency: "",
+    webrtcPolicy: "",
+    disableSpoofing: [],
+    colorDepth: "",
+    deviceMemory: "",
+    touchPoints: "",
+    doNotTrack: "",
+    mediaDevices: "",
+    audioNoise: "",
+    fontList: "",
+    webglVendor: "",
+    webglRenderer: "",
+    unknownArgs: [],
+  }
 }
 
 function normalizeNoise(value: unknown): FingerprintNoise {
@@ -241,7 +271,6 @@ function isV3Account(value: unknown): value is StoredAccountV3 {
     (value.credential === null || isClaudeCredential(value.credential)) &&
     typeof value.needsReauth === "boolean" &&
     (value.proxyId === undefined || value.proxyId === null || typeof value.proxyId === "string") &&
-    isStoredFingerprint(value.fingerprint) &&
     typeof value.browserProfileDir === "string" &&
     (value.exhaustedUntil === null || typeof value.exhaustedUntil === "string") &&
     typeof value.createdAt === "string" &&
@@ -249,13 +278,12 @@ function isV3Account(value: unknown): value is StoredAccountV3 {
   )
 }
 
-function normalizeV3(value: StoredAccountV3): AccountRecord | null {
-  const fingerprint = normalizeFingerprint(value.fingerprint, value.id)
-  if (fingerprint === null) return null
+/** 保证指纹结构损坏但账号字段完整的记录回退到默认指纹，而不是让整条记录不可读。 */
+function normalizeV3(value: StoredAccountV3): AccountRecord {
   const proxyId = value.proxyId
   return {
     ...value,
-    fingerprint,
+    fingerprint: normalizeFingerprint(value.fingerprint, value.id) ?? defaultFingerprint(),
     proxyId: proxyId === undefined || proxyId === null || proxyId === "" ? null : proxyId,
   }
 }
@@ -270,7 +298,6 @@ function isV2Account(value: unknown): value is LegacyAccountRecordV2 {
     (value.credential === null || isClaudeCredential(value.credential)) &&
     typeof value.needsReauth === "boolean" &&
     typeof value.proxyId === "string" &&
-    isStoredFingerprint(value.fingerprint) &&
     (value.exhaustedUntil === null || typeof value.exhaustedUntil === "string") &&
     typeof value.createdAt === "string" &&
     typeof value.updatedAt === "string"
@@ -286,14 +313,11 @@ function isV1Account(value: unknown): value is LegacyAccountRecordV1 {
     typeof value.enabled === "boolean" &&
     typeof value.credential === "string" &&
     typeof value.proxyId === "string" &&
-    isStoredFingerprint(value.fingerprint) &&
     (value.exhaustedUntil === null || typeof value.exhaustedUntil === "string")
   )
 }
 
-function migrateV2(value: LegacyAccountRecordV2): AccountRecord | null {
-  const fingerprint = normalizeFingerprint(value.fingerprint, value.id)
-  if (fingerprint === null) return null
+function migrateV2(value: LegacyAccountRecordV2): AccountRecord {
   return {
     schemaVersion: 3,
     id: value.id,
@@ -302,7 +326,7 @@ function migrateV2(value: LegacyAccountRecordV2): AccountRecord | null {
     credential: value.credential,
     needsReauth: value.needsReauth,
     proxyId: value.proxyId,
-    fingerprint,
+    fingerprint: normalizeFingerprint(value.fingerprint, value.id) ?? defaultFingerprint(),
     browserProfileDir: "",
     exhaustedUntil: value.exhaustedUntil,
     createdAt: value.createdAt,
@@ -310,9 +334,7 @@ function migrateV2(value: LegacyAccountRecordV2): AccountRecord | null {
   }
 }
 
-function migrateV1(value: LegacyAccountRecordV1): AccountRecord | null {
-  const fingerprint = normalizeFingerprint(value.fingerprint, value.id)
-  if (fingerprint === null) return null
+function migrateV1(value: LegacyAccountRecordV1): AccountRecord {
   return {
     schemaVersion: 3,
     id: value.id,
@@ -321,7 +343,7 @@ function migrateV1(value: LegacyAccountRecordV1): AccountRecord | null {
     credential: null,
     needsReauth: true,
     proxyId: value.proxyId,
-    fingerprint,
+    fingerprint: normalizeFingerprint(value.fingerprint, value.id) ?? defaultFingerprint(),
     browserProfileDir: "",
     exhaustedUntil: value.exhaustedUntil,
     createdAt: "",

@@ -160,8 +160,8 @@ async function readList<T>(path: string, parse: (value: unknown) => T | null): P
   const items: T[] = []
   for (const item of parsed) {
     const record = parse(item)
-    if (record === null) throw new Error(`${basename(path)} 不是列表`)
-    items.push(record)
+    // 跳过坏记录，避免一条损坏数据让整个账号库或代理库不可读；坏记录会在下一次保存时消失。
+    if (record !== null) items.push(record)
   }
   return items
 }

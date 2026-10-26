@@ -33,7 +33,9 @@ async function render(fingerprint?: ClaudeFingerprintView, fallbackSeed?: string
 describe("fingerprint summary", () => {
   it("renders the four AntBrowser groups and the full profile", async () => {
     const de = advancedFingerprintProfiles.find((preset) => preset.id === "de-linux-chrome-dev")
-    expect(de).not.toBeNull()
+    expect(de).toBeDefined()
+    expect(de?.fingerprint.lang).toBe("de-DE")
+    expect(de?.fingerprint.timezone).toBe("Europe/Berlin")
     if (de === undefined) return
     await render({ ...de.fingerprint, seed: "520117", colorDepth: "24" })
 

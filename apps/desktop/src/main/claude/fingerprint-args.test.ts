@@ -110,6 +110,40 @@ describe("buildFingerprintArgs", () => {
     ])
   })
 
+  it("does not emit flags for the nine legacy fields even when they are non-empty", () => {
+    const baseline = fingerprint({
+      colorDepth: "",
+      deviceMemory: "",
+      touchPoints: "",
+      doNotTrack: "",
+      mediaDevices: "",
+      audioNoise: "",
+      fontList: "",
+      webglVendor: "",
+      webglRenderer: "",
+    })
+    const withLegacyValues = fingerprint({
+      colorDepth: "24",
+      deviceMemory: "8",
+      touchPoints: "5",
+      doNotTrack: "1",
+      mediaDevices: "3",
+      audioNoise: "0.7",
+      fontList: "Arial, Helvetica",
+      webglVendor: "Intel Inc.",
+      webglRenderer: "Intel UHD Graphics 630",
+    })
+
+    expect(buildFingerprintArgs(withLegacyValues)).toEqual(buildFingerprintArgs(baseline))
+  })
+
+  it("maps custom resolution to the custom window size", () => {
+    const args = buildFingerprintArgs(
+      fingerprint({ resolution: "custom", customResolution: "1280,720" }),
+    )
+    expect(args).toContain("--window-size=1280,720")
+  })
+
   it("keeps only the accept-lang flag when lang is empty", () => {
     const args = buildFingerprintArgs(fingerprint({ lang: "", acceptLang: "de-DE,de" }))
     expect(args).toContain("--accept-lang=de-DE,de")

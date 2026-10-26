@@ -1,7 +1,12 @@
 // 负责验证 Claude Agent SDK 适配器的固定选项、消息映射、发送、中断、停止、模型查询和二进制解析。
 
 import { describe, expect, it } from "vitest"
-import type { CanUseTool, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
+import type {
+  CanUseTool,
+  ModelInfo,
+  SDKMessage,
+  SDKUserMessage,
+} from "@anthropic-ai/claude-agent-sdk"
 import { ClaudeAgentAdapter, type SessionEvent } from "./claude-agent-adapter"
 import {
   capture,
@@ -294,6 +299,43 @@ describe("ClaudeAgentAdapter", () => {
     await adapter.stop()
   })
 
+  it("times out a hanging model query, closes the query and rejects readably", async () => {
+    const fake = new HangingModelsQuery()
+    const adapter = new ClaudeAgentAdapter({
+      queryFn: capture(fake, []),
+      resolveBinaryPath: () => "/resolved/claude",
+      modelsTimeoutMs: 10,
+    })
+
+    await expect(adapter.models({ workspace: "/tmp/workspace" })).rejects.toThrow(
+      /MODEL_QUERY_TIMEOUT/,
+    )
+    expect(fake.closes).toBe(1)
+  })
+
+  it("closes a query that resolves after stop was requested", async () => {
+    const fake = new FakeQuery()
+    const gateControl = { release: (): void => undefined }
+    const gate = new Promise<void>((resolve) => {
+      gateControl.release = resolve
+    })
+    const adapter = new ClaudeAgentAdapter({
+      queryFn: async () => {
+        await gate
+        return fake
+      },
+      resolveBinaryPath: () => "/resolved/claude",
+    })
+
+    const startPromise = adapter.start(startOptions())
+    const stopPromise = adapter.stop()
+    gateControl.release()
+
+    await startPromise
+    await stopPromise
+    expect(fake.closes).toBe(1)
+  })
+
   it("queries supported models with the isolated options and closes the query", async () => {
     const fake = new FakeQuery([
       {
@@ -336,6 +378,12 @@ describe("ClaudeAgentAdapter", () => {
     expect(events).toEqual([])
   })
 })
+
+class HangingModelsQuery extends FakeQuery {
+  override supportedModels(): Promise<ModelInfo[]> {
+    return new Promise<ModelInfo[]>(() => undefined)
+  }
+}
 
 function initMessage(): SDKMessage {
   return {

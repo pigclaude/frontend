@@ -9,6 +9,7 @@ import type {
   ThinkingConfig,
 } from "@anthropic-ai/claude-agent-sdk"
 import { resolveClaudeBinaryPath } from "./claude-binary"
+import { classifyDaemonError } from "./session-error-mapping"
 import type {
   ClaudeModel,
   SessionContentBlock,
@@ -46,6 +47,8 @@ export type ClaudeAgentAdapterOptions = {
   queryFn?: QueryFn
   resolveBinaryPath?: () => string
   onEvent?: (event: SessionEvent) => void
+  /** 一次性模型查询的有界等待时间；超时后关闭 query 并抛出可读错误。 */
+  modelsTimeoutMs?: number
 }
 
 /** 开始一次会话的参数；binaryPath 省略时使用 PIGCLAUDE_CLAUDE_BIN 或平台包二进制。 */
@@ -72,11 +75,14 @@ export class ClaudeAgentAdapter {
   readonly #queryFn: QueryFn
   readonly #resolveBinaryPath: () => string
   readonly #onEvent: ((event: SessionEvent) => void) | undefined
+  readonly #modelsTimeoutMs: number
   #query: AdapterQuery | null = null
   #prompt: PromptStream | null = null
   #started = false
   #stopped = false
   #endedEmitted = false
+  #startPromise: Promise<void> | null = null
+  #pumpPromise: Promise<void> | null = null
   #stopPromise: Promise<void> | null = null
   #interruptPromise: Promise<void> | null = null
 
@@ -84,6 +90,7 @@ export class ClaudeAgentAdapter {
     this.#queryFn = options.queryFn ?? defaultQueryFn
     this.#resolveBinaryPath = options.resolveBinaryPath ?? (() => resolveClaudeBinaryPath())
     this.#onEvent = options.onEvent
+    this.#modelsTimeoutMs = options.modelsTimeoutMs ?? 15_000
   }
 
   /** 调用 SDK query 并开始消费消息。二进制解析、选项构建或 query 启动失败时广播 error/ended 后重新抛出。 */
@@ -92,12 +99,23 @@ export class ClaudeAgentAdapter {
     this.#started = true
     const prompt = new PromptStream()
     this.#prompt = prompt
+    const task = this.#startQuery(options, prompt)
+    this.#startPromise = task
+    try {
+      await task
+    } finally {
+      if (this.#startPromise === task) this.#startPromise = null
+    }
+  }
 
+  // queryFn 可能晚于 stop 才返回；此时仍要关闭查询，避免留下孤儿 CLI 进程。
+  async #startQuery(options: ClaudeAgentStartOptions, prompt: PromptStream): Promise<void> {
     let query: AdapterQuery
     try {
       const sdkOptions = buildQueryOptions(options, options.binaryPath ?? this.#resolveBinaryPath())
       query = await this.#queryFn({ prompt, options: sdkOptions })
     } catch (error) {
+      if (this.#stopped) throw error
       this.#emitError(error)
       this.#finish("error")
       throw error
@@ -107,7 +125,7 @@ export class ClaudeAgentAdapter {
       this.#finish("stopped")
       return
     }
-    void this.#pump(query)
+    this.#pumpPromise = this.#pump(query)
   }
 
   /** 把一条用户消息写入 SDK 的流式输入；会话未启动或已停止时抛出。 */
@@ -140,15 +158,29 @@ export class ClaudeAgentAdapter {
     return pending
   }
 
-  /** 结束输入流并关闭 SDK 进程；重复调用返回同一个 Promise，ended 只广播一次。未启动时不缓存。 */
+  /**
+   * 结束输入流并关闭 SDK 进程；重复调用返回同一个 Promise，ended 只广播一次。未启动时不缓存。
+   * 保证返回前等待在途的 query 创建和消息迭代结束，调用方随后清理目录不会与 CLI 启动竞态。
+   */
   stop(): Promise<void> {
     if (!this.#started) return Promise.resolve()
     if (this.#stopPromise !== null) return this.#stopPromise
-    this.#stopPromise = this.#stop()
+    this.#stopPromise = this.#stopAndWait()
     return this.#stopPromise
   }
 
-  /** 启动一次性 query 读取 SDK 支持的模型，读完立即关闭；不广播会话事件。 */
+  async #stopAndWait(): Promise<void> {
+    this.#finish("stopped")
+    const start = this.#startPromise
+    if (start !== null) await start.catch(() => undefined)
+    const pump = this.#pumpPromise
+    if (pump !== null) await pump.catch(() => undefined)
+  }
+
+  /**
+   * 启动一次性 query 读取 SDK 支持的模型，读完立即关闭；不广播会话事件。
+   * 保证整次查询有界：超时或取消时关闭 query、结束输入流并抛出可读错误。
+   */
   async models(options: ClaudeModelsOptions = {}): Promise<ClaudeModel[]> {
     const prompt = new PromptStream()
     const abortController = new AbortController()
@@ -162,9 +194,19 @@ export class ClaudeAgentAdapter {
       permissionMode: "default",
       abortController,
     }
-    const query = await this.#queryFn({ prompt, options: sdkOptions })
+    let query: AdapterQuery | null = null
+    let creation: Promise<AdapterQuery> | null = null
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        abortController.abort()
+        reject(new Error(`MODEL_QUERY_TIMEOUT: 模型查询超时（${this.#modelsTimeoutMs} 毫秒）`))
+      }, this.#modelsTimeoutMs)
+    })
     try {
-      const models = await query.supportedModels()
+      creation = Promise.resolve(this.#queryFn({ prompt, options: sdkOptions }))
+      query = await Promise.race([creation, timeout])
+      const models = await Promise.race([query.supportedModels(), timeout])
       return models.map((model) => ({
         id: model.value,
         displayName: model.displayName,
@@ -172,13 +214,10 @@ export class ClaudeAgentAdapter {
         isDefault: false,
       }))
     } finally {
+      if (timer !== null) clearTimeout(timer)
       prompt.end()
-      try {
-        query.close()
-      } catch {
-        // SDK 进程可能已经退出，关闭失败不影响模型结果。
-      }
       abortController.abort()
+      closeModelQuery(query, creation)
     }
   }
 
@@ -200,18 +239,15 @@ export class ClaudeAgentAdapter {
     return this.#query
   }
 
-  async #stop(): Promise<void> {
-    if (!this.#started) return
-    this.#finish("stopped")
-  }
-
   // 所有结束路径共用：清空目标、关闭查询并只广播一次 ended。
   #finish(reason: "completed" | "stopped" | "error"): void {
     this.#stopped = true
     const prompt = this.#prompt
     this.#prompt = null
     prompt?.end()
-    this.#closeQuery()
+    const query = this.#query
+    this.#query = null
+    if (query !== null) closeQuietly(query)
     this.#emitEnded(reason)
   }
 
@@ -309,17 +345,6 @@ export class ClaudeAgentAdapter {
     }
   }
 
-  #closeQuery(): void {
-    const query = this.#query
-    this.#query = null
-    if (query === null) return
-    try {
-      query.close()
-    } catch {
-      // 已经关闭或进程已退出时不影响停止流程。
-    }
-  }
-
   #emit(event: SessionEvent): void {
     try {
       this.#onEvent?.(event)
@@ -329,13 +354,32 @@ export class ClaudeAgentAdapter {
   }
 
   #emitError(error: unknown): void {
-    this.#emit({ type: "error", code: "SDK_ERROR", message: errorMessage(error) })
+    const message = errorMessage(error)
+    this.#emit({ type: "error", code: classifyDaemonError(message) ?? "SDK_ERROR", message })
   }
 
   #emitEnded(reason: "completed" | "stopped" | "error"): void {
     if (this.#endedEmitted) return
     this.#endedEmitted = true
     this.#emit({ type: "ended", reason })
+  }
+}
+
+// 一次性查询结束：已拿到的 query 立即关闭；还在创建的 query 在返回后立刻关闭，避免遗留进程。
+function closeModelQuery(query: AdapterQuery | null, creation: Promise<AdapterQuery> | null): void {
+  if (query !== null) {
+    closeQuietly(query)
+    return
+  }
+  if (creation === null) return
+  void creation.then(closeQuietly, () => undefined)
+}
+
+function closeQuietly(query: AdapterQuery): void {
+  try {
+    query.close()
+  } catch {
+    // SDK 进程可能已经退出，关闭失败不影响超时或结果。
   }
 }
 

@@ -1,10 +1,12 @@
 // 负责查询 SDK 支持的模型；有活动会话时复用它的隔离环境，否则创建一次性环境并清理。
 // 不启动真实 CLI、不访问网络，便于在 SessionHost 之外单独维护模型查询的生命周期。
 
+import { classifyDaemonError } from "./session-error-mapping"
 import { SessionHostError, type ClaudeModel } from "./session-types"
 import type {
   SessionAdapterFactory,
   SessionEnvironmentFactory,
+  SessionErrorCode,
   SessionProfile,
   SessionRuntime,
 } from "./session-types"
@@ -29,7 +31,7 @@ export type SessionModelQueryOptions = {
   readBinaryPath: () => string
   userDataPath: string
   newId: () => string
-  hostError: (code: "SDK_ERROR", message: string) => SessionHostError
+  hostError: (code: SessionErrorCode, message: string) => SessionHostError
 }
 
 /** 查询支持模型；没有活动会话时用默认工作区创建临时环境，查询结束立即删除。 */
@@ -78,6 +80,7 @@ export async function queryModels(options: SessionModelQueryOptions): Promise<Cl
     }
   } catch (error) {
     if (error instanceof SessionHostError) throw error
-    throw options.hostError("SDK_ERROR", errorMessage(error))
+    const message = errorMessage(error)
+    throw options.hostError(classifyDaemonError(message) ?? "SDK_ERROR", message)
   }
 }

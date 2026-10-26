@@ -194,6 +194,7 @@ export function MainWindow({
             workspace={workspace}
             workspaceOptions={workspaces.paths}
             accounts={pool.accounts}
+            proxies={pool.proxies}
             onPickWorkspace={() => {
               void workspaces
                 .pick()

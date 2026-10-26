@@ -75,6 +75,7 @@ export class FakeRuntime implements SessionRuntime {
   readonly sessionToken = "runtime-session-token"
   preferredAccount: string | null | undefined = undefined
   availableAccounts = true
+  beginSessionCalls = 0
   readonly #listeners = new Set<(event: SessionRuntimeEvent) => void>()
 
   constructor(daemonBaseUrl: string | null = "http://127.0.0.1:47821") {
@@ -88,6 +89,10 @@ export class FakeRuntime implements SessionRuntime {
 
   setPreferredAccount(accountId: string | null): void {
     this.preferredAccount = accountId
+  }
+
+  beginSession(): void {
+    this.beginSessionCalls += 1
   }
 
   async hasAvailableAccount(): Promise<boolean> {
@@ -172,6 +177,7 @@ export class FakeAdapter implements SessionAdapterPort {
       isDefault: false,
     },
   ]
+  modelsError: Error | null = null
   canUseTool: CanUseTool | null = null
   interrupts = 0
   stops = 0
@@ -225,6 +231,7 @@ export class FakeAdapter implements SessionAdapterPort {
 
   async models(options: ClaudeModelsOptions = {}): Promise<ClaudeModel[]> {
     this.modelCalls.push(options)
+    if (this.modelsError !== null) throw this.modelsError
     return this.modelsResult
   }
 
@@ -249,10 +256,12 @@ export class AdapterFactory {
   constructor(
     private readonly trace: string[],
     private readonly holdStart = false,
+    private readonly modelsError: Error | null = null,
   ) {}
 
   readonly create = (onEvent: (event: SessionEvent) => void): SessionAdapterPort => {
     const adapter = new FakeAdapter(onEvent, this.trace)
+    adapter.modelsError = this.modelsError
     if (this.holdStart) adapter.holdStart()
     this.instances.push(adapter)
     return adapter
@@ -306,6 +315,7 @@ export type HarnessOptions = {
   permissionTimeoutMs?: number
   holdAdapterStart?: boolean
   resolveBinaryPath?: () => string
+  modelsError?: Error
 }
 
 export type SessionHarness = {
@@ -329,7 +339,11 @@ export function createHarness(options: HarnessOptions): SessionHarness {
     options.daemonBaseUrl === undefined ? "http://127.0.0.1:47821" : options.daemonBaseUrl,
   )
   const usage = new FakeUsage()
-  const adapters = new AdapterFactory(trace, options.holdAdapterStart ?? false)
+  const adapters = new AdapterFactory(
+    trace,
+    options.holdAdapterStart ?? false,
+    options.modelsError ?? null,
+  )
   const userDataPath = options.userDataPath ?? "/tmp/pigclaude-session-host-user-data"
   const environments = new EnvironmentFactory(trace, userDataPath)
   const events: SessionHostEvent[] = []

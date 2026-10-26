@@ -259,6 +259,47 @@ describe("session model", () => {
     expect(state.ended).toBe(true)
     expect(state.endedReason).toBe("stopped")
   })
+
+  it("does not create a ghost turn when cancel arrives before any user message", () => {
+    let state = createSessionState()
+    state = apply(state, { type: "opened", sessionId: "session-1" })
+
+    state = apply(state, { type: "cancel-requested" })
+    state = emit(state, { type: "error", code: "SESSION_CANCELLED", message: "当前请求已取消" })
+
+    expect(state.turns).toEqual([])
+    expect(state.activeTurnId).toBeNull()
+    expect(state.error).toBeNull()
+  })
+
+  it("does not create a ghost turn when the account switches between turns", () => {
+    let state = startedTurn()
+    state = emit(state, {
+      type: "result",
+      subtype: "success",
+      isError: false,
+      durationMs: 10,
+      numTurns: 1,
+      stopReason: "end_turn",
+      usage: {
+        inputTokens: 1,
+        outputTokens: 1,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+      },
+    })
+    state = emit(state, {
+      type: "account-switched",
+      from: "account-a",
+      to: "account-b",
+      reason: "switch",
+    })
+
+    expect(state.accountId).toBe("account-b")
+    expect(state.turns).toHaveLength(1)
+    expect(state.turns[0]?.switches).toEqual([])
+    expect(state.activeTurnId).toBeNull()
+  })
 })
 
 describe("session error text", () => {

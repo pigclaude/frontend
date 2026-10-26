@@ -22,7 +22,7 @@ const account: ClaudeAccountView = {
   email: null,
   subscriptionType: "max",
   needsReauth: false,
-  credentialExpiresAt: null,
+  credentialExpiresAt: 1_760_000_000_000,
   exhaustedUntil: null,
   proxyId: "la-01",
   fingerprint: {

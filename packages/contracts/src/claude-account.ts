@@ -28,6 +28,27 @@ export type ClaudeAccountView = {
   updatedAt: string
 }
 
+/** 账号可用性输入；主进程选号器和 renderer 账号菜单共用同一个判断。 */
+export type AccountAvailability = {
+  enabled: boolean
+  needsReauth: boolean
+  hasCredential: boolean
+  exhaustedUntil: string | null | undefined
+  proxyUrl: string | null | undefined
+}
+
+/**
+ * 保证账号启用、无需重新授权、有凭据、未在额度冷却中，并且绑定了非空代理。
+ * 选号器和界面都调用这个谓词，避免界面显示可用但启动时报 NO_AVAILABLE_ACCOUNT。
+ */
+export function isAccountSelectable(input: AccountAvailability, nowMs: number): boolean {
+  if (!input.enabled || input.needsReauth || !input.hasCredential) return false
+  if (input.proxyUrl === null || input.proxyUrl === undefined || input.proxyUrl === "") return false
+  if (input.exhaustedUntil === null || input.exhaustedUntil === undefined) return true
+  const until = Date.parse(input.exhaustedUntil)
+  return !Number.isFinite(until) || until <= nowMs
+}
+
 /** 代理最近一次测试的脱敏结果。 */
 export type ProxyTestView = {
   ok: boolean

@@ -13,17 +13,14 @@ import {
 import { join } from "node:path"
 import { readFileSync } from "node:fs"
 import type { MembershipView } from "@pigclaude/contracts/membership"
-import type { ClaudeAccountEvent } from "@pigclaude/contracts/claude-account"
+import { isAccountSelectable, type ClaudeAccountEvent } from "@pigclaude/contracts/claude-account"
 import { LocalStore } from "@pigclaude/local-store"
 import { checkEgress } from "@pigclaude/login-gate/egress-check"
 import { startProxyBridge } from "@pigclaude/login-gate/proxy-bridge"
 import { createCallbackServer } from "./authorization/callback-server"
 import { AuthorizationStartError, AuthorizationService } from "./authorization/service"
-import type {
-  AuthorizationRequest,
-  AuthorizationStartResult,
-  AuthorizationStateEvent,
-} from "./authorization/types"
+import type { AuthorizationStartResult, AuthorizationStateEvent } from "./authorization/types"
+import { readAuthorizationRequest } from "./authorization/request-input"
 import { isAllowedAuthorizationUrl } from "./authorization/url-policy"
 import { ClaudeAccountService } from "./claude/account-service"
 import { ClaudeAccountError } from "./claude/errors"
@@ -37,11 +34,12 @@ import { readDeviceInfo } from "./device-identity/device-info"
 import { readDockIconDataUrl } from "./dock-icon"
 import { configureRuntimeProfile } from "./runtime-profile"
 import { readDesktopRuntimeEndpoints } from "./runtime-endpoints"
-import { isAccountAvailable } from "./runtime/account-chooser"
 import { WorkspaceStore } from "./runtime/workspace-store"
 import { resolveClaudeBinaryPath } from "./session/claude-binary"
+import { cleanupStaleSessionDirs } from "./session/session-environment"
 import { SessionHost } from "./session/session-host"
 import { registerSessionIpc } from "./session/session-ipc"
+import { createQuitCoordinator } from "./shutdown"
 import type { SessionHostEvent } from "./session/session-types"
 import { UsageRecorder } from "./session/usage-recorder"
 import { FileSecretVault } from "./secret-vault"
@@ -108,10 +106,15 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit()
 })
 
-app.on("before-quit", () => {
-  cleanupLiveEvents()
-  void shutdownDesktop()
-})
+app.on(
+  "before-quit",
+  createQuitCoordinator({
+    shutdown: shutdownDesktop,
+    quit: () => app.quit(),
+    forceExit: () => app.exit(0),
+    onBeforeShutdown: () => cleanupLiveEvents(),
+  }),
+)
 
 function registerIpcHandlers(): void {
   ipcMain.handle("pigclaude:pick-folder", async () => {
@@ -289,6 +292,8 @@ async function reportDeviceInfoOnStartup(): Promise<void> {
 }
 
 async function setupAuthorization(): Promise<void> {
+  // 启动前清掉上次崩溃遗留的会话目录；此时还没有当前会话，调用后创建的目录不受影响。
+  await cleanupStaleSessionDirs(app.getPath("userData")).catch(() => undefined)
   const vault = new FileSecretVault(
     join(app.getPath("userData"), "authorization-secrets.json"),
     safeStorage,
@@ -338,7 +343,21 @@ async function setupAuthorization(): Promise<void> {
       defaultWorkspace: () => app.getPath("home"),
       resolveProfile: async (accountId) => {
         const accounts = await localStore.listAccounts()
-        const available = accounts.filter((item) => isAccountAvailable(item, Date.now()))
+        const proxies = new Map(
+          (await localStore.listProxies()).map((proxy) => [proxy.id, proxy.url]),
+        )
+        const available = accounts.filter((item) =>
+          isAccountSelectable(
+            {
+              enabled: item.enabled,
+              needsReauth: item.needsReauth,
+              hasCredential: item.credential !== null,
+              exhaustedUntil: item.exhaustedUntil,
+              proxyUrl: proxies.get(item.proxyId),
+            },
+            Date.now(),
+          ),
+        )
         const account =
           accountId === null
             ? (available[0] ?? accounts[0])
@@ -444,35 +463,6 @@ function createWindow(): void {
 function applyGlassBackground(): void {
   const color = glassBackgroundColor(process.platform, nativeTheme.shouldUseDarkColors)
   if (color) mainWindow?.setBackgroundColor(color)
-}
-
-function readAuthorizationRequest(value: unknown): AuthorizationRequest | null {
-  if (!isRecord(value)) return null
-  const purpose = value.purpose
-  const mode = value.mode
-  if (
-    (purpose !== "pigclaude-login" && purpose !== "claude-account") ||
-    (mode !== "login" && mode !== "register" && mode !== "authorize")
-  ) {
-    return null
-  }
-  return {
-    purpose,
-    mode,
-    accountName: readOptionalString(value.accountName),
-    proxyId: readOptionalString(value.proxyId),
-    fingerprintSeed: readOptionalString(value.fingerprintSeed),
-    bridgeExit: readOptionalString(value.bridgeExit),
-    daemonExit: readOptionalString(value.daemonExit),
-  }
-}
-
-function readOptionalString(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
 function errorMessage(error: unknown): string {

@@ -131,6 +131,26 @@ describe("SessionHost permissions", () => {
     await harness.host.dispose()
   })
 
+  it("denies every other pending permission when one request times out", async () => {
+    const harness = await startedHarness()
+    vi.useFakeTimers()
+    const canUseTool = harness.adapters.last.canUseTool
+    if (canUseTool === null) throw new Error("canUseTool was not passed to the adapter")
+
+    const first = canUseTool("Bash", { command: "ls" }, askOptions())
+    const second = canUseTool("Write", { file_path: "/tmp/x" }, askOptions())
+    expect(harness.host.status().pendingPermissions).toBe(2)
+
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1_000)
+
+    await expect(first).resolves.toMatchObject({ behavior: "deny" })
+    await expect(second).resolves.toMatchObject({ behavior: "deny" })
+    expect(harness.host.status().pendingPermissions).toBe(0)
+    expect(harness.events.filter((event) => event.type === "permission")).toHaveLength(2)
+    vi.useRealTimers()
+    await harness.host.dispose()
+  })
+
   it("changes mode and model only for later tool calls and leaves pending requests open", async () => {
     const harness = await startedHarness()
     const canUseTool = harness.adapters.last.canUseTool

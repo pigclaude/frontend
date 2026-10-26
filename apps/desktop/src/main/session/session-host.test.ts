@@ -136,6 +136,7 @@ describe("SessionHost start", () => {
       env: harness.environments.last.env,
     })
     expect(harness.runtime.preferredAccount).toBe("account-1")
+    expect(harness.runtime.beginSessionCalls).toBe(1)
     expect(harness.host.status()).toMatchObject({
       active: true,
       sessionId: "id-1",
@@ -143,6 +144,24 @@ describe("SessionHost start", () => {
       permissionMode: "default",
       accountId: "account-1",
       pendingPermissions: 0,
+    })
+    await harness.host.dispose()
+  })
+
+  it("adopts the automatically selected account in status and usage", async () => {
+    const harness = createHarness({ workspace: await workspaceDir() })
+
+    await harness.host.start({ workspace: harness.workspace, permissionMode: "default" })
+    harness.runtime.switchAccount(null, "auto-account", "initial")
+    expect(harness.host.status().accountId).toBe("auto-account")
+
+    await harness.host.send({ text: "hello" })
+    harness.adapters.last.emit(resultEvent())
+    await waitUntil(() => harness.usage.records.length === 1)
+
+    expect(harness.usage.records[0]).toMatchObject({
+      accountId: "auto-account",
+      switchedFrom: null,
     })
     await harness.host.dispose()
   })
@@ -201,6 +220,8 @@ describe("SessionHost events and usage", () => {
   it("merges runtime account switches and records switchedFrom without credentials", async () => {
     const harness = await startedHarness()
     harness.runtime.switchAccount(null, "account-a", "initial")
+
+    await harness.host.send({ text: "hello" })
     harness.runtime.switchAccount("account-a", "account-b", "quota")
 
     expect(harness.events.filter((event) => event.type === "account-switched")).toEqual([
@@ -208,7 +229,6 @@ describe("SessionHost events and usage", () => {
       { type: "account-switched", from: "account-a", to: "account-b", reason: "quota" },
     ])
 
-    await harness.host.send({ text: "hello" })
     harness.adapters.last.emit(resultEvent())
     await waitUntil(() => harness.usage.records.length === 1)
 
@@ -219,6 +239,26 @@ describe("SessionHost events and usage", () => {
     const serialized = JSON.stringify(harness.events)
     expect(serialized).not.toContain(harness.runtime.sessionToken)
     expect(serialized).not.toContain("proxy-password")
+    await harness.host.dispose()
+  })
+
+  it("records switchedFrom only when the switch happens during a turn", async () => {
+    const harness = await startedHarness()
+
+    harness.runtime.switchAccount("account-1", "account-b", "switch")
+    await harness.host.send({ text: "first" })
+    harness.adapters.last.emit(resultEvent())
+    await waitUntil(() => harness.usage.records.length === 1)
+    expect(harness.usage.records[0]?.switchedFrom).toBeNull()
+
+    await harness.host.send({ text: "second" })
+    harness.runtime.switchAccount("account-b", "account-c", "quota")
+    harness.adapters.last.emit(resultEvent())
+    await waitUntil(() => harness.usage.records.length === 2)
+    expect(harness.usage.records[1]).toMatchObject({
+      accountId: "account-c",
+      switchedFrom: "account-b",
+    })
     await harness.host.dispose()
   })
 
@@ -250,6 +290,35 @@ describe("SessionHost events and usage", () => {
     await expect(harness.host.send({ text: "still works" })).resolves.toBeUndefined()
     expect(harness.adapters.last.sent).toEqual(["still works"])
     expect(harness.host.status().active).toBe(true)
+    await harness.host.dispose()
+  })
+
+  it("rejects a second send until the active turn produces a result", async () => {
+    const harness = await startedHarness()
+    await harness.host.send({ text: "first" })
+
+    await expect(harness.host.send({ text: "second" })).rejects.toMatchObject({
+      code: "SESSION_ALREADY_ACTIVE",
+    })
+    expect(harness.adapters.last.sent).toEqual(["first"])
+    expect(harness.host.status().turnId).toBe("id-2")
+
+    harness.adapters.last.emit(resultEvent())
+    await waitUntil(() => harness.host.status().turnId === null)
+
+    await expect(harness.host.send({ text: "second" })).resolves.toBeUndefined()
+    expect(harness.adapters.last.sent).toEqual(["first", "second"])
+    await harness.host.dispose()
+  })
+
+  it("does not emit a cancelled turn when cancel arrives without an active turn", async () => {
+    const harness = await startedHarness()
+    const before = harness.events.length
+
+    await harness.host.cancel()
+
+    expect(harness.events.length).toBe(before)
+    expect(harness.host.status().turnId).toBeNull()
     await harness.host.dispose()
   })
 
@@ -296,6 +365,18 @@ describe("SessionHost models", () => {
       binaryPath: "/fake/claude",
     })
     expect(harness.adapters.last.modelCalls[0]?.workspace).toBe(harness.workspace)
+    expect(harness.environments.last.cleaned).toBe(1)
+    await harness.host.dispose()
+  })
+
+  it("cleans the temporary environment when the model query fails", async () => {
+    const harness = createHarness({
+      workspace: await workspaceDir(),
+      modelsError: new Error("MODEL_QUERY_TIMEOUT: 模型查询超时"),
+    })
+
+    await expect(harness.host.models()).rejects.toMatchObject({ code: "SDK_ERROR" })
+    expect(harness.environments.inputs).toHaveLength(1)
     expect(harness.environments.last.cleaned).toBe(1)
     await harness.host.dispose()
   })

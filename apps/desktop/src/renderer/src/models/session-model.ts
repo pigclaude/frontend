@@ -145,6 +145,8 @@ export function reduceSession(state: SessionUiState, action: SessionAction): Ses
     case "permission-answered":
       return answerPermission(state, action.requestId, action.decision)
     case "cancel-requested":
+      // 没有活动 turn 时取消只是空操作，不能凭空造一条已取消的对话。
+      if (state.activeTurnId === null) return { ...state, error: null }
       return updateActiveTurn({ ...state, error: null }, (turn) => ({
         ...turn,
         status: "cancelled",
@@ -369,6 +371,8 @@ function applyAccountSwitch(
 ): SessionUiState {
   const next = { ...state, accountId: to }
   if (reason === "initial") return next
+  // 两次 turn 之间换号只更新会话级账号，不创建没有提问的 ghost turn。
+  if (state.activeTurnId === null) return next
   return updateActiveTurn(next, (turn) => {
     const last = turn.switches[turn.switches.length - 1]
     if (last?.from === from && last.to === to && last.reason === reason) return turn
@@ -383,6 +387,8 @@ function applyError(state: SessionUiState, code: string, message: string): Sessi
   }
   const isCancelled = code === "SESSION_CANCELLED" || error.code === "SESSION_CANCELLED"
   const isTimeout = code === "PERMISSION_TIMEOUT" || error.code === "PERMISSION_TIMEOUT"
+  // 没有活动 turn 的取消错误不生成 ghost turn，只保留会话级提示。
+  if (isCancelled && state.activeTurnId === null) return { ...state, error: null }
   const next = updateActiveTurn(state, (turn) => ({
     ...turn,
     status: isCancelled ? "cancelled" : "error",

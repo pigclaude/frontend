@@ -2,7 +2,12 @@
 // 数据来自 session.status、session.models、claudeAccounts 和 proxies，不显示 token、代理地址或环境变量。
 
 import { useEffect, useState } from "react"
-import type { ClaudeAccountView, EgressView, ProxyView } from "@pigclaude/contracts/claude-account"
+import {
+  isAccountSelectable,
+  type ClaudeAccountView,
+  type EgressView,
+  type ProxyView,
+} from "@pigclaude/contracts/claude-account"
 import { Button } from "../components/ui/button"
 import {
   Select,
@@ -45,8 +50,18 @@ export function EnvironmentScreen({
   const [egressLoading, setEgressLoading] = useState(false)
   const [egressError, setEgressError] = useState<string | null>(null)
   const proxy = proxies.find((item) => item.id === proxyId) ?? proxies[0] ?? null
-  const availableAccounts = accounts.filter(
-    (account) => account.enabled && !account.needsReauth && !isCoolingDown(account.exhaustedUntil),
+  const proxyUrls = new Map(proxies.map((item) => [item.id, item.url]))
+  const availableAccounts = accounts.filter((account) =>
+    isAccountSelectable(
+      {
+        enabled: account.enabled,
+        needsReauth: account.needsReauth,
+        hasCredential: account.credentialExpiresAt !== null,
+        exhaustedUntil: account.exhaustedUntil,
+        proxyUrl: proxyUrls.get(account.proxyId),
+      },
+      Date.now(),
+    ),
   )
   const cli = cliState(models, modelsLoading, modelsError)
   const daemon = daemonState(status, models, modelsLoading, modelsError)
@@ -234,10 +249,4 @@ function egressValue(egress: EgressView | null, loading: boolean, error: string 
   if (error !== null) return error
   if (egress === null) return "尚未检测"
   return egress.ok ? `出口 IP ${egress.ip}` : egress.message
-}
-
-function isCoolingDown(value: string | null | undefined): boolean {
-  if (value === null || value === undefined) return false
-  const until = Date.parse(value)
-  return Number.isFinite(until) && until > Date.now()
 }

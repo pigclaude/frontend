@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from "vitest"
 import {
+  isAccountSelectable,
   isClaudeAccountEvent,
   isClaudeAccountView,
   isProxyView,
@@ -29,6 +30,38 @@ const account: ClaudeAccountView = {
   createdAt: "2026-10-21T00:00:00.000Z",
   updatedAt: "2026-10-21T00:00:00.000Z",
 }
+
+describe("isAccountSelectable", () => {
+  const now = Date.parse("2026-10-26T00:00:00.000Z")
+  const base = {
+    enabled: true,
+    needsReauth: false,
+    hasCredential: true,
+    exhaustedUntil: null,
+    proxyUrl: "http://127.0.0.1:8080",
+  }
+
+  it("accepts an enabled, authorized account with a proxy outside cooldown", () => {
+    expect(isAccountSelectable(base, now)).toBe(true)
+  })
+
+  it("requires a credential, a non-empty proxy and no cooldown", () => {
+    expect(isAccountSelectable({ ...base, hasCredential: false }, now)).toBe(false)
+    expect(isAccountSelectable({ ...base, proxyUrl: "" }, now)).toBe(false)
+    expect(isAccountSelectable({ ...base, proxyUrl: null }, now)).toBe(false)
+    expect(
+      isAccountSelectable({ ...base, exhaustedUntil: new Date(now + 1_000).toISOString() }, now),
+    ).toBe(false)
+    expect(
+      isAccountSelectable({ ...base, exhaustedUntil: new Date(now - 1_000).toISOString() }, now),
+    ).toBe(true)
+  })
+
+  it("rejects disabled and reauthorization accounts", () => {
+    expect(isAccountSelectable({ ...base, enabled: false }, now)).toBe(false)
+    expect(isAccountSelectable({ ...base, needsReauth: true }, now)).toBe(false)
+  })
+})
 
 describe("claude account contracts", () => {
   it("accepts a complete account view without secret fields", () => {

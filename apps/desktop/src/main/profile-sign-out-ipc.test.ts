@@ -21,7 +21,7 @@ const fixture = vi.hoisted(() => ({
   windows: [] as {
     webContents: { mainFrame: object; send: (channel: string, value: unknown) => void }
   }[],
-  appEvents: new Map<string, () => void>(),
+  appEvents: new Map<string, (event: { preventDefault: () => void }) => void>(),
   powerEvents: new Map<string, () => void>(),
   ready: (): void => undefined,
   callback: async (url: string): Promise<void> => {
@@ -37,7 +37,8 @@ vi.mock("electron", () => ({
   app: {
     isPackaged: false,
     whenReady: () => Promise.resolve(),
-    on: (name: string, listener: () => void) => fixture.appEvents.set(name, listener),
+    on: (name: string, listener: (event: { preventDefault: () => void }) => void) =>
+      fixture.appEvents.set(name, listener),
     removeListener: (name: string) => fixture.appEvents.delete(name),
     getPath: () => fixture.directory,
     quit: () => {},
@@ -222,8 +223,8 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
       const entered = new Promise<void>((resolve) => {
         onSession = resolve
       })
-      const listeners = event === "resume" ? fixture.powerEvents : fixture.appEvents
-      listeners.get(event)?.()
+      if (event === "resume") fixture.powerEvents.get(event)?.()
+      else fixture.appEvents.get(event)?.({ preventDefault: () => undefined })
       await entered
     }
     inactive = true
@@ -248,7 +249,7 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     expect(await bridge.membership.withdraw()).toMatchObject({ state: "signed_out" })
     expect(withdrawals).toBe(1)
     expect(await vault.get("authorization:claude-account:other-account")).toBe("old-claude-secret")
-    fixture.appEvents.get("before-quit")?.()
+    fixture.appEvents.get("before-quit")?.({ preventDefault: () => undefined })
     expect(fixture.powerEvents.has("resume")).toBe(false)
     expect(fixture.appEvents.has("browser-window-focus")).toBe(false)
     unsubscribe()

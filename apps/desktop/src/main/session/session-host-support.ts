@@ -13,9 +13,11 @@ import type {
   SessionEnvironmentFactory,
   SessionEnvironmentPort,
   SessionErrorCode,
+  SessionMembership,
   SessionPermissionMode,
   SessionStartInput,
 } from "./session-types"
+import { classifyDaemonError } from "./session-error-mapping"
 import { SessionHostError } from "./session-types"
 import type { UsageRecord } from "./usage-recorder"
 
@@ -70,7 +72,8 @@ export function mapStartError(error: unknown, token: string): SessionHostError {
   if (message.includes("CLAUDE_RUNTIME_UNAVAILABLE")) {
     return new SessionHostError("CLAUDE_RUNTIME_UNAVAILABLE", message)
   }
-  return new SessionHostError("SDK_ERROR", message)
+  const daemonCode = classifyDaemonError(message)
+  return new SessionHostError(daemonCode ?? "SDK_ERROR", message)
 }
 
 /** 去掉 SessionHostError.message 里的重复错误码前缀和会话令牌。 */
@@ -144,6 +147,25 @@ export function buildStartOptions(
 /** 从事件文本里去掉 daemon 会话令牌，避免错误消息带秘密。 */
 export function redactSessionToken(message: string, token: string): string {
   return token === "" ? message : message.split(token).join("[redacted]")
+}
+
+/** 广播前脱敏：只有 error 事件可能带会话令牌。 */
+export function sanitizeSessionEvent(event: SessionEvent, token: string): SessionEvent {
+  if (event.type !== "error") return event
+  return { ...event, message: redactSessionToken(event.message, token) }
+}
+
+/** 实时核验会员；inspect 失败或状态不是 active 时统一抛 MEMBERSHIP_REQUIRED。 */
+export async function assertMembershipActive(membership: SessionMembership): Promise<void> {
+  let state: string
+  try {
+    state = (await membership.inspect()).state
+  } catch {
+    throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
+  }
+  if (state !== "active") {
+    throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
+  }
 }
 
 /** 解析 Claude 二进制路径；失败映射为 CLAUDE_RUNTIME_UNAVAILABLE 并脱敏。 */

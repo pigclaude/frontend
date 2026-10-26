@@ -2,7 +2,11 @@
 // 取消/停止和错误展示。页面只消费 useSession 控制器，不直接调用 preload。
 
 import { useEffect, useState } from "react"
-import type { ClaudeAccountView } from "@pigclaude/contracts/claude-account"
+import {
+  isAccountSelectable,
+  type ClaudeAccountView,
+  type ProxyView,
+} from "@pigclaude/contracts/claude-account"
 import { ChatDrawer } from "../components/chat/chat-drawer"
 import { ChatEmpty } from "../components/chat/chat-empty"
 import { ChatThread } from "../components/chat/chat-thread"
@@ -22,6 +26,7 @@ export type ChatScreenProps = {
   workspace: string | null
   workspaceOptions: string[]
   accounts: ClaudeAccountView[]
+  proxies: ProxyView[]
   onPickWorkspace: () => void
   onSelectWorkspace: (path: string) => void
   onWorkspaceUsed: (path: string) => void
@@ -36,6 +41,7 @@ export function ChatScreen({
   workspace,
   workspaceOptions,
   accounts,
+  proxies,
   onPickWorkspace,
   onSelectWorkspace,
   onWorkspaceUsed,
@@ -56,8 +62,18 @@ export function ChatScreen({
   const selectedModel = state.model ?? (modelId || defaultModel?.id || "")
   const activeMode = live ? state.permissionMode : permissionMode
   const activeAccount = live ? (state.accountId ?? "") : accountId
-  const availableAccounts = accounts.filter(
-    (account) => account.enabled && !account.needsReauth && !isCoolingDown(account.exhaustedUntil),
+  const proxyUrls = new Map(proxies.map((proxy) => [proxy.id, proxy.url]))
+  const availableAccounts = accounts.filter((account) =>
+    isAccountSelectable(
+      {
+        enabled: account.enabled,
+        needsReauth: account.needsReauth,
+        hasCredential: account.credentialExpiresAt !== null,
+        exhaustedUntil: account.exhaustedUntil,
+        proxyUrl: proxyUrls.get(account.proxyId),
+      },
+      Date.now(),
+    ),
   )
   const error = localError ?? session.state.error?.message ?? null
 
@@ -95,6 +111,7 @@ export function ChatScreen({
     onDepth: setDepth,
     permissionMode: activeMode,
     onPermissionMode: chooseMode,
+    disabled: live && state.activeTurnId !== null,
     smartPunctuation,
   }
 
@@ -137,21 +154,24 @@ export function ChatScreen({
     await startSession(target)
   }
 
-  async function submit(text: string): Promise<void> {
+  async function submit(text: string): Promise<boolean> {
     if (live) {
+      if (state.activeTurnId !== null) {
+        setLocalError("当前请求尚未结束")
+        return false
+      }
       setLocalError(null)
-      await session.send(text)
-      return
+      return session.send(text)
     }
     const target = workspace ?? workspaceOptions[0] ?? null
     if (target === null) {
       setLocalError("先选择一个工作区")
-      return
+      return false
     }
     setLocalError(null)
     const ok = await startSession(target)
-    if (!ok) return
-    await session.send(text)
+    if (!ok) return false
+    return session.send(text)
   }
 
   if (!live) {
@@ -170,7 +190,7 @@ export function ChatScreen({
             onSelectWorkspace(path)
           }}
           onStart={() => void startOnly()}
-          onSubmit={(text) => void submit(text)}
+          onSubmit={submit}
           onRetryModels={() => void session.refreshModels(true)}
           onCancelModels={session.cancelModels}
           onOpen={onOpen}
@@ -252,12 +272,7 @@ export function ChatScreen({
         }}
       />
       <div className="composer-wrap">
-        <Composer
-          {...composer}
-          placeholder="继续追问"
-          menuSide="top"
-          onSubmit={(text) => void submit(text)}
-        />
+        <Composer {...composer} placeholder="继续追问" menuSide="top" onSubmit={submit} />
         <p className="composer-meta">经本机中继发出 · pigclaude 只记录用量元数据</p>
       </div>
       {drawerOpen ? <ChatDrawer state={state} accounts={accounts} workspace={workspace} /> : null}
@@ -272,13 +287,6 @@ export function ChatScreen({
       />
     </section>
   )
-}
-
-/** 判断账号是否还在额度冷却中；冷却账号不进入启动账号菜单。 */
-function isCoolingDown(value: string | null | undefined): boolean {
-  if (value === null || value === undefined) return false
-  const until = Date.parse(value)
-  return Number.isFinite(until) && until > Date.now()
 }
 
 function BypassDialog({

@@ -24,7 +24,8 @@ export type SessionController = {
   modelsLoading: boolean
   modelsError: string | null
   start: (input: SessionStartInput) => Promise<boolean>
-  send: (text: string) => Promise<void>
+  /** 返回 false 表示消息没有被接受（当前 turn 未结束或桥不可用），界面保留草稿。 */
+  send: (text: string) => Promise<boolean>
   cancel: () => Promise<void>
   stop: () => Promise<void>
   respondPermission: (requestId: string, decision: "allow" | "deny") => Promise<void>
@@ -49,6 +50,7 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
   const [modelsLoading, setModelsLoading] = useState(false)
   const [modelsError, setModelsError] = useState<string | null>(null)
   const turnSeq = useRef(0)
+  const activeTurnRef = useRef<string | null>(null)
   const modelsLoaded = useRef(false)
   const modelsLoadingRef = useRef(false)
   const modelsRequest = useRef(0)
@@ -111,7 +113,10 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
 
   useEffect(() => {
     if (resolved === null || resolved === undefined) return
-    const unsubscribe = resolved.subscribe((event) => dispatch({ type: "event", event }))
+    const unsubscribe = resolved.subscribe((event) => {
+      if (event.type === "result" || event.type === "ended") activeTurnRef.current = null
+      dispatch({ type: "event", event })
+    })
     void refreshStatus()
     return unsubscribe
   }, [refreshStatus, resolved])
@@ -123,6 +128,7 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
         return false
       }
       dispatch({ type: "starting" })
+      activeTurnRef.current = null
       try {
         const result = await resolved.start(input)
         dispatch({ type: "opened", sessionId: result.sessionId })
@@ -137,17 +143,24 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
   )
 
   const send = useCallback(
-    async (text: string): Promise<void> => {
+    async (text: string): Promise<boolean> => {
       if (resolved === null || resolved === undefined) {
         dispatch({ type: "failed", message: "桌面会话服务不可用" })
-        return
+        return false
       }
+      // 当前 turn 未结束时拒绝第二次发送，避免为一个 turn 建两条用户消息。
+      if (activeTurnRef.current !== null) return false
       turnSeq.current += 1
-      dispatch({ type: "user-message", text, turnId: `turn-${turnSeq.current}` })
+      const turnId = `turn-${turnSeq.current}`
+      activeTurnRef.current = turnId
+      dispatch({ type: "user-message", text, turnId })
       try {
         await resolved.send({ text })
+        return true
       } catch (error: unknown) {
+        activeTurnRef.current = null
         dispatch({ type: "failed", message: sessionErrorFrom(error) })
+        return false
       }
     },
     [resolved],
@@ -169,6 +182,7 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
       dispatch({ type: "failed", message: sessionErrorFrom(error) })
       return
     }
+    activeTurnRef.current = null
     dispatch({ type: "stopped" })
     void refreshStatus()
   }, [refreshStatus, resolved])

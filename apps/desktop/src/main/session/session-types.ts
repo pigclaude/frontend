@@ -107,6 +107,8 @@ export type SessionRuntime = {
   readonly sessionToken: string
   subscribe(listener: (event: SessionRuntimeEvent) => void): () => void
   setPreferredAccount?(accountId: string | null): void
+  /** 开始新会话前重置上一个会话的账号跟踪，保证首次选号广播 initial。 */
+  beginSession?(): void
   /** 不刷新凭据地判断是否有可授权账号；启动前置条件。 */
   hasAvailableAccount(): Promise<boolean>
 }

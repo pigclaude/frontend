@@ -201,6 +201,43 @@ describe("LocalRuntime", () => {
     await h.cleanup()
   })
 
+  it("broadcasts initial again for the same account after a session boundary", async () => {
+    const h = await harness()
+    const events: LocalRuntimeEvent[] = []
+    h.runtime.subscribe((event) => events.push(event))
+    await h.runtime.start()
+    h.daemons[0]?.options.onAccountSelected("a", undefined)
+
+    await h.runtime.stop()
+    await h.runtime.start()
+    h.runtime.beginSession()
+    h.daemons[1]?.options.onAccountSelected("a", undefined)
+
+    expect(events).toEqual([
+      { type: "account-switched", from: null, to: "a", reason: "initial" },
+      { type: "account-switched", from: null, to: "a", reason: "initial" },
+    ])
+    await h.cleanup()
+  })
+
+  it("marks an auth-rejected account as needing reauthorization without reviving it", async () => {
+    const h = await harness({
+      accounts: [account("a", { proxyId: "p-a" }), account("b", { proxyId: "p-b" })],
+      proxies: [proxy("p-a"), proxy("p-b")],
+    })
+    await h.runtime.start()
+    const daemon = h.daemons[0]
+    if (daemon === undefined) throw new Error("daemon not started")
+
+    daemon.options.onAccountRejected("a", "auth")
+    await vi.waitFor(async () => {
+      expect((await h.store.getAccount("a"))?.needsReauth).toBe(true)
+    })
+
+    expect((await h.runtime.chooser.choose({ rejectedIds: [] }))?.id).toBe("b")
+    await h.cleanup()
+  })
+
   it("clears the quota marker when the marked account is selected again", async () => {
     const h = await harness()
     const events: LocalRuntimeEvent[] = []

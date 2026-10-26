@@ -166,6 +166,49 @@ describe("useSession", () => {
     expect(controller?.state.turns[0]?.userText).toBe("改一下重试逻辑")
   })
 
+  it("does not create a second turn while the first turn is still active", async () => {
+    const send = vi.fn(async () => undefined)
+    const { bridge, emit } = fakeBridge({ send })
+    await render(bridge)
+    await act(async () => {
+      await controller?.start({ workspace: "/Users/me/app", permissionMode: "default" })
+    })
+
+    let first: boolean | undefined = undefined
+    await act(async () => {
+      await controller?.send("first")
+      first = await controller?.send("second")
+    })
+
+    expect(first).toBe(false)
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(controller?.state.turns).toHaveLength(1)
+    expect(controller?.state.turns[0]?.userText).toBe("first")
+
+    await act(async () => {
+      emit({
+        type: "result",
+        subtype: "success",
+        isError: false,
+        durationMs: 10,
+        numTurns: 1,
+        stopReason: "end_turn",
+        usage: {
+          inputTokens: 1,
+          outputTokens: 1,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+        },
+      })
+    })
+    await act(async () => {
+      await controller?.send("third")
+    })
+
+    expect(send).toHaveBeenCalledTimes(2)
+    expect(controller?.state.turns.map((turn) => turn.userText)).toEqual(["first", "third"])
+  })
+
   it("maps a rejected start to Chinese text without the Electron prefix", async () => {
     const { bridge } = fakeBridge({
       start: async () => {

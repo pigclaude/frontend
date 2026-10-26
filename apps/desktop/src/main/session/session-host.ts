@@ -6,6 +6,7 @@ import { ClaudeAgentAdapter } from "./claude-agent-adapter"
 import { resolveClaudeBinaryPath } from "./claude-binary"
 import { PermissionBroker } from "./permission-broker"
 import type { PermissionAnswer } from "./permission-broker"
+import { classifyDaemonError } from "./session-error-mapping"
 import { SessionEnvironment } from "./session-environment"
 import {
   assertStartNotStopped,
@@ -17,8 +18,9 @@ import {
   hostError,
   mapStartError,
   readBinaryPath,
-  redactSessionToken,
+  sanitizeSessionEvent,
   sanitizeStartError,
+  assertMembershipActive,
   systemLocale,
   systemTimezone,
 } from "./session-host-support"
@@ -136,7 +138,7 @@ export class SessionHost {
   }
   // 启动过程中的每个 await 后复查停止请求；窗口关闭或 stop 不能留下半启动会话。
   async #startSession(input: SessionStartInput): Promise<{ sessionId: string }> {
-    await this.#assertMembership()
+    await assertMembershipActive(this.#membership)
     assertStartNotStopped(this.#stopRequested, this.#disposed)
     await assertWorkspace(input.workspace)
     assertStartNotStopped(this.#stopRequested, this.#disposed)
@@ -149,6 +151,7 @@ export class SessionHost {
       throw new SessionHostError("DAEMON_UNAVAILABLE", "本机 daemon 尚未就绪")
     }
     const binaryPath = readBinaryPath(this.#resolveBinaryPath, this.#runtime.sessionToken)
+    this.#runtime.beginSession?.()
     this.#runtime.setPreferredAccount?.(input.accountId ?? null)
     const sessionId = this.#newId()
     const profile = await this.#resolveProfile(input.accountId ?? null).catch(() => null)
@@ -210,13 +213,18 @@ export class SessionHost {
   /** 把用户消息写入当前会话；附件只做形状校验，当前适配器只传文本。 */
   async send(input: SessionSendInput): Promise<void> {
     const active = this.#requireActive()
+    if (active.turnId !== null) {
+      throw new SessionHostError("SESSION_ALREADY_ACTIVE", "当前请求尚未结束")
+    }
     active.turnId = this.#newId()
     active.turnCancelled = false
     active.turnErrorCode = null
     try {
       await active.adapter.send(input.text)
     } catch (error) {
-      throw hostError("SDK_ERROR", errorMessage(error), this.#runtime.sessionToken)
+      const message = errorMessage(error)
+      const code = classifyDaemonError(message) ?? "SDK_ERROR"
+      throw hostError(code, message, this.#runtime.sessionToken)
     }
   }
 
@@ -224,10 +232,12 @@ export class SessionHost {
   async cancel(): Promise<void> {
     const active = this.#session
     if (active === null) return
-    active.turnCancelled = true
-    active.turnErrorCode = "SESSION_CANCELLED"
+    if (active.turnId !== null) {
+      active.turnCancelled = true
+      active.turnErrorCode = "SESSION_CANCELLED"
+      this.#emit({ type: "error", code: "SESSION_CANCELLED", message: "当前请求已取消" })
+    }
     active.broker.rejectAll("用户已取消")
-    this.#emit({ type: "error", code: "SESSION_CANCELLED", message: "当前请求已取消" })
     await active.adapter.interrupt().catch(() => undefined)
   }
 
@@ -285,7 +295,7 @@ export class SessionHost {
   async models(): Promise<ClaudeModel[]> {
     return queryModels({
       active: this.#session,
-      assertMembership: () => this.#assertMembership(),
+      assertMembership: () => assertMembershipActive(this.#membership),
       runtime: this.#runtime,
       createEnvironment: this.#createEnvironment,
       createAdapter: this.#createAdapter,
@@ -412,7 +422,10 @@ export class SessionHost {
   #handleRuntimeEvent(event: SessionRuntimeEvent): void {
     const active = this.#session
     if (active === null) return
-    if (event.reason !== "initial" && event.from !== null) active.switchedFrom = event.from
+    // 只有 turn 进行中的换号才记入用量；两次 turn 之间的换号不制造 switchedFrom。
+    if (event.reason !== "initial" && event.from !== null && active.turnId !== null) {
+      active.switchedFrom = event.from
+    }
     active.accountId = event.to
     this.#emit({
       type: "account-switched",
@@ -436,13 +449,13 @@ export class SessionHost {
         break
       case "ended":
         active.broker.rejectAll("会话已结束")
-        this.#emit(this.#sanitize(event))
+        this.#emit(sanitizeSessionEvent(event, this.#runtime.sessionToken))
         if (!active.stopping) void this.#release(active)
         return
       default:
         break
     }
-    this.#emit(this.#sanitize(event))
+    this.#emit(sanitizeSessionEvent(event, this.#runtime.sessionToken))
   }
 
   #recordUsage(active: ActiveSession, event: Extract<SessionEvent, { type: "result" }>): void {
@@ -459,27 +472,9 @@ export class SessionHost {
     if (this.#session !== active || active.released) return
     active.turnErrorCode = "PERMISSION_TIMEOUT"
     this.#emit({ type: "error", code: "PERMISSION_TIMEOUT", message: "权限询问超时" })
+    // 同一 turn 的其它权限卡片不能继续悬挂。
+    active.broker.rejectAll("权限询问超时")
     void active.adapter.interrupt().catch(() => undefined)
-  }
-
-  #sanitize(event: SessionEvent): SessionEvent {
-    if (event.type !== "error") return event
-    return {
-      ...event,
-      message: redactSessionToken(event.message, this.#runtime.sessionToken),
-    }
-  }
-
-  async #assertMembership(): Promise<void> {
-    let state: string
-    try {
-      state = (await this.#membership.inspect()).state
-    } catch {
-      throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
-    }
-    if (state !== "active") {
-      throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
-    }
   }
 
   #requireActive(): ActiveSession {

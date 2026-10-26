@@ -4,6 +4,7 @@ import { EditorContent, useEditor, useEditorState } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import { useMemo, useRef } from "react"
 import { Icon } from "./icon"
+import { submitComposerText } from "./composer-submit"
 import { createSmartPunctuation } from "./smart-punctuation"
 import {
   getComposerKeyAction,
@@ -42,7 +43,10 @@ export type ComposerProps = {
   onDepth: (depth: ThinkingDepth) => void
   permissionMode?: PermissionMode
   onPermissionMode?: (mode: PermissionMode) => void
-  onSubmit: (text: string) => void
+  /** 返回 true 表示消息已被接受，只有此时才清空输入区。 */
+  onSubmit: (text: string) => boolean | Promise<boolean>
+  /** 当前 turn 未结束时禁止发送，避免连发产生第二个 turn。 */
+  disabled?: boolean
   smartPunctuation: boolean
 }
 
@@ -66,10 +70,14 @@ export function Composer({
   permissionMode = "default",
   onPermissionMode,
   onSubmit,
+  disabled = false,
   smartPunctuation,
 }: ComposerProps) {
   const submitRef = useRef(onSubmit)
   submitRef.current = onSubmit
+  const disabledRef = useRef(disabled)
+  disabledRef.current = disabled
+  const submittingRef = useRef(false)
   const smartRef = useRef(smartPunctuation)
   smartRef.current = smartPunctuation
   const smartExtension = useMemo(() => createSmartPunctuation(() => smartRef.current), [])
@@ -93,8 +101,9 @@ export function Composer({
         const action = getComposerKeyAction(event.key, event.shiftKey)
         if (action === "ignore" || action === "newline") return false
         event.preventDefault()
+        if (disabledRef.current) return true
         const text = _view.state.doc.textContent.trim()
-        if (text) submitRef.current(text)
+        if (text) void submitText(text)
         return true
       },
     },
@@ -108,6 +117,19 @@ export function Composer({
     editor,
     selector: ({ editor: current }) => !current || current.isEmpty,
   })
+
+  // 同一时间只允许一次提交；成功后清空编辑器，失败或拒绝时保留草稿。
+  async function submitText(text: string): Promise<void> {
+    if (submittingRef.current || disabledRef.current) return
+    submittingRef.current = true
+    try {
+      await submitComposerText(text, submitRef.current, () => editor?.commands.clearContent())
+    } catch {
+      // 提交方负责展示错误；输入区只保留草稿。
+    } finally {
+      submittingRef.current = false
+    }
+  }
 
   return (
     <div className={tall ? "composer is-tall" : "composer"}>
@@ -205,10 +227,11 @@ export function Composer({
             type="button"
             aria-label="发送"
             title="发送 ↩"
-            aria-disabled={empty ? true : undefined}
+            aria-disabled={empty || disabled ? true : undefined}
             onClick={() => {
+              if (disabled) return
               const text = editor?.getText().trim() ?? ""
-              if (text) onSubmit(text)
+              if (text) void submitText(text)
             }}
           >
             <Icon name="send" />

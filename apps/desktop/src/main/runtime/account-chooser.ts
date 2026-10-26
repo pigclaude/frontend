@@ -1,6 +1,7 @@
 // 负责从本机账号库选出 daemon 可用的账号。每次选号都读取最新账号和代理，
 // 刷新临期凭据，并过滤禁用、需重新授权、冷却、已拒绝和代理缺失的账号。
 
+import { isAccountSelectable } from "@pigclaude/contracts/claude-account"
 import type { AccountRecord, IpProxy, LocalStore } from "@pigclaude/local-store"
 import { selectAccount, type SwitchCandidate } from "@pigclaude/switcher"
 import type { CredentialRefresher } from "../claude/credential-refresher"
@@ -34,7 +35,7 @@ type EligibleAccount = {
 // 第一版没有完整用量窗口，所有已授权且未冷却的账号都可通过这两个阈值。
 const thresholds = { fiveHour: 1, sevenDay: 1 }
 
-/** 按用户顺序选择第一个可用账号。保证过滤禁用、需重新授权、无凭据、冷却、已拒绝和代理缺失的账号；凭据刷新失败时跳过该账号；没有可用账号时返回 null。 */
+/** 按用户顺序选择第一个可用账号。保证过滤禁用、需重新授权、无凭据、冷却、已拒绝和代理缺失的账号；与界面共用 isAccountSelectable；没有可用账号时返回 null。 */
 export class AccountChooser {
   readonly #store: AccountChooserOptions["store"]
   readonly #refresher: AccountChooserOptions["refresher"]
@@ -103,28 +104,23 @@ export class AccountChooser {
   }
 }
 
-/** 静态判断账号是否可用：启用、不需要重新授权、有凭据且不在额度冷却中。选号器和启动预检共用。 */
-export function isAccountAvailable(account: AccountRecord, nowMs: number): boolean {
-  if (!account.enabled || account.needsReauth || account.credential === null) return false
-  return !coolingDown(account.exhaustedUntil, nowMs)
-}
-
 function isEligible(
   account: AccountRecord,
   proxies: Map<string, IpProxy>,
   rejected: Set<string>,
   nowMs: number,
 ): boolean {
-  if (!isAccountAvailable(account, nowMs)) return false
   if (rejected.has(account.id)) return false
-  const proxy = proxies.get(account.proxyId)
-  return proxy !== undefined && proxy.url !== ""
-}
-
-function coolingDown(exhaustedUntil: string | null, nowMs: number): boolean {
-  if (exhaustedUntil === null) return false
-  const until = Date.parse(exhaustedUntil)
-  return Number.isFinite(until) && until > nowMs
+  return isAccountSelectable(
+    {
+      enabled: account.enabled,
+      needsReauth: account.needsReauth,
+      hasCredential: account.credential !== null,
+      exhaustedUntil: account.exhaustedUntil,
+      proxyUrl: proxies.get(account.proxyId)?.url,
+    },
+    nowMs,
+  )
 }
 
 function toCandidate(account: AccountRecord, nowIso: string): SwitchCandidate {

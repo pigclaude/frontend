@@ -55,7 +55,7 @@ export type LocalDaemonOptions = {
 
 /** runtime 依赖。时间、退避、休眠和 daemon 工厂都可注入。 */
 export type LocalRuntimeOptions = {
-  store: Pick<LocalStore, "listAccounts" | "getAccount" | "saveAccount">
+  store: Pick<LocalStore, "listAccounts" | "getAccount" | "saveAccount" | "updateAccount">
   chooser: Pick<AccountChooser, "choose" | "hasAvailableAccount">
   membership: LocalRuntimeMembership
   runAuthorized: <T>(operation: (signal: AbortSignal) => Promise<T>) => Promise<T>
@@ -132,6 +132,7 @@ export class LocalRuntime {
 
   /** 中止正在进行的请求并释放端口。保证之后可以再次 start，且 stop 不会抛出。 */
   async stop(): Promise<void> {
+    this.#resetSessionTracking()
     const lifecycle = this.#lifecycle
     this.#lifecycle = null
     lifecycle?.abort.abort()
@@ -180,6 +181,14 @@ export class LocalRuntime {
   /** 设置后续选号的偏好账号；只影响顺序，不绕过可用性过滤。 */
   setPreferredAccount(accountId: string | null): void {
     this.#preferredId = accountId
+  }
+
+  /**
+   * 标记新会话开始：清空上一个会话的当前账号和额度拒绝标记。
+   * 保证新会话第一次选号即使选中同一账号也会广播 initial。
+   */
+  beginSession(): void {
+    this.#resetSessionTracking()
   }
 
   async #runStart(lifecycle: Lifecycle): Promise<void> {
@@ -247,9 +256,17 @@ export class LocalRuntime {
   }
 
   #handleRejected(accountId: string, reason: string): void {
-    if (reason !== "quota") return
-    this.#quotaRejections.add(accountId)
-    void this.#persistQuota(accountId).catch(() => undefined)
+    if (reason === "quota") {
+      this.#quotaRejections.add(accountId)
+      void this.#persistQuota(accountId).catch(() => undefined)
+      return
+    }
+    if (reason === "auth") void this.#persistNeedsReauth(accountId).catch(() => undefined)
+  }
+
+  #resetSessionTracking(): void {
+    this.#currentAccountId = null
+    this.#quotaRejections.clear()
   }
 
   // 只处理当前生命周期的意外退出；主动 stop 时 LocalDaemon 不触发这个回调。
@@ -275,17 +292,21 @@ export class LocalRuntime {
   }
 
   async #persistQuota(accountId: string): Promise<void> {
-    const account = await this.#store.getAccount(accountId)
-    if (account === null) return
     const exhaustedUntil = new Date(this.#now() + this.#quotaCooldownMs).toISOString()
-    const existing = account.exhaustedUntil === null ? null : Date.parse(account.exhaustedUntil)
-    if (existing !== null && Number.isFinite(existing) && existing >= Date.parse(exhaustedUntil))
-      return
-    await this.#store.saveAccount({
-      ...account,
-      exhaustedUntil,
-      updatedAt: new Date(this.#now()).toISOString(),
+    await this.#store.updateAccount(accountId, (account) => {
+      const existing = account.exhaustedUntil === null ? null : Date.parse(account.exhaustedUntil)
+      if (existing !== null && Number.isFinite(existing) && existing >= Date.parse(exhaustedUntil))
+        return null
+      return { ...account, exhaustedUntil, updatedAt: new Date(this.#now()).toISOString() }
     })
+  }
+
+  async #persistNeedsReauth(accountId: string): Promise<void> {
+    await this.#store.updateAccount(accountId, (account) =>
+      account.needsReauth
+        ? null
+        : { ...account, needsReauth: true, updatedAt: new Date(this.#now()).toISOString() },
+    )
   }
 
   // 连续两次 choose 返回同一账号时不广播；跨请求换号用上一次实际选中的账号作为 from。

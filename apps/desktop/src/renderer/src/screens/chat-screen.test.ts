@@ -4,7 +4,7 @@
 import { act, createElement, useState } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import type { ClaudeAccountView } from "@pigclaude/contracts/claude-account"
+import type { ClaudeAccountView, ProxyView } from "@pigclaude/contracts/claude-account"
 import type { SessionController } from "../hooks/use-session"
 import { createSessionState, reduceSession, type SessionUiState } from "../models/session-model"
 import { ChatScreen, type ChatScreenProps } from "./chat-screen"
@@ -16,7 +16,7 @@ const account = (id: string, displayName: string): ClaudeAccountView => ({
   email: null,
   subscriptionType: "max",
   needsReauth: false,
-  credentialExpiresAt: null,
+  credentialExpiresAt: 1_760_000_000_000,
   proxyId: "proxy-1",
   fingerprint: {
     seed: "123456",
@@ -30,6 +30,13 @@ const account = (id: string, displayName: string): ClaudeAccountView => ({
   createdAt: "2026-10-21T00:00:00.000Z",
   updatedAt: "2026-10-21T00:00:00.000Z",
 })
+
+const proxy: ProxyView = {
+  id: "proxy-1",
+  name: "代理",
+  url: "http://127.0.0.1:8080",
+  lastTest: null,
+}
 
 let root: Root
 let container: HTMLDivElement
@@ -63,7 +70,7 @@ function controller(overrides: Partial<SessionController> = {}): SessionControll
     modelsLoading: false,
     modelsError: null,
     start: vi.fn(async () => true),
-    send: vi.fn(async () => undefined),
+    send: vi.fn(async () => true),
     cancel: vi.fn(async () => undefined),
     stop: vi.fn(async () => undefined),
     respondPermission: vi.fn(async () => undefined),
@@ -84,6 +91,7 @@ async function render(overrides: Partial<ChatScreenProps> = {}): Promise<void> {
     workspace: "/Users/me/app",
     workspaceOptions: ["/Users/me/app"],
     accounts: [account("account-a", "主力 Max"), account("account-b", "备用 Pro")],
+    proxies: [proxy],
     onPickWorkspace: () => undefined,
     onSelectWorkspace: () => undefined,
     onWorkspaceUsed: () => undefined,
@@ -159,6 +167,7 @@ describe("chat screen", () => {
         workspace: "/Users/me/app",
         workspaceOptions: ["/Users/me/app"],
         accounts: [account("account-a", "主力 Max")],
+        proxies: [proxy],
         onPickWorkspace: () => undefined,
         onSelectWorkspace: () => undefined,
         onWorkspaceUsed: () => undefined,

@@ -31,6 +31,11 @@ const account = (id: string, displayName: string): ClaudeAccountView => ({
   updatedAt: "2026-10-21T00:00:00.000Z",
 })
 
+const directAccount = (id: string, displayName: string): ClaudeAccountView => ({
+  ...account(id, displayName),
+  proxyId: null,
+})
+
 const proxy: ProxyView = {
   id: "proxy-1",
   name: "代理",
@@ -139,6 +144,21 @@ describe("chat screen", () => {
     )
     expect(session.send).not.toHaveBeenCalled()
     expect(onOpen).toHaveBeenCalledWith("chat")
+  })
+
+  it("offers a direct account in the account menu without any proxy", async () => {
+    await render({ accounts: [directAccount("account-direct", "直连 Max")], proxies: [] })
+
+    const trigger = [...container.querySelectorAll("button")].find((candidate) =>
+      candidate.textContent?.includes("自动选择账号"),
+    )
+    expect(trigger, "账号菜单").toBeDefined()
+    await act(async () => {
+      trigger?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }))
+    })
+
+    expect(document.body.textContent).toContain("直连 Max")
+    expect(document.body.textContent).not.toContain("没有可用账号")
   })
 
   it("shows the live thread even when the route is still chat-new", async () => {

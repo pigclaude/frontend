@@ -17,7 +17,7 @@ export type AuthorizeScreenProps = {
   onStartBrowserAuthorization: (input: {
     accountId?: string
     displayName: string
-    proxyId: string
+    proxyId: string | null
     fingerprint: ClaudeFingerprintView
   }) => void
   onCancel: () => void
@@ -33,7 +33,8 @@ export function AuthorizeScreen({
   onCancel,
 }: AuthorizeScreenProps) {
   const [name, setName] = useState(state.accountName || account?.displayName || "主力 Max")
-  const [proxyId, setProxyId] = useState(state.proxyId ?? account?.proxyId ?? proxies[0]?.id ?? "")
+  // 空字符串表示「不使用代理」；提交时再映射成 null。
+  const [proxyId, setProxyId] = useState(() => initialProxyChoice(state, account, proxies))
   const [fingerprint, setFingerprint] = useState<ClaudeFingerprintView>(
     account?.fingerprint ?? {
       seed: state.fingerprintSeed || "123456",
@@ -48,11 +49,11 @@ export function AuthorizeScreen({
   const selectedProxy = proxies.find((proxy) => proxy.id === proxyId) ?? null
 
   function startBrowserAuthorization() {
-    if (name.trim() === "" || proxyId === "") return
+    if (name.trim() === "") return
     onStartBrowserAuthorization({
       accountId: account?.id,
       displayName: name.trim(),
-      proxyId,
+      proxyId: proxyId === "" ? null : proxyId,
       fingerprint,
     })
   }
@@ -113,11 +114,23 @@ export function AuthorizeScreen({
           ) : null}
           {state.step === "proxy" ? (
             <WizardBody
-              title="选一个 IP 代理"
-              description="这个账号的登录浏览器和以后所有对话请求，都从这一个代理出去。"
+              title="选择网络出口"
+              description="绑定代理后，这个账号的登录浏览器和以后所有对话请求都从代理出去；不绑定则使用系统网络。"
             >
+              <Button
+                variant="plain"
+                className={proxyId === "" ? "choice is-selected" : "choice"}
+                type="button"
+                onClick={() => setProxyId("")}
+              >
+                <span className="radio-dot" />
+                <div className="grow">
+                  <b>不使用代理（系统网络）</b>
+                  <div className="desc">登录和对话都从本机网络发出</div>
+                </div>
+              </Button>
               {proxies.length === 0 ? (
-                <p className="note">还没有代理。先在代理页添加一个 HTTP/HTTPS 代理。</p>
+                <p className="note">还没有代理。也可以继续使用系统网络。</p>
               ) : null}
               {proxies.map((proxy) => (
                 <Button
@@ -142,13 +155,12 @@ export function AuthorizeScreen({
               <div className="wizard-foot">
                 <Button
                   variant="primary"
-                  disabled={proxyId === ""}
                   onClick={() => {
-                    onEvent({ type: "set-proxy", proxyId })
+                    onEvent({ type: "set-proxy", proxyId: proxyId === "" ? null : proxyId })
                     onEvent({ type: "advance" })
                   }}
                 >
-                  绑定代理
+                  {proxyId === "" ? "使用系统网络" : "绑定代理"}
                 </Button>
               </div>
             </WizardBody>
@@ -251,25 +263,39 @@ export function AuthorizeScreen({
                     onEvent({ type: "advance" })
                   }}
                 >
-                  保存并核对出口
+                  {selectedProxy === null ? "保存并继续" : "保存并核对出口"}
                 </Button>
               </div>
             </WizardBody>
           ) : null}
           {state.step === "exit" ? (
             <WizardBody
-              title="核对出口并打开授权页"
-              description="主进程会先核对代理桥和 daemon 出口，一致后才会启动指纹浏览器内核。"
+              title={selectedProxy === null ? "使用系统网络并打开授权页" : "核对出口并打开授权页"}
+              description={
+                selectedProxy === null
+                  ? "这个账号没有绑定代理，登录和对话请求都会从本机网络直接发出。"
+                  : "主进程会先核对代理桥和 daemon 出口，一致后才会启动指纹浏览器内核。"
+              }
             >
               <div className="group">
                 <div className="item">
                   <div className="main">
-                    <div className="ttl">代理</div>
+                    <div className="ttl">网络出口</div>
                     <div className="desc mono">
-                      {selectedProxy ? `${selectedProxy.name} · ${selectedProxy.exit}` : "未选择"}
+                      {selectedProxy
+                        ? `${selectedProxy.name} · ${selectedProxy.exit}`
+                        : "系统网络（直连）"}
                     </div>
                   </div>
                 </div>
+                {selectedProxy === null ? (
+                  <div className="item">
+                    <div className="main">
+                      <div className="ttl">出口核对</div>
+                      <div className="desc">系统网络，无需出口核对</div>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="item">
                   <div className="main">
                     <div className="ttl">指纹</div>
@@ -281,10 +307,14 @@ export function AuthorizeScreen({
               <div className="wizard-foot">
                 <Button
                   variant="primary"
-                  disabled={proxyId === "" || name.trim() === ""}
+                  disabled={name.trim() === ""}
                   onClick={startBrowserAuthorization}
                 >
-                  {state.error ? "重新核对" : "开始核对并授权"}
+                  {selectedProxy === null
+                    ? "开始授权"
+                    : state.error
+                      ? "重新核对"
+                      : "开始核对并授权"}
                 </Button>
               </div>
             </WizardBody>
@@ -297,7 +327,11 @@ export function AuthorizeScreen({
               <div className="browser-wait">
                 <Icon name="browser" />
                 <b>等待浏览器确认</b>
-                <span>授权过程中出站流量持续绑定在该账号的代理上</span>
+                <span>
+                  {selectedProxy === null
+                    ? "授权过程中出站流量使用系统网络"
+                    : "授权过程中出站流量持续绑定在该账号的代理上"}
+                </span>
                 {state.error ? <span className="error-text">{state.error}</span> : null}
               </div>
               <div className="wizard-foot">
@@ -313,14 +347,16 @@ export function AuthorizeScreen({
           {state.step === "completed" ? (
             <WizardBody
               title={`「${name}」已加入号池`}
-              description="授权完成，凭据、指纹和代理已保存到本机。"
+              description="授权完成，凭据、指纹和网络设置已保存到本机。"
             >
               <div className="group">
                 <div className="item">
                   <div className="main">
-                    <div className="ttl">代理</div>
+                    <div className="ttl">网络出口</div>
                     <div className="desc mono">
-                      {selectedProxy ? `${selectedProxy.name} · ${selectedProxy.exit}` : "未选择"}
+                      {selectedProxy
+                        ? `${selectedProxy.name} · ${selectedProxy.exit}`
+                        : "系统网络（直连）"}
                     </div>
                   </div>
                 </div>
@@ -333,7 +369,9 @@ export function AuthorizeScreen({
                 <div className="item">
                   <div className="main">
                     <div className="ttl">出口核对</div>
-                    <div className="desc">一致 · 授权全程未改变</div>
+                    <div className="desc">
+                      {selectedProxy === null ? "系统网络，无需出口核对" : "一致 · 授权全程未改变"}
+                    </div>
                   </div>
                   <span className="status ok">完成</span>
                 </div>
@@ -378,10 +416,22 @@ function stepIndex(step: AuthorizationState["step"]) {
 function stepLabel(step: AuthorizationState["step"]) {
   return {
     name: "账号名称",
-    proxy: "绑定代理",
+    proxy: "网络出口",
     fingerprint: "设定指纹",
     exit: "出口核对",
     waiting: "浏览器授权",
     completed: "完成",
   }[step]
+}
+
+/** 选择代理步骤的初始值；空字符串表示使用系统网络，重新授权 direct 账号时默认选中它。 */
+function initialProxyChoice(
+  state: AuthorizationState,
+  account: ClaudeAccountView | null | undefined,
+  proxies: PoolProxy[],
+): string {
+  const requested = state.proxyId ?? account?.proxyId ?? null
+  if (requested !== null && proxies.some((proxy) => proxy.id === requested)) return requested
+  if (account) return ""
+  return proxies[0]?.id ?? ""
 }

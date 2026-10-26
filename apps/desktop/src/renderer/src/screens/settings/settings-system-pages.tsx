@@ -47,10 +47,16 @@ export function NetworkSettings() {
         </SettingRow>
       </SettingSection>
       <SettingSection title="代理">
-        <SettingRow title="代理不通时" description="不会改用本机网络直连 Anthropic">
+        <SettingRow
+          title="代理可选"
+          description="未绑定代理的账号使用系统网络；已绑定代理的请求不会直连"
+        >
+          <LockedValue>按账号绑定</LockedValue>
+        </SettingRow>
+        <SettingRow title="代理不通时" description="已绑定代理的请求失败，不会回退到系统网络直连">
           <LockedValue>请求失败，不走直连</LockedValue>
         </SettingRow>
-        <SettingRow title="出口复查" description="确认代理出口 IP 和授权时一致">
+        <SettingRow title="出口复查" description="确认已绑定代理的出口 IP 和授权时一致">
           <SelectControl
             label="出口复查间隔"
             value={recheck}

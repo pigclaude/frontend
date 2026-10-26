@@ -292,7 +292,7 @@ export function DesktopApp() {
   function startClaudeAuthorization(input: {
     accountId?: string
     displayName: string
-    proxyId: string
+    proxyId: string | null
     fingerprint: ClaudeFingerprintView
   }): void {
     acceptAuthorizationEvents.current = true

@@ -138,8 +138,7 @@ export function useClaudeAccounts(): ClaudeAccountsController {
     }) => {
       await wrap(async () => {
         if (previewBridge !== null) {
-          // 预览夹具的可空类型稍后补齐；这里只放宽控制器类型，运行时仍传原值。
-          await previewBridge.authorize(input as Parameters<typeof previewBridge.authorize>[0])
+          await previewBridge.authorize(input)
           return
         }
         await window.pigclaude?.claudeAccounts?.authorize(input)
@@ -168,8 +167,7 @@ export function useClaudeAccounts(): ClaudeAccountsController {
     }) => {
       await wrap(async () => {
         if (previewBridge !== null) {
-          // 预览夹具的可空类型稍后补齐；这里只放宽控制器类型，运行时仍传原值。
-          await previewBridge.update(input as Parameters<typeof previewBridge.update>[0])
+          await previewBridge.update(input)
           return
         }
         await window.pigclaude?.claudeAccounts?.update(input)

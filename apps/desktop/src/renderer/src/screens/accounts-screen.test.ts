@@ -63,6 +63,14 @@ const cooling: ClaudeAccountView = {
   exhaustedUntil: "2026-10-21T03:20:00.000Z",
 }
 
+const direct: ClaudeAccountView = {
+  ...ready,
+  id: "acc-direct",
+  displayName: "直连 Pro",
+  subscriptionType: "pro",
+  proxyId: null,
+}
+
 let root: Root
 let container: HTMLDivElement
 
@@ -123,6 +131,12 @@ function dialog(): HTMLElement | null {
   return document.body.querySelector<HTMLElement>('[role="dialog"]')
 }
 
+function dialogChoice(text: string): HTMLButtonElement | undefined {
+  return [...(dialog()?.querySelectorAll("button") ?? [])].find((candidate) =>
+    candidate.textContent?.includes(text),
+  )
+}
+
 describe("accounts screen", () => {
   it("shows an empty state and the add button when there is no account", async () => {
     const onOpenAuthorize = vi.fn()
@@ -146,6 +160,42 @@ describe("accounts screen", () => {
     expect(sections[0]?.textContent).toContain("冷却中")
     expect(sections[1]?.textContent).toContain("工作 Max")
     expect(sections[1]?.textContent).not.toContain("旧号 Pro")
+  })
+
+  it("shows a direct account as the system network in the list and detail", async () => {
+    await render([direct])
+
+    expect(container.textContent).toContain("系统网络（直连）")
+    await openAccount("直连 Pro")
+    expect(container.textContent).toContain("系统网络（直连）")
+    expect(container.textContent).toContain("登录与对话使用本机网络，不走代理")
+    expect(container.textContent).not.toContain("未绑定代理")
+    expect(container.textContent).not.toContain("需要绑定")
+  })
+
+  it("unbinds a bound account from the network dialog", async () => {
+    const onUpdate = vi.fn()
+    await render([ready], { onUpdate })
+    await openAccount("工作 Max")
+    await clickButton(button("设置"), "设置")
+
+    expect(dialog()?.textContent).toContain("不使用代理（系统网络直连）")
+    await clickButton(dialogChoice("不使用代理（系统网络直连）"), "不使用代理")
+    await clickButton(button("保存", dialog() ?? document.body), "保存")
+
+    expect(onUpdate).toHaveBeenCalledWith({ accountId: "acc-ready", proxyId: null })
+  })
+
+  it("saves the system network even when there are no proxies", async () => {
+    const onUpdate = vi.fn()
+    await render([ready], { onUpdate, proxies: [] })
+    await openAccount("工作 Max")
+    await clickButton(button("设置"), "设置")
+
+    expect(dialog()?.textContent).toContain("还没有代理")
+    await clickButton(button("保存", dialog() ?? document.body), "保存")
+
+    expect(onUpdate).toHaveBeenCalledWith({ accountId: "acc-ready", proxyId: null })
   })
 
   it("enables a disabled account from its detail page", async () => {

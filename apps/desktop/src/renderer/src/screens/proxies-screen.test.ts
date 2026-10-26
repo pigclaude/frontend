@@ -96,9 +96,11 @@ function dialog(): HTMLElement | null {
 }
 
 describe("proxies screen", () => {
-  it("shows an empty state that points to adding an HTTP/HTTPS proxy", async () => {
+  it("shows an optional-proxy empty state and the no-direct-fallback rule", async () => {
     await render([])
-    expect(container.textContent).toContain("还没有代理。添加一个出口固定的 HTTP/HTTPS 代理")
+    expect(container.textContent).toContain("还没有代理。代理可选；未绑定代理的账号使用系统网络")
+    expect(container.textContent).toContain("添加一个出口固定的 HTTP/HTTPS 代理")
+    expect(container.textContent).toContain("已绑定代理的请求不会直连")
   })
 
   it("passes the trimmed url and name to the bridge when a proxy is added", async () => {

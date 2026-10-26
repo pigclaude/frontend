@@ -3,7 +3,7 @@
 /** Claude 账号授权向导当前步骤。 */
 export type AuthorizationStep = "name" | "proxy" | "fingerprint" | "exit" | "waiting" | "completed"
 
-/** Claude 账号授权向导状态。 */
+/** Claude 账号授权向导状态；proxyId 为 null 表示不绑定代理、使用系统网络。 */
 export type AuthorizationState = {
   step: AuthorizationStep
   accountName: string
@@ -21,7 +21,7 @@ export type AuthorizationState = {
 /** Claude 账号授权状态变化事件。 */
 export type AuthorizationEvent =
   | { type: "set-name"; accountName: string }
-  | { type: "set-proxy"; proxyId: string }
+  | { type: "set-proxy"; proxyId: string | null }
   | { type: "set-fingerprint"; fingerprintSeed: string }
   | { type: "advance" }
   | { type: "set-exits"; bridgeExit: string; daemonExit: string }

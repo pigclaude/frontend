@@ -16,6 +16,7 @@ export type PoolAccount = {
   cooldownUntil: string | null
   usage: number | null
   autoSwitch: boolean
+  /** 绑定的代理 id；null 表示不绑定代理、使用系统网络。 */
   proxyId: string | null
   fingerprint: string
   email?: string | null
@@ -45,14 +46,8 @@ export function createPoolFixtures(): { accounts: PoolAccount[]; proxies: PoolPr
     enabled: true,
     statusKind: account.autoSwitch ? ("ready" as const) : ("reauth" as const),
     cooldownUntil: null,
-    proxyId:
-      account.id === "work"
-        ? "sjc-02"
-        : account.id === "primary"
-          ? "la-01"
-          : account.id === "backup"
-            ? "sea-03"
-            : null,
+    // 备用 Pro 演示 direct 账号，其余账号各绑定一个代理。
+    proxyId: account.id === "work" ? "sjc-02" : account.id === "primary" ? "la-01" : null,
     fingerprint: account.id === "legacy" ? "fp_93e0…771b" : `fp_${account.id}…73aa`,
   }))
   const proxies = proxyFixtures.map((proxy) => ({ ...proxy, accountId: proxy.accountId ?? null }))

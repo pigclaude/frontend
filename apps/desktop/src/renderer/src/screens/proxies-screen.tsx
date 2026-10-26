@@ -64,7 +64,7 @@ export function ProxiesScreen({
       <header className="page-head">
         <div>
           <h1>代理</h1>
-          <p className="sub">每个账号绑定一个代理，登录和对话都只走它</p>
+          <p className="sub">代理可选；未绑定代理的账号使用系统网络；已绑定代理的请求不会直连</p>
         </div>
         <div className="actions">
           <Button variant="secondary" onClick={() => void testAll()} disabled={testingAll}>
@@ -81,7 +81,10 @@ export function ProxiesScreen({
         </p>
       ) : null}
       {proxies.length === 0 ? (
-        <p className="note">还没有代理。添加一个出口固定的 HTTP/HTTPS 代理后再授权账号。</p>
+        <p className="note">
+          还没有代理。代理可选；未绑定代理的账号使用系统网络。添加一个出口固定的 HTTP/HTTPS
+          代理，给需要固定出口的账号使用。
+        </p>
       ) : null}
       <div className="group">
         {proxies.map((proxy) => (
@@ -130,7 +133,9 @@ export function ProxiesScreen({
           </div>
         ))}
       </div>
-      <p className="note">代理不可用时请求以 503 结束，不会从本机网络直接发出。</p>
+      <p className="note">
+        已绑定代理的请求不会直连：代理不可用时以 503 结束，不会回退到本机网络。
+      </p>
       <AddProxyDialog
         open={addOpen || editing !== null}
         editing={editing === null ? null : { id: editing.id, name: editing.name }}
@@ -152,7 +157,7 @@ export function ProxiesScreen({
           <div className="dialog-head">
             <DialogTitle>删除代理「{deleting?.name ?? ""}」？</DialogTitle>
             <DialogDescription>
-              删除后账号需要重新绑定代理，已保存的登录不会自动失效。
+              删除后，绑定它的账号会因找不到代理而不可用，已保存的登录不会自动失效。
             </DialogDescription>
           </div>
           <div className="dialog-foot">

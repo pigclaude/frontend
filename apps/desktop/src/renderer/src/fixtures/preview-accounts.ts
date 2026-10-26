@@ -29,7 +29,8 @@ export function previewAccounts(): ClaudeAccountView[] {
       subscriptionType: "max",
       needsReauth: false,
       credentialExpiresAt: Date.now() + 55 * 60 * 1_000,
-      proxyId: "preview-la",
+      // null 表示不绑定代理，演示 direct 账号。
+      proxyId: null,
       fingerprint: previewFingerprint,
       createdAt: "2026-10-01T02:10:00.000Z",
       updatedAt: "2026-10-21T09:30:00.000Z",
@@ -113,7 +114,7 @@ export function createPreviewAccountsBridge(input: {
     authorize: async (request: {
       accountId?: string
       displayName: string
-      proxyId: string
+      proxyId: string | null
       fingerprint: ClaudeFingerprintView
     }) => {
       const event = (phase: ClaudeAccountEvent["phase"]): void => {
@@ -147,7 +148,8 @@ export function createPreviewAccountsBridge(input: {
       accountId: string
       displayName?: string
       enabled?: boolean
-      proxyId?: string
+      /** 省略表示不变；null 表示解绑代理并改用系统网络。 */
+      proxyId?: string | null
       fingerprint?: ClaudeFingerprintView
     }) => {
       accounts = accounts.map((account) =>

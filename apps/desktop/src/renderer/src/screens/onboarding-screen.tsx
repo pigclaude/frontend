@@ -23,8 +23,8 @@ export type OnboardingScreenProps = {
 const stepCopy: Record<OnboardingStep, { icon: string; title: string; why: string }> = {
   proxy: {
     icon: "globe",
-    title: "添加一个代理",
-    why: "Claude 账号的登录和对话都从这个代理出去，避免账号被风控。",
+    title: "添加一个代理（可选）",
+    why: "代理可选：未绑定代理的账号使用系统网络；已绑定代理的请求不会直连，避免账号被风控。",
   },
   account: {
     icon: "user",
@@ -131,7 +131,7 @@ function ProxyStep({ onAdded, onSkip }: { onAdded: () => void; onSkip: () => voi
         onChange={(event) => setAddress(event.target.value)}
       />
       <p className="onboarding-hint" id="onboarding-proxy-hint">
-        支持 http、https、socks5，添加前会先测试一次
+        支持 http、https、socks5，添加前会先测试一次；也可以跳过，让账号使用系统网络
       </p>
       <StepFoot onSkip={onSkip}>
         <Button variant="primary" size="lg" type="submit" disabled={!ready}>

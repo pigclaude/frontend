@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest"
 import type { ClaudeAccountView, ProxyView } from "@pigclaude/contracts/claude-account"
-import { toPoolAccount, toPoolProxy } from "./claude-account-view"
+import { accountNetworkLabel, toPoolAccount, toPoolProxy } from "./claude-account-view"
 
 const fingerprint = {
   seed: "123456",
@@ -49,6 +49,18 @@ describe("claude account view mapping", () => {
       fingerprintDetail: fingerprint,
     })
     expect(JSON.stringify(mapped)).not.toMatch(/accessToken|refreshToken/)
+  })
+
+  it("maps a direct account without a proxy and labels it as the system network", () => {
+    const mapped = toPoolAccount({ ...account, proxyId: null }, [proxy])
+    expect(mapped.proxyId).toBeNull()
+    expect(mapped.proxyName).toBeNull()
+    expect(mapped.proxyExit).toBeNull()
+    expect(accountNetworkLabel(mapped)).toBe("系统网络（直连）")
+  })
+
+  it("labels a bound account with its proxy name", () => {
+    expect(accountNetworkLabel(toPoolAccount(account, [proxy]))).toBe("LA-01")
   })
 
   it("marks reauthorization accounts as not auto-switchable", () => {

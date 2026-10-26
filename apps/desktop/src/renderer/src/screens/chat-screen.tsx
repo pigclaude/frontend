@@ -70,7 +70,8 @@ export function ChatScreen({
         needsReauth: account.needsReauth,
         hasCredential: account.credentialExpiresAt !== null,
         exhaustedUntil: account.exhaustedUntil,
-        proxyUrl: proxyUrls.get(account.proxyId),
+        // 没有绑定代理时传 null 表示走系统网络；账号菜单和主进程选号器判断一致。
+        proxyUrl: account.proxyId === null ? null : proxyUrls.get(account.proxyId),
       },
       Date.now(),
     ),

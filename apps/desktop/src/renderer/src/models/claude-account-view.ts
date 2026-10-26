@@ -29,6 +29,12 @@ export function toPoolAccount(view: ClaudeAccountView, proxies: ProxyView[]): Po
   }
 }
 
+/** 账号网络出口的展示文案。保证 direct 账号明确显示使用系统网络，而不是「未绑定代理」。 */
+export function accountNetworkLabel(account: PoolAccount): string {
+  if (account.proxyId === null) return "系统网络（直连）"
+  return account.proxyName ?? "代理不可用"
+}
+
 /** 把代理视图映射成代理页记录。保证失败结果不被显示成可用。 */
 export function toPoolProxy(view: ProxyView, accounts: ClaudeAccountView[]): PoolProxy {
   return {

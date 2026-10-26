@@ -9,14 +9,15 @@ import {
   FingerprintDialog,
 } from "../components/account-dialogs"
 import type { PoolAccount, PoolProxy } from "../fixtures/pool-fixtures"
+import { accountNetworkLabel } from "../models/claude-account-view"
 import { AccountDetailScreen } from "./account-detail-screen"
 
-/** 账号更新输入，字段与桌面桥一致。 */
+/** 账号更新输入，字段与桌面桥一致；proxyId 为 null 表示解绑并改用系统网络。 */
 export type ClaudeAccountUpdate = {
   accountId: string
   displayName?: string
   enabled?: boolean
-  proxyId?: string
+  proxyId?: string | null
   fingerprint?: ClaudeFingerprintView
 }
 
@@ -68,6 +69,7 @@ export function AccountsScreen({
       <AccountProxyDialog
         open={proxyId !== null}
         accountName={accounts.find((account) => account.id === proxyId)?.name ?? "账号"}
+        currentProxyId={accounts.find((account) => account.id === proxyId)?.proxyId ?? null}
         proxies={proxies}
         onOpenChange={(open) => {
           if (!open) setProxyId(null)
@@ -146,7 +148,9 @@ export function AccountsScreen({
                 <span className="avatar">{account.mark}</span>
                 <div className="main">
                   <div className="ttl">{account.name}</div>
-                  <div className="desc">{account.status} · 不参与自动切换</div>
+                  <div className="desc">
+                    {account.status} · {accountNetworkLabel(account)} · 不参与自动切换
+                  </div>
                 </div>
                 <span className={statusClass(account.statusKind)}>
                   {statusLabel(account.statusKind)}
@@ -176,7 +180,9 @@ export function AccountsScreen({
               <span className="avatar">{account.mark}</span>
               <div className="main">
                 <div className="ttl">{account.name}</div>
-                <div className="desc">{account.status}</div>
+                <div className="desc">
+                  {account.status} · {accountNetworkLabel(account)}
+                </div>
                 <div className="meter">
                   <span className={account.usage === 100 ? "bar is-full" : "bar"}>
                     <i style={{ width: `${account.usage ?? 0}%` }} />

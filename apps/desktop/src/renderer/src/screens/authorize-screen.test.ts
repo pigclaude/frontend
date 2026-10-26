@@ -57,6 +57,12 @@ const savedAccount: ClaudeAccountView = {
   updatedAt: "2026-10-21T00:00:00.000Z",
 }
 
+const directAccount: ClaudeAccountView = {
+  ...savedAccount,
+  displayName: "直连账号",
+  proxyId: null,
+}
+
 let root: Root
 let container: HTMLDivElement
 
@@ -194,11 +200,40 @@ describe("Claude account authorization wizard", () => {
     expect(onStart).toHaveBeenCalledTimes(1)
   })
 
-  it("asks for a proxy before binding when the pool is empty", async () => {
-    await render({ proxies: [], onStart: vi.fn() })
+  it("continues with the system network when the proxy pool is empty", async () => {
+    const onStart = vi.fn()
+    await render({ proxies: [], onStart })
     await click("下一步")
 
-    expect(container.textContent).toContain("还没有代理。先在代理页添加一个 HTTP/HTTPS 代理。")
-    expect(button("绑定代理")?.disabled).toBe(true)
+    expect(container.textContent).toContain("还没有代理。也可以继续使用系统网络。")
+    expect(container.querySelector("button.choice.is-selected")?.textContent).toContain(
+      "不使用代理（系统网络）",
+    )
+    await click("使用系统网络")
+    await click("保存并继续")
+
+    expect(container.textContent).toContain("系统网络（直连）")
+    expect(container.textContent).toContain("系统网络，无需出口核对")
+    await click("开始授权")
+    expect(onStart).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: undefined, proxyId: null }),
+    )
+  })
+
+  it("defaults a direct account to the system network when reauthorizing", async () => {
+    const onStart = vi.fn()
+    await render({ proxies, account: directAccount, onStart })
+    await click("下一步")
+
+    expect(container.querySelector("button.choice.is-selected")?.textContent).toContain(
+      "不使用代理（系统网络）",
+    )
+    await click("使用系统网络")
+    await click("保存并继续")
+    await click("开始授权")
+
+    expect(onStart).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: "acc-1", proxyId: null }),
+    )
   })
 })

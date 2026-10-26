@@ -39,33 +39,58 @@ export function AccountDeleteDialog({
   )
 }
 
-/** 账号绑定代理切换弹层。 */
+/** 账号网络出口切换弹层；选中「不使用代理」时回调 null。 */
 export function AccountProxyDialog({
   open,
   accountName,
+  currentProxyId,
   proxies,
   onOpenChange,
   onConfirm,
 }: {
   open: boolean
   accountName: string
+  currentProxyId: string | null
   proxies: PoolProxy[]
   onOpenChange: (open: boolean) => void
-  onConfirm: (proxyId: string) => void
+  onConfirm: (proxyId: string | null) => void
 }) {
-  const [selected, setSelected] = useState(proxies[0]?.id ?? "")
+  // 空字符串表示「不使用代理」；账号当前绑定的代理不在列表里时也回到系统网络。
+  const [selected, setSelected] = useState("")
   useEffect(() => {
-    if (open) setSelected(proxies[0]?.id ?? "")
-  }, [open, proxies])
+    if (!open) return
+    const current =
+      currentProxyId !== null && proxies.some((proxy) => proxy.id === currentProxyId)
+        ? currentProxyId
+        : ""
+    setSelected(current)
+  }, [open, currentProxyId, proxies])
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <div className="dialog-head">
-          <DialogTitle>给「{accountName}」更换代理</DialogTitle>
-          <DialogDescription>登录和对话都会从新的代理出口发出。</DialogDescription>
+          <DialogTitle>给「{accountName}」设置网络出口</DialogTitle>
+          <DialogDescription>
+            绑定代理后，登录和对话都会从新的代理出口发出；不使用代理则走系统网络。
+          </DialogDescription>
         </div>
         <div className="dialog-body">
           <div className="group">
+            <Button
+              variant="plain"
+              className={selected === "" ? "choice is-selected" : "choice"}
+              type="button"
+              onClick={() => setSelected("")}
+            >
+              <span className="radio-dot" />
+              <div className="grow">
+                <b>不使用代理（系统网络直连）</b>
+                <div className="desc">登录和对话都从本机网络发出</div>
+              </div>
+            </Button>
+            {proxies.length === 0 ? (
+              <p className="note">还没有代理。可以保存为系统网络直连。</p>
+            ) : null}
             {proxies.map((proxy) => (
               <Button
                 variant="plain"
@@ -92,7 +117,7 @@ export function AccountProxyDialog({
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button variant="primary" disabled={!selected} onClick={() => onConfirm(selected)}>
+          <Button variant="primary" onClick={() => onConfirm(selected === "" ? null : selected)}>
             保存
           </Button>
         </div>

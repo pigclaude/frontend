@@ -1,6 +1,7 @@
-// 负责展示单个 Claude 账号的额度、代理、指纹和凭据状态。
+// 负责展示单个 Claude 账号的额度、网络出口、指纹和凭据状态。
 import { Button } from "../components/ui/button"
 import type { PoolAccount } from "../fixtures/pool-fixtures"
+import { accountNetworkLabel } from "../models/claude-account-view"
 
 /** 账号详情页面 props。 */
 export type AccountDetailScreenProps = {
@@ -88,20 +89,22 @@ export function AccountDetailScreen({
       </section>
       <section className="section">
         <div className="section-head">
-          <h2>绑定代理</h2>
+          <h2>网络出口</h2>
         </div>
         <div className="group">
           <div className="item">
             <div className="main">
-              <div className="ttl">{account.proxyName ?? "未绑定代理"}</div>
+              <div className="ttl">{accountNetworkLabel(account)}</div>
               <div className="desc mono">
-                {account.proxyExit
-                  ? `${account.proxyExit} · 登录与对话同一出口`
-                  : "登录前需要绑定一个可用代理"}
+                {account.proxyId === null
+                  ? "登录与对话使用本机网络，不走代理"
+                  : account.proxyExit
+                    ? `${account.proxyExit} · 登录与对话同一出口`
+                    : "代理已不可用，请更换或改为系统网络"}
               </div>
             </div>
             <Button size="sm" variant="secondary" onClick={onChangeProxy}>
-              更换
+              设置
             </Button>
           </div>
         </div>

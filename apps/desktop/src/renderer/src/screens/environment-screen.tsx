@@ -58,7 +58,8 @@ export function EnvironmentScreen({
         needsReauth: account.needsReauth,
         hasCredential: account.credentialExpiresAt !== null,
         exhaustedUntil: account.exhaustedUntil,
-        proxyUrl: proxyUrls.get(account.proxyId),
+        // 没有绑定代理时传 null 表示走系统网络；账号菜单和主进程选号器判断一致。
+        proxyUrl: account.proxyId === null ? null : proxyUrls.get(account.proxyId),
       },
       Date.now(),
     ),
@@ -156,22 +157,26 @@ export function EnvironmentScreen({
         </div>
         <div className="group">
           <CheckRow
-            label="账号绑定代理"
+            label="网络出口"
             value={
               proxy === null
-                ? "没有代理"
+                ? "系统网络（直连）"
                 : proxy.lastTest?.ok === true
                   ? `${proxy.name} · ${proxy.lastTest.ip ?? "出口未知"}`
                   : proxy.lastTest === null
                     ? `${proxy.name} · 待检测`
                     : `${proxy.name} · 未通过测试`
             }
-            status={proxy?.lastTest?.ok === true ? "ok" : proxy === null ? "bad" : "warn"}
+            status={proxy?.lastTest?.ok === true ? "ok" : proxy === null ? "ok" : "warn"}
           />
           <CheckRow
             label="出口检测"
-            value={egressValue(egress, egressLoading, egressError)}
-            status={egress?.ok === true ? "ok" : egress === null ? "idle" : "bad"}
+            value={
+              proxy === null
+                ? "未绑定代理，无需检测"
+                : egressValue(egress, egressLoading, egressError)
+            }
+            status={egress?.ok === true ? "ok" : proxy === null || egress === null ? "idle" : "bad"}
           />
         </div>
         <div className="row">
@@ -184,7 +189,9 @@ export function EnvironmentScreen({
             {egressLoading ? "检测中…" : "检测出口"}
           </Button>
         </div>
-        <p className="note">代理不通时，请求以 503 结束，不会从本机网络直接发出。</p>
+        <p className="note">
+          已绑定代理的请求不会直连，代理不通时以 503 结束；未绑定代理的账号使用系统网络。
+        </p>
       </section>
     </div>
   )

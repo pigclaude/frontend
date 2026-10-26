@@ -162,6 +162,7 @@ describe("desktop onboarding gate", () => {
     expect(container.querySelector("[data-main-window]")).toBeNull()
     expect(container.textContent).toContain("第 1 步，共 3 步")
     expect(container.textContent).toContain("添加一个代理")
+    expect(container.textContent).toContain("代理可选")
     expect(container.textContent).not.toContain("林舟")
   })
 

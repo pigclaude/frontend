@@ -38,6 +38,13 @@ const account: ClaudeAccountView = {
   updatedAt: "2026-10-21T00:00:00.000Z",
 }
 
+const directAccount: ClaudeAccountView = {
+  ...account,
+  id: "acc-direct",
+  displayName: "直连 Max",
+  proxyId: null,
+}
+
 const models: ClaudeModel[] = [
   { id: "claude-sonnet", displayName: "Sonnet", description: "", isDefault: true },
   { id: "claude-opus", displayName: "Opus", description: "", isDefault: false },
@@ -102,6 +109,17 @@ describe("environment screen", () => {
     expect(container.textContent).toContain("1 个账号 · 1 个可用")
     expect(container.textContent).toContain("LA-01")
     expect(container.textContent).toContain("203.0.113.42")
+  })
+
+  it("counts a direct account as available and treats the system network as normal", async () => {
+    await render({ accounts: [directAccount], proxies: [] })
+
+    expect(container.textContent).toContain("1 个账号 · 1 个可用")
+    expect(container.textContent).toContain("系统网络（直连）")
+    expect(container.textContent).toContain("未绑定代理，无需检测")
+    expect(container.textContent).not.toContain("没有代理")
+    expect(button("检测出口")?.disabled).toBe(true)
+    expect(container.querySelectorAll(".status.bad")).toHaveLength(0)
   })
 
   it("reports a missing daemon or CLI with a readable reason", async () => {

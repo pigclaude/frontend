@@ -1,4 +1,4 @@
-// 负责在选号前刷新即将过期的 Claude 凭据；单飞、轮换并区分需要重新授权。
+// 负责在选号前刷新即将过期的 Claude 凭据；直连账号走系统网络，单飞、轮换并区分需要重新授权。
 
 import type { AccountRecord, ClaudeCredential, LocalStore } from "@pigclaude/local-store"
 import { ProxyAgent } from "undici"
@@ -60,22 +60,24 @@ export class CredentialRefresher {
     if (credential === null) {
       throw new ClaudeAccountError("CREDENTIAL_REFRESH_FAILED", "账号没有可用凭据")
     }
-    const proxy = await this.#store.getProxy(account.proxyId)
-    if (proxy === null) {
+    const proxy = account.proxyId === null ? null : await this.#store.getProxy(account.proxyId)
+    if (account.proxyId !== null && proxy === null) {
       throw new ClaudeAccountError("PROXY_UNAVAILABLE", "账号绑定的代理不存在")
     }
-    let dispatcher: ProxyAgent
-    try {
-      dispatcher = new ProxyAgent(proxy.url)
-    } catch {
-      throw new ClaudeAccountError("PROXY_INVALID", "账号绑定的代理地址无效")
+    let dispatcher: ProxyAgent | null = null
+    if (proxy !== null) {
+      try {
+        dispatcher = new ProxyAgent(proxy.url)
+      } catch {
+        throw new ClaudeAccountError("PROXY_INVALID", "账号绑定的代理地址无效")
+      }
     }
     let tokens: ClaudeOAuthTokens
     try {
       tokens = await this.#oauth.refresh({
         refreshToken: credential.refreshToken,
         scopes: credential.scopes,
-        dispatcher,
+        ...(dispatcher === null ? {} : { dispatcher }),
       })
     } catch (error: unknown) {
       if (error instanceof SubscriptionOAuthError && error.invalidGrant) {
@@ -93,7 +95,7 @@ export class CredentialRefresher {
       }
       throw new ClaudeAccountError("CREDENTIAL_REFRESH_FAILED", "凭据刷新失败")
     } finally {
-      await dispatcher.close().catch(() => undefined)
+      await dispatcher?.close().catch(() => undefined)
     }
     const updatedCredential: ClaudeCredential = {
       ...credential,

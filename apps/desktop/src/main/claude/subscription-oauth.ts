@@ -249,13 +249,13 @@ export class SubscriptionOAuth {
     }
   }
 
-  /** 用授权 code 交换 token。保证只接受完整成功响应。 */
+  /** 用授权 code 交换 token。保证只接受完整成功响应；没有 dispatcher 时使用系统网络。 */
   async exchangeCode(input: {
     code: string
     state: string
     codeVerifier: string
     redirectUri: string
-    dispatcher: Dispatcher
+    dispatcher?: Dispatcher
   }): Promise<ClaudeOAuthTokens> {
     return this.#requestTokens(
       {
@@ -271,11 +271,11 @@ export class SubscriptionOAuth {
     )
   }
 
-  /** 用 refresh token 换新 token。保证 refresh token 轮换时保留新值。 */
+  /** 用 refresh token 换新 token。保证 refresh token 轮换时保留新值；没有 dispatcher 时使用系统网络。 */
   async refresh(input: {
     refreshToken: string
     scopes?: string[]
-    dispatcher: Dispatcher
+    dispatcher?: Dispatcher
   }): Promise<ClaudeOAuthTokens> {
     return this.#requestTokens(
       {
@@ -290,17 +290,17 @@ export class SubscriptionOAuth {
     )
   }
 
-  /** 读取账号 profile。保证失败时返回 null，不阻断凭据保存。 */
+  /** 读取账号 profile。保证失败时返回 null，不阻断凭据保存；没有 dispatcher 时使用系统网络。 */
   async readProfile(input: {
     accessToken: string
-    dispatcher: Dispatcher
+    dispatcher?: Dispatcher
   }): Promise<ClaudeOAuthProfile | null> {
     let response: Awaited<ReturnType<typeof undiciFetch>>
     try {
       response = await this.#config.fetch(this.#config.profileUrl, {
         method: "GET",
         headers: { authorization: `Bearer ${input.accessToken}` },
-        dispatcher: input.dispatcher,
+        ...(input.dispatcher === undefined ? {} : { dispatcher: input.dispatcher }),
         signal: AbortSignal.timeout(this.#config.timeoutMs),
         redirect: "manual",
       })
@@ -322,7 +322,7 @@ export class SubscriptionOAuth {
 
   async #requestTokens(
     body: Record<string, string>,
-    dispatcher: Dispatcher,
+    dispatcher: Dispatcher | undefined,
     failureCode: SubscriptionOAuthErrorCode,
     fallbackRefreshToken?: string,
   ): Promise<ClaudeOAuthTokens> {
@@ -332,7 +332,7 @@ export class SubscriptionOAuth {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
-        dispatcher,
+        ...(dispatcher === undefined ? {} : { dispatcher }),
         signal: AbortSignal.timeout(this.#config.timeoutMs),
         redirect: "manual",
       })

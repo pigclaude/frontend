@@ -82,15 +82,14 @@ function requireProxyService(options: ClaudeIpcOptions): ProxyService {
 function readAuthorizeInput(value: unknown): AuthorizeClaudeAccountInput {
   if (!isRecord(value)) throw invalidInput()
   const displayName = readString(value.displayName)
-  const proxyId = readString(value.proxyId)
   const fingerprint = value.fingerprint
-  if (displayName === null || proxyId === null || !isClaudeFingerprintView(fingerprint)) {
+  if (displayName === null || !isClaudeFingerprintView(fingerprint)) {
     throw invalidInput()
   }
   return {
     accountId: readOptionalString(value.accountId),
     displayName,
-    proxyId,
+    proxyId: readAuthorizeProxyId(value.proxyId),
     fingerprint: fingerprint as ClaudeFingerprintView,
   }
 }
@@ -101,7 +100,7 @@ function readUpdateInput(value: unknown): UpdateClaudeAccountInput {
   if (accountId === null) throw invalidInput()
   const displayName = readOptionalString(value.displayName)
   const enabled = value.enabled
-  const proxyId = readOptionalString(value.proxyId)
+  const proxyId = readUpdateProxyId(value.proxyId)
   const fingerprint = value.fingerprint
   if (enabled !== undefined && typeof enabled !== "boolean") throw invalidInput()
   if (fingerprint !== undefined && !isClaudeFingerprintView(fingerprint)) throw invalidInput()
@@ -112,6 +111,21 @@ function readUpdateInput(value: unknown): UpdateClaudeAccountInput {
     ...(proxyId === undefined ? {} : { proxyId }),
     ...(fingerprint === undefined ? {} : { fingerprint: fingerprint as ClaudeFingerprintView }),
   }
+}
+
+/** 解析授权请求的 proxyId。保证 null 和空字符串都表示直连，缺省或其他类型不合法。 */
+function readAuthorizeProxyId(value: unknown): string | null {
+  if (value === null || value === "") return null
+  if (typeof value === "string") return value
+  throw invalidInput()
+}
+
+/** 解析更新请求的 proxyId。保证 undefined 保持不变，null 和空字符串表示解绑。 */
+function readUpdateProxyId(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined
+  if (value === null || value === "") return null
+  if (typeof value === "string") return value
+  throw invalidInput()
 }
 
 function readAccountId(value: unknown): string {

@@ -25,20 +25,20 @@ import {
 
 const defaultEgressCheckUrl = "https://www.cloudflare.com/cdn-cgi/trace"
 
-/** 添加或重新授权 Claude 账号的输入。 */
+/** 添加或重新授权 Claude 账号的输入。proxyId 为 null 表示使用系统网络。 */
 export type AuthorizeClaudeAccountInput = {
   accountId?: string
   displayName: string
-  proxyId: string
+  proxyId: string | null
   fingerprint: ClaudeFingerprintView
 }
 
-/** 修改账号设置的输入。 */
+/** 修改账号设置的输入。proxyId 省略表示不变，null 表示解绑并使用系统网络。 */
 export type UpdateClaudeAccountInput = {
   accountId: string
   displayName?: string
   enabled?: boolean
-  proxyId?: string
+  proxyId?: string | null
   fingerprint?: ClaudeFingerprintView
 }
 
@@ -93,7 +93,7 @@ export class ClaudeAccountService {
     return accounts.map(toView)
   }
 
-  /** 添加或重新授权一个 Claude 账号。保证出口、state、账号身份和存储全部通过后才保留凭据。 */
+  /** 添加或重新授权一个 Claude 账号。保证绑定代理时先核对出口；身份和存储全部通过后才保留凭据。 */
   async authorize(input: AuthorizeClaudeAccountInput): Promise<ClaudeAccountView> {
     const accountId = input.accountId ?? this.#id()
     this.#emit(accountId, "preparing")
@@ -116,22 +116,26 @@ export class ClaudeAccountService {
         throw new ClaudeAccountError("FINGERPRINT_INVALID", validation.message)
       }
       const fingerprint = validation.fingerprint
-      const proxy = await this.#deps.store.getProxy(input.proxyId)
-      if (proxy === null) throw new ClaudeAccountError("PROXY_INVALID", "代理不存在")
+      const proxy = input.proxyId === null ? null : await this.#deps.store.getProxy(input.proxyId)
+      if (input.proxyId !== null && proxy === null) {
+        throw new ClaudeAccountError("PROXY_INVALID", "代理不存在")
+      }
       await this.#deps.browser.ensureAvailable()
 
-      bridge = await this.#deps.startBridge({ upstreamProxyUrl: proxy.url })
-      this.#emit(accountId, "checking-egress")
-      const egress = await this.#deps.checkEgress({
-        bridgeUrl: bridge.url,
-        upstreamProxyUrl: proxy.url,
-        checkUrl: this.#egressCheckUrl,
-      })
-      if (!egress.ok) {
-        throw new ClaudeAccountError(
-          egress.reason === "mismatch" ? "EGRESS_MISMATCH" : "EGRESS_CHECK_FAILED",
-          "请勿登录",
-        )
+      if (proxy !== null) {
+        bridge = await this.#deps.startBridge({ upstreamProxyUrl: proxy.url })
+        this.#emit(accountId, "checking-egress")
+        const egress = await this.#deps.checkEgress({
+          bridgeUrl: bridge.url,
+          upstreamProxyUrl: proxy.url,
+          checkUrl: this.#egressCheckUrl,
+        })
+        if (!egress.ok) {
+          throw new ClaudeAccountError(
+            egress.reason === "mismatch" ? "EGRESS_MISMATCH" : "EGRESS_CHECK_FAILED",
+            "请勿登录",
+          )
+        }
       }
 
       const profileDir = this.#deps.browser.profileDir(accountId)
@@ -148,14 +152,14 @@ export class ClaudeAccountService {
       await this.#deps.browser.launch({
         accountId,
         authorizeUrl,
-        bridgeUrl: bridge.url,
+        ...(bridge === null ? {} : { bridgeUrl: bridge.url }),
         fingerprint,
       })
       browserLaunched = true
       const code = await callback.waitForCode()
       this.#emit(accountId, "exchanging")
 
-      const dispatcher = new ProxyAgent(bridge.url)
+      const dispatcher = bridge === null ? null : new ProxyAgent(bridge.url)
       let tokens: ClaudeOAuthTokens
       let profile: ClaudeOAuthProfile | null
       try {
@@ -164,14 +168,14 @@ export class ClaudeAccountService {
           state: oauthRequest.state,
           codeVerifier: oauthRequest.codeVerifier,
           redirectUri: callback.redirectUri,
-          dispatcher,
+          ...(dispatcher === null ? {} : { dispatcher }),
         })
         profile = await this.#deps.oauth.readProfile({
           accessToken: tokens.accessToken,
-          dispatcher,
+          ...(dispatcher === null ? {} : { dispatcher }),
         })
       } finally {
-        await dispatcher.close().catch(() => undefined)
+        await dispatcher?.close().catch(() => undefined)
       }
 
       assertSameAccount(existing, profile)
@@ -225,9 +229,13 @@ export class ClaudeAccountService {
     }
     let proxyId = account.proxyId
     if (input.proxyId !== undefined) {
-      const proxy = await this.#deps.store.getProxy(input.proxyId)
-      if (proxy === null) throw new ClaudeAccountError("PROXY_INVALID", "代理不存在")
-      proxyId = input.proxyId
+      if (input.proxyId === null) {
+        proxyId = null
+      } else {
+        const proxy = await this.#deps.store.getProxy(input.proxyId)
+        if (proxy === null) throw new ClaudeAccountError("PROXY_INVALID", "代理不存在")
+        proxyId = input.proxyId
+      }
     }
     let fingerprint = account.fingerprint
     if (input.fingerprint !== undefined) {

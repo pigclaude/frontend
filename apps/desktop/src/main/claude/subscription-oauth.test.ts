@@ -142,6 +142,44 @@ describe("subscription oauth", () => {
     }
   })
 
+  it("uses the default network when no dispatcher is given", async () => {
+    const seen: FetchInit[] = []
+    const oauth = new SubscriptionOAuth({
+      now: () => 1_000,
+      fetch: sequenceFetch([
+        (_url, init) => {
+          seen.push(init)
+          return Promise.resolve(
+            json({ access_token: "access", refresh_token: "refresh", expires_in: 300 }),
+          )
+        },
+        (_url, init) => {
+          seen.push(init)
+          return Promise.resolve(json({ account: { uuid: "account-uuid" } }))
+        },
+        (_url, init) => {
+          seen.push(init)
+          return Promise.resolve(
+            json({ access_token: "next", refresh_token: "next-refresh", expires_in: 300 }),
+          )
+        },
+      ]),
+    })
+    const tokens = await oauth.exchangeCode({
+      code: "code-1",
+      state: "state-1",
+      codeVerifier: "verifier-1",
+      redirectUri: "http://localhost:1234/callback",
+    })
+    expect(tokens.accessToken).toBe("access")
+    expect(await oauth.readProfile({ accessToken: tokens.accessToken })).toMatchObject({
+      accountUuid: "account-uuid",
+    })
+    expect((await oauth.refresh({ refreshToken: "refresh" })).accessToken).toBe("next")
+    expect(seen).toHaveLength(3)
+    for (const init of seen) expect("dispatcher" in init).toBe(false)
+  })
+
   it("rejects incomplete token responses without leaking the body", async () => {
     const dispatcher = new ProxyAgent("http://127.0.0.1:1")
     try {

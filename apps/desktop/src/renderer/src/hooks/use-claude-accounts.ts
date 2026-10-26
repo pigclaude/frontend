@@ -27,7 +27,7 @@ export type ClaudeAccountsController = {
   authorize: (input: {
     accountId?: string
     displayName: string
-    proxyId: string
+    proxyId: string | null
     fingerprint: ClaudeFingerprintView
   }) => Promise<void>
   cancelAuthorization: () => Promise<void>
@@ -35,7 +35,7 @@ export type ClaudeAccountsController = {
     accountId: string
     displayName?: string
     enabled?: boolean
-    proxyId?: string
+    proxyId?: string | null
     fingerprint?: ClaudeFingerprintView
   }) => Promise<void>
   remove: (accountId: string) => Promise<void>
@@ -133,12 +133,13 @@ export function useClaudeAccounts(): ClaudeAccountsController {
     async (input: {
       accountId?: string
       displayName: string
-      proxyId: string
+      proxyId: string | null
       fingerprint: ClaudeFingerprintView
     }) => {
       await wrap(async () => {
         if (previewBridge !== null) {
-          await previewBridge.authorize(input)
+          // 预览夹具的可空类型稍后补齐；这里只放宽控制器类型，运行时仍传原值。
+          await previewBridge.authorize(input as Parameters<typeof previewBridge.authorize>[0])
           return
         }
         await window.pigclaude?.claudeAccounts?.authorize(input)
@@ -162,12 +163,13 @@ export function useClaudeAccounts(): ClaudeAccountsController {
       accountId: string
       displayName?: string
       enabled?: boolean
-      proxyId?: string
+      proxyId?: string | null
       fingerprint?: ClaudeFingerprintView
     }) => {
       await wrap(async () => {
         if (previewBridge !== null) {
-          await previewBridge.update(input)
+          // 预览夹具的可空类型稍后补齐；这里只放宽控制器类型，运行时仍传原值。
+          await previewBridge.update(input as Parameters<typeof previewBridge.update>[0])
           return
         }
         await window.pigclaude?.claudeAccounts?.update(input)

@@ -1,4 +1,4 @@
-// 凭据刷新测试。覆盖未到期、轮换、单飞、需要重新授权和代理缺失。
+// 凭据刷新测试。覆盖未到期、轮换、单飞、需要重新授权、直连刷新和代理缺失。
 
 import { mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -36,10 +36,12 @@ describe("CredentialRefresher", () => {
   it("refreshes a near-expiry credential and persists the rotated tokens", async () => {
     const { store, account } = await fixture(now + 60 * 1_000)
     const calls: Array<{ refreshToken: string; scopes?: string[] }> = []
+    const dispatchers: Array<Dispatcher | undefined> = []
     const refresher = new CredentialRefresher({
       store,
       oauth: fakeOAuth(async (input) => {
         calls.push({ refreshToken: input.refreshToken, scopes: input.scopes })
+        dispatchers.push(input.dispatcher)
         return tokens("new-access", "new-refresh", now + 300_000)
       }),
       now: () => now,
@@ -51,7 +53,26 @@ describe("CredentialRefresher", () => {
       expiresAt: now + 300_000,
     })
     expect(calls).toEqual([{ refreshToken: "old-refresh", scopes: ["user:inference"] }])
+    expect(dispatchers[0]).toBeDefined()
     expect((await store.getAccount(account.id))?.credential?.accessToken).toBe("new-access")
+  })
+
+  it("refreshes a direct account without a proxy dispatcher", async () => {
+    const { store, account } = await fixture(now + 60 * 1_000, null)
+    await store.removeProxy("p1")
+    const dispatchers: Array<Dispatcher | undefined> = []
+    const refresher = new CredentialRefresher({
+      store,
+      oauth: fakeOAuth(async (input) => {
+        dispatchers.push(input.dispatcher)
+        return tokens("direct-access", "direct-refresh", now + 300_000)
+      }),
+      now: () => now,
+    })
+    const updated = await refresher.refreshIfNeeded(account)
+    expect(updated.credential?.accessToken).toBe("direct-access")
+    expect(dispatchers).toEqual([undefined])
+    expect((await store.getAccount(account.id))?.credential?.accessToken).toBe("direct-access")
   })
 
   it("shares one refresh between concurrent callers", async () => {
@@ -119,6 +140,7 @@ describe("CredentialRefresher", () => {
 
 async function fixture(
   expiresAt: number,
+  proxyId: string | null = "p1",
 ): Promise<{ store: LocalStoreType; account: AccountRecord }> {
   const dir = await mkdtemp(join(tmpdir(), "refresh-"))
   const store = new LocalStore(dir)
@@ -147,7 +169,7 @@ async function fixture(
       rateLimitTier: null,
     },
     needsReauth: false,
-    proxyId: "p1",
+    proxyId,
     fingerprint: {
       seed: "123456",
       brand: "Chrome",
@@ -170,7 +192,7 @@ function fakeOAuth(
   refresh: (input: {
     refreshToken: string
     scopes?: string[]
-    dispatcher: Dispatcher
+    dispatcher?: Dispatcher
   }) => Promise<ClaudeOAuthTokens>,
 ): Pick<SubscriptionOAuth, "refresh"> {
   return { refresh }

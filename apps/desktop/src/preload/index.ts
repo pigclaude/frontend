@@ -52,7 +52,7 @@ export type PigclaudeBridge = {
     authorize: (input: {
       accountId?: string
       displayName: string
-      proxyId: string
+      proxyId: string | null
       fingerprint: ClaudeFingerprintView
     }) => Promise<ClaudeAccountView>
     cancelAuthorization: () => Promise<void>
@@ -60,7 +60,7 @@ export type PigclaudeBridge = {
       accountId: string
       displayName?: string
       enabled?: boolean
-      proxyId?: string
+      proxyId?: string | null
       fingerprint?: ClaudeFingerprintView
     }) => Promise<ClaudeAccountView>
     remove: (accountId: string) => Promise<void>

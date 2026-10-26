@@ -1,13 +1,14 @@
-// 账号服务测试。覆盖添加、出口阻断、账号不一致、取消、删除失败、更新和会员门禁。
+// 账号服务测试。覆盖添加、直连授权、出口阻断、账号不一致、取消、删除失败、更新和会员门禁。
 
 import { mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import type { Dispatcher } from "undici"
 import { describe, expect, it } from "vitest"
 import type { ClaudeAccountEvent } from "@pigclaude/contracts/claude-account"
 import { LocalStore, type AccountRecord } from "@pigclaude/local-store"
 import type { EgressResult } from "@pigclaude/login-gate/egress-check"
-import { BrowserLaunchError } from "./fingerprint-chromium"
+import { BrowserLaunchError, type LaunchBrowserInput } from "./fingerprint-chromium"
 import { ClaudeAccountError } from "./errors"
 import { ClaudeAccountService, type ClaudeAccountServiceDeps } from "./account-service"
 import {
@@ -32,6 +33,11 @@ type Harness = {
   store: LocalStore
   events: ClaudeAccountEvent[]
   browserCalls: string[]
+  launchInputs: LaunchBrowserInput[]
+  bridgeCalls: Array<{ upstreamProxyUrl: string }>
+  egressCalls: Array<{ bridgeUrl: string; upstreamProxyUrl: string; checkUrl: string }>
+  exchangeDispatchers: Array<Dispatcher | undefined>
+  profileDispatchers: Array<Dispatcher | undefined>
   launched: { promise: Promise<void>; resolve: () => void }
   bridgeClosed: () => boolean
 }
@@ -50,8 +56,20 @@ describe("ClaudeAccountService", () => {
       email: "user@example.com",
       subscriptionType: "max",
       needsReauth: false,
+      proxyId: "p1",
     })
     expect(harness.browserCalls).toEqual(["ensure", "launch", "stop"])
+    expect(harness.bridgeCalls).toEqual([{ upstreamProxyUrl: "http://127.0.0.1:1" }])
+    expect(harness.egressCalls).toEqual([
+      {
+        bridgeUrl: "http://127.0.0.1:9999",
+        upstreamProxyUrl: "http://127.0.0.1:1",
+        checkUrl: "https://egress.test/trace",
+      },
+    ])
+    expect(harness.launchInputs[0]?.bridgeUrl).toBe("http://127.0.0.1:9999")
+    expect(harness.exchangeDispatchers[0]).toBeDefined()
+    expect(harness.profileDispatchers[0]).toBeDefined()
     expect(harness.bridgeClosed()).toBe(true)
     expect(harness.events.map((event) => event.phase)).toEqual([
       "preparing",
@@ -62,6 +80,41 @@ describe("ClaudeAccountService", () => {
       "authorized",
     ])
     expect((await harness.store.getAccount("acc-1"))?.credential?.accessToken).toBe("access")
+  })
+
+  it("authorizes without a proxy and skips the bridge and egress check", async () => {
+    const harness = await createHarness()
+    await harness.store.removeProxy("p1")
+    const view = await harness.service.authorize({
+      displayName: "直连账号",
+      proxyId: null,
+      fingerprint,
+    })
+    expect(view.proxyId).toBeNull()
+    expect(harness.browserCalls).toEqual(["ensure", "launch", "stop"])
+    expect(harness.bridgeCalls).toEqual([])
+    expect(harness.egressCalls).toEqual([])
+    expect(harness.launchInputs).toHaveLength(1)
+    expect(harness.launchInputs[0]).not.toHaveProperty("bridgeUrl")
+    expect(harness.exchangeDispatchers).toEqual([undefined])
+    expect(harness.profileDispatchers).toEqual([undefined])
+    expect(harness.events.map((event) => event.phase)).toEqual([
+      "preparing",
+      "waiting-browser",
+      "exchanging",
+      "saving",
+      "authorized",
+    ])
+    expect((await harness.store.getAccount("acc-1"))?.proxyId).toBeNull()
+  })
+
+  it("rejects a non-null proxy that does not exist", async () => {
+    const harness = await createHarness()
+    await expect(
+      harness.service.authorize({ displayName: "工作账号", proxyId: "missing", fingerprint }),
+    ).rejects.toMatchObject({ code: "PROXY_INVALID" })
+    expect(harness.browserCalls).toEqual([])
+    expect(harness.bridgeCalls).toEqual([])
   })
 
   it("blocks the authorization when the bridge and daemon exits differ", async () => {
@@ -168,7 +221,26 @@ describe("ClaudeAccountService", () => {
     expect(view.displayName).toBe("新名字")
     expect(view.enabled).toBe(false)
     expect(view.fingerprint.seed).toBe("654321")
+    expect(view.proxyId).toBe("p1")
     expect((await harness.store.getAccount("acc-1"))?.credential?.accessToken).toBe("old-access")
+  })
+
+  it("unbinds the proxy when update receives null", async () => {
+    const harness = await createHarness()
+    await harness.store.saveAccount(seedAccount())
+    const view = await harness.service.update({ accountId: "acc-1", proxyId: null })
+    expect(view.proxyId).toBeNull()
+    expect((await harness.store.getAccount("acc-1"))?.proxyId).toBeNull()
+    expect((await harness.store.getAccount("acc-1"))?.credential?.accessToken).toBe("old-access")
+  })
+
+  it("rejects an update to a proxy that does not exist", async () => {
+    const harness = await createHarness()
+    await harness.store.saveAccount(seedAccount())
+    await expect(
+      harness.service.update({ accountId: "acc-1", proxyId: "missing" }),
+    ).rejects.toMatchObject({ code: "PROXY_INVALID" })
+    expect((await harness.store.getAccount("acc-1"))?.proxyId).toBe("p1")
   })
 
   it("rejects invalid fingerprints", async () => {
@@ -214,6 +286,11 @@ async function createHarness(
   })
   const events: ClaudeAccountEvent[] = []
   const browserCalls: string[] = []
+  const launchInputs: LaunchBrowserInput[] = []
+  const bridgeCalls: Array<{ upstreamProxyUrl: string }> = []
+  const egressCalls: Array<{ bridgeUrl: string; upstreamProxyUrl: string; checkUrl: string }> = []
+  const exchangeDispatchers: Array<Dispatcher | undefined> = []
+  const profileDispatchers: Array<Dispatcher | undefined> = []
   let resolveLaunched: () => void = () => undefined
   const launched = {
     promise: new Promise<void>((resolve) => {
@@ -233,8 +310,9 @@ async function createHarness(
       return "/fake/fingerprint-chromium"
     },
     profileDir: (accountId: string) => join(dir, "browser-profiles", accountId),
-    launch: async () => {
+    launch: async (input: LaunchBrowserInput) => {
       browserCalls.push("launch")
+      launchInputs.push(input)
       launched.resolve()
       return { profileDir: join(dir, "browser-profiles", "acc-1"), pid: 1234 }
     },
@@ -251,20 +329,32 @@ async function createHarness(
     buildAuthorizeUrl: (input: { state: string }) =>
       `https://claude.test/authorize?state=${input.state}`,
     startCallback: async () => callback,
-    exchangeCode: async () => options.tokens ?? defaultTokens(),
-    readProfile: async () => options.profile ?? defaultProfile(),
+    exchangeCode: async (input: { dispatcher?: Dispatcher }) => {
+      exchangeDispatchers.push(input.dispatcher)
+      return options.tokens ?? defaultTokens()
+    },
+    readProfile: async (input: { dispatcher?: Dispatcher }) => {
+      profileDispatchers.push(input.dispatcher)
+      return options.profile ?? defaultProfile()
+    },
   }
   const deps: ClaudeAccountServiceDeps = {
     store,
     browser,
     oauth,
-    startBridge: async () => ({
-      url: "http://127.0.0.1:9999",
-      close: async () => {
-        bridgeClosed = true
-      },
-    }),
-    checkEgress: async () => options.egress ?? { ok: true, ip: "1.1.1.1" },
+    startBridge: async (input) => {
+      bridgeCalls.push(input)
+      return {
+        url: "http://127.0.0.1:9999",
+        close: async () => {
+          bridgeClosed = true
+        },
+      }
+    },
+    checkEgress: async (input) => {
+      egressCalls.push(input)
+      return options.egress ?? { ok: true, ip: "1.1.1.1" }
+    },
     ensureMembership: async () => {
       if (options.membershipError !== undefined) throw options.membershipError
     },
@@ -278,6 +368,11 @@ async function createHarness(
     store,
     events,
     browserCalls,
+    launchInputs,
+    bridgeCalls,
+    egressCalls,
+    exchangeDispatchers,
+    profileDispatchers,
     launched,
     bridgeClosed: () => bridgeClosed,
   }

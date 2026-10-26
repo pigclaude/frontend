@@ -73,6 +73,30 @@ describe("FingerprintChromiumAdapter", () => {
     expect(args.at(-1)).toBe("https://claude.test/authorize")
   })
 
+  it("launches without proxy arguments when no bridge is given", async () => {
+    const binary = await fakeBinary()
+    const root = await tempRoot()
+    const calls: string[][] = []
+    const adapter = new FingerprintChromiumAdapter({
+      binaryPath: binary,
+      profilesRoot: root,
+      spawn: fakeSpawn((_command, args) => {
+        calls.push(args)
+        return new FakeChild()
+      }),
+    })
+    await adapter.launch({
+      accountId: "acc-1",
+      authorizeUrl: "https://claude.test/authorize",
+      fingerprint,
+    })
+    const args = calls[0] ?? []
+    expect(args.some((arg) => arg.startsWith("--proxy-server"))).toBe(false)
+    expect(args).not.toContain("--proxy-bypass-list=localhost;127.0.0.1")
+    expect(args).toContain(`--user-data-dir=${join(root, "acc-1")}`)
+    expect(args.at(-1)).toBe("https://claude.test/authorize")
+  })
+
   it("stops the previous process before launching the same account again", async () => {
     const binary = await fakeBinary()
     const root = await tempRoot()

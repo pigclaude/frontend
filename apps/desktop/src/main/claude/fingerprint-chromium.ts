@@ -39,11 +39,11 @@ export type FingerprintChromiumConfig = {
   stopTimeoutMs?: number
 }
 
-/** 启动一次登录需要的输入。 */
+/** 启动一次登录需要的输入。bridgeUrl 缺省表示不使用代理桥，直接走系统网络。 */
 export type LaunchBrowserInput = {
   accountId: string
   authorizeUrl: string
-  bridgeUrl: string
+  bridgeUrl?: string
   fingerprint: ClaudeFingerprintView
 }
 
@@ -184,16 +184,18 @@ export class FingerprintChromiumAdapter {
 }
 
 function buildLaunchArgs(input: LaunchBrowserInput, profileDir: string): string[] {
-  return [
-    `--user-data-dir=${profileDir}`,
-    `--proxy-server=${input.bridgeUrl}`,
-    "--proxy-bypass-list=localhost;127.0.0.1",
+  const args = [`--user-data-dir=${profileDir}`]
+  if (input.bridgeUrl !== undefined && input.bridgeUrl !== "") {
+    args.push(`--proxy-server=${input.bridgeUrl}`, "--proxy-bypass-list=localhost;127.0.0.1")
+  }
+  args.push(
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-sync",
     ...buildFingerprintArgs(input.fingerprint),
     input.authorizeUrl,
-  ]
+  )
+  return args
 }
 
 function waitForSpawn(child: ChildProcess): Promise<void> {

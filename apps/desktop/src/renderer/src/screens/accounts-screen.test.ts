@@ -25,6 +25,13 @@ const proxy: ProxyView = {
   lastTest: { ok: true, ip: "203.0.113.42", latencyMs: 186, testedAt: "2026-10-21T00:00:00.000Z" },
 }
 
+const secondProxy: ProxyView = {
+  id: "sjc-02",
+  name: "SJC-02",
+  url: "http://user:***@127.0.0.1:18081",
+  lastTest: { ok: true, ip: "198.51.100.17", latencyMs: 172, testedAt: "2026-10-21T00:00:00.000Z" },
+}
+
 const ready: ClaudeAccountView = {
   id: "acc-ready",
   displayName: "工作 Max",
@@ -71,6 +78,21 @@ const direct: ClaudeAccountView = {
   proxyId: null,
 }
 
+const dangling: ClaudeAccountView = {
+  ...ready,
+  id: "acc-dangling",
+  displayName: "悬空 Pro",
+  subscriptionType: "pro",
+  proxyId: "deleted-proxy",
+}
+
+const boundToSecond: ClaudeAccountView = {
+  ...ready,
+  id: "acc-sjc",
+  displayName: "圣何塞 Pro",
+  proxyId: "sjc-02",
+}
+
 let root: Root
 let container: HTMLDivElement
 
@@ -94,12 +116,13 @@ afterEach(async () => {
 async function render(
   views: ClaudeAccountView[],
   props: Partial<AccountsScreenProps> = {},
+  proxyViews: ProxyView[] = [proxy],
 ): Promise<void> {
   await act(async () =>
     root.render(
       createElement(AccountsScreen, {
-        accounts: views.map((view) => toPoolAccount(view, [proxy])),
-        proxies: [toPoolProxy(proxy, views)],
+        accounts: views.map((view) => toPoolAccount(view, proxyViews)),
+        proxies: proxyViews.map((item) => toPoolProxy(item, views)),
         onOpenAuthorize: () => undefined,
         onRemove: () => undefined,
         onUpdate: () => undefined,
@@ -171,9 +194,12 @@ describe("accounts screen", () => {
     expect(container.textContent).toContain("登录与对话使用本机网络，不走代理")
     expect(container.textContent).not.toContain("未绑定代理")
     expect(container.textContent).not.toContain("需要绑定")
+
+    await clickButton(button("编辑"), "编辑")
+    expect(dialog()?.textContent).toContain("建议和网络出口保持一致")
   })
 
-  it("unbinds a bound account from the network dialog", async () => {
+  it("unbinds a bound account from the network dialog and keeps the choice on re-render", async () => {
     const onUpdate = vi.fn()
     await render([ready], { onUpdate })
     await openAccount("工作 Max")
@@ -181,21 +207,56 @@ describe("accounts screen", () => {
 
     expect(dialog()?.textContent).toContain("不使用代理（系统网络直连）")
     await clickButton(dialogChoice("不使用代理（系统网络直连）"), "不使用代理")
+
+    // 父组件重渲染会传新的 proxies 数组；弹层不能因此重置成账号原来的代理。
+    await render([ready], { onUpdate })
+    expect(dialog()?.querySelector("button.choice.is-selected")?.textContent).toContain(
+      "不使用代理",
+    )
     await clickButton(button("保存", dialog() ?? document.body), "保存")
 
     expect(onUpdate).toHaveBeenCalledWith({ accountId: "acc-ready", proxyId: null })
   })
 
-  it("saves the system network even when there are no proxies", async () => {
+  it("preselects the account's current proxy when opening the network dialog", async () => {
     const onUpdate = vi.fn()
-    await render([ready], { onUpdate, proxies: [] })
-    await openAccount("工作 Max")
+    await render([boundToSecond], { onUpdate }, [proxy, secondProxy])
+    await openAccount("圣何塞 Pro")
+    await clickButton(button("设置"), "设置")
+
+    expect(dialog()?.querySelector("button.choice.is-selected")?.textContent).toContain("SJC-02")
+    await clickButton(button("保存", dialog() ?? document.body), "保存")
+
+    expect(onUpdate).toHaveBeenCalledWith({ accountId: "acc-sjc", proxyId: "sjc-02" })
+  })
+
+  it("does not silently turn a dangling proxy binding into a direct account", async () => {
+    const onUpdate = vi.fn()
+    await render([dangling], { onUpdate })
+    await openAccount("悬空 Pro")
+    await clickButton(button("设置"), "设置")
+
+    expect(dialog()?.textContent).toContain("原代理已不存在，请重新选择网络出口")
+    expect(dialog()?.querySelector("button.choice.is-selected")).toBeNull()
+    expect(button("保存", dialog() ?? document.body)?.disabled).toBe(true)
+
+    await clickButton(dialogChoice("不使用代理（系统网络直连）"), "不使用代理")
+    expect(button("保存", dialog() ?? document.body)?.disabled).toBe(false)
+    await clickButton(button("保存", dialog() ?? document.body), "保存")
+
+    expect(onUpdate).toHaveBeenCalledWith({ accountId: "acc-dangling", proxyId: null })
+  })
+
+  it("saves the system network for a direct account even when there are no proxies", async () => {
+    const onUpdate = vi.fn()
+    await render([direct], { onUpdate, proxies: [] })
+    await openAccount("直连 Pro")
     await clickButton(button("设置"), "设置")
 
     expect(dialog()?.textContent).toContain("还没有代理")
     await clickButton(button("保存", dialog() ?? document.body), "保存")
 
-    expect(onUpdate).toHaveBeenCalledWith({ accountId: "acc-ready", proxyId: null })
+    expect(onUpdate).toHaveBeenCalledWith({ accountId: "acc-direct", proxyId: null })
   })
 
   it("enables a disabled account from its detail page", async () => {

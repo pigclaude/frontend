@@ -97,7 +97,8 @@ export function ChatScreen({
     account: activeAccount,
     accountOptions: availableAccounts.map((account) => ({
       id: account.id,
-      label: account.displayName,
+      // 账号菜单只有 id/label；direct 账号在名称后标出系统网络，避免看起来仍走代理。
+      label: account.proxyId === null ? `${account.displayName} · 系统网络` : account.displayName,
     })),
     onAccount: (next) => {
       if (live) {

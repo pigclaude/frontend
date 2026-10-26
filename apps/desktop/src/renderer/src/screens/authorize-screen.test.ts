@@ -63,6 +63,12 @@ const directAccount: ClaudeAccountView = {
   proxyId: null,
 }
 
+const danglingAccount: ClaudeAccountView = {
+  ...savedAccount,
+  displayName: "悬空账号",
+  proxyId: "deleted-proxy",
+}
+
 let root: Root
 let container: HTMLDivElement
 
@@ -217,6 +223,34 @@ describe("Claude account authorization wizard", () => {
     await click("开始授权")
     expect(onStart).toHaveBeenCalledWith(
       expect.objectContaining({ accountId: undefined, proxyId: null }),
+    )
+  })
+
+  it("requires an explicit choice when the bound proxy no longer exists", async () => {
+    const onStart = vi.fn()
+    await render({ proxies, account: danglingAccount, onStart })
+    await click("下一步")
+
+    expect(container.textContent).toContain("原代理已不存在，请重新选择网络出口")
+    expect(container.querySelector("button.choice.is-selected")).toBeNull()
+    expect(button("请选择网络出口")?.disabled).toBe(true)
+
+    const existing = [...container.querySelectorAll("button.choice")].find((choice) =>
+      choice.textContent?.includes("SJC-02"),
+    )
+    await act(async () => (existing as HTMLButtonElement | undefined)?.click())
+    expect(button("绑定代理")?.disabled).toBe(false)
+
+    const direct = [...container.querySelectorAll("button.choice")].find((choice) =>
+      choice.textContent?.includes("不使用代理（系统网络）"),
+    )
+    await act(async () => (direct as HTMLButtonElement | undefined)?.click())
+    await click("使用系统网络")
+    await click("保存并继续")
+    await click("开始授权")
+
+    expect(onStart).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: "acc-1", proxyId: null }),
     )
   })
 

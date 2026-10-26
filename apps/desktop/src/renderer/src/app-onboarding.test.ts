@@ -190,6 +190,9 @@ describe("desktop onboarding gate", () => {
     await click("跳过")
     expect(container.textContent).toContain("第 2 步，共 3 步")
     expect(container.textContent).toContain("添加 Claude 账号")
+    expect(container.textContent).toContain(
+      "绑定代理时出口和代理一致才会继续；不绑定则使用系统网络",
+    )
     await click("跳过")
     expect(container.textContent).toContain("第 3 步，共 3 步")
     expect(window.localStorage.getItem(onboardingSeenKey("u1"))).toBeNull()

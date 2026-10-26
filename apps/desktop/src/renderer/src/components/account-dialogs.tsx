@@ -1,5 +1,5 @@
 // 负责账号删除、代理切换和指纹编辑弹层。
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
@@ -55,15 +55,20 @@ export function AccountProxyDialog({
   onOpenChange: (open: boolean) => void
   onConfirm: (proxyId: string | null) => void
 }) {
-  // 空字符串表示「不使用代理」；账号当前绑定的代理不在列表里时也回到系统网络。
-  const [selected, setSelected] = useState("")
+  // 空字符串表示显式「不使用代理」；null 表示原代理已不存在、用户尚未重新选择。
+  const [selected, setSelected] = useState<string | null>(() =>
+    initialSelection(currentProxyId, proxies),
+  )
+  // 只在弹层从关闭变成打开时初始化，父组件重渲染不会重置用户的选择。
+  const wasOpen = useRef(false)
   useEffect(() => {
-    if (!open) return
-    const current =
-      currentProxyId !== null && proxies.some((proxy) => proxy.id === currentProxyId)
-        ? currentProxyId
-        : ""
-    setSelected(current)
+    if (!open) {
+      wasOpen.current = false
+      return
+    }
+    if (wasOpen.current) return
+    wasOpen.current = true
+    setSelected(initialSelection(currentProxyId, proxies))
   }, [open, currentProxyId, proxies])
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -88,6 +93,11 @@ export function AccountProxyDialog({
                 <div className="desc">登录和对话都从本机网络发出</div>
               </div>
             </Button>
+            {selected === null ? (
+              <p className="error-text" role="alert">
+                原代理已不存在，请重新选择网络出口
+              </p>
+            ) : null}
             {proxies.length === 0 ? (
               <p className="note">还没有代理。可以保存为系统网络直连。</p>
             ) : null}
@@ -117,13 +127,26 @@ export function AccountProxyDialog({
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button variant="primary" onClick={() => onConfirm(selected === "" ? null : selected)}>
+          <Button
+            variant="primary"
+            disabled={selected === null}
+            onClick={() => {
+              if (selected === null) return
+              onConfirm(selected === "" ? null : selected)
+            }}
+          >
             保存
           </Button>
         </div>
       </DialogContent>
     </Dialog>
   )
+}
+
+/** 网络出口弹层的初始选择；空字符串表示显式直连，null 表示原代理已不存在。 */
+function initialSelection(currentProxyId: string | null, proxies: PoolProxy[]): string | null {
+  if (currentProxyId === null) return ""
+  return proxies.some((proxy) => proxy.id === currentProxyId) ? currentProxyId : null
 }
 
 /** 指纹配置编辑弹层。 */
@@ -181,7 +204,7 @@ export function FingerprintDialog({
               readOnly
             />
           </div>
-          <p className="hint">建议和代理出口保持一致。</p>
+          <p className="hint">建议和网络出口保持一致。</p>
         </div>
         <div className="dialog-foot">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>

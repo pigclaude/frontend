@@ -157,7 +157,7 @@ describe("chat screen", () => {
       trigger?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }))
     })
 
-    expect(document.body.textContent).toContain("直连 Max")
+    expect(document.body.textContent).toContain("直连 Max · 系统网络")
     expect(document.body.textContent).not.toContain("没有可用账号")
   })
 

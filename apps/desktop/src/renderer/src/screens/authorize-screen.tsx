@@ -33,8 +33,10 @@ export function AuthorizeScreen({
   onCancel,
 }: AuthorizeScreenProps) {
   const [name, setName] = useState(state.accountName || account?.displayName || "主力 Max")
-  // 空字符串表示「不使用代理」；提交时再映射成 null。
-  const [proxyId, setProxyId] = useState(() => initialProxyChoice(state, account, proxies))
+  // 空字符串表示显式选择「不使用代理」；null 表示原代理已不存在、用户尚未重新选择。
+  const [proxyId, setProxyId] = useState<string | null>(() =>
+    initialProxyChoice(state, account, proxies),
+  )
   const [fingerprint, setFingerprint] = useState<ClaudeFingerprintView>(
     account?.fingerprint ?? {
       seed: state.fingerprintSeed || "123456",
@@ -49,7 +51,7 @@ export function AuthorizeScreen({
   const selectedProxy = proxies.find((proxy) => proxy.id === proxyId) ?? null
 
   function startBrowserAuthorization() {
-    if (name.trim() === "") return
+    if (name.trim() === "" || proxyId === null) return
     onStartBrowserAuthorization({
       accountId: account?.id,
       displayName: name.trim(),
@@ -129,6 +131,11 @@ export function AuthorizeScreen({
                   <div className="desc">登录和对话都从本机网络发出</div>
                 </div>
               </Button>
+              {proxyId === null ? (
+                <p className="error-text" role="alert">
+                  原代理已不存在，请重新选择网络出口
+                </p>
+              ) : null}
               {proxies.length === 0 ? (
                 <p className="note">还没有代理。也可以继续使用系统网络。</p>
               ) : null}
@@ -155,12 +162,18 @@ export function AuthorizeScreen({
               <div className="wizard-foot">
                 <Button
                   variant="primary"
+                  disabled={proxyId === null}
                   onClick={() => {
+                    if (proxyId === null) return
                     onEvent({ type: "set-proxy", proxyId: proxyId === "" ? null : proxyId })
                     onEvent({ type: "advance" })
                   }}
                 >
-                  {proxyId === "" ? "使用系统网络" : "绑定代理"}
+                  {proxyId === null
+                    ? "请选择网络出口"
+                    : proxyId === ""
+                      ? "使用系统网络"
+                      : "绑定代理"}
                 </Button>
               </div>
             </WizardBody>
@@ -263,18 +276,20 @@ export function AuthorizeScreen({
                     onEvent({ type: "advance" })
                   }}
                 >
-                  {selectedProxy === null ? "保存并继续" : "保存并核对出口"}
+                  {proxyId === "" ? "保存并继续" : "保存并核对出口"}
                 </Button>
               </div>
             </WizardBody>
           ) : null}
           {state.step === "exit" ? (
             <WizardBody
-              title={selectedProxy === null ? "使用系统网络并打开授权页" : "核对出口并打开授权页"}
+              title={proxyId === "" ? "使用系统网络并打开授权页" : "核对出口并打开授权页"}
               description={
-                selectedProxy === null
+                proxyId === ""
                   ? "这个账号没有绑定代理，登录和对话请求都会从本机网络直接发出。"
-                  : "主进程会先核对代理桥和 daemon 出口，一致后才会启动指纹浏览器内核。"
+                  : proxyId === null
+                    ? "原代理已不存在，请返回上一步重新选择网络出口。"
+                    : "主进程会先核对代理桥和 daemon 出口，一致后才会启动指纹浏览器内核。"
               }
             >
               <div className="group">
@@ -284,11 +299,13 @@ export function AuthorizeScreen({
                     <div className="desc mono">
                       {selectedProxy
                         ? `${selectedProxy.name} · ${selectedProxy.exit}`
-                        : "系统网络（直连）"}
+                        : proxyId === ""
+                          ? "系统网络（直连）"
+                          : "原代理已不存在"}
                     </div>
                   </div>
                 </div>
-                {selectedProxy === null ? (
+                {proxyId === "" ? (
                   <div className="item">
                     <div className="main">
                       <div className="ttl">出口核对</div>
@@ -303,18 +320,19 @@ export function AuthorizeScreen({
                   </div>
                 </div>
               </div>
+              {proxyId === null ? (
+                <p className="error-text" role="alert">
+                  原代理已不存在，请重新选择网络出口
+                </p>
+              ) : null}
               {state.error ? <p className="error-text">{state.error}</p> : null}
               <div className="wizard-foot">
                 <Button
                   variant="primary"
-                  disabled={name.trim() === ""}
+                  disabled={name.trim() === "" || proxyId === null}
                   onClick={startBrowserAuthorization}
                 >
-                  {selectedProxy === null
-                    ? "开始授权"
-                    : state.error
-                      ? "重新核对"
-                      : "开始核对并授权"}
+                  {proxyId === "" ? "开始授权" : state.error ? "重新核对" : "开始核对并授权"}
                 </Button>
               </div>
             </WizardBody>
@@ -328,7 +346,7 @@ export function AuthorizeScreen({
                 <Icon name="browser" />
                 <b>等待浏览器确认</b>
                 <span>
-                  {selectedProxy === null
+                  {proxyId === ""
                     ? "授权过程中出站流量使用系统网络"
                     : "授权过程中出站流量持续绑定在该账号的代理上"}
                 </span>
@@ -356,7 +374,9 @@ export function AuthorizeScreen({
                     <div className="desc mono">
                       {selectedProxy
                         ? `${selectedProxy.name} · ${selectedProxy.exit}`
-                        : "系统网络（直连）"}
+                        : proxyId === ""
+                          ? "系统网络（直连）"
+                          : "原代理已不存在"}
                     </div>
                   </div>
                 </div>
@@ -370,7 +390,11 @@ export function AuthorizeScreen({
                   <div className="main">
                     <div className="ttl">出口核对</div>
                     <div className="desc">
-                      {selectedProxy === null ? "系统网络，无需出口核对" : "一致 · 授权全程未改变"}
+                      {proxyId === ""
+                        ? "系统网络，无需出口核对"
+                        : selectedProxy === null
+                          ? "未完成出口核对"
+                          : "一致 · 授权全程未改变"}
                     </div>
                   </div>
                   <span className="status ok">完成</span>
@@ -424,14 +448,19 @@ function stepLabel(step: AuthorizationState["step"]) {
   }[step]
 }
 
-/** 选择代理步骤的初始值；空字符串表示使用系统网络，重新授权 direct 账号时默认选中它。 */
+/**
+ * 选择代理步骤的初始值：空字符串表示显式使用系统网络，null 表示原代理已不存在、尚未重新选择。
+ * 保证 direct 账号默认选中系统网络，悬空绑定不会被静默改成直连。
+ */
 function initialProxyChoice(
   state: AuthorizationState,
   account: ClaudeAccountView | null | undefined,
   proxies: PoolProxy[],
-): string {
-  const requested = state.proxyId ?? account?.proxyId ?? null
-  if (requested !== null && proxies.some((proxy) => proxy.id === requested)) return requested
-  if (account) return ""
-  return proxies[0]?.id ?? ""
+): string | null {
+  if (state.proxyId !== null) {
+    return proxies.some((proxy) => proxy.id === state.proxyId) ? state.proxyId : null
+  }
+  if (account === null || account === undefined) return proxies[0]?.id ?? ""
+  if (account.proxyId === null) return ""
+  return proxies.some((proxy) => proxy.id === account.proxyId) ? account.proxyId : null
 }

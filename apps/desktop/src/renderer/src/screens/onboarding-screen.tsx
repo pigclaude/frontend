@@ -29,7 +29,7 @@ const stepCopy: Record<OnboardingStep, { icon: string; title: string; why: strin
   account: {
     icon: "user",
     title: "添加 Claude 账号",
-    why: "在外部浏览器里走 Claude 官方登录，出口和代理一致才会继续。",
+    why: "在外部浏览器里走 Claude 官方登录。绑定代理时出口和代理一致才会继续；不绑定则使用系统网络。",
   },
   session: {
     icon: "terminal",

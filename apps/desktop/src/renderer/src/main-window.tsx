@@ -1,5 +1,8 @@
 // 负责登录后的主窗口：侧栏收起与抽屉、窗口快捷键和内容区页面路由。
+// 聊天、账号、代理、环境、用量和托盘都接真实会话与本地数据，不再注入 fixture。
+
 import { useEffect, useState } from "react"
+import type { MembershipView } from "@pigclaude/contracts/membership"
 import { AccountsScreen } from "./screens/accounts-screen"
 import { ChatScreen } from "./screens/chat-screen"
 import { EnvironmentScreen } from "./screens/environment-screen"
@@ -10,17 +13,13 @@ import { UsageScreen } from "./screens/usage-screen"
 import { AddProjectDialog } from "./components/add-project-dialog"
 import { ScrollPanel, Sidebar, WindowControls } from "./components/shell"
 import { useToast } from "./components/toast"
-import { sessionFixture } from "./fixtures/chat-fixtures"
-import {
-  operationsEnvironmentFixture,
-  operationsUsageFixture,
-} from "./fixtures/operations-fixtures"
-import { projectFixtures } from "./fixtures/project-fixtures"
-import type { ProjectNavigationState } from "./models/navigation-model"
-import { addProject } from "./models/project-model"
-import { toPoolAccount, toPoolProxy } from "./models/claude-account-view"
 import { useClaudeAccounts } from "./hooks/use-claude-accounts"
+import { useSession } from "./hooks/use-session"
+import { useWorkspaces } from "./hooks/use-workspaces"
+import { projectNameFromPath, type Project } from "./models/project-model"
+import { toPoolAccount, toPoolProxy } from "./models/claude-account-view"
 import { settingsScreens } from "./models/settings-nav"
+import type { ProjectNavigationState } from "./models/navigation-model"
 import type { AppearanceController } from "./hooks/use-appearance"
 import type { ResolvedTheme } from "./models/theme-model"
 import type { Screen } from "./screens/screen"
@@ -33,6 +32,7 @@ export type MainWindowProps = {
   screen: Screen
   canGoBack: boolean
   canGoForward: boolean
+  membership: MembershipView
   onNavigate: (screen: Screen) => void
   onBack: () => void
   onForward: () => void
@@ -48,6 +48,7 @@ export function MainWindow({
   screen,
   canGoBack,
   canGoForward,
+  membership,
   onNavigate,
   onBack,
   onForward,
@@ -62,12 +63,20 @@ export function MainWindow({
   const [narrow, setNarrow] = useState(() => window.matchMedia(narrowQuery).matches)
   const [lastWorkspace, setLastWorkspace] = useState<Screen>("chat")
   const [navigation, setNavigation] = useState<ProjectNavigationState>({ expandedProjects: {} })
-  const [projects, setProjects] = useState(projectFixtures)
   const [addingProject, setAddingProject] = useState(false)
+  const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null)
   const toast = useToast()
   const pool = useClaudeAccounts()
+  const session = useSession()
+  const workspaces = useWorkspaces()
   const accounts = pool.accounts.map((account) => toPoolAccount(account, pool.proxies))
   const proxies = pool.proxies.map((proxy) => toPoolProxy(proxy, pool.accounts))
+  const projects: Project[] = workspaces.paths.map((path) => ({
+    id: path,
+    name: projectNameFromPath(path),
+    sessions: [],
+  }))
+  const workspace = selectedWorkspace ?? workspaces.paths[0] ?? null
   const inSettings = settingsScreens.has(screen)
 
   useEffect(() => {
@@ -141,7 +150,12 @@ export function MainWindow({
             expandedProjects: { ...current.expandedProjects, [projectId]: expanded },
           }))
         }
-        onNewSession={() => onNavigate("chat-new")}
+        onNewSession={(projectId) => {
+          if (projectId !== undefined && workspaces.paths.includes(projectId)) {
+            setSelectedWorkspace(projectId)
+          }
+          onNavigate("chat-new")
+        }}
         onLogout={onLogout}
         theme={theme}
         onToggleTheme={() =>
@@ -155,13 +169,14 @@ export function MainWindow({
         open={addingProject}
         onOpenChange={setAddingProject}
         onAdd={(path) => {
-          const next = addProject(projects, path)
-          if (next === projects) {
-            toast("这个文件夹已经在项目里", "info")
-            return
-          }
-          setProjects(next)
-          toast(`已添加项目 ${next[0]?.name ?? ""}`, "folder")
+          void workspaces.add(path).then((added) => {
+            if (!added) {
+              toast("工作区必须是已存在的绝对路径", "info")
+              return
+            }
+            setSelectedWorkspace(path)
+            toast(`已添加工作区 ${projectNameFromPath(path)}`, "folder")
+          })
         }}
       />
       <Button
@@ -176,12 +191,32 @@ export function MainWindow({
         {screen === "chat" || screen === "chat-new" ? (
           <ChatScreen
             fresh={screen === "chat-new"}
-            sessionFixture={sessionFixture}
+            session={session}
+            workspace={workspace}
+            workspaceOptions={workspaces.paths}
+            accounts={pool.accounts}
+            onPickWorkspace={() => {
+              void workspaces.pick().then((path) => {
+                if (path !== null) setSelectedWorkspace(path)
+              })
+            }}
+            onSelectWorkspace={setSelectedWorkspace}
+            onWorkspaceUsed={(path) => {
+              setSelectedWorkspace(path)
+              void workspaces.add(path)
+            }}
             onOpen={onNavigate}
             smartPunctuation={appearance.settings.smartPunctuation}
           />
         ) : null}
-        {screen === "tray" ? <TrayScreen onOpenAccounts={() => onNavigate("accounts")} /> : null}
+        {screen === "tray" ? (
+          <TrayScreen
+            membership={membership}
+            accounts={pool.accounts}
+            onOpenAccounts={() => onNavigate("accounts")}
+            onOpenSettings={() => onNavigate("general")}
+          />
+        ) : null}
         {screen === "accounts" ? (
           <ScrollPanel>
             <AccountsScreen
@@ -202,17 +237,31 @@ export function MainWindow({
               error={pool.error}
               onTest={(proxyId) => pool.testProxy(proxyId)}
               onSave={(input) => pool.saveProxy(input)}
+              onRemove={(proxyId) => void pool.removeProxy(proxyId)}
             />
           </ScrollPanel>
         ) : null}
         {screen === "usage" ? (
           <ScrollPanel>
-            <UsageScreen usageFixture={operationsUsageFixture} />
+            <UsageScreen />
           </ScrollPanel>
         ) : null}
         {screen === "environment" ? (
           <ScrollPanel>
-            <EnvironmentScreen fixture={operationsEnvironmentFixture} />
+            <EnvironmentScreen
+              accounts={pool.accounts}
+              proxies={pool.proxies}
+              status={session.status}
+              models={session.models}
+              modelsLoading={session.modelsLoading}
+              modelsError={session.modelsError}
+              onRecheck={() => {
+                void session.refreshStatus()
+                void session.refreshModels()
+                void pool.refresh()
+              }}
+              onCheckEgress={(proxyId) => pool.checkEgress(proxyId)}
+            />
           </ScrollPanel>
         ) : null}
         {inSettings && !["accounts", "proxies", "usage", "environment"].includes(screen) ? (

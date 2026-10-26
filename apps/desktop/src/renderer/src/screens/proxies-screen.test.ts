@@ -1,4 +1,5 @@
-// 负责验证代理页：添加代理把地址和名称交给桥、全部测试逐个调用、未测试的代理不显示为可用、代理密码不进入页面、操作错误可见。
+// 负责验证代理页：添加、编辑、删除和逐个测试都调用桥，未测试的代理不显示为可用，代理密码不进入页面，操作错误可见。
+
 // @vitest-environment jsdom
 import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
@@ -55,6 +56,7 @@ async function render(
         proxies: views.map((view) => toPoolProxy(view, accounts)),
         onTest: () => undefined,
         onSave: () => undefined,
+        onRemove: () => undefined,
         ...props,
       }),
     ),
@@ -65,6 +67,10 @@ function button(name: string, scope: ParentNode = container): HTMLButtonElement 
   return [...scope.querySelectorAll("button")].find(
     (candidate) => candidate.textContent?.trim() === name,
   )
+}
+
+function labelled(label: string, scope: ParentNode = container): HTMLButtonElement | undefined {
+  return scope.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`) ?? undefined
 }
 
 async function clickButton(target: HTMLButtonElement | undefined, name: string): Promise<void> {
@@ -82,9 +88,11 @@ async function type(id: string, value: string): Promise<void> {
 }
 
 function row(name: string): Element | undefined {
-  return [...container.querySelectorAll("button.item")].find((item) =>
-    item.textContent?.includes(name),
-  )
+  return [...container.querySelectorAll(".item")].find((item) => item.textContent?.includes(name))
+}
+
+function dialog(): HTMLElement | null {
+  return document.body.querySelector<HTMLElement>('[role="dialog"]')
 }
 
 describe("proxies screen", () => {
@@ -98,18 +106,36 @@ describe("proxies screen", () => {
     await render([tested], { onSave })
     await clickButton(button("添加代理"), "添加代理")
 
-    const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]')
-    expect(dialog?.textContent).toContain("不支持 SOCKS5")
-    expect(button("添加", dialog ?? document.body)?.disabled).toBe(true)
+    expect(dialog()?.textContent).toContain("不支持 SOCKS5")
+    expect(button("添加", dialog() ?? document.body)?.disabled).toBe(true)
     await type("proxy-url", "  http://user:secret@203.0.113.9:8000  ")
     await type("proxy-name", " LA-02 ")
-    await clickButton(button("添加", dialog ?? document.body), "添加")
+    await clickButton(button("添加", dialog() ?? document.body), "添加")
 
     expect(onSave).toHaveBeenCalledWith({
       name: "LA-02",
       url: "http://user:secret@203.0.113.9:8000",
     })
     expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it("edits an existing proxy by re-entering its address", async () => {
+    const onSave = vi.fn()
+    await render([tested], { onSave })
+
+    await clickButton(labelled("编辑 LA-01"), "编辑 LA-01")
+    expect(dialog()?.textContent).toContain("编辑代理")
+    expect(dialog()?.textContent).toContain("重新填写完整地址")
+
+    await type("proxy-url", "http://user:new-secret@203.0.113.10:8000")
+    await type("proxy-name", "LA-01b")
+    await clickButton(button("保存", dialog() ?? document.body), "保存")
+
+    expect(onSave).toHaveBeenCalledWith({
+      id: "la-01",
+      name: "LA-01b",
+      url: "http://user:new-secret@203.0.113.10:8000",
+    })
   })
 
   it("tests every proxy once and does not show untested or failed ones as available", async () => {
@@ -124,6 +150,20 @@ describe("proxies screen", () => {
     await clickButton(button("全部测试"), "全部测试")
     expect(onTest.mock.calls).toEqual([["la-01"], ["sea-03"], ["sjc-02"]])
     expect(button("全部测试")?.disabled).toBe(false)
+  })
+
+  it("tests and removes a single proxy", async () => {
+    const onTest = vi.fn(async () => undefined)
+    const onRemove = vi.fn(async () => undefined)
+    await render([tested], { onTest, onRemove })
+
+    await clickButton(labelled("测试 LA-01"), "测试 LA-01")
+    expect(onTest).toHaveBeenCalledWith("la-01")
+
+    await clickButton(labelled("删除 LA-01"), "删除 LA-01")
+    expect(dialog()?.textContent).toContain("删除代理「LA-01」？")
+    await clickButton(button("确认删除", dialog() ?? document.body), "确认删除")
+    expect(onRemove).toHaveBeenCalledWith("la-01")
   })
 
   it("never shows the proxy url or its password", async () => {

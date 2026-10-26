@@ -101,7 +101,7 @@ export function WorkspaceSidebar({
                 className="icon-btn proj-add"
                 type="button"
                 aria-label={`在 ${name} 新建会话`}
-                onClick={() => onNewSession(name)}
+                onClick={() => onNewSession(id)}
               >
                 <Icon name="plus" small />
               </Button>

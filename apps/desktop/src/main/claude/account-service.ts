@@ -293,6 +293,7 @@ function toView(account: AccountRecord): ClaudeAccountView {
     subscriptionType: account.credential?.subscriptionType ?? null,
     needsReauth: account.needsReauth,
     credentialExpiresAt: account.credential?.expiresAt ?? null,
+    exhaustedUntil: account.exhaustedUntil,
     proxyId: account.proxyId,
     fingerprint: account.fingerprint,
     createdAt: account.createdAt,

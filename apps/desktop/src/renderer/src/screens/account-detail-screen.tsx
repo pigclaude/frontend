@@ -8,6 +8,7 @@ export type AccountDetailScreenProps = {
   onBack: () => void
   onReauthorize: () => void
   onDelete: () => void
+  onToggleEnabled: () => void
   onChangeProxy: () => void
   onEditFingerprint: () => void
 }
@@ -18,6 +19,7 @@ export function AccountDetailScreen({
   onBack,
   onReauthorize,
   onDelete,
+  onToggleEnabled,
   onChangeProxy,
   onEditFingerprint,
 }: AccountDetailScreenProps) {
@@ -40,6 +42,9 @@ export function AccountDetailScreen({
         <div className="actions">
           <Button variant="primary" onClick={onReauthorize}>
             重新授权
+          </Button>
+          <Button variant="secondary" onClick={onToggleEnabled}>
+            {account.enabled ? "停用" : "启用"}
           </Button>
           <Button variant="danger" onClick={onDelete}>
             删除
@@ -70,6 +75,15 @@ export function AccountDetailScreen({
             </div>
             <span className="val">{account.usage === null ? "—" : "正常"}</span>
           </div>
+          {account.statusKind === "cooldown" ? (
+            <div className="item">
+              <div className="main">
+                <div className="ttl">额度冷却</div>
+                <div className="desc">恢复前不参与自动切换</div>
+              </div>
+              <span className="status warn">{cooldownText(account.cooldownUntil)}</span>
+            </div>
+          ) : null}
         </div>
       </section>
       <section className="section">
@@ -147,4 +161,11 @@ export function AccountDetailScreen({
       </section>
     </div>
   )
+}
+
+function cooldownText(value: string | null): string {
+  if (value === null) return "冷却中"
+  const until = Date.parse(value)
+  if (!Number.isFinite(until)) return "冷却中"
+  return `${new Date(until).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 后恢复`
 }

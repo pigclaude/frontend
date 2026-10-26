@@ -2,12 +2,18 @@
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { accountFixtures, proxyFixtures } from "./renderer-fixtures"
 
+/** 账号页的状态分类；冷却和停用账号不参与自动切换。 */
+export type PoolAccountStatus = "ready" | "disabled" | "reauth" | "cooldown"
+
 /** 账号页面可编辑的脱敏记录。 */
 export type PoolAccount = {
   id: string
   name: string
   mark: string
   status: string
+  statusKind: PoolAccountStatus
+  enabled: boolean
+  cooldownUntil: string | null
   usage: number | null
   autoSwitch: boolean
   proxyId: string | null
@@ -36,6 +42,9 @@ export type PoolProxy = {
 export function createPoolFixtures(): { accounts: PoolAccount[]; proxies: PoolProxy[] } {
   const accounts = accountFixtures.map((account) => ({
     ...account,
+    enabled: true,
+    statusKind: account.autoSwitch ? ("ready" as const) : ("reauth" as const),
+    cooldownUntil: null,
     proxyId:
       account.id === "work"
         ? "sjc-02"

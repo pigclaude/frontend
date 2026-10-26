@@ -1,5 +1,8 @@
-// 负责逐项展示会话环境和网络路径检测结果。
+// 负责逐项展示本机中继、Claude Code CLI、账号、代理和出口检测结果；
+// 数据来自 session.status、session.models、claudeAccounts 和 proxies，不显示 token、代理地址或环境变量。
+
 import { useState } from "react"
+import type { ClaudeAccountView, EgressView, ProxyView } from "@pigclaude/contracts/claude-account"
 import { Button } from "../components/ui/button"
 import {
   Select,
@@ -8,19 +11,53 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select"
-import { environmentFixtures } from "../fixtures/renderer-fixtures"
+import type { ClaudeModel, SessionStatusView } from "../../../main/session/session-types"
 
-/** 环境检测页面 props。 */
-export type EnvironmentScreenProps = { fixture?: typeof environmentFixtures }
+/** 环境检测页面 props；所有数据由 main-window 的控制器和账号 hook 提供。 */
+export type EnvironmentScreenProps = {
+  accounts: ClaudeAccountView[]
+  proxies: ProxyView[]
+  status: SessionStatusView | null
+  models: ClaudeModel[]
+  modelsLoading: boolean
+  modelsError: string | null
+  onRecheck: () => void
+  onCheckEgress: (proxyId: string) => Promise<EgressView>
+}
 
-/** 绘制环境检测、账号选择和重检状态。 */
-export function EnvironmentScreen({ fixture = environmentFixtures }: EnvironmentScreenProps) {
-  const [account, setAccount] = useState<string>(fixture.accountId)
-  const [running, setRunning] = useState(false)
-  function rerun() {
-    setRunning(true)
-    window.setTimeout(() => setRunning(false), 650)
+/** 绘制环境检测和网络路径。 */
+export function EnvironmentScreen({
+  accounts,
+  proxies,
+  status,
+  models,
+  modelsLoading,
+  modelsError,
+  onRecheck,
+  onCheckEgress,
+}: EnvironmentScreenProps) {
+  const [proxyId, setProxyId] = useState<string | null>(null)
+  const [egress, setEgress] = useState<EgressView | null>(null)
+  const [egressLoading, setEgressLoading] = useState(false)
+  const [egressError, setEgressError] = useState<string | null>(null)
+  const proxy = proxies.find((item) => item.id === proxyId) ?? proxies[0] ?? null
+  const availableAccounts = accounts.filter((account) => account.enabled && !account.needsReauth)
+  const cli = cliState(models, modelsLoading, modelsError)
+  const daemon = daemonState(status, models, modelsLoading, modelsError)
+
+  async function checkEgress(): Promise<void> {
+    if (proxy === null) return
+    setEgressLoading(true)
+    setEgressError(null)
+    try {
+      setEgress(await onCheckEgress(proxy.id))
+    } catch {
+      setEgressError("出口检测失败，请检查代理")
+    } finally {
+      setEgressLoading(false)
+    }
   }
+
   return (
     <div className="page narrow">
       <header className="page-head">
@@ -29,55 +66,156 @@ export function EnvironmentScreen({ fixture = environmentFixtures }: Environment
           <p className="sub">会话进程环境逐项核对与网络路径</p>
         </div>
         <div className="actions">
-          <Select value={account} onValueChange={setAccount}>
-            <SelectTrigger aria-label="账号" className="select-bare">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="primary">主力 Max</SelectItem>
-              <SelectItem value="work">工作 Max</SelectItem>
-              <SelectItem value="backup">备用 Pro</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="primary" onClick={rerun} disabled={running}>
-            {running ? "检测中…" : "重新检测"}
+          <Button variant="primary" onClick={onRecheck} disabled={modelsLoading}>
+            {modelsLoading ? "检测中…" : "重新检测"}
           </Button>
         </div>
       </header>
       <section className="section">
         <div className="section-head">
           <h2>会话进程</h2>
-          <span className="end">{running ? "检测中" : "全部一致"}</span>
+          <span className="end">{modelsLoading ? "检测中" : cli.label}</span>
         </div>
         <div className="group">
-          {fixture.checks.map((check) => (
-            <div className="item" key={check.label}>
-              <div className="main">
-                <div className="ttl">{check.label}</div>
-                <div className="desc mono">{check.value}</div>
-              </div>
-              <span className="status ok">一致</span>
-            </div>
-          ))}
+          <CheckRow label="本机中继" value={daemon.value} status={daemon.status} />
+          <CheckRow label="Claude Code" value={cli.value} status={cli.status} />
+          <CheckRow
+            label="活动会话"
+            value={
+              status?.active === true
+                ? `会话运行中 · ${status.model ?? "默认模型"}`
+                : "没有活动会话"
+            }
+            status={status?.active === true ? "ok" : "idle"}
+          />
+          <CheckRow
+            label="Claude 账号"
+            value={
+              accounts.length === 0
+                ? "没有可用的 Claude 账号"
+                : `${accounts.length} 个账号 · ${availableAccounts.length} 个可用`
+            }
+            status={availableAccounts.length > 0 ? "ok" : "bad"}
+          />
         </div>
+        {modelsError !== null ? (
+          <p className="error-text" role="alert">
+            {modelsError}
+          </p>
+        ) : null}
+        <p className="note">模型探针会启动一次 Claude Code 查询，可能较慢；失败不影响已有会话。</p>
       </section>
       <section className="section">
         <div className="section-head">
           <h2>网络路径</h2>
+          {proxies.length > 0 ? (
+            <Select value={proxy?.id ?? ""} onValueChange={setProxyId}>
+              <SelectTrigger aria-label="代理" className="select-bare">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {proxies.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
         </div>
         <div className="group">
-          {fixture.route.map((step) => (
-            <div className="item" key={step.label}>
-              <div className="main">
-                <div className="ttl">{step.label}</div>
-                <div className="desc">{step.value}</div>
-              </div>
-              <span className="status ok">通过</span>
-            </div>
-          ))}
+          <CheckRow
+            label="账号绑定代理"
+            value={
+              proxy === null
+                ? "没有代理"
+                : proxy.lastTest?.ok === true
+                  ? `${proxy.name} · ${proxy.lastTest.ip ?? "出口未知"}`
+                  : proxy.lastTest === null
+                    ? `${proxy.name} · 待检测`
+                    : `${proxy.name} · 未通过测试`
+            }
+            status={proxy?.lastTest?.ok === true ? "ok" : proxy === null ? "bad" : "warn"}
+          />
+          <CheckRow
+            label="出口检测"
+            value={egressValue(egress, egressLoading, egressError)}
+            status={egress?.ok === true ? "ok" : egress === null ? "idle" : "bad"}
+          />
+        </div>
+        <div className="row">
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={proxy === null || egressLoading}
+            onClick={() => void checkEgress()}
+          >
+            {egressLoading ? "检测中…" : "检测出口"}
+          </Button>
         </div>
         <p className="note">代理不通时，请求以 503 结束，不会从本机网络直接发出。</p>
       </section>
     </div>
   )
+}
+
+type CheckStatus = "ok" | "warn" | "bad" | "idle"
+
+function CheckRow({ label, value, status }: { label: string; value: string; status: CheckStatus }) {
+  return (
+    <div className="item">
+      <div className="main">
+        <div className="ttl">{label}</div>
+        <div className="desc">{value}</div>
+      </div>
+      <span className={statusClass(status)}>{statusText(status)}</span>
+    </div>
+  )
+}
+
+function statusClass(status: CheckStatus): string {
+  if (status === "ok") return "status ok"
+  if (status === "warn") return "status warn"
+  if (status === "bad") return "status bad"
+  return "status info"
+}
+
+function statusText(status: CheckStatus): string {
+  if (status === "ok") return "正常"
+  if (status === "warn") return "待处理"
+  if (status === "bad") return "不可用"
+  return "未检测"
+}
+
+function cliState(
+  models: ClaudeModel[],
+  loading: boolean,
+  error: string | null,
+): { value: string; status: CheckStatus; label: string } {
+  if (loading)
+    return { value: "正在通过会话模型探针检查 Claude Code", status: "idle", label: "检测中" }
+  if (error !== null) {
+    return { value: `没有可用的模型 · ${error}`, status: "bad", label: "不可用" }
+  }
+  if (models.length === 0) return { value: "没有可用的模型", status: "bad", label: "不可用" }
+  return { value: `可用 · ${models.length} 个模型`, status: "ok", label: "正常" }
+}
+
+function daemonState(
+  status: SessionStatusView | null,
+  models: ClaudeModel[],
+  loading: boolean,
+  error: string | null,
+): { value: string; status: CheckStatus } {
+  if (loading) return { value: "检测中", status: "idle" }
+  if (status?.active === true) return { value: "会话运行中", status: "ok" }
+  if (models.length > 0) return { value: "可用", status: "ok" }
+  return { value: error ?? "未检测到可用中继", status: "bad" }
+}
+
+function egressValue(egress: EgressView | null, loading: boolean, error: string | null): string {
+  if (loading) return "检测中…"
+  if (error !== null) return error
+  if (egress === null) return "尚未检测"
+  return egress.ok ? `出口 IP ${egress.ip}` : egress.message
 }

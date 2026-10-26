@@ -1,36 +1,61 @@
-// 负责代理池列表、测试、详情和账号绑定入口。
-import { useEffect, useState } from "react"
+// 负责代理池列表：真实新增/编辑/删除、单个和全部连通性测试、未测试状态和操作错误。
+
+import { useState } from "react"
 import { Button } from "../components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog"
 import { AddProxyDialog } from "../components/proxy-dialogs"
 import type { PoolProxy } from "../fixtures/pool-fixtures"
 
-/** 代理列表页面 props。 */
+/** 代理列表页面 props；数据来自 useClaudeAccounts。 */
 export type ProxiesScreenProps = {
   proxies: PoolProxy[]
   onTest?: (proxyId: string) => Promise<void> | void
-  onSave?: (input: { name: string; url: string }) => Promise<void> | void
+  onSave?: (input: { id?: string; name: string; url: string }) => Promise<void> | void
+  onRemove?: (proxyId: string) => Promise<void> | void
   onOpenProxy?: (proxy: PoolProxy) => void
   /** 最近一次代理操作的错误，例如地址不是 HTTP/HTTPS。 */
   error?: string | null
 }
 
-/** 绘制代理列表和添加代理弹层。 */
-export function ProxiesScreen({ proxies, onTest, onSave, onOpenProxy, error }: ProxiesScreenProps) {
+/** 绘制代理列表、编辑弹层和删除确认。 */
+export function ProxiesScreen({
+  proxies,
+  onTest,
+  onSave,
+  onRemove,
+  onOpenProxy,
+  error,
+}: ProxiesScreenProps) {
   const [addOpen, setAddOpen] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [rows, setRows] = useState(proxies)
+  const [editing, setEditing] = useState<PoolProxy | null>(null)
+  const [deleting, setDeleting] = useState<PoolProxy | null>(null)
+  const [testingAll, setTestingAll] = useState(false)
+  const [testingId, setTestingId] = useState<string | null>(null)
 
-  useEffect(() => {
-    setRows(proxies)
-  }, [proxies])
-
-  async function testAll() {
+  async function testOne(proxyId: string): Promise<void> {
     if (onTest === undefined) return
-    setTesting(true)
+    setTestingId(proxyId)
     try {
-      await Promise.allSettled(rows.map((proxy) => onTest(proxy.id)))
+      await onTest(proxyId)
     } finally {
-      setTesting(false)
+      setTestingId(null)
+    }
+  }
+
+  async function testAll(): Promise<void> {
+    if (onTest === undefined) return
+    setTestingAll(true)
+    try {
+      await Promise.allSettled(proxies.map((proxy) => onTest(proxy.id)))
+    } finally {
+      setTestingAll(false)
+    }
+  }
+
+  function closeProxyDialog(open: boolean): void {
+    if (!open) {
+      setAddOpen(false)
+      setEditing(null)
     }
   }
 
@@ -42,8 +67,8 @@ export function ProxiesScreen({ proxies, onTest, onSave, onOpenProxy, error }: P
           <p className="sub">每个账号绑定一个代理，登录和对话都只走它</p>
         </div>
         <div className="actions">
-          <Button variant="secondary" onClick={() => void testAll()} disabled={testing}>
-            {testing ? "测试中…" : "全部测试"}
+          <Button variant="secondary" onClick={() => void testAll()} disabled={testingAll}>
+            {testingAll ? "测试中…" : "全部测试"}
           </Button>
           <Button variant="primary" onClick={() => setAddOpen(true)}>
             添加代理
@@ -55,60 +80,97 @@ export function ProxiesScreen({ proxies, onTest, onSave, onOpenProxy, error }: P
           {error}
         </p>
       ) : null}
-      {rows.length === 0 ? (
+      {proxies.length === 0 ? (
         <p className="note">还没有代理。添加一个出口固定的 HTTP/HTTPS 代理后再授权账号。</p>
       ) : null}
       <div className="group">
-        {rows.map((proxy) => (
-          <Button
-            variant="plain"
-            className="item"
-            type="button"
-            key={proxy.id}
-            onClick={() => onOpenProxy?.(proxy)}
-          >
-            <div className="main">
-              <div className="ttl">{proxy.name}</div>
-              <div className="desc">
+        {proxies.map((proxy) => (
+          <div className="item" key={proxy.id}>
+            <Button
+              variant="plain"
+              className="main"
+              type="button"
+              onClick={() => onOpenProxy?.(proxy)}
+            >
+              <span className="ttl">{proxy.name}</span>
+              <span className="desc">
                 {proxy.exit} · {proxy.region}
-              </div>
-            </div>
-            <span className="trail">
-              <span className="avatar sm">
-                {proxy.accountId ? proxy.accountId.slice(0, 1) : "—"}
               </span>
+            </Button>
+            <span className="trail">
               <span className={proxy.available ? "status ok" : "status bad"}>
                 {proxy.available ? `${proxy.latency} ms` : "未通过测试"}
               </span>
-              <span className="chev">›</span>
+              <Button
+                size="sm"
+                variant="secondary"
+                aria-label={`测试 ${proxy.name}`}
+                disabled={testingId !== null}
+                onClick={() => void testOne(proxy.id)}
+              >
+                {testingId === proxy.id ? "测试中…" : "测试"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label={`编辑 ${proxy.name}`}
+                onClick={() => setEditing(proxy)}
+              >
+                编辑
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label={`删除 ${proxy.name}`}
+                onClick={() => setDeleting(proxy)}
+              >
+                删除
+              </Button>
             </span>
-          </Button>
+          </div>
         ))}
       </div>
       <p className="note">代理不可用时请求以 503 结束，不会从本机网络直接发出。</p>
       <AddProxyDialog
-        open={addOpen}
-        onOpenChange={setAddOpen}
+        open={addOpen || editing !== null}
+        editing={editing === null ? null : { id: editing.id, name: editing.name }}
+        onOpenChange={closeProxyDialog}
         onConfirm={(url, name) => {
-          if (onSave !== undefined) {
-            void onSave({ name, url })
-          } else {
-            setRows((current) => [
-              ...current,
-              {
-                id: name.toLowerCase(),
-                name,
-                exit: "待检测",
-                region: "待检测",
-                latency: 0,
-                accountId: null,
-                available: false,
-              },
-            ])
-          }
+          if (editing === null) onSave?.({ name, url })
+          else onSave?.({ id: editing.id, name, url })
           setAddOpen(false)
+          setEditing(null)
         }}
       />
+      <Dialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleting(null)
+        }}
+      >
+        <DialogContent>
+          <div className="dialog-head">
+            <DialogTitle>删除代理「{deleting?.name ?? ""}」？</DialogTitle>
+            <DialogDescription>
+              删除后账号需要重新绑定代理，已保存的登录不会自动失效。
+            </DialogDescription>
+          </div>
+          <div className="dialog-foot">
+            <Button variant="ghost" onClick={() => setDeleting(null)}>
+              取消
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                if (deleting !== null) onRemove?.(deleting.id)
+                setDeleting(null)
+              }}
+            >
+              确认删除
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

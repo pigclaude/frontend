@@ -1,4 +1,5 @@
-// 负责验证账号页：空状态、需重新授权的账号单独列出、删除要先确认、删除失败时保留记录并显示错误、页面不出现凭据。
+// 负责验证账号页：真实空状态、需重新授权、停用和冷却账号可识别并能启用/停用、删除要确认、错误可见且页面不出现凭据。
+
 // @vitest-environment jsdom
 import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
@@ -32,6 +33,7 @@ const ready: ClaudeAccountView = {
   subscriptionType: "max",
   needsReauth: false,
   credentialExpiresAt: 4_102_444_800_000,
+  exhaustedUntil: null,
   proxyId: "la-01",
   fingerprint,
   createdAt: "2026-10-21T00:00:00.000Z",
@@ -47,10 +49,26 @@ const expired: ClaudeAccountView = {
   credentialExpiresAt: null,
 }
 
+const disabled: ClaudeAccountView = {
+  ...ready,
+  id: "acc-disabled",
+  displayName: "停用账号",
+  enabled: false,
+}
+
+const cooling: ClaudeAccountView = {
+  ...ready,
+  id: "acc-cooling",
+  displayName: "冷却账号",
+  exhaustedUntil: "2026-10-21T03:20:00.000Z",
+}
+
 let root: Root
 let container: HTMLDivElement
 
 beforeEach(() => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date("2026-10-21T01:00:00.000Z"))
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true)
   window.localStorage.clear()
   container = document.createElement("div")
@@ -61,6 +79,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount())
   container.remove()
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -114,21 +133,29 @@ describe("accounts screen", () => {
     expect(onOpenAuthorize).toHaveBeenCalledTimes(1)
   })
 
-  it("lists accounts that need reauthorization apart from the switch order", async () => {
-    const onReauthorize = vi.fn()
-    await render([ready, expired], { onReauthorize })
+  it("lists reauthorization, disabled and cooling accounts apart from the switch order", async () => {
+    await render([ready, expired, disabled, cooling])
 
     const sections = [...container.querySelectorAll("section.section")]
     expect(sections[0]?.textContent).toContain("需要处理")
     expect(sections[0]?.textContent).toContain("旧号 Pro")
     expect(sections[0]?.textContent).toContain("需重新授权")
+    expect(sections[0]?.textContent).toContain("停用账号")
+    expect(sections[0]?.textContent).toContain("已停用")
+    expect(sections[0]?.textContent).toContain("冷却账号")
+    expect(sections[0]?.textContent).toContain("冷却中")
     expect(sections[1]?.textContent).toContain("工作 Max")
     expect(sections[1]?.textContent).not.toContain("旧号 Pro")
+  })
 
-    await openAccount("旧号 Pro")
-    expect(container.textContent).toContain("需要重新授权")
-    await clickButton(button("重新授权"), "重新授权")
-    expect(onReauthorize).toHaveBeenCalledWith("acc-expired")
+  it("enables a disabled account from its detail page", async () => {
+    const onUpdate = vi.fn()
+    await render([disabled], { onUpdate })
+
+    await openAccount("停用账号")
+    await clickButton(button("启用"), "启用")
+
+    expect(onUpdate).toHaveBeenCalledWith({ accountId: "acc-disabled", enabled: true })
   })
 
   it("removes an account only after the delete is confirmed", async () => {

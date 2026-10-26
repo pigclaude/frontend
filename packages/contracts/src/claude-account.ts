@@ -20,6 +20,8 @@ export type ClaudeAccountView = {
   subscriptionType: string | null
   needsReauth: boolean
   credentialExpiresAt: number | null
+  /** 额度冷却结束时间；null 表示未冷却，缺省表示旧版主进程没有提供。 */
+  exhaustedUntil?: string | null
   proxyId: string
   fingerprint: ClaudeFingerprintView
   createdAt: string
@@ -106,6 +108,9 @@ export function isClaudeAccountView(value: unknown): value is ClaudeAccountView 
     (value.credentialExpiresAt === null ||
       (typeof value.credentialExpiresAt === "number" &&
         Number.isFinite(value.credentialExpiresAt))) &&
+    (value.exhaustedUntil === undefined ||
+      value.exhaustedUntil === null ||
+      typeof value.exhaustedUntil === "string") &&
     typeof value.proxyId === "string" &&
     isClaudeFingerprintView(value.fingerprint) &&
     typeof value.createdAt === "string" &&

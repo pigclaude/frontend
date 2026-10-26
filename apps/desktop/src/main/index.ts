@@ -38,6 +38,7 @@ import { readDockIconDataUrl } from "./dock-icon"
 import { configureRuntimeProfile } from "./runtime-profile"
 import { readDesktopRuntimeEndpoints } from "./runtime-endpoints"
 import { isAccountAvailable } from "./runtime/account-chooser"
+import { WorkspaceStore } from "./runtime/workspace-store"
 import { resolveClaudeBinaryPath } from "./session/claude-binary"
 import { SessionHost } from "./session/session-host"
 import { registerSessionIpc } from "./session/session-ipc"
@@ -65,6 +66,7 @@ let claudeAccountService: ClaudeAccountService | null = null
 let proxyService: ProxyService | null = null
 let sessionHost: SessionHost | null = null
 let usageRecorder: UsageRecorder | null = null
+let workspaceStore: WorkspaceStore | null = null
 let callbackServer: Awaited<ReturnType<typeof createCallbackServer>> | null = null
 let pendingCallbackUrls: string[] = []
 let cleanupLiveEvents = () => {}
@@ -237,6 +239,29 @@ function registerIpcHandlers(): void {
     getUsage: () => usageRecorder,
     isTrusted: isTrustedSender,
   })
+  registerWorkspaceIpc()
+}
+
+/** 注册最近工作区的读取和追加；只保存路径，写操作只接受主窗口当前 frame。 */
+function registerWorkspaceIpc(): void {
+  ipcMain.handle("pigclaude:workspaces-list", async (event) => {
+    if (!isTrustedSender(event)) throw new Error("UNTRUSTED_WORKSPACE_REQUEST")
+    return getWorkspaceStore().list()
+  })
+  ipcMain.handle("pigclaude:workspaces-add", async (event, value: unknown) => {
+    if (!isTrustedSender(event)) throw new Error("UNTRUSTED_WORKSPACE_REQUEST")
+    if (typeof value !== "string" || value.trim() === "") {
+      throw new Error("WORKSPACE_UNAVAILABLE: 工作区必须是绝对路径")
+    }
+    return getWorkspaceStore().add(value)
+  })
+}
+
+function getWorkspaceStore(): WorkspaceStore {
+  workspaceStore ??= new WorkspaceStore({
+    filePath: join(app.getPath("userData"), "workspaces.json"),
+  })
+  return workspaceStore
 }
 
 /** 应用退出时先结束会话并拒绝权限，再停 daemon、账号和回调服务。 */

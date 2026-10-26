@@ -394,6 +394,7 @@ export function DesktopApp() {
           screen={shownScreen}
           canGoBack={canGoBack(history)}
           canGoForward={canGoForward(history)}
+          membership={membership}
           onNavigate={setScreen}
           onBack={() => setHistory(goBack)}
           onForward={() => setHistory(goForward)}

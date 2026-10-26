@@ -75,6 +75,10 @@ export type PigclaudeBridge = {
   egress: {
     check: (proxyId: string) => Promise<EgressView>
   }
+  workspaces: {
+    list: () => Promise<string[]>
+    add: (path: string) => Promise<string[]>
+  }
   session: SessionBridge
   usage: UsageBridge
 }
@@ -151,6 +155,16 @@ const bridge: PigclaudeBridge = {
   },
   egress: {
     check: (proxyId) => ipcRenderer.invoke("pigclaude:egress-check", proxyId),
+  },
+  workspaces: {
+    list: async () => {
+      const value: unknown = await ipcRenderer.invoke("pigclaude:workspaces-list")
+      return Array.isArray(value) ? value.filter(isWorkspacePath) : []
+    },
+    add: async (path) => {
+      const value: unknown = await ipcRenderer.invoke("pigclaude:workspaces-add", path)
+      return Array.isArray(value) ? value.filter(isWorkspacePath) : []
+    },
   },
   session: {
     start: async (input) => {
@@ -256,6 +270,10 @@ function isUsageSummary(value: unknown): value is UsageSummary {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function isWorkspacePath(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0
 }
 
 contextBridge.exposeInMainWorld("pigclaude", bridge)

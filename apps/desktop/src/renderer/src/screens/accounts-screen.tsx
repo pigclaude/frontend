@@ -1,5 +1,6 @@
-// 负责展示 Claude 账号列表、自动切换顺序和账号详情入口。
-import { useEffect, useState } from "react"
+// 负责展示真实 Claude 账号列表：需要处理（重新授权/停用/冷却）、自动切换顺序和账号详情入口。
+
+import { useState } from "react"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { Button } from "../components/ui/button"
 import {
@@ -7,7 +8,6 @@ import {
   AccountProxyDialog,
   FingerprintDialog,
 } from "../components/account-dialogs"
-import { accountFixtures, proxyFixtures } from "../fixtures/renderer-fixtures"
 import type { PoolAccount, PoolProxy } from "../fixtures/pool-fixtures"
 import { AccountDetailScreen } from "./account-detail-screen"
 
@@ -20,10 +20,10 @@ export type ClaudeAccountUpdate = {
   fingerprint?: ClaudeFingerprintView
 }
 
-/** 账号列表页面 props。 */
+/** 账号列表页面 props；accounts 和 proxies 来自 useClaudeAccounts。 */
 export type AccountsScreenProps = {
-  accounts?: PoolAccount[]
-  proxies?: PoolProxy[]
+  accounts: PoolAccount[]
+  proxies: PoolProxy[]
   onOpenAuthorize: () => void
   onReauthorize?: (accountId: string) => void
   onRemove?: (accountId: string) => void
@@ -34,82 +34,60 @@ export type AccountsScreenProps = {
 
 /** 绘制账号列表和账号详情。 */
 export function AccountsScreen({
-  accounts = toPoolAccounts(),
-  proxies = toPoolProxies(),
+  accounts,
+  proxies,
   onOpenAuthorize,
   onReauthorize,
   onRemove,
   onUpdate,
   error,
 }: AccountsScreenProps) {
-  const [items, setItems] = useState(accounts)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [proxyId, setProxyId] = useState<string | null>(null)
   const [fingerprintId, setFingerprintId] = useState<string | null>(null)
 
-  useEffect(() => {
-    setItems(accounts)
-  }, [accounts])
-
-  const selected = items.find((account) => account.id === selectedId) ?? null
+  const selected = accounts.find((account) => account.id === selectedId) ?? null
+  const attention = accounts.filter((account) => account.statusKind !== "ready")
+  const ordered = accounts.filter((account) => account.statusKind === "ready")
   // 详情页和列表页共用这些弹层；详情页提前 return 时也要画出来，否则删除和更换按钮没有反应。
   const dialogs = (
     <>
       <AccountDeleteDialog
         open={deleteId !== null}
-        accountName={items.find((account) => account.id === deleteId)?.name ?? "这个账号"}
+        accountName={accounts.find((account) => account.id === deleteId)?.name ?? "这个账号"}
         onOpenChange={(open) => {
           if (!open) setDeleteId(null)
         }}
         onConfirm={() => {
           if (deleteId !== null) onRemove?.(deleteId)
-          if (onRemove === undefined) {
-            setItems((current) => current.filter((account) => account.id !== deleteId))
-          }
           setDeleteId(null)
           setSelectedId(null)
         }}
       />
       <AccountProxyDialog
         open={proxyId !== null}
-        accountName={items.find((account) => account.id === proxyId)?.name ?? "账号"}
+        accountName={accounts.find((account) => account.id === proxyId)?.name ?? "账号"}
         proxies={proxies}
         onOpenChange={(open) => {
           if (!open) setProxyId(null)
         }}
         onConfirm={(nextProxyId) => {
           if (proxyId !== null) onUpdate?.({ accountId: proxyId, proxyId: nextProxyId })
-          if (onUpdate === undefined) {
-            setItems((current) =>
-              current.map((account) =>
-                account.id === proxyId ? { ...account, proxyId: nextProxyId } : account,
-              ),
-            )
-          }
           setProxyId(null)
         }}
       />
       <FingerprintDialog
         open={fingerprintId !== null}
-        account={items.find((account) => account.id === fingerprintId) ?? null}
+        account={accounts.find((account) => account.id === fingerprintId) ?? null}
         onOpenChange={(open) => {
           if (!open) setFingerprintId(null)
         }}
         onConfirm={(seed) => {
-          const account = items.find((item) => item.id === fingerprintId)
+          const account = accounts.find((item) => item.id === fingerprintId)
           if (account !== undefined) {
             const fingerprint = { ...fingerprintDetail(account), seed }
             onUpdate?.({ accountId: account.id, fingerprint })
-            if (onUpdate === undefined) {
-              setItems((current) =>
-                current.map((item) =>
-                  item.id === account.id
-                    ? { ...item, fingerprint: seed, fingerprintDetail: fingerprint }
-                    : item,
-                ),
-              )
-            }
           }
           setFingerprintId(null)
         }}
@@ -124,6 +102,7 @@ export function AccountsScreen({
           onBack={() => setSelectedId(null)}
           onReauthorize={() => onReauthorize?.(selected.id) ?? onOpenAuthorize()}
           onDelete={() => setDeleteId(selected.id)}
+          onToggleEnabled={() => onUpdate?.({ accountId: selected.id, enabled: !selected.enabled })}
           onChangeProxy={() => setProxyId(selected.id)}
           onEditFingerprint={() => setFingerprintId(selected.id)}
         />
@@ -131,8 +110,6 @@ export function AccountsScreen({
       </>
     )
   }
-  const attention = items.filter((account) => !account.autoSwitch)
-  const ordered = items.filter((account) => account.autoSwitch)
   return (
     <div className="page narrow">
       <header className="page-head">
@@ -149,7 +126,7 @@ export function AccountsScreen({
           {error}
         </p>
       ) : null}
-      {items.length === 0 ? (
+      {accounts.length === 0 ? (
         <p className="note">还没有 Claude 账号。添加后会在这里显示授权状态和切换顺序。</p>
       ) : null}
       {attention.length ? (
@@ -171,7 +148,9 @@ export function AccountsScreen({
                   <div className="ttl">{account.name}</div>
                   <div className="desc">{account.status} · 不参与自动切换</div>
                 </div>
-                <span className="status info">{account.needsReauth ? "需重新授权" : "已停用"}</span>
+                <span className={statusClass(account.statusKind)}>
+                  {statusLabel(account.statusKind)}
+                </span>
               </Button>
             ))}
           </div>
@@ -180,7 +159,7 @@ export function AccountsScreen({
       <section className="section">
         <div className="section-head">
           <h2>自动切换顺序</h2>
-          <span className="end">拖动调整</span>
+          <span className="end">按保存顺序</span>
         </div>
         <div className="group">
           {ordered.map((account) => (
@@ -211,11 +190,27 @@ export function AccountsScreen({
             </Button>
           ))}
         </div>
+        {ordered.length === 0 && accounts.length > 0 ? (
+          <p className="note">没有可用账号；处理上面的账号后会自动回到切换顺序。</p>
+        ) : null}
         <p className="note">响应体开始写出后不再换号；请求体超过 32 MiB 不重放。</p>
       </section>
       {dialogs}
     </div>
   )
+}
+
+function statusLabel(kind: PoolAccount["statusKind"]): string {
+  if (kind === "reauth") return "需重新授权"
+  if (kind === "disabled") return "已停用"
+  if (kind === "cooldown") return "冷却中"
+  return "可用"
+}
+
+function statusClass(kind: PoolAccount["statusKind"]): string {
+  if (kind === "cooldown") return "status warn"
+  if (kind === "ready") return "status ok"
+  return "status info"
 }
 
 function fingerprintDetail(account: PoolAccount): ClaudeFingerprintView {
@@ -230,16 +225,4 @@ function fingerprintDetail(account: PoolAccount): ClaudeFingerprintView {
       clientRectsNoise: true,
     }
   )
-}
-
-function toPoolAccounts(): PoolAccount[] {
-  return accountFixtures.map((account) => ({
-    ...account,
-    proxyId: account.id === "primary" ? "la-01" : null,
-    fingerprint: `fp_${account.id}…73aa`,
-  }))
-}
-
-function toPoolProxies(): PoolProxy[] {
-  return proxyFixtures.map((proxy) => ({ ...proxy, accountId: proxy.accountId ?? null }))
 }

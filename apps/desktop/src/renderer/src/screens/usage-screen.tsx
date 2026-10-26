@@ -1,35 +1,24 @@
-// 负责展示只包含元数据的用量统计、图表和请求记录。
-import { useMemo, useState } from "react"
-import { Button } from "../components/ui/button"
+// 负责展示 usage.summary 的今天/7 天汇总：请求数、输入输出、缓存、平均耗时和错误数。
+// 没有记录时只显示空态，不伪造数字。
+
+import { useState } from "react"
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group"
-import { filterUsageRows, type UsageFilter } from "../models/operations-model"
-import { operationsUsageFixture } from "../fixtures/operations-fixtures"
+import type { UsageBridge, UsageRange, UsageSummary } from "../../../main/session/session-types"
+import { useUsageSummary } from "../hooks/use-usage-summary"
 
 const ranges = [
   ["today", "今天"],
   ["7d", "7 天"],
-  ["30d", "30 天"],
 ] as const
 
-const filters = [
-  ["all", "全部"],
-  ["switch", "换号"],
-  ["error", "错误"],
-] as const satisfies readonly (readonly [UsageFilter, string])[]
+/** 用量页面 props；bridge 可注入给测试。 */
+export type UsageScreenProps = { bridge?: UsageBridge | null }
 
-/** 用量页面 props。 */
-export type UsageScreenProps = { usageFixture?: typeof operationsUsageFixture }
+/** 绘制只含元数据的用量汇总。 */
+export function UsageScreen({ bridge }: UsageScreenProps) {
+  const [range, setRange] = useState<UsageRange>("today")
+  const { summary, loading, error } = useUsageSummary(range, bridge)
 
-/** 绘制用量统计、Token 图表、模型排行和请求日志。 */
-export function UsageScreen({ usageFixture = operationsUsageFixture }: UsageScreenProps) {
-  const [range, setRange] = useState("7d")
-  const [split, setSplit] = useState("account")
-  const [filter, setFilter] = useState<UsageFilter>("all")
-  const [exported, setExported] = useState(false)
-  const rows = useMemo(
-    () => filterUsageRows([...usageFixture.requests], filter),
-    [filter, usageFixture.requests],
-  )
   return (
     <div className="page narrow">
       <header className="page-head">
@@ -44,7 +33,9 @@ export function UsageScreen({ usageFixture = operationsUsageFixture }: UsageScre
           type="single"
           aria-label="时间范围"
           value={range}
-          onValueChange={(next) => next && setRange(next)}
+          onValueChange={(next) => {
+            if (next === "today" || next === "7d") setRange(next)
+          }}
         >
           {ranges.map(([id, label]) => (
             <ToggleGroupItem key={id} value={id}>
@@ -53,146 +44,79 @@ export function UsageScreen({ usageFixture = operationsUsageFixture }: UsageScre
           ))}
         </ToggleGroup>
       </header>
-      <div className="stats">
-        {usageFixture.stats.map(([label, value, detail]) => (
-          <div className="stat" key={label}>
-            <div className="v">{value}</div>
-            <div className="k">{label}</div>
-            <span className="muted">{detail}</span>
+      {error ? (
+        <p className="error-text" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {loading ? <p className="note">读取中…</p> : null}
+      {!loading && error === null && summary !== null && summary.requests === 0 ? (
+        <p className="note">
+          还没有用量记录。开始一次会话后，这里只显示请求数、Token 和耗时的汇总。
+        </p>
+      ) : null}
+      {!loading && error === null && summary !== null && summary.requests > 0 ? (
+        <>
+          <div className="stats">
+            {summaryStats(summary, range).map(([label, value, detail]) => (
+              <div className="stat" key={label}>
+                <div className="v">{value}</div>
+                <div className="k">{label}</div>
+                <span className="muted">{detail}</span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <section className="section">
-        <div className="section-head">
-          <h2>每日 Token</h2>
-          <ToggleGroup
-            type="single"
-            aria-label="图表分组"
-            value={split}
-            onValueChange={(next) => next && setSplit(next)}
-          >
-            <ToggleGroupItem value="account">按账号</ToggleGroupItem>
-            <ToggleGroupItem value="model">按模型</ToggleGroupItem>
-          </ToggleGroup>
-        </div>
-        <div className="group chart-box">
-          <svg
-            className="chart-svg"
-            viewBox="0 0 640 180"
-            role="img"
-            aria-label={`最近${range}用量图表`}
-          >
-            <path
-              d="M20 150 C 100 145, 135 130, 180 136 S 250 110, 290 120 S 360 70, 420 96 S 520 54, 620 40"
-              fill="none"
-              stroke="var(--chart-1)"
-              strokeWidth="3"
-            />
-            <path
-              d="M20 160 C 120 155, 180 152, 240 150 S 380 140, 450 146 S 560 120, 620 128"
-              fill="none"
-              stroke="var(--chart-2)"
-              strokeWidth="2"
-            />
-            <line x1="20" y1="160" x2="620" y2="160" stroke="var(--divider)" />
-          </svg>
-          <div className="legend">
-            <span>
-              <i style={{ background: "var(--chart-1)" }} />
-              {split === "account" ? "主力 Max" : "Opus 5.5"}
-            </span>
-            <span>
-              <i style={{ background: "var(--chart-2)" }} />
-              {split === "account" ? "备用 Pro" : "Sonnet 5.5"}
-            </span>
-          </div>
-        </div>
-      </section>
-      <section className="section">
-        <div className="section-head">
-          <h2>按模型</h2>
-        </div>
-        <div className="group">
-          {usageFixture.models.map((model) => (
-            <div className="item" key={model.name}>
-              <div className="main">
-                <div className="ttl">{model.name}</div>
-                <div className="meter">
-                  <span className="bar">
-                    <i style={{ width: `${model.ratio}%` }} />
-                  </span>
-                  <span className="num">{model.ratio}%</span>
+          <section className="section">
+            <div className="section-head">
+              <h2>说明</h2>
+            </div>
+            <div className="group">
+              <div className="item">
+                <div className="main">
+                  <div className="ttl">写入位置</div>
+                  <div className="desc">本机 usage.jsonl，只追加元数据</div>
                 </div>
               </div>
-              <span className="val">{model.tokens}</span>
+              <div className="item">
+                <div className="main">
+                  <div className="ttl">保留</div>
+                  <div className="desc">超过 30 天的记录会自动清理</div>
+                </div>
+              </div>
             </div>
-          ))}
-        </div>
-      </section>
-      <section className="section">
-        <div className="section-head">
-          <h2>请求记录</h2>
-          <ToggleGroup
-            type="single"
-            aria-label="请求筛选"
-            value={filter}
-            onValueChange={(next) => {
-              const picked = filters.find(([id]) => id === next)
-              if (picked) setFilter(picked[0])
-            }}
-          >
-            {filters.map(([id, label]) => (
-              <ToggleGroupItem key={id} value={id}>
-                {label}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        </div>
-        <div className="group">
-          <table className="dtable">
-            <thead>
-              <tr>
-                <th>时间</th>
-                <th>账号</th>
-                <th>模型</th>
-                <th>状态</th>
-                <th className="r">输入 / 输出</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <td>{row.time ?? "—"}</td>
-                  <td>{row.account ?? "—"}</td>
-                  <td>{row.model}</td>
-                  <td>
-                    <span
-                      className={
-                        row.status >= 500
-                          ? "status bad"
-                          : row.status === 429
-                            ? "status warn"
-                            : "status ok"
-                      }
-                    >
-                      {row.status}
-                    </span>
-                  </td>
-                  <td className="r num">
-                    {row.input ?? 0} / {row.output ?? 0}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="note">
-          <Button variant="ghost" size="sm" onClick={() => setExported(true)}>
-            导出 CSV
-          </Button>
-          {exported ? "已导出（只含元数据）" : ""}
-        </p>
-      </section>
+          </section>
+        </>
+      ) : null}
     </div>
   )
+}
+
+function summaryStats(
+  summary: UsageSummary,
+  range: UsageRange,
+): Array<[label: string, value: string, detail: string]> {
+  const cache = summary.cacheReadTokens + summary.cacheCreationTokens
+  return [
+    ["请求", String(summary.requests), range === "today" ? "今天" : "最近 7 天"],
+    ["输入 Token", formatNumber(summary.inputTokens), "不含缓存"],
+    ["输出 Token", formatNumber(summary.outputTokens), "会话产出"],
+    ["缓存 Token", formatNumber(cache), `读取 ${formatNumber(summary.cacheReadTokens)}`],
+    ["平均耗时", formatDuration(summary.averageDurationMs), "每个请求"],
+    ["错误", String(summary.errors), summary.errors === 0 ? "没有错误" : "检查账号或代理"],
+  ]
+}
+
+function formatNumber(value: number): string {
+  if (value >= 1_000_000) return `${trim(value / 1_000_000)}M`
+  if (value >= 1_000) return `${trim(value / 1_000)}K`
+  return String(value)
+}
+
+function trim(value: number): string {
+  return value.toFixed(1).replace(/\.0$/, "")
+}
+
+function formatDuration(value: number): string {
+  if (value < 1_000) return `${Math.round(value)}ms`
+  return `${trim(value / 1_000)}s`
 }

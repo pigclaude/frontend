@@ -1,109 +1,202 @@
-// 负责新会话、进行中会话、权限询问和会话环境抽屉。
+// 负责聊天页：空状态选工作区、开始会话、流式消息、工具折叠、权限回答、换号提示、
+// 取消/停止和错误展示。页面只消费 useSession 控制器，不直接调用 preload。
+
 import { useState } from "react"
-import { Composer } from "../components/composer"
+import type { ClaudeAccountView } from "@pigclaude/contracts/claude-account"
+import { ChatDrawer } from "../components/chat/chat-drawer"
+import { ChatEmpty } from "../components/chat/chat-empty"
+import { ChatThread } from "../components/chat/chat-thread"
+import { Composer, type ComposerSettings } from "../components/composer"
+import type { PermissionMode, ThinkingDepth } from "../components/composer-options"
 import { Icon } from "../components/icon"
 import { Button } from "../components/ui/button"
-import type { PermissionMode, ThinkingDepth } from "../components/composer-options"
-import type { SessionFixture } from "../fixtures/chat-fixtures"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog"
+import type { SessionController } from "../hooks/use-session"
+import { projectNameFromPath } from "../models/project-model"
 import type { Screen } from "./screen"
 
 /** 会话页面 props。 */
 export type ChatScreenProps = {
   fresh: boolean
-  sessionFixture: SessionFixture
+  session: SessionController
+  workspace: string | null
+  workspaceOptions: string[]
+  accounts: ClaudeAccountView[]
+  onPickWorkspace: () => void
+  onSelectWorkspace: (path: string) => void
+  onWorkspaceUsed: (path: string) => void
   onOpen: (screen: Screen) => void
   smartPunctuation: boolean
 }
 
-/** 绘制新会话或进行中的会话页面。 */
-export function ChatScreen({ fresh, sessionFixture, onOpen, smartPunctuation }: ChatScreenProps) {
-  const [model, setModel] = useState("Sonnet 5.5")
-  const [account, setAccount] = useState(sessionFixture.account)
+/** 绘制新会话空状态或进行中的会话。 */
+export function ChatScreen({
+  fresh,
+  session,
+  workspace,
+  workspaceOptions,
+  accounts,
+  onPickWorkspace,
+  onSelectWorkspace,
+  onWorkspaceUsed,
+  onOpen,
+  smartPunctuation,
+}: ChatScreenProps) {
+  const [modelId, setModelId] = useState("")
+  const [accountId, setAccountId] = useState("")
   const [depth, setDepth] = useState<ThinkingDepth>("medium")
-  const [permissionMode, setPermissionMode] = useState<PermissionMode>("ask")
-  const [allowed, setAllowed] = useState(false)
-  const [stepsOpen, setStepsOpen] = useState(false)
-  const [diffOpen, setDiffOpen] = useState(false)
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>("default")
+  const [pendingBypass, setPendingBypass] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
 
-  if (fresh) {
+  const { state } = session
+  const blockedByActive = fresh && state.started
+  const defaultModel = session.models.find((model) => model.isDefault) ?? session.models[0]
+  const selectedModel = state.model ?? (modelId || defaultModel?.id || "")
+  const activeMode = state.started ? state.permissionMode : permissionMode
+  const activeAccount = state.started ? (state.accountId ?? "") : accountId
+  const availableAccounts = accounts.filter((account) => account.enabled && !account.needsReauth)
+  const error = blockedByActive
+    ? "已有一个活动会话，先停止它再开始新会话"
+    : (localError ?? session.state.error?.message ?? null)
+  const composer: ComposerSettings = {
+    model: selectedModel,
+    modelOptions: session.models.map((model) => ({ id: model.id, label: model.displayName })),
+    onModel: (next) => {
+      setModelId(next)
+      if (state.started) void session.setModel(next)
+    },
+    account: activeAccount,
+    accountOptions: availableAccounts.map((account) => ({
+      id: account.id,
+      label: account.displayName,
+    })),
+    onAccount: (next) => {
+      if (state.started) {
+        setLocalError("会话开始后不支持换号")
+        return
+      }
+      setLocalError(null)
+      setAccountId(next)
+    },
+    showAccount: true,
+    depth,
+    onDepth: setDepth,
+    permissionMode: activeMode,
+    onPermissionMode: chooseMode,
+    smartPunctuation,
+  }
+
+  function chooseMode(next: PermissionMode): void {
+    setLocalError(null)
+    if (!state.started) {
+      setPermissionMode(next)
+      return
+    }
+    if (next === "bypassPermissions") {
+      setPendingBypass(true)
+      return
+    }
+    void session.setMode(next)
+  }
+
+  async function startSession(target: string): Promise<boolean> {
+    const ok = await session.start({
+      workspace: target,
+      ...(selectedModel === "" ? {} : { model: selectedModel }),
+      thinking: depth,
+      permissionMode,
+      ...(accountId === "" ? {} : { accountId }),
+    })
+    if (ok) onWorkspaceUsed(target)
+    return ok
+  }
+
+  async function startOnly(): Promise<void> {
+    if (blockedByActive) return
+    const target = workspace ?? workspaceOptions[0] ?? null
+    if (target === null) {
+      setLocalError("先选择一个工作区")
+      return
+    }
+    setLocalError(null)
+    if (!state.started) await startSession(target)
+  }
+
+  async function submit(text: string): Promise<void> {
+    if (blockedByActive) return
+    const target = workspace ?? workspaceOptions[0] ?? null
+    if (target === null) {
+      setLocalError("先选择一个工作区")
+      return
+    }
+    setLocalError(null)
+    if (!state.started) {
+      const ok = await startSession(target)
+      if (!ok) return
+    }
+    await session.send(text)
+  }
+
+  if (fresh || !state.started) {
     return (
-      <section className="view">
-        <div className="panel-top">
-          <span className="spacer" />
-          <Button variant="plain" className="icon-btn" type="button" aria-label="搜索">
-            <Icon name="search" />
-          </Button>
-        </div>
-        <div className="hero">
-          <div className="hero-inner">
-            <div className="ctx-row">
-              <Button variant="plain" className="chip-btn" type="button">
-                <Icon name="folder" small />
-                {sessionFixture.project}
-                <Icon name="down" small />
-              </Button>
-              <Button variant="plain" className="chip-btn" type="button">
-                <span className="dot ok" />
-                {account}
-                <Icon name="down" small />
-              </Button>
-              <Button variant="plain" className="chip-btn" type="button">
-                <Icon name="globe" small />
-                {sessionFixture.proxy}
-              </Button>
-            </div>
-            <Composer
-              placeholder="让 Claude 做点什么，@ 引用文件，/ 使用命令"
-              tall
-              menuSide="bottom"
-              model={model}
-              onModel={setModel}
-              account={account}
-              onAccount={setAccount}
-              showAccount={false}
-              depth={depth}
-              onDepth={setDepth}
-              permissionMode={permissionMode}
-              onPermissionMode={setPermissionMode}
-              smartPunctuation={smartPunctuation}
-              onSubmit={() => onOpen("chat")}
-            />
-            <div className="suggest">
-              {sessionFixture.suggestions.map((suggestion) => (
-                <Button
-                  variant="plain"
-                  key={suggestion.title}
-                  className="sg"
-                  type="button"
-                  onClick={() => onOpen("chat")}
-                >
-                  <span className="tile">
-                    <Icon name={suggestion.icon} />
-                  </span>
-                  <b>{suggestion.title}</b>
-                  <span className="truncate">{suggestion.description}</span>
-                </Button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
+      <>
+        <ChatEmpty
+          workspace={workspace}
+          workspaceOptions={workspaceOptions}
+          composer={composer}
+          modelsLoading={session.modelsLoading}
+          modelsError={session.modelsError}
+          error={error}
+          onPickWorkspace={onPickWorkspace}
+          onSelectWorkspace={(path) => {
+            setLocalError(null)
+            onSelectWorkspace(path)
+          }}
+          onStart={() => void startOnly()}
+          onSubmit={(text) => void submit(text)}
+          onRetryModels={() => void session.refreshModels()}
+          onOpen={onOpen}
+        />
+        <BypassDialog
+          open={pendingBypass}
+          onOpenChange={setPendingBypass}
+          onConfirm={() => {
+            setPermissionMode("bypassPermissions")
+            setPendingBypass(false)
+            if (state.started) void session.setMode("bypassPermissions")
+          }}
+        />
+      </>
     )
   }
 
+  const waiting = state.turns.some((turn) => turn.status === "waiting")
+  const statusText = state.ended ? "已结束" : waiting ? "等待许可" : "运行中"
   return (
     <section className="view">
       <div className="panel-top">
         <div className="title">
           <Icon name="folder" className="muted" />
-          <span className="truncate">流开始后不再换号</span>
+          <span className="truncate">
+            {workspace === null ? "未选择工作区" : projectNameFromPath(workspace)}
+          </span>
         </div>
-        <Button variant="plain" className="icon-btn" type="button" aria-label="更多操作">
-          <Icon name="more" />
-        </Button>
         <span className="spacer" />
-        <span className="status warn">{allowed ? "运行中" : "等待许可"}</span>
+        {state.ended ? null : (
+          <>
+            <Button variant="secondary" size="sm" onClick={() => void session.cancel()}>
+              取消
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => void session.stop()}>
+              停止会话
+            </Button>
+          </>
+        )}
+        <span className={state.ended ? "status info" : waiting ? "status warn" : "status ok"}>
+          {statusText}
+        </span>
         <Button
           variant="plain"
           className="icon-btn"
@@ -114,183 +207,72 @@ export function ChatScreen({ fresh, sessionFixture, onOpen, smartPunctuation }: 
           <Icon name="sidebar" />
         </Button>
       </div>
-      <div className="thread">
-        <div className="msgs">
-          <div className="msg-user">{sessionFixture.userMessage}</div>
-          <div className="msg-ai">
-            <p>{sessionFixture.assistantParagraphs[0]}</p>
-            <div>
-              <Button
-                variant="plain"
-                className="steps-line"
-                type="button"
-                aria-expanded={stepsOpen}
-                onClick={() => setStepsOpen((value) => !value)}
-              >
-                <Icon name="right" small className="chev" />
-                读取 {sessionFixture.steps.length} 个文件，搜索 1 次
-              </Button>
-              {stepsOpen ? (
-                <div className="steps-list">
-                  {sessionFixture.steps.map((step) => (
-                    <div key={step.kind}>
-                      <Icon name="file" small />
-                      <b>{step.kind}</b>
-                      <span className="mono">{step.value}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-            <p>{sessionFixture.assistantParagraphs[1]}</p>
-            <div className="event-line">
-              <Icon name="swap" small />
-              <span className="num">{sessionFixture.relayEvent.time}</span>
-              {sessionFixture.relayEvent.text}
-            </div>
-            <div className={diffOpen ? "result is-open" : "result"}>
-              <Button
-                variant="plain"
-                className="result-head"
-                type="button"
-                onClick={() => setDiffOpen((value) => !value)}
-              >
-                <Icon name="right" small className="chev" />
-                <span>{sessionFixture.diff.files.length} 个文件已更改</span>
-                <span className="num t-ok">+{sessionFixture.diff.additions}</span>
-                <span className="num t-bad">−{sessionFixture.diff.deletions}</span>
-                <span className="grow" />
-                <span className="muted">查看</span>
-              </Button>
-              {diffOpen ? (
-                <div className="result-body">
-                  <div className="diff">
-                    {sessionFixture.diff.lines.map((line, index) => (
-                      <div
-                        key={`${line}-${index}`}
-                        className={
-                          line.startsWith("+") ? "add" : line.startsWith("−") ? "del" : "hunk"
-                        }
-                      >
-                        <span className="ln">{151 + index}</span>
-                        <span className="sg">
-                          {line.startsWith("+") || line.startsWith("−") ? line[0] : " "}
-                        </span>
-                        <span>{line.replace(/^[+−]/, "")}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-            <p>{sessionFixture.assistantParagraphs[2]}</p>
-            {!allowed ? (
-              <div className="perm">
-                <div className="q">
-                  <Icon name="hand" />
-                  {sessionFixture.permission.description}
-                </div>
-                <pre>{sessionFixture.permission.command}</pre>
-                <div className="acts">
-                  <Button variant="primary" onClick={() => setAllowed(true)}>
-                    允许一次
-                  </Button>
-                  <Button variant="secondary" onClick={() => setAllowed(true)}>
-                    本会话内允许
-                  </Button>
-                  <Button variant="ghost">拒绝</Button>
-                  <span className="keys">⏎ 允许 · esc 拒绝</span>
-                </div>
-              </div>
-            ) : (
-              <div className="perm-done">
-                <Icon name="check" small />
-                已允许一次
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      {error === null ? null : (
+        <p className="error-text" role="alert">
+          {error}
+        </p>
+      )}
+      {session.modelsError === null ? null : (
+        <p className="note">模型列表不可用：{session.modelsError}</p>
+      )}
+      <ChatThread
+        state={state}
+        accounts={accounts}
+        onRespondPermission={(requestId, decision) => {
+          void session.respondPermission(requestId, decision)
+        }}
+      />
       <div className="composer-wrap">
         <Composer
+          {...composer}
           placeholder="继续追问"
           menuSide="top"
-          model={model}
-          onModel={setModel}
-          account={account}
-          onAccount={setAccount}
-          showAccount
-          depth={depth}
-          onDepth={setDepth}
-          permissionMode={permissionMode}
-          onPermissionMode={setPermissionMode}
-          smartPunctuation={smartPunctuation}
-          onSubmit={() => undefined}
+          onSubmit={(text) => void submit(text)}
         />
-        <p className="composer-meta">
-          经代理 {sessionFixture.proxy} 发出 · pigclaude 只记录用量元数据
-        </p>
+        <p className="composer-meta">经本机中继发出 · pigclaude 只记录用量元数据</p>
       </div>
-      {drawerOpen ? <SessionDrawer fixture={sessionFixture} /> : null}
+      {drawerOpen ? <ChatDrawer state={state} accounts={accounts} workspace={workspace} /> : null}
+      <BypassDialog
+        open={pendingBypass}
+        onOpenChange={setPendingBypass}
+        onConfirm={() => {
+          setPermissionMode("bypassPermissions")
+          setPendingBypass(false)
+          void session.setMode("bypassPermissions")
+        }}
+      />
     </section>
   )
 }
 
-function SessionDrawer({ fixture }: { fixture: SessionFixture }) {
+function BypassDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onConfirm: () => void
+}) {
   return (
-    <aside className="drawer" aria-label="会话环境">
-      <div className="section">
-        <div className="section-head">
-          <h2>会话环境</h2>
-          <span className="end">全部一致</span>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <div className="dialog-head">
+          <DialogTitle>跳过所有确认？</DialogTitle>
+          <DialogDescription>
+            跳过确认后，Claude
+            运行命令和修改文件都不再询问。只在临时排障时使用，并确认工作区可丢弃或已有备份。
+          </DialogDescription>
         </div>
-        <div className="group">
-          {fixture.environment.map((item) => (
-            <div className="item" key={item.label}>
-              <div className="main">
-                <div className="ttl">{item.label}</div>
-                <div className="desc mono">{item.value}</div>
-              </div>
-            </div>
-          ))}
+        <div className="dialog-foot">
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            取消
+          </Button>
+          <Button variant="danger" onClick={onConfirm}>
+            仍然启用
+          </Button>
         </div>
-      </div>
-      <div className="section">
-        <div className="section-head">
-          <h2>服务账号</h2>
-          <span className="end">换号 1 次</span>
-        </div>
-        <div className="group">
-          {fixture.accounts.map((account) => (
-            <div className="item" key={account.name}>
-              <span className="avatar sm">{account.name.slice(0, 1)}</span>
-              <div className="main">
-                <div className="ttl">{account.name}</div>
-              </div>
-              <span className="val">{account.time}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="section">
-        <div className="section-head">
-          <h2>本会话用量</h2>
-        </div>
-        <div className="group">
-          <div className="item">
-            <div className="main">
-              <div className="ttl">请求</div>
-            </div>
-            <span className="val">{fixture.usage.requests}</span>
-          </div>
-          <div className="item">
-            <div className="main">
-              <div className="ttl">Token</div>
-            </div>
-            <span className="val">{fixture.usage.tokens}</span>
-          </div>
-        </div>
-      </div>
-    </aside>
+      </DialogContent>
+    </Dialog>
   )
 }

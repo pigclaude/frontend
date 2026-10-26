@@ -6,7 +6,6 @@ import { useMemo, useRef } from "react"
 import { Icon } from "./icon"
 import { createSmartPunctuation } from "./smart-punctuation"
 import {
-  composerModels,
   getComposerKeyAction,
   permissionModes,
   thinkingDepths,
@@ -21,7 +20,11 @@ import {
 } from "./ui/dropdown-menu"
 import { Button } from "./ui/button"
 
-const accounts = ["主力 Max", "备用 Pro"] as const
+/** 模型菜单选项，id 传给 session.start/setModel，label 只用于展示。 */
+export type ComposerModelOption = { id: string; label: string }
+
+/** 账号菜单选项，id 传给 session.start 的 accountId。 */
+export type ComposerAccountOption = { id: string; label: string }
 
 /** 会话输入区 props。 */
 export type ComposerProps = {
@@ -29,8 +32,10 @@ export type ComposerProps = {
   tall?: boolean
   menuSide: "top" | "bottom"
   model: string
+  modelOptions: readonly ComposerModelOption[]
   onModel: (model: string) => void
   account: string
+  accountOptions: readonly ComposerAccountOption[]
   onAccount: (account: string) => void
   showAccount: boolean
   depth: ThinkingDepth
@@ -41,19 +46,24 @@ export type ComposerProps = {
   smartPunctuation: boolean
 }
 
+/** 去掉占位文案、布局和提交后的输入区设置，空状态和会话页共用。 */
+export type ComposerSettings = Omit<ComposerProps, "placeholder" | "tall" | "menuSide" | "onSubmit">
+
 /** 绘制 TipTap 输入区并保证空内容不可提交。 */
 export function Composer({
   placeholder,
   tall,
   menuSide,
   model,
+  modelOptions,
   onModel,
   account,
+  accountOptions,
   onAccount,
   showAccount,
   depth,
   onDepth,
-  permissionMode = "ask",
+  permissionMode = "default",
   onPermissionMode,
   onSubmit,
   smartPunctuation,
@@ -92,6 +102,8 @@ export function Composer({
 
   const modeLabel = permissionModes.find(([id]) => id === permissionMode)?.[1] ?? "每次询问"
   const depthLabel = thinkingDepths.find(([id]) => id === depth)?.[1] ?? "中"
+  const modelLabel = modelOptions.find((item) => item.id === model)?.label ?? "默认模型"
+  const accountLabel = accountOptions.find((item) => item.id === account)?.label ?? "自动选择账号"
   const empty = useEditorState({
     editor,
     selector: ({ editor: current }) => !current || current.isEmpty,
@@ -137,13 +149,17 @@ export function Composer({
             <DropdownMenu>
               <DropdownMenuTrigger className="chip-btn">
                 <span className="dot ok" />
-                <span className="chip-label-optional">{account}</span>
+                <span className="chip-label-optional">{accountLabel}</span>
                 <Icon name="down" className="chip-caret" />
               </DropdownMenuTrigger>
               <DropdownMenuContent side={menuSide} align="end">
-                {accounts.map((item) => (
-                  <DropdownMenuItem key={item} onSelect={() => onAccount(item)}>
-                    {item}
+                {accountOptions.length === 0 ? (
+                  <DropdownMenuItem disabled>没有可用账号</DropdownMenuItem>
+                ) : null}
+                {accountOptions.map((item) => (
+                  <DropdownMenuItem key={item.id} onSelect={() => onAccount(item.id)}>
+                    {item.label}
+                    {item.id === account ? <Icon name="check" small /> : null}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
@@ -152,14 +168,17 @@ export function Composer({
           {showAccount ? <span className="composer-sep" aria-hidden="true" /> : null}
           <DropdownMenu>
             <DropdownMenuTrigger className="chip-btn">
-              {model}
+              {modelLabel}
               <Icon name="down" className="chip-caret" />
             </DropdownMenuTrigger>
             <DropdownMenuContent side={menuSide} align="end">
-              {composerModels.map((item) => (
-                <DropdownMenuItem key={item} onSelect={() => onModel(item)}>
-                  {item}
-                  {item === model ? <Icon name="check" small /> : null}
+              {modelOptions.length === 0 ? (
+                <DropdownMenuItem disabled>模型列表不可用</DropdownMenuItem>
+              ) : null}
+              {modelOptions.map((item) => (
+                <DropdownMenuItem key={item.id} onSelect={() => onModel(item.id)}>
+                  {item.label}
+                  {item.id === model ? <Icon name="check" small /> : null}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>

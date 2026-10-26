@@ -20,6 +20,8 @@ const permissionModes = new Set<SessionPermissionMode>([
   "bypassPermissions",
 ])
 const thinkingLevels = new Set<SessionThinking>(["off", "low", "medium", "high"])
+const maxUpdatedPermissions = 50
+const maxUpdatedPermissionsBytes = 64 * 1024
 
 /** 会话 IPC 依赖；host 和用量记录器可能在窗口创建后仍未装配。 */
 export type SessionIpcOptions = {
@@ -120,10 +122,10 @@ export function readPermissionAnswer(value: unknown): PermissionAnswer {
   if (requestId === null || (decision !== "allow" && decision !== "deny")) {
     throw invalidInput()
   }
-  const updatedPermissions = value.updatedPermissions
-  if (updatedPermissions !== undefined && !Array.isArray(updatedPermissions)) {
-    throw invalidInput()
-  }
+  const updatedPermissions =
+    value.updatedPermissions === undefined
+      ? undefined
+      : readPermissionUpdates(value.updatedPermissions)
   return {
     requestId,
     decision,
@@ -145,6 +147,21 @@ export function readUsageRange(value: unknown): UsageRange {
     throw invalidInput()
   }
   return value.range
+}
+
+// 权限更新来自 renderer，先限制条数、形状和序列化大小，避免超大对象进入权限代理。
+function readPermissionUpdates(value: unknown): unknown[] {
+  if (!Array.isArray(value)) throw invalidInput()
+  if (value.length > maxUpdatedPermissions) throw invalidInput()
+  if (!value.every((item) => isRecord(item))) throw invalidInput()
+  let serialized: string
+  try {
+    serialized = JSON.stringify(value)
+  } catch {
+    throw invalidInput()
+  }
+  if (serialized.length > maxUpdatedPermissionsBytes) throw invalidInput()
+  return value
 }
 
 function readModel(value: unknown): string {

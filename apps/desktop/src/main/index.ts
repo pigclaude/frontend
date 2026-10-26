@@ -37,6 +37,11 @@ import { readDeviceInfo } from "./device-identity/device-info"
 import { readDockIconDataUrl } from "./dock-icon"
 import { configureRuntimeProfile } from "./runtime-profile"
 import { readDesktopRuntimeEndpoints } from "./runtime-endpoints"
+import { resolveClaudeBinaryPath } from "./session/claude-binary"
+import { SessionHost } from "./session/session-host"
+import { registerSessionIpc } from "./session/session-ipc"
+import type { SessionHostEvent } from "./session/session-types"
+import { UsageRecorder } from "./session/usage-recorder"
 import { FileSecretVault } from "./secret-vault"
 import {
   createMainWindowOptions,
@@ -57,6 +62,8 @@ let authorizationSetupError: string | undefined
 let desktopComposition: DesktopComposition | null = null
 let claudeAccountService: ClaudeAccountService | null = null
 let proxyService: ProxyService | null = null
+let sessionHost: SessionHost | null = null
+let usageRecorder: UsageRecorder | null = null
 let callbackServer: Awaited<ReturnType<typeof createCallbackServer>> | null = null
 let pendingCallbackUrls: string[] = []
 let cleanupLiveEvents = () => {}
@@ -100,9 +107,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   cleanupLiveEvents()
-  void desktopComposition?.dispose()
-  void claudeAccountService?.dispose()
-  void callbackServer?.close()
+  void shutdownDesktop()
 })
 
 function registerIpcHandlers(): void {
@@ -226,6 +231,19 @@ function registerIpcHandlers(): void {
     getProxyService: () => proxyService,
     isTrusted: isTrustedSender,
   })
+  registerSessionIpc({
+    getHost: () => sessionHost,
+    getUsage: () => usageRecorder,
+    isTrusted: isTrustedSender,
+  })
+}
+
+/** 应用退出时先结束会话并拒绝权限，再停 daemon、账号和回调服务。 */
+async function shutdownDesktop(): Promise<void> {
+  await sessionHost?.dispose().catch(() => undefined)
+  await desktopComposition?.dispose().catch(() => undefined)
+  void claudeAccountService?.dispose()
+  await callbackServer?.close().catch(() => undefined)
 }
 
 /** 启动后已有授权时上报一次设备版本；失败只记日志，不重试也不提示用户。 */
@@ -283,6 +301,30 @@ async function setupAuthorization(): Promise<void> {
     onEvent: sendClaudeAccountEvent,
   })
   proxyService = new ProxyService({ store: localStore })
+  usageRecorder = new UsageRecorder({ filePath: join(app.getPath("userData"), "usage.jsonl") })
+  if (composition.runtime) {
+    sessionHost = new SessionHost({
+      membership: composition.membershipGate,
+      runtime: composition.runtime,
+      usage: usageRecorder,
+      userDataPath: app.getPath("userData"),
+      resolveBinaryPath: () => resolveClaudeBinaryPath(),
+      defaultWorkspace: () => app.getPath("home"),
+      resolveProfile: async (accountId) => {
+        const accounts = await localStore.listAccounts()
+        const account =
+          accountId === null
+            ? (accounts.find(
+                (item) => item.enabled && !item.needsReauth && item.credential !== null,
+              ) ?? accounts[0])
+            : (accounts.find((item) => item.id === accountId) ?? accounts[0])
+        return account === undefined
+          ? null
+          : { timezone: account.fingerprint.timezone, locale: account.fingerprint.lang }
+      },
+    })
+    sessionHost.subscribe(sendSessionEvent)
+  }
   const checkLive = () => {
     void desktopComposition?.resume()
   }
@@ -334,6 +376,12 @@ function sendClaudeAccountEvent(event: ClaudeAccountEvent): void {
   }
 }
 
+function sendSessionEvent(event: SessionHostEvent): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send("pigclaude:session-event", event)
+  }
+}
+
 function isTrustedSender(event: Electron.IpcMainInvokeEvent): boolean {
   return (
     mainWindow !== null &&
@@ -361,6 +409,10 @@ function createWindow(): void {
   }
   applyGlassBackground()
   mainWindow.once("ready-to-show", () => mainWindow?.show())
+  mainWindow.once("closed", () => {
+    void sessionHost?.stop().catch(() => undefined)
+    mainWindow = null
+  })
 }
 
 /** 外观变化时同步磨砂窗口的底色，深色下压暗系统材质。 */

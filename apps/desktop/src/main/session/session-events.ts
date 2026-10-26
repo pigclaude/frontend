@@ -5,6 +5,9 @@ import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk"
 /** 应用允许的四档权限模式；与设计第 9.1 节一致。 */
 export type SessionPermissionMode = "default" | "acceptEdits" | "plan" | "bypassPermissions"
 
+/** 应用允许的四档思考深度；off 关闭，其余映射到固定 token 预算。 */
+export type SessionThinking = "off" | "low" | "medium" | "high"
+
 /** 应用事件里的内容块；工具输入保持 unknown，避免把 SDK 内部类型泄漏到界面。 */
 export type SessionContentBlock =
   | { type: "text"; text: string }

@@ -6,6 +6,7 @@ import type {
   Options,
   SDKMessage,
   SDKUserMessage,
+  ThinkingConfig,
 } from "@anthropic-ai/claude-agent-sdk"
 import { resolveClaudeBinaryPath } from "./claude-binary"
 import type {
@@ -13,6 +14,7 @@ import type {
   SessionContentBlock,
   SessionEvent,
   SessionPermissionMode,
+  SessionThinking,
 } from "./session-events"
 
 export type {
@@ -20,6 +22,7 @@ export type {
   SessionContentBlock,
   SessionEvent,
   SessionPermissionMode,
+  SessionThinking,
   SessionUsage,
 } from "./session-events"
 
@@ -28,6 +31,8 @@ export type AdapterQuery = AsyncIterable<SDKMessage> & {
   interrupt(): Promise<unknown>
   close(): void
   supportedModels(): Promise<ModelInfo[]>
+  setPermissionMode(mode: SessionPermissionMode): Promise<void>
+  setModel(model?: string): Promise<void>
 }
 
 /** 可注入的 SDK 查询函数，参数与 SDK query() 一致。 */
@@ -51,6 +56,8 @@ export type ClaudeAgentStartOptions = {
   canUseTool: CanUseTool
   abortController: AbortController
   binaryPath?: string
+  model?: string
+  thinking?: SessionThinking
 }
 
 /** 查询模型列表的参数；env 由调用方提供，避免把宿主进程的凭据带进子进程。 */
@@ -173,6 +180,24 @@ export class ClaudeAgentAdapter {
       }
       abortController.abort()
     }
+  }
+
+  /** 切换后续工具调用的权限模式；正在等待的 canUseTool 请求不受影响。会话未启动时抛错。 */
+  async setPermissionMode(mode: SessionPermissionMode): Promise<void> {
+    const query = this.#requireQuery()
+    await query.setPermissionMode(mode)
+  }
+
+  /** 切换后续回复使用的模型；会话未启动时抛错。 */
+  async setModel(model: string): Promise<void> {
+    const query = this.#requireQuery()
+    await query.setModel(model)
+  }
+
+  // 控制请求只对已启动且未结束的 query 有效；否则不静默吞掉调用方的意图。
+  #requireQuery(): AdapterQuery {
+    if (this.#query === null || this.#stopped) throw new Error("session is not active")
+    return this.#query
   }
 
   async #stop(): Promise<void> {
@@ -325,9 +350,25 @@ function buildQueryOptions(options: ClaudeAgentStartOptions, binaryPath: string)
     permissionMode: options.permissionMode,
     canUseTool: options.canUseTool,
     abortController: options.abortController,
+    ...(options.model === undefined ? {} : { model: options.model }),
+    ...(options.thinking === undefined ? {} : { thinking: thinkingConfig(options.thinking) }),
     ...(options.permissionMode === "bypassPermissions"
       ? { allowDangerouslySkipPermissions: true }
       : {}),
+  }
+}
+
+// 固定档位映射，避免 renderer 直接传任意 token 预算。
+function thinkingConfig(thinking: SessionThinking): ThinkingConfig {
+  switch (thinking) {
+    case "off":
+      return { type: "disabled" }
+    case "low":
+      return { type: "enabled", budgetTokens: 2_048 }
+    case "medium":
+      return { type: "enabled", budgetTokens: 8_192 }
+    case "high":
+      return { type: "enabled", budgetTokens: 16_384 }
   }
 }
 

@@ -1,0 +1,345 @@
+// 提供 SessionHost 测试共用的假会员、runtime、会话环境、适配器和用量记录器；
+// 不启动真实 Claude CLI、daemon 或网络。
+
+import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
+import type { MembershipState, MembershipView } from "@pigclaude/contracts/membership"
+import type { ClaudeAgentStartOptions, ClaudeModelsOptions } from "./claude-agent-adapter"
+import type { ClaudeModel, SessionEvent, SessionPermissionMode } from "./session-events"
+import type { SessionEnvironmentInput } from "./session-environment"
+import type {
+  SessionAdapterPort,
+  SessionEnvironmentFactory,
+  SessionEnvironmentPort,
+  SessionHostEvent,
+  SessionMembership,
+  SessionRuntime,
+  SessionRuntimeEvent,
+  SessionUsagePort,
+} from "./session-types"
+import type { UsageRecord, UsageSummary } from "./usage-recorder"
+import { SessionHost, type SessionHostOptions } from "./session-host"
+
+export const fixedNow = new Date(2026, 9, 26, 12, 0, 0).getTime()
+
+/** 构造一份脱敏会员视图；测试只关心状态。 */
+export function membershipView(state: MembershipState = "active"): MembershipView {
+  return {
+    startupPhase: "settled",
+    revision: 1,
+    state,
+    account: { userId: "user-1", nickname: "Pig", email: "pig@example.com", avatar: "" },
+    tier: null,
+    membershipValidUntil: null,
+    offlineValidUntil: null,
+    lastVerifiedAt: null,
+    nextVerificationAt: null,
+    bindingEpoch: null,
+    errorCode: null,
+    serverReason: null,
+    authorizationUrl: null,
+  }
+}
+
+/** 可切换状态的假会员门禁。 */
+export class FakeMembership implements SessionMembership {
+  readonly #listeners = new Set<(view: MembershipView) => void>()
+  #state: MembershipState
+
+  constructor(state: MembershipState = "active") {
+    this.#state = state
+  }
+
+  async inspect(): Promise<MembershipView> {
+    return this.view()
+  }
+
+  view(): MembershipView {
+    return membershipView(this.#state)
+  }
+
+  subscribe(listener: (view: MembershipView) => void): () => void {
+    this.#listeners.add(listener)
+    return () => this.#listeners.delete(listener)
+  }
+
+  /** 模拟服务端会员状态变化并同步广播。 */
+  setState(state: MembershipState): void {
+    this.#state = state
+    for (const listener of [...this.#listeners]) listener(this.view())
+  }
+}
+
+/** 可注入换号事件的假 LocalRuntime。 */
+export class FakeRuntime implements SessionRuntime {
+  daemonBaseUrl: string | null
+  readonly sessionToken = "runtime-session-token"
+  preferredAccount: string | null | undefined = undefined
+  readonly #listeners = new Set<(event: SessionRuntimeEvent) => void>()
+
+  constructor(daemonBaseUrl: string | null = "http://127.0.0.1:47821") {
+    this.daemonBaseUrl = daemonBaseUrl
+  }
+
+  subscribe(listener: (event: SessionRuntimeEvent) => void): () => void {
+    this.#listeners.add(listener)
+    return () => this.#listeners.delete(listener)
+  }
+
+  setPreferredAccount(accountId: string | null): void {
+    this.preferredAccount = accountId
+  }
+
+  /** 模拟 daemon 选号产生的换号事件。 */
+  switchAccount(
+    from: string | null,
+    to: string,
+    reason: SessionRuntimeEvent["reason"] = "switch",
+  ): void {
+    for (const listener of [...this.#listeners]) {
+      listener({ type: "account-switched", from, to, reason })
+    }
+  }
+}
+
+/** 记录清理调用的假会话环境。 */
+export class FakeEnvironment implements SessionEnvironmentPort {
+  readonly env: Record<string, string>
+  readonly configDir: string
+  readonly sessionDir: string
+  readonly workspace: string
+  readonly binaryPath: string
+  readonly timezone: string
+  cleaned = 0
+  readonly #trace: string[]
+
+  constructor(input: SessionEnvironmentInput, trace: string[], userDataPath: string) {
+    this.workspace = input.workspace
+    this.binaryPath = input.binaryPath
+    this.timezone = input.timezone
+    this.sessionDir = `${input.userDataPath ?? userDataPath}/sessions/${input.sessionId}`
+    this.configDir = `${this.sessionDir}/claude`
+    this.env = { ANTHROPIC_BASE_URL: input.daemonBaseUrl }
+    this.#trace = trace
+  }
+
+  async cleanup(): Promise<void> {
+    this.cleaned += 1
+    this.#trace.push("cleaned")
+  }
+}
+
+/** 记录创建参数的假会话环境工厂。 */
+export class EnvironmentFactory {
+  readonly inputs: SessionEnvironmentInput[] = []
+  readonly instances: FakeEnvironment[] = []
+
+  constructor(
+    private readonly trace: string[],
+    private readonly userDataPath: string,
+  ) {}
+
+  readonly create: SessionEnvironmentFactory = async (input) => {
+    this.inputs.push(input)
+    const environment = new FakeEnvironment(input, this.trace, this.userDataPath)
+    this.instances.push(environment)
+    return environment
+  }
+
+  get last(): FakeEnvironment {
+    const environment = this.instances.at(-1)
+    if (environment === undefined) throw new Error("no environment was created")
+    return environment
+  }
+}
+
+/** 记录调用并允许手动广播 SDK 事件的假适配器。 */
+export class FakeAdapter implements SessionAdapterPort {
+  readonly startCalls: ClaudeAgentStartOptions[] = []
+  readonly sent: string[] = []
+  readonly modelCalls: ClaudeModelsOptions[] = []
+  readonly modes: SessionPermissionMode[] = []
+  readonly modelsSet: string[] = []
+  modelsResult: ClaudeModel[] = [
+    {
+      id: "claude-sonnet-4",
+      displayName: "Claude Sonnet 4",
+      description: "Balanced",
+      isDefault: false,
+    },
+  ]
+  canUseTool: CanUseTool | null = null
+  interrupts = 0
+  stops = 0
+  readonly #onEvent: (event: SessionEvent) => void
+  readonly #trace: string[]
+
+  constructor(onEvent: (event: SessionEvent) => void, trace: string[]) {
+    this.#onEvent = onEvent
+    this.#trace = trace
+  }
+
+  async start(options: ClaudeAgentStartOptions): Promise<void> {
+    this.startCalls.push(options)
+    this.canUseTool = options.canUseTool
+    this.#trace.push("started")
+  }
+
+  async send(text: string): Promise<void> {
+    this.sent.push(text)
+  }
+
+  async interrupt(): Promise<void> {
+    await Promise.resolve()
+    this.interrupts += 1
+    this.#trace.push("interrupted")
+  }
+
+  async stop(): Promise<void> {
+    this.stops += 1
+    this.#trace.push("stopped")
+    this.#onEvent({ type: "ended", reason: "stopped" })
+  }
+
+  async models(options: ClaudeModelsOptions = {}): Promise<ClaudeModel[]> {
+    this.modelCalls.push(options)
+    return this.modelsResult
+  }
+
+  async setPermissionMode(mode: SessionPermissionMode): Promise<void> {
+    this.modes.push(mode)
+  }
+
+  async setModel(model: string): Promise<void> {
+    this.modelsSet.push(model)
+  }
+
+  /** 把一条 SDK 事件推给 SessionHost。 */
+  emit(event: SessionEvent): void {
+    this.#onEvent(event)
+  }
+}
+
+/** 记录创建参数的假适配器工厂。 */
+export class AdapterFactory {
+  readonly instances: FakeAdapter[] = []
+
+  constructor(private readonly trace: string[]) {}
+
+  readonly create = (onEvent: (event: SessionEvent) => void): SessionAdapterPort => {
+    const adapter = new FakeAdapter(onEvent, this.trace)
+    this.instances.push(adapter)
+    return adapter
+  }
+
+  get last(): FakeAdapter {
+    const adapter = this.instances.at(-1)
+    if (adapter === undefined) throw new Error("no adapter was created")
+    return adapter
+  }
+}
+
+/** 默认不写入任何内容、可手动触发失败的假用量记录器。 */
+export class FakeUsage implements SessionUsagePort {
+  readonly records: UsageRecord[] = []
+  readonly #failures = new Set<(message: string) => void>()
+
+  async record(record: UsageRecord): Promise<void> {
+    this.records.push(record)
+  }
+
+  async summary(): Promise<UsageSummary> {
+    return {
+      requests: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      averageDurationMs: 0,
+      errors: 0,
+    }
+  }
+
+  onWriteFailed(listener: (message: string) => void): () => void {
+    this.#failures.add(listener)
+    return () => this.#failures.delete(listener)
+  }
+
+  /** 模拟一次用量写入失败。 */
+  failWrite(message: string): void {
+    for (const listener of [...this.#failures]) listener(message)
+  }
+}
+
+export type HarnessOptions = {
+  workspace: string
+  membershipState?: MembershipState
+  daemonBaseUrl?: string | null
+  userDataPath?: string
+  useRealEnvironment?: boolean
+  permissionTimeoutMs?: number
+}
+
+export type SessionHarness = {
+  host: SessionHost
+  membership: FakeMembership
+  runtime: FakeRuntime
+  usage: FakeUsage
+  adapters: AdapterFactory
+  environments: EnvironmentFactory
+  events: SessionHostEvent[]
+  trace: string[]
+  workspace: string
+  userDataPath: string
+}
+
+/** 组装一个全部依赖都可注入的 SessionHost。 */
+export function createHarness(options: HarnessOptions): SessionHarness {
+  const trace: string[] = []
+  const membership = new FakeMembership(options.membershipState ?? "active")
+  const runtime = new FakeRuntime(
+    options.daemonBaseUrl === undefined ? "http://127.0.0.1:47821" : options.daemonBaseUrl,
+  )
+  const usage = new FakeUsage()
+  const adapters = new AdapterFactory(trace)
+  const userDataPath = options.userDataPath ?? "/tmp/pigclaude-session-host-user-data"
+  const environments = new EnvironmentFactory(trace, userDataPath)
+  const events: SessionHostEvent[] = []
+  let nextId = 0
+  const hostOptions: SessionHostOptions = {
+    membership,
+    runtime,
+    usage,
+    userDataPath,
+    createAdapter: adapters.create,
+    resolveBinaryPath: () => "/fake/claude",
+    resolveProfile: async () => ({ timezone: "America/Los_Angeles", locale: "en-US" }),
+    defaultWorkspace: () => options.workspace,
+    permissionTimeoutMs: options.permissionTimeoutMs ?? 10 * 60 * 1_000,
+    now: () => fixedNow,
+    newId: () => `id-${(nextId += 1)}`,
+    ...(options.useRealEnvironment ? {} : { createEnvironment: environments.create }),
+  }
+  const host = new SessionHost(hostOptions)
+  host.subscribe((event) => events.push(event))
+  return {
+    host,
+    membership,
+    runtime,
+    usage,
+    adapters,
+    environments,
+    events,
+    trace,
+    workspace: options.workspace,
+    userDataPath,
+  }
+}
+
+/** 等待异步广播条件成立，避免固定延时。 */
+export async function waitUntil(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if (predicate()) return
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  }
+  throw new Error("condition was not reached")
+}

@@ -68,6 +68,8 @@ class AsyncQueue<T> implements AsyncIterator<T> {
 export class FakeQuery implements AdapterQuery {
   readonly #messages = new AsyncQueue<SDKMessage>()
   readonly #models: ModelInfo[]
+  readonly permissionModes: string[] = []
+  readonly modelChanges: (string | undefined)[] = []
   interrupts = 0
   closes = 0
 
@@ -102,6 +104,14 @@ export class FakeQuery implements AdapterQuery {
 
   async supportedModels(): Promise<ModelInfo[]> {
     return this.#models
+  }
+
+  async setPermissionMode(mode: string): Promise<void> {
+    this.permissionModes.push(mode)
+  }
+
+  async setModel(model?: string): Promise<void> {
+    this.modelChanges.push(model)
   }
 }
 

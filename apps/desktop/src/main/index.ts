@@ -37,6 +37,7 @@ import { readDeviceInfo } from "./device-identity/device-info"
 import { readDockIconDataUrl } from "./dock-icon"
 import { configureRuntimeProfile } from "./runtime-profile"
 import { readDesktopRuntimeEndpoints } from "./runtime-endpoints"
+import { isAccountAvailable } from "./runtime/account-chooser"
 import { resolveClaudeBinaryPath } from "./session/claude-binary"
 import { SessionHost } from "./session/session-host"
 import { registerSessionIpc } from "./session/session-ipc"
@@ -312,12 +313,11 @@ async function setupAuthorization(): Promise<void> {
       defaultWorkspace: () => app.getPath("home"),
       resolveProfile: async (accountId) => {
         const accounts = await localStore.listAccounts()
+        const available = accounts.filter((item) => isAccountAvailable(item, Date.now()))
         const account =
           accountId === null
-            ? (accounts.find(
-                (item) => item.enabled && !item.needsReauth && item.credential !== null,
-              ) ?? accounts[0])
-            : (accounts.find((item) => item.id === accountId) ?? accounts[0])
+            ? (available[0] ?? accounts[0])
+            : (accounts.find((item) => item.id === accountId) ?? available[0] ?? accounts[0])
         return account === undefined
           ? null
           : { timezone: account.fingerprint.timezone, locale: account.fingerprint.lang }

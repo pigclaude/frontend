@@ -5,18 +5,25 @@ import { randomUUID } from "node:crypto"
 import { ClaudeAgentAdapter } from "./claude-agent-adapter"
 import { resolveClaudeBinaryPath } from "./claude-binary"
 import { PermissionBroker } from "./permission-broker"
-import { SessionEnvironment, type SessionEnvironmentInput } from "./session-environment"
+import type { PermissionAnswer } from "./permission-broker"
+import { SessionEnvironment } from "./session-environment"
 import {
+  assertStartNotStopped,
   assertWorkspace,
   buildStartOptions,
   buildUsageRecord,
+  createEnvironmentOrThrow,
   errorMessage,
+  hostError,
   mapStartError,
+  readBinaryPath,
   redactSessionToken,
+  sanitizeStartError,
   systemLocale,
   systemTimezone,
 } from "./session-host-support"
 import type { ActiveSession } from "./session-host-support"
+import { queryModels } from "./session-models"
 import type {
   ClaudeModel,
   SessionAdapterFactory,
@@ -24,8 +31,8 @@ import type {
   SessionEnvironmentPort,
   SessionHostEvent,
   SessionMembership,
-  SessionPermissionAnswer,
   SessionPermissionMode,
+  SessionProfile,
   SessionRuntime,
   SessionRuntimeEvent,
   SessionSendInput,
@@ -35,12 +42,6 @@ import type {
 } from "./session-types"
 import { SessionHostError } from "./session-types"
 import type { SessionEvent } from "./session-events"
-
-/** 账号或系统提供的时区和 locale；用于会话环境和 Intl 预加载。 */
-export type SessionProfile = {
-  timezone: string
-  locale: string
-}
 
 /** SessionHost 依赖；所有外部端口都可注入，便于不启动真实 CLI 的测试。 */
 export type SessionHostOptions = {
@@ -79,7 +80,8 @@ export class SessionHost {
   readonly #unsubscribeRuntime: () => void
   readonly #unsubscribeUsage: () => void
   #session: ActiveSession | null = null
-  #starting = false
+  #startPromise: Promise<{ sessionId: string }> | null = null
+  #stopRequested = false
   #closing: Promise<void> | null = null
   #disposed = false
 
@@ -115,25 +117,45 @@ export class SessionHost {
     return () => this.#listeners.delete(listener)
   }
 
-  /** 启动唯一活动会话；会员不 active、工作区不可用或 daemon 未就绪时不创建任何环境。 */
+  /** 启动唯一活动会话；会员、工作区、可用账号或 daemon 不满足时不创建任何环境。 */
   async start(input: SessionStartInput): Promise<{ sessionId: string }> {
     if (this.#disposed) throw new SessionHostError("SDK_ERROR", "会话宿主已关闭")
-    if (this.#session !== null || this.#closing !== null || this.#starting) {
+    if (this.#session !== null || this.#closing !== null || this.#startPromise !== null) {
       throw new SessionHostError("SESSION_ALREADY_ACTIVE", "已有活动会话")
     }
-    this.#starting = true
+    this.#stopRequested = false
+    const promise = this.#startSession(input).catch((error: unknown) => {
+      throw sanitizeStartError(error, this.#runtime.sessionToken)
+    })
+    this.#startPromise = promise
     try {
-      await this.#assertMembership()
-      await assertWorkspace(input.workspace)
-      const daemonBaseUrl = this.#runtime.daemonBaseUrl
-      if (daemonBaseUrl === null) {
-        throw new SessionHostError("DAEMON_UNAVAILABLE", "本机 daemon 尚未就绪")
-      }
-      const binaryPath = this.#readBinaryPath()
-      this.#runtime.setPreferredAccount?.(input.accountId ?? null)
-      const sessionId = this.#newId()
-      const profile = await this.#resolveProfile(input.accountId ?? null).catch(() => null)
-      const environment = await this.#createEnvironmentOrThrow({
+      return await promise
+    } finally {
+      if (this.#startPromise === promise) this.#startPromise = null
+    }
+  }
+  // 启动过程中的每个 await 后复查停止请求；窗口关闭或 stop 不能留下半启动会话。
+  async #startSession(input: SessionStartInput): Promise<{ sessionId: string }> {
+    await this.#assertMembership()
+    assertStartNotStopped(this.#stopRequested, this.#disposed)
+    await assertWorkspace(input.workspace)
+    assertStartNotStopped(this.#stopRequested, this.#disposed)
+    if (!(await this.#runtime.hasAvailableAccount())) {
+      throw new SessionHostError("NO_AVAILABLE_ACCOUNT", "没有可用的 Claude 账号")
+    }
+    assertStartNotStopped(this.#stopRequested, this.#disposed)
+    const daemonBaseUrl = this.#runtime.daemonBaseUrl
+    if (daemonBaseUrl === null) {
+      throw new SessionHostError("DAEMON_UNAVAILABLE", "本机 daemon 尚未就绪")
+    }
+    const binaryPath = readBinaryPath(this.#resolveBinaryPath, this.#runtime.sessionToken)
+    this.#runtime.setPreferredAccount?.(input.accountId ?? null)
+    const sessionId = this.#newId()
+    const profile = await this.#resolveProfile(input.accountId ?? null).catch(() => null)
+    assertStartNotStopped(this.#stopRequested, this.#disposed)
+    const environment = await createEnvironmentOrThrow(
+      this.#createEnvironment,
+      {
         sessionId,
         workspace: input.workspace,
         daemonBaseUrl,
@@ -142,27 +164,47 @@ export class SessionHost {
         locale: profile?.locale ?? systemLocale(),
         binaryPath,
         userDataPath: this.#userDataPath,
-      })
-      if (this.#disposed || this.#membership.view().state !== "active") {
-        await environment.cleanup().catch(() => undefined)
+      },
+      this.#runtime.sessionToken,
+    )
+    if (this.#stopRequested || this.#disposed) {
+      await environment.cleanup().catch(() => undefined)
+      throw new SessionHostError("SESSION_CANCELLED", "会话启动已取消")
+    }
+    if (this.#membership.view().state !== "active") {
+      await environment.cleanup().catch(() => undefined)
+      throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
+    }
+    const active = this.#createActiveSession(sessionId, input, environment)
+    this.#session = active
+    if (this.#stopRequested || this.#disposed) {
+      await this.#release(active)
+      throw new SessionHostError("SESSION_CANCELLED", "会话启动已取消")
+    }
+    if (this.#membership.view().state !== "active") {
+      await this.#release(active)
+      throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
+    }
+    try {
+      await active.adapter.start(buildStartOptions(active, input))
+    } catch (error) {
+      await this.#release(active)
+      if (this.#stopRequested || this.#disposed) {
+        throw new SessionHostError("SESSION_CANCELLED", "会话启动已取消")
+      }
+      throw mapStartError(error, this.#runtime.sessionToken)
+    }
+    if (this.#stopRequested || this.#disposed) {
+      await this.#release(active)
+      throw new SessionHostError("SESSION_CANCELLED", "会话启动已取消")
+    }
+    if (active.released || active.stopping) {
+      if (this.#membership.view().state !== "active") {
         throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
       }
-      const active = this.#createActiveSession(sessionId, input, environment)
-      this.#session = active
-      try {
-        await active.adapter.start(buildStartOptions(active, input))
-      } catch (error) {
-        await this.#release(active)
-        throw mapStartError(error)
-      }
-      if (this.#disposed) {
-        await this.#release(active)
-        throw new SessionHostError("SDK_ERROR", "会话宿主已关闭")
-      }
-      return { sessionId }
-    } finally {
-      this.#starting = false
+      throw new SessionHostError("SDK_ERROR", "会话在启动期间结束")
     }
+    return { sessionId }
   }
 
   /** 把用户消息写入当前会话；附件只做形状校验，当前适配器只传文本。 */
@@ -174,7 +216,7 @@ export class SessionHost {
     try {
       await active.adapter.send(input.text)
     } catch (error) {
-      throw new SessionHostError("SDK_ERROR", errorMessage(error))
+      throw hostError("SDK_ERROR", errorMessage(error), this.#runtime.sessionToken)
     }
   }
 
@@ -190,7 +232,7 @@ export class SessionHost {
   }
 
   /** 写回一次权限回答；未知 requestId 由 PermissionBroker 忽略。 */
-  async respondPermission(answer: SessionPermissionAnswer): Promise<void> {
+  async respondPermission(answer: PermissionAnswer): Promise<void> {
     const active = this.#session
     if (active === null) return
     active.broker.respond(answer)
@@ -203,7 +245,7 @@ export class SessionHost {
       await active.adapter.setPermissionMode(mode)
       active.permissionMode = mode
     } catch (error) {
-      throw new SessionHostError("SDK_ERROR", errorMessage(error))
+      throw hostError("SDK_ERROR", errorMessage(error), this.#runtime.sessionToken)
     }
   }
 
@@ -215,15 +257,21 @@ export class SessionHost {
       await active.adapter.setModel(model)
       active.model = model
     } catch (error) {
-      throw new SessionHostError("SDK_ERROR", errorMessage(error))
+      throw hostError("SDK_ERROR", errorMessage(error), this.#runtime.sessionToken)
     }
   }
 
   /** 停止会话：先拒绝未回答权限，再中断、停止适配器并删除会话目录；可重复调用。 */
   async stop(): Promise<void> {
+    this.#stopRequested = true
+    const pendingStart = this.#startPromise
     if (this.#closing !== null) return this.#closing
     const active = this.#session
-    if (active === null) return
+    if (active === null) {
+      // 启动尚未分配会话时，等它观察到停止请求并自行清理。
+      if (pendingStart !== null) await pendingStart.catch(() => undefined)
+      return
+    }
     const task = this.#endSession(active, "会话已停止", null)
     this.#closing = task
     try {
@@ -235,46 +283,19 @@ export class SessionHost {
 
   /** 查询支持模型；有活动会话时复用它的隔离环境，否则创建一次性环境并清理。 */
   async models(): Promise<ClaudeModel[]> {
-    try {
-      const active = this.#session
-      if (active !== null) {
-        return await active.adapter.models({
-          workspace: active.environment.workspace,
-          env: active.environment.env,
-          binaryPath: active.environment.binaryPath,
-        })
-      }
-      await this.#assertMembership()
-      const daemonBaseUrl = this.#runtime.daemonBaseUrl
-      if (daemonBaseUrl === null) {
-        throw new SessionHostError("DAEMON_UNAVAILABLE", "本机 daemon 尚未就绪")
-      }
-      const workspace = this.#defaultWorkspace()
-      await assertWorkspace(workspace)
-      const profile = await this.#resolveProfile(null).catch(() => null)
-      const environment = await this.#createEnvironmentOrThrow({
-        sessionId: this.#newId(),
-        workspace,
-        daemonBaseUrl,
-        sessionToken: this.#runtime.sessionToken,
-        timezone: profile?.timezone ?? systemTimezone(),
-        locale: profile?.locale ?? systemLocale(),
-        binaryPath: this.#readBinaryPath(),
-        userDataPath: this.#userDataPath,
-      })
-      try {
-        return await this.#createAdapter(() => undefined).models({
-          workspace: environment.workspace,
-          env: environment.env,
-          binaryPath: environment.binaryPath,
-        })
-      } finally {
-        await environment.cleanup().catch(() => undefined)
-      }
-    } catch (error) {
-      if (error instanceof SessionHostError) throw error
-      throw new SessionHostError("SDK_ERROR", errorMessage(error))
-    }
+    return queryModels({
+      active: this.#session,
+      assertMembership: () => this.#assertMembership(),
+      runtime: this.#runtime,
+      createEnvironment: this.#createEnvironment,
+      createAdapter: this.#createAdapter,
+      resolveProfile: this.#resolveProfile,
+      defaultWorkspace: this.#defaultWorkspace,
+      readBinaryPath: () => readBinaryPath(this.#resolveBinaryPath, this.#runtime.sessionToken),
+      userDataPath: this.#userDataPath,
+      newId: this.#newId,
+      hostError: (code, message) => hostError(code, message, this.#runtime.sessionToken),
+    })
   }
 
   /** 返回脱敏会话快照；没有活动会话时所有 id 和模型为 null。 */
@@ -465,22 +486,6 @@ export class SessionHost {
     const active = this.#session
     if (active === null) throw new SessionHostError("SDK_ERROR", "会话未开始")
     return active
-  }
-
-  #readBinaryPath(): string {
-    try {
-      return this.#resolveBinaryPath()
-    } catch (error) {
-      throw new SessionHostError("CLAUDE_RUNTIME_UNAVAILABLE", errorMessage(error))
-    }
-  }
-
-  async #createEnvironmentOrThrow(input: SessionEnvironmentInput): Promise<SessionEnvironmentPort> {
-    try {
-      return await this.#createEnvironment(input)
-    } catch (error) {
-      throw new SessionHostError("SESSION_START_FAILED", errorMessage(error))
-    }
   }
 
   #emit(event: SessionHostEvent): void {

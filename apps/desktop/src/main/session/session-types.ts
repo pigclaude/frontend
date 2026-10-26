@@ -3,12 +3,15 @@
 
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { ClaudeAgentStartOptions, ClaudeModelsOptions } from "./claude-agent-adapter"
+import type { PermissionAnswer, PermissionRequestEvent } from "./permission-broker"
 import type { SessionEnvironmentInput } from "./session-environment"
-import type { ClaudeModel, SessionEvent, SessionPermissionMode } from "./session-events"
+import type {
+  ClaudeModel,
+  SessionEvent,
+  SessionPermissionMode,
+  SessionThinking,
+} from "./session-events"
 import type { UsageRange, UsageRecord, UsageSummary } from "./usage-recorder"
-
-/** 启动会话时允许的思考深度；off 关闭，其余映射到固定 token 预算。 */
-export type SessionThinking = "off" | "low" | "medium" | "high"
 
 /** session.start 的输入；工作区必须是绝对目录，其余字段由 main 侧校验。 */
 export type SessionStartInput = {
@@ -25,13 +28,6 @@ export type SessionSendInput = {
   attachments?: string[]
 }
 
-/** renderer 回答权限询问的输入。 */
-export type SessionPermissionAnswer = {
-  requestId: string
-  decision: "allow" | "deny"
-  updatedPermissions?: unknown[]
-}
-
 /** session.status 返回的脱敏会话快照。 */
 export type SessionStatusView = {
   active: boolean
@@ -43,14 +39,10 @@ export type SessionStatusView = {
   turnId: string | null
 }
 
-/** session.permission 事件；只在内存和 renderer 中存在，不落盘。 */
-export type SessionPermissionEvent = {
-  type: "permission"
-  requestId: string
-  toolName: string
-  input: unknown
-  suggestions?: unknown[]
-  blockedPath?: string
+/** 账号或系统提供的时区和 locale；用于会话环境和 Intl 预加载。 */
+export type SessionProfile = {
+  timezone: string
+  locale: string
 }
 
 /** 换号原因，与 LocalRuntime 一致。 */
@@ -65,7 +57,7 @@ export type SessionAccountSwitchedEvent = {
 }
 
 /** SessionHost 发给 preload 的全部事件：适配器事件加权限和换号。 */
-export type SessionHostEvent = SessionEvent | SessionPermissionEvent | SessionAccountSwitchedEvent
+export type SessionHostEvent = SessionEvent | PermissionRequestEvent | SessionAccountSwitchedEvent
 
 /** 设计第 12 节的稳定错误码；SESSION_START_FAILED 来自第 13 节的配置目录失败分支。 */
 export type SessionErrorCode =
@@ -115,6 +107,8 @@ export type SessionRuntime = {
   readonly sessionToken: string
   subscribe(listener: (event: SessionRuntimeEvent) => void): () => void
   setPreferredAccount?(accountId: string | null): void
+  /** 不刷新凭据地判断是否有可授权账号；启动前置条件。 */
+  hasAvailableAccount(): Promise<boolean>
 }
 
 /** 一次会话的环境摘要；真实实现是 SessionEnvironment，测试可注入假实现。 */
@@ -159,7 +153,7 @@ export type SessionBridge = {
   start: (input: SessionStartInput) => Promise<{ sessionId: string }>
   send: (input: SessionSendInput) => Promise<void>
   cancel: () => Promise<void>
-  respondPermission: (input: SessionPermissionAnswer) => Promise<void>
+  respondPermission: (input: PermissionAnswer) => Promise<void>
   setMode: (mode: SessionPermissionMode) => Promise<void>
   setModel: (model: string) => Promise<void>
   stop: () => Promise<void>
@@ -173,4 +167,13 @@ export type UsageBridge = {
   summary: (input: { range: UsageRange }) => Promise<UsageSummary>
 }
 
-export type { ClaudeModel, SessionEvent, SessionPermissionMode, UsageRange, UsageSummary }
+export type {
+  ClaudeModel,
+  PermissionAnswer,
+  PermissionRequestEvent,
+  SessionEvent,
+  SessionPermissionMode,
+  SessionThinking,
+  UsageRange,
+  UsageSummary,
+}

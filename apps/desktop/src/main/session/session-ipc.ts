@@ -4,7 +4,7 @@ import { ipcMain, type IpcMainInvokeEvent } from "electron"
 import type { SessionHost } from "./session-host"
 import {
   SessionHostError,
-  type SessionPermissionAnswer,
+  type PermissionAnswer,
   type SessionPermissionMode,
   type SessionSendInput,
   type SessionStartInput,
@@ -113,7 +113,7 @@ export function readSessionSendInput(value: unknown): SessionSendInput {
 }
 
 /** 解析 session.respondPermission 输入；updatedPermissions 的形状由 PermissionBroker 校验。 */
-export function readPermissionAnswer(value: unknown): SessionPermissionAnswer {
+export function readPermissionAnswer(value: unknown): PermissionAnswer {
   if (!isRecord(value)) throw invalidInput()
   const requestId = readString(value.requestId)
   const decision = value.decision

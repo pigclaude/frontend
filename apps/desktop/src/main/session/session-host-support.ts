@@ -6,10 +6,13 @@ import { access, stat } from "node:fs/promises"
 import { isAbsolute } from "node:path"
 import type { ClaudeAgentStartOptions } from "./claude-agent-adapter"
 import type { PermissionBroker } from "./permission-broker"
+import type { SessionEnvironmentInput } from "./session-environment"
 import type { SessionEvent } from "./session-events"
 import type {
   SessionAdapterPort,
+  SessionEnvironmentFactory,
   SessionEnvironmentPort,
+  SessionErrorCode,
   SessionPermissionMode,
   SessionStartInput,
 } from "./session-types"
@@ -60,14 +63,30 @@ export async function assertWorkspace(workspace: string): Promise<void> {
   }
 }
 
-/** 把适配器启动错误映射为稳定错误码；未知错误归为 SDK_ERROR。 */
-export function mapStartError(error: unknown): SessionHostError {
-  if (error instanceof SessionHostError) return error
-  const message = errorMessage(error)
+/** 把适配器启动错误映射为稳定错误码并去掉会话令牌；未知错误归为 SDK_ERROR。 */
+export function mapStartError(error: unknown, token: string): SessionHostError {
+  if (error instanceof SessionHostError) return sanitizeSessionError(error, token)
+  const message = redactSessionToken(errorMessage(error), token)
   if (message.includes("CLAUDE_RUNTIME_UNAVAILABLE")) {
     return new SessionHostError("CLAUDE_RUNTIME_UNAVAILABLE", message)
   }
   return new SessionHostError("SDK_ERROR", message)
+}
+
+/** 去掉 SessionHostError.message 里的重复错误码前缀和会话令牌。 */
+export function sanitizeSessionError(error: SessionHostError, token: string): SessionHostError {
+  const prefix = `${error.code}: `
+  const message = error.message.startsWith(prefix)
+    ? error.message.slice(prefix.length)
+    : error.message
+  const redacted = redactSessionToken(message, token)
+  return redacted === message ? error : new SessionHostError(error.code, redacted)
+}
+
+/** 启动流程最外层出口：所有错误先脱敏再交给 IPC。 */
+export function sanitizeStartError(error: unknown, token: string): SessionHostError {
+  if (error instanceof SessionHostError) return sanitizeSessionError(error, token)
+  return new SessionHostError("SDK_ERROR", redactSessionToken(errorMessage(error), token))
 }
 
 /** 用当前 turn 和 result 事件构造只含元数据的用量记录；没有 turn 时返回 null。 */ export function buildUsageRecord(
@@ -125,6 +144,50 @@ export function buildStartOptions(
 /** 从事件文本里去掉 daemon 会话令牌，避免错误消息带秘密。 */
 export function redactSessionToken(message: string, token: string): string {
   return token === "" ? message : message.split(token).join("[redacted]")
+}
+
+/** 解析 Claude 二进制路径；失败映射为 CLAUDE_RUNTIME_UNAVAILABLE 并脱敏。 */
+export function readBinaryPath(resolve: () => string, token: string): string {
+  try {
+    return resolve()
+  } catch (error) {
+    throw new SessionHostError(
+      "CLAUDE_RUNTIME_UNAVAILABLE",
+      redactSessionToken(errorMessage(error), token),
+    )
+  }
+}
+
+/** 创建会话环境；失败映射为 SESSION_START_FAILED 并脱敏。 */
+export async function createEnvironmentOrThrow(
+  create: SessionEnvironmentFactory,
+  input: SessionEnvironmentInput,
+  token: string,
+): Promise<SessionEnvironmentPort> {
+  try {
+    return await create(input)
+  } catch (error) {
+    throw new SessionHostError(
+      "SESSION_START_FAILED",
+      redactSessionToken(errorMessage(error), token),
+    )
+  }
+}
+
+/** 启动过程中被 stop/dispose 打断时统一抛出 SESSION_CANCELLED。 */
+export function assertStartNotStopped(stopRequested: boolean, disposed: boolean): void {
+  if (stopRequested || disposed) {
+    throw new SessionHostError("SESSION_CANCELLED", "会话启动已取消")
+  }
+}
+
+/** 构造已脱敏的会话错误。 */
+export function hostError(
+  code: SessionErrorCode,
+  message: string,
+  token: string,
+): SessionHostError {
+  return new SessionHostError(code, redactSessionToken(message, token))
 }
 
 /** 返回宿主系统的 IANA 时区；取不到时回退 UTC。 */

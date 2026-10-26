@@ -56,7 +56,7 @@ export type LocalDaemonOptions = {
 /** runtime 依赖。时间、退避、休眠和 daemon 工厂都可注入。 */
 export type LocalRuntimeOptions = {
   store: Pick<LocalStore, "listAccounts" | "getAccount" | "saveAccount">
-  chooser: Pick<AccountChooser, "choose">
+  chooser: Pick<AccountChooser, "choose" | "hasAvailableAccount">
   membership: LocalRuntimeMembership
   runAuthorized: <T>(operation: (signal: AbortSignal) => Promise<T>) => Promise<T>
   sessionToken?: string
@@ -72,7 +72,7 @@ type Lifecycle = { abort: AbortController }
 /** 本机 daemon 的生命周期和选号事件源。保证只在会员 active 时监听 loopback；启动失败按退避重试；会员失效或 stop 时中止请求并释放端口。 */
 export class LocalRuntime {
   readonly sessionToken: string
-  readonly chooser: Pick<AccountChooser, "choose">
+  readonly chooser: Pick<AccountChooser, "choose" | "hasAvailableAccount">
 
   readonly #store: LocalRuntimeOptions["store"]
   readonly #membership: LocalRuntimeMembership
@@ -158,6 +158,16 @@ export class LocalRuntime {
     return {
       daemon: this.#state,
       accountCount: (await this.#store.listAccounts()).length,
+    }
+  }
+
+  /** 不刷新凭据、不消耗额度地判断是否有可授权账号；读取失败按没有处理。 */
+  async hasAvailableAccount(): Promise<boolean> {
+    if (this.#disposed) return false
+    try {
+      return await this.chooser.hasAvailableAccount()
+    } catch {
+      return false
     }
   }
 

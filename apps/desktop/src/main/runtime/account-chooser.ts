@@ -73,6 +73,15 @@ export class AccountChooser {
     return picked === undefined ? null : toChosen(picked)
   }
 
+  /** 不刷新凭据、不消耗额度地判断当前是否至少有一个可被选中的账号。 */
+  async hasAvailableAccount(): Promise<boolean> {
+    const nowMs = this.#now()
+    const proxies = new Map((await this.#store.listProxies()).map((proxy) => [proxy.id, proxy]))
+    return (await this.#store.listAccounts()).some((account) =>
+      isEligible(account, proxies, new Set<string>(), nowMs),
+    )
+  }
+
   // 只刷新通过静态过滤的账号；刷新失败或刷新后凭据为空时跳过，不影响其他账号。
   async #refresh(
     eligible: AccountRecord[],
@@ -94,15 +103,20 @@ export class AccountChooser {
   }
 }
 
+/** 静态判断账号是否可用：启用、不需要重新授权、有凭据且不在额度冷却中。选号器和启动预检共用。 */
+export function isAccountAvailable(account: AccountRecord, nowMs: number): boolean {
+  if (!account.enabled || account.needsReauth || account.credential === null) return false
+  return !coolingDown(account.exhaustedUntil, nowMs)
+}
+
 function isEligible(
   account: AccountRecord,
   proxies: Map<string, IpProxy>,
   rejected: Set<string>,
   nowMs: number,
 ): boolean {
-  if (!account.enabled || account.needsReauth || account.credential === null) return false
+  if (!isAccountAvailable(account, nowMs)) return false
   if (rejected.has(account.id)) return false
-  if (coolingDown(account.exhaustedUntil, nowMs)) return false
   const proxy = proxies.get(account.proxyId)
   return proxy !== undefined && proxy.url !== ""
 }

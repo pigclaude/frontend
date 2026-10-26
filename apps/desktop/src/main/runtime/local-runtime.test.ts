@@ -46,6 +46,19 @@ describe("LocalRuntime", () => {
     await h.cleanup()
   })
 
+  it("reports whether an eligible account exists without selecting one", async () => {
+    const h = await harness({ state: "connecting" })
+    await expect(h.runtime.hasAvailableAccount()).resolves.toBe(false)
+
+    await h.store.saveProxy(proxy("p1"))
+    await h.store.saveAccount(account("a"))
+    await expect(h.runtime.hasAvailableAccount()).resolves.toBe(true)
+
+    await h.store.saveAccount(account("a", { enabled: false }))
+    await expect(h.runtime.hasAvailableAccount()).resolves.toBe(false)
+    await h.cleanup()
+  })
+
   it("binds only loopback and releases the port on stop", async () => {
     const h = await harness({ realDaemon: true })
     await h.runtime.start()

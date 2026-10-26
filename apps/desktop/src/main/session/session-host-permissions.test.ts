@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
-import type { SessionPermissionEvent } from "./session-types"
+import type { PermissionRequestEvent } from "./permission-broker"
 import { createHarness, waitUntil, type SessionHarness } from "./session-host-fixtures"
 
 const temporaryDirs: string[] = []
@@ -173,12 +173,12 @@ async function startedHarness(): Promise<SessionHarness> {
 async function waitForPermission(
   harness: SessionHarness,
   expected = 1,
-): Promise<SessionPermissionEvent> {
+): Promise<PermissionRequestEvent> {
   await waitUntil(
     () => harness.events.filter((event) => event.type === "permission").length >= expected,
   )
   const events = harness.events.filter(
-    (candidate): candidate is SessionPermissionEvent => candidate.type === "permission",
+    (candidate): candidate is PermissionRequestEvent => candidate.type === "permission",
   )
   const event = events.at(-1)
   if (event === undefined) throw new Error("permission event was not emitted")

@@ -98,6 +98,44 @@ describe("AccountChooser", () => {
     expect((await chooser.choose({ rejectedIds: [] }))?.id).toBe("c")
   })
 
+  it("reports availability without refreshing credentials", async () => {
+    let refreshes = 0
+    const store = await storeWith([account("a")])
+    const chooser = new AccountChooser({
+      store,
+      now: () => now,
+      refresher: {
+        refreshIfNeeded: async (record) => {
+          refreshes += 1
+          return record
+        },
+      },
+    })
+
+    await expect(chooser.hasAvailableAccount()).resolves.toBe(true)
+    expect(refreshes).toBe(0)
+  })
+
+  it.each([
+    ["disabled", { enabled: false }],
+    ["needing reauthorization", { needsReauth: true }],
+    ["without credential", { credential: null }],
+    ["cooling down", { exhaustedUntil: new Date(now + 60_000).toISOString() }],
+  ])("reports no available account for %s accounts", async (_label, overrides) => {
+    const store = await storeWith([account("a", overrides)])
+    const chooser = new AccountChooser({ store, refresher: passThrough(), now: () => now })
+    await expect(chooser.hasAvailableAccount()).resolves.toBe(false)
+  })
+
+  it("reports no available account when the proxy is missing or empty", async () => {
+    const store = await storeWith(
+      [account("a", { proxyId: "missing" }), account("b", { proxyId: "empty" })],
+      [proxy("empty", "")],
+    )
+    const chooser = new AccountChooser({ store, refresher: passThrough(), now: () => now })
+    await expect(chooser.hasAvailableAccount()).resolves.toBe(false)
+  })
+
   it("reads the latest accounts on every call", async () => {
     const store = await storeWith([account("a")])
     const chooser = new AccountChooser({ store, refresher: passThrough(), now: () => now })

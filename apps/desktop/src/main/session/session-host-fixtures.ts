@@ -69,11 +69,12 @@ export class FakeMembership implements SessionMembership {
   }
 }
 
-/** 可注入换号事件的假 LocalRuntime。 */
+/** 可注入换号事件和账号可用性的假 LocalRuntime。 */
 export class FakeRuntime implements SessionRuntime {
   daemonBaseUrl: string | null
   readonly sessionToken = "runtime-session-token"
   preferredAccount: string | null | undefined = undefined
+  availableAccounts = true
   readonly #listeners = new Set<(event: SessionRuntimeEvent) => void>()
 
   constructor(daemonBaseUrl: string | null = "http://127.0.0.1:47821") {
@@ -87,6 +88,10 @@ export class FakeRuntime implements SessionRuntime {
 
   setPreferredAccount(accountId: string | null): void {
     this.preferredAccount = accountId
+  }
+
+  async hasAvailableAccount(): Promise<boolean> {
+    return this.availableAccounts
   }
 
   /** 模拟 daemon 选号产生的换号事件。 */
@@ -172,6 +177,7 @@ export class FakeAdapter implements SessionAdapterPort {
   stops = 0
   readonly #onEvent: (event: SessionEvent) => void
   readonly #trace: string[]
+  #startGate: { promise: Promise<void>; resolve: () => void } | null = null
 
   constructor(onEvent: (event: SessionEvent) => void, trace: string[]) {
     this.#onEvent = onEvent
@@ -182,6 +188,23 @@ export class FakeAdapter implements SessionAdapterPort {
     this.startCalls.push(options)
     this.canUseTool = options.canUseTool
     this.#trace.push("started")
+    if (this.#startGate !== null) await this.#startGate.promise
+  }
+
+  /** 让下一次 start 停在返回前，用于验证启动期间的停止请求。 */
+  holdStart(): void {
+    let resolve: () => void = () => undefined
+    const promise = new Promise<void>((done) => {
+      resolve = done
+    })
+    this.#startGate = { promise, resolve }
+  }
+
+  /** 释放被 holdStart 暂停的启动。 */
+  releaseStart(): void {
+    const gate = this.#startGate
+    this.#startGate = null
+    gate?.resolve()
   }
 
   async send(text: string): Promise<void> {
@@ -223,10 +246,14 @@ export class FakeAdapter implements SessionAdapterPort {
 export class AdapterFactory {
   readonly instances: FakeAdapter[] = []
 
-  constructor(private readonly trace: string[]) {}
+  constructor(
+    private readonly trace: string[],
+    private readonly holdStart = false,
+  ) {}
 
   readonly create = (onEvent: (event: SessionEvent) => void): SessionAdapterPort => {
     const adapter = new FakeAdapter(onEvent, this.trace)
+    if (this.holdStart) adapter.holdStart()
     this.instances.push(adapter)
     return adapter
   }
@@ -277,6 +304,8 @@ export type HarnessOptions = {
   userDataPath?: string
   useRealEnvironment?: boolean
   permissionTimeoutMs?: number
+  holdAdapterStart?: boolean
+  resolveBinaryPath?: () => string
 }
 
 export type SessionHarness = {
@@ -300,7 +329,7 @@ export function createHarness(options: HarnessOptions): SessionHarness {
     options.daemonBaseUrl === undefined ? "http://127.0.0.1:47821" : options.daemonBaseUrl,
   )
   const usage = new FakeUsage()
-  const adapters = new AdapterFactory(trace)
+  const adapters = new AdapterFactory(trace, options.holdAdapterStart ?? false)
   const userDataPath = options.userDataPath ?? "/tmp/pigclaude-session-host-user-data"
   const environments = new EnvironmentFactory(trace, userDataPath)
   const events: SessionHostEvent[] = []
@@ -311,7 +340,7 @@ export function createHarness(options: HarnessOptions): SessionHarness {
     usage,
     userDataPath,
     createAdapter: adapters.create,
-    resolveBinaryPath: () => "/fake/claude",
+    resolveBinaryPath: options.resolveBinaryPath ?? (() => "/fake/claude"),
     resolveProfile: async () => ({ timezone: "America/Los_Angeles", locale: "en-US" }),
     defaultWorkspace: () => options.workspace,
     permissionTimeoutMs: options.permissionTimeoutMs ?? 10 * 60 * 1_000,

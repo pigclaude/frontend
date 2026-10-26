@@ -72,6 +72,41 @@ describe("SessionHost start", () => {
     await harness.host.dispose()
   })
 
+  it("rejects when no account is available without creating an environment", async () => {
+    const harness = createHarness({ workspace: await workspaceDir() })
+    harness.runtime.availableAccounts = false
+
+    await expect(harness.host.start(startInput(harness.workspace))).rejects.toMatchObject({
+      code: "NO_AVAILABLE_ACCOUNT",
+    })
+    expect(harness.environments.inputs).toHaveLength(0)
+    expect(harness.adapters.instances).toHaveLength(0)
+    expect(harness.host.status().active).toBe(false)
+    await harness.host.dispose()
+  })
+
+  it("redacts the daemon session token from start errors returned over IPC", async () => {
+    const harness = createHarness({
+      workspace: await workspaceDir(),
+      resolveBinaryPath: () => {
+        throw new Error("missing binary for runtime-session-token")
+      },
+    })
+
+    let message = ""
+    try {
+      await harness.host.start(startInput(harness.workspace))
+    } catch (error: unknown) {
+      message = error instanceof Error ? error.message : String(error)
+    }
+
+    expect(message).toContain("CLAUDE_RUNTIME_UNAVAILABLE")
+    expect(message).toContain("[redacted]")
+    expect(message).not.toContain(harness.runtime.sessionToken)
+    expect(harness.environments.inputs).toHaveLength(0)
+    await harness.host.dispose()
+  })
+
   it("creates one isolated environment and passes model, thinking and preference to the adapter", async () => {
     const harness = createHarness({ workspace: await workspaceDir() })
 
@@ -286,6 +321,42 @@ describe("SessionHost stop", () => {
     const second = await harness.host.start(startInput(harness.workspace))
     expect(second.sessionId).not.toBe(first.sessionId)
     expect((await stat(join(userDataPath, "sessions", second.sessionId))).isDirectory()).toBe(true)
+    await harness.host.dispose()
+  })
+
+  it("cancels a start that has not created an environment yet", async () => {
+    const harness = createHarness({ workspace: await workspaceDir() })
+
+    const startPromise = harness.host.start(startInput(harness.workspace))
+    const stopPromise = harness.host.stop()
+
+    await expect(startPromise).rejects.toMatchObject({ code: "SESSION_CANCELLED" })
+    await stopPromise
+    expect(harness.host.status().active).toBe(false)
+    expect(harness.environments.inputs).toHaveLength(0)
+    expect(harness.adapters.instances).toHaveLength(0)
+    await harness.host.dispose()
+  })
+
+  it("cleans up a start that is still waiting for adapter.start", async () => {
+    const harness = createHarness({
+      workspace: await workspaceDir(),
+      holdAdapterStart: true,
+    })
+
+    const startPromise = harness.host.start(startInput(harness.workspace))
+    await waitUntil(
+      () =>
+        harness.adapters.instances.length === 1 && harness.adapters.last.startCalls.length === 1,
+    )
+    const stopPromise = harness.host.stop()
+    await waitUntil(() => harness.environments.last.cleaned === 1)
+
+    expect(harness.host.status().active).toBe(false)
+    harness.adapters.last.releaseStart()
+    await expect(startPromise).rejects.toMatchObject({ code: "SESSION_CANCELLED" })
+    await stopPromise
+    expect(harness.environments.last.cleaned).toBe(1)
     await harness.host.dispose()
   })
 })

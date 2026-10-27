@@ -10,7 +10,7 @@ import { fixtureSafeStorage, seedProfile } from "./testing/profile-fixture"
 const fixture = vi.hoisted(() => ({
   directory: "",
   contextFailure: false,
-  opening: async (_url: string): Promise<void> => undefined,
+  opening: undefined as ((url: string) => Promise<void>) | undefined,
   bridge: undefined as unknown,
   handlers: new Map<
     string,
@@ -96,7 +96,11 @@ vi.mock("electron", () => ({
     encryptString: (value: string) => Buffer.from(`fixture-encrypted:${value}`),
     decryptString: (value: Buffer) => value.toString().slice("fixture-encrypted:".length),
   },
-  shell: { openExternal: (url: string) => fixture.opening(url) },
+  shell: {
+    openExternal: async (url: string) => {
+      await fixture.opening?.(url)
+    },
+  },
 }))
 vi.mock("./runtime-profile", () => ({ configureRuntimeProfile: () => true }))
 vi.mock("./device-identity", () => ({

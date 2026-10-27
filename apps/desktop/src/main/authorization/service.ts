@@ -150,9 +150,7 @@ export class AuthorizationService {
         }
       }
       if (request.purpose === "pigclaude-login" && this.#startAuthorization) {
-        let identity: Awaited<ReturnType<DeviceIdentityService["read"]>>
-        let deviceInfo: DeviceInfo
-        ;[identity, deviceInfo] = await Promise.all([
+        const [identity, deviceInfo] = await Promise.all([
           this.#deviceIdentity.read(),
           this.#deviceInfo(),
         ])

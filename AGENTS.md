@@ -1,6 +1,6 @@
 # 工程约定
 
-本文件只放长期有效的写法。产品边界、目录和这次要做的功能写在 `docs/superpowers/` 的规格和实现计划里，不写在这里。
+本文件只放长期工程约定和工作流入口。新规格与任务统一使用根仓库 Issues；已有规格继续按领域文档中的有效性规则使用。
 
 不另写 `.cursor/rules` 或 `CLAUDE.md`。
 
@@ -36,4 +36,18 @@ Rust 使用 rustfmt：`edition = "2024"`，`max_width = 100`。
 - `.ts`、`.tsx`、`.rs` 每个文件最多 500 行，测试文件也算。超过就拆文件，不把上限改大。
 - 一个文件只放一个主要概念。不建只做转发的 `index.ts`。
 - Rust 库代码不用 `unwrap`、`expect`、`panic`。`main.rs` 可以在启动失败时退出。
-- 提交前通过 `pnpm --dir frontend exec eslint .`、`pnpm --dir frontend exec prettier --check .`、`cargo fmt --check --manifest-path backend/Cargo.toml` 和 `cargo clippy --manifest-path backend/Cargo.toml --workspace --all-targets -- -D warnings`。
+- 提交前从聚合仓根目录通过 `pnpm --dir frontend exec eslint .`、`pnpm --dir frontend exec prettier --check .`、`cargo fmt --all --check --manifest-path backend/Cargo.toml` 和 `cargo clippy --manifest-path backend/Cargo.toml --workspace --all-targets -- -D warnings`。
+
+## Agent skills
+
+### Issue tracker
+
+需求设计、实施和审查使用 Matt Pocock skills。接单前读取 [任务跟踪](../docs/agents/issue-tracker.md)，任务统一位于 `pigclaude/pigclaude`，命令显式指定仓库。
+
+### Triage labels
+
+创建或分流任务前读取 [标签约定](../docs/agents/triage-labels.md)。
+
+### Domain docs
+
+开始探索业务前读取 [领域文档](../docs/agents/domain.md)，使用聚合仓的一份共享词汇表。技能加载、版本核对和恢复见 [运行环境](../docs/agents/skill-runtime.md)。

@@ -1,0 +1,26 @@
+/* 恢复信息沿用无卡片居中入口，缺失资料不占位，长邮箱可以自然换行。 */
+.recovery-account,
+.recovery-membership {
+  display: flex;
+  max-width: 100%;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 22px;
+  color: var(--fg-2);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.recovery-label,
+.recovery-membership {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.recovery-account strong {
+  color: var(--fg);
+  font-weight: 500;
+}
+.recovery-membership {
+  gap: 4px;
+  margin-top: 12px;
+}

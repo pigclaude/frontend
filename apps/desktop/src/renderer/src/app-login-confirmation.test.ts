@@ -10,7 +10,6 @@ import type {
   AuthorizationStateEvent,
 } from "../../main/authorization/types"
 import { DesktopApp } from "./app"
-import { membershipGateMessage } from "./models/membership-view"
 
 vi.mock("./hooks/use-appearance", () => ({
   useAppearance: () => ({ resolved: "dark" }),
@@ -281,7 +280,7 @@ describe("desktop login membership confirmation", () => {
   })
 
   it.each(["verification_required", "expired", "device_revoked"] as const)(
-    "returns to login with the gate message when membership is %s",
+    "shows the actual recovery state when membership is %s",
     async (state) => {
       const bridge = installBridge()
       bridge.resolveWith(async () => view(state, 2))
@@ -290,12 +289,13 @@ describe("desktop login membership confirmation", () => {
 
       await act(async () => bridge.complete())
 
-      const message = membershipGateMessage(view(state, 2))
-      expect(message).toBeTruthy()
-      expect(container.textContent).toContain("欢迎使用 PigClaude")
-      expect(container.textContent).toContain(message ?? "")
+      const title = {
+        verification_required: "设备需要重新授权",
+        expired: "会员已到期",
+        device_revoked: "设备授权已撤销",
+      }[state]
+      expect(container.querySelector("h1")?.textContent).toBe(title)
       expect(container.textContent).not.toContain("正在确认会员…")
-      expect(container.textContent).not.toContain("请在浏览器中继续")
       expect(screen()).toBeUndefined()
       expect(bridge.inspect.mock.calls.length).toBeGreaterThanOrEqual(2)
     },

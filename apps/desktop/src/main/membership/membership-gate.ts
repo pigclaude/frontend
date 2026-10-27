@@ -3,17 +3,21 @@ import type { MembershipView } from "@pigclaude/contracts/membership"
 import type {
   MembershipInspectRequest,
   OAuthDesktopSession,
+  DesktopRecoverySnapshot,
 } from "@pigclaude/contracts/desktop-membership"
 import type { SecretVault } from "../secret-vault"
 import type { PigclaudeApi } from "../api/pigclaude-api-client"
 import { PigclaudeApiError } from "../api/oauth-client"
 import { OAuthTokenManager, codeOf, type OAuthSnapshot } from "../authorization/oauth-token-manager"
+import { recoveryView } from "./recovery-view"
 
 /** 会员端口始终接受原请求捕获的 Bearer；生产同时提供实时身份验证。 */
 export type MembershipGateApi = {
   inspectMembership(input: MembershipInspectRequest, accessToken?: string): Promise<MembershipView>
   revokeDeviceBinding(accessToken?: string): Promise<void>
   readDesktopSession?: PigclaudeApi["readDesktopSession"]
+  /** 正式网络客户端固定提供；独立旧端口合同测试可以省略。 */
+  readRecovery?: (accessToken: string) => Promise<DesktopRecoverySnapshot>
 }
 /** 门禁与第一方代码提交、刷新、退出共用一个 tokenManager。 */
 export type MembershipGateOptions = {
@@ -57,6 +61,7 @@ export class MembershipGate {
     const owner = this.#tokens.owner
     if (this.#disposed) return this.view()
     let identity: OAuthSnapshot | undefined
+    let recovered: MembershipView | undefined
     try {
       const snapshot = await this.#tokens.snapshot()
       if (!snapshot) {
@@ -65,18 +70,25 @@ export class MembershipGate {
       }
       const remote = await this.#tokens.run(async (current) => {
         identity = current
-        await this.verifyIdentity(current)
+        const facts = await this.readRecovery(current)
+        if (facts) {
+          recovered = recoveryView(facts)
+          if (facts.membership.status !== "active") return recovered
+        }
         const scopes = current.record.scope.split(" ")
         if (!scopes.includes("membership:read") || !scopes.includes("device:inspect")) {
           throw new PigclaudeApiError("insufficient_scope", 403)
         }
-        return this.#api.inspectMembership(
+        const checked = await this.#api.inspectMembership(
           {
             deviceId: current.record.deviceId,
             bindingEpoch: current.record.bindingEpoch,
           },
           current.record.accessToken,
         )
+        return recovered
+          ? { ...checked, account: recovered.account, recovery: recovered.recovery }
+          : checked
       })
       if (!this.current(read, owner)) return this.view()
       this.#visibleOwner = owner
@@ -93,21 +105,21 @@ export class MembershipGate {
       )
         return this.clearSession(owner, code)
       if (!this.current(read, owner)) return this.view()
-      const view = identity ? this.identityView(identity) : initialView()
+      const view = recovered ?? (identity ? this.identityView(identity) : initialView())
       const state =
         code === "SAFE_STORAGE_UNAVAILABLE"
           ? "configuration_error"
           : code === "AUTHORIZATION_REQUIRED" ||
               code === "invalid_grant" ||
-              code === "invalid_token"
+              code === "invalid_token" ||
+              code === "AUTHORIZATION_EXPIRED" ||
+              code === "MEMBERSHIP_EXPIRED"
             ? "verification_required"
-            : code === "AUTHORIZATION_EXPIRED" || code === "MEMBERSHIP_EXPIRED"
-              ? "expired"
-              : code === "insufficient_scope" ||
-                  code === "AUTHORIZATION_UNAUTHORIZED" ||
-                  code === "access_denied"
-                ? "verification_required"
-                : "error"
+            : code === "insufficient_scope" ||
+                code === "AUTHORIZATION_UNAUTHORIZED" ||
+                code === "access_denied"
+              ? "verification_required"
+              : "error"
       this.#visibleOwner = owner
       return this.publish({ ...view, state, errorCode: code, serverReason: code })
     }
@@ -121,7 +133,11 @@ export class MembershipGate {
 
   /** 只返回脱敏业务视图，不返回任何凭据。 */
   view(): MembershipView {
-    return { ...this.#view, account: this.#view.account ? { ...this.#view.account } : null }
+    return {
+      ...this.#view,
+      account: this.#view.account ? { ...this.#view.account } : null,
+      ...(this.#view.recovery ? { recovery: { ...this.#view.recovery } } : {}),
+    }
   }
 
   /** 撤销原逻辑会话的当前关系；同族刷新不取消结果，新 grant 则隔离。 */
@@ -192,6 +208,27 @@ export class MembershipGate {
     this.#reads++
     void this.#tokens.suspend()
     this.#listeners.clear()
+  }
+
+  private async readRecovery(
+    snapshot: OAuthSnapshot,
+  ): Promise<DesktopRecoverySnapshot | undefined> {
+    if (!this.#api.readRecovery) {
+      await this.verifyIdentity(snapshot)
+      return undefined
+    }
+    const facts = await this.#api.readRecovery(snapshot.record.accessToken)
+    if (!this.#tokens.isCurrent(snapshot.owner))
+      throw new PigclaudeApiError("AUTHORIZATION_CANCELLED", 0)
+    const record = snapshot.record
+    if (
+      facts.userId !== record.userId ||
+      facts.deviceId !== record.deviceId ||
+      facts.bindingEpoch !== record.bindingEpoch ||
+      facts.authVersion !== record.authVersion
+    )
+      throw new PigclaudeApiError("DEVICE_REVOKED", 401)
+    return facts
   }
 
   private async verifyIdentity({ owner, record }: OAuthSnapshot): Promise<void> {

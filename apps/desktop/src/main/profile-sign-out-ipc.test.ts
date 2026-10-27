@@ -139,6 +139,20 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
       bindingEpoch: "2",
       authVersion: "1",
     }
+    if (url.pathname === "/v1/desktop/recovery") {
+      onSession()
+      return Response.json({
+        ...session,
+        account: { userId: session.userId, nickname: "", email: "", avatar: "" },
+        membership: {
+          status: "active",
+          tier: { code: "vip", name: "VIP", level: 1 },
+          validUntil: null,
+        },
+        grantExpiresAt: "2030-01-01T00:00:00Z",
+        canRevoke: true,
+      })
+    }
     if (url.pathname === "/v1/desktop/membership/inspect")
       return inactive
         ? Response.json({ error: "insufficient_scope" }, { status: 403 })

@@ -87,11 +87,12 @@ describe("desktop startup gate", () => {
   it("goes from connecting straight to onboarding for an unseen account", async () => {
     const settle = installBridge("u1")
     await act(async () => root.render(createElement(DesktopApp)))
-    expect(sequence()).toEqual(["connecting"])
+    expect(container.querySelector("h1")?.textContent).toBe("正在检查登录状态…")
+    expect(sequence()).toEqual([])
 
     await act(async () => settle())
 
-    expect(sequence()).toEqual(["connecting", "onboarding"])
+    expect(sequence()).toEqual(["onboarding"])
   })
 
   it("goes from connecting straight to chat for a seen account", async () => {
@@ -99,8 +100,10 @@ describe("desktop startup gate", () => {
     const settle = installBridge("u1")
     await act(async () => root.render(createElement(DesktopApp)))
 
+    expect(container.querySelector("h1")?.textContent).toBe("正在检查登录状态…")
+
     await act(async () => settle())
 
-    expect(sequence()).toEqual(["connecting", "chat"])
+    expect(sequence()).toEqual(["chat"])
   })
 })

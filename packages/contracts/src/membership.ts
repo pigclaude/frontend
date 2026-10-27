@@ -19,8 +19,16 @@ export interface TierView {
   level: number
 }
 
+/** 独立恢复读取的事实只解释原因，不能据此授予业务使用权限。 */
+export interface MembershipRecovery {
+  status: "none" | "active" | "expired" | "revoked"
+  grantExpiresAt: string
+  canRevoke: boolean
+}
+
 /** renderer 使用的会员状态快照，金额和版本字段保持服务端 decimal string 语义。 */
 export interface MembershipView {
+  recovery?: MembershipRecovery
   startupPhase: "checking" | "settled"
   revision: number
   state: MembershipState

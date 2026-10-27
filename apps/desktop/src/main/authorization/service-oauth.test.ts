@@ -66,6 +66,18 @@ function setup(
         }
         if (path === "/oauth2/token") return options.exchange ? options.exchange() : json(token)
         if (path === "/v1/desktop/session") return json(session)
+        if (path === "/v1/desktop/recovery")
+          return json({
+            ...session,
+            account: { userId: session.userId, nickname: "", email: "", avatar: "" },
+            membership: {
+              status: "active",
+              tier: { code: "vip", name: "VIP", level: 1 },
+              validUntil: null,
+            },
+            grantExpiresAt: new Date(2_592_001_000).toISOString(),
+            canRevoke: true,
+          })
         if (path === "/v1/desktop/membership/inspect")
           return options.inspect ? options.inspect() : json({ ...session, status: "active" })
         if (path === "/v1/desktop/entitlement")

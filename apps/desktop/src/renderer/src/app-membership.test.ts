@@ -42,7 +42,7 @@ describe("desktop membership and appearance integration", () => {
 
     const markup = renderToStaticMarkup(createElement(DesktopApp))
 
-    expect(markup).toContain("正在连接 Rust 授权服务")
+    expect(markup).toContain("正在检查登录状态")
     expect(markup).not.toContain('data-screen="appearance"')
   })
 
@@ -76,7 +76,7 @@ describe("desktop membership and appearance integration", () => {
 
     const markup = renderToStaticMarkup(createElement(DesktopApp))
 
-    expect(markup).toContain("正在连接 Rust 授权服务")
+    expect(markup).toContain("正在检查登录状态")
     expect(markup).not.toContain('data-screen="appearance"')
   })
 })

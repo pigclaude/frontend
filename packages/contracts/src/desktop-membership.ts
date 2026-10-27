@@ -13,6 +13,22 @@ export type MembershipInspectRequest = {
 /** MembershipGate 对外暴露的唯一视图类型。 */
 export type DesktopMembershipView = MembershipView
 
+/** 主进程从本人只读恢复接口取得的脱敏事实，与现有 session 合同分开。 */
+export type DesktopRecoverySnapshot = {
+  userId: string
+  deviceId: string
+  bindingEpoch: string
+  authVersion: string
+  account: NonNullable<MembershipView["account"]>
+  membership: {
+    status: NonNullable<MembershipView["recovery"]>["status"]
+    tier: MembershipView["tier"]
+    validUntil: string | null
+  }
+  grantExpiresAt: string
+  canRevoke: boolean
+}
+
 /** 当前 OAuth2 主进程秘密记录；没有旧 Cookie/vault 格式导入语义。 */
 export type OAuthDesktopSession = {
   schemaVersion: 1

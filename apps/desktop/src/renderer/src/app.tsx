@@ -4,7 +4,7 @@ import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import type { AuthorizationStateEvent } from "../../main/authorization/types"
 import { AuthorizeScreen } from "./screens/authorize-screen"
-import { LoginScreen } from "./screens/login-screen"
+import { DesktopEntryScreen } from "./screens/desktop-entry-screen"
 import { OnboardingScreen } from "./screens/onboarding-screen"
 import { MainWindow } from "./main-window"
 import { ToastProvider } from "./components/toast"
@@ -361,7 +361,10 @@ export function DesktopApp() {
 
   if (!canUseDesktop || shownScreen === "login") {
     return (
-      <LoginScreen
+      <DesktopEntryScreen
+        membership={membership}
+        preview={browserPreview}
+        onMembership={(view) => setMembership((current) => newerMembershipView(current, view))}
         state={loginState}
         gateMessage={
           signOutState.error ??

@@ -1,6 +1,10 @@
 // 负责以原生 Bearer 访问会员和设备资源，绝不读取或发送网站 Cookie。
 import type { MembershipView } from "@pigclaude/contracts/membership"
-import type { MembershipInspectRequest } from "@pigclaude/contracts/desktop-membership"
+import type {
+  MembershipInspectRequest,
+  DesktopRecoverySnapshot,
+} from "@pigclaude/contracts/desktop-membership"
+import { readRecoveryResponse } from "./recovery-response"
 import {
   OAuthClient,
   PigclaudeApiError,
@@ -21,12 +25,19 @@ export type PigclaudeApi = Pick<
   | "reportDeviceInfo"
   | "inspectMembership"
   | "revokeDeviceBinding"
->
+> &
+  Partial<Pick<PigclaudeApiClient, "readRecovery">>
 /** 共享错误类型使 token 与业务 app_error 保持同一固定边界。 */
 export { PigclaudeApiError } from "./oauth-client"
 
 /** 原生业务客户端，使用服务端 token 身份并保持 inspect 与 entitlement 分路。 */
 export class PigclaudeApiClient extends OAuthClient {
+  /** 仅以主进程 Bearer 读取本人恢复事实，不发送用户或设备目标参数。 */
+  async readRecovery(accessToken: string): Promise<DesktopRecoverySnapshot> {
+    return readRecoveryResponse(
+      await this.request("/v1/desktop/recovery", { method: "GET", accessToken }),
+    )
+  }
   /** 联合薄 inspect 和 richer entitlement，不发送自报设备 query。 */
   async inspectMembership(
     input: MembershipInspectRequest,

@@ -182,7 +182,7 @@ describe("DesktopApp local sign-out", () => {
     await act(async () => root.render(createElement(DesktopApp)))
     const clickLogin = () =>
       [...container.querySelectorAll("button")]
-        .find((button) => button.textContent === "登录")
+        .find((button) => button.textContent === "登录" || button.textContent === "重新授权")
         ?.click()
     // 保留主界面已发出的退出动作，模拟它与新的授权准备交错。
     await act(async () => publishMembership(view("active", 2)))
@@ -190,6 +190,7 @@ describe("DesktopApp local sign-out", () => {
     await act(async () => clickLogin())
     await act(async () => fixture.logout())
     await act(async () => clickLogin())
+    expect(starts).toBe(2)
     await act(async () => {
       finishOldStart({
         ok: true,

@@ -104,7 +104,7 @@ function IdlePanel({
           登录
         </Button>
         <Button
-          variant="secondary"
+          variant="ghost"
           size="block"
           disabled={locked}
           onClick={() => onAuthorize("register")}

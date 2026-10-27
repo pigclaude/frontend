@@ -1,8 +1,8 @@
-// 负责登录与恢复页面共用的状态卡片，统一标题、说明、进度和操作的可访问布局。
+// 负责登录与恢复页面共用的状态区域，统一标题、说明、进度和操作的可访问布局。
 import { useId, type ReactNode } from "react"
 import { Icon } from "./icon"
 
-/** 状态卡片只呈现调用方已确认的信息，不决定登录或会员权限。 */
+/** 状态区域只呈现调用方已确认的信息，不决定登录或会员权限。 */
 export function SigninPanel({
   icon,
   tone,

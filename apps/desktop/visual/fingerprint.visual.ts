@@ -1,13 +1,49 @@
-// 负责指纹设置的浏览器验收：弹层下拉、分组草稿、错误定位、固定操作区及浅深色与窄窗口布局。
+// 负责指纹设置的浏览器验收：弹层下拉、分组草稿、错误定位、固定操作区、浅深色与玻璃外观及窄窗口布局。
 
 import { expect, test, type Page } from "@playwright/test"
 
-async function openEditor(page: Page, theme: string): Promise<void> {
-  await page.goto(`/?screen=accounts&theme=${theme}`)
+async function openEditor(page: Page, theme: string, glass = "0"): Promise<void> {
+  await page.goto(`/?screen=accounts&theme=${theme}&glass=${glass}`)
   await page.getByRole("button", { name: /工作 Max/ }).click()
   await page.getByRole("button", { name: "编辑", exact: true }).click()
   await expect(page.getByRole("dialog")).toBeVisible()
 }
+
+async function openWizard(page: Page, theme: string, glass: string): Promise<void> {
+  await page.goto(`/?screen=authorize&theme=${theme}&glass=${glass}`)
+  await page.getByRole("button", { name: "下一步", exact: true }).click()
+  await page.getByRole("button", { name: "使用系统网络", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "设置浏览器指纹", exact: true })).toBeVisible()
+}
+
+/** 判断 root 里的分组卡片和图标方块是否都使用 token 这个背景变量。 */
+async function surfaceUses(page: Page, root: string, token: string): Promise<boolean> {
+  return page.locator(root).evaluate((element, name) => {
+    const probe = document.createElement("div")
+    probe.style.background = `var(${name})`
+    element.append(probe)
+    const expected = getComputedStyle(probe).backgroundColor
+    probe.remove()
+    const targets = [...element.querySelectorAll(".fp-section .group, .fp-environment-icon")]
+    return (
+      targets.length > 1 &&
+      targets.every((target) => getComputedStyle(target).backgroundColor === expected)
+    )
+  }, token)
+}
+
+test("fingerprint glass surfaces: only the light glass dialog uses --field", async ({ page }) => {
+  for (const [theme, glass, token] of [
+    ["light", "1", "--field"],
+    ["light", "0", "--panel"],
+    ["dark", "1", "--panel"],
+  ] as const) {
+    await openEditor(page, theme, glass)
+    expect(await surfaceUses(page, ".fingerprint-dialog", token), `${theme} ${glass}`).toBe(true)
+  }
+  await openWizard(page, "light", "1")
+  expect(await surfaceUses(page, ".fingerprint-window", "--panel")).toBe(true)
+})
 
 for (const theme of ["light", "dark"]) {
   test(`fingerprint search ${theme}: filters names and codes, supports keyboard and keeps custom values`, async ({
@@ -238,4 +274,23 @@ for (const theme of ["light", "dark"]) {
     )
     await dialog.screenshot({ path: testInfo.outputPath("fingerprint-narrow-errors.png") })
   })
+
+  for (const glass of ["0", "1"]) {
+    test(`fingerprint screenshots ${theme} glass=${glass}`, async ({ page }, testInfo) => {
+      for (const [width, height] of [
+        [1200, 800],
+        [420, 720],
+      ]) {
+        await page.setViewportSize({ width, height })
+        await openEditor(page, theme, glass)
+        const dialog = page.locator(".fingerprint-dialog")
+        for (const group of ["identity", "device", "compat", "advanced"]) {
+          await dialog.locator(`#fingerprint-dialog-group-${group}`).click()
+          await dialog.screenshot({ path: testInfo.outputPath(`dialog-${width}-${group}.png`) })
+        }
+        await openWizard(page, theme, glass)
+        await page.screenshot({ path: testInfo.outputPath(`wizard-${width}.png`) })
+      }
+    })
+  }
 }

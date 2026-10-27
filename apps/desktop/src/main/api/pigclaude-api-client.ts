@@ -3,6 +3,7 @@ import type { MembershipView } from "@pigclaude/contracts/membership"
 import type {
   MembershipInspectRequest,
   DesktopRecoverySnapshot,
+  CreatedMembershipRecoveryTarget,
 } from "@pigclaude/contracts/desktop-membership"
 import { readRecoveryResponse } from "./recovery-response"
 import {
@@ -26,12 +27,36 @@ export type PigclaudeApi = Pick<
   | "inspectMembership"
   | "revokeDeviceBinding"
 > &
-  Partial<Pick<PigclaudeApiClient, "readRecovery">>
+  Partial<Pick<PigclaudeApiClient, "readRecovery" | "createMembershipTarget">>
 /** 共享错误类型使 token 与业务 app_error 保持同一固定边界。 */
 export { PigclaudeApiError } from "./oauth-client"
 
 /** 原生业务客户端，使用服务端 token 身份并保持 inspect 与 entitlement 分路。 */
 export class PigclaudeApiClient extends OAuthClient {
+  /** 仅从当前 Bearer 创建本人办理目标，客户端不能提交目标账号或网站 URL。 */
+  async createMembershipTarget(accessToken: string): Promise<CreatedMembershipRecoveryTarget> {
+    const value = await this.request("/v1/desktop/membership-targets", {
+      method: "POST",
+      accessToken,
+      body: "{}",
+      contentType: "application/json",
+    })
+    if (
+      !isRecord(value) ||
+      typeof value.targetId !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.targetId) ||
+      typeof value.action !== "string" ||
+      !["open", "renew", "view"].includes(value.action) ||
+      typeof value.expiresAt !== "string" ||
+      !Number.isFinite(Date.parse(value.expiresAt))
+    )
+      throw new PigclaudeApiError("INVALID_RESPONSE", 200)
+    return {
+      targetId: value.targetId,
+      action: value.action as CreatedMembershipRecoveryTarget["action"],
+      expiresAt: value.expiresAt,
+    }
+  }
   /** 仅以主进程 Bearer 读取本人恢复事实，不发送用户或设备目标参数。 */
   async readRecovery(accessToken: string): Promise<DesktopRecoverySnapshot> {
     return readRecoveryResponse(

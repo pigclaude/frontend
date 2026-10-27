@@ -10,6 +10,11 @@ export interface TierRef {
 }
 /** 权益状态含从未开通，与撤销和过期严格区分。 */
 export type MembershipStatus = "none" | "active" | "expired" | "revoked"
+
+/** 办理目标只报告是否与真实网站身份一致，不返回其他账号资料。 */
+export type MembershipRecoveryResolution =
+  | { state: "matched"; action: "open" | "renew" | "view"; currentUserId: string }
+  | { state: "mismatch" | "unavailable" }
 /** 网站和桌面共用的权益响应。 */
 export interface EntitlementResponse {
   status: MembershipStatus
@@ -111,7 +116,7 @@ export interface Quotes {
   currentTier: CurrentTier | null
 }
 /** 建单只发送意图，不允许客户端金额。 */
-export type CreateOrderInput = { payType: PayType } & (
+export type CreateOrderInput = { payType: PayType; recoveryTarget?: string } & (
   | { optionId: string; remainingUpgrade?: never }
   | { remainingUpgrade: { tierCode: string }; optionId?: never }
 )

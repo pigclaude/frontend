@@ -3,7 +3,7 @@
 export interface WebOidcLogin {
   site: "home" | "admin"
   returnTo?: string
-  mode?: "login" | "register"
+  mode?: "login" | "register" | "switch"
 }
 const registrationHintKey = "pigclaude:registration-ui"
 const hintLifetime = 600_000
@@ -19,7 +19,8 @@ export function webOidcStartPath(input: WebOidcLogin): string {
   const prefix = input.site === "admin" ? "/admin" : ""
   const params = new URLSearchParams({ returnTo: input.returnTo ?? "/account" })
   // 注册必须进入本地中央表单，不能被已有 OP SSO 静默跳过。
-  if (input.site === "home" && input.mode === "register") params.set("maxAge", "0")
+  if (input.site === "home" && (input.mode === "register" || input.mode === "switch"))
+    params.set("maxAge", "0")
   return `${prefix}/v1/web/oidc/start?${params}`
 }
 

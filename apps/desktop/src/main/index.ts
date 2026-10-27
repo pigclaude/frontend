@@ -54,7 +54,10 @@ import {
 const bundleMetadata: unknown = app.isPackaged
   ? JSON.parse(readFileSync(join(app.getAppPath(), "package.json"), "utf8"))
   : undefined
-const { rustBaseUrl, authOrigin } = readDesktopRuntimeEndpoints(process.env, bundleMetadata)
+const { rustBaseUrl, authOrigin, websiteOrigin } = readDesktopRuntimeEndpoints(
+  process.env,
+  bundleMetadata,
+)
 const packagedRedirectUri = "pigclaude://authorize/callback"
 const hasSingleInstanceLock = configureRuntimeProfile(app, process.env["PIGCLAUDE_USER_DATA"])
 let mainWindow: BrowserWindow | null = null
@@ -156,6 +159,12 @@ function registerIpcHandlers(): void {
   })
   ipcMain.handle("pigclaude:membership-subscribe", async () => {
     return desktopComposition?.membershipGate.view() ?? null
+  })
+  ipcMain.handle("pigclaude:membership-open-website", async (event, contextId: unknown) => {
+    if (!isTrustedSender(event) || typeof contextId !== "string" || contextId.length > 100)
+      throw new Error("UNTRUSTED_MEMBERSHIP_REQUEST")
+    if (!desktopComposition) throw new Error("桌面授权服务尚未准备好")
+    await desktopComposition.openMembershipWebsite(contextId)
   })
   ipcMain.handle("pigclaude:membership-withdraw", async (event, value: unknown) => {
     if (
@@ -305,6 +314,8 @@ async function setupAuthorization(): Promise<void> {
   const localStore = new LocalStore(join(app.getPath("userData"), "local"))
   const composition = createDesktopComposition({
     authOrigin,
+    websiteOrigin,
+    openWebsite: (url) => shell.openExternal(url),
     apiOptions: { baseUrl: rustBaseUrl, authorizationOrigin: authOrigin },
     vault,
     deviceIdentity,

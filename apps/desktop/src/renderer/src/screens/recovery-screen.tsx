@@ -13,6 +13,7 @@ export type RecoveryScreenProps = {
   membership: MembershipView
   onCheck: () => Promise<void>
   onAuthorize: (intent: LoginIntent) => void
+  onOpenWebsite?: () => Promise<void>
   canWithdraw?: boolean
 }
 /** 展示当前账号的可信状态，未知错误不引导续费，历史等级明确标注。 */
@@ -21,8 +22,10 @@ export function RecoveryScreen({
   onCheck,
   onAuthorize,
   canWithdraw,
+  onOpenWebsite,
 }: RecoveryScreenProps) {
   const [checking, setChecking] = useState(false)
+  const [opening, setOpening] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const pending = useRef(false)
   const info = presentation(view)
@@ -41,6 +44,20 @@ export function RecoveryScreen({
     } finally {
       pending.current = false
       setChecking(false)
+    }
+  }
+  async function openWebsite() {
+    if (pending.current || !onOpenWebsite) return
+    pending.current = true
+    setOpening(true)
+    setError(null)
+    try {
+      await onOpenWebsite()
+    } catch {
+      setError("网站未能打开，请重新检查后再试。")
+    } finally {
+      pending.current = false
+      setOpening(false)
     }
   }
   const date =
@@ -91,10 +108,22 @@ export function RecoveryScreen({
           {error && <p role="alert">{error}</p>}
           {!info.busy && (
             <div className="signin-actions">
+              {info.website && onOpenWebsite && (
+                <Button
+                  variant={info.website === "查看会员" ? "ghost" : "primary"}
+                  size="block"
+                  disabled={checking || opening}
+                  onClick={() => void openWebsite()}
+                >
+                  {opening ? "正在打开网站…" : info.website}
+                </Button>
+              )}
               <Button
-                variant="primary"
+                variant={
+                  info.website && onOpenWebsite && info.website !== "查看会员" ? "ghost" : "primary"
+                }
                 size="block"
-                disabled={checking}
+                disabled={checking || opening}
                 onClick={() => (info.authorize ? onAuthorize("login") : void check())}
               >
                 {checking ? "正在检查…" : info.authorize ? "重新授权" : "重新检查"}
@@ -103,7 +132,7 @@ export function RecoveryScreen({
                 <Button
                   variant="ghost"
                   size="block"
-                  disabled={checking}
+                  disabled={checking || opening}
                   onClick={() => void check()}
                 >
                   重新检查
@@ -132,6 +161,7 @@ function presentation(view: MembershipView): {
   sub: string
   authorize?: boolean
   busy?: boolean
+  website?: string
 } {
   if (view.state === "connecting")
     return { title: "正在检查登录状态…", sub: "正在确认当前账号与设备授权", busy: true }
@@ -142,11 +172,19 @@ function presentation(view: MembershipView): {
   if (view.state === "error" || view.state === "configuration_error")
     return { title: "暂时无法验证", sub: "请检查网络或应用配置后重新检查。" }
   if (view.state === "expired" || view.recovery?.status === "expired")
-    return { title: "会员已到期", sub: "会员到期后暂停使用，办理完成后可重新检查。" }
+    return {
+      title: "会员已到期",
+      sub: "会员到期后暂停使用，办理完成后可重新检查。",
+      website: "续费会员",
+    }
   if (view.recovery?.status === "none")
-    return { title: "尚未开通会员", sub: "当前账号还没有可用会员，办理完成后可重新检查。" }
+    return {
+      title: "尚未开通会员",
+      sub: "当前账号还没有可用会员，办理完成后可重新检查。",
+      website: "开通会员",
+    }
   if (view.recovery?.status === "revoked")
-    return { title: "会员已停用", sub: "当前会员已被停用，暂时无法使用。" }
+    return { title: "会员已停用", sub: "当前会员已被停用，暂时无法使用。", website: "查看会员" }
   return {
     title: "设备需要重新授权",
     sub: "当前设备的使用权限需要重新确认，请在浏览器中继续。",

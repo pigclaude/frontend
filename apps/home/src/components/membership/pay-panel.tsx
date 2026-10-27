@@ -51,11 +51,16 @@ export function PayPanel(props: {
   payTypes: PayType[]
   summary?: PaySummary
   orderNo?: string
+  recoveryTarget?: string
   onClose(): void
   onActivated(): void
 }) {
   const client = useQueryClient()
-  const lifecycle = useOrderLifecycle({ ownerId: props.ownerId, orderNo: props.orderNo })
+  const lifecycle = useOrderLifecycle({
+    ownerId: props.ownerId,
+    orderNo: props.orderNo,
+    recoveryTarget: props.recoveryTarget,
+  })
   const [visible, setVisible] = useState(true)
   const [payType, setPayType] = useState(
     props.payTypes.includes(props.payType) ? props.payType : (props.payTypes[0] ?? props.payType),

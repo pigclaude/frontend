@@ -38,7 +38,14 @@ for (const width of [420, 1200]) {
             serverReason: null,
             authorizationUrl: null,
             ...(status
-              ? { recovery: { status, grantExpiresAt: "2030-01-01T00:00:00Z", canRevoke: false } }
+              ? {
+                  recovery: {
+                    status,
+                    contextId: "visual-context",
+                    grantExpiresAt: "2030-01-01T00:00:00Z",
+                    canRevoke: false,
+                  },
+                }
               : {}),
           }
           await page.addInitScript((membership) => {
@@ -46,6 +53,7 @@ for (const width of [420, 1200]) {
             window.pigclaude = {
               platform: "darwin",
               membership: {
+                openWebsite: async () => undefined,
                 inspect: async () => membership,
                 subscribe: () => () => {},
                 withdraw: async () => membership,

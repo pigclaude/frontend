@@ -12,6 +12,11 @@ export function createHomeMembershipApi(client: HttpClient) {
     quotes: () => client.get<T.Quotes>(`${path}/quotes`),
     /** 读取独立权益，不依赖用户摘要字段。 */
     entitlement: () => client.get<T.EntitlementResponse>("/v1/entitlement"),
+    /** 仅核对当前网站会话是否与短期目标一致，不据此登录或指定付款人。 */
+    recoveryTarget: (target: string) =>
+      client.get<T.MembershipRecoveryResolution>(
+        `${path}/recovery-targets/${encodeURIComponent(target)}`,
+      ),
     /** 只传购买意图和即时 CSRF，价格由服务端重报价。 */
     createOrder: async (input: T.CreateOrderInput, owner: () => boolean) => {
       const sameSession = client.captureSession?.() ?? (() => true)

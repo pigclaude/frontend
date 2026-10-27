@@ -55,3 +55,51 @@ it("shows verified expiry and historical tier without a welcome or fictional acc
     vi.unstubAllGlobals()
   }
 })
+
+it("opens renew from verified expiry once and keeps unknown failures on retry", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true)
+  const container = document.createElement("div")
+  const root = createRoot(container)
+  let finish!: () => void
+  const open = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve
+      }),
+  )
+  const props = { onCheck: vi.fn(async () => undefined), onAuthorize: vi.fn(), onOpenWebsite: open }
+  try {
+    await act(async () =>
+      root.render(
+        createElement(RecoveryScreen, {
+          ...props,
+          membership: {
+            ...membershipView("expired"),
+            recovery: {
+              status: "expired",
+              grantExpiresAt: "2030-01-01T00:00:00Z",
+              canRevoke: false,
+            },
+          },
+        }),
+      ),
+    )
+    const renew = [...container.querySelectorAll("button")].find(
+      (b) => b.textContent === "续费会员",
+    )
+    expect(renew).toBeDefined()
+    await act(async () => {
+      renew?.click()
+      renew?.click()
+    })
+    expect(open).toHaveBeenCalledTimes(1)
+    await act(async () => finish())
+    await act(async () =>
+      root.render(createElement(RecoveryScreen, { ...props, membership: membershipView("error") })),
+    )
+    expect(container.textContent).not.toContain("续费会员")
+  } finally {
+    await act(async () => root.unmount())
+    vi.unstubAllGlobals()
+  }
+})

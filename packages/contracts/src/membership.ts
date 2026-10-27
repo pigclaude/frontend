@@ -21,6 +21,8 @@ export interface TierView {
 
 /** 独立恢复读取的事实只解释原因，不能据此授予业务使用权限。 */
 export interface MembershipRecovery {
+  /** 主进程逻辑会话的界面动作关联标识，不作为任何服务端权限。 */
+  contextId?: string
   status: "none" | "active" | "expired" | "revoked"
   grantExpiresAt: string
   canRevoke: boolean

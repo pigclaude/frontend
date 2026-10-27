@@ -23,7 +23,15 @@ export type LifecycleStatus =
   | "needs_review"
   | "confirm-free"
 /** 仅持有当前归属响应的展示数据；回跳不伪造支付载体。 */
-export function useOrderLifecycle({ ownerId, orderNo }: { ownerId: string; orderNo?: string }) {
+export function useOrderLifecycle({
+  ownerId,
+  orderNo,
+  recoveryTarget,
+}: {
+  ownerId: string
+  orderNo?: string
+  recoveryTarget?: string
+}) {
   const client = useQueryClient()
   const [status, setStatus] = useState<LifecycleStatus>(orderNo ? "pending" : "idle")
   const [order, setOrder] = useState<CreatedOrder | null>(null)
@@ -132,7 +140,10 @@ export function useOrderLifecycle({ ownerId, orderNo }: { ownerId: string; order
     setError(null)
     setStatus("creating")
     try {
-      const result = await homeApi.membership.createOrder({ ...intent, payType }, () => current(id))
+      const result = await homeApi.membership.createOrder(
+        { ...intent, payType, ...(recoveryTarget !== undefined ? { recoveryTarget } : {}) },
+        () => current(id),
+      )
       if (!current(id)) return
       number.current = result.orderNo
       setOrder(result)

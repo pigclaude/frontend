@@ -81,3 +81,38 @@ it.each([1, "01", "1e3"])(
     })
   },
 )
+
+it("creates an opaque membership target with only native bearer authentication", async () => {
+  const payload = {
+    targetId: "00000000-0000-4000-8000-000000000001",
+    action: "renew",
+    expiresAt: "2030-01-01T00:00:00Z",
+  }
+  const fetcher = vi.fn<typeof fetch>(async () => Response.json(payload))
+  const client = new PigclaudeApiClient({ baseUrl: "https://api.example.test", fetcher })
+  expect(await client.createMembershipTarget("fixture-access")).toEqual(payload)
+  expect(fetcher).toHaveBeenCalledWith(
+    "https://api.example.test/v1/desktop/membership-targets",
+    expect.objectContaining({
+      method: "POST",
+      body: "{}",
+      credentials: "omit",
+      redirect: "error",
+      headers: expect.objectContaining({ authorization: "Bearer fixture-access" }),
+    }),
+  )
+})
+it("does not accept a server URL as the membership target", async () => {
+  const client = new PigclaudeApiClient({
+    baseUrl: "https://api.example.test",
+    fetcher: async () =>
+      Response.json({
+        targetId: "https://untrusted.example.test",
+        action: "renew",
+        expiresAt: "2030-01-01T00:00:00Z",
+      }),
+  })
+  await expect(client.createMembershipTarget("fixture-access")).rejects.toMatchObject({
+    code: "INVALID_RESPONSE",
+  })
+})

@@ -11,6 +11,7 @@ import { PigclaudeApiError } from "../api/oauth-client"
 import { OAuthTokenManager, codeOf, type OAuthSnapshot } from "../authorization/oauth-token-manager"
 import { recoveryView } from "./recovery-view"
 import { DESKTOP_BUSINESS_SCOPES } from "@pigclaude/contracts/desktop-membership"
+import { randomUUID } from "node:crypto"
 
 /** 会员端口始终接受原请求捕获的 Bearer；生产同时提供实时身份验证。 */
 export type MembershipGateApi = {
@@ -38,6 +39,7 @@ export class MembershipGate {
   #reads = 0
   #disposed = false
   #visibleOwner: number | null = null
+  #recoveryContext: { owner: number; id: string } | null = null
 
   /** 构建实时会员门禁；独立端口测试不隐式模拟刷新服务。 */
   constructor(options: MembershipGateOptions) {
@@ -155,6 +157,33 @@ export class MembershipGate {
       account: this.#view.account ? { ...this.#view.account } : null,
       ...(this.#view.recovery ? { recovery: { ...this.#view.recovery } } : {}),
     }
+  }
+
+  /** 只捕获当前已展示账号的动作上下文，拒绝迟到界面替新会话办理会员。 */
+  async captureRecoveryAction(contextId: string): Promise<OAuthSnapshot> {
+    const owner = this.#tokens.owner
+    if (!this.matchesRecoveryContext(contextId, owner))
+      throw new PigclaudeApiError("RECOVERY_CONTEXT_CHANGED", 0)
+    const snapshot = await this.#tokens.snapshot()
+    if (
+      !snapshot ||
+      !this.matchesRecoveryContext(contextId, owner) ||
+      snapshot.record.userId !== this.#view.account?.userId
+    )
+      throw new PigclaudeApiError("RECOVERY_CONTEXT_CHANGED", 0)
+    return snapshot
+  }
+
+  /** 同族合法刷新保留上下文，新 grant、退出和关系失效立即使旧上下文失效。 */
+  matchesRecoveryContext(contextId: string, owner: number): boolean {
+    return (
+      !this.#disposed &&
+      this.#tokens.isCurrent(owner) &&
+      this.#visibleOwner === owner &&
+      this.#recoveryContext?.owner === owner &&
+      this.#recoveryContext.id === contextId &&
+      this.#view.recovery?.contextId === contextId
+    )
   }
 
   /** 撤销原逻辑会话的当前关系；同族刷新不取消结果，新 grant 则隔离。 */
@@ -325,6 +354,12 @@ export class MembershipGate {
     if (this.#disposed) return this.view()
     this.#revision = Math.max(this.#revision + 1, view.revision)
     this.#view = { ...view, revision: this.#revision, startupPhase: "settled" }
+    if (this.#view.recovery) {
+      const owner = this.#tokens.owner
+      if (this.#recoveryContext?.owner !== owner)
+        this.#recoveryContext = { owner, id: randomUUID() }
+      this.#view.recovery = { ...this.#view.recovery, contextId: this.#recoveryContext.id }
+    }
     const safe = this.view()
     for (const listener of this.#listeners) listener(safe)
     return safe

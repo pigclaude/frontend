@@ -20,6 +20,7 @@ import { CheckoutBar } from "@/components/membership/checkout-bar"
 import { PurchaseHistory } from "@/components/membership/purchase-history"
 import { MembershipSkeleton } from "@/components/membership/membership-skeleton"
 import { RemainingUpgradeBanner } from "@/components/membership/remaining-upgrade-banner"
+import { MembershipRecoveryGate, recoveryTargetFrom } from "@/components/membership/recovery-gate"
 import { PayPanel, type PaySummary } from "@/components/membership/pay-panel"
 import { QueryError, QueryLoading } from "@/components/query-state"
 import { AccountShell } from "@/components/account/account-shell"
@@ -67,13 +68,29 @@ function MembershipRoute() {
   const session = homeSessionGeneration.current()
   const orders = params.getAll("order")
   const orderNo = orders.length === 1 && /^PC[0-9A-Z]{20}$/.test(orders[0]) ? orders[0] : undefined
-  return (
+  const targets = params.getAll("recoveryTarget")
+  const recoveryTarget = recoveryTargetFrom(targets)
+  const identity = (
     <MembershipIdentity
       key={`${pathname}?${params.toString()}`}
       ownerId={me.data.id}
       session={session}
       orderNo={orderNo}
+      recoveryTarget={targets.length ? (recoveryTarget ?? "") : undefined}
     />
+  )
+  return targets.length ? (
+    <MembershipRecoveryGate
+      key={`${recoveryTarget}:${me.data.id}:${session}`}
+      target={recoveryTarget}
+      ownerId={me.data.id}
+      accountLabel={me.data.email || me.data.nickname || "当前账号"}
+      session={session}
+    >
+      {identity}
+    </MembershipRecoveryGate>
+  ) : (
+    identity
   )
 }
 // 同一次回跳只归属初始账户；账户或会话改变后不把 URL 订单转交给新身份。
@@ -81,10 +98,12 @@ function MembershipIdentity({
   ownerId,
   session,
   orderNo,
+  recoveryTarget,
 }: {
   ownerId: string
   session: number
   orderNo?: string
+  recoveryTarget?: string
 }) {
   const identity = `${ownerId}:${session}`
   const [claim, setClaim] = useState({ identity, orderNo })
@@ -93,17 +112,25 @@ function MembershipIdentity({
     return null
   }
   return (
-    <MembershipAccount key={identity} ownerId={ownerId} session={session} orderNo={claim.orderNo} />
+    <MembershipAccount
+      key={identity}
+      ownerId={ownerId}
+      session={session}
+      orderNo={claim.orderNo}
+      recoveryTarget={recoveryTarget}
+    />
   )
 }
 function MembershipAccount({
   ownerId,
   session,
   orderNo,
+  recoveryTarget,
 }: {
   ownerId: string
   session: number
   orderNo?: string
+  recoveryTarget?: string
 }) {
   const client = useQueryClient()
   const router = useRouter()
@@ -119,6 +146,7 @@ function MembershipAccount({
     summary?: PaySummary
     payType?: PayType
     orderNo?: string
+    recoveryTarget?: string
   } | null>(orderNo ? { id: 0, orderNo } : null)
   const [sequence, setSequence] = useState(0)
   const [glintSequence, setGlintSequence] = useState(0)
@@ -267,6 +295,7 @@ function MembershipAccount({
           }}
           payTypes={catalog.data.payTypes}
           orderNo={checkout.orderNo}
+          recoveryTarget={recoveryTarget}
           onClose={() => {
             setCheckout(null)
             // 网关回跳单处理完就从地址栏去掉 ?order=，刷新页面不会再打开这笔旧订单；其他参数保留。

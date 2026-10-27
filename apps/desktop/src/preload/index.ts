@@ -41,6 +41,8 @@ export type PigclaudeBridge = {
     subscribe: (listener: (event: AuthorizationStateEvent) => void) => () => void
   }
   membership: {
+    /** 只传当前界面的关联上下文，网站地址由主进程构造。 */
+    openWebsite?: (contextId: string) => Promise<void>
     inspect: () => Promise<MembershipView | null>
     signOut: () => Promise<MembershipView>
     /** 撤销当前可信 token 绑定的设备关系，不接收自报身份。 */
@@ -103,6 +105,7 @@ const bridge: PigclaudeBridge = {
     subscribe: (listener) => subscribeAuthorization(listener),
   },
   membership: {
+    openWebsite: (contextId) => ipcRenderer.invoke("pigclaude:membership-open-website", contextId),
     inspect: () => ipcRenderer.invoke("pigclaude:membership-inspect"),
     signOut: () => ipcRenderer.invoke("pigclaude:membership-sign-out"),
     withdraw: () => ipcRenderer.invoke("pigclaude:membership-withdraw"),

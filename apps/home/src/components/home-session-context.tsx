@@ -3,10 +3,13 @@
 
 import { createContext, useContext } from "react"
 
+/** 服务端退出成功后的受控接续，不接受任意外部跳转地址。 */
+export type HomeSessionEndOptions = { switchAccountReturnTo?: string }
+
 /** 仅在服务端退出成功后结束本地会话，取消旧查询并导航登录页。 */
 export interface HomeSessionActions {
   /** 在服务端确认退出后取消旧查询、清空缓存并进入登录页。 */
-  completeLogout: () => Promise<void>
+  completeLogout: (options?: HomeSessionEndOptions) => Promise<void>
 }
 
 /** 由根 Providers 唯一提供退出生命周期，所有菜单复用同一会话边界。 */

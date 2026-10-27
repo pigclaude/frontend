@@ -17,9 +17,14 @@ import { LocalRuntime } from "./runtime/local-runtime"
 import type { DeviceIdentityService } from "./device-identity"
 import type { DeviceInfo } from "./device-identity/device-info"
 import type { AuthorizationStateEvent } from "./authorization/types"
+import { readDesktopRuntimeEndpoints } from "./runtime-endpoints"
 
 /** composition 的依赖，Claude adapter 与第一方 OAuth API 必须独立。 */
 export type DesktopCompositionOptions = {
+  /** 只供固定会员入口使用的可信网站 origin，缺省沿用授权站点。 */
+  websiteOrigin?: string
+  /** 系统开链端口，目标 URL 只能由本组合根构造。 */
+  openWebsite?: (url: string) => Promise<void>
   api?: PigclaudeApi
   apiOptions?: PigclaudeApiClientOptions
   vault: SecretVault
@@ -36,6 +41,8 @@ export type DesktopCompositionOptions = {
 }
 /** composition 提供脱敏服务与本机退出，不跨 profile 或 Claude namespace 清理。 */
 export type DesktopComposition = {
+  /** 仅接收界面上下文标识，不接收用户、设备、token 或任意 URL。 */
+  openMembershipWebsite: (contextId: string) => Promise<void>
   api: PigclaudeApi
   membershipGate: MembershipGate
   authorizationService: AuthorizationService
@@ -55,6 +62,10 @@ export type DesktopComposition = {
 /** 装配标准 native 登录，迟到网络结果不能越过本机 generation/write fence。 */
 export function createDesktopComposition(options: DesktopCompositionOptions): DesktopComposition {
   const now = options.now ?? Date.now
+  const websiteOrigin = readDesktopRuntimeEndpoints({
+    PIGCLAUDE_AUTH_ORIGIN: options.authOrigin,
+    PIGCLAUDE_WEBSITE_ORIGIN: options.websiteOrigin,
+  }).websiteOrigin
   const api =
     options.api ??
     new PigclaudeApiClient({
@@ -187,6 +198,26 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
   let disposed = false
   let signingOut: Promise<MembershipView> | null = null
   return {
+    openMembershipWebsite: async (contextId) => {
+      if (!options.openWebsite || !api.createMembershipTarget)
+        throw new Error("MEMBERSHIP_WEBSITE_UNAVAILABLE")
+      const captured = await membershipGate.captureRecoveryAction(contextId)
+      const target = await tokenManager.run(async (current) => {
+        if (
+          current.owner !== captured.owner ||
+          !membershipGate.matchesRecoveryContext(contextId, captured.owner)
+        )
+          throw new Error("RECOVERY_CONTEXT_CHANGED")
+        return api.createMembershipTarget!(current.record.accessToken)
+      })
+      if (!membershipGate.matchesRecoveryContext(contextId, captured.owner))
+        throw new Error("RECOVERY_CONTEXT_CHANGED")
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target.targetId))
+        throw new Error("INVALID_RECOVERY_TARGET")
+      const url = new URL("/membership/recovery", websiteOrigin)
+      url.searchParams.set("target", target.targetId)
+      await options.openWebsite(url.toString())
+    },
     api,
     membershipGate,
     authorizationService,

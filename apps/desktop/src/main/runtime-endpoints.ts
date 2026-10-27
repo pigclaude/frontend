@@ -4,6 +4,7 @@
 export type DesktopRuntimeEndpoints = {
   rustBaseUrl: string
   authOrigin: string
+  websiteOrigin: string
 }
 
 /** 保证环境覆盖优先，其次使用 bundle 公共配置，最后兼容旧本地开发默认值。 */
@@ -12,23 +13,32 @@ export function readDesktopRuntimeEndpoints(
   bundleMetadata?: unknown,
 ): DesktopRuntimeEndpoints {
   const bundled = readBundledEndpoints(bundleMetadata)
+  const authOrigin = readOrigin(
+    env["PIGCLAUDE_AUTH_ORIGIN"] ?? bundled?.authOrigin ?? "http://127.0.0.1:3000",
+  )
   return {
     rustBaseUrl: readOrigin(
       env["PIGCLAUDE_RUST_BASE_URL"] ?? bundled?.rustBaseUrl ?? "http://127.0.0.1:8788",
     ),
-    authOrigin: readOrigin(
-      env["PIGCLAUDE_AUTH_ORIGIN"] ?? bundled?.authOrigin ?? "http://127.0.0.1:3000",
+    authOrigin,
+    websiteOrigin: readOrigin(
+      env["PIGCLAUDE_WEBSITE_ORIGIN"] ?? bundled?.websiteOrigin ?? authOrigin,
     ),
   }
 }
 
-function readBundledEndpoints(metadata: unknown): DesktopRuntimeEndpoints | undefined {
+function readBundledEndpoints(
+  metadata: unknown,
+): (Omit<DesktopRuntimeEndpoints, "websiteOrigin"> & { websiteOrigin?: string }) | undefined {
   if (!isRecord(metadata) || !("pigclaudeEndpoints" in metadata)) return undefined
   const endpoints = metadata.pigclaudeEndpoints
   if (!isRecord(endpoints)) throw new Error("安装包公共端点配置无效")
   return {
     rustBaseUrl: readOrigin(endpoints.rustBaseUrl),
     authOrigin: readOrigin(endpoints.authOrigin),
+    ...(endpoints.websiteOrigin === undefined
+      ? {}
+      : { websiteOrigin: readOrigin(endpoints.websiteOrigin) }),
   }
 }
 

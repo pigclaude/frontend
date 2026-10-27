@@ -16,6 +16,13 @@ export type DesktopMembershipView = MembershipView
 /** 软件使用前必须核验的业务能力；恢复信息本身不授予这些能力。 */
 export const DESKTOP_BUSINESS_SCOPES = ["membership:read", "device:inspect"] as const
 
+/** 服务端创建的短期办理目标，不包含账号、凭据或任意跳转地址。 */
+export type CreatedMembershipRecoveryTarget = {
+  targetId: string
+  action: "open" | "renew" | "view"
+  expiresAt: string
+}
+
 /** 主进程从本人只读恢复接口取得的脱敏事实，与现有 session 合同分开。 */
 export type DesktopRecoverySnapshot = {
   userId: string

@@ -30,10 +30,14 @@ export function DesktopEntryScreen({
     const result = await inspect()
     if (result) onMembership(result)
   }
+  const contextId = membership.recovery?.contextId
+  const openWebsite = window.pigclaude?.membership?.openWebsite
   return (
     <RecoveryScreen
+      key={membership.recovery?.contextId ?? membership.account?.userId ?? membership.state}
       membership={membership}
       onCheck={inspect}
+      onOpenWebsite={contextId && openWebsite ? () => openWebsite(contextId) : undefined}
       onAuthorize={login.onAuthorize}
       canWithdraw={membership.recovery?.canRevoke ?? login.canWithdraw}
     />

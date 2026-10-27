@@ -5,7 +5,8 @@ import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-qu
 import { usePathname, useRouter } from "next/navigation"
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import { initTheme } from "@pigclaude/web-ui/lib/theme"
-import { HomeSessionContext } from "@/components/home-session-context"
+import { HomeSessionContext, type HomeSessionEndOptions } from "@/components/home-session-context"
+import { beginWebOidcLogin } from "@pigclaude/api/web-oidc"
 import { homeSessionGeneration } from "@/lib/session-generation"
 import { homeApi } from "@/lib/api"
 import {
@@ -73,26 +74,31 @@ export function Providers({ children }: { children: ReactNode }) {
       }),
   )
 
-  const completeLogout = useCallback(async () => {
-    homeSessionGeneration.invalidate()
-    routeGeneration.current++
-    const currentRouteGeneration = routeGeneration.current
-    const generation = homeSessionGeneration.current()
-    sessionEndedRef.current = true
-    setSessionEnded(true)
-    const cancellation = queryClient.cancelQueries()
-    // 同步清掉本次旧会话缓存，异步等待只控制仍属当前页面的导航。
-    queryClient.clear()
-    recoveryHashesRef.current.clear()
-    sessionRecoveryRef.current = null
-    await cancellation
-    if (
-      generation !== homeSessionGeneration.current() ||
-      currentRouteGeneration !== routeGeneration.current
-    )
-      return
-    routerRef.current.replace("/login")
-  }, [queryClient])
+  const completeLogout = useCallback(
+    async (options?: HomeSessionEndOptions) => {
+      homeSessionGeneration.invalidate()
+      routeGeneration.current++
+      const currentRouteGeneration = routeGeneration.current
+      const generation = homeSessionGeneration.current()
+      sessionEndedRef.current = true
+      setSessionEnded(true)
+      const cancellation = queryClient.cancelQueries()
+      // 同步清掉本次旧会话缓存，异步等待只控制仍属当前页面的导航。
+      queryClient.clear()
+      recoveryHashesRef.current.clear()
+      sessionRecoveryRef.current = null
+      await cancellation
+      if (
+        generation !== homeSessionGeneration.current() ||
+        currentRouteGeneration !== routeGeneration.current
+      )
+        return
+      if (options?.switchAccountReturnTo)
+        beginWebOidcLogin({ site: "home", mode: "switch", returnTo: options.switchAccountReturnTo })
+      else routerRef.current.replace("/login")
+    },
+    [queryClient],
+  )
 
   useEffect(() => {
     if (isPublicHomePath(pathname)) {

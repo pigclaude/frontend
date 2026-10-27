@@ -51,3 +51,14 @@ describe("registration UI hint", () => {
     expect(consumeRegistrationHint()).toBe(false)
   })
 })
+
+it("explicit website switching forces fresh authentication and retains the local target", () => {
+  const navigation = vi.spyOn(webOidcNavigation, "assign").mockImplementation(() => undefined)
+  const returnTo = "/membership/recovery?target=00000000-0000-4000-8000-000000000001"
+  beginWebOidcLogin({ site: "home", mode: "switch", returnTo })
+  const link = new URL(navigation.mock.calls[0][0], "https://home.example.test")
+  expect(link.pathname).toBe("/v1/web/oidc/start")
+  expect(link.searchParams.get("maxAge")).toBe("0")
+  expect(link.searchParams.get("returnTo")).toBe(returnTo)
+  expect(consumeRegistrationHint()).toBe(false)
+})

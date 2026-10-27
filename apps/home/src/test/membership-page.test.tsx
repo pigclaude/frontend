@@ -2,10 +2,12 @@
 import { cleanup, fireEvent, render, screen, waitFor, act } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
+import { HomeSessionContext } from "@/components/home-session-context"
 import MembershipPage from "@/app/(app)/membership/page"
 import { formatTime } from "@pigclaude/web-ui/lib/format"
 import { catalog, quotes, created, homeOrder } from "./membership-fixtures"
 const mocks = vi.hoisted(() => ({
+  resolve: vi.fn(),
   catalog: vi.fn(),
   quotes: vi.fn(),
   me: vi.fn(),
@@ -24,6 +26,7 @@ vi.mock("@/lib/api", () => ({
   homeApi: {
     user: { me: mocks.me },
     membership: {
+      recoveryTarget: mocks.resolve,
       entitlement: async () => quotes.entitlement,
       catalog: mocks.catalog,
       quotes: mocks.quotes,
@@ -50,7 +53,9 @@ function mount() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const view = render(
     <QueryClientProvider client={client}>
-      <MembershipPage />
+      <HomeSessionContext.Provider value={{ completeLogout: async () => undefined }}>
+        <MembershipPage />
+      </HomeSessionContext.Provider>
     </QueryClientProvider>,
   )
   return { client, ...view }
@@ -198,14 +203,18 @@ it("cancels the old dialog on route change even when returning to the same route
   mocks.path = "/other"
   rerender(
     <QueryClientProvider client={client}>
-      <MembershipPage />
+      <HomeSessionContext.Provider value={{ completeLogout: async () => undefined }}>
+        <MembershipPage />
+      </HomeSessionContext.Provider>
     </QueryClientProvider>,
   )
   expect(screen.queryByRole("dialog")).toBeNull()
   mocks.path = "/membership"
   rerender(
     <QueryClientProvider client={client}>
-      <MembershipPage />
+      <HomeSessionContext.Provider value={{ completeLogout: async () => undefined }}>
+        <MembershipPage />
+      </HomeSessionContext.Provider>
     </QueryClientProvider>,
   )
   expect(screen.queryByRole("dialog")).toBeNull()
@@ -345,4 +354,56 @@ it("current card contains its own remaining time and expiry, including retired r
   expect(current?.textContent).toContain("剩余 10 天")
   expect(current?.textContent).toContain("2026-12-01 到期")
   expect(current?.textContent).toContain("该等级已停售，到期前权益不受影响")
+})
+
+it("does not mount checkout until the current website account matches the desktop target", async () => {
+  mocks.params = "recoveryTarget=69f099b7-260a-4f61-a37e-3332c1380e53"
+  mocks.resolve.mockResolvedValue({ state: "mismatch" })
+  mount()
+  await screen.findByRole("button", { name: "切换网站账号" })
+  expect(mocks.quotes).not.toHaveBeenCalled()
+  expect(mocks.createOrder).not.toHaveBeenCalled()
+})
+it("retains the verified target on checkout instead of creating an ordinary order", async () => {
+  const target = "69f099b7-260a-4f61-a37e-3332c1380e53"
+  mocks.params = `recoveryTarget=${target}`
+  mocks.resolve.mockResolvedValue({ state: "matched", currentUserId: "a", action: "renew" })
+  mount()
+  fireEvent.click(await screen.findByRole("button", { name: "立即续费" }))
+  await waitFor(() =>
+    expect(mocks.createOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ recoveryTarget: target }),
+      expect.any(Function),
+    ),
+  )
+})
+it("preserves an open order while rechecking the same recovery target", async () => {
+  const target = "69f099b7-260a-4f61-a37e-3332c1380e53"
+  const proof = { state: "matched", currentUserId: "a", action: "renew" }
+  mocks.params = `recoveryTarget=${target}`
+  mocks.resolve.mockResolvedValue(proof)
+  const { client } = mount()
+  fireEvent.click(await screen.findByRole("button", { name: "立即续费" }))
+  await waitFor(() => expect(mocks.createOrder).toHaveBeenCalledTimes(1))
+  let release!: (value: typeof proof) => void
+  mocks.resolve.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        release = resolve
+      }),
+  )
+  let pending!: Promise<void>
+  await act(async () => {
+    pending = client.refetchQueries({ queryKey: ["membership-recovery"] })
+  })
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 15))
+  })
+  expect(screen.queryByRole("dialog")).not.toBeNull()
+  await act(async () => {
+    release(proof)
+    await pending
+  })
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeNull())
+  expect(mocks.createOrder).toHaveBeenCalledTimes(1)
 })

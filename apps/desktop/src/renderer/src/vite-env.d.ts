@@ -28,6 +28,8 @@ interface PigclaudeBridge {
     ) => () => void
   }
   membership?: {
+    /** 主进程只为当前恢复界面生成固定网站办理入口。 */
+    openWebsite?: (contextId: string) => Promise<void>
     inspect: () => Promise<import("@pigclaude/contracts/membership").MembershipView | null>
     signOut: () => Promise<import("@pigclaude/contracts/membership").MembershipView>
     withdraw: () => Promise<import("@pigclaude/contracts/membership").MembershipView>

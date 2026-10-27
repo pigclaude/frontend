@@ -25,10 +25,12 @@ export const homeApi = {
   auth: {
     ...api.auth,
     /** 先读取真实 RP bootstrap，再用该会话 CSRF 明确退出。 */
-    logout: async (isCurrent: () => boolean = () => true) => {
+    logout: async (isCurrent: () => boolean = () => true, expectedPrincipalId?: string) => {
       const sameSession = homeClient.captureSession?.() ?? (() => true)
       if (!isCurrent() || !sameSession()) throw new StaleSessionResponse()
       const session = await homeClient.get<WebSessionBootstrap>("/v1/session")
+      if (expectedPrincipalId !== undefined && session.principalId !== expectedPrincipalId)
+        throw new StaleSessionResponse()
       if (!isCurrent() || !sameSession()) throw new StaleSessionResponse()
       await homeClient.post<void>("/v1/web/oidc/logout", { csrf: session.csrf })
     },

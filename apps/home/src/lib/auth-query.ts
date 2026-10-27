@@ -14,7 +14,14 @@ export type HomeSessionRevalidationEvent = Event & {
 
 /** 判断无需登录即可访问的 home 路径。 */
 export function isPublicHomePath(pathname: string): boolean {
-  return ["/", "/login", "/register", "/identity/login", "/identity/authorize"].includes(pathname)
+  return [
+    "/",
+    "/login",
+    "/register",
+    "/identity/login",
+    "/identity/authorize",
+    "/membership/recovery",
+  ].includes(pathname)
 }
 
 /** 将权威 me 401 与业务查询 401 分开处理。 */

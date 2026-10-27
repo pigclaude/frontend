@@ -15,6 +15,9 @@ export function readRecoveryResponse(value: unknown): DesktopRecoverySnapshot {
     typeof account.avatar !== "string" ||
     typeof membership.status !== "string" ||
     !["none", "active", "expired", "revoked"].includes(membership.status) ||
+    (membership.entitlementVersion !== undefined &&
+      (typeof membership.entitlementVersion !== "string" ||
+        !/^(0|[1-9][0-9]*)$/.test(membership.entitlementVersion))) ||
     !timestamp(value.grantExpiresAt) ||
     typeof value.canRevoke !== "boolean" ||
     !(membership.validUntil === null || timestamp(membership.validUntil))
@@ -46,6 +49,9 @@ export function readRecoveryResponse(value: unknown): DesktopRecoverySnapshot {
       status: membership.status as DesktopRecoverySnapshot["membership"]["status"],
       tier,
       validUntil: membership.validUntil,
+      ...(typeof membership.entitlementVersion === "string"
+        ? { entitlementVersion: membership.entitlementVersion }
+        : {}),
     },
     grantExpiresAt: value.grantExpiresAt,
     canRevoke: value.canRevoke,

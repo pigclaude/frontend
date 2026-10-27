@@ -13,6 +13,9 @@ export type MembershipInspectRequest = {
 /** MembershipGate 对外暴露的唯一视图类型。 */
 export type DesktopMembershipView = MembershipView
 
+/** 软件使用前必须核验的业务能力；恢复信息本身不授予这些能力。 */
+export const DESKTOP_BUSINESS_SCOPES = ["membership:read", "device:inspect"] as const
+
 /** 主进程从本人只读恢复接口取得的脱敏事实，与现有 session 合同分开。 */
 export type DesktopRecoverySnapshot = {
   userId: string
@@ -22,6 +25,8 @@ export type DesktopRecoverySnapshot = {
   account: NonNullable<MembershipView["account"]>
   membership: {
     status: NonNullable<MembershipView["recovery"]>["status"]
+    /** 权益版本用于区分新的恢复机会，不作为权限或支付授权。 */
+    entitlementVersion?: string
     tier: MembershipView["tier"]
     validUntil: string | null
   }

@@ -53,3 +53,31 @@ it.each(["wrong-owner", "unknown-status", "array-status", "bad-deadline"])(
     })
   },
 )
+
+it("preserves a large decimal entitlement version for controlled recovery", async () => {
+  const client = new PigclaudeApiClient({
+    baseUrl: "https://api.example.test",
+    fetcher: async () =>
+      Response.json({
+        ...payload,
+        membership: { ...payload.membership, entitlementVersion: "9007199254740993" },
+      }),
+  })
+  expect((await client.readRecovery("fixture-access")).membership.entitlementVersion).toBe(
+    "9007199254740993",
+  )
+})
+
+it.each([1, "01", "1e3"])(
+  "rejects an invalid entitlement version %s",
+  async (entitlementVersion) => {
+    const client = new PigclaudeApiClient({
+      baseUrl: "https://api.example.test",
+      fetcher: async () =>
+        Response.json({ ...payload, membership: { ...payload.membership, entitlementVersion } }),
+    })
+    await expect(client.readRecovery("fixture-access")).rejects.toMatchObject({
+      code: "INVALID_RESPONSE",
+    })
+  },
+)

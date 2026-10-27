@@ -10,6 +10,7 @@ import type { PigclaudeApi } from "../api/pigclaude-api-client"
 import { PigclaudeApiError } from "../api/oauth-client"
 import { OAuthTokenManager, codeOf, type OAuthSnapshot } from "../authorization/oauth-token-manager"
 import { recoveryView } from "./recovery-view"
+import { DESKTOP_BUSINESS_SCOPES } from "@pigclaude/contracts/desktop-membership"
 
 /** 会员端口始终接受原请求捕获的 Bearer；生产同时提供实时身份验证。 */
 export type MembershipGateApi = {
@@ -74,9 +75,24 @@ export class MembershipGate {
         if (facts) {
           recovered = recoveryView(facts)
           if (facts.membership.status !== "active") return recovered
+          if (
+            DESKTOP_BUSINESS_SCOPES.some(
+              (scope) => !current.record.scope.split(" ").includes(scope),
+            )
+          ) {
+            if (Date.parse(facts.grantExpiresAt) <= this.#now())
+              throw new PigclaudeApiError("AUTHORIZATION_REQUIRED", 401)
+            const recoveryKey =
+              facts.membership.entitlementVersion ??
+              facts.membership.validUntil ??
+              facts.grantExpiresAt
+            current = await this.#tokens.restoreMembershipCapabilities(current.owner, recoveryKey)
+            identity = current
+            await this.verifyIdentity(current)
+          }
         }
         const scopes = current.record.scope.split(" ")
-        if (!scopes.includes("membership:read") || !scopes.includes("device:inspect")) {
+        if (DESKTOP_BUSINESS_SCOPES.some((scope) => !scopes.includes(scope))) {
           throw new PigclaudeApiError("insufficient_scope", 403)
         }
         const checked = await this.#api.inspectMembership(
@@ -112,6 +128,7 @@ export class MembershipGate {
           : code === "AUTHORIZATION_REQUIRED" ||
               code === "invalid_grant" ||
               code === "invalid_token" ||
+              code === "invalid_scope" ||
               code === "AUTHORIZATION_EXPIRED" ||
               code === "MEMBERSHIP_EXPIRED"
             ? "verification_required"

@@ -1,5 +1,8 @@
 // 负责第一方 OAuth 的逻辑归属、单飞轮换、持久消费屏障及本机写入序列。
-import type { OAuthDesktopSession } from "@pigclaude/contracts/desktop-membership"
+import {
+  DESKTOP_BUSINESS_SCOPES,
+  type OAuthDesktopSession,
+} from "@pigclaude/contracts/desktop-membership"
 import type { PigclaudeApi } from "../api/pigclaude-api-client"
 import { MAX_ACCESS_TOKEN_SECONDS } from "@pigclaude/contracts/oauth"
 import { PigclaudeApiError } from "../api/oauth-client"
@@ -26,7 +29,8 @@ export class OAuthTokenManager {
   #record: OAuthDesktopSession | null = null
   #writes: Promise<void> = Promise.resolve()
   #loading: Promise<void> | null = null
-  #refresh: { owner: number; promise: Promise<void> } | null = null
+  #refresh: { owner: number; promise: Promise<void>; recoveryKey?: string } | null = null
+  #capabilityRecoveryDenied: { owner: number; keys: Set<string> } | null = null
 
   /** 绑定唯一 profile 仓库，构造时不进行网络请求。 */
   constructor(options: OAuthTokenManagerOptions) {
@@ -113,6 +117,43 @@ export class OAuthTokenManager {
     }
   }
 
+  /** 仅供已核验恢复事实的门禁调用；不扩大原 grant 范围，复用同族单飞轮换。 */
+  async restoreMembershipCapabilities(
+    expectedOwner: number,
+    recoveryKey: string,
+  ): Promise<OAuthSnapshot> {
+    const complete = (scope: string) =>
+      DESKTOP_BUSINESS_SCOPES.every((required) => scope.split(" ").includes(required))
+    while (true) {
+      this.assertCurrent(expectedOwner)
+      const snapshot = await this.snapshot()
+      this.assertCurrent(expectedOwner)
+      if (!snapshot || snapshot.record.refreshTokenExpiresAt <= this.#now())
+        throw failure("AUTHORIZATION_REQUIRED")
+      if (complete(snapshot.record.scope)) return snapshot
+      if (
+        this.#capabilityRecoveryDenied?.owner === expectedOwner &&
+        this.#capabilityRecoveryDenied.keys.has(recoveryKey)
+      )
+        throw failure("AUTHORIZATION_REQUIRED")
+      if (!complete(snapshot.record.grantedScope)) throw failure("AUTHORIZATION_REQUIRED")
+      const rotating = this.rotate(snapshot, recoveryKey)
+      const attempt = this.#refresh
+      await rotating
+      this.assertCurrent(expectedOwner)
+      const restored = await this.snapshot()
+      this.assertCurrent(expectedOwner)
+      if (!restored) throw failure("AUTHORIZATION_REQUIRED")
+      if (complete(restored.record.scope)) return restored
+      // 加入旧轮换的较新权益版本仍有自己的受控机会，不继承旧版本的拒绝。
+      if (attempt?.recoveryKey !== recoveryKey) continue
+      if (this.#capabilityRecoveryDenied?.owner !== expectedOwner)
+        this.#capabilityRecoveryDenied = { owner: expectedOwner, keys: new Set() }
+      this.#capabilityRecoveryDenied.keys.add(recoveryKey)
+      throw failure("AUTHORIZATION_REQUIRED")
+    }
+  }
+
   /** 同步失效代次，只返回已进入本机的写入屏障，不等待 refresh HTTP。 */
   suspend(): Promise<void> {
     this.#owner++
@@ -184,12 +225,12 @@ export class OAuthTokenManager {
     return { owner: snapshot.owner, record: { ...this.#record } }
   }
 
-  private rotate(snapshot: OAuthSnapshot): Promise<void> {
+  private rotate(snapshot: OAuthSnapshot, recoveryKey?: string): Promise<void> {
     this.assertCurrent(snapshot.owner)
     if (this.#refresh?.owner === snapshot.owner) return this.#refresh.promise
     if (this.#record?.refreshToken !== snapshot.record.refreshToken) return Promise.resolve()
     const promise = this.refresh(snapshot)
-    this.#refresh = { owner: snapshot.owner, promise }
+    this.#refresh = { owner: snapshot.owner, promise, recoveryKey }
     const finish = () => {
       if (this.#refresh?.promise === promise) this.#refresh = null
     }

@@ -103,3 +103,30 @@ it("opens renew from verified expiry once and keeps unknown failures on retry", 
     vi.unstubAllGlobals()
   }
 })
+
+it("starts an explicit account switch from the current blocked identity", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true)
+  const container = document.createElement("div")
+  const root = createRoot(container)
+  const onAuthorize = vi.fn()
+  try {
+    await act(async () =>
+      root.render(
+        createElement(RecoveryScreen, {
+          membership: membershipView("expired"),
+          onCheck: async () => undefined,
+          onAuthorize,
+        }),
+      ),
+    )
+    const button = [...container.querySelectorAll("button")].find(
+      (b) => b.textContent === "切换账号",
+    )
+    expect(button).toBeDefined()
+    await act(async () => button?.click())
+    expect(onAuthorize).toHaveBeenCalledWith("switch")
+  } finally {
+    await act(async () => root.unmount())
+    vi.unstubAllGlobals()
+  }
+})

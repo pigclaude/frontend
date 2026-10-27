@@ -1,4 +1,4 @@
-// 负责从桌面授权编排验证候选会话失败、提交与取消的持久结果，不读取真实账号或 Keychain。
+// 负责从桌面授权编排验证显式切换的候选会话失败、提交与取消的持久结果，不读取真实账号或 Keychain。
 import { expect, it } from "vitest"
 import { createDesktopComposition } from "../composition"
 import type { PigclaudeApi } from "../api/pigclaude-api-client"
@@ -15,7 +15,7 @@ import {
 } from "../testing/profile-fixture"
 
 const redirect = "http://127.0.0.1:43123/oauth/callback"
-const request = { purpose: "pigclaude-login", mode: "login" } as const
+const request = { purpose: "pigclaude-login", mode: "switch" } as const
 const original = {
   ...oauthSessionFixture(),
   userId: "user-a",
@@ -313,6 +313,33 @@ it("never lends A's active view to B when overlapping B checks finish out of ord
   } finally {
     firstRelease.resolve(undefined)
     secondRelease.resolve(undefined)
+    await composition.dispose()
+  }
+})
+
+it("never restores either login when explicit sign-out wins during account switching", async () => {
+  const entered = deferred<void>()
+  const response = deferred<NativeOAuthToken>()
+  const { vault, composition, begin } = await setup({
+    exchangeCode: async () => {
+      entered.resolve(undefined)
+      return response.promise
+    },
+  })
+  try {
+    const flow = await begin()
+    const completing = flow.complete()
+    await entered.promise
+    await composition.signOut()
+    response.resolve(candidate)
+    expect(await completing).toMatchObject({ status: "cancelled" })
+    await composition.authorizationService.cancel(flow.sessionId)
+    expect(await composition.tokenManager.snapshot()).toBeNull()
+    expect(composition.membershipGate.view().state).toBe("signed_out")
+    expect(await vault.get("authorization:claude-account:other-account")).toBe("old-claude-secret")
+    expect(await vault.get("device:identity")).toBe("device-identity-sentinel")
+  } finally {
+    response.resolve(candidate)
     await composition.dispose()
   }
 })

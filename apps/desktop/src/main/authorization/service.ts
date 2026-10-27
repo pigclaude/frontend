@@ -136,63 +136,69 @@ export class AuthorizationService {
     const generation = ++this.#generation
     this.#activeSession = null
     this.#pendingSession = session
-    if (request.purpose === "claude-account" && this.#claudeAuthorization) {
-      const started = await this.#claudeAuthorization.start(session)
-      if (!this.isCurrent(generation))
-        throw new AuthorizationStartError("cancelled", "授权会话已取消")
-      session.expiresAt = Math.min(session.expiresAt, started.expiresAt)
-      this.#activeSession = session
-      return {
-        sessionId: session.sessionId,
-        authorizationUrl: started.authorizationUrl,
-        expiresAt: session.expiresAt,
+    try {
+      if (request.purpose === "claude-account" && this.#claudeAuthorization) {
+        const started = await this.#claudeAuthorization.start(session)
+        if (!this.isCurrent(generation))
+          throw new AuthorizationStartError("cancelled", "授权会话已取消")
+        session.expiresAt = Math.min(session.expiresAt, started.expiresAt)
+        this.#activeSession = session
+        return {
+          sessionId: session.sessionId,
+          authorizationUrl: started.authorizationUrl,
+          expiresAt: session.expiresAt,
+        }
       }
-    }
-    if (request.purpose === "pigclaude-login" && this.#startAuthorization) {
-      let identity: Awaited<ReturnType<DeviceIdentityService["read"]>>
-      let deviceInfo: DeviceInfo
-      try {
+      if (request.purpose === "pigclaude-login" && this.#startAuthorization) {
+        let identity: Awaited<ReturnType<DeviceIdentityService["read"]>>
+        let deviceInfo: DeviceInfo
         ;[identity, deviceInfo] = await Promise.all([
           this.#deviceIdentity.read(),
           this.#deviceInfo(),
         ])
-      } catch (error: unknown) {
-        if (this.isCurrent(generation)) this.#pendingSession = null
-        throw error
+        if (!this.isCurrent(generation)) {
+          throw new AuthorizationStartError("cancelled", "授权会话已取消")
+        }
+        const started = await this.#startAuthorization({
+          deviceId: identity.deviceId,
+          platform: identity.platform,
+          name: deviceInfo.name,
+          osVersion: deviceInfo.osVersion,
+          appVersion: deviceInfo.appVersion,
+          scopes: NATIVE_SCOPES,
+          codeChallenge: session.codeChallenge,
+          state: session.state,
+          clientId: "pigclaude-desktop",
+          redirectUri,
+        })
+        if (!this.isCurrent(generation)) {
+          throw new AuthorizationStartError("cancelled", "授权会话已取消")
+        }
+        const deadline = Date.parse(started.expiresAt)
+        if (!Number.isFinite(deadline) || deadline <= this.#now())
+          throw new Error("授权上下文已过期")
+        session.expiresAt = Math.min(session.expiresAt, deadline)
+        this.#activeSession = session
+        return {
+          sessionId: session.sessionId,
+          // 标准 context URL 已由 API 精确核验；只在主进程为显式切换补充受支持的账号确认意图。
+          authorizationUrl:
+            request.mode === "switch"
+              ? accountChoiceUrl(started.authorizationUrl)
+              : started.authorizationUrl,
+          expiresAt: session.expiresAt,
+        }
       }
-      if (!this.isCurrent(generation)) {
-        throw new AuthorizationStartError("cancelled", "授权会话已取消")
-      }
-      const started = await this.#startAuthorization({
-        deviceId: identity.deviceId,
-        platform: identity.platform,
-        name: deviceInfo.name,
-        osVersion: deviceInfo.osVersion,
-        appVersion: deviceInfo.appVersion,
-        scopes: NATIVE_SCOPES,
-        codeChallenge: session.codeChallenge,
-        state: session.state,
-        clientId: "pigclaude-desktop",
-        redirectUri,
-      })
-      if (!this.isCurrent(generation)) {
-        throw new AuthorizationStartError("cancelled", "授权会话已取消")
-      }
-      const deadline = Date.parse(started.expiresAt)
-      if (!Number.isFinite(deadline) || deadline <= this.#now()) throw new Error("授权上下文已过期")
-      session.expiresAt = Math.min(session.expiresAt, deadline)
       this.#activeSession = session
       return {
         sessionId: session.sessionId,
-        authorizationUrl: started.authorizationUrl,
+        authorizationUrl: buildAuthorizationUrl(session, this.#authOrigin),
         expiresAt: session.expiresAt,
       }
-    }
-    this.#activeSession = session
-    return {
-      sessionId: session.sessionId,
-      authorizationUrl: buildAuthorizationUrl(session, this.#authOrigin),
-      expiresAt: session.expiresAt,
+    } catch (error: unknown) {
+      if (this.isCurrent(generation) && this.#pendingSession === session)
+        await this.cancel(session.sessionId)
+      throw error
     }
   }
 
@@ -426,4 +432,10 @@ function statusMessage(status: AuthorizationStateEvent["status"]): string {
     "exchange-error": "授权码交换失败",
   }
   return messages[status] ?? "授权失败"
+}
+
+function accountChoiceUrl(value: string): string {
+  const url = new URL(value)
+  url.searchParams.set("prompt", "consent")
+  return url.toString()
 }

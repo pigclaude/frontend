@@ -5,7 +5,7 @@ import type { OAuthDesktopSession } from "@pigclaude/contracts/desktop-membershi
 export type AuthorizationPurpose = "pigclaude-login" | "claude-account"
 
 /** pigclaude 授权入口。保证登录、注册和 Claude 账号授权使用同一协议。 */
-export type AuthorizationMode = "login" | "register" | "authorize"
+export type AuthorizationMode = "login" | "register" | "authorize" | "switch"
 
 /** 创建浏览器授权会话所需的业务参数。保证主进程知道授权目标与出口约束。 */
 export type AuthorizationRequest = {

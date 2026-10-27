@@ -2,7 +2,7 @@
 import type { AuthorizationStartResult } from "../../../main/authorization/types"
 
 /** PigClaude 浏览器授权意图。保证登录和注册显示不同的浏览器文案。 */
-export type LoginIntent = "login" | "register"
+export type LoginIntent = "login" | "register" | "switch"
 
 /**
  * 浏览器授权登录页面状态。保证 renderer 只保存脱敏授权结果。

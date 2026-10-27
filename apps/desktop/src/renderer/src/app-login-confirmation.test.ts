@@ -82,7 +82,7 @@ function installBridge(preparing?: Promise<AuthorizationStartResult>) {
   )
   const cancel = vi.fn<(id: string) => Promise<AuthorizationStateEvent>>(async () => ({
     purpose: "pigclaude-login",
-    mode: "login",
+    mode: start.mock.calls.at(-1)?.[0].mode ?? "login",
     sessionId: "fresh",
     status: rejectCancellation ? "committing" : "cancelled",
   }))
@@ -111,11 +111,28 @@ function installBridge(preparing?: Promise<AuthorizationStartResult>) {
     opened() {
       publishAuthorization({
         purpose: "pigclaude-login",
-        mode: "login",
+        mode: start.mock.calls.at(-1)?.[0].mode ?? "login",
         sessionId: "fresh",
         status: "browser-open",
         authorizationUrl: "http://127.0.0.1:8788/authorize/fresh",
         expiresAt: Date.now() + 600_000,
+      })
+    },
+    fail() {
+      publishAuthorization({
+        purpose: "pigclaude-login",
+        mode: "switch",
+        sessionId: "fresh",
+        status: "network-error",
+        error: "打开浏览器失败",
+      })
+    },
+    lateCancel() {
+      publishAuthorization({
+        purpose: "pigclaude-login",
+        mode: "switch",
+        sessionId: "fresh",
+        status: "cancelled",
       })
     },
     publishMembership(next: MembershipView) {
@@ -127,7 +144,7 @@ function installBridge(preparing?: Promise<AuthorizationStartResult>) {
     saving() {
       publishAuthorization({
         purpose: "pigclaude-login",
-        mode: "login",
+        mode: start.mock.calls.at(-1)?.[0].mode ?? "login",
         sessionId: "fresh",
         status: "committing",
       })
@@ -139,7 +156,7 @@ function installBridge(preparing?: Promise<AuthorizationStartResult>) {
       completed = true
       publishAuthorization({
         purpose: "pigclaude-login",
-        mode: "login",
+        mode: start.mock.calls.at(-1)?.[0].mode ?? "login",
         sessionId: "fresh",
         status: "completed",
         displayName: "林舟",
@@ -313,4 +330,43 @@ describe("desktop login membership confirmation", () => {
     expect(container.textContent).not.toContain("正在确认会员…")
     expect(screen()).toBeUndefined()
   })
+})
+
+it("keeps explicit switching visible and ignores old cancellation after B commits", async () => {
+  const bridge = installBridge()
+  const blocked = (id: string, revision: number): MembershipView => ({
+    ...view("expired", revision),
+    account: { userId: id, nickname: id, email: `${id}@example.test`, avatar: "" },
+    recovery: { status: "expired", grantExpiresAt: "2030-01-01T00:00:00Z", canRevoke: false },
+  })
+  await act(async () => root.render(createElement(DesktopApp)))
+  await act(async () => bridge.publishMembership(blocked("a", 2)))
+  const change = [...container.querySelectorAll("button")].find((b) => b.textContent === "切换账号")
+  await act(async () => change?.click())
+  expect(bridge.start).toHaveBeenLastCalledWith(expect.objectContaining({ mode: "switch" }))
+  await act(async () => bridge.opened())
+  await act(async () => bridge.publishMembership(activeFor("a", 3)))
+  expect(container.textContent).toContain("请选择要用于桌面的账号")
+  bridge.resolveWith(async () => blocked("b", 4))
+  await act(async () => bridge.complete())
+  expect(container.textContent).toContain("b@example.test")
+  expect(container.textContent).not.toContain("a@example.test")
+  await act(async () => bridge.lateCancel())
+  expect(container.textContent).toContain("b@example.test")
+  expect(container.textContent).not.toContain("浏览器授权未完成")
+})
+
+it("ends the exact failed candidate when returning from the error page", async () => {
+  const bridge = installBridge()
+  await act(async () => root.render(createElement(DesktopApp)))
+  await clickLogin()
+  await act(async () => bridge.opened())
+  await act(async () => bridge.fail())
+  const back = [...container.querySelectorAll("button")].find((b) => b.textContent === "返回")
+  await act(async () => back?.click())
+  expect(bridge.cancel).toHaveBeenCalledWith("fresh")
+  bridge.resolveWith(async () => activeFor("b", 4))
+  await act(async () => bridge.complete())
+  expect(screen()).toBeUndefined()
+  expect(container.textContent).toContain("欢迎使用 PigClaude")
 })

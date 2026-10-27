@@ -9,6 +9,8 @@ import { fixtureSafeStorage, seedProfile } from "./testing/profile-fixture"
 
 const fixture = vi.hoisted(() => ({
   directory: "",
+  contextFailure: false,
+  opening: async (_url: string): Promise<void> => undefined,
   bridge: undefined as unknown,
   handlers: new Map<
     string,
@@ -94,7 +96,7 @@ vi.mock("electron", () => ({
     encryptString: (value: string) => Buffer.from(`fixture-encrypted:${value}`),
     decryptString: (value: Buffer) => value.toString().slice("fixture-encrypted:".length),
   },
-  shell: { openExternal: async () => undefined },
+  shell: { openExternal: (url: string) => fixture.opening(url) },
 }))
 vi.mock("./runtime-profile", () => ({ configureRuntimeProfile: () => true }))
 vi.mock("./device-identity", () => ({
@@ -128,6 +130,7 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     deviceFingerprintHash: "fingerprint-fixture",
   })
   await vault.set("device:identity", identity)
+  let recoveryReads = 0
   let inactive = false
   let withdrawals = 0
   let onSession = () => {}
@@ -140,6 +143,7 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
       authVersion: "1",
     }
     if (url.pathname === "/v1/desktop/recovery") {
+      recoveryReads++
       onSession()
       return Response.json({
         ...session,
@@ -175,6 +179,7 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
       return Response.json(session)
     }
     if (url.pathname === "/v1/desktop/oauth/contexts") {
+      if (fixture.contextFailure) return Response.json({ error: "server_error" }, { status: 503 })
       const body = JSON.parse(String(options?.body)) as {
         state: string
         clientId: string
@@ -218,6 +223,73 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     expect(await bridge.membership.inspect()).toMatchObject({ state: "active" })
     const events: string[] = []
     const unsubscribe = bridge.membership.subscribe((view) => events.push(view.state))
+
+    const preserved = await vault.get("membership:session")
+    let failedUrl = ""
+    fixture.opening = async (url) => {
+      failedUrl = url
+      throw new Error("fixture browser failed")
+    }
+    expect(
+      await bridge.authorization.start({
+        purpose: "pigclaude-login",
+        mode: "switch",
+        clientRequestId: "failed-open",
+      }),
+    ).toMatchObject({ ok: false })
+    const failedState = new URL(failedUrl).searchParams.get("state")
+    await fixture.callback(
+      `http://127.0.0.1:43123/oauth/callback?code=fixture&state=${failedState}`,
+    )
+    expect(await vault.get("membership:session")).toBe(preserved)
+    fixture.opening = async () => undefined
+    const beforeFailureReads = recoveryReads
+    fixture.contextFailure = true
+    expect(
+      await bridge.authorization.start({
+        purpose: "pigclaude-login",
+        mode: "switch",
+        clientRequestId: "failed-prepare",
+      }),
+    ).toMatchObject({ ok: false })
+    expect(recoveryReads).toBeGreaterThan(beforeFailureReads)
+    expect(await vault.get("membership:session")).toBe(preserved)
+    fixture.contextFailure = false
+    let signal!: () => void
+    let failOld!: () => void
+    const entered = new Promise<void>((resolve) => {
+      signal = resolve
+    })
+    const release = new Promise<void>((resolve) => {
+      failOld = resolve
+    })
+    let openings = 0
+    fixture.opening = async () => {
+      if (++openings === 1) {
+        signal()
+        await release
+        throw new Error("late old launch failure")
+      }
+    }
+    const oldOpening = bridge.authorization.start({
+      purpose: "pigclaude-login",
+      mode: "switch",
+      clientRequestId: "old-open-race",
+    })
+    await entered
+    const freshOpening = await bridge.authorization.start({
+      purpose: "pigclaude-login",
+      mode: "switch",
+      clientRequestId: "new-open-race",
+    })
+    expect(freshOpening.ok).toBe(true)
+    failOld()
+    expect(await oldOpening).toMatchObject({ ok: false })
+    if (!freshOpening.ok) throw new Error("fresh launch failed")
+    const freshState = new URL(freshOpening.authorizationUrl).searchParams.get("state")
+    await fixture.callback(`http://127.0.0.1:43123/oauth/callback?code=fixture&state=${freshState}`)
+    expect(await vault.get("membership:session")).toContain("ipc-refresh")
+    fixture.opening = async () => undefined
 
     expect(await bridge.membership.signOut()).toMatchObject({ state: "signed_out" })
     expect(await bridge.membership.inspect()).toMatchObject({ state: "signed_out" })

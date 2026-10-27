@@ -162,3 +162,24 @@ describe("desktop login screen", () => {
     expect(onReset).toHaveBeenCalledOnce()
   })
 })
+
+it("preserves the account choice intent when reopening or retrying", async () => {
+  const onAuthorize = vi.fn()
+  const state = { ...waiting("login"), intent: "switch" as const }
+  await render({ state, onAuthorize })
+  expect(container.textContent).toContain("请选择要用于桌面的账号")
+  await act(async () => button("重新打开浏览器")?.click())
+  expect(onAuthorize).toHaveBeenLastCalledWith("switch")
+  await render({
+    state: {
+      ...state,
+      view: "error",
+      error: "SAFE_STORAGE_UNAVAILABLE：系统安全存储不可用，授权未保存",
+    },
+    onAuthorize,
+  })
+  expect(container.textContent).not.toContain("SAFE_STORAGE_UNAVAILABLE")
+  expect(container.textContent).toContain("授权未保存")
+  await act(async () => button("重新授权")?.click())
+  expect(onAuthorize).toHaveBeenLastCalledWith("switch")
+})

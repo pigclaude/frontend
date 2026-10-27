@@ -193,9 +193,10 @@ function registerIpcHandlers(): void {
       }
       return result
     }
+    let started: Awaited<ReturnType<AuthorizationService["start"]>> | null = null
     try {
       const redirectUri = app.isPackaged ? packagedRedirectUri : callbackServer.redirectUri
-      const started = await authorizationService.start(request, redirectUri)
+      started = await authorizationService.start(request, redirectUri)
       if (authorizationService.getActiveSession()?.sessionId !== started.sessionId) {
         throw new AuthorizationStartError("cancelled", "授权会话已取消")
       }
@@ -214,6 +215,11 @@ function registerIpcHandlers(): void {
       await shell.openExternal(started.authorizationUrl)
       return { ok: true, ...started } satisfies AuthorizationStartResult
     } catch (error: unknown) {
+      if (started) {
+        const cancellation = await authorizationService.cancel(started.sessionId)
+        if (cancellation.status === "committing")
+          return { ok: true, ...started } satisfies AuthorizationStartResult
+      }
       const status = error instanceof AuthorizationStartError ? error.status : "network-error"
       const result: AuthorizationStartResult = { ok: false, status, error: errorMessage(error) }
       event.sender.send("pigclaude:authorization-state", {

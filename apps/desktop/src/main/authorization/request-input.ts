@@ -2,7 +2,7 @@
 
 import type { AuthorizationRequest } from "./types"
 
-/** 保证只接受 pigclaude-login/claude-account 与 login/register/authorize 组合，非字符串字段忽略。 */
+/** 保证只接受 pigclaude-login/claude-account 与 login/register/authorize/switch 组合；switch 仅用于 PigClaude 登录，非字符串字段忽略。 */
 export function readAuthorizationRequest(value: unknown): AuthorizationRequest | null {
   if (!isRecord(value)) return null
   const purpose = value.purpose
@@ -12,7 +12,8 @@ export function readAuthorizationRequest(value: unknown): AuthorizationRequest |
     return null
   if (
     (purpose !== "pigclaude-login" && purpose !== "claude-account") ||
-    (mode !== "login" && mode !== "register" && mode !== "authorize")
+    (mode !== "login" && mode !== "register" && mode !== "authorize" && mode !== "switch") ||
+    (mode === "switch" && purpose !== "pigclaude-login")
   ) {
     return null
   }

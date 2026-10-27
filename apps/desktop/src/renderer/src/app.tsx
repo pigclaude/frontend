@@ -171,7 +171,8 @@ export function DesktopApp() {
         authorizationSession.current = event.sessionId
       } else if (!event.sessionId || authorizationSession.current !== event.sessionId) return
       if (event.purpose === "pigclaude-login") {
-        const intent: LoginIntent = event.mode === "register" ? "register" : "login"
+        const intent: LoginIntent =
+          event.mode === "register" ? "register" : event.mode === "switch" ? "switch" : "login"
         const authorizationUrl = event.authorizationUrl
         const expiresAt = event.expiresAt
         const displayName = event.displayName
@@ -188,6 +189,9 @@ export function DesktopApp() {
           return
         }
         if (event.status === "completed" && displayName && typeof expiresAt === "number") {
+          acceptAuthorizationEvents.current = false
+          authorizationSession.current = null
+          authorizationRequest.current = null
           setLoginState((current) =>
             reduceLoginState(current, {
               type: "completed",
@@ -288,7 +292,7 @@ export function DesktopApp() {
     const cancelAuthorization =
       window.pigclaude?.authorization?.cancel ?? window.pigclaude?.cancelAuthorization
     const result = requestId ? await cancelAuthorization?.(requestId) : undefined
-    if (generation !== authorizationGeneration.current) return
+    if (generation !== authorizationGeneration.current || !acceptAuthorizationEvents.current) return
     if (result?.status === "committing") {
       setLoginState((current) =>
         current.view === "waiting" || current.view === "starting"
@@ -297,7 +301,7 @@ export function DesktopApp() {
       )
       return
     }
-    if (result && (!result.sessionId || (sessionId && result.sessionId !== sessionId))) return
+    if (result?.sessionId && sessionId && result.sessionId !== sessionId) return
     authorizationGeneration.current++
     authorizationRequest.current = null
     authorizationSession.current = null
@@ -377,7 +381,7 @@ export function DesktopApp() {
         onRetrySignOut={signOutState.error ? () => void logout() : undefined}
         onAuthorize={(intent) => void startLoginAuthorization(intent)}
         onCancel={() => void cancelLoginAuthorization()}
-        onReset={() => setLoginState((current) => reduceLoginState(current, { type: "reset" }))}
+        onReset={() => void cancelLoginAuthorization()}
       />
     )
   }

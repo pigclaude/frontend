@@ -160,7 +160,11 @@ function WaitingPanel({
     <SigninPanel
       icon="browser"
       title="请在浏览器中继续"
-      sub={`已为你打开 PigClaude 网站，${verb}并授权这台设备后会自动回到这里。`}
+      sub={
+        intent === "switch"
+          ? "请选择要用于桌面的账号并确认设备授权，完成后会自动回到这里。"
+          : `已为你打开 PigClaude 网站，${verb}并授权这台设备后会自动回到这里。`
+      }
     >
       <p className="signin-progress" role="status">
         <span className="signin-pulse" aria-hidden="true" />
@@ -215,7 +219,11 @@ function ErrorPanel({
       icon="alert"
       tone="bad"
       title="浏览器授权未完成"
-      sub={error ?? "请重新打开浏览器授权页面。"}
+      sub={
+        error?.startsWith("SAFE_STORAGE_UNAVAILABLE")
+          ? "系统安全存储不可用，授权未保存。请重试或返回原账号。"
+          : (error ?? "请重新打开浏览器授权页面。")
+      }
     >
       <div className="signin-actions">
         <Button variant="primary" size="block" onClick={onRetry}>

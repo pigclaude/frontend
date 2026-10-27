@@ -128,6 +128,14 @@ export function RecoveryScreen({
               >
                 {checking ? "正在检查…" : info.authorize ? "重新授权" : "重新检查"}
               </Button>
+              <Button
+                variant="ghost"
+                size="block"
+                disabled={checking || opening}
+                onClick={() => onAuthorize("switch")}
+              >
+                切换账号
+              </Button>
               {info.authorize && (
                 <Button
                   variant="ghost"

@@ -1,6 +1,6 @@
 // 负责指纹设置的浏览器验收：弹层下拉、分组草稿、错误定位、固定操作区、浅深色与玻璃外观及窄窗口布局。
 
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test, type Locator, type Page } from "@playwright/test"
 
 async function openEditor(page: Page, theme: string, glass = "0"): Promise<void> {
   await page.goto(`/?screen=accounts&theme=${theme}&glass=${glass}`)
@@ -14,6 +14,21 @@ async function openWizard(page: Page, theme: string, glass: string): Promise<voi
   await page.getByRole("button", { name: "下一步", exact: true }).click()
   await page.getByRole("button", { name: "使用系统网络", exact: true }).click()
   await expect(page.getByRole("heading", { name: "设置浏览器指纹", exact: true })).toBeVisible()
+}
+
+/** 弹层和字段滚动区都没有横向溢出，并且每行右侧的控件都留在所在行里。 */
+async function fitsHorizontally(root: Locator): Promise<boolean> {
+  return root.evaluate((element) => {
+    const scrollers = [element, ...element.querySelectorAll(".fp-content")]
+    if (scrollers.some((box) => box.scrollWidth > box.clientWidth)) return false
+    return [...element.querySelectorAll(".fp-row")].every((row) => {
+      const edge = row.getBoundingClientRect()
+      return [...row.querySelectorAll(".trail, .trail *")].every((child) => {
+        const box = child.getBoundingClientRect()
+        return box.left >= edge.left - 0.5 && box.right <= edge.right + 0.5
+      })
+    })
+  })
 }
 
 /** 判断 root 里的分组卡片和图标方块是否都使用 token 这个背景变量。 */
@@ -211,7 +226,7 @@ for (const theme of ["light", "dark"]) {
   }) => {
     await openEditor(page, theme)
     const dialog = page.locator(".fingerprint-dialog")
-    const fits = () => dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)
+    const fits = () => fitsHorizontally(dialog)
     const height = async () => (await dialog.boundingBox())?.height ?? 0
 
     const timezone = dialog.getByRole("combobox", { name: "时区", exact: true })
@@ -269,9 +284,7 @@ for (const theme of ["light", "dark"]) {
     await expect(counts).toHaveCount(2)
     for (const count of await counts.all()) await expect(count).toBeInViewport({ ratio: 1 })
     await expect(dialog.locator("#fingerprint-dialog-group-advanced")).toBeInViewport()
-    expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
-      true,
-    )
+    expect(await fitsHorizontally(dialog)).toBe(true)
     await dialog.screenshot({ path: testInfo.outputPath("fingerprint-narrow-errors.png") })
   })
 

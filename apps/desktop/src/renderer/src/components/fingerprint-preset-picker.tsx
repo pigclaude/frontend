@@ -7,7 +7,6 @@ import {
   fingerprintGroups,
   quickFingerprintPresets,
 } from "../models/fingerprint-form"
-import { Label } from "./ui/label"
 import {
   Select,
   SelectContent,
@@ -43,7 +42,6 @@ export function FingerprintPresetPicker({
 
   return (
     <div className="fp-preset-picker">
-      <Label htmlFor={`${idPrefix}-preset`}>快捷预设</Label>
       <Select
         value={selected?.id ?? "custom"}
         onValueChange={(next) => {
@@ -51,7 +49,7 @@ export function FingerprintPresetPicker({
           if (preset) onChange(applyFingerprintPreset(value, preset))
         }}
       >
-        <SelectTrigger id={`${idPrefix}-preset`}>
+        <SelectTrigger id={`${idPrefix}-preset`} aria-label="快捷预设">
           <SelectValue>{selected?.name ?? "自定义配置"}</SelectValue>
         </SelectTrigger>
         <SelectContent className="fp-preset-menu">

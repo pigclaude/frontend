@@ -1,4 +1,4 @@
-/* 指纹设置的独立样式：环境工具栏、分组导航、字段面板及固定操作区，沿用应用主题变量。 */
+/* 指纹设置的独立样式：环境摘要、分组标签、设置页样式的小组卡片和行、固定操作区，沿用应用主题变量。 */
 
 .fingerprint-window .win-body {
   padding: 16px 24px 24px;
@@ -19,7 +19,7 @@
 
 .fingerprint-dialog .dialog-head {
   flex: none;
-  padding: 22px 24px 18px;
+  padding: 22px 24px 14px;
 }
 
 .fp-dialog-heading {
@@ -41,32 +41,22 @@
 
 .fingerprint-dialog .dialog-foot {
   flex: none;
-  padding: 16px 24px;
+  padding: 14px 24px;
   border-top: 1px solid var(--divider);
-  background: var(--surface);
 }
 
 .fingerprint-form {
   min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--r-xl);
-  background: var(--surface);
 }
 
-.fingerprint-dialog .fingerprint-form {
-  border-right: 0;
-  border-left: 0;
-  border-bottom: 0;
-  border-radius: 0;
-}
+/* 环境摘要：图标、浏览器与系统、语言时区种子小标签，右侧是快捷预设 */
 
 .fp-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 18px 22px;
+  padding: 2px 24px 14px;
 }
 
 .fp-environment {
@@ -79,18 +69,21 @@
 .fp-environment-icon {
   display: grid;
   flex: none;
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   place-items: center;
-  border: 1px solid var(--border);
-  border-radius: 11px;
+  border-radius: var(--r-lg);
   background: var(--panel);
   color: var(--fg-2);
 }
 
 .fp-environment-icon .ic {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
+}
+
+.fp-environment-text {
+  min-width: 0;
 }
 
 .fp-environment-name {
@@ -99,24 +92,35 @@
   overflow-wrap: anywhere;
 }
 
-.fp-environment p {
+.fp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
   margin-top: 5px;
-  color: var(--muted);
+}
+
+.fp-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  max-width: 100%;
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  background: var(--field);
+  color: var(--fg-2);
   font-size: var(--fs-xs);
+  line-height: 16px;
   overflow-wrap: anywhere;
+}
+
+.fp-chip.mono {
+  font-family: var(--font-mono);
 }
 
 .fp-preset-picker {
   display: grid;
   flex: none;
-  width: 250px;
-  gap: 6px;
-}
-
-.fingerprint-form .select-trigger,
-.fingerprint-form .input {
-  height: 34px;
-  background: var(--surface);
+  width: 220px;
 }
 
 .fp-preset-menu,
@@ -142,67 +146,32 @@
   font-size: var(--fs-xs);
 }
 
-.fp-workspace {
-  display: grid;
-  grid-template-columns: 174px minmax(0, 1fr);
-  height: min(440px, calc(100dvh - 330px));
-  min-height: 220px;
-  border-top: 1px solid var(--divider);
+/* 分组标签：单选组套用分段按钮外观；单选组选中态是 checked，分段按钮是 on，这里补上 checked */
+
+.fp-tabs-bar {
+  padding: 0 24px 14px;
 }
 
-.fingerprint-window .fp-workspace {
-  height: min(440px, calc(100dvh - 350px));
+.fp-tabs.radio-group {
+  display: inline-flex;
+  flex-direction: row;
+  gap: 1px;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
-.fp-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  min-height: 0;
-  padding: 16px 10px;
-  border-right: 1px solid var(--divider);
-  background: var(--panel);
-  overflow-y: auto;
-}
-
-.fp-navigation.radio-group {
-  gap: 6px;
-}
-
-.fp-nav-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  padding: 11px 10px;
-  border-radius: var(--r-lg);
-  color: var(--muted);
-  text-align: left;
-  transition: background var(--t-fast);
-}
-
-.fp-nav-item > .ic {
+.fp-tabs .fp-tab {
+  display: inline-flex;
   flex: none;
-  margin-top: 1px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 12px;
+  white-space: nowrap;
 }
 
-.fp-nav-item strong {
-  display: block;
-  color: var(--fg-2);
-  font-size: var(--fs-sm);
-  font-weight: 500;
-}
-
-.fp-nav-detail {
-  display: block;
-  margin-top: 5px;
-  font-size: calc(var(--ui-scale) * 10.5px);
-}
-
-.fp-nav-item:hover {
-  background: var(--hover);
-}
-
-.fp-nav-item[data-state="checked"] {
+.fp-tabs .seg-item[data-state="checked"] {
   background: var(--surface);
   color: var(--fg);
   box-shadow:
@@ -210,32 +179,11 @@
     var(--shadow-btn);
 }
 
-.fp-nav-item[data-state="checked"] strong {
-  color: var(--fg);
-  font-weight: 600;
-}
-
-.fp-nav-item:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
-}
-
-.fp-sidebar-note {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: auto;
-  padding: 0 6px;
-  color: var(--muted);
-  font-size: calc(var(--ui-scale) * 10.5px);
-}
-
 .fp-error-count {
   display: grid;
   flex: none;
-  width: 17px;
-  height: 17px;
-  margin-left: auto;
+  width: 15px;
+  height: 15px;
   place-items: center;
   border-radius: var(--r-full);
   background: var(--bad);
@@ -243,158 +191,212 @@
   font-size: 10px;
 }
 
+.fp-group-description {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+/* 字段区：固定高度，切换分组时弹层不跳；滚动条槽位从右侧内边距里扣掉，保持左右对齐 */
+
 .fp-content {
-  min-width: 0;
-  min-height: 0;
-  padding: 20px 26px;
+  height: min(440px, calc(100dvh - 330px));
+  min-height: 160px;
+  padding: 2px 13px 20px 24px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
 
-.fp-section-heading {
-  margin-bottom: 18px;
+.fingerprint-window .fp-toolbar,
+.fingerprint-window .fp-tabs-bar {
+  padding-right: 0;
+  padding-left: 0;
 }
 
-.fp-section-heading h2 {
-  font-size: var(--fs-lg);
-  font-weight: 600;
+.fingerprint-window .fp-content {
+  height: min(440px, calc(100dvh - 460px));
+  margin-right: -11px;
+  padding: 0 0 4px;
 }
 
-.fp-section-heading p {
-  margin-top: 6px;
+.fp-section + .fp-section {
+  margin-top: 18px;
+}
+
+.fp-section .section-head h3 {
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: var(--font-weight-ui);
+}
+
+.fp-section-note {
+  margin: 0 2px 8px;
   color: var(--muted);
   font-size: var(--fs-xs);
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
-.fp-fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start;
-  gap: 16px 20px;
+/* 字段行：左边名称、提示和错误，右边控件；放不下时控件先换行，名称保留最小宽度 */
+
+.fp-row {
+  min-height: 46px;
+  padding: 8px 12px;
 }
 
-.fp-field {
-  display: grid;
+.fp-row .main {
+  flex: 1 1 140px;
+  min-width: 120px;
+}
+
+.fp-row .ttl {
+  color: var(--fg);
+  font-size: var(--fs-md);
+  font-weight: var(--font-weight-ui);
+}
+
+.fp-row .desc {
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+.fp-row .error-text {
+  margin-top: 2px;
+  line-height: 1.5;
+}
+
+.fp-row .trail {
+  flex: 0 1 auto;
+  justify-content: flex-end;
   min-width: 0;
-  gap: 8px;
 }
 
-.fp-choice {
-  display: grid;
-  gap: 8px;
-}
-
-.fp-field-wide {
-  grid-column: 1 / -1;
-}
-
-.fp-field .hint,
-.fp-field .error-text {
-  line-height: 1.55;
-}
-
-.fp-field [aria-invalid="true"] {
-  box-shadow: inset 0 0 0 1px var(--bad);
-}
-
-.fp-field .seg {
-  display: flex;
-  width: 100%;
-  padding: 3px;
-  border-radius: var(--r-md);
-}
-
-.fp-field .seg-item {
-  flex: 1;
-  height: 28px;
-  padding: 0 6px;
-}
-
-.fp-switches {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  background: var(--divider);
-}
-
-.fp-switch-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 13px 14px;
+.fp-row .select-trigger,
+.fp-row .input {
+  height: 26px;
   background: var(--surface);
 }
 
-.fp-switch-row:last-child {
-  grid-column: 1 / -1;
+.fp-row .trail .select-trigger {
+  width: 168px;
+  max-width: 100%;
 }
 
-.fp-switch-row label {
-  flex: 1;
-  cursor: pointer;
+.fp-row .fp-control-wide .select-trigger {
+  width: 260px;
+}
+
+.fp-choice {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fp-choice .input {
+  width: 120px;
+  max-width: 100%;
+}
+
+.fp-control-wide .fp-choice .input {
+  width: 200px;
+}
+
+.fp-row [aria-invalid="true"] {
+  box-shadow: inset 0 0 0 1px var(--bad);
+}
+
+.fp-args {
+  padding: 0 12px 12px;
 }
 
 .fp-arguments {
-  min-height: 200px;
+  width: 100%;
+  min-height: 160px;
+  background: var(--surface);
   line-height: 1.8;
 }
 
 @media (max-width: 640px) {
+  .fingerprint-dialog .dialog-head {
+    padding: 18px 16px 12px;
+  }
+
+  .fingerprint-dialog .dialog-foot {
+    padding: 12px 16px;
+  }
+
   .fp-toolbar {
     flex-wrap: wrap;
-    gap: 16px;
-    padding: 18px;
+    gap: 12px;
+    padding: 2px 16px 12px;
   }
 
   .fp-preset-picker {
     width: 100%;
   }
 
-  .fp-workspace {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+  .fp-tabs-bar {
+    padding: 0 16px 12px;
   }
 
-  .fp-sidebar {
-    padding: 8px;
-    border-right: 0;
-    border-bottom: 1px solid var(--divider);
+  .fp-tabs.radio-group {
+    display: flex;
+    width: 100%;
   }
 
-  .fp-navigation.radio-group {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 4px;
-  }
-
-  .fp-nav-item {
-    justify-content: center;
-    padding: 9px 4px;
-  }
-
-  .fp-nav-detail,
-  .fp-nav-item > .ic,
-  .fp-sidebar-note {
-    display: none;
+  .fp-tabs .fp-tab {
+    flex: 1 1 auto;
+    padding: 0 6px;
   }
 
   .fp-content {
-    padding: 20px 18px;
+    height: min(440px, calc(100dvh - 400px));
+    padding: 2px 5px 16px 16px;
+  }
+
+  .fingerprint-window .fp-content {
+    height: min(440px, calc(100dvh - 520px));
   }
 }
 
 @media (max-width: 480px) {
-  .fp-fields,
-  .fp-switches {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .fingerprint-window .win-body {
     padding: 12px;
+  }
+
+  .fp-row:not(.fp-row-inline) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .fp-row:not(.fp-row-inline) .main {
+    flex: none;
+    min-width: 0;
+  }
+
+  .fp-row:not(.fp-row-inline) .trail,
+  .fp-row .trail .select-trigger,
+  .fp-row .fp-control-wide .select-trigger,
+  .fp-row .fp-choice,
+  .fp-row .fp-choice .input {
+    width: 100%;
+  }
+
+  .fp-choice {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fp-row .seg {
+    width: 100%;
+  }
+
+  .fp-row .seg .seg-item {
+    flex: 1;
   }
 }

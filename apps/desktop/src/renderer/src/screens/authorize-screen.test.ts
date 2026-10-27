@@ -184,7 +184,7 @@ describe("Claude account authorization wizard", () => {
     await click("绑定代理")
 
     // 指纹设置用导航切换分组，切换时仍提交同一份完整草稿。
-    expect(container.textContent).toContain("快捷预设")
+    expect(container.querySelector('[aria-label="快捷预设"]')).not.toBeNull()
     expect(container.textContent).toContain("身份与定位")
     expect(container.textContent).toContain("设备与网络")
     expect(container.textContent).toContain("隐私与兼容")
@@ -284,7 +284,7 @@ describe("Claude account authorization wizard", () => {
 
     await click("返回修改指纹")
     expect(input("authorize-seed").value).toBe("654321")
-    expect(container.textContent).toContain("快捷预设")
+    expect(container.querySelector('[aria-label="快捷预设"]')).not.toBeNull()
   })
 
   it("reauthorizes with the saved proxy and every saved fingerprint field", async () => {

@@ -81,9 +81,10 @@ describe("fingerprint form", () => {
   it("renders grouped settings with shadcn controls and concise product copy", async () => {
     await render()
 
-    for (const title of ["快捷预设", "身份与定位", "设备与网络", "隐私与兼容", "高级设置"]) {
+    for (const title of ["身份与定位", "设备与网络", "隐私与兼容", "高级设置"]) {
       expect(container.textContent).toContain(title)
     }
+    expect(query<HTMLElement>("#fp-preset").getAttribute("aria-label")).toBe("快捷预设")
     expect(container.querySelectorAll('[role="combobox"]')).toHaveLength(9)
     expect(container.querySelectorAll('[role="radio"]')).toHaveLength(4)
     expect(query<HTMLElement>("#fp-seed").textContent).toBe("按账号自动生成")
@@ -202,6 +203,47 @@ describe("fingerprint form", () => {
     const alerts = [...container.querySelectorAll('[role="alert"]')].map((item) => item.textContent)
     expect(alerts).toContain("种子必须是整数")
     expect(alerts).toContain("时区不可识别")
+    const row = query<HTMLElement>("#fp-timezone").closest(".item")
+    expect(row).not.toBeNull()
+    expect(query<HTMLElement>("#fp-timezone-error").closest(".item")).toBe(row)
+  })
+
+  it("lays out the active group as titled setting sections with label-left rows", async () => {
+    await render()
+
+    const titles = [...container.querySelectorAll(".fp-section .section-head h3")]
+    expect(titles.map((title) => title.textContent)).toEqual([
+      "浏览器",
+      "系统",
+      "语言与时区",
+      "种子",
+    ])
+    const row = query<HTMLElement>("#fp-timezone").closest(".item")
+    expect(row?.querySelector('label[for="fp-timezone"]')?.textContent).toBe("时区")
+    expect(row?.querySelector("#fp-timezone-hint")).not.toBeNull()
+    expect(row?.querySelector(".trail #fp-timezone")).not.toBeNull()
+    const chips = [...container.querySelectorAll(".fp-chip")].map((chip) => chip.textContent)
+    expect(chips).toEqual(["跟随系统语言", "系统时区", "种子自动"])
+    expect(query<HTMLElement>(".fp-group-description").textContent).toBe(
+      "设置网站读取到的浏览器、系统和地区信息。",
+    )
+    expect(container.querySelector(".fp-sidebar, .fp-field, label[for='fp-preset']")).toBeNull()
+  })
+
+  it("renders spoofing as one switch row per category under the section hint", async () => {
+    await render()
+    await click("#fp-group-compat")
+
+    const group = query<HTMLElement>('[role="group"][aria-label="停用特征伪装"]')
+    const labels = [...group.querySelectorAll(".item label")].map((label) => label.textContent)
+    expect(labels).toEqual(["字体", "音频", "Canvas", "ClientRects", "GPU"])
+    expect(container.querySelectorAll("#fp-disableSpoofing-hint")).toHaveLength(1)
+    expect(query<HTMLElement>("#fp-disableSpoofing-hint").textContent).toBe(
+      "打开开关后，对应特征使用原始值，适合排查页面兼容问题。",
+    )
+    expect(group.getAttribute("aria-describedby")).toContain("fp-disableSpoofing-hint")
+    expect(query<HTMLElement>("#fp-canvasNoise").closest(".trail")).not.toBeNull()
+    expect(container.querySelector(".fp-switches")).toBeNull()
   })
 
   it("opens the group containing an invalid hidden field and preserves drafts across groups", async () => {

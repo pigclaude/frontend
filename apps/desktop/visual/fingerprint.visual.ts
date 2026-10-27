@@ -169,4 +169,73 @@ for (const theme of ["light", "dark"]) {
     await page.getByRole("button", { name: "保存并继续", exact: true }).click()
     await expect(page.getByRole("button", { name: "开始授权", exact: true })).toBeVisible()
   })
+
+  test(`fingerprint layout ${theme}: long values fit, height stays fixed, arrows switch groups`, async ({
+    page,
+  }) => {
+    await openEditor(page, theme)
+    const dialog = page.locator(".fingerprint-dialog")
+    const fits = () => dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)
+    const height = async () => (await dialog.boundingBox())?.height ?? 0
+
+    const timezone = dialog.getByRole("combobox", { name: "时区", exact: true })
+    await expect(timezone).toContainText("America/Los_Angeles")
+    const value = timezone.locator(".select-trigger-value")
+    expect(await value.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+
+    for (const [label, text] of [
+      ["时区", "America/Argentina/ComodRivadavia"],
+      ["首选语言列表", "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7,ja;q=0.6"],
+    ]) {
+      await dialog.getByRole("combobox", { name: label, exact: true }).click()
+      await page.getByRole("combobox", { name: `搜索${label}`, exact: true }).fill("unmatched-zzzz")
+      await page
+        .locator(".combobox-footer")
+        .getByRole("button", { name: "自定义…", exact: true })
+        .click()
+      await dialog.getByLabel(`自定义${label}`, { exact: true }).fill(text)
+    }
+    expect(await fits()).toBe(true)
+
+    const start = await height()
+    await dialog.locator("#fingerprint-dialog-group-identity").focus()
+    // Radix 单选组在方向键按住期间才选中新项，按键需要有真实的按下时长。
+    await page.keyboard.press("ArrowRight", { delay: 50 })
+    await expect(dialog.locator("#fingerprint-dialog-group-device")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    )
+    expect(Math.abs((await height()) - start)).toBeLessThan(1)
+    await dialog.getByRole("combobox", { name: "窗口大小", exact: true }).click()
+    await page.getByRole("option", { name: "自定义", exact: true }).click()
+    expect(Math.abs((await height()) - start)).toBeLessThan(1)
+    for (const group of ["compat", "advanced"]) {
+      await dialog.locator(`#fingerprint-dialog-group-${group}`).click()
+      expect(Math.abs((await height()) - start)).toBeLessThan(1)
+    }
+    expect(await fits()).toBe(true)
+  })
+
+  test(`fingerprint narrow errors ${theme}: error counts and tabs stay visible`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 420, height: 720 })
+    await openEditor(page, theme)
+    const dialog = page.getByRole("dialog")
+    await dialog.getByLabel("自定义指纹种子", { exact: true }).fill("abc")
+    await dialog.locator("#fingerprint-dialog-group-device").click()
+    await dialog.getByRole("combobox", { name: "CPU 核心数", exact: true }).click()
+    await page.getByRole("option", { name: "自定义…", exact: true }).click()
+    await dialog.getByLabel("自定义CPU 核心数", { exact: true }).fill("0")
+    await dialog.getByRole("button", { name: "保存", exact: true }).click()
+
+    const counts = dialog.locator(".fp-error-count")
+    await expect(counts).toHaveCount(2)
+    for (const count of await counts.all()) await expect(count).toBeInViewport({ ratio: 1 })
+    await expect(dialog.locator("#fingerprint-dialog-group-advanced")).toBeInViewport()
+    expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true,
+    )
+    await dialog.screenshot({ path: testInfo.outputPath("fingerprint-narrow-errors.png") })
+  })
 }

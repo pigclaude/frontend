@@ -1,4 +1,4 @@
-// 负责指纹字段的 shadcn 控件与无障碍标签：下拉、三态切换、兼容开关及文本输入。
+// 负责指纹字段的 shadcn 控件与无障碍标签：每个字段输出设置页样式的一行，左边名称、提示和错误，右边控件。
 
 import type { ReactNode } from "react"
 import type {
@@ -26,8 +26,17 @@ import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group"
 import { FingerprintChoice } from "./fingerprint-choice"
 
 const defaultChoice = "__default__"
+const wideControls = new Set<FingerprintEditableFieldKey>([
+  "lang",
+  "acceptLang",
+  "timezone",
+  "webrtcPolicy",
+])
 
-/** 根据字段类型渲染控件；所有变更都返回完整指纹对象，不丢弃隐藏分组的草稿。 */
+/**
+ * 根据字段类型渲染一行设置；所有变更都返回完整指纹对象，不丢弃隐藏分组的草稿。
+ * 停用特征伪装的提示由表单作为小组说明渲染，这里只用同一个 hint id 关联。
+ */
 export function FingerprintField({
   fieldKey: key,
   value,
@@ -76,32 +85,6 @@ export function FingerprintField({
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
-      )
-    }
-
-    if (key === "disableSpoofing") {
-      return (
-        <div className="fp-switches" role="group" aria-label={meta.label} {...a11y}>
-          {fingerprintSpoofingCategories.map((category) => (
-            <div className="fp-switch-row" key={category.value}>
-              <Label htmlFor={`${id}-${category.value}`}>{category.label}</Label>
-              <Switch
-                id={`${id}-${category.value}`}
-                aria-label={`停用 ${category.label} 伪装`}
-                checked={(value.disableSpoofing ?? []).includes(category.value)}
-                onCheckedChange={(checked) => {
-                  const current = value.disableSpoofing ?? []
-                  update(
-                    key,
-                    checked
-                      ? [...new Set([...current, category.value])]
-                      : current.filter((item) => item !== category.value),
-                  )
-                }}
-              />
-            </div>
-          ))}
-        </div>
       )
     }
 
@@ -181,27 +164,88 @@ export function FingerprintField({
   }
 
   if (key === "customResolution" && value.resolution !== "custom") return null
-  const wide = key === "disableSpoofing" || key === "unknownArgs"
-  const grouped = key === "canvasNoise" || key === "clientRectsNoise" || key === "disableSpoofing"
+
+  const hint =
+    meta.hint && key !== "disableSpoofing" ? (
+      <p className="desc" id={`${id}-hint`}>
+        {meta.hint}
+      </p>
+    ) : null
+  const errorText = error ? (
+    <p className="error-text" id={`${id}-error`} role="alert">
+      {error}
+    </p>
+  ) : null
+
+  if (key === "disableSpoofing") {
+    return (
+      <div className="fp-spoofing" role="group" aria-label={meta.label} {...a11y}>
+        {errorText ? (
+          <div className="item fp-row">
+            <div className="main">{errorText}</div>
+          </div>
+        ) : null}
+        {fingerprintSpoofingCategories.map((category) => (
+          <div className="item fp-row fp-row-inline" key={category.value}>
+            <div className="main">
+              <Label htmlFor={`${id}-${category.value}`} className="ttl">
+                {category.label}
+              </Label>
+            </div>
+            <div className="trail">
+              <Switch
+                id={`${id}-${category.value}`}
+                aria-label={`停用 ${category.label} 伪装`}
+                checked={(value.disableSpoofing ?? []).includes(category.value)}
+                onCheckedChange={(checked) => {
+                  const current = value.disableSpoofing ?? []
+                  update(
+                    key,
+                    checked
+                      ? [...new Set([...current, category.value])]
+                      : current.filter((item) => item !== category.value),
+                  )
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  const title =
+    key === "canvasNoise" || key === "clientRectsNoise" ? (
+      <span className="ttl">{meta.label}</span>
+    ) : (
+      <Label htmlFor={id} className="ttl">
+        {meta.label}
+      </Label>
+    )
+
+  if (key === "unknownArgs") {
+    return (
+      <>
+        <div className="item fp-row">
+          <div className="main">
+            {title}
+            {hint}
+            {errorText}
+          </div>
+        </div>
+        <div className="fp-args">{control()}</div>
+      </>
+    )
+  }
 
   return (
-    <div className={cn("fp-field", wide && "fp-field-wide")}>
-      {grouped ? (
-        <span className="ui-label">{meta.label}</span>
-      ) : (
-        <Label htmlFor={id}>{meta.label}</Label>
-      )}
-      {control()}
-      {meta.hint ? (
-        <p className="hint" id={`${id}-hint`}>
-          {meta.hint}
-        </p>
-      ) : null}
-      {error ? (
-        <p className="error-text" id={`${id}-error`} role="alert">
-          {error}
-        </p>
-      ) : null}
+    <div className="item fp-row">
+      <div className="main">
+        {title}
+        {hint}
+        {errorText}
+      </div>
+      <div className={cn("trail", wideControls.has(key) && "fp-control-wide")}>{control()}</div>
     </div>
   )
 }

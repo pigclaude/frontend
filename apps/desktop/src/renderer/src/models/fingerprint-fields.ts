@@ -59,12 +59,20 @@ export type FingerprintFieldMeta = {
   defaultLabel?: string
 }
 
-/** 一个设置分组，供编辑面板与字段错误导航共同使用。 */
+/** 分组里的一个小组，对应设置页的一张分组卡片；有说明时只含一个字段，说明即该字段的提示。 */
+export type FingerprintSection = {
+  title: string
+  description?: string
+  fields: FingerprintEditableFieldKey[]
+}
+
+/** 一个设置分组，供编辑面板与字段错误导航共同使用；sections 覆盖 fields 里的每个字段一次。 */
 export type FingerprintGroup = {
   id: FingerprintGroupId
   title: string
   description: string
   fields: FingerprintEditableFieldKey[]
+  sections: FingerprintSection[]
 }
 
 /** 品牌下拉；与 AntBrowser 支持的四个 Chromium 品牌一致。 */
@@ -233,23 +241,43 @@ export const fingerprintGroups: FingerprintGroup[] = [
       "acceptLang",
       "seed",
     ],
+    sections: [
+      { title: "浏览器", fields: ["brand", "brandVersion"] },
+      { title: "系统", fields: ["platform", "platformVersion"] },
+      { title: "语言与时区", fields: ["lang", "acceptLang", "timezone"] },
+      { title: "种子", fields: ["seed"] },
+    ],
   },
   {
     id: "device",
     title: "设备与网络",
     description: "调整浏览器窗口、硬件配置和网络连接方式。",
     fields: ["resolution", "customResolution", "hardwareConcurrency", "webrtcPolicy"],
+    sections: [
+      { title: "窗口", fields: ["resolution", "customResolution"] },
+      { title: "硬件", fields: ["hardwareConcurrency"] },
+      { title: "网络", fields: ["webrtcPolicy"] },
+    ],
   },
   {
     id: "compat",
     title: "隐私与兼容",
     description: "管理图像噪声，以及需要保留原始值的特征。",
     fields: ["canvasNoise", "clientRectsNoise", "disableSpoofing"],
+    sections: [
+      { title: "噪声", fields: ["canvasNoise", "clientRectsNoise"] },
+      {
+        title: "停用特征伪装",
+        description: fingerprintFieldMeta.disableSpoofing.hint,
+        fields: ["disableSpoofing"],
+      },
+    ],
   },
   {
     id: "advanced",
     title: "高级设置",
     description: "添加其他浏览器启动选项。通常保持为空即可。",
     fields: ["unknownArgs"],
+    sections: [{ title: "启动参数", fields: ["unknownArgs"] }],
   },
 ]

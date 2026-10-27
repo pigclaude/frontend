@@ -200,6 +200,23 @@ export function fingerprintLocaleLine(value: ClaudeFingerprintView): string {
   return `${normalized.lang || "跟随系统语言"} · ${normalized.timezone || "系统时区"}`
 }
 
+/** 环境摘要里的一个小标签；mono 为 true 时按等宽字体显示。 */
+export type FingerprintEnvironmentChip = { text: string; mono: boolean }
+
+/** 环境摘要的小标签，依次是语言、时区、种子；空值使用与 fingerprintLocaleLine 相同的兜底文字。 */
+export function fingerprintEnvironmentChips(
+  value: ClaudeFingerprintView,
+): FingerprintEnvironmentChip[] {
+  const normalized = normalizeFingerprintForm(value)
+  return [
+    { text: normalized.lang || "跟随系统语言", mono: false },
+    { text: normalized.timezone || "系统时区", mono: false },
+    normalized.seed === ""
+      ? { text: "种子自动", mono: false }
+      : { text: `种子 ${normalized.seed}`, mono: true },
+  ]
+}
+
 /**
  * 生成详情页摘要。
  * 保证按身份、设备、兼容、高级四组展示；空值显示为跟随默认，而不是空字符串。

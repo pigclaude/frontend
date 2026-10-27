@@ -107,7 +107,7 @@ export function WebSessionGroup({ now }: { now: Date }) {
               description={
                 <MetaLine
                   parts={[
-                    // 服务端活跃写入有节流且遇锁跳过，可能滞后；正在看这页的浏览器一定在使用。
+                    // 服务端活跃写入有五分钟节流，锁等待超时也会放弃，可能滞后；正在看这页的浏览器一定在使用。
                     <ActivityLabel
                       key="seen"
                       lastSeenAt={session.isCurrent ? now.toISOString() : session.lastSeenAt}

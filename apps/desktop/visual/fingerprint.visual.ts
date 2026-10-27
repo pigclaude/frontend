@@ -47,6 +47,36 @@ async function surfaceUses(page: Page, root: string, token: string): Promise<boo
   }, token)
 }
 
+test("fingerprint large ui size: the long timezone label is not cut off", async ({ page }) => {
+  await openEditor(page, "light")
+  // 界面字号 18 是设置允许的最大值，按默认 13 换算成 --ui-scale。
+  await page.evaluate(() =>
+    document.documentElement.style.setProperty("--ui-scale", String(18 / 13)),
+  )
+  const dialog = page.locator(".fingerprint-dialog")
+  const value = dialog
+    .getByRole("combobox", { name: "时区", exact: true })
+    .locator(".select-trigger-value")
+  await expect(value).toContainText("America/Los_Angeles")
+  expect(await value.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  expect(await fitsHorizontally(dialog)).toBe(true)
+})
+
+test("fingerprint wrapped summary: only the field area scrolls at the height cap", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 641, height: 700 })
+  await openEditor(page, "light")
+  const dialog = page.locator(".fingerprint-dialog")
+  // 这个宽度下语言、时区、种子三个小标签放不进一行，摘要会多出一行。
+  expect((await dialog.locator(".fp-chips").boundingBox())?.height ?? 0).toBeGreaterThan(30)
+  const body = dialog.locator(".dialog-body")
+  expect(await body.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(true)
+  await expect(dialog.getByRole("button", { name: "保存", exact: true })).toBeInViewport({
+    ratio: 1,
+  })
+})
+
 test("fingerprint glass surfaces: only the light glass dialog uses --field", async ({ page }) => {
   for (const [theme, glass, token] of [
     ["light", "1", "--field"],

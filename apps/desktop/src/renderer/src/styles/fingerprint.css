@@ -49,6 +49,22 @@
   min-width: 0;
 }
 
+/* 弹层到最大高度时由字段区让出空间，摘要换行也不会让整个弹层体滚动 */
+.fingerprint-dialog .fingerprint-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.fingerprint-dialog .fp-toolbar,
+.fingerprint-dialog .fp-tabs-bar {
+  flex: none;
+}
+
+.fingerprint-dialog .fp-content {
+  flex: 0 1 auto;
+}
+
 /* 环境摘要：图标、浏览器与系统、语言时区种子小标签，右侧是快捷预设 */
 
 .fp-toolbar {
@@ -120,7 +136,8 @@
 .fp-preset-picker {
   display: grid;
   flex: none;
-  width: 220px;
+  width: calc(var(--ui-scale) * 220px);
+  max-width: 100%;
 }
 
 .fp-preset-menu,
@@ -279,13 +296,14 @@
   background: var(--surface);
 }
 
+/* 宽度随界面字号缩放，放大字号后长选项文字仍能完整显示 */
 .fp-row .trail .select-trigger {
-  width: 168px;
+  width: calc(var(--ui-scale) * 168px);
   max-width: 100%;
 }
 
 .fp-row .fp-control-wide .select-trigger {
-  width: 260px;
+  width: calc(var(--ui-scale) * 260px);
 }
 
 .fp-choice {
@@ -297,12 +315,12 @@
 }
 
 .fp-choice .input {
-  width: 120px;
+  width: calc(var(--ui-scale) * 120px);
   max-width: 100%;
 }
 
 .fp-control-wide .fp-choice .input {
-  width: 200px;
+  width: calc(var(--ui-scale) * 200px);
 }
 
 .fp-row [aria-invalid="true"] {

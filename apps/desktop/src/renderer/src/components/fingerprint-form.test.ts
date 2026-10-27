@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { defaultFingerprintForm, type FingerprintFormErrors } from "../models/fingerprint-form"
 import { FingerprintForm } from "./fingerprint-form"
+import { chooseSelect } from "../test-support/radix-select"
+import { fillFingerprintField } from "../test-support/fingerprint-input"
 
 let root: Root
 let container: HTMLDivElement
@@ -68,56 +70,40 @@ async function click(selector: string): Promise<void> {
 }
 
 async function typeInto(selector: string, value: string): Promise<void> {
-  const element = query<HTMLInputElement | HTMLTextAreaElement>(selector)
-  const prototype =
-    element instanceof HTMLTextAreaElement
-      ? HTMLTextAreaElement.prototype
-      : HTMLInputElement.prototype
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(element, value)
-    element.dispatchEvent(new Event("input", { bubbles: true }))
-  })
+  await fillFingerprintField(container, selector.replace(/^#/, ""), value)
 }
 
 async function choose(selector: string, value: string): Promise<void> {
-  const element = query<HTMLSelectElement>(selector)
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(element, value)
-    element.dispatchEvent(new Event("change", { bubbles: true }))
-  })
+  await chooseSelect(query<HTMLElement>(selector), value)
 }
 
 describe("fingerprint form", () => {
-  it("renders every group, preset and control id", async () => {
+  it("renders grouped settings with shadcn controls and concise product copy", async () => {
     await render()
 
-    for (const title of [
-      "快速生成",
-      "高级画像",
-      "身份与定位",
-      "设备与网络",
-      "兼容伪装",
-      "高级原始参数",
-    ]) {
+    for (const title of ["快捷预设", "身份与定位", "设备与网络", "隐私与兼容", "高级设置"]) {
       expect(container.textContent).toContain(title)
     }
-    expect(container.querySelectorAll("button[id^='fp-preset-']")).toHaveLength(13)
-    expect(query<HTMLInputElement>("#fp-seed").value).toBe("")
-    expect(query<HTMLInputElement>("#fp-lang").value).toBe("")
-    expect(query<HTMLInputElement>("#fp-timezone").value).toBe("")
-    expect(query<HTMLSelectElement>("#fp-brand").value).toBe("Chrome")
-    expect(query<HTMLSelectElement>("#fp-platform").value).toBe("macos")
+    expect(container.querySelectorAll('[role="combobox"]')).toHaveLength(9)
+    expect(container.querySelectorAll('[role="radio"]')).toHaveLength(4)
+    expect(query<HTMLElement>("#fp-seed").textContent).toBe("按账号自动生成")
+    expect(query<HTMLElement>("#fp-lang").textContent).toBe("跟随系统语言")
+    expect(query<HTMLElement>("#fp-timezone").textContent).toBe("跟随系统时区")
+    expect(query<HTMLElement>("#fp-brand").textContent).toBe("Chrome")
+    expect(query<HTMLElement>("#fp-platform").textContent).toBe("macOS")
     expect(container.querySelector("#fp-customResolution")).toBeNull()
+    await click("#fp-group-advanced")
     expect(container.querySelector("#fp-unknownArgs")).not.toBeNull()
     // 9 个旧字段只保存和诊断，不作为独立可编辑控件。
     expect(container.querySelector("#fp-colorDepth")).toBeNull()
     expect(container.querySelector("#fp-webglRenderer")).toBeNull()
-    expect(container.textContent).toContain("本地内核生效")
+    expect(container.textContent).not.toContain("AntBrowser")
+    expect(container.querySelector('select:not([aria-hidden="true"])')).toBeNull()
   })
 
   it("applies a quick preset without replacing the seed", async () => {
     await render({ ...defaultFingerprintForm(), seed: "777" })
-    await click("#fp-preset-win-edge-enterprise")
+    await choose("#fp-preset", "fp-preset-win-edge-enterprise")
 
     expect(latest.seed).toBe("777")
     expect(latest.brand).toBe("Edge")
@@ -131,11 +117,27 @@ describe("fingerprint form", () => {
     expect(latest.platformVersion).toBe("")
     expect(latest.disableSpoofing).toEqual([])
     expect(latest.webrtcPolicy).toBe("default_public_interface_only")
-    expect(query<HTMLSelectElement>("#fp-brand").value).toBe("Edge")
+    expect(query<HTMLElement>("#fp-brand").textContent).toBe("Edge")
+    expect(query<HTMLElement>("#fp-preset").textContent).toBe("Windows · Edge 企业")
+    await typeInto("#fp-lang", "en-US")
+    expect(query<HTMLElement>("#fp-preset").textContent).toBe("自定义配置")
+  })
+
+  it("shows explicit defaults for empty browser and platform values", async () => {
+    await render({ ...defaultFingerprintForm(), brand: "", platform: "" })
+    expect(query<HTMLElement>("#fp-brand").textContent).toBe("跟随默认")
+    expect(query<HTMLElement>("#fp-platform").textContent).toBe("跟随默认")
+    await choose("#fp-brand", "Edge")
+    await choose("#fp-brand", "跟随默认")
+    expect(latest.brand).toBe("")
+    await choose("#fp-platform", "Windows")
+    await choose("#fp-platform", "跟随默认")
+    expect(latest.platform).toBe("")
   })
 
   it("switches canvas and clientRects noise through all three states", async () => {
     await render()
+    await click("#fp-group-compat")
 
     await click("#fp-canvasNoise-1")
     expect(latest.canvasNoise).toBe("1")
@@ -150,6 +152,7 @@ describe("fingerprint form", () => {
 
   it("toggles every disable-spoofing category independently", async () => {
     await render()
+    await click("#fp-group-compat")
 
     await act(async () => query<HTMLInputElement>("#fp-disableSpoofing-font").click())
     await act(async () => query<HTMLInputElement>("#fp-disableSpoofing-gpu").click())
@@ -161,19 +164,26 @@ describe("fingerprint form", () => {
 
   it("changes the WebRTC policy and the custom resolution", async () => {
     await render()
+    await click("#fp-group-device")
 
-    await choose("#fp-webrtcPolicy", "default_public_interface_only")
+    await choose("#fp-webrtcPolicy", "仅公网接口")
     expect(latest.webrtcPolicy).toBe("default_public_interface_only")
 
-    await choose("#fp-resolution", "custom")
+    await choose("#fp-resolution", "自定义")
     expect(container.querySelector("#fp-customResolution")).not.toBeNull()
     await typeInto("#fp-customResolution", "2560,1440")
     expect(latest.resolution).toBe("custom")
     expect(latest.customResolution).toBe("2560,1440")
+    await choose("#fp-resolution", "跟随屏幕")
+    expect(latest.resolution).toBe("")
+    expect(container.querySelector("#fp-customResolution")).toBeNull()
+    await choose("#fp-webrtcPolicy", "跟随默认")
+    expect(latest.webrtcPolicy).toBe("")
   })
 
   it("edits unknown arguments as one value per line", async () => {
     await render()
+    await click("#fp-group-advanced")
 
     await typeInto("#fp-unknownArgs", "--disable-gpu\n\n--js-flags=--max-old-space-size=4096")
     expect(latest.unknownArgs).toEqual([
@@ -192,5 +202,69 @@ describe("fingerprint form", () => {
     const alerts = [...container.querySelectorAll('[role="alert"]')].map((item) => item.textContent)
     expect(alerts).toContain("种子必须是整数")
     expect(alerts).toContain("时区不可识别")
+  })
+
+  it("opens the group containing an invalid hidden field and preserves drafts across groups", async () => {
+    await render(defaultFingerprintForm(), { hardwareConcurrency: "核心数不合法" })
+    expect(query<HTMLElement>("#fp-group-device").getAttribute("aria-checked")).toBe("true")
+    expect(container.textContent).toContain("核心数不合法")
+    expect(query<HTMLElement>("#fp-hardwareConcurrency").getAttribute("aria-invalid")).toBe("true")
+
+    await click("#fp-group-identity")
+    await typeInto("#fp-seed", "654321")
+    await click("#fp-group-advanced")
+    await typeInto("#fp-unknownArgs", "--disable-gpu")
+    await click("#fp-group-identity")
+    expect(query<HTMLInputElement>("#fp-seed-custom").value).toBe("654321")
+    expect(latest.unknownArgs).toEqual(["--disable-gpu"])
+  })
+
+  it("selects locale, versions and hardware without typing and can restore automatic values", async () => {
+    await render()
+    await choose("#fp-brandVersion", "147")
+    await choose("#fp-platformVersion", "15.2.0")
+    await choose("#fp-lang", "日本語（ja-JP）")
+    await choose("#fp-timezone", "东京（Asia/Tokyo）")
+    await choose("#fp-acceptLang", "日本語（ja-JP）优先")
+    await click("#fp-group-device")
+    await choose("#fp-hardwareConcurrency", "16 核")
+    expect(latest).toMatchObject({
+      brandVersion: "147",
+      platformVersion: "15.2.0",
+      lang: "ja-JP",
+      timezone: "Asia/Tokyo",
+      acceptLang: "ja-JP,ja",
+      hardwareConcurrency: "16",
+    })
+    await choose("#fp-hardwareConcurrency", "使用默认核心数")
+    await click("#fp-group-identity")
+    await choose("#fp-timezone", "跟随系统时区")
+    expect(latest.timezone).toBe("")
+    expect(latest.hardwareConcurrency).toBe("")
+  })
+
+  it("preserves an existing custom version after changing the platform or applying a preset", async () => {
+    await render({ ...defaultFingerprintForm(), platformVersion: "custom-linux-version" })
+    expect(query<HTMLInputElement>("#fp-platformVersion-custom").value).toBe("custom-linux-version")
+    await choose("#fp-platform", "Windows")
+    expect(latest.platformVersion).toBe("custom-linux-version")
+    await choose("#fp-preset", "fp-preset-jp-mac-chrome-light")
+    expect(query<HTMLElement>("#fp-platformVersion").textContent).toBe("15.2.0")
+    expect(container.querySelector("#fp-platformVersion-custom")).toBeNull()
+  })
+
+  it("generates a seed only on explicit choice and keeps it stable while editing other fields", async () => {
+    await render()
+    expect(latest.seed).toBe("")
+    await choose("#fp-seed", "生成新种子")
+    const generated = latest.seed
+    expect(Number(generated)).toBeGreaterThanOrEqual(1)
+    expect(Number(generated)).toBeLessThanOrEqual(2_147_483_647)
+    expect(query<HTMLInputElement>("#fp-seed-custom").value).toBe(generated)
+    await choose("#fp-lang", "简体中文（zh-CN）")
+    expect(latest.seed).toBe(generated)
+    await choose("#fp-seed", "按账号自动生成")
+    expect(latest.seed).toBe("")
+    expect(container.querySelector("#fp-seed-custom")).toBeNull()
   })
 })

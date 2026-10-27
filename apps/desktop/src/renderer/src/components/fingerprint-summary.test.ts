@@ -31,7 +31,7 @@ async function render(fingerprint?: ClaudeFingerprintView, fallbackSeed?: string
 }
 
 describe("fingerprint summary", () => {
-  it("renders the four AntBrowser groups and the full profile", async () => {
+  it("renders the four settings groups and the full profile", async () => {
     const de = advancedFingerprintProfiles.find((preset) => preset.id === "de-linux-chrome-dev")
     expect(de).toBeDefined()
     expect(de?.fingerprint.lang).toBe("de-DE")
@@ -39,7 +39,7 @@ describe("fingerprint summary", () => {
     if (de === undefined) return
     await render({ ...de.fingerprint, seed: "520117", colorDepth: "24" })
 
-    for (const title of ["身份与定位", "设备与网络", "兼容伪装", "高级原始参数"]) {
+    for (const title of ["身份与定位", "设备与网络", "隐私与兼容", "高级设置"]) {
       expect(container.textContent).toContain(title)
     }
     expect(container.textContent).toContain("520117")
@@ -54,7 +54,7 @@ describe("fingerprint summary", () => {
     expect(container.textContent).toContain("不额外禁用")
     expect(container.textContent).toContain("色彩深度")
     expect(container.textContent).toContain("24")
-    expect(container.textContent).toContain("AntBrowser 1.8.0 不作为独立运行参数")
+    expect(container.textContent).toContain("兼容字段从旧配置保留，不单独影响浏览器启动")
     expect(container.textContent).toContain("无")
   })
 
@@ -64,8 +64,8 @@ describe("fingerprint summary", () => {
     expect(container.textContent).toContain("778899")
     expect(container.textContent).toContain("跟随系统语言")
     expect(container.textContent).toContain("系统时区")
-    expect(container.textContent).toContain("按窗口自动")
-    expect(container.textContent).toContain("不输出（跟随默认）")
+    expect(container.textContent).toContain("跟随屏幕")
+    expect(container.textContent).toContain("跟随默认")
     expect(container.textContent).toContain("不额外禁用")
     expect(container.textContent).toContain("无")
   })

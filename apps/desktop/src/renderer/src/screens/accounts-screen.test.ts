@@ -11,6 +11,7 @@ import type {
 } from "@pigclaude/contracts/claude-account"
 import { toPoolAccount, toPoolProxy } from "../models/claude-account-view"
 import { normalizeFingerprintForm } from "../models/fingerprint-form"
+import { fillFingerprintField } from "../test-support/fingerprint-input"
 import { AccountsScreen, type AccountsScreenProps } from "./accounts-screen"
 
 const fingerprint: ClaudeFingerprintView = {
@@ -166,12 +167,7 @@ function dialogChoice(text: string): HTMLButtonElement | undefined {
 }
 
 async function typeDialog(selector: string, value: string): Promise<void> {
-  const element = document.body.querySelector<HTMLInputElement>(selector)
-  expect(element, selector).not.toBeNull()
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(element, value)
-    element?.dispatchEvent(new Event("input", { bubbles: true }))
-  })
+  await fillFingerprintField(document.body, selector.replace(/^#/, ""), value)
 }
 
 async function clickDialog(selector: string): Promise<void> {
@@ -218,7 +214,7 @@ describe("accounts screen", () => {
     await clickButton(button("编辑"), "编辑")
     expect(dialog()?.textContent).toContain("保存后下次重新授权使用同一份指纹")
     expect(dialog()?.textContent).toContain("身份与定位")
-    expect(dialog()?.textContent).toContain("兼容伪装")
+    expect(dialog()?.textContent).toContain("隐私与兼容")
   })
 
   it("shows the grouped fingerprint summary and saves the complete edited fingerprint", async () => {
@@ -226,15 +222,16 @@ describe("accounts screen", () => {
     await render([ready], { onUpdate })
     await openAccount("工作 Max")
 
-    // 详情页按 AntBrowser 分组展示完整指纹，而不只是种子。
+    // 详情页按设置分组展示完整指纹，而不只是种子。
     expect(container.textContent).toContain("身份与定位")
     expect(container.textContent).toContain("设备与网络")
-    expect(container.textContent).toContain("兼容伪装")
+    expect(container.textContent).toContain("隐私与兼容")
     expect(container.textContent).toContain("开启")
 
     await clickButton(button("编辑"), "编辑")
     await typeDialog("#fingerprint-dialog-seed", "654321")
     await typeDialog("#fingerprint-dialog-timezone", "Asia/Tokyo")
+    await clickDialog("#fingerprint-dialog-group-compat")
     await clickDialog("#fingerprint-dialog-canvasNoise-0")
     await clickButton(button("保存", dialog() ?? document.body), "保存")
 

@@ -47,10 +47,8 @@ export function FingerprintStep({
   return (
     <div className="wizard-body">
       <div>
-        <h1>设定这个账号的指纹</h1>
-        <p className="sub">
-          指纹保存在本机这个账号下，以后重新授权都用同一份。留空的字段跟随 AntBrowser 默认值。
-        </p>
+        <h1>设置浏览器指纹</h1>
+        <p className="sub">为这个账号配置独立的浏览器环境，也可以直接使用默认设置。</p>
       </div>
       {error ? (
         <p className="error-text" role="alert">

@@ -28,7 +28,7 @@ export type FingerprintLegacyFieldKey =
 /** 表单里可以编辑的字段键；旧字段只在摘要/诊断里展示。 */
 export type FingerprintEditableFieldKey = Exclude<FingerprintFieldKey, FingerprintLegacyFieldKey>
 
-/** 旧字段标签；摘要里出现时统一标注不是 AntBrowser 的独立启动参数。 */
+/** 兼容字段标签；摘要里出现时说明这些值只作为旧配置保留。 */
 export const fingerprintLegacyFields: { key: FingerprintLegacyFieldKey; label: string }[] = [
   { key: "colorDepth", label: "色彩深度" },
   { key: "deviceMemory", label: "设备内存" },
@@ -43,10 +43,10 @@ export const fingerprintLegacyFields: { key: FingerprintLegacyFieldKey; label: s
 
 /** 表单控件的渲染方式。 */
 export type FingerprintFieldControl =
-  "text" | "select" | "resolution" | "custom-resolution" | "noise" | "spoofing" | "args"
+  "choice" | "select" | "resolution" | "custom-resolution" | "noise" | "spoofing" | "args"
 
 /** 下拉选项。 */
-export type FingerprintFieldOption = { value: string; label: string }
+export type FingerprintFieldOption = { value: string; label: string; keywords?: string[] }
 
 /** 单个字段的展示元数据。保证标签、提示和控件类型集中在这一处。 */
 export type FingerprintFieldMeta = {
@@ -56,9 +56,10 @@ export type FingerprintFieldMeta = {
   mono?: boolean
   control: FingerprintFieldControl
   options?: FingerprintFieldOption[]
+  defaultLabel?: string
 }
 
-/** 一个表单分组。保证字段顺序与 AntBrowser 的编辑面板一致。 */
+/** 一个设置分组，供编辑面板与字段错误导航共同使用。 */
 export type FingerprintGroup = {
   id: FingerprintGroupId
   title: string
@@ -93,8 +94,8 @@ export const fingerprintResolutionPresets = [
 
 /** 窗口大小下拉选项；空值表示按宿主屏幕自动计算。 */
 export const fingerprintResolutionOptions: FingerprintFieldOption[] = [
-  { value: "", label: "按窗口自动" },
-  ...fingerprintResolutionPresets.map((value) => ({ value, label: value })),
+  { value: "", label: "跟随屏幕" },
+  ...fingerprintResolutionPresets.map((value) => ({ value, label: value.replace(",", " × ") })),
   { value: "custom", label: "自定义" },
 ]
 
@@ -108,7 +109,7 @@ export const fingerprintWebrtcOptions: FingerprintFieldOption[] = [
 
 /** 噪声三态选项；空字符串表示启动时不输出该 flag。 */
 export const fingerprintNoiseOptions: { value: FingerprintNoise; label: string }[] = [
-  { value: "", label: "不输出" },
+  { value: "", label: "默认" },
   { value: "1", label: "开启" },
   { value: "0", label: "关闭" },
 ]
@@ -129,75 +130,87 @@ export const fingerprintSpoofingCategories: {
 export const fingerprintFieldMeta: Record<FingerprintEditableFieldKey, FingerprintFieldMeta> = {
   seed: {
     label: "指纹种子",
-    hint: "留空时按账号 ID 生成稳定整数，同一账号每次启动都一样。",
-    placeholder: "留空自动生成",
+    hint: "自动模式按账号生成；也可以手动生成或填写一个固定种子。",
+    placeholder: "1–2147483647",
+    defaultLabel: "按账号自动生成",
     mono: true,
-    control: "text",
+    control: "choice",
   },
   brand: { label: "浏览器品牌", control: "select", options: fingerprintBrandOptions },
   brandVersion: {
-    label: "品牌版本",
-    hint: "数字点分，最多 5 段。",
-    placeholder: "144.0.7559.132",
+    label: "浏览器版本",
+    placeholder: "例如 148.0.7778.215",
+    defaultLabel: "跟随内核版本",
     mono: true,
-    control: "text",
+    control: "choice",
   },
-  platform: { label: "平台", control: "select", options: fingerprintPlatformOptions },
+  platform: { label: "操作系统", control: "select", options: fingerprintPlatformOptions },
   platformVersion: {
     label: "系统版本",
-    hint: "可填 15.0.0、10.0.0 或 6.8.0。",
-    placeholder: "15.0.0",
+    placeholder: "例如 15.2.0",
+    defaultLabel: "使用默认版本",
     mono: true,
-    control: "text",
+    control: "choice",
   },
-  lang: { label: "语言", hint: "留空时使用系统语言。", placeholder: "zh-CN", control: "text" },
+  lang: {
+    label: "浏览器语言",
+    placeholder: "例如 zh-CN",
+    defaultLabel: "跟随系统语言",
+    control: "choice",
+  },
   acceptLang: {
-    label: "Accept-Language",
-    hint: "留空时由语言推导。",
-    placeholder: "zh-CN,zh",
-    control: "text",
+    label: "首选语言列表",
+    placeholder: "例如 zh-CN,zh,en-US,en",
+    defaultLabel: "跟随浏览器语言",
+    control: "choice",
   },
   timezone: {
     label: "时区",
-    hint: "IANA 名称；system 表示跟随系统。",
-    placeholder: "Asia/Shanghai 或 system",
-    control: "text",
+    hint: "可选择常用地区，其他地区可自定义 IANA 时区名称。",
+    placeholder: "例如 Asia/Shanghai",
+    defaultLabel: "跟随系统时区",
+    control: "choice",
   },
   resolution: {
     label: "窗口大小",
-    hint: "留空时按宿主屏幕计算，与 AntBrowser 新建 profile 一致。",
+    hint: "默认根据本机屏幕自动设置。",
     control: "resolution",
     options: fingerprintResolutionOptions,
   },
   customResolution: {
-    label: "自定义分辨率",
-    hint: "宽,高，宽高都不小于 200。",
+    label: "自定义窗口大小",
+    hint: "用逗号分隔宽和高，均不小于 200。",
     placeholder: "2560,1440",
     mono: true,
     control: "custom-resolution",
   },
   hardwareConcurrency: {
     label: "CPU 核心数",
-    hint: "1 到 128 的整数。",
-    placeholder: "8",
+    hint: "可设置 1–128 核。",
+    placeholder: "1–128",
+    defaultLabel: "使用默认核心数",
     mono: true,
-    control: "text",
+    control: "choice",
   },
   webrtcPolicy: {
     label: "WebRTC 策略",
     control: "select",
     options: fingerprintWebrtcOptions,
   },
-  canvasNoise: { label: "Canvas 噪声", control: "noise" },
-  clientRectsNoise: { label: "ClientRects 噪声", control: "noise" },
+  canvasNoise: { label: "Canvas 噪声", hint: "为画布图像添加细微差异。", control: "noise" },
+  clientRectsNoise: {
+    label: "ClientRects 噪声",
+    hint: "为元素布局测量添加细微差异。",
+    control: "noise",
+  },
   disableSpoofing: {
-    label: "禁用伪装类别",
-    hint: "与噪声开关互相独立，对应 --disable-spoofing。",
+    label: "停用特征伪装",
+    hint: "打开开关后，对应特征使用原始值，适合排查页面兼容问题。",
     control: "spoofing",
   },
   unknownArgs: {
-    label: "原始参数",
-    hint: "每行一个参数，按原样追加到启动命令末尾。",
+    label: "自定义启动参数",
+    hint: "每行填写一个参数，将在启动浏览器时追加。",
     placeholder: "--disable-gpu",
     mono: true,
     control: "args",
@@ -209,35 +222,34 @@ export const fingerprintGroups: FingerprintGroup[] = [
   {
     id: "identity",
     title: "身份与定位",
-    description: "品牌、平台、语言和时区共同决定网站看到的地区画像。",
+    description: "设置网站读取到的浏览器、系统和地区信息。",
     fields: [
-      "seed",
       "brand",
-      "brandVersion",
       "platform",
+      "brandVersion",
       "platformVersion",
       "lang",
-      "acceptLang",
       "timezone",
+      "acceptLang",
+      "seed",
     ],
   },
   {
     id: "device",
     title: "设备与网络",
-    description: "窗口大小、CPU 核心数和 WebRTC 策略影响硬件与网络特征。",
+    description: "调整浏览器窗口、硬件配置和网络连接方式。",
     fields: ["resolution", "customResolution", "hardwareConcurrency", "webrtcPolicy"],
   },
   {
     id: "compat",
-    title: "兼容伪装",
-    description: "噪声三态和禁用伪装类别互相独立，不会互相替代。",
+    title: "隐私与兼容",
+    description: "管理图像噪声，以及需要保留原始值的特征。",
     fields: ["canvasNoise", "clientRectsNoise", "disableSpoofing"],
   },
   {
     id: "advanced",
-    title: "高级原始参数",
-    description:
-      "原始参数会原样追加到启动命令；9 个旧字段只保存和诊断，不作为独立控件，AntBrowser 1.8.0 也不会输出它们。",
+    title: "高级设置",
+    description: "添加其他浏览器启动选项。通常保持为空即可。",
     fields: ["unknownArgs"],
   },
 ]

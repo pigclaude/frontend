@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { defaultFingerprintForm } from "../../models/fingerprint-form"
 import { FingerprintStep, type FingerprintStepProps } from "./fingerprint-step"
+import { chooseSelect } from "../../test-support/radix-select"
+import { fillFingerprintField } from "../../test-support/fingerprint-input"
 
 let root: Root
 let container: HTMLDivElement
@@ -72,12 +74,7 @@ async function clickId(id: string): Promise<void> {
 }
 
 async function type(id: string, value: string): Promise<void> {
-  const element = container.querySelector<HTMLInputElement>(`#${id}`)
-  expect(element, id).not.toBeNull()
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(element, value)
-    element?.dispatchEvent(new Event("input", { bubbles: true }))
-  })
+  await fillFingerprintField(container, id, value)
 }
 
 describe("fingerprint step", () => {
@@ -108,7 +105,10 @@ describe("fingerprint step", () => {
     const onSubmit = vi.fn()
     await render({ onSubmit })
 
-    await clickId("step-preset-mac-chrome-jp")
+    const preset = container.querySelector<HTMLElement>("#step-preset")
+    expect(preset).not.toBeNull()
+    if (preset) await chooseSelect(preset, "step-preset-mac-chrome-jp")
+    await clickId("step-group-compat")
     await clickId("step-canvasNoise-0")
     await clickText("保存并确认")
 

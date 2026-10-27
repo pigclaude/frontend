@@ -10,8 +10,9 @@ import {
   type FingerprintFormErrors,
 } from "../models/fingerprint-form"
 import { FingerprintForm } from "./fingerprint-form"
+import { Icon } from "./icon"
 import { Button } from "./ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog"
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog"
 
 /** 指纹编辑弹层 props；保存时回调完整指纹对象。 */
 export type FingerprintDialogProps = {
@@ -55,11 +56,18 @@ export function FingerprintDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="wide">
+      <DialogContent className="fingerprint-dialog">
         <div className="dialog-head">
-          <DialogTitle>编辑「{account?.name ?? "账号"}」的指纹</DialogTitle>
+          <div className="fp-dialog-heading">
+            <DialogTitle>编辑「{account?.name ?? "账号"}」的指纹</DialogTitle>
+            <DialogClose asChild>
+              <Button variant="ghost" size="icon" aria-label="关闭指纹设置">
+                <Icon name="x" small />
+              </Button>
+            </DialogClose>
+          </div>
           <DialogDescription>
-            保存后下次重新授权使用同一份指纹，已有的登录不受影响。留空的字段跟随 AntBrowser 默认值。
+            保存后下次重新授权使用同一份指纹，已有的登录不受影响。
           </DialogDescription>
         </div>
         <div className="dialog-body">

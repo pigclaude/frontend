@@ -239,7 +239,7 @@ export function fingerprintSummaryGroups(
     },
     {
       id: "compat",
-      title: "兼容伪装",
+      title: "隐私与兼容",
       rows: [
         { label: "Canvas 噪声", value: noiseLabel(value.canvasNoise) },
         { label: "ClientRects 噪声", value: noiseLabel(value.clientRectsNoise) },
@@ -248,14 +248,12 @@ export function fingerprintSummaryGroups(
     },
     {
       id: "advanced",
-      title: "高级原始参数",
+      title: "高级设置",
       rows: [
         ...legacyRows,
         { label: "原始参数", value: value.unknownArgs?.join(" ") || "无", block: true },
       ],
-      ...(legacyRows.length === 0
-        ? {}
-        : { note: "旧字段只保存和诊断，AntBrowser 1.8.0 不作为独立运行参数。" }),
+      ...(legacyRows.length === 0 ? {} : { note: "兼容字段从旧配置保留，不单独影响浏览器启动。" }),
     },
   ]
 }
@@ -270,13 +268,13 @@ function advancedLegacyRows(value: ClaudeFingerprintView): FingerprintSummaryRow
 
 function resolutionLabel(value: ClaudeFingerprintView): string {
   if (value.resolution === "custom") return value.customResolution || "自定义（未填写）"
-  return value.resolution || "按窗口自动"
+  return value.resolution || "跟随屏幕"
 }
 
 function noiseLabel(value: FingerprintNoise): string {
   if (value === "1") return "开启"
   if (value === "0") return "关闭"
-  return "不输出（跟随默认）"
+  return "跟随默认"
 }
 
 function webrtcLabel(value: FingerprintWebrtcPolicy): string {

@@ -39,8 +39,8 @@ describe("fingerprint form metadata", () => {
     expect(fingerprintGroups.map((group) => group.title)).toEqual([
       "身份与定位",
       "设备与网络",
-      "兼容伪装",
-      "高级原始参数",
+      "隐私与兼容",
+      "高级设置",
     ])
     expect(fingerprintGroups.find((group) => group.id === "advanced")?.fields).toEqual([
       "unknownArgs",
@@ -440,8 +440,8 @@ describe("fingerprint summary", () => {
     expect(groups.map((group) => group.title)).toEqual([
       "身份与定位",
       "设备与网络",
-      "兼容伪装",
-      "高级原始参数",
+      "隐私与兼容",
+      "高级设置",
     ])
     const text = JSON.stringify(groups)
     expect(text).toContain("520117")
@@ -454,7 +454,7 @@ describe("fingerprint summary", () => {
     expect(text).toContain("字体、音频")
     expect(text).toContain("--disable-gpu")
     expect(text).toContain("色彩深度")
-    expect(text).toContain("AntBrowser 1.8.0 不作为独立运行参数")
+    expect(text).toContain("兼容字段从旧配置保留，不单独影响浏览器启动")
   })
 
   it("shows follow-the-default labels for an empty fingerprint", () => {
@@ -462,7 +462,7 @@ describe("fingerprint summary", () => {
     expect(text).toContain("按账号 ID 生成")
     expect(text).toContain("跟随系统语言")
     expect(text).toContain("系统时区")
-    expect(text).toContain("不输出（跟随默认）")
+    expect(text).toContain("跟随默认")
     expect(text).toContain("不额外禁用")
   })
 })

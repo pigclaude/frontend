@@ -60,7 +60,7 @@ export function AuthorizeScreen({
   }
 
   return (
-    <div className="win">
+    <div className={state.step === "fingerprint" ? "win fingerprint-window" : "win"}>
       <div className="win-top">
         <TrafficLights />
         <Button className="wizard-cancel" variant="ghost" size="sm" onClick={onCancel}>

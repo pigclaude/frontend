@@ -1,0 +1,86 @@
+/* shadcn Popover 与 Command 组合框的桌面样式，搜索区和自定义入口固定，候选项独立滚动。 */
+
+.combobox-popover.popover {
+  z-index: 90;
+  width: var(--radix-popover-trigger-width);
+  min-width: min(240px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  padding: 0;
+  overflow: hidden;
+  background: var(--popover);
+}
+
+.ui-command {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.command-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.command-input-wrap > .ic {
+  flex: none;
+  color: var(--muted);
+}
+
+.command-input {
+  width: 100%;
+  height: 38px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: var(--fs-md);
+}
+
+.command-input::placeholder {
+  color: var(--muted);
+}
+
+.command-list {
+  max-height: min(264px, calc(var(--radix-popover-content-available-height) - 90px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding: 4px;
+  padding: 4px;
+}
+
+.command-empty {
+  padding: 20px 12px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.command-item {
+  min-height: 32px;
+  cursor: pointer;
+}
+
+.command-item[data-selected="true"] {
+  background: var(--hover);
+}
+
+.command-item > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.command-item .check-mark {
+  display: inline-flex;
+  flex: none;
+}
+
+.combobox-footer {
+  padding: 4px;
+  border-top: 1px solid var(--divider);
+}

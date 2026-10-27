@@ -1,0 +1,400 @@
+/* 指纹设置的独立样式：环境工具栏、分组导航、字段面板及固定操作区，沿用应用主题变量。 */
+
+.fingerprint-window .win-body {
+  padding: 16px 24px 24px;
+}
+
+.fingerprint-window .wiz {
+  width: min(860px, 100%);
+  gap: 14px;
+}
+
+.fingerprint-dialog.dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(860px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  overflow: hidden;
+}
+
+.fingerprint-dialog .dialog-head {
+  flex: none;
+  padding: 22px 24px 18px;
+}
+
+.fp-dialog-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.fp-dialog-heading h2 {
+  font-size: var(--fs-title);
+}
+
+.fingerprint-dialog .dialog-body {
+  min-height: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+
+.fingerprint-dialog .dialog-foot {
+  flex: none;
+  padding: 16px 24px;
+  border-top: 1px solid var(--divider);
+  background: var(--surface);
+}
+
+.fingerprint-form {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+}
+
+.fingerprint-dialog .fingerprint-form {
+  border-right: 0;
+  border-left: 0;
+  border-bottom: 0;
+  border-radius: 0;
+}
+
+.fp-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 22px;
+}
+
+.fp-environment {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.fp-environment-icon {
+  display: grid;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--panel);
+  color: var(--fg-2);
+}
+
+.fp-environment-icon .ic {
+  width: 24px;
+  height: 24px;
+}
+
+.fp-environment-name {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.fp-environment p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+
+.fp-preset-picker {
+  display: grid;
+  flex: none;
+  width: 250px;
+  gap: 6px;
+}
+
+.fingerprint-form .select-trigger,
+.fingerprint-form .input {
+  height: 34px;
+  background: var(--surface);
+}
+
+.fp-preset-menu,
+.fp-select-menu {
+  z-index: 90;
+  max-width: calc(100vw - 32px);
+}
+
+.fp-preset-menu .select-item {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.fp-preset-name,
+.fp-preset-description {
+  display: block;
+  padding-right: 16px;
+}
+
+.fp-preset-description {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.fp-workspace {
+  display: grid;
+  grid-template-columns: 174px minmax(0, 1fr);
+  height: min(440px, calc(100dvh - 330px));
+  min-height: 220px;
+  border-top: 1px solid var(--divider);
+}
+
+.fingerprint-window .fp-workspace {
+  height: min(440px, calc(100dvh - 350px));
+}
+
+.fp-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-height: 0;
+  padding: 16px 10px;
+  border-right: 1px solid var(--divider);
+  background: var(--panel);
+  overflow-y: auto;
+}
+
+.fp-navigation.radio-group {
+  gap: 6px;
+}
+
+.fp-nav-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 10px;
+  border-radius: var(--r-lg);
+  color: var(--muted);
+  text-align: left;
+  transition: background var(--t-fast);
+}
+
+.fp-nav-item > .ic {
+  flex: none;
+  margin-top: 1px;
+}
+
+.fp-nav-item strong {
+  display: block;
+  color: var(--fg-2);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.fp-nav-detail {
+  display: block;
+  margin-top: 5px;
+  font-size: calc(var(--ui-scale) * 10.5px);
+}
+
+.fp-nav-item:hover {
+  background: var(--hover);
+}
+
+.fp-nav-item[data-state="checked"] {
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow:
+    inset 0 0 0 var(--hair) var(--border),
+    var(--shadow-btn);
+}
+
+.fp-nav-item[data-state="checked"] strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.fp-nav-item:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.fp-sidebar-note {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: auto;
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: calc(var(--ui-scale) * 10.5px);
+}
+
+.fp-error-count {
+  display: grid;
+  flex: none;
+  width: 17px;
+  height: 17px;
+  margin-left: auto;
+  place-items: center;
+  border-radius: var(--r-full);
+  background: var(--bad);
+  color: var(--on-bad);
+  font-size: 10px;
+}
+
+.fp-content {
+  min-width: 0;
+  min-height: 0;
+  padding: 20px 26px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.fp-section-heading {
+  margin-bottom: 18px;
+}
+
+.fp-section-heading h2 {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+
+.fp-section-heading p {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}
+
+.fp-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px 20px;
+}
+
+.fp-field {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.fp-choice {
+  display: grid;
+  gap: 8px;
+}
+
+.fp-field-wide {
+  grid-column: 1 / -1;
+}
+
+.fp-field .hint,
+.fp-field .error-text {
+  line-height: 1.55;
+}
+
+.fp-field [aria-invalid="true"] {
+  box-shadow: inset 0 0 0 1px var(--bad);
+}
+
+.fp-field .seg {
+  display: flex;
+  width: 100%;
+  padding: 3px;
+  border-radius: var(--r-md);
+}
+
+.fp-field .seg-item {
+  flex: 1;
+  height: 28px;
+  padding: 0 6px;
+}
+
+.fp-switches {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--divider);
+}
+
+.fp-switch-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 13px 14px;
+  background: var(--surface);
+}
+
+.fp-switch-row:last-child {
+  grid-column: 1 / -1;
+}
+
+.fp-switch-row label {
+  flex: 1;
+  cursor: pointer;
+}
+
+.fp-arguments {
+  min-height: 200px;
+  line-height: 1.8;
+}
+
+@media (max-width: 640px) {
+  .fp-toolbar {
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 18px;
+  }
+
+  .fp-preset-picker {
+    width: 100%;
+  }
+
+  .fp-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .fp-sidebar {
+    padding: 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--divider);
+  }
+
+  .fp-navigation.radio-group {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .fp-nav-item {
+    justify-content: center;
+    padding: 9px 4px;
+  }
+
+  .fp-nav-detail,
+  .fp-nav-item > .ic,
+  .fp-sidebar-note {
+    display: none;
+  }
+
+  .fp-content {
+    padding: 20px 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  .fp-fields,
+  .fp-switches {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fingerprint-window .win-body {
+    padding: 12px;
+  }
+}

@@ -11,6 +11,8 @@ import {
   type AuthorizationState,
 } from "../models/authorization-model"
 import { AuthorizeScreen, type AuthorizeScreenProps } from "./authorize-screen"
+import { chooseSelect } from "../test-support/radix-select"
+import { fillFingerprintField } from "../test-support/fingerprint-input"
 
 type StartInput = Parameters<AuthorizeScreenProps["onStartBrowserAuthorization"]>[0]
 
@@ -146,31 +148,25 @@ async function clickId(id: string): Promise<void> {
 }
 
 function input(id: string): HTMLInputElement {
-  const element = container.querySelector<HTMLInputElement>(`#${id}`)
+  const element =
+    container.querySelector<HTMLInputElement>(`#${id}-custom`) ??
+    container.querySelector<HTMLInputElement>(`#${id}`)
   expect(element, id).not.toBeNull()
   return element as HTMLInputElement
 }
 
-function select(id: string): HTMLSelectElement {
-  const element = container.querySelector<HTMLSelectElement>(`#${id}`)
+function select(id: string): HTMLElement {
+  const element = container.querySelector<HTMLElement>(`#${id}`)
   expect(element, id).not.toBeNull()
-  return element as HTMLSelectElement
+  return element as HTMLElement
 }
 
 async function type(id: string, value: string): Promise<void> {
-  const element = input(id)
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(element, value)
-    element.dispatchEvent(new Event("input", { bubbles: true }))
-  })
+  await fillFingerprintField(container, id, value)
 }
 
 async function choose(id: string, value: string): Promise<void> {
-  const element = select(id)
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(element, value)
-    element.dispatchEvent(new Event("change", { bubbles: true }))
-  })
+  await chooseSelect(select(id), value)
 }
 
 describe("Claude account authorization wizard", () => {
@@ -187,16 +183,18 @@ describe("Claude account authorization wizard", () => {
     await act(async () => (sjc as HTMLButtonElement | undefined)?.click())
     await click("绑定代理")
 
-    // 指纹步骤按 AntBrowser 分组渲染，预设、身份、设备、兼容和高级参数都在同一页。
-    expect(container.textContent).toContain("快速生成")
+    // 指纹设置用导航切换分组，切换时仍提交同一份完整草稿。
+    expect(container.textContent).toContain("快捷预设")
     expect(container.textContent).toContain("身份与定位")
     expect(container.textContent).toContain("设备与网络")
-    expect(container.textContent).toContain("兼容伪装")
-    expect(container.textContent).toContain("高级原始参数")
+    expect(container.textContent).toContain("隐私与兼容")
+    expect(container.textContent).toContain("高级设置")
 
-    await clickId("authorize-preset-win-chrome-office")
+    await choose("authorize-preset", "authorize-preset-win-chrome-office")
     await type("authorize-seed", "123456")
-    await choose("authorize-webrtcPolicy", "disable_non_proxied_udp")
+    await clickId("authorize-group-device")
+    await choose("authorize-webrtcPolicy", "禁用非代理 UDP")
+    await clickId("authorize-group-compat")
     await clickId("authorize-canvasNoise-0")
     await click("保存并核对出口")
 
@@ -245,14 +243,18 @@ describe("Claude account authorization wizard", () => {
     await click("使用系统网络")
 
     await type("authorize-seed", "not-a-number")
+    await clickId("authorize-group-device")
     await type("authorize-hardwareConcurrency", "0")
     await click("保存并继续")
 
     expect(container.textContent).toContain("指纹种子必须是 1 到 2147483647 的整数")
+    await clickId("authorize-group-device")
     expect(container.textContent).toContain("CPU 核心数必须是 1 到 128 的整数")
     expect(onStart).not.toHaveBeenCalled()
 
+    await clickId("authorize-group-identity")
     await type("authorize-seed", "654321")
+    await clickId("authorize-group-device")
     await type("authorize-hardwareConcurrency", "8")
     await click("保存并继续")
     expect(container.textContent).toContain("系统网络（直连）")
@@ -269,7 +271,7 @@ describe("Claude account authorization wizard", () => {
     expect(container.textContent).toContain("选择网络出口")
     await click("使用系统网络")
 
-    expect(input("authorize-timezone").value).toBe("Asia/Tokyo")
+    expect(select("authorize-timezone").textContent).toContain("Asia/Tokyo")
   })
 
   it("returns from the exit step to edit the fingerprint", async () => {
@@ -282,7 +284,7 @@ describe("Claude account authorization wizard", () => {
 
     await click("返回修改指纹")
     expect(input("authorize-seed").value).toBe("654321")
-    expect(container.textContent).toContain("快速生成")
+    expect(container.textContent).toContain("快捷预设")
   })
 
   it("reauthorizes with the saved proxy and every saved fingerprint field", async () => {
@@ -295,8 +297,8 @@ describe("Claude account authorization wizard", () => {
     expect(container.querySelector("button.choice.is-selected")?.textContent).toContain("SJC-02")
     await click("绑定代理")
     expect(input("authorize-seed").value).toBe("520117")
-    expect(select("authorize-platform").value).toBe("windows")
-    expect(select("authorize-brand").value).toBe("Edge")
+    expect(select("authorize-platform").textContent).toBe("Windows")
+    expect(select("authorize-brand").textContent).toBe("Edge")
     await click("保存并核对出口")
     await click("开始核对并授权")
 

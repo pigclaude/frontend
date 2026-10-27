@@ -181,9 +181,7 @@ for (const theme of ["light", "dark"]) {
     const dialog = page.getByRole("dialog")
     await expect(dialog.getByRole("button", { name: "保存", exact: true })).toBeInViewport()
     await expect(dialog.locator("#fingerprint-dialog-group-advanced")).toBeInViewport()
-    expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
-      true,
-    )
+    expect(await fitsHorizontally(dialog)).toBe(true)
     await dialog.getByRole("combobox", { name: "时区", exact: true }).click()
     await page.getByRole("combobox", { name: "搜索时区", exact: true }).fill("New_York")
     await expect(page.locator(".combobox-popover")).toBeInViewport({ ratio: 1 })
@@ -192,6 +190,7 @@ for (const theme of ["light", "dark"]) {
     await dialog.getByRole("combobox", { name: "窗口大小", exact: true }).click()
     await page.getByRole("option", { name: "自定义", exact: true }).click()
     await dialog.getByLabel("自定义窗口大小", { exact: true }).fill("1440,900")
+    expect(await fitsHorizontally(dialog)).toBe(true)
     await dialog.screenshot({ path: testInfo.outputPath("fingerprint-narrow.png") })
     await dialog.getByRole("button", { name: "取消", exact: true }).click()
     await expect(dialog).toBeHidden()
@@ -260,6 +259,7 @@ for (const theme of ["light", "dark"]) {
     await dialog.getByRole("combobox", { name: "窗口大小", exact: true }).click()
     await page.getByRole("option", { name: "自定义", exact: true }).click()
     expect(Math.abs((await height()) - start)).toBeLessThan(1)
+    expect(await fits()).toBe(true)
     for (const group of ["compat", "advanced"]) {
       await dialog.locator(`#fingerprint-dialog-group-${group}`).click()
       expect(Math.abs((await height()) - start)).toBeLessThan(1)

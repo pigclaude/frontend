@@ -66,8 +66,7 @@ vi.mock("./window-options", () => ({
 }))
 it("creates checking window before an existing profile's remote inspect settles", async () => {
   await import("./index")
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  expect(fixture.inspect).toHaveBeenCalledOnce()
+  await vi.waitFor(() => expect(fixture.inspect).toHaveBeenCalledOnce())
   expect(fixture.reportDeviceInfo).not.toHaveBeenCalled()
   expect(fixture.windows).toBe(1)
 })

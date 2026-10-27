@@ -16,6 +16,7 @@ import { AccountChooser } from "./runtime/account-chooser"
 import { LocalRuntime } from "./runtime/local-runtime"
 import type { DeviceIdentityService } from "./device-identity"
 import type { DeviceInfo } from "./device-identity/device-info"
+import type { AuthorizationStateEvent } from "./authorization/types"
 
 /** composition 的依赖，Claude adapter 与第一方 OAuth API 必须独立。 */
 export type DesktopCompositionOptions = {
@@ -28,6 +29,8 @@ export type DesktopCompositionOptions = {
   claudeAuthorization?: ClaudeAuthorizationAdapter
   now?: () => number
   onMembershipView?: (view: MembershipView) => void
+  /** 向 renderer 发布不携带秘密的保存进度。 */
+  onAuthorizationState?: (event: AuthorizationStateEvent) => void
   /** 提供本机账号库时才装配 daemon 和选号；测试可省略。 */
   localStore?: LocalStore
 }
@@ -172,6 +175,10 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
     onCompleted: async ({ token }) => {
       if (token.purpose === "pigclaude-login" && token.oauthSession) await membershipGate.inspect()
     },
+    onAbandoned: async (session) => {
+      if (session.request.purpose === "pigclaude-login") await membershipGate.inspect()
+    },
+    onProgress: options.onAuthorizationState,
   })
   const heartbeat = setInterval(() => {
     void membershipGate.inspect()

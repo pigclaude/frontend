@@ -60,8 +60,7 @@ it("preserves DEVICE_ID_UNAVAILABLE through startup and IPC without system data 
   const log = vi.spyOn(console, "error").mockImplementation(() => undefined)
   try {
     await import("./index")
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(log.mock.calls).toEqual([["DEVICE_ID_UNAVAILABLE"]])
+    await vi.waitFor(() => expect(log.mock.calls).toEqual([["DEVICE_ID_UNAVAILABLE"]]))
     const result = await fixture.handlers.get("pigclaude:authorization-start")?.(
       {},
       { purpose: "pigclaude-login", mode: "login" },

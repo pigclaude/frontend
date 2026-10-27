@@ -71,7 +71,7 @@ export class OAuthTokenManager {
     if (this.#suspended || !isCurrent()) return Promise.reject(failure("AUTHORIZATION_CANCELLED"))
     const owner = ++this.#owner
     this.#record = null
-    this.#loaded = true
+    this.#loaded = false
     this.#loading = null
     return this.write(async () => {
       this.assertCurrent(owner)
@@ -83,6 +83,7 @@ export class OAuthTokenManager {
         throw failure("AUTHORIZATION_CANCELLED")
       }
       this.#record = record
+      this.#loaded = true
     })
   }
 

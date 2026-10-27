@@ -17,6 +17,7 @@ import { createAuthorizationState, reduceAuthorizationState } from "./models/aut
 import { toPoolProxy } from "./models/claude-account-view"
 import { parseDevView, type DevLoginPhase, type DevView } from "./models/dev-view"
 import {
+  acceptLoginStartResult,
   createLoginState,
   reduceLoginState,
   type LoginIntent,
@@ -63,9 +64,11 @@ export function DesktopApp() {
   const signOutInFlight = useRef(false)
   const authorizationGeneration = useRef(0)
   const authorizationSession = useRef<string | null>(null)
+  const authorizationRequest = useRef<string | null>(null)
   const acceptAuthorizationEvents = useRef(true)
   const browserPreview = devView !== null && !window.pigclaude?.membership
   const canUseDesktop =
+    (loginState.view === "idle" || loginState.view === "confirming") &&
     !signOutState.pending &&
     signOutState.error === null &&
     (browserPreview ? devView?.phase === undefined : membership.state === "active")
@@ -197,6 +200,10 @@ export function DesktopApp() {
           confirmMembership()
           return
         }
+        if (event.status === "committing") {
+          setLoginState((current) => reduceLoginState(current, { type: "committing" }))
+          return
+        }
         if (isAuthorizationFailure(event)) {
           setLoginState((current) =>
             reduceLoginState(current, {
@@ -240,6 +247,8 @@ export function DesktopApp() {
   async function startLoginAuthorization(intent: LoginIntent): Promise<void> {
     if (signOutState.pending || signOutState.error) return
     const generation = ++authorizationGeneration.current
+    const clientRequestId = crypto.randomUUID()
+    authorizationRequest.current = clientRequestId
     authorizationSession.current = null
     acceptAuthorizationEvents.current = true
     setLoginState((current) => reduceLoginState(current, { type: "start-request", intent }))
@@ -252,40 +261,47 @@ export function DesktopApp() {
       return
     }
     try {
-      const result = await startAuthorization({ purpose: "pigclaude-login", mode: intent })
+      const result = await startAuthorization({
+        purpose: "pigclaude-login",
+        mode: intent,
+        clientRequestId,
+      })
       if (generation !== authorizationGeneration.current) return
-      if (!result.ok) {
-        setLoginState((current) =>
-          reduceLoginState(current, { type: "failed", error: result.error }),
-        )
-        return
-      }
-      authorizationSession.current = result.sessionId
-      setLoginState((current) =>
-        reduceLoginState(current, {
-          type: "started",
-          intent,
-          sessionId: result.sessionId,
-          authorizationUrl: result.authorizationUrl,
-          expiresAt: result.expiresAt,
-        }),
-      )
+      if (result.ok) authorizationSession.current = result.sessionId
+      setLoginState((current) => acceptLoginStartResult(current, intent, result))
     } catch (error: unknown) {
       if (generation !== authorizationGeneration.current) return
       setLoginState((current) =>
-        reduceLoginState(current, { type: "failed", error: errorMessage(error) }),
+        acceptLoginStartResult(current, intent, {
+          ok: false,
+          status: "network-error",
+          error: errorMessage(error),
+        }),
       )
     }
   }
 
   async function cancelLoginAuthorization(): Promise<void> {
-    authorizationGeneration.current++
-    authorizationSession.current = null
-    acceptAuthorizationEvents.current = false
+    const generation = authorizationGeneration.current
     const sessionId = loginState.sessionId
+    const requestId = sessionId ?? authorizationRequest.current
     const cancelAuthorization =
       window.pigclaude?.authorization?.cancel ?? window.pigclaude?.cancelAuthorization
-    if (sessionId) await cancelAuthorization?.(sessionId)
+    const result = requestId ? await cancelAuthorization?.(requestId) : undefined
+    if (generation !== authorizationGeneration.current) return
+    if (result?.status === "committing") {
+      setLoginState((current) =>
+        current.view === "waiting" || current.view === "starting"
+          ? reduceLoginState(current, { type: "committing" })
+          : current,
+      )
+      return
+    }
+    if (result && (!result.sessionId || (sessionId && result.sessionId !== sessionId))) return
+    authorizationGeneration.current++
+    authorizationRequest.current = null
+    authorizationSession.current = null
+    acceptAuthorizationEvents.current = false
     setLoginState((current) => reduceLoginState(current, { type: "cancelled" }))
   }
 

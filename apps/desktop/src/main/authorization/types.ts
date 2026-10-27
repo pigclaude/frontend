@@ -11,6 +11,8 @@ export type AuthorizationMode = "login" | "register" | "authorize"
 export type AuthorizationRequest = {
   purpose: AuthorizationPurpose
   mode: AuthorizationMode
+  /** 仅关联同一次 UI 准备与取消，不作为身份、设备或授权材料。 */
+  clientRequestId?: string
   accountName?: string
   proxyId?: string
   fingerprintSeed?: string
@@ -64,6 +66,7 @@ export type AuthorizationStatus =
   | "browser-open"
   | "awaiting-callback"
   | "exchanging"
+  | "committing"
   | "completed"
   | "cancelled"
   | "denied"

@@ -342,8 +342,14 @@
 .win-top {
   display: flex;
   height: 52px;
+  flex-shrink: 0;
   align-items: center;
   padding: 0 18px;
+  -webkit-app-region: drag;
+}
+
+.win-top :is(button, a, input, select, textarea, [role="button"]) {
+  -webkit-app-region: no-drag;
 }
 
 .win-body {

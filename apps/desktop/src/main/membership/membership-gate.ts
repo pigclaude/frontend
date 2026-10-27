@@ -172,14 +172,18 @@ export class MembershipGate {
     }
   }
 
-  /** 显式新授权同步 supersede 原 owner，所有持久写入仍归统一管理器。 */
+  /** 新授权提交后清除原账号的可用视图，后续检查只代表新身份。 */
   async acceptAuthorization(
     record: OAuthDesktopSession,
     isCurrent: () => boolean = () => true,
   ): Promise<void> {
     this.#reads++
-    await this.#tokens.adopt(record, isCurrent)
-    this.#visibleOwner = this.#tokens.owner
+    const adopting = this.#tokens.adopt(record, isCurrent)
+    const owner = this.#tokens.owner
+    await adopting
+    if (!this.#tokens.isCurrent(owner)) return
+    this.#visibleOwner = owner
+    this.publish(this.identityView({ owner, record }))
   }
 
   /** 释放监听并同步拒绝迟到网络发布。 */

@@ -7,6 +7,9 @@ export function readAuthorizationRequest(value: unknown): AuthorizationRequest |
   if (!isRecord(value)) return null
   const purpose = value.purpose
   const mode = value.mode
+  const clientRequestId = readOptionalString(value.clientRequestId)
+  if (value.clientRequestId !== undefined && (!clientRequestId || clientRequestId.length > 100))
+    return null
   if (
     (purpose !== "pigclaude-login" && purpose !== "claude-account") ||
     (mode !== "login" && mode !== "register" && mode !== "authorize")
@@ -16,6 +19,7 @@ export function readAuthorizationRequest(value: unknown): AuthorizationRequest |
   return {
     purpose,
     mode,
+    clientRequestId,
     accountName: readOptionalString(value.accountName),
     proxyId: readOptionalString(value.proxyId),
     fingerprintSeed: readOptionalString(value.fingerprintSeed),

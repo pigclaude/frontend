@@ -4,6 +4,7 @@ import { WithdrawAuthorization } from "../components/withdraw-authorization"
 import { Icon } from "../components/icon"
 import { TrafficLights } from "../components/traffic-lights"
 import { Button } from "../components/ui/button"
+import { SigninPanel } from "../components/signin-panel"
 import type { LoginIntent, LoginState } from "../models/login-model"
 
 /** 浏览器授权登录页面 props。授权完成后由会员状态决定去向，页面不再提供成功页。 */
@@ -27,8 +28,15 @@ export function LoginScreen(props: LoginScreenProps) {
       <div className="win-top">
         <TrafficLights />
       </div>
-      <main className="win-body">
-        {state.view === "confirming" ? (
+      <main className="win-body signin-body">
+        {state.view === "committing" ? (
+          <SigninPanel
+            icon="spinner"
+            busy
+            title="正在保存授权…"
+            sub="保存完成后将确认会员状态，请稍候。"
+          />
+        ) : state.view === "confirming" ? (
           <ConfirmingPanel displayName={state.displayName} />
         ) : state.view === "error" ? (
           <ErrorPanel
@@ -62,7 +70,7 @@ function IdlePanel({
   const locked = Boolean(signingOut || onRetrySignOut)
   const hasNotices = Boolean(gateMessage || canWithdraw)
   return (
-    <Panel icon="snout" title="欢迎使用 PigClaude" sub="登录后即可使用你的会员">
+    <SigninPanel icon="snout" title="欢迎使用 PigClaude" sub="登录后即可使用你的会员">
       {hasNotices ? (
         <div className="signin-notices">
           {gateMessage ? (
@@ -108,7 +116,7 @@ function IdlePanel({
         <Icon name="external" />
         将在浏览器中打开 PigClaude 网站完成
       </p>
-    </Panel>
+    </SigninPanel>
   )
 }
 
@@ -149,7 +157,7 @@ function WaitingPanel({
 
   const verb = intent === "register" ? "注册" : "登录"
   return (
-    <Panel
+    <SigninPanel
       icon="browser"
       title="请在浏览器中继续"
       sub={`已为你打开 PigClaude 网站，${verb}并授权这台设备后会自动回到这里。`}
@@ -159,7 +167,7 @@ function WaitingPanel({
         {starting ? "正在打开浏览器…" : "等待浏览器授权"}
       </p>
       <div className="signin-actions">
-        <Button variant="secondary" size="block" disabled={starting} onClick={onReopen}>
+        <Button variant="primary" size="block" disabled={starting} onClick={onReopen}>
           重新打开浏览器
         </Button>
         <div className="signin-row">
@@ -178,16 +186,16 @@ function WaitingPanel({
           </Button>
         </div>
       </div>
-    </Panel>
+    </SigninPanel>
   )
 }
 
 function ConfirmingPanel({ displayName }: { displayName: string | null }) {
   return (
-    <Panel
+    <SigninPanel
       icon="spinner"
       busy
-      title={<span role="status">正在确认会员…</span>}
+      title="正在确认会员…"
       sub={displayName ? `${displayName} 已授权这台设备` : "浏览器授权已完成"}
     />
   )
@@ -203,7 +211,7 @@ function ErrorPanel({
   onBack: () => void
 }) {
   return (
-    <Panel
+    <SigninPanel
       icon="alert"
       tone="bad"
       title="浏览器授权未完成"
@@ -217,34 +225,7 @@ function ErrorPanel({
           返回
         </Button>
       </div>
-    </Panel>
-  )
-}
-
-function Panel({
-  icon,
-  tone,
-  busy,
-  title,
-  sub,
-  children,
-}: {
-  icon: string
-  tone?: "bad"
-  busy?: boolean
-  title: ReactNode
-  sub: string
-  children?: ReactNode
-}) {
-  return (
-    <section className="signin" aria-busy={busy || undefined}>
-      <div className="signin-mark" data-tone={tone} aria-hidden="true">
-        <Icon name={icon} className={busy ? "signin-spinner" : undefined} />
-      </div>
-      <h1>{title}</h1>
-      <p className="signin-sub">{sub}</p>
-      {children}
-    </section>
+    </SigninPanel>
   )
 }
 

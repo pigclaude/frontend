@@ -309,6 +309,7 @@ async function setupAuthorization(): Promise<void> {
     vault,
     deviceIdentity,
     onMembershipView: sendMembershipView,
+    onAuthorizationState: sendAuthorizationState,
     localStore,
   })
   desktopComposition = composition

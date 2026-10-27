@@ -1,4 +1,5 @@
 // 负责描述 PigClaude 登录/注册浏览器授权的纯状态机。
+import type { AuthorizationStartResult } from "../../../main/authorization/types"
 
 /** PigClaude 浏览器授权意图。保证登录和注册显示不同的浏览器文案。 */
 export type LoginIntent = "login" | "register"
@@ -7,7 +8,7 @@ export type LoginIntent = "login" | "register"
  * 浏览器授权登录页面状态。保证 renderer 只保存脱敏授权结果。
  * `confirming` 表示浏览器授权已完成、正在等会员结果；没有单独的成功页。
  */
-export type LoginView = "idle" | "starting" | "waiting" | "confirming" | "error"
+export type LoginView = "idle" | "starting" | "waiting" | "committing" | "confirming" | "error"
 
 /** PigClaude 登录/注册状态。保证 token 不进入 React 状态。 */
 export type LoginState = {
@@ -23,6 +24,7 @@ export type LoginState = {
 /** 浏览器授权登录状态变化事件。 */
 export type LoginEvent =
   | { type: "start-request"; intent: LoginIntent }
+  | { type: "committing" }
   | {
       type: "started"
       intent: LoginIntent
@@ -90,7 +92,27 @@ export function reduceLoginState(state: LoginState, event: LoginEvent): LoginSta
       error: null,
     }
   }
+  if (event.type === "committing") return { ...state, view: "committing", error: null }
   if (event.type === "failed") return { ...state, view: "error", error: event.error }
   if (event.type === "cancelled" || event.type === "reset") return createLoginState()
   return state
+}
+
+/** 启动回包只影响打开或等待阶段，不能把已提交、已失败或已确认的流程退回去。 */
+export function acceptLoginStartResult(
+  state: LoginState,
+  intent: LoginIntent,
+  result: AuthorizationStartResult,
+): LoginState {
+  const waiting = state.view === "waiting"
+  if (state.view !== "starting" && !waiting) return state
+  if (result.ok && waiting) return state
+  if (!result.ok) return reduceLoginState(state, { type: "failed", error: result.error })
+  return reduceLoginState(state, {
+    type: "started",
+    intent,
+    sessionId: result.sessionId,
+    authorizationUrl: result.authorizationUrl,
+    expiresAt: result.expiresAt,
+  })
 }

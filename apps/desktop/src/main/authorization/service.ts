@@ -47,6 +47,10 @@ export type AuthorizationServiceOptions = {
     session: AuthorizationSession
     token: AuthorizationToken
   }) => Promise<void>
+  /** 候选授权未提交时重新核验原登录，不把本机旧材料当作有效权限。 */
+  onAbandoned?: (session: AuthorizationSession) => Promise<void>
+  /** 保存临界区开始时通知页面；此后普通取消不打断原子写入。 */
+  onProgress?: (event: AuthorizationStateEvent) => void
   /** 独立 Claude provider 端口，不消费第一方 grant。 */
   claudeAuthorization?: ClaudeAuthorizationAdapter
   /** 仅执行本机写入；与现有 writer fence 同步，不得进行网络请求。 */
@@ -86,11 +90,14 @@ export class AuthorizationService {
   readonly #deviceIdentity: Pick<DeviceIdentityService, "read">
   readonly #deviceInfo: () => Promise<DeviceInfo>
   readonly #onCompleted: NonNullable<AuthorizationServiceOptions["onCompleted"]>
+  readonly #onAbandoned: AuthorizationServiceOptions["onAbandoned"]
+  readonly #onProgress: AuthorizationServiceOptions["onProgress"]
   readonly #claudeAuthorization: AuthorizationServiceOptions["claudeAuthorization"]
   readonly #commitAuthorization: AuthorizationServiceOptions["commitAuthorization"]
   readonly #now: () => number
   #activeSession: AuthorizationSession | null = null
   #pendingSession: AuthorizationSession | null = null
+  #committingSession: AuthorizationSession | null = null
   #generation = 0
   #suspended = false
   #localWrites: Promise<void> = Promise.resolve()
@@ -106,6 +113,8 @@ export class AuthorizationService {
     this.#deviceIdentity = options.deviceIdentity ?? new DeviceIdentityService()
     this.#deviceInfo = options.deviceInfo ?? readDeviceInfo
     this.#onCompleted = options.onCompleted ?? (async () => undefined)
+    this.#onAbandoned = options.onAbandoned
+    this.#onProgress = options.onProgress
     this.#now = options.now ?? Date.now
   }
 
@@ -115,6 +124,8 @@ export class AuthorizationService {
     redirectUri: string,
   ): Promise<{ sessionId: string; authorizationUrl: string; expiresAt: number }> {
     if (this.#suspended) throw new AuthorizationStartError("cancelled", "本机授权已暂停")
+    if (this.#committingSession)
+      throw new AuthorizationStartError("cancelled", "正在保存授权，请稍候")
     if (
       request.purpose === "claude-account" &&
       (!request.bridgeExit || request.bridgeExit !== request.daemonExit)
@@ -204,7 +215,12 @@ export class AuthorizationService {
     const callback = readCallback(parsed.searchParams)
     const validation = validateAuthorizationCallback(session, callback, this.#now())
     if (!validation.ok) {
-      if (validation.reason !== "state-mismatch") this.#activeSession = null
+      if (validation.reason !== "state-mismatch") {
+        this.#activeSession = null
+        this.#pendingSession = null
+        await this.#onAbandoned?.(session)
+        if (!this.isCurrent(generation)) return this.failureEvent(session, "cancelled")
+      }
       return this.failureEvent(session, validation.reason)
     }
 
@@ -237,6 +253,10 @@ export class AuthorizationService {
       }
       const writing = this.#localWrites.then(async () => {
         if (!this.isCurrent(generation)) return
+        if (token.oauthSession) {
+          this.#committingSession = session
+          this.#onProgress?.(this.commitEvent(session))
+        }
         if (!token.oauthSession && Object.keys(secret).length > 1) {
           await this.#vault.set(secretKey(token), JSON.stringify(secret))
         }
@@ -266,6 +286,8 @@ export class AuthorizationService {
         error !== null &&
         "code" in error &&
         error.code === "SAFE_STORAGE_UNAVAILABLE"
+      await this.#onAbandoned?.(session)
+      if (!this.isCurrent(generation)) return this.failureEvent(session, "cancelled")
       return this.failureEvent(
         session,
         "exchange-error",
@@ -273,18 +295,25 @@ export class AuthorizationService {
           ? "SAFE_STORAGE_UNAVAILABLE：系统安全存储不可用，授权未保存"
           : "授权码交换失败",
       )
+    } finally {
+      if (this.#committingSession === session) this.#committingSession = null
     }
   }
 
-  /** 取消当前会话并返回取消状态。 */
+  /** 按会话或 UI 请求标识取消对应候选，准备阶段也能立即失效。 */
   async cancel(sessionId: string): Promise<AuthorizationStateEvent> {
     const session = this.#pendingSession
-    if (!session || session.sessionId !== sessionId) {
+    if (
+      !session ||
+      (session.sessionId !== sessionId && session.request.clientRequestId !== sessionId)
+    ) {
       return unknownSessionEvent("cancelled", "授权会话已结束")
     }
+    if (this.#committingSession === session) return this.commitEvent(session)
     this.#generation++
     this.#activeSession = null
     this.#pendingSession = null
+    await this.#onAbandoned?.(session)
     return {
       sessionId: session.sessionId,
       purpose: session.request.purpose,
@@ -304,6 +333,7 @@ export class AuthorizationService {
     this.#suspended = true
     this.#activeSession = null
     this.#pendingSession = null
+    this.#committingSession = null
     return this.#localWrites
   }
 
@@ -314,6 +344,15 @@ export class AuthorizationService {
 
   private isCurrent(generation: number): boolean {
     return !this.#suspended && generation === this.#generation
+  }
+
+  private commitEvent(session: AuthorizationSession): AuthorizationStateEvent {
+    return {
+      sessionId: session.sessionId,
+      purpose: session.request.purpose,
+      mode: session.request.mode,
+      status: "committing",
+    }
   }
 
   private failureEvent(

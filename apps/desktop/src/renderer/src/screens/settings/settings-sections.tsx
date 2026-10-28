@@ -8,6 +8,7 @@ import { AboutSettings, DataSettings, NetworkSettings } from "./settings-system-
 
 /** 设置页面 props。 */
 export type SettingsScreenProps = {
+  withdrawContextId?: string
   screen: Screen
   appearance: AppearanceController
   onNavigate: (screen: Screen) => void
@@ -15,8 +16,15 @@ export type SettingsScreenProps = {
 }
 
 /** 根据当前设置子页绘制原型对应的设置内容；未知子页显示关于。 */
-export function SettingsScreen({ screen, appearance, onNavigate, onLogout }: SettingsScreenProps) {
-  if (screen === "profile") return <ProfileSettings onLogout={onLogout} />
+export function SettingsScreen({
+  screen,
+  appearance,
+  onNavigate,
+  onLogout,
+  withdrawContextId,
+}: SettingsScreenProps) {
+  if (screen === "profile")
+    return <ProfileSettings onLogout={onLogout} withdrawContextId={withdrawContextId} />
   if (screen === "switching") return <SwitchingSettings onNavigate={onNavigate} />
   if (screen === "general") return <GeneralSettings />
   if (screen === "appearance") return <AppearancePage appearance={appearance} />

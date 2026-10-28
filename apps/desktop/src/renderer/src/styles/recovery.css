@@ -24,3 +24,16 @@
   gap: 4px;
   margin-top: 12px;
 }
+
+.recovery-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.withdrawal-dialog.dialog {
+  width: min(440px, calc(100vw - 32px));
+}
+.withdrawal-dialog .dialog-body {
+  overflow-wrap: anywhere;
+}

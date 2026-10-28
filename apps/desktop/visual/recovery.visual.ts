@@ -12,11 +12,12 @@ const cases = [
 for (const width of [420, 1200]) {
   for (const theme of ["light", "dark"]) {
     for (const glass of [0, 1]) {
-      test(`recovery ${width} ${theme} glass=${glass}`, async ({ context }) => {
+      test(`recovery ${width} ${theme} glass=${glass}`, async ({ context }, testInfo) => {
         for (const { state, status, title } of cases) {
           const page = await context.newPage()
           await page.setViewportSize({ width, height: width === 420 ? 720 : 800 })
           const view: MembershipView = {
+            actionContextId: "visual-context",
             startupPhase: "settled",
             revision: 1,
             state,
@@ -41,9 +42,8 @@ for (const width of [420, 1200]) {
               ? {
                   recovery: {
                     status,
-                    contextId: "visual-context",
                     grantExpiresAt: "2030-01-01T00:00:00Z",
-                    canRevoke: false,
+                    canRevoke: true,
                   },
                 }
               : {}),
@@ -54,6 +54,14 @@ for (const width of [420, 1200]) {
               platform: "darwin",
               membership: {
                 openWebsite: async () => undefined,
+                prepareWithdrawal: async () => ({
+                  confirmationId: "visual-confirmation",
+                  account: {
+                    nickname: "恢复测试用户",
+                    email: "long-address-for-layout-check@example.test",
+                  },
+                  expiresAt: "2030-01-01T00:00:00Z",
+                }),
                 inspect: async () => membership,
                 subscribe: () => () => {},
                 withdraw: async () => membership,
@@ -69,6 +77,22 @@ for (const width of [420, 1200]) {
           await check.scrollIntoViewIfNeeded()
           await expect(check).toBeInViewport()
           expect(await page.evaluate(() => document.body.scrollWidth <= innerWidth)).toBe(true)
+          if (status) {
+            await page.getByRole("button", { name: "更多操作", exact: true }).click()
+            await page.getByRole("menuitem", { name: "撤销本机授权", exact: true }).click()
+            const dialog = page.getByRole("dialog")
+            await expect(dialog).toBeVisible()
+            await expect(dialog.getByText(/全部相关桌面授权/)).toBeVisible()
+            await expect(
+              dialog.getByRole("button", { name: "确认撤销", exact: true }),
+            ).toBeInViewport()
+            const bounds = await dialog.boundingBox()
+            expect(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width).toBe(true)
+            if (status === "expired")
+              await page.screenshot({ path: testInfo.outputPath("withdrawal-confirmation.png") })
+            await dialog.getByRole("button", { name: "取消", exact: true }).click()
+            await expect(dialog).not.toBeVisible()
+          }
           await page.close()
         }
       })

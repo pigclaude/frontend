@@ -11,7 +11,13 @@ import { RangeControl } from "./setting-controls"
 import { SettingPage, SettingRow, SettingSection } from "./setting-page"
 
 /** 我的账户：pigclaude 使用权限，不涉及 Claude 订阅账号。 */
-export function ProfileSettings({ onLogout }: { onLogout: () => void }) {
+export function ProfileSettings({
+  onLogout,
+  withdrawContextId,
+}: {
+  onLogout: () => void
+  withdrawContextId?: string
+}) {
   const toast = useToast()
   return (
     <SettingPage title="我的账户" sub="登录 pigclaude 的账户，只用来确认你能不能使用这套软件">
@@ -48,7 +54,7 @@ export function ProfileSettings({ onLogout }: { onLogout: () => void }) {
         Claude 账号、凭据、代理和指纹只保存在这台电脑上，不会上传到你的 pigclaude 账户。
       </p>
       <div className="setup-actions">
-        <WithdrawAuthorization />
+        <WithdrawAuthorization contextId={withdrawContextId} />
         <Button onClick={onLogout}>
           <Icon name="exit" />
           退出登录

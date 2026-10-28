@@ -11,6 +11,8 @@ import {
 } from "./api/pigclaude-api-client"
 import { CredentialRefresher } from "./claude/credential-refresher"
 import { SubscriptionOAuth } from "./claude/subscription-oauth"
+import type { DeviceWithdrawalConfirmation } from "@pigclaude/contracts/desktop-membership"
+import { DeviceWithdrawalService } from "./membership/device-withdrawal"
 import { MembershipGate } from "./membership/membership-gate"
 import { AccountChooser } from "./runtime/account-chooser"
 import { LocalRuntime } from "./runtime/local-runtime"
@@ -41,6 +43,10 @@ export type DesktopCompositionOptions = {
 }
 /** composition 提供脱敏服务与本机退出，不跨 profile 或 Claude namespace 清理。 */
 export type DesktopComposition = {
+  /** 准备绑定当前可信身份的一次性撤销确认，不发出撤销请求。 */
+  prepareWithdrawal: (contextId: string) => Promise<DeviceWithdrawalConfirmation>
+  /** 只消费主进程生成的确认，不能自报账号或设备。 */
+  withdraw: (confirmationId: string) => Promise<MembershipView>
   /** 仅接收界面上下文标识，不接收用户、设备、token 或任意 URL。 */
   openMembershipWebsite: (contextId: string) => Promise<void>
   api: PigclaudeApi
@@ -74,6 +80,7 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
     })
   const tokenManager = new OAuthTokenManager({ api, vault: options.vault, now })
   const membershipGate = new MembershipGate({ api, vault: options.vault, tokenManager, now })
+  const withdrawal = new DeviceWithdrawalService(membershipGate, now)
   const unsubscribe = options.onMembershipView
     ? membershipGate.subscribe(options.onMembershipView)
     : () => undefined
@@ -198,19 +205,21 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
   let disposed = false
   let signingOut: Promise<MembershipView> | null = null
   return {
+    prepareWithdrawal: (contextId) => withdrawal.prepare(contextId),
+    withdraw: (confirmationId) => withdrawal.confirm(confirmationId),
     openMembershipWebsite: async (contextId) => {
       if (!options.openWebsite || !api.createMembershipTarget)
         throw new Error("MEMBERSHIP_WEBSITE_UNAVAILABLE")
-      const captured = await membershipGate.captureRecoveryAction(contextId)
+      const captured = await membershipGate.captureAccountAction(contextId)
       const target = await tokenManager.run(async (current) => {
         if (
           current.owner !== captured.owner ||
-          !membershipGate.matchesRecoveryContext(contextId, captured.owner)
+          !membershipGate.matchesAccountContext(contextId, captured.owner)
         )
           throw new Error("RECOVERY_CONTEXT_CHANGED")
         return api.createMembershipTarget!(current.record.accessToken)
       })
-      if (!membershipGate.matchesRecoveryContext(contextId, captured.owner))
+      if (!membershipGate.matchesAccountContext(contextId, captured.owner))
         throw new Error("RECOVERY_CONTEXT_CHANGED")
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target.targetId))
         throw new Error("INVALID_RECOVERY_TARGET")

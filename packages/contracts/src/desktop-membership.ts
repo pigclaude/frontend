@@ -41,6 +41,13 @@ export type DesktopRecoverySnapshot = {
   canRevoke: boolean
 }
 
+/** 主进程准备的短期撤销确认；只返回展示摘要及一次性关联标识。 */
+export type DeviceWithdrawalConfirmation = {
+  confirmationId: string
+  account: { nickname: string; email: string }
+  expiresAt: string
+}
+
 /** 当前 OAuth2 主进程秘密记录；没有旧 Cookie/vault 格式导入语义。 */
 export type OAuthDesktopSession = {
   schemaVersion: 1

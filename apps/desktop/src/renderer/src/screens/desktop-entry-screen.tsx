@@ -23,18 +23,18 @@ export function DesktopEntryScreen({
     login.onRetrySignOut ||
     membership.state === "signed_out"
   )
-    return <LoginScreen {...login} />
+    return <LoginScreen {...login} withdrawContextId={membership.actionContextId} />
   async function inspect() {
     const inspect = window.pigclaude?.membership?.inspect
     if (!inspect) throw new Error("MEMBERSHIP_SERVICE_UNAVAILABLE")
     const result = await inspect()
     if (result) onMembership(result)
   }
-  const contextId = membership.recovery?.contextId
+  const contextId = membership.actionContextId
   const openWebsite = window.pigclaude?.membership?.openWebsite
   return (
     <RecoveryScreen
-      key={membership.recovery?.contextId ?? membership.account?.userId ?? membership.state}
+      key={membership.actionContextId ?? membership.account?.userId ?? membership.state}
       membership={membership}
       onCheck={inspect}
       onOpenWebsite={contextId && openWebsite ? () => openWebsite(contextId) : undefined}

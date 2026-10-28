@@ -149,8 +149,8 @@ export function RecoveryScreen({
             </div>
           )}
           {canWithdraw && (
-            <div className="signin-notices signin-withdraw">
-              <WithdrawAuthorization />
+            <div className="recovery-more">
+              <WithdrawAuthorization contextId={view.actionContextId} more />
             </div>
           )}
           {info.authorize && (

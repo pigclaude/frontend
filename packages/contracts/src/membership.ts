@@ -21,8 +21,6 @@ export interface TierView {
 
 /** 独立恢复读取的事实只解释原因，不能据此授予业务使用权限。 */
 export interface MembershipRecovery {
-  /** 主进程逻辑会话的界面动作关联标识，不作为任何服务端权限。 */
-  contextId?: string
   status: "none" | "active" | "expired" | "revoked"
   grantExpiresAt: string
   canRevoke: boolean
@@ -30,6 +28,8 @@ export interface MembershipRecovery {
 
 /** renderer 使用的会员状态快照，金额和版本字段保持服务端 decimal string 语义。 */
 export interface MembershipView {
+  /** 主进程当前账号与逻辑会话的动作关联，不作为服务端权限。 */
+  actionContextId?: string
   recovery?: MembershipRecovery
   startupPhase: "checking" | "settled"
   revision: number

@@ -277,6 +277,7 @@ export function MainWindow({
         ) : null}
         {inSettings && !["accounts", "proxies", "usage", "environment"].includes(screen) ? (
           <SettingsScreen
+            withdrawContextId={membership.actionContextId}
             key={screen}
             screen={screen}
             appearance={appearance}

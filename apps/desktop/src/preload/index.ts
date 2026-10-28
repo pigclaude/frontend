@@ -45,8 +45,12 @@ export type PigclaudeBridge = {
     openWebsite?: (contextId: string) => Promise<void>
     inspect: () => Promise<MembershipView | null>
     signOut: () => Promise<MembershipView>
-    /** 撤销当前可信 token 绑定的设备关系，不接收自报身份。 */
-    withdraw: () => Promise<MembershipView>
+    /** 只从当前主进程界面关联准备短期确认。 */
+    prepareWithdrawal: (
+      contextId: string,
+    ) => Promise<import("@pigclaude/contracts/desktop-membership").DeviceWithdrawalConfirmation>
+    /** 消费主进程确认，不接收自报身份。 */
+    withdraw: (confirmationId: string) => Promise<MembershipView>
     subscribe: (listener: (view: MembershipView) => void) => () => void
   }
   claudeAccounts: {
@@ -108,7 +112,10 @@ const bridge: PigclaudeBridge = {
     openWebsite: (contextId) => ipcRenderer.invoke("pigclaude:membership-open-website", contextId),
     inspect: () => ipcRenderer.invoke("pigclaude:membership-inspect"),
     signOut: () => ipcRenderer.invoke("pigclaude:membership-sign-out"),
-    withdraw: () => ipcRenderer.invoke("pigclaude:membership-withdraw"),
+    prepareWithdrawal: (contextId) =>
+      ipcRenderer.invoke("pigclaude:membership-prepare-withdrawal", contextId),
+    withdraw: (confirmationId) =>
+      ipcRenderer.invoke("pigclaude:membership-withdraw", confirmationId),
     subscribe: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, value: MembershipView) => listener(value)
       ipcRenderer.on("pigclaude:membership-state", handler)

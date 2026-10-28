@@ -35,7 +35,7 @@ it("opens only the configured website recovery entry without native credentials 
   })
   try {
     const view = await composition.resume()
-    const context = view.recovery?.contextId
+    const context = view.actionContextId
     expect(context).toEqual(expect.any(String))
     await composition.openMembershipWebsite(context ?? "")
     expect(openWebsite).toHaveBeenCalledWith(
@@ -85,7 +85,7 @@ async function websiteCase() {
       }),
     }),
   })
-  const context = (await composition.resume()).recovery?.contextId ?? ""
+  const context = (await composition.resume()).actionContextId ?? ""
   return { composition, context, opened, create, entered, response }
 }
 const target = {

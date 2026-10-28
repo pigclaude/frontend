@@ -34,6 +34,7 @@ import { DeviceIdentityService } from "./device-identity"
 import { readDeviceInfo } from "./device-identity/device-info"
 import { readDockIconDataUrl } from "./dock-icon"
 import { configureRuntimeProfile } from "./runtime-profile"
+import { registerMembershipIpc } from "./membership/ipc"
 import { readDesktopRuntimeEndpoints } from "./runtime-endpoints"
 import { WorkspaceStore } from "./runtime/workspace-store"
 import { resolveClaudeBinaryPath } from "./session/claude-binary"
@@ -153,34 +154,12 @@ function registerIpcHandlers(): void {
     await shell.openExternal(value)
   })
 
-  ipcMain.handle("pigclaude:membership-inspect", async () => {
-    if (!desktopComposition) return null
-    return desktopComposition.membershipGate.inspect()
-  })
-  ipcMain.handle("pigclaude:membership-subscribe", async () => {
-    return desktopComposition?.membershipGate.view() ?? null
-  })
-  ipcMain.handle("pigclaude:membership-open-website", async (event, contextId: unknown) => {
-    if (!isTrustedSender(event) || typeof contextId !== "string" || contextId.length > 100)
-      throw new Error("UNTRUSTED_MEMBERSHIP_REQUEST")
-    if (!desktopComposition) throw new Error("桌面授权服务尚未准备好")
-    await desktopComposition.openMembershipWebsite(contextId)
-  })
-  ipcMain.handle("pigclaude:membership-withdraw", async (event, value: unknown) => {
-    if (
-      !mainWindow ||
-      event.sender !== mainWindow.webContents ||
-      event.senderFrame !== mainWindow.webContents.mainFrame ||
-      value !== undefined
-    )
-      throw new Error("UNTRUSTED_MEMBERSHIP_REQUEST")
-    if (!desktopComposition) throw new Error("桌面授权服务尚未准备好")
-    return desktopComposition.membershipGate.revoke()
-  })
-  ipcMain.handle("pigclaude:membership-sign-out", async () => {
-    if (!desktopComposition) throw new Error("桌面授权服务尚未准备好")
-    pendingCallbackUrls = []
-    return desktopComposition.signOut()
+  registerMembershipIpc({
+    getComposition: () => desktopComposition,
+    isTrusted: isTrustedSender,
+    onSignOut: () => {
+      pendingCallbackUrls = []
+    },
   })
 
   ipcMain.handle("pigclaude:authorization-start", async (event, value: unknown) => {

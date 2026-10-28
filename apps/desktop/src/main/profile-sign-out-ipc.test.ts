@@ -337,7 +337,20 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
       ),
     ).rejects.toThrow("UNTRUSTED_MEMBERSHIP_REQUEST")
     expect(withdrawals).toBe(0)
-    expect(await bridge.membership.withdraw()).toMatchObject({ state: "signed_out" })
+    const currentView = await bridge.membership.inspect()
+    const context = currentView?.actionContextId
+    if (!context) throw new Error("missing current context")
+    await expect(
+      handler({
+        sender: fixture.windows[0]!.webContents,
+        senderFrame: fixture.windows[0]!.webContents.mainFrame,
+      }),
+    ).rejects.toThrow("UNTRUSTED_MEMBERSHIP_REQUEST")
+    const confirmation = await bridge.membership.prepareWithdrawal(context)
+    expect(withdrawals).toBe(0)
+    expect(await bridge.membership.withdraw(confirmation.confirmationId)).toMatchObject({
+      state: "signed_out",
+    })
     expect(withdrawals).toBe(1)
     expect(await vault.get("authorization:claude-account:other-account")).toBe("old-claude-secret")
     fixture.appEvents.get("before-quit")?.({ preventDefault: () => undefined })

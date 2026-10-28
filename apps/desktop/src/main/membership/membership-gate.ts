@@ -39,7 +39,7 @@ export class MembershipGate {
   #reads = 0
   #disposed = false
   #visibleOwner: number | null = null
-  #recoveryContext: { owner: number; id: string } | null = null
+  #actionContext: { owner: number; id: string } | null = null
 
   /** 构建实时会员门禁；独立端口测试不隐式模拟刷新服务。 */
   constructor(options: MembershipGateOptions) {
@@ -160,42 +160,71 @@ export class MembershipGate {
   }
 
   /** 只捕获当前已展示账号的动作上下文，拒绝迟到界面替新会话办理会员。 */
-  async captureRecoveryAction(contextId: string): Promise<OAuthSnapshot> {
+  async captureAccountAction(contextId: string): Promise<OAuthSnapshot> {
     const owner = this.#tokens.owner
-    if (!this.matchesRecoveryContext(contextId, owner))
+    if (!this.matchesAccountContext(contextId, owner))
       throw new PigclaudeApiError("RECOVERY_CONTEXT_CHANGED", 0)
     const snapshot = await this.#tokens.snapshot()
     if (
       !snapshot ||
-      !this.matchesRecoveryContext(contextId, owner) ||
+      !this.matchesAccountContext(contextId, owner) ||
       snapshot.record.userId !== this.#view.account?.userId
     )
       throw new PigclaudeApiError("RECOVERY_CONTEXT_CHANGED", 0)
     return snapshot
   }
 
+  /** 为确认绑定当前账号与设备关系，合法同族刷新后仍核对完整身份和撤销范围。 */
+  async prepareRevocation(contextId: string): Promise<OAuthSnapshot> {
+    const captured = await this.captureAccountAction(contextId)
+    const verified = await this.#tokens.run(async (current) => {
+      if (!sameAuthorizationTarget(current, captured))
+        throw new PigclaudeApiError("WITHDRAWAL_TARGET_CHANGED", 0)
+      await this.verifyIdentity(current)
+      if (!current.record.scope.split(" ").includes("device:revoke"))
+        throw new PigclaudeApiError("insufficient_scope", 403)
+      return current
+    })
+    if (!this.matchesAccountContext(contextId, captured.owner))
+      throw new PigclaudeApiError("WITHDRAWAL_TARGET_CHANGED", 0)
+    return verified
+  }
+
   /** 同族合法刷新保留上下文，新 grant、退出和关系失效立即使旧上下文失效。 */
-  matchesRecoveryContext(contextId: string, owner: number): boolean {
+  matchesAccountContext(contextId: string, owner: number): boolean {
     return (
       !this.#disposed &&
       this.#tokens.isCurrent(owner) &&
       this.#visibleOwner === owner &&
-      this.#recoveryContext?.owner === owner &&
-      this.#recoveryContext.id === contextId &&
-      this.#view.recovery?.contextId === contextId
+      this.#actionContext?.owner === owner &&
+      this.#actionContext.id === contextId &&
+      this.#view.actionContextId === contextId
     )
   }
 
   /** 撤销原逻辑会话的当前关系；同族刷新不取消结果，新 grant 则隔离。 */
-  async revoke(): Promise<MembershipView> {
+  async revoke(expected?: OAuthSnapshot): Promise<MembershipView> {
+    const stale = (): MembershipView => {
+      if (expected) throw new PigclaudeApiError("WITHDRAWAL_TARGET_CHANGED", 0)
+      return this.view()
+    }
+    if (expected && !this.#tokens.isCurrent(expected.owner))
+      throw new PigclaudeApiError("WITHDRAWAL_TARGET_CHANGED", 0)
     const owner = this.#tokens.owner
-    if (this.#visibleOwner !== null && this.#visibleOwner !== owner) return this.view()
-    if (this.#disposed) return this.view()
+    if (this.#visibleOwner !== null && this.#visibleOwner !== owner) return stale()
+    if (this.#disposed) return stale()
     try {
       const snapshot = await this.#tokens.snapshot()
-      if (!this.#tokens.isCurrent(owner)) return this.view()
-      if (!snapshot) return this.clearSession(owner)
+      if (!this.#tokens.isCurrent(owner)) return stale()
+      if (!snapshot) {
+        if (expected) throw new PigclaudeApiError("WITHDRAWAL_TARGET_CHANGED", 0)
+        return this.clearSession(owner)
+      }
+      if (expected && !sameAuthorizationTarget(snapshot, expected))
+        throw new PigclaudeApiError("WITHDRAWAL_TARGET_CHANGED", 0)
       await this.#tokens.run(async (current) => {
+        if (expected && !sameAuthorizationTarget(current, expected))
+          throw new PigclaudeApiError("WITHDRAWAL_TARGET_CHANGED", 0)
         await this.verifyIdentity(current)
         if (!current.record.scope.split(" ").includes("device:revoke"))
           throw new PigclaudeApiError("insufficient_scope", 403)
@@ -203,10 +232,10 @@ export class MembershipGate {
           throw new PigclaudeApiError("AUTHORIZATION_CANCELLED", 0)
         await this.#api.revokeDeviceBinding(current.record.accessToken)
       })
-      if (!this.#tokens.isCurrent(owner)) return this.view()
+      if (!this.#tokens.isCurrent(owner)) return stale()
       return this.clearSession(owner)
     } catch (error: unknown) {
-      if (!this.#tokens.isCurrent(owner)) return this.view()
+      if (!this.#tokens.isCurrent(owner)) return stale()
       const code = codeOf(error)
       if (code === "ACCOUNT_BANNED" || code === "DEVICE_REVOKED")
         return this.clearSession(owner, code)
@@ -354,11 +383,12 @@ export class MembershipGate {
     if (this.#disposed) return this.view()
     this.#revision = Math.max(this.#revision + 1, view.revision)
     this.#view = { ...view, revision: this.#revision, startupPhase: "settled" }
-    if (this.#view.recovery) {
+    if (this.#view.account && this.#visibleOwner === this.#tokens.owner) {
       const owner = this.#tokens.owner
-      if (this.#recoveryContext?.owner !== owner)
-        this.#recoveryContext = { owner, id: randomUUID() }
-      this.#view.recovery = { ...this.#view.recovery, contextId: this.#recoveryContext.id }
+      if (this.#actionContext?.owner !== owner) this.#actionContext = { owner, id: randomUUID() }
+      this.#view.actionContextId = this.#actionContext.id
+    } else {
+      delete this.#view.actionContextId
     }
     const safe = this.view()
     for (const listener of this.#listeners) listener(safe)
@@ -384,4 +414,15 @@ function initialView(): MembershipView {
 }
 function signedOutView(): MembershipView {
   return { ...initialView(), startupPhase: "settled", state: "signed_out" }
+}
+
+// 逻辑会话必须相同；访问凭据轮换不改变确认对象，账号、设备或代次变化则失效。
+function sameAuthorizationTarget(a: OAuthSnapshot, b: OAuthSnapshot): boolean {
+  return (
+    a.owner === b.owner &&
+    a.record.userId === b.record.userId &&
+    a.record.deviceId === b.record.deviceId &&
+    a.record.bindingEpoch === b.record.bindingEpoch &&
+    a.record.authVersion === b.record.authVersion
+  )
 }

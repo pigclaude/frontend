@@ -32,7 +32,12 @@ interface PigclaudeBridge {
     openWebsite?: (contextId: string) => Promise<void>
     inspect: () => Promise<import("@pigclaude/contracts/membership").MembershipView | null>
     signOut: () => Promise<import("@pigclaude/contracts/membership").MembershipView>
-    withdraw: () => Promise<import("@pigclaude/contracts/membership").MembershipView>
+    prepareWithdrawal?: (
+      contextId: string,
+    ) => Promise<import("@pigclaude/contracts/desktop-membership").DeviceWithdrawalConfirmation>
+    withdraw: (
+      confirmationId: string,
+    ) => Promise<import("@pigclaude/contracts/membership").MembershipView>
     subscribe: (
       listener: (view: import("@pigclaude/contracts/membership").MembershipView) => void,
     ) => () => void

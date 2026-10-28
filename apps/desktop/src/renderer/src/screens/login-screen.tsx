@@ -12,6 +12,7 @@ export type LoginScreenProps = {
   state: LoginState
   gateMessage?: string
   signingOut?: boolean
+  withdrawContextId?: string
   canWithdraw?: boolean
   onRetrySignOut?: () => void
   onAuthorize: (intent: LoginIntent) => void
@@ -64,6 +65,7 @@ function IdlePanel({
   gateMessage,
   signingOut,
   canWithdraw,
+  withdrawContextId,
   onRetrySignOut,
   onAuthorize,
 }: LoginScreenProps) {
@@ -89,7 +91,7 @@ function IdlePanel({
           ) : null}
           {canWithdraw ? (
             <div className="signin-withdraw">
-              <WithdrawAuthorization />
+              <WithdrawAuthorization contextId={withdrawContextId} />
             </div>
           ) : null}
         </div>

@@ -380,10 +380,10 @@ async function setupAuthorization(): Promise<void> {
   if (app.isPackaged) app.setAsDefaultProtocolClient("pigclaude")
 }
 
-async function handleCallbackUrl(url: string): Promise<void> {
+async function handleCallbackUrl(url: string): Promise<AuthorizationStateEvent | null> {
   if (!authorizationService) {
     pendingCallbackUrls.push(url)
-    return
+    return null
   }
   const session = authorizationService.getActiveSession()
   if (session) {
@@ -399,6 +399,7 @@ async function handleCallbackUrl(url: string): Promise<void> {
   sendAuthorizationState(result)
   mainWindow?.show()
   mainWindow?.focus()
+  return result
 }
 
 function sendAuthorizationState(event: AuthorizationStateEvent): void {

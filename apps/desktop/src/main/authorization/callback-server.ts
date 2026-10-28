@@ -1,10 +1,11 @@
 // 负责在回环地址接收浏览器授权回调，并把结果交给主进程服务。
 import { createServer } from "node:http"
 import { sendCompletionPage } from "./completion-page"
+import type { AuthorizationStateEvent } from "./types"
 
-/** 启动只绑定 127.0.0.1 的回调服务并返回授权 redirect URI。 */
+/** 只绑定本机；仅主进程明确完成授权时返回成功页，不把 Promise 完成当作授权成功。 */
 export async function createCallbackServer(
-  onCallback: (url: string) => Promise<void>,
+  onCallback: (url: string) => Promise<Pick<AuthorizationStateEvent, "status"> | null>,
 ): Promise<{ redirectUri: string; close: () => Promise<void> }> {
   const server = createServer((request, response) => {
     const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1")
@@ -17,11 +18,20 @@ export async function createCallbackServer(
     const port = address && typeof address !== "string" ? address.port : 0
     const callbackUrl = `http://127.0.0.1:${port}${requestUrl.pathname}${requestUrl.search}`
     void onCallback(callbackUrl).then(
-      () => {
+      (result) => {
+        const completed = result?.status === "completed"
         sendCompletionPage(response, {
-          kind: "success",
-          title: "授权完成",
-          message: "PigClaude 已收到授权，回到应用即可继续使用。",
+          kind: completed ? "success" : "error",
+          title: completed
+            ? "授权完成"
+            : result?.status === "cancelled"
+              ? "授权已取消"
+              : "授权未完成",
+          message: completed
+            ? "PigClaude 已完成授权，请回到应用查看结果。"
+            : result?.status === "denied"
+              ? "本次授权已取消或未获批准。请回到 PigClaude 查看当前状态。"
+              : "本次授权尚未完成。请回到 PigClaude 查看当前状态，或重新发起授权。",
           hint: "这个标签页可以直接关闭",
         })
       },

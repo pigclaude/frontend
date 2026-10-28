@@ -1,8 +1,9 @@
-// 负责贯通真实入口、composition、IPC 与 preload，在临时安全仓库中验证本机退出。
+// 负责贯通真实入口、回环 HTTP、composition、IPC 与 preload，验证授权结果及本机退出。
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, it, vi } from "vitest"
+import type { AuthorizationStateEvent } from "./authorization/types"
 import type { PigclaudeBridge } from "../preload/index"
 import { FileSecretVault } from "./secret-vault"
 import { fixtureSafeStorage, seedProfile } from "./testing/profile-fixture"
@@ -10,6 +11,9 @@ import { fixtureSafeStorage, seedProfile } from "./testing/profile-fixture"
 const fixture = vi.hoisted(() => ({
   directory: "",
   contextFailure: false,
+  exchangeFailure: false,
+  redirectUri: "",
+  closeCallback: async (): Promise<void> => undefined,
   opening: undefined as ((url: string) => Promise<void>) | undefined,
   bridge: undefined as unknown,
   handlers: new Map<
@@ -26,7 +30,7 @@ const fixture = vi.hoisted(() => ({
   appEvents: new Map<string, (event: { preventDefault: () => void }) => void>(),
   powerEvents: new Map<string, () => void>(),
   ready: (): void => undefined,
-  callback: async (url: string): Promise<void> => {
+  callback: async (url: string): Promise<Pick<AuthorizationStateEvent, "status"> | null> => {
     throw new Error(`Callback invoked before setup: ${url}`)
   },
 }))
@@ -114,12 +118,19 @@ vi.mock("./runtime-endpoints", () => ({
     authOrigin: "http://127.0.0.1:8788",
   }),
 }))
-vi.mock("./authorization/callback-server", () => ({
-  createCallbackServer: async (handler: (url: string) => Promise<void>) => {
-    fixture.callback = handler
-    return { redirectUri: "http://127.0.0.1:43123/oauth/callback", close: async () => {} }
-  },
-}))
+vi.mock("./authorization/callback-server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./authorization/callback-server")>()
+  return {
+    createCallbackServer: async (handler: Parameters<typeof actual.createCallbackServer>[0]) => {
+      fixture.callback = handler
+      const server = await actual.createCallbackServer(handler)
+      fixture.redirectUri = server.redirectUri
+      let closing: Promise<void> | undefined
+      fixture.closeCallback = () => (closing ??= server.close())
+      return { redirectUri: server.redirectUri, close: fixture.closeCallback }
+    },
+  }
+})
 
 it("preload sign-out clears real vault keys and broadcasts authoritative signed_out without remote logout", async () => {
   const directory = await mkdtemp(join(tmpdir(), "pigclaude-sign-out-ipc-"))
@@ -134,6 +145,7 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     deviceFingerprintHash: "fingerprint-fixture",
   })
   await vault.set("device:identity", identity)
+  const localFetch = globalThis.fetch
   let recoveryReads = 0
   let inactive = false
   let withdrawals = 0
@@ -208,7 +220,8 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
         expiresAt: new Date(Date.now() + 600_000).toISOString(),
       })
     }
-    if (url.pathname === "/oauth2/token")
+    if (url.pathname === "/oauth2/token") {
+      if (fixture.exchangeFailure) return Response.json({ error: "server_error" }, { status: 500 })
       return Response.json({
         access_token: "ipc-access",
         refresh_token: "ipc-refresh",
@@ -216,6 +229,7 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
         expires_in: 300,
         scope: "user:read membership:read device:inspect device:revoke",
       })
+    }
     throw new Error(`Unexpected remote operation: ${url.pathname}`)
   })
   try {
@@ -229,6 +243,30 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     const unsubscribe = bridge.membership.subscribe((view) => events.push(view.state))
 
     const preserved = await vault.get("membership:session")
+    const cancelled = await bridge.authorization.start({
+      purpose: "pigclaude-login",
+      mode: "switch",
+    })
+    if (!cancelled.ok) throw new Error("fixture cancellation did not start")
+    const cancelledState = new URL(cancelled.authorizationUrl).searchParams.get("state")
+    const cancellationPage = await (
+      await localFetch(`${fixture.redirectUri}?error=access_denied&state=${cancelledState}`)
+    ).text()
+    expect(cancellationPage).toContain("授权未完成")
+    expect(cancellationPage).not.toContain("授权完成")
+    expect(await vault.get("membership:session")).toBe(preserved)
+
+    const failed = await bridge.authorization.start({ purpose: "pigclaude-login", mode: "switch" })
+    if (!failed.ok) throw new Error("fixture failure did not start")
+    fixture.exchangeFailure = true
+    const failedCodeState = new URL(failed.authorizationUrl).searchParams.get("state")
+    const failurePage = await (
+      await localFetch(`${fixture.redirectUri}?code=fixture&state=${failedCodeState}`)
+    ).text()
+    expect(failurePage).toContain("授权未完成")
+    expect(failurePage).not.toContain("授权完成")
+    expect(await vault.get("membership:session")).toBe(preserved)
+    fixture.exchangeFailure = false
     let failedUrl = ""
     fixture.opening = async (url) => {
       failedUrl = url
@@ -242,9 +280,7 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
       }),
     ).toMatchObject({ ok: false })
     const failedState = new URL(failedUrl).searchParams.get("state")
-    await fixture.callback(
-      `http://127.0.0.1:43123/oauth/callback?code=fixture&state=${failedState}`,
-    )
+    await fixture.callback(`${fixture.redirectUri}?code=fixture&state=${failedState}`)
     expect(await vault.get("membership:session")).toBe(preserved)
     fixture.opening = async () => undefined
     const beforeFailureReads = recoveryReads
@@ -291,7 +327,11 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     expect(await oldOpening).toMatchObject({ ok: false })
     if (!freshOpening.ok) throw new Error("fresh launch failed")
     const freshState = new URL(freshOpening.authorizationUrl).searchParams.get("state")
-    await fixture.callback(`http://127.0.0.1:43123/oauth/callback?code=fixture&state=${freshState}`)
+    const completedPage = await (
+      await localFetch(`${fixture.redirectUri}?code=fixture&state=${freshState}`)
+    ).text()
+    expect(completedPage).toContain("授权完成")
+    expect(completedPage).not.toContain("授权未完成")
     expect(await vault.get("membership:session")).toContain("ipc-refresh")
     fixture.opening = async () => undefined
 
@@ -307,7 +347,14 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     expect(started.ok).toBe(true)
     if (!started.ok) throw new Error("Fixture authorization did not start")
     const state = new URL(started.authorizationUrl).searchParams.get("state")
-    await fixture.callback(`http://127.0.0.1:43123/oauth/callback?code=fixture&state=${state}`)
+    const invalidPage = await (
+      await localFetch(`${fixture.redirectUri}?code=fixture&state=wrong-state`)
+    ).text()
+    expect(invalidPage).toContain("授权未完成")
+    const successPage = await (
+      await localFetch(`${fixture.redirectUri}?code=fixture&state=${state}`)
+    ).text()
+    expect(successPage).toContain("授权完成")
     expect(await bridge.membership.inspect()).toMatchObject({ state: "active" })
     expect(await vault.get("membership:session")).toContain("ipc-refresh")
     for (const event of ["browser-window-focus", "resume"]) {
@@ -358,6 +405,7 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     expect(fixture.appEvents.has("browser-window-focus")).toBe(false)
     unsubscribe()
   } finally {
+    await fixture.closeCallback()
     vi.unstubAllGlobals()
     await rm(directory, { recursive: true, force: true })
   }

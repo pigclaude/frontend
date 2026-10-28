@@ -9,6 +9,7 @@ import { Label } from "@pigclaude/web-ui/components/label"
 import { TurnstileCaptcha } from "@pigclaude/web-ui/components/turnstile-captcha"
 import { useTurnstileCaptcha } from "@pigclaude/web-ui/hooks/use-turnstile-captcha"
 import { identityApi, identityErrorMessage, type IdentityInteraction } from "@/lib/identity-api"
+import { useEmailCodeRequestOwner } from "./use-email-code-request-owner"
 
 /** 服务端未给出冷却秒数时的默认倒计时。 */
 const DEFAULT_RESEND_SECONDS = 60
@@ -36,6 +37,7 @@ export function EmailCodeField({
 }) {
   const [resendIn, setResendIn] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const beginRequest = useEmailCodeRequestOwner(interaction, email)
   const captcha = useTurnstileCaptcha({
     loadConfig: identityApi.captcha,
     action: "email_code",
@@ -55,6 +57,8 @@ export function EmailCodeField({
 
   async function send() {
     if (disabled || resendIn > 0 || !captcha.ready || email.trim() === "") return
+    const request = beginRequest()
+    if (!request) return
     setError(null)
     try {
       const result = await captcha.run((captchaToken) =>
@@ -64,15 +68,19 @@ export function EmailCodeField({
           ...(captchaToken ? { captchaToken } : {}),
         }),
       )
+      if (!request.ownsResult()) return
       setResendIn(
         result.resendAfterSeconds > 0 ? result.resendAfterSeconds : DEFAULT_RESEND_SECONDS,
       )
     } catch (reason) {
+      if (!request.ownsResult()) return
       if (reason instanceof ApiError && reason.status === 429) {
         const seconds = Number(reason.metadata?.retryAfterSeconds)
         setResendIn(Number.isFinite(seconds) && seconds > 0 ? seconds : DEFAULT_RESEND_SECONDS)
       }
       setError(identityErrorMessage(reason))
+    } finally {
+      request.release()
     }
   }
 

@@ -385,20 +385,12 @@ async function handleCallbackUrl(url: string): Promise<AuthorizationStateEvent |
     pendingCallbackUrls.push(url)
     return null
   }
-  const session = authorizationService.getActiveSession()
-  if (session) {
-    sendAuthorizationState({
-      sessionId: session.sessionId,
-      purpose: session.request.purpose,
-      mode: session.request.mode,
-      status: "exchanging",
-      expiresAt: session.expiresAt,
-    })
-  }
   const result = await authorizationService.handleCallback(url)
-  sendAuthorizationState(result)
-  mainWindow?.show()
-  mainWindow?.focus()
+  if (result.sessionId) {
+    sendAuthorizationState(result)
+    mainWindow?.show()
+    mainWindow?.focus()
+  }
   return result
 }
 

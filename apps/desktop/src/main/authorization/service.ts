@@ -49,7 +49,7 @@ export type AuthorizationServiceOptions = {
   }) => Promise<void>
   /** 候选授权未提交时重新核验原登录，不把本机旧材料当作有效权限。 */
   onAbandoned?: (session: AuthorizationSession) => Promise<void>
-  /** 保存临界区开始时通知页面；此后普通取消不打断原子写入。 */
+  /** 仅为已核验的当前回调发布兑换及保存进度；普通取消不打断原子写入。 */
   onProgress?: (event: AuthorizationStateEvent) => void
   /** 独立 Claude provider 端口，不消费第一方 grant。 */
   claudeAuthorization?: ClaudeAuthorizationAdapter
@@ -210,27 +210,30 @@ export class AuthorizationService {
     try {
       parsed = new URL(url)
     } catch {
-      return this.failureEvent(session, "state-mismatch", "回调地址无效")
+      return unknownSessionEvent("state-mismatch", "回调地址无效")
     }
     if (!matchesRedirect(parsed, session.redirectUri, url)) {
-      return this.failureEvent(session, "state-mismatch", "回调地址与授权会话不匹配")
+      return unknownSessionEvent("state-mismatch", "回调地址与授权会话不匹配")
     }
 
     const callback = readCallback(parsed.searchParams)
     const validation = validateAuthorizationCallback(session, callback, this.#now())
     if (!validation.ok) {
-      if (validation.reason !== "state-mismatch") {
-        this.#activeSession = null
-        this.#pendingSession = null
-        await this.#onAbandoned?.(session)
-        if (!this.isCurrent(generation)) return this.failureEvent(session, "cancelled")
-      }
+      // 不借用当前候选标识报告无关回调，否则旧消息会打断新流程。
+      if (validation.reason === "state-mismatch")
+        return unknownSessionEvent("state-mismatch", "回调不属于当前授权会话")
+      this.#activeSession = null
+      this.#pendingSession = null
+      await this.#onAbandoned?.(session)
+      if (!this.isCurrent(generation)) return unknownSessionEvent("cancelled", "授权会话已取消")
       return this.failureEvent(session, validation.reason)
     }
 
     session.consumed = true
     this.#activeSession = null
     try {
+      this.#onProgress?.(this.progressEvent(session, "exchanging"))
+      if (!this.isCurrent(generation)) return unknownSessionEvent("cancelled", "授权会话已取消")
       const exchange =
         session.request.purpose === "claude-account" && this.#claudeAuthorization
           ? (input: AuthorizationExchange) => this.#claudeAuthorization!.exchangeCode(input)
@@ -242,7 +245,7 @@ export class AuthorizationService {
         clientId: "pigclaude-desktop",
         session,
       })
-      if (!this.isCurrent(generation)) return this.failureEvent(session, "cancelled")
+      if (!this.isCurrent(generation)) return unknownSessionEvent("cancelled", "授权会话已取消")
       if (
         token.purpose !== session.request.purpose ||
         (session.request.purpose === "claude-account" && token.oauthSession) ||
@@ -259,7 +262,7 @@ export class AuthorizationService {
         if (!this.isCurrent(generation)) return
         if (token.oauthSession) {
           this.#committingSession = session
-          this.#onProgress?.(this.commitEvent(session))
+          this.#onProgress?.(this.progressEvent(session, "committing"))
         }
         if (!token.oauthSession && Object.keys(secret).length > 1) {
           await this.#vault.set(secretKey(token), JSON.stringify(secret))
@@ -270,9 +273,9 @@ export class AuthorizationService {
       })
       this.#localWrites = writing.catch(() => undefined)
       await writing
-      if (!this.isCurrent(generation)) return this.failureEvent(session, "cancelled")
+      if (!this.isCurrent(generation)) return unknownSessionEvent("cancelled", "授权会话已取消")
       await this.#onCompleted({ session, token })
-      if (!this.isCurrent(generation)) return this.failureEvent(session, "cancelled")
+      if (!this.isCurrent(generation)) return unknownSessionEvent("cancelled", "授权会话已取消")
       this.#pendingSession = null
       return {
         sessionId: session.sessionId,
@@ -284,14 +287,14 @@ export class AuthorizationService {
         expiresAt: token.expiresAt,
       }
     } catch (error: unknown) {
-      if (!this.isCurrent(generation)) return this.failureEvent(session, "cancelled")
+      if (!this.isCurrent(generation)) return unknownSessionEvent("cancelled", "授权会话已取消")
       const storageFailed =
         typeof error === "object" &&
         error !== null &&
         "code" in error &&
         error.code === "SAFE_STORAGE_UNAVAILABLE"
       await this.#onAbandoned?.(session)
-      if (!this.isCurrent(generation)) return this.failureEvent(session, "cancelled")
+      if (!this.isCurrent(generation)) return unknownSessionEvent("cancelled", "授权会话已取消")
       return this.failureEvent(
         session,
         "exchange-error",
@@ -313,7 +316,7 @@ export class AuthorizationService {
     ) {
       return unknownSessionEvent("cancelled", "授权会话已结束")
     }
-    if (this.#committingSession === session) return this.commitEvent(session)
+    if (this.#committingSession === session) return this.progressEvent(session, "committing")
     this.#generation++
     this.#activeSession = null
     this.#pendingSession = null
@@ -350,12 +353,15 @@ export class AuthorizationService {
     return !this.#suspended && generation === this.#generation
   }
 
-  private commitEvent(session: AuthorizationSession): AuthorizationStateEvent {
+  private progressEvent(
+    session: AuthorizationSession,
+    status: "exchanging" | "committing",
+  ): AuthorizationStateEvent {
     return {
       sessionId: session.sessionId,
       purpose: session.request.purpose,
       mode: session.request.mode,
-      status: "committing",
+      status,
     }
   }
 

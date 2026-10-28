@@ -241,6 +241,10 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     expect(await bridge.membership.inspect()).toMatchObject({ state: "active" })
     const events: string[] = []
     const unsubscribe = bridge.membership.subscribe((view) => events.push(view.state))
+    const authorizationEvents: AuthorizationStateEvent[] = []
+    const unsubscribeAuthorization = bridge.authorization.subscribe((event) =>
+      authorizationEvents.push(event),
+    )
 
     const preserved = await vault.get("membership:session")
     const cancelled = await bridge.authorization.start({
@@ -327,11 +331,25 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     expect(await oldOpening).toMatchObject({ ok: false })
     if (!freshOpening.ok) throw new Error("fresh launch failed")
     const freshState = new URL(freshOpening.authorizationUrl).searchParams.get("state")
+    const beforeStaleCallbacks = authorizationEvents.length
+    for (const query of [
+      `error=access_denied&state=${failedState}`,
+      `code=fixture&state=${failedState}`,
+    ]) {
+      const stalePage = await (await localFetch(`${fixture.redirectUri}?${query}`)).text()
+      expect(stalePage).toContain("授权未完成")
+      expect(authorizationEvents.slice(beforeStaleCallbacks)).toEqual([])
+    }
     const completedPage = await (
       await localFetch(`${fixture.redirectUri}?code=fixture&state=${freshState}`)
     ).text()
     expect(completedPage).toContain("授权完成")
     expect(completedPage).not.toContain("授权未完成")
+    expect(authorizationEvents.slice(beforeStaleCallbacks).map((event) => event.status)).toEqual([
+      "exchanging",
+      "committing",
+      "completed",
+    ])
     expect(await vault.get("membership:session")).toContain("ipc-refresh")
     fixture.opening = async () => undefined
 
@@ -404,6 +422,7 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     expect(fixture.powerEvents.has("resume")).toBe(false)
     expect(fixture.appEvents.has("browser-window-focus")).toBe(false)
     unsubscribe()
+    unsubscribeAuthorization()
   } finally {
     await fixture.closeCallback()
     vi.unstubAllGlobals()

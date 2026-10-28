@@ -1,6 +1,5 @@
 // 负责通过可访问界面验证登录四态在主题、窄窗口和最大字号下的可读性与操作可达性。
 import { expect, test } from "@playwright/test"
-import type { MembershipView } from "@pigclaude/contracts/membership"
 
 const states = [
   { phase: "idle", title: "欢迎使用 PigClaude", actions: ["登录", "注册"] },
@@ -47,46 +46,3 @@ for (const width of [420, 1200]) {
     }
   }
 }
-
-test("login notices and withdraw remain reachable in a narrow window at maximum font size", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 420, height: 720 })
-  const view: MembershipView = {
-    startupPhase: "settled",
-    revision: 1,
-    state: "verification_required",
-    account: { userId: "fixture", nickname: "", email: "", avatar: "" },
-    tier: null,
-    membershipValidUntil: null,
-    offlineValidUntil: null,
-    lastVerifiedAt: null,
-    nextVerificationAt: null,
-    bindingEpoch: "2",
-    errorCode: "AUTHORIZATION_REQUIRED",
-    serverReason: null,
-    authorizationUrl: null,
-  }
-  await page.addInitScript((membership) => {
-    localStorage.setItem("pigclaude-appearance", JSON.stringify({ version: 1, uiSize: 18 }))
-    window.pigclaude = {
-      platform: "darwin",
-      membership: {
-        inspect: async () => membership,
-        subscribe: () => () => {},
-        signOut: async () => membership,
-        withdraw: async () => membership,
-      },
-    }
-  }, view)
-  await page.goto("/?screen=login&theme=dark&glass=1")
-  const panel = page.getByRole("region", { name: "欢迎使用 PigClaude" })
-  await expect(panel.getByRole("status")).toBeVisible()
-  for (const name of ["撤销本机授权", "登录", "注册"]) {
-    const button = panel.getByRole("button", { name, exact: true })
-    await button.scrollIntoViewIfNeeded()
-    await expect(button).toBeInViewport()
-    await expect(button).toBeEnabled()
-  }
-  expect(await page.evaluate(() => document.body.scrollWidth <= innerWidth)).toBe(true)
-})

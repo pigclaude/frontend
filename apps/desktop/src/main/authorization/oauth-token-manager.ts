@@ -31,6 +31,7 @@ export class OAuthTokenManager {
   #loading: Promise<void> | null = null
   #refresh: { owner: number; promise: Promise<void>; recoveryKey?: string } | null = null
   #capabilityRecoveryDenied: { owner: number; keys: Set<string> } | null = null
+  readonly #invalidatedGrantListeners = new Set<(owner: number) => void>()
 
   /** 绑定唯一 profile 仓库，构造时不进行网络请求。 */
   constructor(options: OAuthTokenManagerOptions) {
@@ -47,6 +48,12 @@ export class OAuthTokenManager {
   /** 判定原逻辑归属仍可操作；暂停立即失效所有原请求。 */
   isCurrent(owner: number): boolean {
     return !this.#suspended && owner === this.#owner
+  }
+
+  /** grant明确失效后通知新的空会话归属；订阅者不能延续原请求或阻止失效。 */
+  subscribeInvalidatedGrant(listener: (owner: number) => void): () => void {
+    this.#invalidatedGrantListeners.add(listener)
+    return () => this.#invalidatedGrantListeners.delete(listener)
   }
 
   /** 只读取当前格式，不从旧材料补身份或默认授权。 */
@@ -279,7 +286,19 @@ export class OAuthTokenManager {
         this.#record = next
       })
     } catch (error: unknown) {
-      if (this.isCurrent(owner)) this.#record = null
+      if (this.isCurrent(owner)) {
+        this.#record = null
+        if (codeOf(error) === "invalid_grant") {
+          const invalidatedOwner = ++this.#owner
+          for (const listener of this.#invalidatedGrantListeners) {
+            try {
+              listener(invalidatedOwner)
+            } catch {
+              // 观察者失败不能恢复已消费的凭据或改变原OAuth错误。
+            }
+          }
+        }
+      }
       throw error
     }
   }

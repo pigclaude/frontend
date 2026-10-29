@@ -73,7 +73,7 @@ it.each([false, true])(
   },
 )
 
-it.each(["ACCOUNT_BANNED", "DEVICE_REVOKED"])(
+it.each(["ACCOUNT_BANNED", "DEVICE_REVOKED", "invalid_grant"])(
   "old same-owner terminal %s clears even while newer read is pending",
   async (code) => {
     const oldEntered = deferred<void>()
@@ -111,7 +111,7 @@ it.each(["ACCOUNT_BANNED", "DEVICE_REVOKED"])(
   },
 )
 
-it.each(["ACCOUNT_BANNED", "DEVICE_REVOKED"])(
+it.each(["ACCOUNT_BANNED", "DEVICE_REVOKED", "invalid_grant"])(
   "old terminal %s cannot delete an explicit new grant",
   async (code) => {
     const entered = deferred<void>()

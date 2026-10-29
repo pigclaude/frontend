@@ -33,6 +33,7 @@ export class MembershipGate {
   readonly #api: MembershipGateApi
   readonly #tokens: OAuthTokenManager
   readonly #now: () => number
+  readonly #unsubscribeInvalidatedGrant: () => void
   readonly #listeners = new Set<(view: MembershipView) => void>()
   #view: MembershipView = initialView()
   #revision = 0
@@ -56,6 +57,17 @@ export class MembershipGate {
           },
         },
       })
+    this.#unsubscribeInvalidatedGrant = this.#tokens.subscribeInvalidatedGrant((owner) => {
+      if (this.#disposed || !this.#tokens.isCurrent(owner)) return
+      this.#reads++
+      this.#visibleOwner = null
+      this.publish({
+        ...initialView(),
+        state: "verification_required",
+        errorCode: "invalid_grant",
+        serverReason: "invalid_grant",
+      })
+    })
   }
 
   /** 恢复后与每次受限操作前重新核验原账号、版本、关系及会员。 */
@@ -116,10 +128,11 @@ export class MembershipGate {
       return this.publish(this.normalizeRemote(remote))
     } catch (error: unknown) {
       const code = codeOf(error)
+      // grant明确失效时一并终结逻辑归属，不能让先前已开始的授权响应重新提交登录。
       if (
         !this.#disposed &&
         this.#tokens.isCurrent(owner) &&
-        (code === "ACCOUNT_BANNED" || code === "DEVICE_REVOKED")
+        (code === "ACCOUNT_BANNED" || code === "DEVICE_REVOKED" || code === "invalid_grant")
       )
         return this.clearSession(owner, code)
       if (!this.current(read, owner)) return this.view()
@@ -128,7 +141,6 @@ export class MembershipGate {
         code === "SAFE_STORAGE_UNAVAILABLE"
           ? "configuration_error"
           : code === "AUTHORIZATION_REQUIRED" ||
-              code === "invalid_grant" ||
               code === "invalid_token" ||
               code === "invalid_scope" ||
               code === "AUTHORIZATION_EXPIRED" ||
@@ -280,6 +292,7 @@ export class MembershipGate {
   /** 释放监听并同步拒绝迟到网络发布。 */
   dispose(): void {
     this.#disposed = true
+    this.#unsubscribeInvalidatedGrant()
     this.#reads++
     void this.#tokens.suspend()
     this.#listeners.clear()
@@ -326,7 +339,7 @@ export class MembershipGate {
 
   private async clearSession(
     owner: number,
-    terminal?: "ACCOUNT_BANNED" | "DEVICE_REVOKED",
+    terminal?: "ACCOUNT_BANNED" | "DEVICE_REVOKED" | "invalid_grant",
     errorCode: string | undefined = terminal,
   ): Promise<MembershipView> {
     if (!this.#tokens.isCurrent(owner)) return this.view()

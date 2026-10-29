@@ -66,6 +66,31 @@ beforeEach(() => {
 })
 
 describe("home provider session recovery", () => {
+  it.each([
+    ["/account", "/account?section=devices", "/login?redirect=%2Faccount%3Fsection%3Ddevices"],
+    [
+      "/authorize/old-flow/approve",
+      "/authorize/old-flow/approve?mode=register&state=preserved",
+      "/register?redirect=%2Fauthorize%2Fold-flow%2Fapprove%3Fmode%3Dregister%26state%3Dpreserved",
+    ],
+  ])(
+    "an invalid old RP session at %s enters an explicit login or registration path",
+    async (path, route, expected) => {
+      mocks.pathname = path
+      window.history.replaceState({}, "", route)
+      mocks.me.mockRejectedValue(new ApiError(401))
+      render(
+        <Providers>
+          <RecoveryProbe />
+        </Providers>,
+      )
+      await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith(expected))
+      expect(mocks.me).toHaveBeenCalledOnce()
+      expect(mocks.entitlement).toHaveBeenCalledOnce()
+      expect(mocks.get).toHaveBeenCalledOnce()
+    },
+  )
+
   it("shares one me request while retrying every failed business query", async () => {
     render(
       <Providers>

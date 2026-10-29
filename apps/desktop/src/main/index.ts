@@ -19,6 +19,11 @@ import { LocalStore } from "@pigclaude/local-store"
 import { checkEgress } from "@pigclaude/login-gate/egress-check"
 import { startProxyBridge } from "@pigclaude/login-gate/proxy-bridge"
 import { createCallbackServer } from "./authorization/callback-server"
+import {
+  createAuthorizationCallbackReceiver,
+  privateAuthorizationRedirectUri,
+  type AuthorizationCallbackReceiver,
+} from "./authorization/callback-receiver"
 import { AuthorizationStartError, AuthorizationService } from "./authorization/service"
 import type { AuthorizationStartResult, AuthorizationStateEvent } from "./authorization/types"
 import { readAuthorizationRequest } from "./authorization/request-input"
@@ -59,7 +64,6 @@ const { rustBaseUrl, authOrigin, websiteOrigin } = readDesktopRuntimeEndpoints(
   process.env,
   bundleMetadata,
 )
-const packagedRedirectUri = "pigclaude://authorize/callback"
 const hasSingleInstanceLock = configureRuntimeProfile(app, process.env["PIGCLAUDE_USER_DATA"])
 let mainWindow: BrowserWindow | null = null
 let authorizationService: AuthorizationService | null = null
@@ -71,40 +75,58 @@ let sessionHost: SessionHost | null = null
 let usageRecorder: UsageRecorder | null = null
 let workspaceStore: WorkspaceStore | null = null
 let callbackServer: Awaited<ReturnType<typeof createCallbackServer>> | null = null
-let pendingCallbackUrls: string[] = []
+let callbackReceiver: AuthorizationCallbackReceiver | null = null
+let authorizationReady = false
+let shutdownStarted = false
 let cleanupLiveEvents = () => {}
 
 if (!hasSingleInstanceLock) {
   app.quit()
 } else {
+  callbackReceiver = createAuthorizationCallbackReceiver({
+    app,
+    onCallback: handleCallbackUrl,
+    onSecondInstance: () => {
+      mainWindow?.show()
+      mainWindow?.focus()
+    },
+  })
   registerIpcHandlers()
-  app.on("open-url", (event, url) => {
-    event.preventDefault()
-    void handleCallbackUrl(url)
-  })
-  app.on("second-instance", (_event, commandLine) => {
-    const callback = commandLine.find((value) => value.startsWith("pigclaude://authorize/callback"))
-    if (callback) void handleCallbackUrl(callback)
-    mainWindow?.show()
-    mainWindow?.focus()
-  })
-  void app.whenReady().then(async () => {
-    try {
-      await setupAuthorization()
-    } catch (error: unknown) {
-      authorizationSetupError = errorMessage(error)
-      console.error(authorizationSetupError)
-    }
-    createWindow()
-    void desktopComposition?.membershipGate.inspect()
-    void reportDeviceInfoOnStartup()
-    const callbacks = pendingCallbackUrls
-    pendingCallbackUrls = []
-    for (const url of callbacks) await handleCallbackUrl(url)
-    app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  void app
+    .whenReady()
+    .then(async () => {
+      if (shutdownStarted) return
+      let initialized = false
+      try {
+        await setupAuthorization()
+        initialized = true
+      } catch (error: unknown) {
+        closeStartupEvents()
+        authorizationSetupError = errorMessage(error)
+        console.error(authorizationSetupError)
+      }
+      if (shutdownStarted) {
+        closeStartupEvents()
+        // 初始化可能晚于第一次关闭才建立服务；只清理，不重新开窗或放行回调。
+        void shutdownDesktop()
+        return
+      }
+      createWindow()
+      if (initialized) {
+        authorizationReady = true
+        callbackReceiver?.ready()
+        void desktopComposition?.membershipGate.inspect()
+        void reportDeviceInfoOnStartup()
+      }
+      app.on("activate", () => {
+        if (!shutdownStarted && BrowserWindow.getAllWindows().length === 0) createWindow()
+      })
     })
-  })
+    .catch(() => {
+      closeStartupEvents()
+      authorizationSetupError = "授权服务初始化失败"
+      console.error("AUTHORIZATION_STARTUP_FAILED")
+    })
 }
 
 app.on("window-all-closed", () => {
@@ -117,7 +139,10 @@ app.on(
     shutdown: shutdownDesktop,
     quit: () => app.quit(),
     forceExit: () => app.exit(0),
-    onBeforeShutdown: () => cleanupLiveEvents(),
+    onBeforeShutdown: () => {
+      shutdownStarted = true
+      closeStartupEvents()
+    },
   }),
 )
 
@@ -158,13 +183,13 @@ function registerIpcHandlers(): void {
     getComposition: () => desktopComposition,
     isTrusted: isTrustedSender,
     onSignOut: () => {
-      pendingCallbackUrls = []
+      callbackReceiver?.clearPending()
     },
   })
 
   ipcMain.handle("pigclaude:authorization-start", async (event, value: unknown) => {
     const request = readAuthorizationRequest(value)
-    if (!request || !authorizationService || !callbackServer) {
+    if (!request || !authorizationReady || !authorizationService || !callbackServer) {
       const result: AuthorizationStartResult = {
         ok: false,
         status: "network-error",
@@ -174,7 +199,9 @@ function registerIpcHandlers(): void {
     }
     let started: Awaited<ReturnType<AuthorizationService["start"]>> | null = null
     try {
-      const redirectUri = app.isPackaged ? packagedRedirectUri : callbackServer.redirectUri
+      const redirectUri = app.isPackaged
+        ? privateAuthorizationRedirectUri
+        : callbackServer.redirectUri
       started = await authorizationService.start(request, redirectUri)
       if (authorizationService.getActiveSession()?.sessionId !== started.sessionId) {
         throw new AuthorizationStartError("cancelled", "授权会话已取消")
@@ -381,17 +408,22 @@ async function setupAuthorization(): Promise<void> {
 }
 
 async function handleCallbackUrl(url: string): Promise<AuthorizationStateEvent | null> {
-  if (!authorizationService) {
-    pendingCallbackUrls.push(url)
-    return null
-  }
+  // loopback 继续直接返回既有结果；部分初始化不能成为可用授权服务。
+  if (!authorizationReady || shutdownStarted || !authorizationService) return null
   const result = await authorizationService.handleCallback(url)
-  if (result.sessionId) {
+  if (result.sessionId && authorizationReady && !shutdownStarted) {
     sendAuthorizationState(result)
     mainWindow?.show()
     mainWindow?.focus()
   }
   return result
+}
+
+/** 终止启动/退出中的事件接收，不取消已经进入服务的原子提交。 */
+function closeStartupEvents(): void {
+  authorizationReady = false
+  callbackReceiver?.dispose()
+  cleanupLiveEvents()
 }
 
 function sendAuthorizationState(event: AuthorizationStateEvent): void {

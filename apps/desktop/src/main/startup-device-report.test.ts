@@ -15,6 +15,7 @@ vi.mock("electron", () => ({
     isPackaged: false,
     whenReady: () => Promise.resolve(),
     on: vi.fn(),
+    removeListener: vi.fn(),
     getPath: () => "/fixture",
     quit: vi.fn(),
     getVersion: () => "1.3.0",

@@ -27,6 +27,8 @@ export type CallbackReceiverOptions = {
 
 /** 控制收件生命周期，关闭后不能重新放行。 */
 export type AuthorizationCallbackReceiver = {
+  /** 从命令行选择首个合格原始回调并送入同一队列，不保存整组参数。 */
+  receiveArguments(commandLine: readonly string[]): void
   /** 仅在整个初始化完成后放行，并交付仍未过期的缓冲输入。 */
   ready(): void
   /** 仅清理尚未交付的输入，保留以后重新授权的收件能力。 */
@@ -57,13 +59,18 @@ export function createAuthorizationCallbackReceiver(
   }
   const secondInstance: SecondInstanceListener = (_event, commandLine) => {
     if (phase === "closed") return
-    // 只选第一个符合固定原始基地址的参数，不假定 URL 位于末尾。
-    const callback = commandLine.find(isCandidate)
-    if (callback !== undefined) receive(callback)
+    receiveArguments(commandLine)
     options.onSecondInstance()
   }
   options.app.on("open-url", openUrl)
   options.app.on("second-instance", secondInstance)
+
+  function receiveArguments(commandLine: readonly string[]): void {
+    if (phase === "closed") return
+    // 只选第一个符合原始基地址及字节上限的候选，不假定 URL 位于末尾。
+    const callback = commandLine.find(isCandidate)
+    if (callback !== undefined) receive(callback)
+  }
 
   function receive(url: string): void {
     if (phase === "closed" || !isCandidate(url)) return
@@ -122,6 +129,7 @@ export function createAuthorizationCallbackReceiver(
   }
 
   return {
+    receiveArguments,
     ready() {
       if (phase === "closed") return
       phase = "ready"

@@ -91,6 +91,9 @@ if (!hasSingleInstanceLock) {
       mainWindow?.focus()
     },
   })
+  if (process.platform === "win32" || process.platform === "linux") {
+    callbackReceiver.receiveArguments(process.argv)
+  }
   registerIpcHandlers()
   void app
     .whenReady()

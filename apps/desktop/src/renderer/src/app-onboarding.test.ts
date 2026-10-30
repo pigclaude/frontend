@@ -250,6 +250,102 @@ describe("desktop onboarding gate", () => {
     expect(progress()).toEqual(["done", "current", "todo"])
   })
 
+  it("coalesces double clicks and waits for the old authorization to finish before retry", async () => {
+    const publish = installBridge()
+    const accounts = window.pigclaude?.claudeAccounts
+    if (!accounts) throw new Error("missing synthetic account bridge")
+    let starts = 0
+    let rejectOld: (error: Error) => void = () => undefined
+    let release: () => void = () => undefined
+    const cleanup = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    accounts.authorize = async () => {
+      starts++
+      publish({ accountId: "acc-1", phase: "waiting-browser", errorCode: null, message: null })
+      return await new Promise<ClaudeAccountView>((_resolve, reject) => {
+        if (starts === 1) rejectOld = reject
+      })
+    }
+    accounts.cancelAuthorization = async () => {
+      await cleanup
+      publish({
+        accountId: "acc-1",
+        phase: "cancelled",
+        errorCode: "AUTHORIZATION_CANCELLED",
+        message: "取消",
+      })
+    }
+    await act(async () => root.render(createElement(DesktopApp)))
+    await click("跳过")
+    await click("添加账号")
+    await click("下一步")
+    await click("绑定代理")
+    await click("保存并核对出口")
+    const start = button("开始核对并授权")
+    expect(start).toBeDefined()
+    await act(async () => {
+      start?.click()
+      start?.click()
+    })
+    expect(starts).toBe(1)
+    const retry = button("重新发起")
+    expect(retry).toBeDefined()
+    await act(async () => {
+      retry?.click()
+      retry?.click()
+    })
+    expect(starts).toBe(1)
+    await act(async () => {
+      release()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(starts).toBe(2)
+    await act(async () => {
+      rejectOld(new Error("授权已取消"))
+      await Promise.resolve()
+    })
+    expect(container.textContent).toContain("等待浏览器确认")
+    expect(container.textContent).not.toContain("授权已取消")
+  })
+
+  it("keeps the authorization screen open when saving cannot be cancelled", async () => {
+    const publish = installBridge()
+    const accounts = window.pigclaude?.claudeAccounts
+    if (!accounts) throw new Error("missing synthetic account bridge")
+    accounts.cancelAuthorization = async () => {
+      throw new Error("授权正在保存，请稍候")
+    }
+    await act(async () => root.render(createElement(DesktopApp)))
+    await click("跳过")
+    await click("添加账号")
+    await act(async () => {
+      publish({ accountId: "acc-1", phase: "waiting-browser", errorCode: null, message: null })
+    })
+    await click("取消")
+    expect(container.textContent).toContain("授权正在保存，请稍候")
+    expect(container.textContent).toContain("等待浏览器确认")
+  })
+
+  it("shows a browser cleanup warning without treating a saved account as failed", async () => {
+    const publish = installBridge()
+    await act(async () => root.render(createElement(DesktopApp)))
+    await click("跳过")
+    await click("添加账号")
+    await act(async () => {
+      publish({
+        accountId: "acc-1",
+        phase: "authorized",
+        errorCode: "BROWSER_STOP_FAILED",
+        message: "浏览器可能仍在运行",
+      })
+    })
+    expect(container.textContent).toContain("已加入号池")
+    expect(container.textContent).toContain("浏览器可能仍在运行")
+    expect(container.textContent).toContain("回到账号")
+  })
+
   it("moves on to the session step after the Claude authorization finishes", async () => {
     installBridge()
     await act(async () => root.render(createElement(DesktopApp)))

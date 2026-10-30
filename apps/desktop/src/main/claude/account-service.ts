@@ -1,15 +1,16 @@
 // 负责编排 Claude 账号的添加、重新授权、更新和删除；不直接发 HTTP 或写文件。
 
 import { randomUUID } from "node:crypto"
+import { isDeepStrictEqual } from "node:util"
 import type {
   ClaudeAccountEvent,
   ClaudeAccountErrorCode,
   ClaudeAccountView,
   ClaudeFingerprintView,
 } from "@pigclaude/contracts/claude-account"
-import type { AccountRecord, ClaudeCredential, LocalStore } from "@pigclaude/local-store"
+import type { AccountRecord, LocalStore } from "@pigclaude/local-store"
 import type { EgressResult } from "@pigclaude/login-gate/egress-check"
-import { ProxyBridgeError, type ProxyBridge } from "@pigclaude/login-gate/proxy-bridge"
+import type { ProxyBridge } from "@pigclaude/login-gate/proxy-bridge"
 import { ProxyAgent } from "undici"
 import {
   assertClaudeCliIdentity,
@@ -22,13 +23,15 @@ import {
 } from "./claude-cli-import"
 import { readClaudeCliAccountMetadata, type ClaudeCliAccountMetadata } from "./cli-account-metadata"
 import { readClaudeCliCredential, type ClaudeCliCredential } from "./cli-credential-reader"
+import { AuthorizationLifecycle, type AuthorizationAttempt } from "./authorization-lifecycle"
+import { mapError, phaseFor } from "./account-service-errors"
+import { assertSameAccount, buildCredential, toView } from "./account-service-record"
 import { ClaudeAccountError } from "./errors"
-import { BrowserLaunchError, type FingerprintChromiumAdapter } from "./fingerprint-chromium"
+import type { FingerprintChromiumAdapter, LaunchedBrowser } from "./fingerprint-chromium"
 import { ensureFingerprint } from "./fingerprint-args"
 import { isValidBridgeUrl, launchArgumentConflict } from "./launch-argument-guard"
 import {
   createSubscriptionOAuthRequest,
-  SubscriptionOAuthError,
   type ClaudeOAuthProfile,
   type ClaudeOAuthTokens,
   type OAuthCallbackServer,
@@ -70,10 +73,9 @@ export type ClaudeAccountServiceDeps = {
     | "ensureAvailable"
     | "ensureBoundProxyProtection"
     | "launch"
-    | "stop"
     | "deleteProfile"
     | "profileDir"
-    | "stopAll"
+    | "dispose"
   >
   oauth: Pick<
     SubscriptionOAuth,
@@ -96,11 +98,6 @@ export type ClaudeAccountServiceDeps = {
   onEvent?: (event: ClaudeAccountEvent) => void
 }
 
-type ActiveAuthorization = {
-  accountId: string
-  callback: OAuthCallbackServer
-}
-
 /** Claude 账号服务。保证绑定代理时先核对出口；未绑定代理时直接使用系统网络，凭据只在全部成功后写入本机。 */
 export class ClaudeAccountService {
   readonly #deps: ClaudeAccountServiceDeps
@@ -109,7 +106,8 @@ export class ClaudeAccountService {
   readonly #egressCheckUrl: string
   readonly #readCliCredential: () => Promise<ClaudeCliCredential>
   readonly #readCliAccountMetadata: () => Promise<ClaudeCliAccountMetadata | null>
-  #active: ActiveAuthorization | null = null
+  readonly #authorizations = new AuthorizationLifecycle()
+  readonly #pendingCleanup = new Map<string, LaunchedBrowser>()
 
   /** 创建绑定到账号库、fingerprint-chromium、OAuth 和出口检查端口的服务。 */
   constructor(deps: ClaudeAccountServiceDeps) {
@@ -135,15 +133,26 @@ export class ClaudeAccountService {
     const requestedAccountId = input.accountId
     const accountId = requestedAccountId ?? this.#id()
     const proxyId = input.proxyId
-    this.#emit(accountId, "preparing")
     let bridge: ProxyBridge | null = null
     let bridgeUrl: string | null = null
     let callback: OAuthCallbackServer | null = null
-    let browserLaunched = false
+    let launched: LaunchedBrowser | null = null
+    let attempt: AuthorizationAttempt | null = null
+    let failure: ClaudeAccountError | null = null
+    let committed = false
+    const assertCanSpawn = () => {
+      if (this.#pendingCleanup.size !== 0) {
+        throw new ClaudeAccountError("BROWSER_STOP_FAILED", "请先关闭仍在运行的浏览器并重试取消")
+      }
+    }
     try {
+      assertCanSpawn()
+      attempt = this.#authorizations.begin(accountId)
+      if (this.#authorizations.canEmit(attempt)) this.#emit(accountId, "preparing")
       const validation = ensureFingerprint(input.fingerprint, accountId)
       const displayName = input.displayName.trim()
       await this.#ensureMembership()
+      attempt.checkpoint()
       if (displayName === "") {
         throw new ClaudeAccountError("INVALID_INPUT", "账号名称不能为空")
       }
@@ -151,6 +160,7 @@ export class ClaudeAccountService {
         requestedAccountId === undefined
           ? null
           : await this.#deps.store.getAccount(requestedAccountId)
+      attempt.checkpoint()
       if (requestedAccountId !== undefined && existing === null) {
         throw new ClaudeAccountError("ACCOUNT_NOT_FOUND", "账号不存在")
       }
@@ -161,14 +171,17 @@ export class ClaudeAccountService {
       const conflict = launchArgumentConflict(fingerprint.unknownArgs ?? [], proxyId !== null)
       if (conflict !== null) throw new ClaudeAccountError("FINGERPRINT_INVALID", conflict)
       const proxy = proxyId === null ? null : await this.#deps.store.getProxy(proxyId)
+      attempt.checkpoint()
       if (proxyId !== null && proxy === null) {
         throw new ClaudeAccountError("PROXY_INVALID", "代理不存在")
       }
       if (proxy !== null) this.#deps.browser.ensureBoundProxyProtection()
       await this.#deps.browser.ensureAvailable()
+      attempt.claim()
 
       if (proxy !== null) {
         bridge = await this.#deps.startBridge({ upstreamProxyUrl: proxy.url })
+        attempt.checkpoint()
         const startedBridgeUrl = bridge?.url
         if (!isValidBridgeUrl(startedBridgeUrl)) {
           throw new ClaudeAccountError("PROXY_UNAVAILABLE", "代理桥不可用，请勿登录")
@@ -180,6 +193,7 @@ export class ClaudeAccountService {
           upstreamProxyUrl: proxy.url,
           checkUrl: this.#egressCheckUrl,
         })
+        attempt.checkpoint()
         if (!egress.ok) {
           throw new ClaudeAccountError(
             egress.reason === "mismatch" ? "EGRESS_MISMATCH" : "EGRESS_CHECK_FAILED",
@@ -193,21 +207,24 @@ export class ClaudeAccountService {
       this.#emit(accountId, "waiting-browser")
       const oauthRequest = createSubscriptionOAuthRequest()
       callback = await this.#deps.oauth.startCallback({ state: oauthRequest.state })
+      attempt.attach(callback)
       const authorizeUrl = this.#deps.oauth.buildAuthorizeUrl({
         redirectUri: callback.redirectUri,
         state: oauthRequest.state,
         codeChallenge: oauthRequest.codeChallenge,
       })
-      this.#active = { accountId, callback }
-      await this.#deps.browser.launch({
+      launched = await this.#deps.browser.launch({
         accountId,
         authorizeUrl,
         network:
           proxyId === null ? { mode: "system" } : { mode: "bound", bridgeUrl: bridgeUrl ?? "" },
         fingerprint,
+        signal: attempt.signal,
+        assertCanSpawn,
       })
-      browserLaunched = true
+      attempt.checkpoint()
       const code = await callback.waitForCode()
+      attempt.checkpoint()
       this.#emit(accountId, "exchanging")
 
       const dispatcher = bridgeUrl === null ? null : new ProxyAgent(bridgeUrl)
@@ -221,6 +238,7 @@ export class ClaudeAccountService {
           redirectUri: callback.redirectUri,
           ...(dispatcher === null ? {} : { dispatcher }),
         })
+        attempt.checkpoint()
         profile = await this.#deps.oauth.readProfile({
           accessToken: tokens.accessToken,
           ...(dispatcher === null ? {} : { dispatcher }),
@@ -229,6 +247,7 @@ export class ClaudeAccountService {
         await dispatcher?.close().catch(() => undefined)
       }
 
+      attempt.checkpoint()
       assertSameAccount(existing, profile)
       const credential = buildCredential(tokens, profile, existing?.credential ?? null)
       const timestamp = new Date(this.#now()).toISOString()
@@ -247,18 +266,72 @@ export class ClaudeAccountService {
         updatedAt: timestamp,
       }
       this.#emit(accountId, "saving")
-      await this.#deps.store.saveAccount(record)
-      this.#emit(accountId, "authorized")
+      attempt.beginCommit()
+      if (existing === null) {
+        await this.#deps.store.saveAccount(record)
+      } else {
+        const updated = await this.#deps.store.updateAccount(accountId, (current) => {
+          assertSameAccount(current, profile)
+          if (!isDeepStrictEqual(current.credential, existing.credential)) {
+            throw new ClaudeAccountError("INVALID_INPUT", "账号凭据已更新，请重新授权")
+          }
+          if (
+            current.proxyId !== existing.proxyId ||
+            !isDeepStrictEqual(current.fingerprint, existing.fingerprint)
+          ) {
+            throw new ClaudeAccountError("INVALID_INPUT", "代理或指纹已变更，请重新授权")
+          }
+          return {
+            ...current,
+            displayName:
+              current.displayName === existing.displayName ? displayName : current.displayName,
+            proxyId: current.proxyId === existing.proxyId ? proxyId : current.proxyId,
+            fingerprint: isDeepStrictEqual(current.fingerprint, existing.fingerprint)
+              ? fingerprint
+              : current.fingerprint,
+            browserProfileDir:
+              current.browserProfileDir === existing.browserProfileDir
+                ? profileDir
+                : current.browserProfileDir,
+            credential: buildCredential(tokens, profile, current.credential),
+            needsReauth: false,
+            updatedAt: timestamp,
+          }
+        })
+        if (updated === null) throw new ClaudeAccountError("ACCOUNT_NOT_FOUND", "账号不存在")
+        Object.assign(record, updated)
+      }
+      committed = true
       return toView(record)
     } catch (error: unknown) {
-      const mapped = mapError(error)
-      this.#emit(accountId, phaseFor(mapped.code), mapped.code, mapped.message)
-      throw mapped
+      failure = mapError(error)
+      throw failure
     } finally {
-      if (this.#active?.callback === callback) this.#active = null
       await callback?.close().catch(() => undefined)
-      if (browserLaunched) await this.#deps.browser.stop(accountId).catch(() => undefined)
+      let stopError: ClaudeAccountError | null = null
+      try {
+        await launched?.stop()
+      } catch (error: unknown) {
+        stopError = mapError(error)
+        if (launched !== null) this.#pendingCleanup.set(accountId, launched)
+      }
       await bridge?.close().catch(() => undefined)
+      const canEmit = attempt === null || this.#authorizations.canEmit(attempt)
+      attempt?.finish(stopError)
+      if (stopError !== null && !committed) {
+        const combined =
+          failure === null
+            ? stopError
+            : new ClaudeAccountError(failure.code, `${failure.message}；${stopError.message}`)
+        if (canEmit) this.#emit(accountId, "blocked", stopError.code, combined.message)
+        throw combined
+      }
+      if (failure !== null && canEmit) {
+        this.#emit(accountId, phaseFor(failure.code), failure.code, failure.message)
+      }
+      if (committed) {
+        this.#emit(accountId, "authorized", stopError?.code ?? null, stopError?.message ?? null)
+      }
     }
   }
 
@@ -286,31 +359,50 @@ export class ClaudeAccountService {
       const identity = mergeClaudeCliIdentity(cli, metadata, profile)
       const existing = findClaudeCliAccount(await this.#deps.store.listAccounts(), identity)
       assertClaudeCliIdentity(existing, identity)
-      const credential = buildClaudeCliCredential(cli, identity, existing?.credential ?? null)
-      const displayName =
-        existing !== null && input.displayName === undefined
-          ? existing.displayName
-          : claudeCliDisplayName(input.displayName ?? "", metadata, identity.email)
-      const record = buildClaudeCliAccountRecord({
-        existing,
-        newId,
-        displayName,
-        credential,
-        browserProfileDir: existing?.browserProfileDir ?? this.#deps.browser.profileDir(newId),
-        now: new Date(this.#now()).toISOString(),
+      const makeRecord = (current: AccountRecord | null): AccountRecord => {
+        assertClaudeCliIdentity(current, identity)
+        const displayName =
+          current !== null && input.displayName === undefined
+            ? current.displayName
+            : claudeCliDisplayName(input.displayName ?? "", metadata, identity.email)
+        return buildClaudeCliAccountRecord({
+          existing: current,
+          newId,
+          displayName,
+          credential: buildClaudeCliCredential(cli, identity, current?.credential ?? null),
+          browserProfileDir: current?.browserProfileDir ?? this.#deps.browser.profileDir(newId),
+          now: new Date(this.#now()).toISOString(),
+        })
+      }
+      if (existing === null) {
+        const record = makeRecord(null)
+        await this.#deps.store.saveAccount(record)
+        return toView(record)
+      }
+      const updated = await this.#deps.store.updateAccount(existing.id, (current) => {
+        if (!isDeepStrictEqual(current.credential, existing.credential)) {
+          throw new ClaudeAccountError("INVALID_INPUT", "账号凭据已更新，请重新导入")
+        }
+        return makeRecord(current)
       })
-      await this.#deps.store.saveAccount(record)
-      return toView(record)
+      if (updated === null) throw new ClaudeAccountError("ACCOUNT_NOT_FOUND", "账号不存在")
+      return toView(updated)
     } catch (error: unknown) {
       throw mapError(error)
     }
   }
 
-  /** 取消正在等待的浏览器授权。保证授权 promise 以 cancelled 结束。 */
+  /** 取消并等待当前授权清理；提交已开始或浏览器未退出时返回明确错误。 */
   async cancel(): Promise<void> {
-    const active = this.#active
-    if (active === null) return
-    await active.callback.close()
+    await this.#authorizations.cancelCurrent()
+    for (const [accountId, launched] of [...this.#pendingCleanup.entries()].reverse()) {
+      try {
+        await launched.stop()
+      } catch (error: unknown) {
+        throw mapError(error)
+      }
+      if (this.#pendingCleanup.get(accountId) === launched) this.#pendingCleanup.delete(accountId)
+    }
   }
 
   /** 修改账号的显示名、启用状态、代理或指纹。保证不触碰凭据。 */
@@ -338,34 +430,40 @@ export class ClaudeAccountService {
       if (!validation.ok) throw new ClaudeAccountError("FINGERPRINT_INVALID", validation.message)
       fingerprint = validation.fingerprint
     }
-    const updated: AccountRecord = {
-      ...account,
-      displayName,
-      enabled: input.enabled ?? account.enabled,
-      proxyId,
-      fingerprint,
+    const updated = await this.#deps.store.updateAccount(input.accountId, (current) => ({
+      ...current,
+      displayName: input.displayName === undefined ? current.displayName : displayName,
+      enabled: input.enabled ?? current.enabled,
+      proxyId: input.proxyId === undefined ? current.proxyId : proxyId,
+      fingerprint: input.fingerprint === undefined ? current.fingerprint : fingerprint,
       updatedAt: new Date(this.#now()).toISOString(),
-    }
-    await this.#deps.store.saveAccount(updated)
+    }))
+    if (updated === null) throw new ClaudeAccountError("ACCOUNT_NOT_FOUND", "账号不存在")
     return toView(updated)
   }
 
   /** 删除账号。保证浏览器配置目录清理失败时保留本地账号。 */
   async remove(accountId: string): Promise<void> {
-    const account = await this.#deps.store.getAccount(accountId)
-    if (account === null) return
-    try {
-      await this.#deps.browser.deleteProfile(accountId)
-    } catch (error: unknown) {
-      throw mapError(error)
-    }
-    await this.#deps.store.removeAccount(accountId)
+    await this.#authorizations.remove(accountId, async () => {
+      const account = await this.#deps.store.getAccount(accountId)
+      if (account === null) return
+      try {
+        await this.#deps.browser.deleteProfile(accountId)
+      } catch (error: unknown) {
+        throw mapError(error)
+      }
+      await this.#deps.store.removeAccount(accountId)
+    })
   }
 
   /** 取消活动授权并释放本机浏览器进程。 */
   async dispose(): Promise<void> {
-    await this.cancel()
-    await this.#deps.browser.stopAll()
+    const browser = this.#deps.browser.dispose()
+    const authorizations = this.#authorizations.dispose()
+    const results = await Promise.allSettled([browser, authorizations])
+    if (results.some((result) => result.status === "rejected")) {
+      throw new ClaudeAccountError("BROWSER_STOP_FAILED", "无法确认浏览器已退出，请手动关闭后重试")
+    }
   }
 
   /** 读取 profile 用于校正身份。保证失败时返回 null，不影响导入。 */
@@ -394,105 +492,4 @@ export class ClaudeAccountService {
   ): void {
     this.#deps.onEvent?.({ accountId, phase, errorCode, message })
   }
-}
-
-function toView(account: AccountRecord): ClaudeAccountView {
-  return {
-    id: account.id,
-    displayName: account.displayName,
-    enabled: account.enabled,
-    email: account.credential?.email ?? null,
-    subscriptionType: account.credential?.subscriptionType ?? null,
-    needsReauth: account.needsReauth,
-    credentialExpiresAt: account.credential?.expiresAt ?? null,
-    exhaustedUntil: account.exhaustedUntil,
-    proxyId: account.proxyId,
-    fingerprint: account.fingerprint,
-    createdAt: account.createdAt,
-    updatedAt: account.updatedAt,
-  }
-}
-
-function buildCredential(
-  tokens: { accessToken: string; refreshToken: string; expiresAt: number; scopes: string[] },
-  profile: {
-    accountUuid: string | null
-    email: string | null
-    organizationUuid: string | null
-    subscriptionType: string | null
-    rateLimitTier: string | null
-  } | null,
-  existing: ClaudeCredential | null,
-): ClaudeCredential {
-  return {
-    schemaVersion: 1,
-    accessToken: tokens.accessToken,
-    refreshToken: tokens.refreshToken,
-    expiresAt: tokens.expiresAt,
-    scopes: tokens.scopes,
-    accountUuid: profile?.accountUuid ?? existing?.accountUuid ?? null,
-    email: profile?.email ?? existing?.email ?? null,
-    organizationUuid: profile?.organizationUuid ?? existing?.organizationUuid ?? null,
-    subscriptionType: profile?.subscriptionType ?? existing?.subscriptionType ?? null,
-    rateLimitTier: profile?.rateLimitTier ?? existing?.rateLimitTier ?? null,
-  }
-}
-
-function assertSameAccount(
-  existing: AccountRecord | null,
-  profile: {
-    accountUuid: string | null
-    email: string | null
-  } | null,
-): void {
-  if (existing === null || profile === null) return
-  const previous = existing.credential
-  if (previous === null) return
-  if (
-    previous.accountUuid !== null &&
-    profile.accountUuid !== null &&
-    previous.accountUuid !== profile.accountUuid
-  ) {
-    throw new ClaudeAccountError("ACCOUNT_MISMATCH", "登录的是另一个 Claude 账号")
-  }
-  if (
-    previous.accountUuid === null &&
-    previous.email !== null &&
-    profile.email !== null &&
-    previous.email !== profile.email
-  ) {
-    throw new ClaudeAccountError("ACCOUNT_MISMATCH", "登录的是另一个 Claude 账号")
-  }
-}
-
-function mapError(error: unknown): ClaudeAccountError {
-  if (error instanceof ClaudeAccountError) return error
-  if (error instanceof BrowserLaunchError) {
-    return new ClaudeAccountError(error.code, error.message)
-  }
-  if (error instanceof SubscriptionOAuthError) {
-    return new ClaudeAccountError(error.code, error.message)
-  }
-  if (error instanceof ProxyBridgeError) {
-    return new ClaudeAccountError(
-      error.code === "UNSUPPORTED_PROXY_SCHEME" ? "UNSUPPORTED_PROXY_SCHEME" : "PROXY_INVALID",
-      error.message,
-    )
-  }
-  return new ClaudeAccountError("UNEXPECTED_ERROR", "Claude 账号操作失败")
-}
-
-function phaseFor(code: ClaudeAccountErrorCode): ClaudeAccountEvent["phase"] {
-  if (code === "AUTHORIZATION_CANCELLED") return "cancelled"
-  if (
-    code === "EGRESS_MISMATCH" ||
-    code === "EGRESS_CHECK_FAILED" ||
-    code === "PROXY_UNAVAILABLE" ||
-    code === "PROXY_INVALID" ||
-    code === "UNSUPPORTED_PROXY_SCHEME" ||
-    code.startsWith("BROWSER_")
-  ) {
-    return "blocked"
-  }
-  return "failed"
 }

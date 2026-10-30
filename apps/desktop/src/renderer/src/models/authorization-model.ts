@@ -1,6 +1,6 @@
 // 负责描述 Claude 账号授权向导、出口核对和浏览器回调状态。
 
-import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
+import type { ClaudeAccountEvent, ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 
 /** Claude 账号授权向导当前步骤。 */
 export type AuthorizationStep = "name" | "proxy" | "fingerprint" | "exit" | "waiting" | "completed"
@@ -50,6 +50,27 @@ export function createAuthorizationState(): AuthorizationState {
     authorizationUrl: null,
     error: null,
   }
+}
+
+/** 将主进程授权进度转换为向导状态，保留已保存账号的清理提示。 */
+export function applyClaudeAccountEvent(
+  current: AuthorizationState,
+  event: ClaudeAccountEvent,
+): AuthorizationState {
+  if (event.phase === "checking-egress") return { ...current, step: "exit", error: null }
+  if (event.phase === "waiting-browser") {
+    return { ...current, step: "waiting", error: null, canLaunch: true }
+  }
+  if (event.phase === "exchanging" || event.phase === "saving")
+    return { ...current, step: "waiting" }
+  if (event.phase === "authorized") {
+    return { ...current, step: "completed", approved: true, error: event.message }
+  }
+  if (event.phase === "blocked" || event.phase === "failed") {
+    return { ...current, step: "exit", error: event.message ?? "授权失败", canLaunch: false }
+  }
+  if (event.phase === "cancelled") return createAuthorizationState()
+  return current
 }
 
 /** 按事件推进授权状态，不打开浏览器或写入凭据。 */

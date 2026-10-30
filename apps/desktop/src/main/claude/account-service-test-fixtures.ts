@@ -53,11 +53,17 @@ export async function createHarness(
     tokens?: ClaudeOAuthTokens
     membershipError?: ClaudeAccountError
     deleteError?: Error
+    stopError?: Error
+    stopWait?: () => Promise<void>
+    deleteWait?: () => Promise<void>
+    readCliCredential?: ClaudeAccountServiceDeps["readCliCredential"]
+    readCliAccountMetadata?: ClaudeAccountServiceDeps["readCliAccountMetadata"]
     callback?: OAuthCallbackServer
     bridgeUrl?: string
     bridgeMissing?: boolean
     bridgeUrlAfterEgress?: string
     membershipWait?: () => Promise<void>
+    callbackStartWait?: () => Promise<void>
     proxyProtectionUnavailable?: boolean
     browser?: ClaudeAccountServiceDeps["browser"]
   } = {},
@@ -111,10 +117,19 @@ export async function createHarness(
     },
     profileDir: (accountId: string) => join(dir, "browser-profiles", accountId),
     launch: async (input: LaunchBrowserInput) => {
+      input.assertCanSpawn?.()
       browserCalls.push("launch")
       launchInputs.push(input)
       launched.resolve()
-      return { profileDir: join(dir, "browser-profiles", "acc-1"), pid: 1234 }
+      return {
+        profileDir: join(dir, "browser-profiles", "acc-1"),
+        pid: 1234,
+        stop: async () => {
+          browserCalls.push("stop")
+          await options.stopWait?.()
+          if (options.stopError !== undefined) throw options.stopError
+        },
+      }
     },
     stop: async () => {
       browserCalls.push("stop")
@@ -122,14 +137,17 @@ export async function createHarness(
     deleteProfile: async () => {
       if (options.deleteError !== undefined) throw options.deleteError
       browserCalls.push("delete")
+      await options.deleteWait?.()
     },
     stopAll: async () => undefined,
+    dispose: async () => undefined,
   }
   const oauth = {
     buildAuthorizeUrl: (input: { state: string }) =>
       `https://claude.test/authorize?state=${input.state}`,
     startCallback: async () => {
       callbackCalls.push("start")
+      await options.callbackStartWait?.()
       return callback
     },
     exchangeCode: async (input: { dispatcher?: Dispatcher }) => {
@@ -143,6 +161,12 @@ export async function createHarness(
   }
   const deps: ClaudeAccountServiceDeps = {
     store,
+    ...(options.readCliCredential === undefined
+      ? {}
+      : { readCliCredential: options.readCliCredential }),
+    ...(options.readCliAccountMetadata === undefined
+      ? {}
+      : { readCliAccountMetadata: options.readCliAccountMetadata }),
     browser: options.browser ?? browser,
     oauth,
     startBridge: async (input) => {

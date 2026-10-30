@@ -378,10 +378,9 @@ async function createHarness(options: {
       launch: async () => {
         throw new Error("unexpected launch")
       },
-      stop: async () => undefined,
       deleteProfile: async () => undefined,
       profileDir: (accountId) => join(dir, "browser-profiles", accountId),
-      stopAll: async () => undefined,
+      dispose: async () => undefined,
     },
     oauth: {
       buildAuthorizeUrl: () => "https://claude.test/authorize",

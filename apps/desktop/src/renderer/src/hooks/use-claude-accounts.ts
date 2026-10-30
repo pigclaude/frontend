@@ -30,7 +30,8 @@ export type ClaudeAccountsController = {
     proxyId: string | null
     fingerprint: ClaudeFingerprintView
   }) => Promise<void>
-  cancelAuthorization: () => Promise<void>
+  /** 返回是否完成取消及清理；保存中或清理失败时返回 false。 */
+  cancelAuthorization: () => Promise<boolean>
   update: (input: {
     accountId: string
     displayName?: string
@@ -54,6 +55,7 @@ export function useClaudeAccounts(): ClaudeAccountsController {
   const [event, setEvent] = useState<ClaudeAccountEvent | null>(null)
   const [error, setError] = useState<string | null>(null)
   const mounted = useRef(true)
+  const authorizationRequest = useRef(0)
   const hasBridge =
     window.pigclaude?.claudeAccounts !== undefined && window.pigclaude?.proxies !== undefined
   const preview = !hasBridge
@@ -118,12 +120,15 @@ export function useClaudeAccounts(): ClaudeAccountsController {
   }, [previewBridge, refresh])
 
   const wrap = useCallback(
-    async (operation: () => Promise<void>): Promise<void> => {
+    async (
+      operation: () => Promise<void>,
+      shouldReport: () => boolean = () => true,
+    ): Promise<void> => {
       setError(null)
       try {
         await operation()
       } catch (caught: unknown) {
-        if (mounted.current) setError(errorMessage(caught))
+        if (mounted.current && shouldReport()) setError(errorMessage(caught))
       } finally {
         await refresh()
       }
@@ -138,25 +143,33 @@ export function useClaudeAccounts(): ClaudeAccountsController {
       proxyId: string | null
       fingerprint: ClaudeFingerprintView
     }) => {
-      await wrap(async () => {
-        if (previewBridge !== null) {
-          await previewBridge.authorize(input)
-          return
-        }
-        await window.pigclaude?.claudeAccounts?.authorize(input)
-      })
+      const request = ++authorizationRequest.current
+      await wrap(
+        async () => {
+          if (previewBridge !== null) {
+            await previewBridge.authorize(input)
+            return
+          }
+          await window.pigclaude?.claudeAccounts?.authorize(input)
+        },
+        () => request === authorizationRequest.current,
+      )
     },
     [previewBridge, wrap],
   )
 
   const cancelAuthorization = useCallback(async () => {
+    let cancelled = false
     await wrap(async () => {
       if (previewBridge !== null) {
         await previewBridge.cancelAuthorization()
-        return
+      } else {
+        await window.pigclaude?.claudeAccounts?.cancelAuthorization()
       }
-      await window.pigclaude?.claudeAccounts?.cancelAuthorization()
+      cancelled = true
+      authorizationRequest.current++
     })
+    return cancelled
   }, [previewBridge, wrap])
 
   const update = useCallback(

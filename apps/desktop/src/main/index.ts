@@ -292,11 +292,14 @@ function getWorkspaceStore(): WorkspaceStore {
   return workspaceStore
 }
 
-/** 应用退出时先结束会话并拒绝权限，再停 daemon、账号和回调服务。 */
+/** 应用退出时并行关闭账号启动入口和会话，再停 daemon 并等待账号与回调服务清理。 */
 async function shutdownDesktop(): Promise<void> {
+  const accounts = claudeAccountService?.dispose().catch(() => {
+    console.error("CLAUDE_BROWSER_SHUTDOWN_FAILED")
+  })
   await sessionHost?.dispose().catch(() => undefined)
   await desktopComposition?.dispose().catch(() => undefined)
-  void claudeAccountService?.dispose()
+  await accounts
   await callbackServer?.close().catch(() => undefined)
 }
 

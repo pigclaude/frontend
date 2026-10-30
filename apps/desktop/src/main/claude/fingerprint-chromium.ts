@@ -53,17 +53,24 @@ export type LaunchBrowserInput = {
   authorizeUrl: string
   network: LaunchBrowserNetwork
   fingerprint: ClaudeFingerprintView
+  /** 若提供，在创建进程前确认本次授权仍未取消。 */
+  signal?: AbortSignal
+  /** 在同步创建进程前重新核对授权服务的启动条件。 */
+  assertCanSpawn?: () => void
 }
 
 /** 一次成功启动的结果。 */
 export type LaunchedBrowser = {
   profileDir: string
   pid: number | null
+  /** 只停止这次启动的进程，不影响同账号后续启动的实例。 */
+  stop: () => Promise<void>
 }
 
 type ManagedProcess = {
   child: ChildProcess
-  exited: Promise<void>
+  exited: boolean
+  waiters: Set<() => void>
 }
 
 /** 直接调用 fingerprint-chromium 的启动器。保证进程和配置目录都绑定到单个账号。 */
@@ -77,6 +84,9 @@ export class FingerprintChromiumAdapter {
   readonly #screenSize: ScreenSize | undefined
   readonly #hostPlatform: NodeJS.Platform
   readonly #processes = new Map<string, ManagedProcess>()
+  readonly #operations = new Map<string, Promise<void>>()
+  readonly #stops = new Map<string, Set<{ expected?: ManagedProcess; promise: Promise<void> }>>()
+  #closed = false
 
   /** 创建绑定到账号配置根目录的启动器。 */
   constructor(config: FingerprintChromiumConfig) {
@@ -135,9 +145,10 @@ export class FingerprintChromiumAdapter {
     )
   }
 
-  /** 启动内核并打开授权 URL。保证同一账号旧的浏览器进程先被停止，种子由账号 ID 稳定生成。 */
+  /** 启动内核并打开授权 URL。保证同一账号旧进程退出后才启动，种子由账号 ID 稳定生成。 */
   async launch(input: LaunchBrowserInput): Promise<LaunchedBrowser> {
-    const { accountId, authorizeUrl } = input
+    if (this.#closed) throw new BrowserLaunchError("BROWSER_START_FAILED", "浏览器启动器已关闭")
+    const { accountId, authorizeUrl, signal, assertCanSpawn } = input
     const validation = ensureFingerprint(input.fingerprint, accountId)
     if (!validation.ok) {
       throw new BrowserLaunchError("BROWSER_START_FAILED", validation.message)
@@ -150,75 +161,134 @@ export class FingerprintChromiumAdapter {
     )
     if (conflict !== null) throw new BrowserLaunchError("BROWSER_START_FAILED", conflict)
     if (network.mode === "bound") this.ensureBoundProxyProtection()
-    const binary = await this.ensureAvailable()
-    await this.stop(accountId)
-    const profileDir = this.profileDir(accountId)
-    await mkdir(profileDir, { recursive: true, mode: 0o700 })
-    const args = buildLaunchArgs(
-      authorizeUrl,
-      network,
-      validation.fingerprint,
-      profileDir,
-      this.#screenSize,
-    )
-    let child: ChildProcess
-    try {
-      child = this.#spawn(binary, args, { detached: true, stdio: "ignore" })
-      await waitForSpawn(child)
-    } catch {
-      throw new BrowserLaunchError("BROWSER_START_FAILED", "启动指纹浏览器失败")
-    }
-    child.unref()
-    const exited = new Promise<void>((resolve) => {
-      child.once("exit", () => resolve())
-    })
-    this.#processes.set(accountId, { child, exited })
-    void exited.then(() => {
-      if (this.#processes.get(accountId)?.child === child) {
-        this.#processes.delete(accountId)
+    return this.#serialize(accountId, async () => {
+      signal?.throwIfAborted()
+      if (this.#closed) throw new BrowserLaunchError("BROWSER_START_FAILED", "浏览器启动器已关闭")
+      const binary = await this.ensureAvailable()
+      signal?.throwIfAborted()
+      if (this.#closed) throw new BrowserLaunchError("BROWSER_START_FAILED", "浏览器启动器已关闭")
+      await this.#stopUnlocked(accountId)
+      const profileDir = this.profileDir(accountId)
+      await mkdir(profileDir, { recursive: true, mode: 0o700 })
+      signal?.throwIfAborted()
+      if (this.#closed) throw new BrowserLaunchError("BROWSER_START_FAILED", "浏览器启动器已关闭")
+      const args = buildLaunchArgs(
+        authorizeUrl,
+        network,
+        validation.fingerprint,
+        profileDir,
+        this.#screenSize,
+      )
+      let child: ChildProcess
+      let managed: ManagedProcess
+      assertCanSpawn?.()
+      try {
+        child = this.#spawn(binary, args, { detached: true, stdio: "ignore" })
+        managed = observeExit(child, (finished) => {
+          if (this.#processes.get(accountId) === finished) this.#processes.delete(accountId)
+        })
+        await waitForSpawn(child)
+      } catch {
+        throw new BrowserLaunchError("BROWSER_START_FAILED", "启动指纹浏览器失败")
+      }
+      child.unref()
+      if (!managed.exited) this.#processes.set(accountId, managed)
+      return {
+        profileDir,
+        pid: child.pid ?? null,
+        stop: () => this.#requestStop(accountId, managed),
       }
     })
-    return { profileDir, pid: child.pid ?? null }
   }
 
-  /** 停止账号的浏览器进程。保证先 SIGTERM，超时后 SIGKILL。 */
+  /** 停止账号的浏览器进程。未确认退出时保留跟踪并报告失败。 */
   async stop(accountId: string): Promise<void> {
+    await this.#requestStop(accountId)
+  }
+
+  #requestStop(accountId: string, expected?: ManagedProcess): Promise<void> {
+    const entries = this.#stops.get(accountId) ?? new Set()
+    const current = this.#processes.get(accountId)
+    if (this.#closed && (expected === undefined || expected === current)) {
+      const pending = [...entries].find(
+        (entry) => entry.expected === undefined || entry.expected === current,
+      )
+      if (pending !== undefined) return pending.promise
+    }
+    const promise = this.#serialize(accountId, () => this.#stopUnlocked(accountId, expected))
+    const entry = { expected, promise }
+    entries.add(entry)
+    this.#stops.set(accountId, entries)
+    const removeEntry = () => {
+      entries.delete(entry)
+      if (entries.size === 0 && this.#stops.get(accountId) === entries)
+        this.#stops.delete(accountId)
+    }
+    void promise.then(removeEntry, removeEntry)
+    return promise
+  }
+
+  async #stopUnlocked(accountId: string, expected?: ManagedProcess): Promise<void> {
     const managed = this.#processes.get(accountId)
-    if (managed === undefined) return
-    this.#processes.delete(accountId)
+    if (managed === undefined || (expected !== undefined && managed !== expected)) return
     try {
+      if (managed.exited) return
       managed.child.kill("SIGTERM")
-      const timedOut = await Promise.race([
-        managed.exited.then(() => false),
-        delay(this.#stopTimeoutMs).then(() => true),
-      ])
-      if (!timedOut) return
+      if (await waitUntilExit(managed, this.#stopTimeoutMs)) return
       managed.child.kill("SIGKILL")
-      await Promise.race([managed.exited, delay(1_000)])
+      if (!(await waitUntilExit(managed, 1_000))) {
+        throw new BrowserLaunchError(
+          "BROWSER_STOP_FAILED",
+          "无法确认浏览器已退出，请手动关闭后重试",
+        )
+      }
     } catch {
-      throw new BrowserLaunchError("BROWSER_STOP_FAILED", "停止指纹浏览器失败")
+      throw new BrowserLaunchError("BROWSER_STOP_FAILED", "无法确认浏览器已退出，请手动关闭后重试")
     }
   }
 
   /** 删除账号的浏览器配置目录。保证先停止进程，且只删除 profilesRoot 下的目录。 */
   async deleteProfile(accountId: string): Promise<void> {
-    await this.stop(accountId)
-    const dir = this.profileDir(accountId)
-    try {
-      await rm(dir, { recursive: true, force: true })
-    } catch {
-      throw new BrowserLaunchError("BROWSER_PROFILE_DELETE_FAILED", "删除浏览器配置目录失败")
-    }
+    await this.#serialize(accountId, async () => {
+      await this.#stopUnlocked(accountId)
+      const dir = this.profileDir(accountId)
+      try {
+        await rm(dir, { recursive: true, force: true })
+      } catch {
+        throw new BrowserLaunchError("BROWSER_PROFILE_DELETE_FAILED", "删除浏览器配置目录失败")
+      }
+    })
   }
 
   /** 停止全部由本进程启动的浏览器。 */
   async stopAll(): Promise<void> {
-    await Promise.all([...this.#processes.keys()].map((accountId) => this.stop(accountId)))
+    const accounts = new Set([...this.#processes.keys(), ...this.#operations.keys()])
+    const results = await Promise.allSettled([...accounts].map((accountId) => this.stop(accountId)))
+    if (results.some((result) => result.status === "rejected")) {
+      throw new BrowserLaunchError("BROWSER_STOP_FAILED", "无法确认浏览器已退出，请手动关闭后重试")
+    }
   }
 
-  /** 释放所有浏览器进程。 */
+  /** 关闭启动入口并等待所有已开始的浏览器操作完成。 */
   async dispose(): Promise<void> {
-    await this.stopAll()
+    this.#closed = true
+    const pending = [...this.#operations.values()]
+    const [stops] = await Promise.allSettled([this.stopAll(), ...pending])
+    if (stops?.status === "rejected") throw stops.reason
+  }
+
+  #serialize<T>(accountId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.#operations.get(accountId) ?? Promise.resolve()
+    const current = previous.then(operation)
+    const settled = current.then(
+      () => undefined,
+      () => undefined,
+    )
+    this.#operations.set(accountId, settled)
+    void settled.then(() => {
+      if (this.#operations.get(accountId) === settled) this.#operations.delete(accountId)
+    })
+    return current
   }
 }
 
@@ -266,8 +336,42 @@ function waitForSpawn(child: ChildProcess): Promise<void> {
   })
 }
 
-function delay(ms: number): Promise<void> {
+function hasExitStatus(child: ChildProcess): boolean {
+  return typeof child.exitCode === "number" || typeof child.signalCode === "string"
+}
+
+function observeExit(
+  child: ChildProcess,
+  onExit: (process: ManagedProcess) => void,
+): ManagedProcess {
+  const managed: ManagedProcess = { child, exited: false, waiters: new Set() }
+  const finish = (): void => {
+    if (managed.exited) return
+    managed.exited = true
+    for (const waiter of managed.waiters) waiter()
+    managed.waiters.clear()
+    onExit(managed)
+  }
+  child.once("exit", finish)
+  if (hasExitStatus(child)) {
+    child.off("exit", finish)
+    finish()
+  }
+  return managed
+}
+
+function waitUntilExit(managed: ManagedProcess, timeoutMs: number): Promise<boolean> {
+  if (managed.exited) return Promise.resolve(true)
   return new Promise((resolve) => {
-    setTimeout(resolve, ms)
+    const finish = (): void => {
+      clearTimeout(timeout)
+      managed.waiters.delete(finish)
+      resolve(true)
+    }
+    const timeout = setTimeout(() => {
+      managed.waiters.delete(finish)
+      resolve(false)
+    }, timeoutMs)
+    managed.waiters.add(finish)
   })
 }

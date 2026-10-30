@@ -1,5 +1,5 @@
 // 负责添加或重新授权 Claude 账号；指纹步骤拆到 fingerprint-step，出口核对交给主进程。
-import { useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import type { ClaudeAccountView, ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -48,9 +48,16 @@ export function AuthorizeScreen({
     () => state.fingerprint ?? initialFingerprint(account),
   )
   const selectedProxy = proxies.find((proxy) => proxy.id === proxyId) ?? null
+  const launching = useRef(false)
+  useEffect(() => {
+    if (state.step === "waiting" || state.step === "completed" || state.error !== null) {
+      launching.current = false
+    }
+  }, [state.step, state.error])
 
   function startBrowserAuthorization() {
-    if (name.trim() === "" || proxyId === null) return
+    if (launching.current || name.trim() === "" || proxyId === null) return
+    launching.current = true
     onStartBrowserAuthorization({
       accountId: account?.id,
       displayName: name.trim(),
@@ -327,6 +334,11 @@ export function AuthorizeScreen({
                   <span className="status ok">完成</span>
                 </div>
               </div>
+              {state.error ? (
+                <p className="error-text" role="alert">
+                  {state.error}
+                </p>
+              ) : null}
               <div className="wizard-foot">
                 <Button variant="primary" onClick={onCancel}>
                   回到账号

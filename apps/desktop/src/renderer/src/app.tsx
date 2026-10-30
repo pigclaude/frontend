@@ -13,7 +13,11 @@ import { useAppearance } from "./hooks/use-appearance"
 import { useClaudeAccounts } from "./hooks/use-claude-accounts"
 import { useMembershipConfirmation } from "./hooks/use-membership-confirmation"
 import { markOnboardingSeen } from "./lib/onboarding-storage"
-import { createAuthorizationState, reduceAuthorizationState } from "./models/authorization-model"
+import {
+  applyClaudeAccountEvent,
+  createAuthorizationState,
+  reduceAuthorizationState,
+} from "./models/authorization-model"
 import { toPoolProxy } from "./models/claude-account-view"
 import { parseDevView, type DevLoginPhase, type DevView } from "./models/dev-view"
 import {
@@ -66,6 +70,8 @@ export function DesktopApp() {
   const authorizationSession = useRef<string | null>(null)
   const authorizationRequest = useRef<string | null>(null)
   const acceptAuthorizationEvents = useRef(true)
+  const restartingClaude = useRef(false)
+  const skipRestartCancellation = useRef(false)
   const browserPreview = devView !== null && !window.pigclaude?.membership
   const canUseDesktop =
     (loginState.view === "idle" || loginState.view === "confirming") &&
@@ -102,30 +108,12 @@ export function DesktopApp() {
   useEffect(() => {
     const event = claudeAccounts.event
     if (event === null) return
-    setAuthorizationState((current) => {
-      if (event.phase === "checking-egress") {
-        return { ...current, step: "exit", error: null }
-      }
-      if (event.phase === "waiting-browser") {
-        return { ...current, step: "waiting", error: null, canLaunch: true }
-      }
-      if (event.phase === "exchanging" || event.phase === "saving") {
-        return { ...current, step: "waiting" }
-      }
-      if (event.phase === "authorized") {
-        return { ...current, step: "completed", approved: true, error: null }
-      }
-      if (event.phase === "blocked" || event.phase === "failed") {
-        return {
-          ...current,
-          step: "exit",
-          error: event.message ?? "授权失败",
-          canLaunch: false,
-        }
-      }
-      if (event.phase === "cancelled") return createAuthorizationState()
-      return current
-    })
+    if (event.phase === "cancelled" && skipRestartCancellation.current) {
+      skipRestartCancellation.current = false
+      return
+    }
+    if (event.phase === "waiting-browser") skipRestartCancellation.current = false
+    setAuthorizationState((current) => applyClaudeAccountEvent(current, event))
   }, [claudeAccounts.event])
 
   useEffect(() => {
@@ -315,20 +303,34 @@ export function DesktopApp() {
     proxyId: string | null
     fingerprint: ClaudeFingerprintView
   }): void {
-    acceptAuthorizationEvents.current = true
-    authorizationSession.current = null
-    setAuthorizationState((current) => ({ ...current, step: "exit", error: null }))
-    void claudeAccounts.authorize(input)
+    const start = () => {
+      acceptAuthorizationEvents.current = true
+      authorizationSession.current = null
+      setAuthorizationState((current) => ({ ...current, step: "exit", error: null }))
+      void claudeAccounts.authorize(input)
+    }
+    if (authorizationState.step !== "waiting") return start()
+    if (restartingClaude.current) return
+    restartingClaude.current = true
+    skipRestartCancellation.current = true
+    void claudeAccounts.cancelAuthorization().then((cancelled) => {
+      if (!restartingClaude.current) return
+      restartingClaude.current = false
+      if (cancelled) start()
+      else skipRestartCancellation.current = false
+    })
   }
 
   async function cancelClaudeAuthorization(): Promise<void> {
+    restartingClaude.current = false
+    skipRestartCancellation.current = false
+    if (!(await claudeAccounts.cancelAuthorization())) return
     authorizationGeneration.current++
     authorizationSession.current = null
     acceptAuthorizationEvents.current = false
     // 授权已完成时回到引导的下一步并记下这一步已完成；中途取消则回到原步骤。
     const authorized = authorizationState.approved || authorizationState.step === "completed"
     setOnboardingReturn((current) => current && resumeOnboarding(current, authorized))
-    await claudeAccounts.cancelAuthorization()
     setAuthorizationState(createAuthorizationState())
     setReauthorizeAccountId(null)
     setHistory((current) =>

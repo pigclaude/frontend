@@ -343,6 +343,17 @@
   gap: 8px;
 }
 
+.fp-argument-parts {
+  display: grid;
+  gap: 4px;
+}
+
+.fp-line-break {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .fp-argument-entry .fp-arguments {
   min-height: 64px;
 }

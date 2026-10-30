@@ -216,9 +216,9 @@ describe("fingerprint form", () => {
     const multiline = "--custom=one\r\nmiddle\rend"
     await render({ ...defaultFingerprintForm(), unknownArgs: [multiline, "--other"] })
     await click("#fp-group-advanced")
-    await typeInto("#fp-unknownArgs", "X--custom=one\nmiddle\nend")
+    await typeInto("#fp-unknownArgs", "X--custom=one")
     expect(latest.unknownArgs).toEqual([`X${multiline}`, "--other"])
-    await typeInto("#fp-unknownArgs", "X--custom=one\nmiddle\nend!")
+    await typeInto("#fp-unknownArgs-1-line-3", "end!")
     expect(latest.unknownArgs).toEqual([`X${multiline}!`, "--other"])
   })
 
@@ -226,12 +226,43 @@ describe("fingerprint form", () => {
     await render({ ...defaultFingerprintForm(), unknownArgs: ["--custom=one\ntwo", "--other"] })
     await click("#fp-group-advanced")
     const field = query<HTMLTextAreaElement>("#fp-unknownArgs")
-    field.focus()
-    expect(query<HTMLElement>("#fp-unknownArgs-hint").textContent).toContain("每个输入框")
+    expect(query<HTMLElement>("#fp-unknownArgs-hint").textContent).toContain("每组是一条")
     expect(field.getAttribute("aria-describedby")).toContain("fp-unknownArgs-hint")
-    await typeInto("#fp-unknownArgs", "--custom=onetwo")
+    await click('[aria-label="删除原始参数 1 的换行 1"]')
     expect(document.activeElement).toBe(field)
+    expect(field.value).toBe("--custom=onetwo")
     expect(query<HTMLTextAreaElement>("#fp-unknownArgs-2").value).toBe("--other")
+  })
+
+  it.each([
+    { separator: 1, expected: "x\nz" },
+    { separator: 2, expected: "x\r\nz" },
+  ])(
+    "removes the selected newline without changing an adjacent newline",
+    async ({ separator, expected }) => {
+      await render({ ...defaultFingerprintForm(), unknownArgs: ["x\r\n\nz"] })
+      await click("#fp-group-advanced")
+      await click(`[aria-label="删除原始参数 1 的换行 ${separator}"]`)
+      expect(latest.unknownArgs).toEqual([expected])
+    },
+  )
+
+  it("inserts a new line without changing existing separators and moves focus to it", async () => {
+    await render({ ...defaultFingerprintForm(), unknownArgs: ["--custom=one\r\nlast"] })
+    await click("#fp-group-advanced")
+    await typeInto("#fp-unknownArgs", "--custom=one\ninserted")
+    expect(latest.unknownArgs).toEqual(["--custom=one\ninserted\r\nlast"])
+    const inserted = query<HTMLTextAreaElement>("#fp-unknownArgs-1-line-2")
+    expect(document.activeElement).toBe(inserted)
+    expect(inserted.selectionStart).toBe("inserted".length)
+  })
+
+  it("allows an existing single empty argument to be removed and focuses add", async () => {
+    await render({ ...defaultFingerprintForm(), unknownArgs: [""] })
+    await click("#fp-group-advanced")
+    await click('[aria-label="删除原始参数 1"]')
+    expect(latest.unknownArgs).toEqual([])
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("添加原始参数")
   })
 
   it("can clear remaining arguments after leaving individual mode", async () => {

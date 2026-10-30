@@ -9,7 +9,6 @@ import type {
 import { cn } from "../lib/cn"
 import { fingerprintChoices, isFingerprintChoiceField } from "../models/fingerprint-choices"
 import {
-  applyRawArgumentEdit,
   fingerprintFieldMeta,
   fingerprintNoiseOptions,
   fingerprintSpoofingCategories,
@@ -19,13 +18,13 @@ import {
   type FingerprintFormErrors,
 } from "../models/fingerprint-form"
 import { Input } from "./ui/input"
-import { Button } from "./ui/button"
 import { Label } from "./ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select"
 import { Switch } from "./ui/switch"
 import { Textarea } from "./ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group"
 import { FingerprintChoice } from "./fingerprint-choice"
+import { RawArgumentEditor } from "./raw-argument-editor"
 
 const defaultChoice = "__default__"
 const wideControls = new Set<FingerprintEditableFieldKey>([
@@ -56,10 +55,15 @@ export function FingerprintField({
   const meta = fingerprintFieldMeta[key]
   const id = `${idPrefix}-${key}`
   const error = errors[key]
+  const rawArgs = value.unknownArgs ?? []
   const individualArgs =
     key === "unknownArgs" &&
-    (keepIndividualArgs || (value.unknownArgs ?? []).some((arg) => /[\r\n]/.test(arg)))
-  const hintText = individualArgs ? "每个输入框是一条启动参数，框内换行属于同一个参数。" : meta.hint
+    (keepIndividualArgs ||
+      rawArgs.some((arg) => /[\r\n]/.test(arg)) ||
+      (rawArgs.length === 1 && rawArgs[0] === ""))
+  const hintText = individualArgs
+    ? "每组是一条启动参数；组内换行按原类型保留，可单独删除。"
+    : meta.hint
   const describedBy =
     [hintText ? `${id}-hint` : "", error ? `${id}-error` : ""].filter(Boolean).join(" ") ||
     undefined
@@ -96,59 +100,19 @@ export function FingerprintField({
     }
 
     if (key === "unknownArgs") {
-      const args = value.unknownArgs ?? []
       if (individualArgs) {
         return (
-          <div className="fp-argument-list">
-            {args.map((arg, index) => (
-              <div className="fp-argument-entry" key={index}>
-                <Textarea
-                  id={index === 0 ? id : `${id}-${index + 1}`}
-                  aria-label={`原始参数 ${index + 1}`}
-                  className="mono fp-arguments"
-                  value={arg}
-                  spellCheck={false}
-                  {...a11y}
-                  onChange={(event) => {
-                    setKeepIndividualArgs(true)
-                    const next = applyRawArgumentEdit(arg, event.target.value)
-                    update(
-                      key,
-                      args.map((item, position) => (position === index ? next : item)),
-                    )
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  aria-label={`删除原始参数 ${index + 1}`}
-                  onClick={() => {
-                    setKeepIndividualArgs(true)
-                    update(
-                      key,
-                      args.filter((_item, position) => position !== index),
-                    )
-                  }}
-                >
-                  删除
-                </Button>
-              </div>
-            ))}
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              id={args.length === 0 ? id : undefined}
-              aria-label="添加原始参数"
-              onClick={() => {
-                setKeepIndividualArgs(true)
-                update(key, [...args, ""])
-              }}
-            >
-              添加参数
-            </Button>
-          </div>
+          <RawArgumentEditor
+            id={id}
+            args={rawArgs}
+            placeholder={meta.placeholder}
+            invalid={Boolean(error)}
+            describedBy={describedBy}
+            onChange={(args) => {
+              setKeepIndividualArgs(true)
+              update(key, args)
+            }}
+          />
         )
       }
       return (

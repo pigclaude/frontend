@@ -268,7 +268,10 @@ describe("FingerprintChromiumAdapter", () => {
           ...input,
           network: { mode: "bound", bridgeUrl: "http://127.0.0.1:9000" },
         }),
-      ).rejects.toMatchObject({ code: "BROWSER_START_FAILED" })
+      ).rejects.toMatchObject({
+        code: "BROWSER_START_FAILED",
+        message: expect.stringContaining(`--${key}`),
+      })
       await adapter.launch(input)
       expect(calls[0]).toContain(args[0])
     },

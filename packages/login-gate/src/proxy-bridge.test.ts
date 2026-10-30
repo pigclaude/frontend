@@ -107,9 +107,18 @@ describe("proxy bridge", () => {
 
   it("does not contact the target after a working upstream proxy stops", async () => {
     let targetConnections = 0
-    const target = createHttpServer((_request, response) => response.end("ok"))
+    let targetRequests = 0
+    let targetConnects = 0
+    const target = createHttpServer((_request, response) => {
+      targetRequests += 1
+      response.end("ok")
+    })
     target.on("connection", () => {
       targetConnections += 1
+    })
+    target.on("connect", (_request, socket) => {
+      targetConnects += 1
+      socket.destroy()
     })
     await listen(target)
     track(() => closeHttpServer(target))
@@ -139,6 +148,8 @@ describe("proxy bridge", () => {
 
     expect(await requestHttp()).toBe(200)
     expect(targetConnections).toBe(1)
+    expect(targetRequests).toBe(1)
+    expect(targetConnects).toBe(0)
     await upstream.close()
     expect(await requestHttp()).toBe(502)
 
@@ -153,6 +164,8 @@ describe("proxy bridge", () => {
     socket.destroy()
     expect(response.statusCode).toBe(502)
     expect(targetConnections).toBe(1)
+    expect(targetRequests).toBe(1)
+    expect(targetConnects).toBe(0)
   })
 
   it("only listens on loopback and releases the port after close", async () => {

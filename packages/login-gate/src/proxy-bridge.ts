@@ -13,6 +13,7 @@ import { connect as tlsConnect } from "node:tls"
 const connectTimeoutMs = 15_000
 const idleTimeoutMs = 60_000
 const maxProxyHeaderBytes = 8_192
+const maxPendingConnectBytes = 1024 * 1024
 
 /** 代理桥的稳定错误码。 */
 export type ProxyBridgeErrorCode = "INVALID_PROXY_URL" | "UNSUPPORTED_PROXY_SCHEME"
@@ -163,6 +164,9 @@ function handleHttp(
   })
   request.on("error", () => upstreamRequest.destroy())
   response.on("error", () => upstreamRequest.destroy())
+  response.on("close", () => {
+    if (!response.writableFinished) upstreamRequest.destroy()
+  })
   request.pipe(upstreamRequest)
 }
 
@@ -180,13 +184,38 @@ function handleConnect(
   clientSocket.setTimeout(idleTimeoutMs, () => clientSocket.destroy())
 
   let settled = false
+  let tunnelEstablished = false
   let upstreamSocket: Socket | null = null
+  let pendingBytes = head.length
+  const pendingChunks: Buffer[] = head.length === 0 ? [] : [head]
   const fail = (): void => {
     if (settled) return
     settled = true
     writeRawStatus(clientSocket, 502)
     upstreamSocket?.destroy()
   }
+  clientSocket.once("close", () => {
+    settled = true
+    upstreamSocket?.destroy()
+  })
+  clientSocket.once("error", () => clientSocket.destroy())
+  clientSocket.once("end", () => {
+    if (!tunnelEstablished) clientSocket.destroy()
+  })
+  const onPendingData = (chunk: Buffer): void => {
+    pendingBytes += chunk.length
+    if (pendingBytes > maxPendingConnectBytes) {
+      clientSocket.destroy()
+      return
+    }
+    pendingChunks.push(chunk)
+  }
+  if (pendingBytes > maxPendingConnectBytes) {
+    clientSocket.destroy()
+    return
+  }
+  clientSocket.on("data", onPendingData)
+  clientSocket.resume()
 
   const socket =
     upstream.protocol === "https:"
@@ -200,12 +229,24 @@ function handleConnect(
 
   socket.setTimeout(connectTimeoutMs, () => socket.destroy())
   socket.once("error", fail)
+  socket.once("close", () => {
+    if (!settled) fail()
+    else if (tunnelEstablished) clientSocket.destroy()
+  })
   socket.once(upstream.protocol === "https:" ? "secureConnect" : "connect", () => {
+    if (settled || clientSocket.destroyed) {
+      socket.destroy()
+      return
+    }
     const authorization = upstream.auth === null ? "" : `Proxy-Authorization: ${upstream.auth}\r\n`
     socket.write(`CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\n${authorization}\r\n`)
 
     let buffer = Buffer.alloc(0)
     const onData = (chunk: Buffer): void => {
+      if (settled || clientSocket.destroyed) {
+        socket.destroy()
+        return
+      }
       buffer = Buffer.concat([buffer, chunk])
       const headerEnd = buffer.indexOf("\r\n\r\n")
       if (headerEnd < 0) {
@@ -219,15 +260,16 @@ function handleConnect(
         return
       }
       settled = true
+      tunnelEstablished = true
       const remainder = buffer.subarray(headerEnd + 4)
+      clientSocket.pause()
+      clientSocket.off("data", onPendingData)
       clientSocket.write("HTTP/1.1 200 Connection Established\r\n\r\n")
       if (remainder.length > 0) clientSocket.write(remainder)
-      if (head.length > 0) socket.write(head)
+      for (const chunk of pendingChunks) socket.write(chunk)
       socket.setTimeout(idleTimeoutMs, () => socket.destroy())
       socket.pipe(clientSocket)
       clientSocket.pipe(socket)
-      socket.on("close", () => clientSocket.destroy())
-      clientSocket.on("close", () => socket.destroy())
     }
     socket.on("data", onData)
   })

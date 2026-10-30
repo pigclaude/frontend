@@ -25,6 +25,7 @@ import { readClaudeCliCredential, type ClaudeCliCredential } from "./cli-credent
 import { ClaudeAccountError } from "./errors"
 import { BrowserLaunchError, type FingerprintChromiumAdapter } from "./fingerprint-chromium"
 import { ensureFingerprint } from "./fingerprint-args"
+import { isValidBridgeUrl, launchArgumentConflict } from "./launch-argument-guard"
 import {
   createSubscriptionOAuthRequest,
   SubscriptionOAuthError,
@@ -125,38 +126,50 @@ export class ClaudeAccountService {
 
   /** 添加或重新授权一个 Claude 账号。保证绑定代理时先核对出口；身份和存储全部通过后才保留凭据。 */
   async authorize(input: AuthorizeClaudeAccountInput): Promise<ClaudeAccountView> {
-    const accountId = input.accountId ?? this.#id()
+    const requestedAccountId = input.accountId
+    const accountId = requestedAccountId ?? this.#id()
+    const proxyId = input.proxyId
     this.#emit(accountId, "preparing")
     let bridge: ProxyBridge | null = null
+    let bridgeUrl: string | null = null
     let callback: OAuthCallbackServer | null = null
     let browserLaunched = false
     try {
-      await this.#ensureMembership()
+      const validation = ensureFingerprint(input.fingerprint, accountId)
       const displayName = input.displayName.trim()
+      await this.#ensureMembership()
       if (displayName === "") {
         throw new ClaudeAccountError("INVALID_INPUT", "账号名称不能为空")
       }
       const existing =
-        input.accountId === undefined ? null : await this.#deps.store.getAccount(input.accountId)
-      if (input.accountId !== undefined && existing === null) {
+        requestedAccountId === undefined
+          ? null
+          : await this.#deps.store.getAccount(requestedAccountId)
+      if (requestedAccountId !== undefined && existing === null) {
         throw new ClaudeAccountError("ACCOUNT_NOT_FOUND", "账号不存在")
       }
-      const validation = ensureFingerprint(input.fingerprint, accountId)
       if (!validation.ok) {
         throw new ClaudeAccountError("FINGERPRINT_INVALID", validation.message)
       }
       const fingerprint = validation.fingerprint
-      const proxy = input.proxyId === null ? null : await this.#deps.store.getProxy(input.proxyId)
-      if (input.proxyId !== null && proxy === null) {
+      const conflict = launchArgumentConflict(fingerprint.unknownArgs ?? [], proxyId !== null)
+      if (conflict !== null) throw new ClaudeAccountError("FINGERPRINT_INVALID", conflict)
+      const proxy = proxyId === null ? null : await this.#deps.store.getProxy(proxyId)
+      if (proxyId !== null && proxy === null) {
         throw new ClaudeAccountError("PROXY_INVALID", "代理不存在")
       }
       await this.#deps.browser.ensureAvailable()
 
       if (proxy !== null) {
         bridge = await this.#deps.startBridge({ upstreamProxyUrl: proxy.url })
+        const startedBridgeUrl = bridge?.url
+        if (!isValidBridgeUrl(startedBridgeUrl)) {
+          throw new ClaudeAccountError("PROXY_UNAVAILABLE", "代理桥不可用，请勿登录")
+        }
+        bridgeUrl = startedBridgeUrl
         this.#emit(accountId, "checking-egress")
         const egress = await this.#deps.checkEgress({
-          bridgeUrl: bridge.url,
+          bridgeUrl,
           upstreamProxyUrl: proxy.url,
           checkUrl: this.#egressCheckUrl,
         })
@@ -182,14 +195,15 @@ export class ClaudeAccountService {
       await this.#deps.browser.launch({
         accountId,
         authorizeUrl,
-        ...(bridge === null ? {} : { bridgeUrl: bridge.url }),
+        network:
+          proxyId === null ? { mode: "system" } : { mode: "bound", bridgeUrl: bridgeUrl ?? "" },
         fingerprint,
       })
       browserLaunched = true
       const code = await callback.waitForCode()
       this.#emit(accountId, "exchanging")
 
-      const dispatcher = bridge === null ? null : new ProxyAgent(bridge.url)
+      const dispatcher = bridgeUrl === null ? null : new ProxyAgent(bridgeUrl)
       let tokens: ClaudeOAuthTokens
       let profile: ClaudeOAuthProfile | null
       try {
@@ -218,7 +232,7 @@ export class ClaudeAccountService {
         enabled: existing?.enabled ?? true,
         credential,
         needsReauth: false,
-        proxyId: input.proxyId,
+        proxyId,
         fingerprint,
         browserProfileDir: profileDir,
         exhaustedUntil: existing?.exhaustedUntil ?? null,
@@ -234,7 +248,7 @@ export class ClaudeAccountService {
       this.#emit(accountId, phaseFor(mapped.code), mapped.code, mapped.message)
       throw mapped
     } finally {
-      this.#active = null
+      if (this.#active?.callback === callback) this.#active = null
       await callback?.close().catch(() => undefined)
       if (browserLaunched) await this.#deps.browser.stop(accountId).catch(() => undefined)
       await bridge?.close().catch(() => undefined)

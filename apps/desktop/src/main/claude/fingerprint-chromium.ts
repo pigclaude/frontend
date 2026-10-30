@@ -7,6 +7,7 @@ import { homedir } from "node:os"
 import { isAbsolute, join, relative } from "node:path"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { buildFingerprintArgs, ensureFingerprint, type ScreenSize } from "./fingerprint-args"
+import { isValidBridgeUrl, launchArgumentConflict } from "./launch-argument-guard"
 
 const defaultStopTimeoutMs = 3_000
 
@@ -39,13 +40,18 @@ export type FingerprintChromiumConfig = {
   stopTimeoutMs?: number
   /** 宿主屏幕可用区域，用于计算默认窗口大小；缺省按 1920x1080。 */
   screenSize?: ScreenSize
+  /** 参数解析所用的真实宿主平台；缺省取当前进程平台。 */
+  hostPlatform?: NodeJS.Platform
 }
 
-/** 启动一次登录需要的输入。bridgeUrl 缺省表示不使用代理桥，直接走系统网络。 */
+/** 浏览器网络模式；绑定代理时必须提供有效的本机代理桥。 */
+export type LaunchBrowserNetwork = { mode: "system" } | { mode: "bound"; bridgeUrl: string }
+
+/** 启动一次登录需要的输入，必须显式区分系统网络和已绑定代理。 */
 export type LaunchBrowserInput = {
   accountId: string
   authorizeUrl: string
-  bridgeUrl?: string
+  network: LaunchBrowserNetwork
   fingerprint: ClaudeFingerprintView
 }
 
@@ -69,6 +75,7 @@ export class FingerprintChromiumAdapter {
   readonly #spawn: typeof spawn
   readonly #stopTimeoutMs: number
   readonly #screenSize: ScreenSize | undefined
+  readonly #hostPlatform: NodeJS.Platform
   readonly #processes = new Map<string, ManagedProcess>()
 
   /** 创建绑定到账号配置根目录的启动器。 */
@@ -80,6 +87,7 @@ export class FingerprintChromiumAdapter {
     this.#spawn = config.spawn ?? spawn
     this.#stopTimeoutMs = config.stopTimeoutMs ?? defaultStopTimeoutMs
     this.#screenSize = config.screenSize
+    this.#hostPlatform = config.hostPlatform ?? process.platform
   }
 
   /** 返回账号的浏览器配置目录。保证目录名只来自账号 ID，不能越出 profilesRoot。 */
@@ -121,15 +129,29 @@ export class FingerprintChromiumAdapter {
 
   /** 启动内核并打开授权 URL。保证同一账号旧的浏览器进程先被停止，种子由账号 ID 稳定生成。 */
   async launch(input: LaunchBrowserInput): Promise<LaunchedBrowser> {
-    const validation = ensureFingerprint(input.fingerprint, input.accountId)
+    const { accountId, authorizeUrl } = input
+    const validation = ensureFingerprint(input.fingerprint, accountId)
     if (!validation.ok) {
       throw new BrowserLaunchError("BROWSER_START_FAILED", validation.message)
     }
+    const network = validatedNetwork(input.network)
+    const conflict = launchArgumentConflict(
+      validation.fingerprint.unknownArgs ?? [],
+      network.mode === "bound",
+      this.#hostPlatform,
+    )
+    if (conflict !== null) throw new BrowserLaunchError("BROWSER_START_FAILED", conflict)
     const binary = await this.ensureAvailable()
-    await this.stop(input.accountId)
-    const profileDir = this.profileDir(input.accountId)
+    await this.stop(accountId)
+    const profileDir = this.profileDir(accountId)
     await mkdir(profileDir, { recursive: true, mode: 0o700 })
-    const args = buildLaunchArgs(input, validation.fingerprint, profileDir, this.#screenSize)
+    const args = buildLaunchArgs(
+      authorizeUrl,
+      network,
+      validation.fingerprint,
+      profileDir,
+      this.#screenSize,
+    )
     let child: ChildProcess
     try {
       child = this.#spawn(binary, args, { detached: true, stdio: "ignore" })
@@ -141,10 +163,10 @@ export class FingerprintChromiumAdapter {
     const exited = new Promise<void>((resolve) => {
       child.once("exit", () => resolve())
     })
-    this.#processes.set(input.accountId, { child, exited })
+    this.#processes.set(accountId, { child, exited })
     void exited.then(() => {
-      if (this.#processes.get(input.accountId)?.child === child) {
-        this.#processes.delete(input.accountId)
+      if (this.#processes.get(accountId)?.child === child) {
+        this.#processes.delete(accountId)
       }
     })
     return { profileDir, pid: child.pid ?? null }
@@ -191,22 +213,31 @@ export class FingerprintChromiumAdapter {
   }
 }
 
+function validatedNetwork(network: LaunchBrowserNetwork): LaunchBrowserNetwork {
+  if (network?.mode === "system" && !("bridgeUrl" in network)) return { mode: "system" }
+  if (network?.mode === "bound" && isValidBridgeUrl(network.bridgeUrl)) {
+    return { mode: "bound", bridgeUrl: network.bridgeUrl }
+  }
+  throw new BrowserLaunchError("BROWSER_START_FAILED", "代理桥无效或网络模式不明确，请检查代理设置")
+}
+
 function buildLaunchArgs(
-  input: LaunchBrowserInput,
+  authorizeUrl: string,
+  network: LaunchBrowserNetwork,
   fingerprint: ClaudeFingerprintView,
   profileDir: string,
   screenSize: ScreenSize | undefined,
 ): string[] {
   const args = [`--user-data-dir=${profileDir}`]
-  if (input.bridgeUrl !== undefined && input.bridgeUrl !== "") {
-    args.push(`--proxy-server=${input.bridgeUrl}`, "--proxy-bypass-list=localhost;127.0.0.1")
+  if (network.mode === "bound") {
+    args.push(`--proxy-server=${network.bridgeUrl}`, "--proxy-bypass-list=localhost;127.0.0.1")
   }
   args.push(
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-sync",
     ...buildFingerprintArgs(fingerprint, { screen: screenSize }),
-    input.authorizeUrl,
+    authorizeUrl,
   )
   return args
 }

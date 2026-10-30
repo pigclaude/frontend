@@ -1,0 +1,95 @@
+// 验证授权过程使用同一份账号、指纹、代理绑定和代理桥快照。
+
+import { describe, expect, it } from "vitest"
+import type { AuthorizeClaudeAccountInput } from "./account-service"
+import { ClaudeAccountError } from "./errors"
+import { createHarness, fingerprint, seedAccount } from "./account-service-test-fixtures"
+
+describe("Claude 账号授权快照", () => {
+  it("keeps the submitted account, proxy and fingerprint while membership is checked", async () => {
+    let resume: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      resume = resolve
+    })
+    const harness = await createHarness({
+      membershipWait: () => gate,
+      profile: {
+        accountUuid: "old-account",
+        email: "old@example.com",
+        organizationUuid: "org",
+        subscriptionType: "max",
+        rateLimitTier: null,
+      },
+    })
+    await harness.store.saveAccount(seedAccount())
+    const unknownArgs = ["--load-extension=/synthetic/extension"]
+    const input: AuthorizeClaudeAccountInput = {
+      accountId: "acc-1",
+      displayName: "原始名称",
+      proxyId: "p1",
+      fingerprint: { ...fingerprint, unknownArgs },
+    }
+    const pending = harness.service.authorize(input)
+    input.accountId = "another-account"
+    input.displayName = "后续修改"
+    input.proxyId = null
+    unknownArgs.push("--no-proxy-server")
+    resume()
+
+    const account = await pending
+    expect(account).toMatchObject({ id: "acc-1", displayName: "原始名称", proxyId: "p1" })
+    expect(harness.launchInputs[0]?.network).toEqual({
+      mode: "bound",
+      bridgeUrl: "http://127.0.0.1:9999",
+    })
+    expect(harness.launchInputs[0]?.fingerprint.unknownArgs).toEqual([
+      "--load-extension=/synthetic/extension",
+    ])
+  })
+
+  it("uses the same bridge address for egress validation and browser launch", async () => {
+    const harness = await createHarness({ bridgeUrlAfterEgress: "http://127.0.0.1:9998" })
+    await harness.service.authorize({ displayName: "工作账号", proxyId: "p1", fingerprint })
+    expect(harness.egressCalls[0]?.bridgeUrl).toBe("http://127.0.0.1:9999")
+    expect(harness.launchInputs[0]?.network).toEqual({
+      mode: "bound",
+      bridgeUrl: "http://127.0.0.1:9999",
+    })
+  })
+
+  it("keeps an existing authorization cancellable when another request has conflicting arguments", async () => {
+    let closed = false
+    let rejectWait: ((error: Error) => void) | null = null
+    const callback = {
+      redirectUri: "http://localhost:1234/callback",
+      waitForCode: () =>
+        new Promise<string>((_resolve, reject) => {
+          rejectWait = reject
+        }),
+      close: async () => {
+        if (closed) return
+        closed = true
+        rejectWait?.(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消"))
+      },
+    }
+    const harness = await createHarness({ callback })
+    const existing = harness.service
+      .authorize({ displayName: "正在授权", proxyId: null, fingerprint })
+      .catch((error: unknown) => error)
+    await harness.launched.promise
+    await expect(
+      harness.service.authorize({
+        displayName: "冲突请求",
+        proxyId: null,
+        fingerprint: { ...fingerprint, unknownArgs: ["--profile-directory=.."] },
+      }),
+    ).rejects.toMatchObject({ code: "FINGERPRINT_INVALID" })
+    try {
+      await harness.service.cancel()
+      expect(closed).toBe(true)
+    } finally {
+      await callback.close()
+      await existing
+    }
+  })
+})

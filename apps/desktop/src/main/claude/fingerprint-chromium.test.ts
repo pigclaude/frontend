@@ -41,7 +41,7 @@ describe("FingerprintChromiumAdapter", () => {
     })
   })
 
-  it("launches the kernel with profile, proxy, fingerprint and URL", async () => {
+  it("launches the kernel with profile, fingerprint and URL on system networking", async () => {
     const binary = await fakeBinary()
     const root = await tempRoot()
     const calls: Array<{ binary: string; args: string[] }> = []
@@ -57,7 +57,7 @@ describe("FingerprintChromiumAdapter", () => {
     const launched = await adapter.launch({
       accountId: "acc-1",
       authorizeUrl: "https://claude.test/authorize",
-      network: { mode: "bound", bridgeUrl: "http://127.0.0.1:9000" },
+      network: { mode: "system" },
       fingerprint,
     })
     expect(launched).toMatchObject({ pid: 4321 })
@@ -66,8 +66,6 @@ describe("FingerprintChromiumAdapter", () => {
     expect(calls[0]?.binary).toBe(binary)
     expect(calls[0]?.args).toEqual([
       `--user-data-dir=${join(root, "acc-1")}`,
-      "--proxy-server=http://127.0.0.1:9000",
-      "--proxy-bypass-list=localhost;127.0.0.1",
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-sync",
@@ -317,13 +315,13 @@ describe("FingerprintChromiumAdapter", () => {
     await adapter.launch({
       accountId: "acc-1",
       authorizeUrl: "https://claude.test/1",
-      network: { mode: "bound", bridgeUrl: "http://127.0.0.1:9000" },
+      network: { mode: "system" },
       fingerprint,
     })
     await adapter.launch({
       accountId: "acc-1",
       authorizeUrl: "https://claude.test/2",
-      network: { mode: "bound", bridgeUrl: "http://127.0.0.1:9000" },
+      network: { mode: "system" },
       fingerprint,
     })
     expect(children[0]?.signals).toEqual(["SIGTERM"])
@@ -341,7 +339,7 @@ describe("FingerprintChromiumAdapter", () => {
     const launched = await adapter.launch({
       accountId: "acc-1",
       authorizeUrl: "https://claude.test/authorize",
-      network: { mode: "bound", bridgeUrl: "http://127.0.0.1:9000" },
+      network: { mode: "system" },
       fingerprint,
     })
     await writeFile(join(launched.profileDir, "marker"), "x")
@@ -363,7 +361,7 @@ describe("FingerprintChromiumAdapter", () => {
     await adapter.launch({
       accountId: "acc-1",
       authorizeUrl: "https://claude.test/authorize",
-      network: { mode: "bound", bridgeUrl: "http://127.0.0.1:9000" },
+      network: { mode: "system" },
       fingerprint,
     })
     child.exitOnKill = true
@@ -387,7 +385,7 @@ describe("FingerprintChromiumAdapter", () => {
       adapter.launch({
         accountId: "acc-1",
         authorizeUrl: "https://claude.test/authorize",
-        network: { mode: "bound", bridgeUrl: "http://127.0.0.1:9000" },
+        network: { mode: "system" },
         fingerprint,
       }),
     ).rejects.toBeInstanceOf(BrowserLaunchError)

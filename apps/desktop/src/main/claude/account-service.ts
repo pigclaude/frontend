@@ -67,7 +67,13 @@ export type ClaudeAccountServiceDeps = {
   store: LocalStore
   browser: Pick<
     FingerprintChromiumAdapter,
-    "ensureAvailable" | "launch" | "stop" | "deleteProfile" | "profileDir" | "stopAll"
+    | "ensureAvailable"
+    | "ensureBoundProxyProtection"
+    | "launch"
+    | "stop"
+    | "deleteProfile"
+    | "profileDir"
+    | "stopAll"
   >
   oauth: Pick<
     SubscriptionOAuth,
@@ -158,6 +164,7 @@ export class ClaudeAccountService {
       if (proxyId !== null && proxy === null) {
         throw new ClaudeAccountError("PROXY_INVALID", "代理不存在")
       }
+      if (proxy !== null) this.#deps.browser.ensureBoundProxyProtection()
       await this.#deps.browser.ensureAvailable()
 
       if (proxy !== null) {

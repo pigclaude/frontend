@@ -127,6 +127,14 @@ export class FingerprintChromiumAdapter {
     )
   }
 
+  /** 未有可信强制代理内核时拒绝绑定代理授权，不能按版本号或自报放行。 */
+  ensureBoundProxyProtection(): void {
+    throw new BrowserLaunchError(
+      "BROWSER_START_FAILED",
+      "当前指纹内核无法证明受管代理保护，暂不能使用绑定代理授权",
+    )
+  }
+
   /** 启动内核并打开授权 URL。保证同一账号旧的浏览器进程先被停止，种子由账号 ID 稳定生成。 */
   async launch(input: LaunchBrowserInput): Promise<LaunchedBrowser> {
     const { accountId, authorizeUrl } = input
@@ -141,6 +149,7 @@ export class FingerprintChromiumAdapter {
       this.#hostPlatform,
     )
     if (conflict !== null) throw new BrowserLaunchError("BROWSER_START_FAILED", conflict)
+    if (network.mode === "bound") this.ensureBoundProxyProtection()
     const binary = await this.ensureAvailable()
     await this.stop(accountId)
     const profileDir = this.profileDir(accountId)

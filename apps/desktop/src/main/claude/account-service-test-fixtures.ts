@@ -8,7 +8,7 @@ import type { ClaudeAccountEvent, ClaudeFingerprintView } from "@pigclaude/contr
 import { LocalStore, type AccountRecord } from "@pigclaude/local-store"
 import type { EgressResult } from "@pigclaude/login-gate/egress-check"
 import type { ProxyBridge } from "@pigclaude/login-gate/proxy-bridge"
-import type { LaunchBrowserInput } from "./fingerprint-chromium"
+import { BrowserLaunchError, type LaunchBrowserInput } from "./fingerprint-chromium"
 import type { ClaudeAccountError } from "./errors"
 import { ClaudeAccountService, type ClaudeAccountServiceDeps } from "./account-service"
 import type {
@@ -38,6 +38,7 @@ export type Harness = {
   launchInputs: LaunchBrowserInput[]
   bridgeCalls: Array<{ upstreamProxyUrl: string }>
   egressCalls: Array<{ bridgeUrl: string; upstreamProxyUrl: string; checkUrl: string }>
+  callbackCalls: string[]
   exchangeDispatchers: Array<Dispatcher | undefined>
   profileDispatchers: Array<Dispatcher | undefined>
   launched: { promise: Promise<void>; resolve: () => void }
@@ -57,6 +58,8 @@ export async function createHarness(
     bridgeMissing?: boolean
     bridgeUrlAfterEgress?: string
     membershipWait?: () => Promise<void>
+    proxyProtectionUnavailable?: boolean
+    browser?: ClaudeAccountServiceDeps["browser"]
   } = {},
 ): Promise<Harness> {
   const dir = await mkdtemp(join(tmpdir(), "claude-account-"))
@@ -73,6 +76,7 @@ export async function createHarness(
   const launchInputs: LaunchBrowserInput[] = []
   const bridgeCalls: Array<{ upstreamProxyUrl: string }> = []
   const egressCalls: Array<{ bridgeUrl: string; upstreamProxyUrl: string; checkUrl: string }> = []
+  const callbackCalls: string[] = []
   const exchangeDispatchers: Array<Dispatcher | undefined> = []
   const profileDispatchers: Array<Dispatcher | undefined> = []
   let resolveLaunched: () => void = () => undefined
@@ -95,6 +99,12 @@ export async function createHarness(
     close: async () => undefined,
   }
   const browser = {
+    ensureBoundProxyProtection: () => {
+      // 编排测试使用可控替身；真实启动器在没有可信内核时始终阻断。
+      if (options.proxyProtectionUnavailable) {
+        throw new BrowserLaunchError("BROWSER_START_FAILED", "当前内核无法证明受管代理保护")
+      }
+    },
     ensureAvailable: async () => {
       browserCalls.push("ensure")
       return "/fake/fingerprint-chromium"
@@ -118,7 +128,10 @@ export async function createHarness(
   const oauth = {
     buildAuthorizeUrl: (input: { state: string }) =>
       `https://claude.test/authorize?state=${input.state}`,
-    startCallback: async () => callback,
+    startCallback: async () => {
+      callbackCalls.push("start")
+      return callback
+    },
     exchangeCode: async (input: { dispatcher?: Dispatcher }) => {
       exchangeDispatchers.push(input.dispatcher)
       return options.tokens ?? defaultTokens()
@@ -130,7 +143,7 @@ export async function createHarness(
   }
   const deps: ClaudeAccountServiceDeps = {
     store,
-    browser,
+    browser: options.browser ?? browser,
     oauth,
     startBridge: async (input) => {
       bridgeCalls.push(input)
@@ -159,6 +172,7 @@ export async function createHarness(
     launchInputs,
     bridgeCalls,
     egressCalls,
+    callbackCalls,
     exchangeDispatchers,
     profileDispatchers,
     launched,

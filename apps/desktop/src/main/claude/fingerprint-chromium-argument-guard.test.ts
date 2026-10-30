@@ -176,41 +176,43 @@ describe("受管浏览器启动参数", () => {
     expect(calls).toEqual([])
   })
 
-  it("preserves extension-loading and WebRTC arguments with a bound proxy", async () => {
+  it("keeps extension-loading arguments intact when bound authorization is blocked", async () => {
     const { adapter, calls } = await createAdapter("win32")
     const unknownArgs = [
       " --load-extension=/synthetic/extension ",
       "--disable-extensions-except=/synthetic/extension",
       "--webrtc-ip-handling-policy=default_public_interface_only",
       "--disable-non-proxied-udp",
-      "\ufeff--proxy-server=not-chromium-whitespace",
     ]
-    await adapter.launch({
-      accountId: "fixture",
-      authorizeUrl: "https://example.test/authorize",
-      fingerprint: { ...fingerprint, unknownArgs },
-      network: { mode: "bound", bridgeUrl: "http://127.0.0.1:9000" },
-    })
-    expect(calls[0]?.slice(-unknownArgs.length - 1)).toEqual([
-      ...unknownArgs,
-      "https://example.test/authorize",
+    await expect(
+      adapter.launch({
+        accountId: "fixture",
+        authorizeUrl: "https://example.test/authorize",
+        fingerprint: { ...fingerprint, unknownArgs },
+        network: { mode: "bound", bridgeUrl: "http://127.0.0.1:9000" },
+      }),
+    ).rejects.toMatchObject({ message: expect.stringContaining("受管代理保护") })
+    expect(calls).toEqual([])
+    expect(unknownArgs).toEqual([
+      " --load-extension=/synthetic/extension ",
+      "--disable-extensions-except=/synthetic/extension",
+      "--webrtc-ip-handling-policy=default_public_interface_only",
+      "--disable-non-proxied-udp",
     ])
   })
 
-  it("uses the same fingerprint and bridge snapshot that it checked", async () => {
+  it("uses the same fingerprint snapshot that it checked", async () => {
     const { adapter, calls } = await createAdapter("darwin")
-    const network = { mode: "bound" as const, bridgeUrl: "http://127.0.0.1:9000" }
     const unknownArgs = ["--load-extension=/synthetic/extension"]
     const pending = adapter.launch({
       accountId: "fixture",
       authorizeUrl: "https://example.test/authorize",
       fingerprint: { ...fingerprint, unknownArgs },
-      network,
+      network: { mode: "system" },
     })
-    network.bridgeUrl = "http://127.0.0.1:9001"
     unknownArgs.push("--no-proxy-server")
     await pending
-    expect(calls[0]).toContain("--proxy-server=http://127.0.0.1:9000")
+    expect(calls[0]).toContain("--load-extension=/synthetic/extension")
     expect(calls[0]).not.toContain("--no-proxy-server")
   })
 })

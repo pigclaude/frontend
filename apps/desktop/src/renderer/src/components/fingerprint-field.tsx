@@ -51,7 +51,9 @@ export function FingerprintField({
   idPrefix: string
   onChange: (value: ClaudeFingerprintView) => void
 }) {
-  const [keepIndividualArgs, setKeepIndividualArgs] = useState(false)
+  const [keepIndividualArgs, setKeepIndividualArgs] = useState(
+    () => key === "unknownArgs" && (value.unknownArgs ?? []).some((arg) => arg === ""),
+  )
   const meta = fingerprintFieldMeta[key]
   const id = `${idPrefix}-${key}`
   const error = errors[key]
@@ -61,9 +63,7 @@ export function FingerprintField({
     (keepIndividualArgs ||
       rawArgs.some((arg) => /[\r\n]/.test(arg)) ||
       (rawArgs.length === 1 && rawArgs[0] === ""))
-  const hintText = individualArgs
-    ? "每组是一条启动参数；组内换行按原类型保留，可单独删除。"
-    : meta.hint
+  const hintText = individualArgs ? "每组是一条启动参数；原有换行类型保留，可单独删除。" : meta.hint
   const describedBy =
     [hintText ? `${id}-hint` : "", error ? `${id}-error` : ""].filter(Boolean).join(" ") ||
     undefined

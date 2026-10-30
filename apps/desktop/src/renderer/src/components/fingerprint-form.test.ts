@@ -265,7 +265,15 @@ describe("fingerprint form", () => {
     expect(document.activeElement?.getAttribute("aria-label")).toBe("添加原始参数")
   })
 
-  it("can clear remaining arguments after leaving individual mode", async () => {
+  it("removes only the selected item from multiple existing empty arguments", async () => {
+    await render({ ...defaultFingerprintForm(), unknownArgs: ["", ""] })
+    await click("#fp-group-advanced")
+    await click('[aria-label="删除原始参数 1"]')
+    expect(latest.unknownArgs).toEqual([""])
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("原始参数 1 第 1 行")
+  })
+
+  it("can remove the remaining arguments after returning to the group", async () => {
     await render({
       ...defaultFingerprintForm(),
       unknownArgs: ["--custom=one\ntwo", "", "--profile-directory=.."],
@@ -275,7 +283,8 @@ describe("fingerprint form", () => {
     expect(latest.unknownArgs).toEqual(["", "--profile-directory=.."])
     await click("#fp-group-identity")
     await click("#fp-group-advanced")
-    await typeInto("#fp-unknownArgs", "")
+    await click('[aria-label="删除原始参数 2"]')
+    await click('[aria-label="删除原始参数 1"]')
     expect(latest.unknownArgs).toEqual([])
   })
 

@@ -310,6 +310,29 @@ describe("Claude account authorization wizard", () => {
     })
   })
 
+  it("keeps existing raw arguments unchanged through the reauthorization wizard", async () => {
+    const onStart = vi.fn()
+    const unknownArgs = [
+      "\u00a0--user-data-dir=/synthetic/profile",
+      "  --load-extension=/synthetic/extension  ",
+      "",
+      "--disable-gpu",
+    ]
+    const account = {
+      ...savedAccount,
+      fingerprint: { ...savedFingerprint, unknownArgs },
+    }
+    await render({ proxies, account, onStart })
+    await click("下一步")
+    await click("绑定代理")
+    await click("保存并核对出口")
+    await click("开始核对并授权")
+
+    expect(onStart).toHaveBeenCalledWith(
+      expect.objectContaining({ fingerprint: expect.objectContaining({ unknownArgs }) }),
+    )
+  })
+
   it("stops at 请勿登录 after a failed exit check and only offers another check", async () => {
     const onStart = vi.fn()
     const initial = { ...createAuthorizationState(), step: "exit" as const, error: "请勿登录" }

@@ -42,7 +42,7 @@ export function defaultFingerprintForm(): ClaudeFingerprintView {
 
 /**
  * 归一化任意指纹草稿。
- * 保证返回完整 25 字段对象、文本去空白、平台别名归一、伪装类别去重并补齐默认值。
+ * 保证返回完整字段对象、受管文本去空白、平台别名归一，原始参数保留字符串与顺序。
  */
 export function normalizeFingerprintForm(
   value: Partial<ClaudeFingerprintView> | null | undefined,
@@ -384,10 +384,7 @@ function normalizeAcceptLang(value: string | undefined): string {
 
 function normalizeArgs(value: unknown): string[] {
   if (!Array.isArray(value)) return []
-  return value
-    .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim())
-    .filter((item) => item !== "")
+  return value.filter((item): item is string => typeof item === "string")
 }
 
 function isNoise(value: unknown): value is FingerprintNoise {

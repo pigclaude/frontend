@@ -246,6 +246,22 @@ describe("accounts screen", () => {
     })
   })
 
+  it("keeps stored raw arguments unchanged when editing another fingerprint field", async () => {
+    const onUpdate = vi.fn()
+    const unknownArgs = ["\u00a0--user-data-dir=/synthetic/profile", " --load-extension=/x ", ""]
+    const account = { ...ready, fingerprint: { ...fingerprint, unknownArgs } }
+    await render([account], { onUpdate })
+    await openAccount("工作 Max")
+    await clickButton(button("编辑"), "编辑")
+    await typeDialog("#fingerprint-dialog-seed", "654321")
+    await clickButton(button("保存", dialog() ?? document.body), "保存")
+
+    expect(onUpdate).toHaveBeenCalledWith({
+      accountId: "acc-ready",
+      fingerprint: expect.objectContaining({ seed: "654321", unknownArgs }),
+    })
+  })
+
   it("unbinds a bound account from the network dialog and keeps the choice on re-render", async () => {
     const onUpdate = vi.fn()
     await render([ready], { onUpdate })

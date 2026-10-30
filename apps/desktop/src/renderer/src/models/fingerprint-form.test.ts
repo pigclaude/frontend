@@ -296,7 +296,7 @@ describe("fingerprint presets", () => {
 })
 
 describe("fingerprint normalization", () => {
-  it("trims text, normalizes the mac alias and sorts spoofing categories", () => {
+  it("normalizes managed fields while preserving raw argument strings", () => {
     const normalized = normalizeFingerprintForm({
       ...defaultFingerprintForm(),
       seed: "  123  ",
@@ -312,7 +312,7 @@ describe("fingerprint normalization", () => {
       lang: "ja-JP",
       acceptLang: "ja-JP,ja",
       disableSpoofing: ["font", "gpu"],
-      unknownArgs: ["--foo", "--bar"],
+      unknownArgs: [" --foo ", "", "--bar"],
     })
   })
 

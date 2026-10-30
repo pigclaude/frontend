@@ -1,4 +1,4 @@
-// 代理桥测试。覆盖 CONNECT 隧道、上游 Basic 认证、HTTP 转发、SOCKS 拒绝和关闭端口。
+// 代理桥测试。覆盖 CONNECT、HTTP 转发、上游失效不直连、认证和关闭端口。
 
 import { once } from "node:events"
 import {
@@ -103,6 +103,56 @@ describe("proxy bridge", () => {
     request.end()
     const [response] = (await once(request, "connect")) as [{ statusCode: number }]
     expect(response.statusCode).toBe(502)
+  })
+
+  it("does not contact the target after a working upstream proxy stops", async () => {
+    let targetConnections = 0
+    const target = createHttpServer((_request, response) => response.end("ok"))
+    target.on("connection", () => {
+      targetConnections += 1
+    })
+    await listen(target)
+    track(() => closeHttpServer(target))
+    const targetPort = portOfServer(target)
+    const upstream = await startForwardProxy()
+    const bridge = await startProxyBridge({
+      upstreamProxyUrl: `http://127.0.0.1:${upstream.port}`,
+    })
+    track(bridge.close)
+
+    const requestHttp = (): Promise<number> =>
+      new Promise((resolve, reject) => {
+        const request = httpRequest(
+          {
+            host: "127.0.0.1",
+            port: portOf(bridge.url),
+            path: `http://127.0.0.1:${targetPort}/probe`,
+          },
+          (response) => {
+            response.resume()
+            response.on("end", () => resolve(response.statusCode ?? 0))
+          },
+        )
+        request.on("error", reject)
+        request.end()
+      })
+
+    expect(await requestHttp()).toBe(200)
+    expect(targetConnections).toBe(1)
+    await upstream.close()
+    expect(await requestHttp()).toBe(502)
+
+    const connect = httpRequest({
+      method: "CONNECT",
+      host: "127.0.0.1",
+      port: portOf(bridge.url),
+      path: `127.0.0.1:${targetPort}`,
+    })
+    connect.end()
+    const [response, socket] = (await once(connect, "connect")) as [{ statusCode: number }, Socket]
+    socket.destroy()
+    expect(response.statusCode).toBe(502)
+    expect(targetConnections).toBe(1)
   })
 
   it("only listens on loopback and releases the port after close", async () => {

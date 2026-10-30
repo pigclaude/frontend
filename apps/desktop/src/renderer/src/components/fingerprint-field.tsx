@@ -1,6 +1,6 @@
 // 负责指纹字段的 shadcn 控件与无障碍标签：每个字段输出设置页样式的一行，左边名称、提示和错误，右边控件。
 
-import type { ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import type {
   ClaudeFingerprintView,
   FingerprintNoise,
@@ -9,6 +9,7 @@ import type {
 import { cn } from "../lib/cn"
 import { fingerprintChoices, isFingerprintChoiceField } from "../models/fingerprint-choices"
 import {
+  applyRawArgumentEdit,
   fingerprintFieldMeta,
   fingerprintNoiseOptions,
   fingerprintSpoofingCategories,
@@ -51,11 +52,16 @@ export function FingerprintField({
   idPrefix: string
   onChange: (value: ClaudeFingerprintView) => void
 }) {
+  const [keepIndividualArgs, setKeepIndividualArgs] = useState(false)
   const meta = fingerprintFieldMeta[key]
   const id = `${idPrefix}-${key}`
   const error = errors[key]
+  const individualArgs =
+    key === "unknownArgs" &&
+    (keepIndividualArgs || (value.unknownArgs ?? []).some((arg) => /[\r\n]/.test(arg)))
+  const hintText = individualArgs ? "每个输入框是一条启动参数，框内换行属于同一个参数。" : meta.hint
   const describedBy =
-    [meta.hint ? `${id}-hint` : "", error ? `${id}-error` : ""].filter(Boolean).join(" ") ||
+    [hintText ? `${id}-hint` : "", error ? `${id}-error` : ""].filter(Boolean).join(" ") ||
     undefined
   const a11y = { "aria-invalid": Boolean(error), "aria-describedby": describedBy }
 
@@ -91,10 +97,9 @@ export function FingerprintField({
 
     if (key === "unknownArgs") {
       const args = value.unknownArgs ?? []
-      if (args.some((arg) => /[\r\n]/.test(arg))) {
+      if (individualArgs) {
         return (
           <div className="fp-argument-list">
-            <p className="note">包含换行的参数按单项编辑，修改其他参数时会保留原样。</p>
             {args.map((arg, index) => (
               <div className="fp-argument-entry" key={index}>
                 <Textarea
@@ -105,7 +110,8 @@ export function FingerprintField({
                   spellCheck={false}
                   {...a11y}
                   onChange={(event) => {
-                    const next = event.target.value
+                    setKeepIndividualArgs(true)
+                    const next = applyRawArgumentEdit(arg, event.target.value)
                     update(
                       key,
                       args.map((item, position) => (position === index ? next : item)),
@@ -117,12 +123,13 @@ export function FingerprintField({
                   variant="ghost"
                   size="sm"
                   aria-label={`删除原始参数 ${index + 1}`}
-                  onClick={() =>
+                  onClick={() => {
+                    setKeepIndividualArgs(true)
                     update(
                       key,
                       args.filter((_item, position) => position !== index),
                     )
-                  }
+                  }}
                 >
                   删除
                 </Button>
@@ -132,8 +139,12 @@ export function FingerprintField({
               type="button"
               variant="ghost"
               size="sm"
+              id={args.length === 0 ? id : undefined}
               aria-label="添加原始参数"
-              onClick={() => update(key, [...args, ""])}
+              onClick={() => {
+                setKeepIndividualArgs(true)
+                update(key, [...args, ""])
+              }}
             >
               添加参数
             </Button>
@@ -217,9 +228,9 @@ export function FingerprintField({
   if (key === "customResolution" && value.resolution !== "custom") return null
 
   const hint =
-    meta.hint && key !== "disableSpoofing" ? (
+    hintText && key !== "disableSpoofing" ? (
       <p className="desc" id={`${id}-hint`}>
-        {meta.hint}
+        {hintText}
       </p>
     ) : null
   const errorText = error ? (

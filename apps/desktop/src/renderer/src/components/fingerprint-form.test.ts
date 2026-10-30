@@ -194,6 +194,13 @@ describe("fingerprint form", () => {
     ])
   })
 
+  it("removes all arguments when the user explicitly clears the ordinary field", async () => {
+    await render({ ...defaultFingerprintForm(), unknownArgs: ["--profile-directory=.."] })
+    await click("#fp-group-advanced")
+    await typeInto("#fp-unknownArgs", "")
+    expect(latest.unknownArgs).toEqual([])
+  })
+
   it("edits and removes individual arguments while preserving another argument's line breaks", async () => {
     const multiline = "--custom=one\r\n--load-extension=/synthetic"
     await render({ ...defaultFingerprintForm(), unknownArgs: [multiline, "--other=one"] })
@@ -203,6 +210,42 @@ describe("fingerprint form", () => {
     await click('[aria-label="添加原始参数"]')
     await click('[aria-label="删除原始参数 2"]')
     expect(latest.unknownArgs).toEqual([multiline, ""])
+  })
+
+  it("preserves existing CRLF and CR when editing the same argument", async () => {
+    const multiline = "--custom=one\r\nmiddle\rend"
+    await render({ ...defaultFingerprintForm(), unknownArgs: [multiline, "--other"] })
+    await click("#fp-group-advanced")
+    await typeInto("#fp-unknownArgs", "X--custom=one\nmiddle\nend")
+    expect(latest.unknownArgs).toEqual([`X${multiline}`, "--other"])
+    await typeInto("#fp-unknownArgs", "X--custom=one\nmiddle\nend!")
+    expect(latest.unknownArgs).toEqual([`X${multiline}!`, "--other"])
+  })
+
+  it("keeps focus and explains individual arguments when the last line break is removed", async () => {
+    await render({ ...defaultFingerprintForm(), unknownArgs: ["--custom=one\ntwo", "--other"] })
+    await click("#fp-group-advanced")
+    const field = query<HTMLTextAreaElement>("#fp-unknownArgs")
+    field.focus()
+    expect(query<HTMLElement>("#fp-unknownArgs-hint").textContent).toContain("每个输入框")
+    expect(field.getAttribute("aria-describedby")).toContain("fp-unknownArgs-hint")
+    await typeInto("#fp-unknownArgs", "--custom=onetwo")
+    expect(document.activeElement).toBe(field)
+    expect(query<HTMLTextAreaElement>("#fp-unknownArgs-2").value).toBe("--other")
+  })
+
+  it("can clear remaining arguments after leaving individual mode", async () => {
+    await render({
+      ...defaultFingerprintForm(),
+      unknownArgs: ["--custom=one\ntwo", "", "--profile-directory=.."],
+    })
+    await click("#fp-group-advanced")
+    await click('[aria-label="删除原始参数 1"]')
+    expect(latest.unknownArgs).toEqual(["", "--profile-directory=.."])
+    await click("#fp-group-identity")
+    await click("#fp-group-advanced")
+    await typeInto("#fp-unknownArgs", "")
+    expect(latest.unknownArgs).toEqual([])
   })
 
   it("shows field-level errors under the matching field", async () => {

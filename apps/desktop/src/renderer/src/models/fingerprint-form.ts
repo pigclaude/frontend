@@ -176,9 +176,44 @@ export function prepareFingerprintSubmission(
   return hasFingerprintFormErrors(errors) ? { ok: false, errors } : { ok: true, fingerprint }
 }
 
-/** 把 textarea 文本拆成原始参数行；保留空行，便于继续输入。 */
+/** 把 textarea 文本拆成原始参数行；显式清空返回空数组，其余空行保留。 */
 export function splitUnknownArgs(text: string): string[] {
-  return text.split(/\r?\n/)
+  return text === "" ? [] : text.split(/\r?\n/)
+}
+
+/** 将文本框编辑应用到单个原始参数，保留未修改部分的 CRLF 和 CR。 */
+export function applyRawArgumentEdit(previous: string, displayed: string): string {
+  let normalized = ""
+  const offsets = [0]
+  for (let index = 0; index < previous.length;) {
+    if (previous[index] === "\r") {
+      index += previous[index + 1] === "\n" ? 2 : 1
+      normalized += "\n"
+    } else {
+      normalized += previous[index]
+      index += 1
+    }
+    offsets.push(index)
+  }
+  let start = 0
+  while (
+    start < normalized.length &&
+    start < displayed.length &&
+    normalized[start] === displayed[start]
+  ) {
+    start += 1
+  }
+  let oldEnd = normalized.length
+  let newEnd = displayed.length
+  while (oldEnd > start && newEnd > start && normalized[oldEnd - 1] === displayed[newEnd - 1]) {
+    oldEnd -= 1
+    newEnd -= 1
+  }
+  return (
+    previous.slice(0, offsets[start]) +
+    displayed.slice(start, newEnd) +
+    previous.slice(offsets[oldEnd])
+  )
 }
 
 /** 把原始参数数组格式化成每行一个参数。 */

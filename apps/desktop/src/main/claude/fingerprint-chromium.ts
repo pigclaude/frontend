@@ -7,7 +7,11 @@ import { homedir } from "node:os"
 import { isAbsolute, join, relative } from "node:path"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { buildFingerprintArgs, ensureFingerprint, type ScreenSize } from "./fingerprint-args"
-import { isValidBridgeUrl, launchArgumentConflict } from "./launch-argument-guard"
+import {
+  launchArgumentConflict,
+  localBridgePort,
+  managedCallbackPort,
+} from "./launch-argument-guard"
 
 const defaultStopTimeoutMs = 3_000
 
@@ -44,8 +48,9 @@ export type FingerprintChromiumConfig = {
   hostPlatform?: NodeJS.Platform
 }
 
-/** 浏览器网络模式；绑定代理时必须提供有效的本机代理桥。 */
-export type LaunchBrowserNetwork = { mode: "system" } | { mode: "bound"; bridgeUrl: string }
+/** 浏览器网络模式；绑定代理时必须提供本机代理桥和本次授权回调。 */
+export type LaunchBrowserNetwork =
+  { mode: "system" } | { mode: "bound"; bridgeUrl: string; callbackUri: string }
 
 /** 启动一次登录需要的输入，必须显式区分系统网络和已绑定代理。 */
 export type LaunchBrowserInput = {
@@ -293,9 +298,21 @@ export class FingerprintChromiumAdapter {
 }
 
 function validatedNetwork(network: LaunchBrowserNetwork): LaunchBrowserNetwork {
-  if (network?.mode === "system" && !("bridgeUrl" in network)) return { mode: "system" }
-  if (network?.mode === "bound" && isValidBridgeUrl(network.bridgeUrl)) {
-    return { mode: "bound", bridgeUrl: network.bridgeUrl }
+  const mode = network?.mode
+  if (mode === "system" && !("bridgeUrl" in network) && !("callbackUri" in network)) {
+    return { mode: "system" }
+  }
+  if (mode === "bound" && "bridgeUrl" in network && "callbackUri" in network) {
+    const bridgeUrl = network.bridgeUrl
+    const callbackUri = network.callbackUri
+    const bridgePort = localBridgePort(bridgeUrl)
+    const callbackPort = managedCallbackPort(callbackUri)
+    if (bridgePort !== null && callbackPort !== null && callbackPort !== bridgePort) {
+      return { mode: "bound", bridgeUrl, callbackUri }
+    }
+    if (bridgePort !== null) {
+      throw new BrowserLaunchError("BROWSER_START_FAILED", "授权回调地址无效或与代理桥端口冲突")
+    }
   }
   throw new BrowserLaunchError("BROWSER_START_FAILED", "代理桥无效或网络模式不明确，请检查代理设置")
 }

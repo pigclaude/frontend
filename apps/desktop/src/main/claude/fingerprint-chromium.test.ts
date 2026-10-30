@@ -230,7 +230,10 @@ describe("FingerprintChromiumAdapter", () => {
         adapter.launch({
           accountId: "acc-1",
           authorizeUrl: "https://claude.test/authorize",
-          network: bridgeUrl === undefined ? { mode: "system" } : { mode: "bound", bridgeUrl },
+          network:
+            bridgeUrl === undefined
+              ? { mode: "system" }
+              : { mode: "bound", bridgeUrl, callbackUri: "http://localhost:1234/callback" },
           fingerprint: { ...fingerprint, unknownArgs: [`--${key}=private-value`] },
         }),
       ).rejects.toMatchObject({
@@ -266,7 +269,11 @@ describe("FingerprintChromiumAdapter", () => {
       await expect(
         adapter.launch({
           ...input,
-          network: { mode: "bound", bridgeUrl: "http://127.0.0.1:9000" },
+          network: {
+            mode: "bound",
+            bridgeUrl: "http://127.0.0.1:9000",
+            callbackUri: "http://localhost:1234/callback",
+          },
         }),
       ).rejects.toMatchObject({
         code: "BROWSER_START_FAILED",

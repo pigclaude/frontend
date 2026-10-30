@@ -51,6 +51,41 @@ describe("受管浏览器启动参数", () => {
     expect(calls).toEqual([])
   })
 
+  it("validates one snapshot of the managed bridge and callback", async () => {
+    const { adapter, calls } = await createAdapter("darwin")
+    let modeReads = 0
+    let bridgeReads = 0
+    let callbackReads = 0
+    const network = {
+      get mode() {
+        modeReads += 1
+        return "bound" as const
+      },
+      get bridgeUrl() {
+        bridgeReads += 1
+        return bridgeReads === 1 ? "http://127.0.0.1:9000" : "http://127.0.0.2:9000"
+      },
+      get callbackUri() {
+        callbackReads += 1
+        return callbackReads === 1
+          ? "http://localhost:1234/callback"
+          : "http://localhost:9000/callback"
+      },
+    }
+    await expect(
+      adapter.launch({
+        accountId: "fixture",
+        authorizeUrl: "https://example.test/authorize",
+        fingerprint,
+        network,
+      }),
+    ).rejects.toMatchObject({ message: expect.stringContaining("受管代理保护") })
+    expect(modeReads).toBe(1)
+    expect(bridgeReads).toBe(1)
+    expect(callbackReads).toBe(1)
+    expect(calls).toEqual([])
+  })
+
   it("maps malformed runtime bridge values to a safe browser error", async () => {
     const { adapter, calls } = await createAdapter("darwin")
     const bridgeUrl = { toString: null, valueOf: null } as unknown as string
@@ -59,9 +94,30 @@ describe("受管浏览器启动参数", () => {
         accountId: "fixture",
         authorizeUrl: "https://example.test/authorize",
         fingerprint,
-        network: { mode: "bound", bridgeUrl },
+        network: { mode: "bound", bridgeUrl, callbackUri: "http://localhost:1234/callback" },
       }),
     ).rejects.toMatchObject({ code: "BROWSER_START_FAILED" })
+    expect(calls).toEqual([])
+  })
+
+  it.each([
+    "http://localhost:0/callback",
+    "http://localhost:65536/callback",
+    "http://localhost:9000/callback",
+    "http://127.0.0.1:1234/callback",
+    "http://localhost:1234/other",
+    "http://localhost:1234/callback?code=secret",
+    "https://localhost:1234/callback",
+  ])("rejects an invalid or conflicting managed callback %s", async (callbackUri) => {
+    const { adapter, calls } = await createAdapter("darwin")
+    await expect(
+      adapter.launch({
+        accountId: "fixture",
+        authorizeUrl: "https://example.test/authorize",
+        fingerprint,
+        network: { mode: "bound", bridgeUrl: "http://127.0.0.1:9000", callbackUri },
+      }),
+    ).rejects.toMatchObject({ message: "授权回调地址无效或与代理桥端口冲突" })
     expect(calls).toEqual([])
   })
 
@@ -131,7 +187,7 @@ describe("受管浏览器启动参数", () => {
         accountId: "fixture",
         authorizeUrl: "https://example.test/authorize",
         fingerprint,
-        network: { mode: "bound", bridgeUrl: "" },
+        network: { mode: "bound", bridgeUrl: "", callbackUri: "http://localhost:1234/callback" },
       }),
     ).rejects.toMatchObject({ code: "BROWSER_START_FAILED" })
     expect(calls).toEqual([])
@@ -170,7 +226,7 @@ describe("受管浏览器启动参数", () => {
         accountId: "fixture",
         authorizeUrl: "https://example.test/authorize",
         fingerprint,
-        network: { mode: "bound", bridgeUrl },
+        network: { mode: "bound", bridgeUrl, callbackUri: "http://localhost:1234/callback" },
       }),
     ).rejects.toMatchObject({ code: "BROWSER_START_FAILED" })
     expect(calls).toEqual([])
@@ -189,7 +245,11 @@ describe("受管浏览器启动参数", () => {
         accountId: "fixture",
         authorizeUrl: "https://example.test/authorize",
         fingerprint: { ...fingerprint, unknownArgs },
-        network: { mode: "bound", bridgeUrl: "http://127.0.0.1:9000" },
+        network: {
+          mode: "bound",
+          bridgeUrl: "http://127.0.0.1:9000",
+          callbackUri: "http://localhost:1234/callback",
+        },
       }),
     ).rejects.toMatchObject({ message: expect.stringContaining("受管代理保护") })
     expect(calls).toEqual([])

@@ -208,8 +208,9 @@ export class ClaudeAccountService {
       const oauthRequest = createSubscriptionOAuthRequest()
       callback = await this.#deps.oauth.startCallback({ state: oauthRequest.state })
       attempt.attach(callback)
+      const callbackUri = callback.redirectUri
       const authorizeUrl = this.#deps.oauth.buildAuthorizeUrl({
-        redirectUri: callback.redirectUri,
+        redirectUri: callbackUri,
         state: oauthRequest.state,
         codeChallenge: oauthRequest.codeChallenge,
       })
@@ -217,7 +218,9 @@ export class ClaudeAccountService {
         accountId,
         authorizeUrl,
         network:
-          proxyId === null ? { mode: "system" } : { mode: "bound", bridgeUrl: bridgeUrl ?? "" },
+          proxyId === null
+            ? { mode: "system" }
+            : { mode: "bound", bridgeUrl: bridgeUrl ?? "", callbackUri },
         fingerprint,
         signal: attempt.signal,
         assertCanSpawn,
@@ -235,7 +238,7 @@ export class ClaudeAccountService {
           code,
           state: oauthRequest.state,
           codeVerifier: oauthRequest.codeVerifier,
-          redirectUri: callback.redirectUri,
+          redirectUri: callbackUri,
           ...(dispatcher === null ? {} : { dispatcher }),
         })
         attempt.checkpoint()

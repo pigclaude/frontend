@@ -34,6 +34,7 @@ describe("ClaudeAccountService", () => {
     expect(harness.launchInputs[0]?.network).toEqual({
       mode: "bound",
       bridgeUrl: "http://127.0.0.1:9999",
+      callbackUri: "http://localhost:1234/callback",
     })
     expect(harness.exchangeDispatchers[0]).toBeDefined()
     expect(harness.profileDispatchers[0]).toBeDefined()

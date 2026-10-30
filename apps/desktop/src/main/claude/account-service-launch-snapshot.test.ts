@@ -41,6 +41,7 @@ describe("Claude 账号授权快照", () => {
     expect(harness.launchInputs[0]?.network).toEqual({
       mode: "bound",
       bridgeUrl: "http://127.0.0.1:9999",
+      callbackUri: "http://localhost:1234/callback",
     })
     expect(harness.launchInputs[0]?.fingerprint.unknownArgs).toEqual([
       "--load-extension=/synthetic/extension",
@@ -54,7 +55,30 @@ describe("Claude 账号授权快照", () => {
     expect(harness.launchInputs[0]?.network).toEqual({
       mode: "bound",
       bridgeUrl: "http://127.0.0.1:9999",
+      callbackUri: "http://localhost:1234/callback",
     })
+  })
+
+  it("uses one callback snapshot for authorization and the managed browser", async () => {
+    let reads = 0
+    const callback = {
+      get redirectUri() {
+        reads += 1
+        return reads === 1 ? "http://localhost:1234/callback" : "http://localhost:5678/callback"
+      },
+      waitForCode: async () => "code-1",
+      close: async () => undefined,
+    }
+    const harness = await createHarness({ callback })
+    await harness.service.authorize({ displayName: "工作账号", proxyId: "p1", fingerprint })
+    expect(harness.launchInputs[0]?.network).toEqual({
+      mode: "bound",
+      bridgeUrl: "http://127.0.0.1:9999",
+      callbackUri: "http://localhost:1234/callback",
+    })
+    expect(harness.authorizeRedirectUris).toEqual(["http://localhost:1234/callback"])
+    expect(harness.exchangeRedirectUris).toEqual(["http://localhost:1234/callback"])
+    expect(reads).toBe(1)
   })
 
   it("keeps an existing authorization cancellable when another request has conflicting arguments", async () => {

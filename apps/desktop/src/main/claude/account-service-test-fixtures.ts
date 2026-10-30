@@ -39,6 +39,8 @@ export type Harness = {
   bridgeCalls: Array<{ upstreamProxyUrl: string }>
   egressCalls: Array<{ bridgeUrl: string; upstreamProxyUrl: string; checkUrl: string }>
   callbackCalls: string[]
+  authorizeRedirectUris: string[]
+  exchangeRedirectUris: string[]
   exchangeDispatchers: Array<Dispatcher | undefined>
   profileDispatchers: Array<Dispatcher | undefined>
   launched: { promise: Promise<void>; resolve: () => void }
@@ -83,6 +85,8 @@ export async function createHarness(
   const bridgeCalls: Array<{ upstreamProxyUrl: string }> = []
   const egressCalls: Array<{ bridgeUrl: string; upstreamProxyUrl: string; checkUrl: string }> = []
   const callbackCalls: string[] = []
+  const authorizeRedirectUris: string[] = []
+  const exchangeRedirectUris: string[] = []
   const exchangeDispatchers: Array<Dispatcher | undefined> = []
   const profileDispatchers: Array<Dispatcher | undefined> = []
   let resolveLaunched: () => void = () => undefined
@@ -143,14 +147,17 @@ export async function createHarness(
     dispose: async () => undefined,
   }
   const oauth = {
-    buildAuthorizeUrl: (input: { state: string }) =>
-      `https://claude.test/authorize?state=${input.state}`,
+    buildAuthorizeUrl: (input: { state: string; redirectUri: string }) => {
+      authorizeRedirectUris.push(input.redirectUri)
+      return `https://claude.test/authorize?state=${input.state}`
+    },
     startCallback: async () => {
       callbackCalls.push("start")
       await options.callbackStartWait?.()
       return callback
     },
-    exchangeCode: async (input: { dispatcher?: Dispatcher }) => {
+    exchangeCode: async (input: { dispatcher?: Dispatcher; redirectUri: string }) => {
+      exchangeRedirectUris.push(input.redirectUri)
       exchangeDispatchers.push(input.dispatcher)
       return options.tokens ?? defaultTokens()
     },
@@ -197,6 +204,8 @@ export async function createHarness(
     bridgeCalls,
     egressCalls,
     callbackCalls,
+    authorizeRedirectUris,
+    exchangeRedirectUris,
     exchangeDispatchers,
     profileDispatchers,
     launched,

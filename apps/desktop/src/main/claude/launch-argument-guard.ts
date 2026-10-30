@@ -32,13 +32,27 @@ export function launchArgumentConflict(
   return null
 }
 
+/** 返回有效的本机代理桥端口，拒绝凭据或额外路径。 */
+export function localBridgePort(value: unknown): number | null {
+  if (typeof value !== "string") return null
+  const match = /^http:\/\/127\.0\.0\.1:(\d{1,5})\/?$/.exec(value)
+  if (match === null) return null
+  const port = Number(match[1])
+  return port >= 1 && port <= 65535 ? port : null
+}
+
 /** 校验代理桥是本机 HTTP 端点，且不包含凭据或额外路径。 */
 export function isValidBridgeUrl(value: unknown): value is string {
-  if (typeof value !== "string") return false
-  const match = /^http:\/\/127\.0\.0\.1:(\d{1,5})\/?$/.exec(value)
-  if (match === null) return false
+  return localBridgePort(value) !== null
+}
+
+/** 只接受本次授权服务器的精确 localhost 回调，并返回有效端口。 */
+export function managedCallbackPort(value: unknown): number | null {
+  if (typeof value !== "string") return null
+  const match = /^http:\/\/localhost:([1-9]\d{0,4})\/callback$/.exec(value)
+  if (match === null) return null
   const port = Number(match[1])
-  return port >= 1 && port <= 65535
+  return port <= 65535 ? port : null
 }
 
 function switchKey(arg: string, hostPlatform: NodeJS.Platform): string | null {

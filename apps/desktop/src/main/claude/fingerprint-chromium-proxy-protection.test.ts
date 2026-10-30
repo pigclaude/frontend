@@ -33,7 +33,11 @@ it("blocks a bound launch with an unverified kernel before spawning or creating 
     adapter.launch({
       accountId: "fixture",
       authorizeUrl: "https://example.test/authorize",
-      network: { mode: "bound", bridgeUrl: "http://127.0.0.1:9000" },
+      network: {
+        mode: "bound",
+        bridgeUrl: "http://127.0.0.1:9000",
+        callbackUri: "http://localhost:1234/callback",
+      },
       fingerprint,
     }),
   ).rejects.toMatchObject({
@@ -92,7 +96,14 @@ it("does not trust an environment override but keeps it usable on system network
     fingerprint,
   }
   await expect(
-    adapter.launch({ ...input, network: { mode: "bound", bridgeUrl: "http://127.0.0.1:9000" } }),
+    adapter.launch({
+      ...input,
+      network: {
+        mode: "bound",
+        bridgeUrl: "http://127.0.0.1:9000",
+        callbackUri: "http://localhost:1234/callback",
+      },
+    }),
   ).rejects.toMatchObject({ message: expect.stringContaining("受管代理保护") })
   expect(calls).toEqual([])
   await adapter.launch({ ...input, network: { mode: "system" } })

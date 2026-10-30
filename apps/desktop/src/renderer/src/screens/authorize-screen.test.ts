@@ -333,6 +333,30 @@ describe("Claude account authorization wizard", () => {
     )
   })
 
+  it("repairs a conflicting argument without splitting a multiline argument", async () => {
+    const onStart = vi.fn()
+    const multiline = "--custom=a\n--load-extension=/synthetic/extension"
+    const account = {
+      ...savedAccount,
+      fingerprint: { ...savedFingerprint, unknownArgs: [multiline, "--profile-directory=..", ""] },
+    }
+    await render({ proxies, account, onStart })
+    await click("下一步")
+    await click("绑定代理")
+    await clickId("authorize-group-advanced")
+    const remove = container.querySelector<HTMLButtonElement>('[aria-label="删除原始参数 2"]')
+    expect(remove).not.toBeNull()
+    await act(async () => remove?.click())
+    await click("保存并核对出口")
+    await click("开始核对并授权")
+
+    expect(onStart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fingerprint: expect.objectContaining({ unknownArgs: [multiline, ""] }),
+      }),
+    )
+  })
+
   it("stops at 请勿登录 after a failed exit check and only offers another check", async () => {
     const onStart = vi.fn()
     const initial = { ...createAuthorizationState(), step: "exit" as const, error: "请勿登录" }

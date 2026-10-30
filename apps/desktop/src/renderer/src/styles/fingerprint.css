@@ -331,6 +331,22 @@
   padding: 0 12px 12px;
 }
 
+.fp-argument-list {
+  display: grid;
+  gap: 8px;
+}
+
+.fp-argument-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.fp-argument-entry .fp-arguments {
+  min-height: 64px;
+}
+
 .fp-arguments {
   width: 100%;
   min-height: 160px;

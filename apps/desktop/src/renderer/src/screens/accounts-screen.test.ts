@@ -262,6 +262,23 @@ describe("accounts screen", () => {
     })
   })
 
+  it("removes a conflicting argument without splitting a different multiline argument", async () => {
+    const onUpdate = vi.fn()
+    const multiline = "--custom=a\n--load-extension=/synthetic/extension"
+    const unknownArgs = [multiline, "--profile-directory=..", ""]
+    await render([{ ...ready, fingerprint: { ...fingerprint, unknownArgs } }], { onUpdate })
+    await openAccount("工作 Max")
+    await clickButton(button("编辑"), "编辑")
+    await clickDialog("#fingerprint-dialog-group-advanced")
+    await clickDialog('[aria-label="删除原始参数 2"]')
+    await clickButton(button("保存", dialog() ?? document.body), "保存")
+
+    expect(onUpdate).toHaveBeenCalledWith({
+      accountId: "acc-ready",
+      fingerprint: expect.objectContaining({ unknownArgs: [multiline, ""] }),
+    })
+  })
+
   it("unbinds a bound account from the network dialog and keeps the choice on re-render", async () => {
     const onUpdate = vi.fn()
     await render([ready], { onUpdate })

@@ -18,6 +18,7 @@ import {
   type FingerprintFormErrors,
 } from "../models/fingerprint-form"
 import { Input } from "./ui/input"
+import { Button } from "./ui/button"
 import { Label } from "./ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select"
 import { Switch } from "./ui/switch"
@@ -89,6 +90,56 @@ export function FingerprintField({
     }
 
     if (key === "unknownArgs") {
+      const args = value.unknownArgs ?? []
+      if (args.some((arg) => /[\r\n]/.test(arg))) {
+        return (
+          <div className="fp-argument-list">
+            <p className="note">包含换行的参数按单项编辑，修改其他参数时会保留原样。</p>
+            {args.map((arg, index) => (
+              <div className="fp-argument-entry" key={index}>
+                <Textarea
+                  id={index === 0 ? id : `${id}-${index + 1}`}
+                  aria-label={`原始参数 ${index + 1}`}
+                  className="mono fp-arguments"
+                  value={arg}
+                  spellCheck={false}
+                  {...a11y}
+                  onChange={(event) => {
+                    const next = event.target.value
+                    update(
+                      key,
+                      args.map((item, position) => (position === index ? next : item)),
+                    )
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`删除原始参数 ${index + 1}`}
+                  onClick={() =>
+                    update(
+                      key,
+                      args.filter((_item, position) => position !== index),
+                    )
+                  }
+                >
+                  删除
+                </Button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label="添加原始参数"
+              onClick={() => update(key, [...args, ""])}
+            >
+              添加参数
+            </Button>
+          </div>
+        )
+      }
       return (
         <Textarea
           id={id}

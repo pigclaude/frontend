@@ -194,6 +194,17 @@ describe("fingerprint form", () => {
     ])
   })
 
+  it("edits and removes individual arguments while preserving another argument's line breaks", async () => {
+    const multiline = "--custom=one\r\n--load-extension=/synthetic"
+    await render({ ...defaultFingerprintForm(), unknownArgs: [multiline, "--other=one"] })
+    await click("#fp-group-advanced")
+    await typeInto("#fp-unknownArgs-2", "--other=two")
+    expect(latest.unknownArgs).toEqual([multiline, "--other=two"])
+    await click('[aria-label="添加原始参数"]')
+    await click('[aria-label="删除原始参数 2"]')
+    expect(latest.unknownArgs).toEqual([multiline, ""])
+  })
+
   it("shows field-level errors under the matching field", async () => {
     await render(defaultFingerprintForm(), {
       seed: "种子必须是整数",

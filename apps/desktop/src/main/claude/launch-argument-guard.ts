@@ -8,6 +8,7 @@ const managedKeys = new Set([
   "no-proxy-server",
   "proxy-pac-url",
   "proxy-auto-detect",
+  "pigclaude-managed-network",
 ])
 
 const boundProxyKeys = new Set(["host-resolver-rules", "host-rules", "use-system-proxy-resolver"])

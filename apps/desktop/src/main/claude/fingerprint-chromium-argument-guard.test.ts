@@ -35,6 +35,8 @@ describe("受管浏览器启动参数", () => {
     { host: "linux", raw: "\n--proxy-server=private\r", key: "proxy-server" },
     { host: "win32", raw: "\u0085/UsEr-DaTa-DiR=private\u0085", key: "user-data-dir" },
     { host: "win32", raw: " /PROXY-PAC-URL=private ", key: "proxy-pac-url" },
+    { host: "linux", raw: "--pigclaude-managed-network=private", key: "pigclaude-managed-network" },
+    { host: "win32", raw: "/PIGCLAUDE-MANAGED-NETWORK=private", key: "pigclaude-managed-network" },
   ] as const)("rejects $raw on $host without exposing its value", async ({ host, raw, key }) => {
     const { adapter, calls } = await createAdapter(host)
     const pending = adapter.launch({
@@ -83,6 +85,23 @@ describe("受管浏览器启动参数", () => {
     expect(modeReads).toBe(1)
     expect(bridgeReads).toBe(1)
     expect(callbackReads).toBe(1)
+    expect(calls).toEqual([])
+  })
+
+  it("rejects the reserved control switch before bound authorization starts", async () => {
+    const { adapter, calls } = await createAdapter("darwin")
+    await expect(
+      adapter.launch({
+        accountId: "fixture",
+        authorizeUrl: "https://example.test/authorize",
+        network: {
+          mode: "bound",
+          bridgeUrl: "http://127.0.0.1:9000",
+          callbackUri: "http://localhost:1234/callback",
+        },
+        fingerprint: { ...fingerprint, unknownArgs: ["--pigclaude-managed-network"] },
+      }),
+    ).rejects.toMatchObject({ message: expect.stringContaining("--pigclaude-managed-network") })
     expect(calls).toEqual([])
   })
 

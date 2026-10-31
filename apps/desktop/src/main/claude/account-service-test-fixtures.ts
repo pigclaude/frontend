@@ -1,6 +1,6 @@
 // 为 Claude 账号服务测试创建临时存储、合成代理和 OAuth 依赖。
 
-import { mkdtemp } from "node:fs/promises"
+import { lstat, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Dispatcher } from "undici"
@@ -45,6 +45,8 @@ export type Harness = {
   profileDispatchers: Array<Dispatcher | undefined>
   launched: { promise: Promise<void>; resolve: () => void }
   bridgeClosed: () => boolean
+  /** 仅清理本次夹具创建且经身份核验的临时目录。 */
+  cleanup: () => Promise<void>
 }
 
 /** 创建只使用临时存储和合成外部依赖的账号服务。 */
@@ -68,17 +70,38 @@ export async function createHarness(
     callbackStartWait?: () => Promise<void>
     proxyProtectionUnavailable?: boolean
     browser?: ClaudeAccountServiceDeps["browser"]
+    oauth?: ClaudeAccountServiceDeps["oauth"]
   } = {},
 ): Promise<Harness> {
   const dir = await mkdtemp(join(tmpdir(), "claude-account-"))
+  const identity = await lstat(dir)
+  let cleaned = false
+  const cleanup = async (): Promise<void> => {
+    if (cleaned) return
+    const current = await lstat(dir)
+    if (!current.isDirectory() || current.dev !== identity.dev || current.ino !== identity.ino) {
+      throw new Error("账号测试目录身份发生变化")
+    }
+    await rm(dir, { recursive: true })
+    cleaned = true
+  }
   const store = new LocalStore(dir)
-  await store.saveProxy({
-    schemaVersion: 1,
-    id: "p1",
-    name: "p1",
-    url: "http://127.0.0.1:1",
-    lastTest: null,
-  })
+  try {
+    await store.saveProxy({
+      schemaVersion: 1,
+      id: "p1",
+      name: "p1",
+      url: "http://127.0.0.1:1",
+      lastTest: null,
+    })
+  } catch (error) {
+    try {
+      await cleanup()
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "账号测试夹具创建失败且清理未完成")
+    }
+    throw error
+  }
   const events: ClaudeAccountEvent[] = []
   const browserCalls: string[] = []
   const launchInputs: LaunchBrowserInput[] = []
@@ -175,7 +198,7 @@ export async function createHarness(
       ? {}
       : { readCliAccountMetadata: options.readCliAccountMetadata }),
     browser: options.browser ?? browser,
-    oauth,
+    oauth: options.oauth ?? oauth,
     startBridge: async (input) => {
       bridgeCalls.push(input)
       if (options.bridgeMissing) return null as unknown as ProxyBridge
@@ -210,6 +233,7 @@ export async function createHarness(
     profileDispatchers,
     launched,
     bridgeClosed: () => bridgeClosed,
+    cleanup,
   }
 }
 

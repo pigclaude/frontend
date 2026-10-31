@@ -11,7 +11,7 @@ import type {
 import type { AccountRecord, LocalStore } from "@pigclaude/local-store"
 import type { EgressResult } from "@pigclaude/login-gate/egress-check"
 import type { ProxyBridge } from "@pigclaude/login-gate/proxy-bridge"
-import { ProxyAgent } from "undici"
+import { createProxyAgent } from "@pigclaude/proxy-connection"
 import {
   assertClaudeCliIdentity,
   buildClaudeCliAccountRecord,
@@ -230,7 +230,7 @@ export class ClaudeAccountService {
       attempt.checkpoint()
       this.#emit(accountId, "exchanging")
 
-      const dispatcher = bridgeUrl === null ? null : new ProxyAgent(bridgeUrl)
+      const dispatcher = proxy === null ? null : createProxyAgent(proxy.url)
       let tokens: ClaudeOAuthTokens
       let profile: ClaudeOAuthProfile | null
       try {

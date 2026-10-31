@@ -5,7 +5,8 @@ import type { EgressView, ProxyView } from "@pigclaude/contracts/claude-account"
 import type { IpProxy, LocalStore } from "@pigclaude/local-store"
 import { checkEgress, parseExitIp } from "@pigclaude/login-gate/egress-check"
 import { startProxyBridge } from "@pigclaude/login-gate/proxy-bridge"
-import { ProxyAgent, fetch as undiciFetch } from "undici"
+import { createProxyAgent } from "@pigclaude/proxy-connection"
+import { fetch as undiciFetch, type ProxyAgent } from "undici"
 import { ClaudeAccountError } from "./errors"
 
 const defaultCheckUrl = "https://www.cloudflare.com/cdn-cgi/trace"
@@ -67,7 +68,7 @@ export class ProxyService {
     let ok = false
     let dispatcher: ProxyAgent | null = null
     try {
-      dispatcher = new ProxyAgent(proxy.url)
+      dispatcher = createProxyAgent(proxy.url)
       const response = await undiciFetch(this.#checkUrl, {
         dispatcher,
         signal: AbortSignal.timeout(10_000),

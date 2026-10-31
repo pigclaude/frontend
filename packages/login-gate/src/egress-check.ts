@@ -1,6 +1,7 @@
 // 负责比较代理桥和 daemon 同款 ProxyAgent 的出口 IP；不一致或失败时不允许登录。
 
 import { isIP } from "node:net"
+import { createProxyAgent } from "@pigclaude/proxy-connection"
 import { ProxyAgent, fetch as undiciFetch } from "undici"
 
 /** 出口核对失败原因。 */
@@ -27,7 +28,7 @@ export async function checkEgress(input: {
   try {
     const throughBridge = await readExitIp(fetchFn, input.checkUrl, bridgeAgent, timeoutMs)
     if (!throughBridge.ok) return throughBridge
-    directAgent = new ProxyAgent(input.upstreamProxyUrl)
+    directAgent = createProxyAgent(input.upstreamProxyUrl)
     const throughUpstream = await readExitIp(fetchFn, input.checkUrl, directAgent, timeoutMs)
     if (!throughUpstream.ok) return throughUpstream
     if (throughBridge.ip !== throughUpstream.ip) {

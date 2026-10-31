@@ -123,6 +123,9 @@ importers:
       '@pigclaude/login-gate':
         specifier: workspace:*
         version: link:../../packages/login-gate
+      '@pigclaude/proxy-connection':
+        specifier: workspace:*
+        version: link:../../packages/proxy-connection
       '@pigclaude/session-env':
         specifier: workspace:*
         version: link:../../packages/session-env
@@ -355,6 +358,9 @@ importers:
 
   packages/daemon:
     dependencies:
+      '@pigclaude/proxy-connection':
+        specifier: workspace:*
+        version: link:../proxy-connection
       undici:
         specifier: 6.21.2
         version: 6.21.2
@@ -374,6 +380,9 @@ importers:
       '@pigclaude/local-store':
         specifier: workspace:*
         version: link:../local-store
+      '@pigclaude/proxy-connection':
+        specifier: workspace:*
+        version: link:../proxy-connection
       undici:
         specifier: 6.21.2
         version: 6.21.2
@@ -383,6 +392,16 @@ importers:
         version: 3.2.4(@types/debug@4.1.13)(@types/node@24.10.1)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)
 
   packages/permission-client:
+    devDependencies:
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@24.10.1)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)
+
+  packages/proxy-connection:
+    dependencies:
+      undici:
+        specifier: 6.21.2
+        version: 6.21.2
     devDependencies:
       vitest:
         specifier: 3.2.4

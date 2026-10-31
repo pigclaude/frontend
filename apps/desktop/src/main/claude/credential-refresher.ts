@@ -1,7 +1,8 @@
 // 负责在选号前刷新即将过期的 Claude 凭据；直连账号走系统网络，单飞、轮换并区分需要重新授权。
 
 import type { AccountRecord, ClaudeCredential, LocalStore } from "@pigclaude/local-store"
-import { ProxyAgent } from "undici"
+import { createProxyAgent } from "@pigclaude/proxy-connection"
+import type { ProxyAgent } from "undici"
 import { ClaudeAccountError } from "./errors"
 import {
   SubscriptionOAuthError,
@@ -67,7 +68,7 @@ export class CredentialRefresher {
     let dispatcher: ProxyAgent | null = null
     if (proxy !== null) {
       try {
-        dispatcher = new ProxyAgent(proxy.url)
+        dispatcher = createProxyAgent(proxy.url)
       } catch {
         throw new ClaudeAccountError("PROXY_INVALID", "账号绑定的代理地址无效")
       }

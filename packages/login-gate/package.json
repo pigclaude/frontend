@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@pigclaude/local-store": "workspace:*",
+    "@pigclaude/proxy-connection": "workspace:*",
     "undici": "6.21.2"
   },
   "devDependencies": {

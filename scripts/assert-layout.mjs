@@ -30,7 +30,8 @@ same(await directoryNames("apps"), layout.apps, "apps")
 same(await directoryNames("packages"), layout.packages, "packages")
 
 const allowedWorkspaceImport = {
-  "login-gate": new Set(["@pigclaude/local-store"]),
+  "login-gate": new Set(["@pigclaude/local-store", "@pigclaude/proxy-connection"]),
+  daemon: new Set(["@pigclaude/proxy-connection"]),
 }
 const bannedFragments = {
   "permission-client": ["@pigclaude/", "node:http", "node:net"],
@@ -38,6 +39,8 @@ const bannedFragments = {
   switcher: ["@pigclaude/", "node:fs", "node:http", "node:net"],
   daemon: ["@pigclaude/", "node:fs"],
   "session-env": ["@pigclaude/", "node:fs", "node:http", "node:net"],
+  // 代理认证连接只封装 Undici，不访问账号存储或自行创建本地服务。
+  "proxy-connection": ["@pigclaude/", "node:fs", "node:http", "node:net"],
   // 代理桥和出口核对在 login-gate 里，需要 node:http/node:net；仍然不能直接读写文件。
   "login-gate": ["@pigclaude/", "node:fs"],
 }

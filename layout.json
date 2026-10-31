@@ -4,6 +4,7 @@
     "daemon",
     "local-store",
     "login-gate",
+    "proxy-connection",
     "permission-client",
     "session-env",
     "switcher",

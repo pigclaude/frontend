@@ -20,6 +20,7 @@ type RecordingOptions = {
   brokenGzip?: boolean
   holdBody?: boolean
   onTunnel?: (event: TunnelEvent) => void
+  onProxyAuthorization?: (value: string | undefined) => void
 }
 type ScriptedReply = {
   status: number
@@ -57,6 +58,9 @@ export function startRecordingProxy(
   const proxy = createServer()
   proxy.on("connect", (request, clientSocket, head) => {
     if (typeof options !== "function") options?.onTunnel?.("open")
+    if (typeof options !== "function") {
+      options?.onProxyAuthorization?.(request.headers["proxy-authorization"])
+    }
     clientSocket.on("close", () => {
       if (typeof options !== "function") options?.onTunnel?.("close")
     })

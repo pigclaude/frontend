@@ -5,7 +5,8 @@
 // 已经保存额度用尽响应后，代理或直连抛错会拒绝这个账号并继续选号；还没有保存的 429 时，代理抛错仍返回 proxy_unavailable。
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
-import { ProxyAgent, fetch as undiciFetch } from "undici"
+import { createProxyAgent } from "@pigclaude/proxy-connection"
+import { fetch as undiciFetch, type ProxyAgent } from "undici"
 import { oauthBetaHeader, requestHeaders, sessionHeaderName } from "./daemon-headers.ts"
 import {
   takeQuotaResponse,
@@ -207,7 +208,7 @@ export class LocalDaemon {
           if (chosen.proxyUrl === null) {
             upstream = await fetchDirect(upstreamRequest)
           } else {
-            agent = new ProxyAgent(chosen.proxyUrl)
+            agent = createProxyAgent(chosen.proxyUrl)
             upstream = await fetchThroughProxy(agent, upstreamRequest)
           }
         } catch (error) {

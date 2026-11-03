@@ -72,18 +72,17 @@ describe("受管浏览器启动参数", () => {
           : "http://localhost:9000/callback"
       },
     }
-    await expect(
-      adapter.launch({
-        accountId: "fixture",
-        authorizeUrl: "https://example.test/authorize",
-        fingerprint,
-        network,
-      }),
-    ).rejects.toMatchObject({ message: expect.stringContaining("受管代理保护") })
+    await adapter.launch({
+      accountId: "fixture",
+      authorizeUrl: "https://example.test/authorize",
+      fingerprint,
+      network,
+    })
     expect(modeReads).toBe(1)
     expect(bridgeReads).toBe(1)
     expect(callbackReads).toBe(1)
-    expect(calls).toEqual([])
+    expect(calls[0]).toContain("--proxy-server=socks5://127.0.0.1:9000")
+    expect(calls[0]).toContain("--proxy-bypass-list=<-loopback>;http://localhost:1234")
   })
 
   it("rejects a conflicting profile switch before bound authorization starts", async () => {

@@ -153,14 +153,6 @@ export class FingerprintChromiumAdapter {
     )
   }
 
-  /** Xray 接入和代理保护未完成验收时拒绝绑定代理授权。 */
-  ensureBoundProxyProtection(): void {
-    throw new BrowserLaunchError(
-      "BROWSER_START_FAILED",
-      "Xray 接入与受管代理保护尚未完成，暂不能使用绑定代理授权",
-    )
-  }
-
   /** 启动内核并打开授权 URL。保证同一账号旧进程退出后才启动，种子由账号 ID 稳定生成。 */
   async launch(input: LaunchBrowserInput): Promise<LaunchedBrowser> {
     if (this.#closed) throw new BrowserLaunchError("BROWSER_START_FAILED", "浏览器启动器已关闭")
@@ -177,7 +169,6 @@ export class FingerprintChromiumAdapter {
       validation.fingerprint.webrtcPolicy,
     )
     if (conflict !== null) throw new BrowserLaunchError("BROWSER_START_FAILED", conflict)
-    if (network.mode === "bound") this.ensureBoundProxyProtection()
     return this.#serialize(accountId, async () => {
       signal?.throwIfAborted()
       if (this.#closed) throw new BrowserLaunchError("BROWSER_START_FAILED", "浏览器启动器已关闭")

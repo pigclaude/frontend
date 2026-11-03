@@ -1,5 +1,6 @@
 // 用真实浏览器、Xray 与本机合成代理验证受限回环路由及真实授权回调。
 
+import { execFileSync, spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { createServer as createHttpServer } from "node:http"
 import { connect, type Socket } from "node:net"
@@ -15,18 +16,24 @@ import { createXrayRuntimeStarter } from "./xray-runtime"
 const browserBinary = process.env["PIGCLAUDE_TEST_CHROMIUM_BIN"]
 const xrayBinary = process.env["PIGCLAUDE_TEST_XRAY_BIN"]
 
-class SyntheticProtectedBrowser extends FingerprintChromiumAdapter {
-  /** 仅为隔离测试放行合成启动，不声明真实浏览器具备代理强制能力。 */
-  override ensureBoundProxyProtection(): void {}
-}
-
 it.skipIf(!browserBinary || !xrayBinary)(
   "真实浏览器保留扩展与回调，并在代理失效时拒绝其他回环页面",
   async () => {
     if (!browserBinary || !xrayBinary) throw new Error("缺少合成测试二进制")
     const { directory, fixture, callback } = await createTestEnvironment()
-    const start = createXrayRuntimeStarter({ binaryPath: xrayBinary, hostArch: process.arch })
-    const adapter = new SyntheticProtectedBrowser({
+    const watchdogs: ChildProcess[] = []
+    const capture = ((command: string, args: string[], options: SpawnOptions) => {
+      const child = spawn(command, args, options)
+      watchdogs.push(child)
+      return child
+    }) as typeof spawn
+    const start = createXrayRuntimeStarter({
+      idleTimeoutMs: 0,
+      binaryPath: xrayBinary,
+      hostArch: process.arch,
+      spawn: capture,
+    })
+    const adapter = new FingerprintChromiumAdapter({
       binaryPath: browserBinary,
       hostArch: process.arch,
       profilesRoot: join(directory, "profiles"),
@@ -128,6 +135,34 @@ it.skipIf(!browserBinary || !xrayBinary)(
         `http://synthetic.example.invalid:${fixture.originPort}/probe-domain`,
       )
       await remoteNamePage.close()
+      if (process.platform !== "win32") {
+        const watchdogPid = watchdogs[0]?.pid
+        if (!watchdogPid) throw new Error("未找到本次 Xray 守护进程")
+        const xrayPid = Number(
+          execFileSync("pgrep", ["-P", String(watchdogPid), "-f", xrayBinary], {
+            encoding: "utf8",
+          }).trim(),
+        )
+        if (!Number.isInteger(xrayPid) || xrayPid <= 0) throw new Error("未找到本次 Xray 进程")
+        process.kill(xrayPid, "SIGKILL")
+        await expect
+          .poll(
+            () => {
+              try {
+                if (watchdogs.length < 2) return false
+                runtime?.assertRunning?.()
+                return true
+              } catch {
+                return false
+              }
+            },
+            { timeout: 8_000 },
+          )
+          .toBe(true)
+        const recovered = await context.newPage()
+        await recovered.goto(`http://127.0.0.1:${fixture.originPort}/probe-recovered`)
+        await recovered.close()
+      }
       const before = fixture.requests()
       fixture.failProxy()
       for (const phase of ["upstream-down", "xray-down"]) {

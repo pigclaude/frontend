@@ -88,6 +88,44 @@ it("SOCKS5 无响应时结束核对且不尝试上游或直连", async () => {
   }
 })
 
+it("取消出口核对时立即关闭尚未完成的 SOCKS 连接", async () => {
+  const sockets = new Set<Socket>()
+  let observe: () => void = () => undefined
+  const started = new Promise<void>((resolve) => {
+    observe = resolve
+  })
+  const bridge = createServer((socket) => {
+    sockets.add(socket)
+    socket.once("close", () => sockets.delete(socket))
+    socket.on("error", () => undefined)
+    socket.once("data", () => observe())
+  })
+  const controller = new AbortController()
+  let pending: Promise<unknown> | undefined
+  try {
+    const port = await listen(bridge)
+    pending = checkEgress({
+      bridgeUrl: `socks5://127.0.0.1:${port}`,
+      upstreamProxyUrl: "http://127.0.0.1:9",
+      checkUrl: "http://synthetic.example.invalid/",
+      timeoutMs: 10_000,
+      signal: controller.signal,
+    }).catch((error: unknown) => error)
+    await started
+    controller.abort(new Error("合成取消"))
+    const result = await Promise.race([
+      pending,
+      new Promise((resolve) => setTimeout(() => resolve("timeout"), 500)),
+    ])
+    expect(result).toMatchObject({ message: "合成取消" })
+    await expect.poll(() => sockets.size, { timeout: 1_000 }).toBe(0)
+  } finally {
+    for (const socket of sockets) socket.destroy()
+    await pending
+    await close(bridge)
+  }
+})
+
 it("IPv6 字面量通过 SOCKS5 以 IPv6 地址编码，不直接连接目标", async (context) => {
   let addressType: number | undefined
   let targetConnections = 0

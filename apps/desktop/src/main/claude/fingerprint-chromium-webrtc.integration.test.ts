@@ -16,11 +16,6 @@ import { createXrayRuntimeStarter } from "./xray-runtime"
 const browserBinary = process.env["PIGCLAUDE_TEST_CHROMIUM_BIN"]
 const xrayBinary = process.env["PIGCLAUDE_TEST_XRAY_BIN"]
 
-class SyntheticProtectedBrowser extends FingerprintChromiumAdapter {
-  /** 合成测试只验证当前内核的网络行为，不改变产品门禁。 */
-  override ensureBoundProxyProtection(): void {}
-}
-
 it.skipIf(!browserBinary || !xrayBinary)(
   "Xray 退出后不直连 WebRTC UDP 和 TCP",
   async () => {
@@ -45,12 +40,16 @@ it.skipIf(!browserBinary || !xrayBinary)(
     let tcpListening = false
     const control = createServer((_request, response) => response.end("synthetic"))
     let controlListening = false
-    const adapter = new SyntheticProtectedBrowser({
+    const adapter = new FingerprintChromiumAdapter({
       binaryPath: browserBinary,
       hostArch: process.arch,
       profilesRoot: join(directory, "profiles"),
     })
-    const start = createXrayRuntimeStarter({ binaryPath: xrayBinary, hostArch: process.arch })
+    const start = createXrayRuntimeStarter({
+      idleTimeoutMs: 0,
+      binaryPath: xrayBinary,
+      hostArch: process.arch,
+    })
     let runtime: Awaited<ReturnType<typeof start>> | undefined
     let callback: Awaited<ReturnType<SubscriptionOAuth["startCallback"]>> | undefined
     let browser: Browser | undefined

@@ -57,7 +57,11 @@ it.skipIf(!binary).each(["before-token", "after-token"] as const)(
       await close(target)
       throw error
     }
-    const start = createXrayRuntimeStarter({ binaryPath: binary, hostArch: process.arch })
+    const start = createXrayRuntimeStarter({
+      idleTimeoutMs: 0,
+      binaryPath: binary,
+      hostArch: process.arch,
+    })
     let harness: Harness | undefined
     try {
       const proxyUrl = `http://127.0.0.1:${upstreamPort}`
@@ -131,7 +135,11 @@ it.skipIf(!binary).each(["before-token", "after-token"] as const)(
 )
 
 it.skipIf(!binary)("回调服务启动期间 Xray 退出时不启动浏览器", async () => {
-  const start = createXrayRuntimeStarter({ binaryPath: binary, hostArch: process.arch })
+  const start = createXrayRuntimeStarter({
+    idleTimeoutMs: 0,
+    binaryPath: binary,
+    hostArch: process.arch,
+  })
   let harness: Harness | undefined
   let release: () => void = () => undefined
   let observe: () => void = () => undefined

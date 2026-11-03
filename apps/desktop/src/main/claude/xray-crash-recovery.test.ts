@@ -46,11 +46,11 @@ it.skipIf(!binary || process.platform === "win32")(
 )
 
 it.skipIf(!binary || process.platform === "win32").each([
-  ["守护进程", false, "rejected"],
-  ["进程组持有者", true, "resolved"],
+  ["守护进程", false],
+  ["进程组持有者", true],
 ] as const)(
-  "%s 被强制结束后回收真实 Xray",
-  async (_label, stopGuard, expected) => {
+  "%s 被强制结束后在原端口恢复真实 Xray",
+  async (_label, stopGuard) => {
     const directory = await mkdtemp(join(tmpdir(), "pigclaude-xray-crash-"))
     const output = join(directory, "ready")
     const outcome = join(directory, "close-result")
@@ -77,12 +77,10 @@ it.skipIf(!binary || process.platform === "win32").each([
       const watchdogPid = findWatchdog(child.pid)
       const target = stopGuard ? findWatchdog(watchdogPid) : watchdogPid
       process.kill(target, "SIGKILL")
-      const deadline = Date.now() + 4_000
-      while (Date.now() < deadline && (await portOpen(url))) {
-        await new Promise((resolve) => setTimeout(resolve, 50))
-      }
-      expect(await portOpen(url)).toBe(false)
-      expect(await waitForFile(outcome)).toBe(expected)
+      expect(await waitForFile(outcome)).toBe("restored")
+      expect(await portOpen(url)).toBe(true)
+      await stopHost(child)
+      await expect.poll(() => portOpen(url), { timeout: 4_000 }).toBe(false)
     } finally {
       await stopHost(child)
       await rm(directory, { recursive: true, force: true })

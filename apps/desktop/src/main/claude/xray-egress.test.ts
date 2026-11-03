@@ -1,5 +1,6 @@
 // 通过桌面代理服务和真实 Xray 验证合成上游代理的认证、出口及资源回收。
 
+import { spawn, type SpawnOptions } from "node:child_process"
 import { copyFile, link, mkdir, mkdtemp, rm } from "node:fs/promises"
 import { createServer as createHttpServer } from "node:http"
 import { connect, type Socket } from "node:net"
@@ -13,15 +14,27 @@ import { createXrayRuntimeStarter } from "./xray-runtime"
 
 const xrayBinary = process.env["PIGCLAUDE_TEST_XRAY_BIN"]
 
-function allowSyntheticProbe(): void {}
-
-it("启动失败且无法确认回收时保留失败状态", async () => {
-  const start = createXrayRuntimeStarter({ binaryPath: process.execPath, hostArch: process.arch })
+it("启动失败但已确认退出时，允许重新尝试", async () => {
+  let spawns = 0
+  const capture = ((command: string, args: string[], options: SpawnOptions) => {
+    spawns += 1
+    return spawn(command, args, options)
+  }) as typeof spawn
+  const start = createXrayRuntimeStarter({
+    idleTimeoutMs: 0,
+    binaryPath: process.execPath,
+    hostArch: process.arch,
+    spawn: capture,
+  })
   await expect(start({ upstreamProxyUrl: "http://127.0.0.1:9" })).rejects.toMatchObject({
     code: "PROXY_UNAVAILABLE",
   })
+  await expect(start({ upstreamProxyUrl: "http://127.0.0.1:9" })).rejects.toMatchObject({
+    code: "PROXY_UNAVAILABLE",
+  })
+  expect(spawns).toBe(2)
   await new Promise((resolve) => setTimeout(resolve, 100))
-  await expect(start.dispose()).rejects.toMatchObject({ code: "PROXY_UNAVAILABLE" })
+  await expect(start.dispose()).resolves.toBeUndefined()
 })
 
 describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
@@ -41,9 +54,9 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
       const service = new ProxyService({
         store,
         checkUrl: `http://127.0.0.1:${fixture.targetPort}/trace`,
-        ensureBrowserProxyProtection: allowSyntheticProbe,
         startProxyRuntime: async (input) => {
           runtime = await createXrayRuntimeStarter({
+            idleTimeoutMs: 0,
             hostArch: process.arch,
             binaryPath: xrayBinary,
           })(input)
@@ -80,8 +93,8 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
       const service = new ProxyService({
         store,
         checkUrl: `http://127.0.0.1:${fixture.targetPort}/redirect`,
-        ensureBrowserProxyProtection: allowSyntheticProbe,
         startProxyRuntime: createXrayRuntimeStarter({
+          idleTimeoutMs: 0,
           hostArch: process.arch,
           binaryPath: xrayBinary,
         }),
@@ -116,8 +129,8 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
       const service = new ProxyService({
         store,
         checkUrl: `http://127.0.0.1:${fixture.targetPort}/redirect-data-${phase}`,
-        ensureBrowserProxyProtection: allowSyntheticProbe,
         startProxyRuntime: createXrayRuntimeStarter({
+          idleTimeoutMs: 0,
           hostArch: process.arch,
           binaryPath: xrayBinary,
         }),
@@ -149,8 +162,8 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
       const service = new ProxyService({
         store,
         checkUrl: `http://127.0.0.1:${fixture.targetPort}/trace`,
-        ensureBrowserProxyProtection: allowSyntheticProbe,
         startProxyRuntime: createXrayRuntimeStarter({
+          idleTimeoutMs: 0,
           hostArch: process.arch,
           binaryPath: xrayBinary,
         }),
@@ -185,8 +198,8 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
       const service = new ProxyService({
         store,
         checkUrl: `http://127.0.0.1:${fixture.targetPort}/trace`,
-        ensureBrowserProxyProtection: allowSyntheticProbe,
         startProxyRuntime: createXrayRuntimeStarter({
+          idleTimeoutMs: 0,
           hostArch: process.arch,
           binaryPath: xrayBinary,
         }),
@@ -214,11 +227,14 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
         url: `http://user%40test:p%3Ass@127.0.0.1:${fixture.proxyPort}`,
         lastTest: null,
       })
-      const start = createXrayRuntimeStarter({ hostArch: process.arch, binaryPath: xrayBinary })
+      const start = createXrayRuntimeStarter({
+        idleTimeoutMs: 0,
+        hostArch: process.arch,
+        binaryPath: xrayBinary,
+      })
       const service = new ProxyService({
         store,
         checkUrl: `http://127.0.0.1:${fixture.targetPort}/trace`,
-        ensureBrowserProxyProtection: allowSyntheticProbe,
         startProxyRuntime: async (input) => {
           const runtime = await start(input)
           if (failure === "upstream") fixture.failProxy()
@@ -251,11 +267,14 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
         url: `http://user%40test:p%3Ass@127.0.0.1:${fixture.proxyPort}`,
         lastTest: null,
       })
-      const start = createXrayRuntimeStarter({ hostArch: process.arch, binaryPath: xrayBinary })
+      const start = createXrayRuntimeStarter({
+        idleTimeoutMs: 0,
+        hostArch: process.arch,
+        binaryPath: xrayBinary,
+      })
       const service = new ProxyService({
         store,
         checkUrl: `http://127.0.0.1:${fixture.targetPort}/trace`,
-        ensureBrowserProxyProtection: allowSyntheticProbe,
         startProxyRuntime: async (input) => {
           const runtime = await start(input)
           fixture.onTarget(async (count) => {
@@ -288,8 +307,8 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
       const service = new ProxyService({
         store,
         checkUrl: `http://127.0.0.1:${fixture.targetPort}/trace`,
-        ensureBrowserProxyProtection: allowSyntheticProbe,
         startProxyRuntime: createXrayRuntimeStarter({
+          idleTimeoutMs: 0,
           hostArch: process.arch,
           binaryPath: join(directory, "missing"),
         }),
@@ -330,8 +349,8 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
       const service = new ProxyService({
         store,
         checkUrl: `http://127.0.0.1:${fixture.targetPort}/trace`,
-        ensureBrowserProxyProtection: allowSyntheticProbe,
         startProxyRuntime: createXrayRuntimeStarter({
+          idleTimeoutMs: 0,
           hostArch: process.arch,
           resourcesPath: directory,
           env: {},

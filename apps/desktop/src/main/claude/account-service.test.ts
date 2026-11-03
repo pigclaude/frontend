@@ -110,30 +110,6 @@ describe("ClaudeAccountService", () => {
     expect(harness.bridgeCalls).toEqual([])
   })
 
-  it("blocks bound authorization before bridge or callback when protection cannot be proved", async () => {
-    const harness = await createHarness({ proxyProtectionUnavailable: true })
-    const existing = seedAccount()
-    await harness.store.saveAccount(existing)
-    const before = await harness.store.getAccount(existing.id)
-    await expect(
-      harness.service.authorize({
-        accountId: existing.id,
-        displayName: existing.displayName,
-        proxyId: existing.proxyId,
-        fingerprint: { ...existing.fingerprint, unknownArgs: ["--load-extension=/synthetic"] },
-      }),
-    ).rejects.toMatchObject({
-      code: "BROWSER_START_FAILED",
-      message: expect.stringContaining("受管代理保护"),
-    })
-    expect(harness.bridgeCalls).toEqual([])
-    expect(harness.egressCalls).toEqual([])
-    expect(harness.callbackCalls).toEqual([])
-    expect(harness.browserCalls).toEqual([])
-    expect(harness.events.at(-1)?.message).not.toContain("/synthetic")
-    expect(await harness.store.getAccount(existing.id)).toEqual(before)
-  })
-
   it("rejects a conflicting profile argument before opening the bridge and preserves the account", async () => {
     const harness = await createHarness()
     const raw = "--user-data-dir=/private/fixture-token"

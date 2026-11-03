@@ -361,7 +361,6 @@ async function setupAuthorization(): Promise<void> {
   proxyService = new ProxyService({
     store: localStore,
     startProxyRuntime,
-    ensureBrowserProxyProtection: () => browser.ensureBoundProxyProtection(),
   })
   usageRecorder = new UsageRecorder({ filePath: join(app.getPath("userData"), "usage.jsonl") })
   if (composition.runtime) {

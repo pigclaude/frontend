@@ -9,7 +9,7 @@ import { LocalStore, type AccountRecord } from "@pigclaude/local-store"
 import type { EgressResult } from "@pigclaude/login-gate/egress-check"
 import type { ProxyRuntime } from "@pigclaude/login-gate/proxy-runtime"
 import type { XrayHttpRequest } from "@pigclaude/login-gate/xray-http"
-import { BrowserLaunchError, type LaunchBrowserInput } from "./fingerprint-chromium"
+import type { LaunchBrowserInput } from "./fingerprint-chromium"
 import type { ClaudeAccountError } from "./errors"
 import { ClaudeAccountService, type ClaudeAccountServiceDeps } from "./account-service"
 import type {
@@ -72,7 +72,7 @@ export async function createHarness(
     bridgeUrlAfterEgress?: string
     membershipWait?: () => Promise<void>
     callbackStartWait?: () => Promise<void>
-    proxyProtectionUnavailable?: boolean
+    checkEgressWait?: ClaudeAccountServiceDeps["checkEgress"]
     proxyRuntimeUnavailable?: boolean
     browser?: ClaudeAccountServiceDeps["browser"]
     oauth?: ClaudeAccountServiceDeps["oauth"]
@@ -140,12 +140,6 @@ export async function createHarness(
     close: async () => undefined,
   }
   const browser = {
-    ensureBoundProxyProtection: () => {
-      // 编排测试使用可控替身；真实启动器在没有可信内核时始终阻断。
-      if (options.proxyProtectionUnavailable) {
-        throw new BrowserLaunchError("BROWSER_START_FAILED", "当前内核无法证明受管代理保护")
-      }
-    },
     ensureAvailable: async () => {
       browserCalls.push("ensure")
       return "/fake/fingerprint-chromium"
@@ -221,8 +215,13 @@ export async function createHarness(
           return options.proxyRuntime ?? bridge
         },
     checkEgress: async (input) => {
-      egressCalls.push(input)
+      egressCalls.push({
+        bridgeUrl: input.bridgeUrl,
+        upstreamProxyUrl: input.upstreamProxyUrl,
+        checkUrl: input.checkUrl,
+      })
       if (options.bridgeUrlAfterEgress !== undefined) bridge.url = options.bridgeUrlAfterEgress
+      if (options.checkEgressWait !== undefined) return options.checkEgressWait(input)
       return options.egress ?? { ok: true, ip: "1.1.1.1" }
     },
     ensureMembership: async () => {

@@ -69,7 +69,10 @@ function runWatchdog() {
     })
     child.on("error", stop)
     child.stdin.on("error", stop)
-    child.once("exit", () => finish(closing ? 0 : 1))
+    child.once("exit", () => {
+      if (closing) return finish(0)
+      process.stdout.write("XRAY_EXITED\n", () => finish(1))
+    })
     let output = ""
     child.stdout.on("data", (chunk) => {
       if (ready) return

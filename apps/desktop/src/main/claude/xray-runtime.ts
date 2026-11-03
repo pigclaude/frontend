@@ -1,12 +1,14 @@
 // 负责通过标准输入启动和回收 Xray，并将本机 SOCKS5 入口连接到账号绑定的上游代理。
 
 import { spawn, type ChildProcess } from "node:child_process"
-import { createServer } from "node:net"
+import { connect, createServer } from "node:net"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { ProxyRuntime, StartProxyRuntime } from "@pigclaude/login-gate/proxy-runtime"
 import { ClaudeAccountError } from "./errors"
 import { matchesRuntimeBinary, runtimeHostArch } from "./runtime-binary"
+import { createXrayRuntimePool, type StartXrayCore } from "./xray-runtime-pool"
+import { XrayPortInUseError, XrayStartupCleanupError } from "./xray-runtime-errors"
 
 /** Xray 运行实例的可执行文件和启动超时。 */
 export type XrayRuntimeOptions = {
@@ -16,6 +18,12 @@ export type XrayRuntimeOptions = {
   hostPlatform?: NodeJS.Platform
   hostArch?: string
   startupTimeoutMs?: number
+  /** 无引用后延迟回收的时间；默认与 Ant Browser 一致为 45 秒。 */
+  idleTimeoutMs?: number
+  /** 测试可注入进程创建函数，正式运行使用系统 spawn。 */
+  spawn?: typeof spawn
+  /** 测试可注入端口分配函数，正式运行使用系统分配。 */
+  allocatePort?: () => Promise<number>
 }
 
 /** 可关闭全部已启动和正在启动实例的 Xray 启动器。 */
@@ -40,7 +48,7 @@ export function createXrayRuntimeStarter(options: XrayRuntimeOptions): XrayRunti
     })
     return promise
   }
-  const startOne: StartProxyRuntime = async ({ upstreamProxyUrl }) => {
+  const startAttempt: StartXrayCore = async ({ upstreamProxyUrl, port: requestedPort }) => {
     const platform = options.hostPlatform ?? process.platform
     const arch = options.hostArch ?? runtimeHostArch()
     const configured = options.binaryPath ?? (options.env ?? process.env)["PIGCLAUDE_XRAY_BIN"]
@@ -58,11 +66,11 @@ export function createXrayRuntimeStarter(options: XrayRuntimeOptions): XrayRunti
     if (!binaryPath || !(await matchesRuntimeBinary(binaryPath, platform, arch)))
       throw unavailable()
     const upstream = parseUpstream(upstreamProxyUrl)
-    const port = await reservePort()
+    const port = requestedPort ?? (await (options.allocatePort ?? reservePort)())
     if (disposed) throw unavailable()
     const config = {
       log: { loglevel: "warning" },
-      inbounds: [{ listen: "127.0.0.1", port, protocol: "socks", settings: { udp: false } }],
+      inbounds: [{ listen: "127.0.0.1", port, protocol: "socks", settings: { udp: true } }],
       outbounds: [
         {
           protocol: "http",
@@ -72,9 +80,25 @@ export function createXrayRuntimeStarter(options: XrayRuntimeOptions): XrayRunti
       ],
     }
     let child: ChildProcess | null = null
+    let exited: Promise<void> | undefined
+    let started = false
+    let xrayExited = false
+    let lifecycleOutput = ""
+    const cleanupChild = async (target: ChildProcess) => {
+      if (target.pid === undefined) {
+        children.delete(target)
+        return
+      }
+      if (target.exitCode === null && target.signalCode === null) await closeChild(target)
+      if (process.platform === "win32" && !xrayExited && target.exitCode !== 0) {
+        throw unavailable()
+      }
+      await waitForPortRelease(port)
+      children.delete(target)
+    }
     try {
       const watchdog = watchdogPath(options.resourcesPath)
-      const spawned = spawn(process.execPath, [watchdog, binaryPath], {
+      const spawned = (options.spawn ?? spawn)(process.execPath, [watchdog, binaryPath], {
         stdio: ["pipe", "pipe", "ignore"],
         windowsHide: true,
         detached: process.platform !== "win32",
@@ -82,24 +106,66 @@ export function createXrayRuntimeStarter(options: XrayRuntimeOptions): XrayRunti
       })
       child = spawned
       children.add(spawned)
-      spawned.once("close", (code, signal) => {
-        if (code === 0 && signal === null) children.delete(spawned)
+      spawned.stdout?.on("data", (chunk: Buffer) => {
+        lifecycleOutput = (lifecycleOutput + chunk.toString("utf8")).slice(-1_024)
+        if (lifecycleOutput.includes("XRAY_EXITED\n")) xrayExited = true
       })
+      exited = new Promise<void>((resolve, reject) => {
+        spawned.once("close", (code, signal) => {
+          if (started && process.platform === "win32" && code !== 0 && !xrayExited) {
+            reject(unavailable())
+            return
+          }
+          if (!started && xrayExited) {
+            children.delete(spawned)
+            resolve()
+            return
+          }
+          if (!started && (code !== 0 || signal !== null) && !xrayExited) {
+            resolve()
+            return
+          }
+          void waitForPortRelease(port).then(() => {
+            children.delete(spawned)
+            resolve()
+          }, reject)
+        })
+        spawned.once("error", reject)
+      })
+      void exited.catch(() => undefined)
       spawned.on("error", () => undefined)
       spawned.stdin?.on("error", () => undefined)
       await waitForStart(spawned, JSON.stringify(config), options.startupTimeoutMs ?? 5_000)
+      started = true
       if (disposed) throw unavailable()
     } catch {
-      if (child !== null) await closeChild(child).catch(() => undefined)
+      if (child !== null) {
+        const failedChild = child
+        if (!started && (failedChild.exitCode !== null || failedChild.signalCode !== null)) {
+          await exited?.catch(() => undefined)
+        }
+        if (!started && xrayExited && (await isPortOpen(port))) {
+          children.delete(failedChild)
+          throw new XrayPortInUseError()
+        }
+        try {
+          await cleanupChild(failedChild)
+        } catch {
+          throw new XrayStartupCleanupError(() => cleanupChild(failedChild))
+        }
+      }
       throw unavailable()
     }
     const running = child
+    if (exited === undefined) throw unavailable()
     return {
       url: `socks5://127.0.0.1:${port}`,
-      close: () => closeChild(running),
+      exited,
+      close: () => cleanupChild(running),
       assertRunning: () => {
         if (
           disposed ||
+          xrayExited ||
           closing.has(running) ||
           !children.has(running) ||
           running.exitCode !== null ||
@@ -109,10 +175,20 @@ export function createXrayRuntimeStarter(options: XrayRuntimeOptions): XrayRunti
       },
     }
   }
+  const startOne: StartXrayCore = async (input) => {
+    try {
+      return await startAttempt(input)
+    } catch (error: unknown) {
+      if (input.port === undefined && error instanceof XrayPortInUseError)
+        return startAttempt(input)
+      throw error
+    }
+  }
+  const pool = createXrayRuntimePool(startOne, options.idleTimeoutMs ?? 45_000)
   const start: XrayRuntimeStarter = Object.assign(
     (input: { upstreamProxyUrl: string }) => {
       if (disposed) return Promise.reject(unavailable())
-      const task = startOne(input)
+      const task = pool(input)
       pending.add(task)
       void task.then(
         () => pending.delete(task),
@@ -125,9 +201,11 @@ export function createXrayRuntimeStarter(options: XrayRuntimeOptions): XrayRunti
         disposed = true
         if (disposePromise !== undefined) return disposePromise
         const promise = (async () => {
+          const pooled = await Promise.allSettled([pool.dispose()])
           const stopped = await Promise.allSettled([...children].map(closeChild))
           await Promise.allSettled([...pending])
-          if (stopped.some((result) => result.status === "rejected")) throw unavailable()
+          if ([...pooled, ...stopped].some((result) => result.status === "rejected"))
+            throw unavailable()
         })()
         disposePromise = promise
         void promise.catch(() => {
@@ -202,6 +280,30 @@ async function reservePort(): Promise<number> {
   } finally {
     if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve()))
   }
+}
+
+async function waitForPortRelease(port: number): Promise<void> {
+  const deadline = Date.now() + 3_000
+  while (Date.now() < deadline) {
+    if (!(await isPortOpen(port))) return
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  throw unavailable()
+}
+
+async function isPortOpen(port: number): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    const socket = connect(port, "127.0.0.1")
+    socket.setTimeout(500, () => socket.destroy(new Error("Xray 端口检查超时")))
+    socket.once("connect", () => {
+      socket.destroy()
+      resolve(true)
+    })
+    socket.once("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === "ECONNREFUSED") resolve(false)
+      else reject(error)
+    })
+  })
 }
 
 async function waitForStart(child: ChildProcess, config: string, timeoutMs: number): Promise<void> {

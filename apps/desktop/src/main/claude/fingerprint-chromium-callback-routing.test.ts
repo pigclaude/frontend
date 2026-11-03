@@ -1,4 +1,4 @@
-// 验证已提供合成保护证明时，浏览器启动器只为本次授权回调设置回环代理例外。
+// 验证绑定代理时浏览器启动器保留扩展，并只为本次授权回调设置回环代理例外。
 
 import { EventEmitter } from "node:events"
 import type { ChildProcess, spawn } from "node:child_process"
@@ -8,11 +8,6 @@ import { join } from "node:path"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { expect, it } from "vitest"
 import { FingerprintChromiumAdapter } from "./fingerprint-chromium"
-
-class SyntheticProtectedBrowser extends FingerprintChromiumAdapter {
-  /** 合成测试只验证启动参数，不声明真实浏览器具有代理强制能力。 */
-  override ensureBoundProxyProtection(): void {}
-}
 
 it("每次绑定启动只放行该次 localhost 回调端口，并保留扩展", async () => {
   const root = await mkdtemp(join(tmpdir(), "pigclaude-callback-route-"))
@@ -30,7 +25,7 @@ it("每次绑定启动只放行该次 localhost 回调端口，并保留扩展",
     queueMicrotask(() => child.emit("spawn"))
     return child as unknown as ChildProcess
   }) as typeof spawn
-  const adapter = new SyntheticProtectedBrowser({
+  const adapter = new FingerprintChromiumAdapter({
     binaryPath: process.execPath,
     hostArch: process.arch,
     profilesRoot: root,

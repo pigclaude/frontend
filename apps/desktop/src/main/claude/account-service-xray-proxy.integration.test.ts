@@ -141,7 +141,11 @@ function createOAuth(fixture: Fixture): ClaudeAccountServiceDeps["oauth"] {
 async function createBoundHarness(
   fixture: Fixture,
 ): Promise<{ harness: Harness; close: () => Promise<void> }> {
-  const start = createXrayRuntimeStarter({ binaryPath: binary, hostArch: process.arch })
+  const start = createXrayRuntimeStarter({
+    idleTimeoutMs: 0,
+    binaryPath: binary,
+    hostArch: process.arch,
+  })
   let harness: Harness | undefined
   const close = async () => {
     const results = await Promise.allSettled([start.dispose(), harness?.cleanup()])

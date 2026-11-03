@@ -371,9 +371,6 @@ async function createHarness(options: {
   const deps: ClaudeAccountServiceDeps = {
     store,
     browser: {
-      ensureBoundProxyProtection: () => {
-        throw new Error("unexpected capability check")
-      },
       ensureAvailable: async () => "/fake/fingerprint-chromium",
       launch: async () => {
         throw new Error("unexpected launch")

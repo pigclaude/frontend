@@ -24,6 +24,11 @@ import { readClaudeCliAccountMetadata, type ClaudeCliAccountMetadata } from "./c
 import { readClaudeCliCredential, type ClaudeCliCredential } from "./cli-credential-reader"
 import { AuthorizationLifecycle, type AuthorizationAttempt } from "./authorization-lifecycle"
 import { AuthorizationResourceCleanup } from "./account-service-cleanup"
+import {
+  waitForProxyCallback,
+  waitForProxyReady,
+  watchProxyFailure,
+} from "./account-service-proxy-callback"
 import { mapError, phaseFor } from "./account-service-errors"
 import type {
   AuthorizeClaudeAccountInput,
@@ -57,12 +62,7 @@ export type ClaudeAccountServiceDeps = {
   store: LocalStore
   browser: Pick<
     FingerprintChromiumAdapter,
-    | "ensureAvailable"
-    | "ensureBoundProxyProtection"
-    | "launch"
-    | "deleteProfile"
-    | "profileDir"
-    | "dispose"
+    "ensureAvailable" | "launch" | "deleteProfile" | "profileDir" | "dispose"
   >
   oauth: Pick<
     SubscriptionOAuth,
@@ -74,6 +74,7 @@ export type ClaudeAccountServiceDeps = {
     bridgeUrl: string
     upstreamProxyUrl: string
     checkUrl: string
+    signal?: AbortSignal
   }) => Promise<EgressResult>
   ensureMembership: () => Promise<void>
   /** 读取 Claude CLI Keychain 凭据；测试注入假实现，避免访问真实钥匙串。 */
@@ -126,6 +127,7 @@ export class ClaudeAccountService {
     let callback: OAuthCallbackServer | null = null
     let launched: LaunchedBrowser | null = null
     let attempt: AuthorizationAttempt | null = null
+    const proxyFailure = new AbortController()
     let failure: ClaudeAccountError | null = null
     let committed = false
     const assertCanSpawn = () => {
@@ -137,14 +139,13 @@ export class ClaudeAccountService {
     try {
       assertCanSpawn()
       attempt = this.#authorizations.begin(accountId)
+      const authorizationSignal = AbortSignal.any([attempt.signal, proxyFailure.signal])
       if (this.#authorizations.canEmit(attempt)) this.#emit(accountId, "preparing")
       const validation = ensureFingerprint(input.fingerprint, accountId)
       const displayName = input.displayName.trim()
       await this.#ensureMembership()
       attempt.checkpoint()
-      if (displayName === "") {
-        throw new ClaudeAccountError("INVALID_INPUT", "账号名称不能为空")
-      }
+      if (displayName === "") throw new ClaudeAccountError("INVALID_INPUT", "账号名称不能为空")
       const existing =
         requestedAccountId === undefined
           ? null
@@ -169,7 +170,6 @@ export class ClaudeAccountService {
       if (proxyId !== null && proxy === null) {
         throw new ClaudeAccountError("PROXY_INVALID", "代理不存在")
       }
-      if (proxy !== null) this.#deps.browser.ensureBoundProxyProtection()
       await this.#deps.browser.ensureAvailable()
       attempt.claim()
       if (proxy !== null) {
@@ -178,6 +178,7 @@ export class ClaudeAccountService {
           throw new ClaudeAccountError("PROXY_UNAVAILABLE", "Xray 代理尚未接入，请勿登录")
         }
         proxyRuntime = await startProxyRuntime({ upstreamProxyUrl: proxy.url })
+        watchProxyFailure(proxyRuntime, proxyFailure, () => callback)
         attempt.checkpoint()
         const startedBridgeUrl = proxyRuntime?.url
         if (!isValidBridgeUrl(startedBridgeUrl)) {
@@ -189,9 +190,10 @@ export class ClaudeAccountService {
           bridgeUrl,
           upstreamProxyUrl: proxy.url,
           checkUrl: this.#egressCheckUrl,
+          signal: authorizationSignal,
         })
         attempt.checkpoint()
-        proxyRuntime.assertRunning?.()
+        await waitForProxyReady(proxyRuntime, authorizationSignal)
         if (!egress.ok) {
           throw new ClaudeAccountError(
             egress.reason === "mismatch" ? "EGRESS_MISMATCH" : "EGRESS_CHECK_FAILED",
@@ -203,13 +205,16 @@ export class ClaudeAccountService {
       this.#emit(accountId, "waiting-browser")
       const oauthRequest = createSubscriptionOAuthRequest()
       callback = await this.#deps.oauth.startCallback({ state: oauthRequest.state })
+      if (authorizationSignal.aborted) callback.cancel()
       attempt.attach(callback)
+      authorizationSignal.throwIfAborted()
       const callbackUri = callback.redirectUri
       const authorizeUrl = this.#deps.oauth.buildAuthorizeUrl({
         redirectUri: callbackUri,
         state: oauthRequest.state,
         codeChallenge: oauthRequest.codeChallenge,
       })
+      await waitForProxyReady(proxyRuntime, authorizationSignal)
       launched = await this.#deps.browser.launch({
         accountId,
         authorizeUrl,
@@ -218,13 +223,13 @@ export class ClaudeAccountService {
             ? { mode: "system" }
             : { mode: "bound", bridgeUrl: bridgeUrl ?? "", callbackUri },
         fingerprint,
-        signal: attempt.signal,
+        signal: authorizationSignal,
         assertCanSpawn,
       })
       attempt.checkpoint()
-      const code = await callback.waitForCode()
+      const code = await waitForProxyCallback(callback, proxyRuntime)
       attempt.checkpoint()
-      proxyRuntime?.assertRunning?.()
+      await waitForProxyReady(proxyRuntime, authorizationSignal)
       this.#emit(accountId, "exchanging")
 
       const xrayClient = proxy === null ? null : createXrayHttpClient(bridgeUrl ?? "")
@@ -236,21 +241,20 @@ export class ClaudeAccountService {
           state: oauthRequest.state,
           codeVerifier: oauthRequest.codeVerifier,
           redirectUri: callbackUri,
-          signal: attempt.signal,
+          signal: authorizationSignal,
           ...(xrayClient === null ? {} : { xrayRequest: xrayClient.request }),
         })
         attempt.checkpoint()
-        proxyRuntime?.assertRunning?.()
+        await waitForProxyReady(proxyRuntime, authorizationSignal)
         profile = await this.#deps.oauth.readProfile({
           accessToken: tokens.accessToken,
-          signal: attempt.signal,
+          signal: authorizationSignal,
           ...(xrayClient === null ? {} : { xrayRequest: xrayClient.request }),
         })
-        proxyRuntime?.assertRunning?.()
+        await waitForProxyReady(proxyRuntime, authorizationSignal)
       } finally {
         xrayClient?.close()
       }
-
       attempt.checkpoint()
       assertSameAccount(existing, profile)
       const credential = buildCredential(tokens, profile, existing?.credential ?? null)
@@ -308,7 +312,13 @@ export class ClaudeAccountService {
       committed = true
       return toView(record)
     } catch (error: unknown) {
-      failure = mapError(attempt?.signal.aborted ? attempt.signal.reason : error)
+      failure = mapError(
+        attempt?.signal.aborted
+          ? attempt.signal.reason
+          : proxyFailure.signal.aborted
+            ? proxyFailure.signal.reason
+            : error,
+      )
       throw failure
     } finally {
       const stopError = await this.#pendingCleanup.close(accountId, {

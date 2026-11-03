@@ -52,7 +52,7 @@ it.skipIf(!binary || !enabled || process.platform === "win32")(
       spawned.stdin?.write(
         `${JSON.stringify({
           log: { loglevel: "warning" },
-          inbounds: [{ listen: "127.0.0.1", port, protocol: "socks", settings: { udp: false } }],
+          inbounds: [{ listen: "127.0.0.1", port, protocol: "socks", settings: { udp: true } }],
           outbounds: [
             { protocol: "http", settings: { servers: [{ address: "127.0.0.1", port: 9 }] } },
           ],

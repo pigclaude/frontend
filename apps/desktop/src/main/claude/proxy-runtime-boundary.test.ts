@@ -120,7 +120,6 @@ describe("外部代理核心接入边界", () => {
         const service = new ProxyService({
           store: harness.store,
           checkUrl: `${url}/check`,
-          ensureBrowserProxyProtection: () => undefined,
           startProxyRuntime: async () => ({
             url: invalidUrl,
             close: async () => {
@@ -148,7 +147,11 @@ describe("外部代理核心接入边界", () => {
   it.skipIf(!xrayBinary)("出口核对使用校验过的同一本机入口快照", async () => {
     if (!xrayBinary) throw new Error("缺少测试用 Xray")
     const harness = await createHarness()
-    const start = createXrayRuntimeStarter({ binaryPath: xrayBinary, hostArch: process.arch })
+    const start = createXrayRuntimeStarter({
+      idleTimeoutMs: 0,
+      binaryPath: xrayBinary,
+      hostArch: process.arch,
+    })
     let reads = 0
     let closed = false
     const body = "ip=198.51.100.42\n"
@@ -180,7 +183,6 @@ describe("外部代理核心接入边界", () => {
       const service = new ProxyService({
         store: harness.store,
         checkUrl: "http://synthetic.invalid/check",
-        ensureBrowserProxyProtection: () => undefined,
         startProxyRuntime: async () => ({
           get url() {
             reads += 1

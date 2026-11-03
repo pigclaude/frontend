@@ -16,17 +16,18 @@ it.skipIf(!output || !binary)(
     const runtime = await start({ upstreamProxyUrl: "http://127.0.0.1:9" })
     await writeFile(output, runtime.url)
     if (outcome !== undefined) {
+      let interrupted = false
       const timer = setInterval(() => {
         try {
           runtime.assertRunning?.()
+          if (interrupted) {
+            clearInterval(timer)
+            void writeFile(outcome, "restored")
+          }
         } catch {
-          clearInterval(timer)
-          void runtime.close().then(
-            () => writeFile(outcome, "resolved"),
-            () => writeFile(outcome, "rejected"),
-          )
+          interrupted = true
         }
-      }, 30)
+      }, 10)
     }
     await new Promise<void>(() => undefined)
   },

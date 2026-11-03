@@ -3,8 +3,8 @@
 import { isIP } from "node:net"
 import { createProxyAgent } from "@pigclaude/proxy-connection"
 import nodeFetch from "node-fetch"
-import { SocksProxyAgent } from "socks-proxy-agent"
 import { ProxyAgent, fetch as undiciFetch } from "undici"
+import { XraySocksAgent } from "./xray-socks-agent.ts"
 
 /** 出口核对失败原因。 */
 export type EgressFailureReason = "proxy" | "timeout" | "parse" | "mismatch"
@@ -31,35 +31,65 @@ export async function checkEgress(input: {
   upstreamProxyUrl: string
   checkUrl: string
   timeoutMs?: number
+  signal?: AbortSignal
   /** 测试注入上游请求；调用时始终提供对应代理 dispatcher。 */
   fetch?: FetchLike
   /** 测试注入本机 SOCKS5 请求；调用时始终提供 Xray agent。 */
   fetchSocks?: typeof nodeFetch
 }): Promise<EgressResult> {
+  input.signal?.throwIfAborted()
   const checkUrl = httpUrl(input.checkUrl)
   if (checkUrl === null) return { ok: false, reason: "proxy", message: "请勿登录" }
   const timeoutMs = input.timeoutMs ?? 10_000
   const fetchFn = input.fetch ?? undiciFetch
   const fetchSocksFn = input.fetchSocks ?? nodeFetch
-  const bridgeSignal = AbortSignal.timeout(timeoutMs)
-  let bridgeAgent: SocksProxyAgent
+  const timeout = AbortSignal.timeout(timeoutMs)
+  const bridgeSignal =
+    input.signal === undefined ? timeout : AbortSignal.any([timeout, input.signal])
+  let bridgeAgent: XraySocksAgent
   try {
     const bridgeUrl = new URL(input.bridgeUrl)
-    if (bridgeUrl.protocol !== "socks5:") throw new Error("SOCKS5 地址无效")
-    bridgeUrl.protocol = "socks5h:"
-    bridgeAgent = new SocksProxyAgent(bridgeUrl, { timeout: timeoutMs })
+    const port = Number(bridgeUrl.port)
+    if (
+      bridgeUrl.protocol !== "socks5:" ||
+      bridgeUrl.hostname !== "127.0.0.1" ||
+      !bridgeUrl.port ||
+      port < 1 ||
+      port > 65535 ||
+      bridgeUrl.username ||
+      bridgeUrl.password ||
+      (bridgeUrl.pathname !== "" && bridgeUrl.pathname !== "/") ||
+      bridgeUrl.search ||
+      bridgeUrl.hash
+    )
+      throw new Error("SOCKS5 地址无效")
+    bridgeAgent = new XraySocksAgent(port, bridgeSignal)
   } catch {
     return { ok: false, reason: "proxy", message: "请勿登录" }
   }
   let upstreamAgent: ProxyAgent | null = null
+  let upstreamSignal: AbortSignal | undefined
+  let destroyUpstream: (() => void) | undefined
+  let destroying: Promise<void> | undefined
   try {
     const throughBridge = await readExitIp(checkUrl, (url) =>
       fetchSocksFn(url, { signal: bridgeSignal, redirect: "manual", agent: bridgeAgent }),
     )
+    input.signal?.throwIfAborted()
     if (!throughBridge.ok) return throughBridge
     upstreamAgent = createProxyAgent(input.upstreamProxyUrl)
     const dispatcher = upstreamAgent
-    const upstreamSignal = AbortSignal.timeout(timeoutMs)
+    const upstreamTimeout = AbortSignal.timeout(timeoutMs)
+    upstreamSignal =
+      input.signal === undefined
+        ? upstreamTimeout
+        : AbortSignal.any([upstreamTimeout, input.signal])
+    destroyUpstream = () => {
+      destroying ??= dispatcher.destroy()
+      void destroying.catch(() => undefined)
+    }
+    upstreamSignal.addEventListener("abort", destroyUpstream, { once: true })
+    if (upstreamSignal.aborted) destroyUpstream()
     const throughUpstream = await readExitIp(checkUrl, (url) =>
       fetchFn(url, {
         dispatcher,
@@ -67,6 +97,8 @@ export async function checkEgress(input: {
         redirect: "manual",
       }),
     )
+    input.signal?.throwIfAborted()
+    if (upstreamTimeout.aborted) return { ok: false, reason: "timeout", message: "请勿登录" }
     if (!throughUpstream.ok) return throughUpstream
     if (throughBridge.ip !== throughUpstream.ip) {
       return { ok: false, reason: "mismatch", message: "请勿登录" }
@@ -74,7 +106,16 @@ export async function checkEgress(input: {
     return { ok: true, ip: throughBridge.ip }
   } finally {
     bridgeAgent.destroy()
-    if (upstreamAgent !== null) await upstreamAgent.close().catch(() => undefined)
+    try {
+      if (upstreamAgent !== null) {
+        if (upstreamSignal?.aborted) destroyUpstream?.()
+        if (destroying !== undefined) await destroying
+        else await upstreamAgent.close()
+      }
+    } finally {
+      if (destroyUpstream !== undefined)
+        upstreamSignal?.removeEventListener("abort", destroyUpstream)
+    }
   }
 }
 

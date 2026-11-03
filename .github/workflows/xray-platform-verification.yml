@@ -101,41 +101,10 @@ jobs:
         working-directory: apps/desktop
         shell: pwsh
         run: |
-          $files = @(
-            "src/main/claude/browser-startup.test.ts",
-            "src/main/claude/browser-extension-paths.test.ts",
-            "src/main/claude/browser-extension-readiness.test.ts",
-            "src/main/claude/browser-extension-resolver.test.ts",
-            "src/main/claude/account-service-startup-cleanup.test.ts",
-            "src/main/claude/account-service-startup-callback.test.ts",
-            "src/main/claude/subscription-oauth.test.ts",
-            "src/main/claude/fingerprint-chromium-startup-failure.test.ts",
-            "src/main/claude/fingerprint-chromium-extension-startup.integration.test.ts",
-            "src/main/claude/fingerprint-chromium-loopback.integration.test.ts",
-            "src/main/claude/fingerprint-chromium-proxy-auth.integration.test.ts",
-            "src/main/claude/fingerprint-chromium-https-proxy.integration.test.ts",
-            "src/main/claude/fingerprint-chromium-webrtc.integration.test.ts",
-            "src/main/claude/account-service-browser-close.integration.test.ts",
-            "src/main/claude/xray-pool.integration.test.ts",
-            "src/main/claude/xray-https-proxy-untrusted.integration.test.ts",
-            "src/main/claude/xray-egress.test.ts",
-            "src/main/claude/ipc.test.ts",
-            "src/renderer/src/app-onboarding.test.ts",
-            "src/renderer/src/hooks/use-claude-accounts.test.ts",
-            "src/renderer/src/screens/onboarding-proxy-pending.test.ts",
-            "src/main/claude/xray-crash-recovery.test.ts",
-            "src/main/claude/xray-exit-marker.test.ts",
-            "src/main/claude/xray-port-reset.test.ts",
-            "src/main/claude/xray-windows-watchdog-crash.integration.test.ts",
-            "src/main/claude/xray-packaged-watchdog.integration.test.ts",
-            "src/main/claude/account-service-xray-oauth.integration.test.ts",
-            "src/main/claude/account-service-xray-proxy.integration.test.ts"
-          )
-          pnpm exec vitest run --maxWorkers=1 @files
-          $failed = $LASTEXITCODE -ne 0
-          for ($i = 1; $i -le 2; $i++) {
-            Write-Output "[DEBUG-cleanup-repeat] iteration=$i"
-            pnpm exec vitest run --maxWorkers=1 src/main/claude/fingerprint-chromium-webrtc.integration.test.ts src/main/claude/xray-packaged-watchdog.integration.test.ts
+          $failed = $false
+          for ($i = 1; $i -le 8; $i++) {
+            Write-Output "[DEBUG-https-repeat] iteration=$i"
+            pnpm exec vitest run --maxWorkers=1 src/main/claude/fingerprint-chromium-https-proxy.integration.test.ts
             if ($LASTEXITCODE -ne 0) { $failed = $true }
           }
           if ($failed) { exit 1 }

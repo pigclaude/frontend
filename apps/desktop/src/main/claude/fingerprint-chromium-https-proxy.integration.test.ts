@@ -1,5 +1,6 @@
 // 验证真实浏览器经 Xray 访问受信任的本机 HTTPS 目标。
 
+import { execFileSync } from "node:child_process"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { createServer as createHttpServer } from "node:http"
 import { createServer as createHttpsServer } from "node:https"
@@ -80,6 +81,7 @@ it.skipIf(!browserBinary || !xrayBinary || !trustedTargetCertificate)(
     })
     let callback: Awaited<ReturnType<SubscriptionOAuth["startCallback"]>> | undefined
     let browser: Browser | undefined
+    let browserPid: number | null = null
     try {
       targetPort = await listen(target)
       const proxyPort = await listen(proxy)
@@ -96,6 +98,7 @@ it.skipIf(!browserBinary || !xrayBinary || !trustedTargetCertificate)(
           unknownArgs: ["--headless=new", "--remote-debugging-port=0", "--use-mock-keychain"],
         },
       })
+      browserPid = launched.pid
       const port = await debugPort(join(launched.profileDir, "DevToolsActivePort"))
       browser = await within(chromium.connectOverCDP(`http://127.0.0.1:${port}`), 5_000)
       const context = browser.contexts()[0]
@@ -134,7 +137,23 @@ it.skipIf(!browserBinary || !xrayBinary || !trustedTargetCertificate)(
       if (results.some((result) => result.status === "rejected")) {
         throw new Error(`测试资源未确认回收，保留临时目录 ${directory}`)
       }
-      await rm(directory, { recursive: true, force: true })
+      try {
+        await rm(directory, { recursive: true, force: true })
+      } catch (error: unknown) {
+        let parentExists = false
+        if (browserPid !== null) { try { process.kill(browserPid, 0); parentExists = true } catch {} }
+        console.error("[DEBUG-https-rm]", JSON.stringify({ browserPid, parentExists, code: error instanceof Error && "code" in error ? error.code : "unknown", message: error instanceof Error ? error.message : "unknown" }))
+        if (process.platform === "win32") {
+          const script = "$items=Get-CimInstance Win32_Process -Filter \"Name = 'chrome.exe'\" | Where-Object { ($_.CommandLine -and $_.CommandLine.Contains($env:PIGCLAUDE_DEBUG_PROFILE)) -or $_.ParentProcessId -eq [int]$env:PIGCLAUDE_DEBUG_PID }; $items | Select-Object ProcessId,ParentProcessId,Name,@{Name='Kind';Expression={if ($_.CommandLine -match '--type=([^ ]+)') {$matches[1]} else {'browser'}}} | ConvertTo-Json -Compress"
+          try {
+            const processes = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { encoding: "utf8", timeout: 10000, env: { ...process.env, PIGCLAUDE_DEBUG_PROFILE: join(directory, "profiles", "https-target"), PIGCLAUDE_DEBUG_PID: String(browserPid ?? 0) } })
+            console.error("[DEBUG-https-processes]", processes.trim() || "none")
+          } catch (diagnostic: unknown) {
+            console.error("[DEBUG-https-diagnostic]", diagnostic instanceof Error ? diagnostic.message : "unknown")
+          }
+        }
+        throw error
+      }
     }
   },
   45_000,

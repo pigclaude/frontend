@@ -121,13 +121,16 @@ jobs:
           $cert = Join-Path $env:GITHUB_WORKSPACE "packages/login-gate/src/test-fixtures/loopback-ip-synthetic-cert.pem"
           if (Test-Path $cert) {
             $fingerprint = (Get-PfxCertificate -FilePath $cert).Thumbprint
-            certutil.exe -f -delstore Root $fingerprint
+            $installed = "Cert:\LocalMachine\Root\$fingerprint"
+            if (Test-Path $installed) {
+              certutil.exe -f -delstore Root $fingerprint
+              if ($LASTEXITCODE -ne 0 -or (Test-Path $installed)) { throw "证书移除失败" }
+            }
           }
-          exit 0
       - name: 移除临时 Linux 证书
         if: always() && runner.os == 'Linux'
         shell: bash
         run: |
-          if command -v certutil >/dev/null && [ -f "$HOME/.pki/nssdb/cert9.db" ]; then
-            certutil -D -d "sql:$HOME/.pki/nssdb" -n pigclaude-synthetic || true
+          if command -v certutil >/dev/null && [ -f "$HOME/.pki/nssdb/cert9.db" ] && certutil -L -d "sql:$HOME/.pki/nssdb" -n pigclaude-synthetic >/dev/null 2>&1; then
+            certutil -D -d "sql:$HOME/.pki/nssdb" -n pigclaude-synthetic
           fi

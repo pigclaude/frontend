@@ -90,9 +90,6 @@ export function createXrayRuntimeStarter(options: XrayRuntimeOptions): XrayRunti
         return
       }
       if (target.exitCode === null && target.signalCode === null) await closeChild(target)
-      if (process.platform === "win32" && !xrayExited && target.exitCode !== 0) {
-        throw unavailable()
-      }
       await waitForPortRelease(port)
       children.delete(target)
     }
@@ -112,10 +109,6 @@ export function createXrayRuntimeStarter(options: XrayRuntimeOptions): XrayRunti
       })
       exited = new Promise<void>((resolve, reject) => {
         spawned.once("close", (code, signal) => {
-          if (started && process.platform === "win32" && code !== 0 && !xrayExited) {
-            reject(unavailable())
-            return
-          }
           if (!started && xrayExited) {
             children.delete(spawned)
             resolve()

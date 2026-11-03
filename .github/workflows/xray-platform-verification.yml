@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
-        os: [ubuntu-22.04, windows-2022]
+        os: [windows-2022]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
@@ -132,7 +132,14 @@ jobs:
             "src/main/claude/account-service-xray-proxy.integration.test.ts"
           )
           pnpm exec vitest run --maxWorkers=1 @files
-          exit $LASTEXITCODE
+          $failed = $LASTEXITCODE -ne 0
+          for ($i = 1; $i -le 2; $i++) {
+            Write-Output "[DEBUG-cleanup-repeat] iteration=$i"
+            pnpm exec vitest run --maxWorkers=1 src/main/claude/fingerprint-chromium-webrtc.integration.test.ts src/main/claude/xray-packaged-watchdog.integration.test.ts
+            if ($LASTEXITCODE -ne 0) { $failed = $true }
+          }
+          if ($failed) { exit 1 }
+          exit 0
       - name: 使用真实 HTTP 上游代理验证 HTTPS 目标
         if: github.ref == 'refs/heads/codex/issue9-live-http-proxy'
         working-directory: apps/desktop

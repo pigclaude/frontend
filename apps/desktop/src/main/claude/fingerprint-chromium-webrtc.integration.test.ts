@@ -168,18 +168,23 @@ it.skipIf(!browserBinary || !xrayBinary)(
       await gather(boundPage, address, tcpPort, "tcp")
       expect(tcpConnections).toBe(beforeBoundTcp)
       await stopBrowser()
+    } catch (error: unknown) {
+      console.error("[DEBUG-webrtc-original]", error instanceof Error ? `${error.name}: ${error.message}` : String(error))
+      throw error
     } finally {
       let failed = false
       if (browser !== undefined) {
         try {
           await stopBrowser()
-        } catch {
+        } catch (error: unknown) {
+          console.error("[DEBUG-webrtc-stop]", error instanceof Error ? error.message : String(error))
           failed = true
         }
       }
       try {
         await adapter.dispose()
-      } catch {
+      } catch (error: unknown) {
+        console.error("[DEBUG-webrtc-dispose]", error instanceof Error ? error.message : String(error))
         failed = true
       }
       const results = await Promise.allSettled([
@@ -190,7 +195,14 @@ it.skipIf(!browserBinary || !xrayBinary)(
         tcpListening ? closeTcp(tcp) : undefined,
         controlListening ? close(control) : undefined,
       ])
-      if (results.some((entry) => entry.status === "rejected")) failed = true
+      const labels = ["runtime", "starter", "callback", "udp", "tcp", "control"]
+      for (const [index, entry] of results.entries()) {
+        if (entry.status === "rejected") {
+          console.error("[DEBUG-webrtc-resource]", labels[index], entry.reason instanceof Error ? entry.reason.message : String(entry.reason))
+          failed = true
+        }
+      }
+      if (!safeToDelete || failed) console.error("[DEBUG-webrtc-state]", JSON.stringify({ safeToDelete, failed, browserPid, accountId }))
       if (!safeToDelete || failed)
         throw new Error(`浏览器或测试资源未确认回收，保留临时目录 ${directory}`)
       await rm(directory, { recursive: true, force: true })

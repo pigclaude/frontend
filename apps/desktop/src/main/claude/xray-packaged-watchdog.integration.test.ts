@@ -29,6 +29,7 @@ it.skipIf(!binary || !enabled).each(
     let xrayPid: number | undefined
     let exited: Promise<{ code: number | null; signal: NodeJS.Signals | null }> | undefined
     let port: number | undefined
+    let diagnosticStderr = ""
     try {
       if (forced) await copyFile(binary!, testBinary)
       const config: unknown = JSON.parse(
@@ -58,7 +59,7 @@ it.skipIf(!binary || !enabled).each(
         spawned.once("error", () => resolve({ code: null, signal: null }))
       })
       spawned.stdin?.on("error", () => undefined)
-      spawned.stderr?.resume()
+      spawned.stderr?.on("data", (chunk: Buffer) => { diagnosticStderr += chunk.toString("utf8").slice(0, 2000) })
       const ready = waitForReady(spawned)
       spawned.stdin?.write(
         `${JSON.stringify({
@@ -84,6 +85,9 @@ it.skipIf(!binary || !enabled).each(
         spawned.stdin?.end()
         expect(await within(exited, 5_000)).toEqual({ code: 0, signal: null })
       }
+    } catch (error: unknown) {
+      console.error("[DEBUG-watchdog-original]", error instanceof Error ? `${error.name}: ${error.message}` : String(error))
+      throw error
     } finally {
       if (child !== undefined && exited !== undefined) {
         child.stdin?.end()
@@ -103,6 +107,9 @@ it.skipIf(!binary || !enabled).each(
             ? processClosed
             : await waitForRelease(child.pid, port, xrayPid).catch(() => false)
         if (!processClosed || !resourcesClosed) {
+          const xrayExists = xrayPid === undefined ? "unknown" : (() => { try { return testProcessExists(xrayPid) } catch { return "error" } })()
+          const portIsOpen = port === undefined ? "unknown" : await portOpen(port).catch(() => "error")
+          console.error("[DEBUG-watchdog-state]", JSON.stringify({ forced, processClosed, resourcesClosed, pid: child.pid, xrayPid, xrayExists, port, portIsOpen, exitCode: child.exitCode, signalCode: child.signalCode, diagnosticStderr: diagnosticStderr.slice(0, 2000) }))
           if (forced && xrayPid !== undefined) stopTestXray(xrayPid, testBinary)
           throw new Error(`守护程序或 Xray 未确认退出，保留临时目录 ${directory}`)
         }

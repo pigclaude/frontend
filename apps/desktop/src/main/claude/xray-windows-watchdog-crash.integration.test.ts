@@ -2,6 +2,7 @@
 
 import { execFileSync, spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import { copyFile, mkdtemp, rm } from "node:fs/promises"
+import { connect } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, it } from "vitest"
@@ -11,7 +12,7 @@ import { createXrayRuntimeStarter } from "./xray-runtime"
 const binary = process.env["PIGCLAUDE_TEST_XRAY_BIN"]
 
 it.skipIf(process.platform !== "win32" || !binary)(
-  "强制结束守护进程后，原 Xray 进程退出",
+  "强制结束守护进程后，原 Xray 退出并在原端口恢复",
   async () => {
     if (!binary) throw new Error("缺少测试用 Xray")
     const directory = await mkdtemp(join(tmpdir(), "pigclaude-xray-win-crash-"))
@@ -33,12 +34,19 @@ it.skipIf(process.platform !== "win32" || !binary)(
     let xrayPid: number | undefined
     try {
       runtime = await start({ upstreamProxyUrl: "http://127.0.0.1:9" })
+      const initialUrl = runtime.url
       const watchdog = watchdogs[0]
       if (watchdog?.pid === undefined) throw new Error("测试守护进程未启动")
       xrayPid = findTestXrayProcess(watchdog.pid, testBinary)
       expect(processExists(xrayPid)).toBe(true)
       if (!watchdog.kill("SIGKILL")) throw new Error("未能结束测试守护进程")
       await expect.poll(() => processExists(xrayPid!), { timeout: 6_000 }).toBe(false)
+      await expect.poll(() => watchdogs.length, { timeout: 8_000 }).toBeGreaterThan(1)
+      if (runtime.ready === undefined) throw new Error("缺少恢复就绪检查")
+      await runtime.ready()
+      expect(runtime.url).toBe(initialUrl)
+      expect(await portOpen(initialUrl)).toBe(true)
+      await expect(runtime.close()).resolves.toBeUndefined()
     } finally {
       await runtime?.close().catch(() => undefined)
       if (xrayPid !== undefined) stopTestXray(xrayPid, testBinary)
@@ -57,6 +65,18 @@ function processExists(pid: number): boolean {
     if (error instanceof Error && "code" in error && error.code === "ESRCH") return false
     throw error
   }
+}
+
+async function portOpen(value: string): Promise<boolean> {
+  const url = new URL(value)
+  return new Promise((resolve) => {
+    const socket = connect(Number(url.port), url.hostname)
+    socket.once("connect", () => {
+      socket.destroy()
+      resolve(true)
+    })
+    socket.once("error", () => resolve(false))
+  })
 }
 
 function stopTestXray(pid: number, binaryPath: string): void {

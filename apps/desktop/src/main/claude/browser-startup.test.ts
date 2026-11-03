@@ -19,6 +19,7 @@ it("扩展状态确认后才首次打开授权页面", async () => {
     browser.confirmRegistry()
     await opening
     expect(browser.navigatedUrls()).toEqual(["chrome://extensions/", authorizeUrl])
+    expect(browser.methods()).not.toContain("Page.enable")
     expect(browser.closedControlAfterAuthorization()).toBe(true)
   } finally {
     browser.close()
@@ -216,6 +217,10 @@ class SyntheticBrowser {
       .map((request) => request.params["url"])
   }
 
+  methods(): string[] {
+    return this.#requests.map((request) => request.method)
+  }
+
   closedControlAfterAuthorization(): boolean {
     const close = this.#requests.findIndex((request) => request.method === "Target.closeTarget")
     const authorize = this.#requests.findIndex(
@@ -259,10 +264,9 @@ class SyntheticBrowser {
       return
     }
     if (request.method === "Page.navigate" && request.params["url"] === "chrome://extensions/") {
-      this.#event("Page.frameNavigated", request.sessionId, {
-        frame: { url: "chrome://extensions/" },
+      this.#event("Runtime.executionContextCreated", request.sessionId, {
+        context: { origin: "chrome://extensions", auxData: { isDefault: true } },
       })
-      this.#event("Page.domContentEventFired", request.sessionId, {})
     }
     this.#reply(request, request.method === "Target.closeTarget" ? { success: true } : {})
   }

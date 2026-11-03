@@ -63,19 +63,16 @@ export async function openAuthorizedPage(input: BrowserStartupInput): Promise<vo
     stage = "attachControl"
     const controlSession = await attach(pipe, controlId)
     stage = "enableControl"
-    await pipe.request("Page.enable", {}, controlSession)
+    await pipe.request("Runtime.enable", {}, controlSession)
     stage = "loadControl"
-    let committed = false
     const loaded = pipe.watch((message) => {
       if (message["sessionId"] !== controlSession) return false
       const params = message["params"]
-      if (message["method"] === "Page.frameNavigated" && isRecord(params)) {
-        const frame = params["frame"]
-        if (isRecord(frame) && frame["url"] === extensionsUrl && frame["parentId"] === undefined) {
-          committed = true
-        }
-      }
-      return committed && message["method"] === "Page.domContentEventFired"
+      if (message["method"] !== "Runtime.executionContextCreated" || !isRecord(params)) return false
+      const context = params["context"]
+      if (!isRecord(context) || context["origin"] !== "chrome://extensions") return false
+      const auxiliary = context["auxData"]
+      return isRecord(auxiliary) && auxiliary["isDefault"] === true
     })
     try {
       await navigate(pipe, controlSession, extensionsUrl)

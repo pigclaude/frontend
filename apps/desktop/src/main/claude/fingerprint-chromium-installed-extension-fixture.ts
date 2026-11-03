@@ -41,16 +41,15 @@ export async function installSyntheticExtension(input: {
     const targetId = requiredString(target, "targetId")
     const attached = await pipe.request("Target.attachToTarget", { targetId, flatten: true })
     const sessionId = requiredString(attached, "sessionId")
-    await pipe.request("Page.enable", {}, sessionId)
-    let committed = false
+    await pipe.request("Runtime.enable", {}, sessionId)
     const loaded = pipe.watch((message) => {
       if (message["sessionId"] !== sessionId) return false
       const params = message["params"]
-      if (message["method"] === "Page.frameNavigated" && isRecord(params)) {
-        const frame = params["frame"]
-        if (isRecord(frame) && frame["url"] === "chrome://extensions/") committed = true
-      }
-      return committed && message["method"] === "Page.domContentEventFired"
+      if (message["method"] !== "Runtime.executionContextCreated" || !isRecord(params)) return false
+      const context = params["context"]
+      if (!isRecord(context) || context["origin"] !== "chrome://extensions") return false
+      const auxiliary = context["auxData"]
+      return isRecord(auxiliary) && auxiliary["isDefault"] === true
     })
     try {
       await pipe.request("Page.navigate", { url: "chrome://extensions/" }, sessionId)

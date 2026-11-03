@@ -62,7 +62,6 @@ export async function createHarness(
     deleteError?: Error
     stopError?: Error
     stopWait?: () => Promise<void>
-    browserExited?: Promise<void>
     deleteWait?: () => Promise<void>
     readCliCredential?: ClaudeAccountServiceDeps["readCliCredential"]
     readCliAccountMetadata?: ClaudeAccountServiceDeps["readCliAccountMetadata"]
@@ -154,7 +153,7 @@ export async function createHarness(
       return {
         profileDir: join(dir, "browser-profiles", "acc-1"),
         pid: 1234,
-        exited: options.browserExited ?? new Promise<void>(() => undefined),
+        exited: new Promise<void>(() => undefined),
         stop: async () => {
           browserCalls.push("stop")
           await options.stopWait?.()

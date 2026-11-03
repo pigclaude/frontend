@@ -18,8 +18,6 @@ it.skipIf(!browserBinary || !xrayBinary)(
   "代理账密错误时浏览器不能访问本机目标",
   async () => {
     const directory = await mkdtemp(join(tmpdir(), "pigclaude-proxy-auth-"))
-    const fixture = await createLoopbackFixture()
-    const callback = await new SubscriptionOAuth().startCallback({ state: "synthetic" })
     const adapter = new FingerprintChromiumAdapter({
       binaryPath: browserBinary,
       hostArch: process.arch,
@@ -30,8 +28,12 @@ it.skipIf(!browserBinary || !xrayBinary)(
       hostArch: process.arch,
       idleTimeoutMs: 0,
     })
+    let fixture: Awaited<ReturnType<typeof createLoopbackFixture>> | undefined
+    let callback: Awaited<ReturnType<SubscriptionOAuth["startCallback"]>> | undefined
     let browser: Browser | undefined
     try {
+      fixture = await createLoopbackFixture()
+      callback = await new SubscriptionOAuth().startCallback({ state: "synthetic" })
       const runtime = await start({
         upstreamProxyUrl: `http://synthetic:wrong@127.0.0.1:${fixture.proxyPort}`,
       })
@@ -48,15 +50,19 @@ it.skipIf(!browserBinary || !xrayBinary)(
         },
       })
       const port = await debugPort(join(launched.profileDir, "DevToolsActivePort"))
-      browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`)
+      browser = await within(chromium.connectOverCDP(`http://127.0.0.1:${port}`), 5_000)
       const context = browser.contexts()[0]
       if (context === undefined) throw new Error("浏览器上下文不可用")
       const page = await context.newPage()
-      const before = fixture.requests()
+      const activeFixture = fixture
+      const before = activeFixture.requests()
       try {
-        const response = await page.goto(`http://127.0.0.1:${fixture.originPort}/probe-invalid`, {
-          timeout: 5_000,
-        })
+        const response = await page.goto(
+          `http://127.0.0.1:${activeFixture.originPort}/probe-invalid`,
+          {
+            timeout: 5_000,
+          },
+        )
         if (response === null || response.status() < 400) throw new Error("错误代理账密意外成功")
       } catch (error: unknown) {
         if (
@@ -66,15 +72,17 @@ it.skipIf(!browserBinary || !xrayBinary)(
         )
           throw error
       }
-      await expect.poll(() => fixture.rejectedCredentials(), { timeout: 5_000 }).toBeGreaterThan(0)
-      expect(fixture.requests()).toEqual(before)
+      await expect
+        .poll(() => activeFixture.rejectedCredentials(), { timeout: 5_000 })
+        .toBeGreaterThan(0)
+      expect(activeFixture.requests()).toEqual(before)
     } finally {
-      await browser?.close().catch(() => undefined)
+      if (browser !== undefined) await within(browser.close(), 2_000).catch(() => undefined)
       const results = await Promise.allSettled([
         adapter.dispose(),
         start.dispose(),
-        callback.close(),
-        fixture.close(),
+        callback?.close(),
+        fixture?.close(),
       ])
       if (results.some((result) => result.status === "rejected")) {
         throw new Error(`测试资源未确认回收，保留临时目录 ${directory}`)
@@ -97,4 +105,18 @@ async function debugPort(path: string): Promise<number> {
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
   throw new Error("浏览器未启动")
+}
+
+async function within<T>(task: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      task,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("浏览器操作超时")), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
 }

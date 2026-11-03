@@ -70,13 +70,28 @@ jobs:
           "PIGCLAUDE_TEST_CHROMIUM_BIN=$($browsers[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PIGCLAUDE_TEST_XRAY_BIN=$xray" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PIGCLAUDE_TEST_BUILT_WATCHDOG=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "PIGCLAUDE_TEST_TRUST_PROXY_CERT=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: 在临时 Windows 环境信任合成代理证书
+          "PIGCLAUDE_TEST_TRUST_TARGET_CERT=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: 在临时 Windows 环境信任合成目标证书
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $cert = Join-Path $env:GITHUB_WORKSPACE "packages/login-gate/src/test-fixtures/loopback-ip-synthetic-cert.pem"
-          Import-Certificate -FilePath $cert -CertStoreLocation Cert:\CurrentUser\Root | Out-Null
+          $command = Start-Process certutil.exe -ArgumentList @("-user", "-f", "-silent", "-addstore", "Root", "`"$cert`"") -PassThru -NoNewWindow
+          if (!$command.WaitForExit(30000)) { $command.Kill(); throw "证书导入超时" }
+          if ($command.ExitCode -ne 0) { throw "证书导入失败" }
+      - name: 在临时 Linux 环境信任合成目标证书
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          if ! command -v certutil >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq libnss3-tools
+          fi
+          mkdir -p "$HOME/.pki/nssdb"
+          if [ ! -f "$HOME/.pki/nssdb/cert9.db" ]; then
+            certutil -N -d "sql:$HOME/.pki/nssdb" --empty-password
+          fi
+          certutil -A -d "sql:$HOME/.pki/nssdb" -n pigclaude-synthetic -t 'C,,' -i packages/login-gate/src/test-fixtures/loopback-ip-synthetic-cert.pem
       - name: 构建桌面守护程序
         run: pnpm --filter @pigclaude/desktop build
       - name: 验证浏览器、Xray 和代理生命周期
@@ -90,6 +105,7 @@ jobs:
             "src/main/claude/fingerprint-chromium-webrtc.integration.test.ts",
             "src/main/claude/account-service-browser-close.integration.test.ts",
             "src/main/claude/xray-pool.integration.test.ts",
+            "src/main/claude/xray-https-proxy-untrusted.integration.test.ts",
             "src/main/claude/xray-egress.test.ts",
             "src/main/claude/xray-crash-recovery.test.ts",
             "src/main/claude/xray-packaged-watchdog.integration.test.ts",
@@ -98,3 +114,20 @@ jobs:
           )
           pnpm exec vitest run --maxWorkers=1 @files
           exit $LASTEXITCODE
+      - name: 移除临时 Windows 证书
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $cert = Join-Path $env:GITHUB_WORKSPACE "packages/login-gate/src/test-fixtures/loopback-ip-synthetic-cert.pem"
+          if (Test-Path $cert) {
+            $fingerprint = (Get-PfxCertificate -FilePath $cert).Thumbprint
+            certutil.exe -user -f -silent -delstore Root $fingerprint
+          }
+          exit 0
+      - name: 移除临时 Linux 证书
+        if: always() && runner.os == 'Linux'
+        shell: bash
+        run: |
+          if command -v certutil >/dev/null && [ -f "$HOME/.pki/nssdb/cert9.db" ]; then
+            certutil -D -d "sql:$HOME/.pki/nssdb" -n pigclaude-synthetic || true
+          fi

@@ -67,9 +67,9 @@ it.skipIf(!browserBinary || !xrayBinary)(
         .catch((error: unknown) => error)
       const instance = await within(launched, 15_000)
       const port = await debugPort(join(instance.profileDir, "DevToolsActivePort"))
-      connected = await chromium.connectOverCDP(`http://127.0.0.1:${port}`)
-      const session = await connected.newBrowserCDPSession()
-      await session.send("Browser.close")
+      connected = await within(chromium.connectOverCDP(`http://127.0.0.1:${port}`), 5_000)
+      const session = await within(connected.newBrowserCDPSession(), 5_000)
+      await within(session.send("Browser.close"), 5_000)
       const result = await within(authorization, 3_000)
       expect(result).toMatchObject({ code: "AUTHORIZATION_CANCELLED" })
       expect(await portOpen(runtime.url)).toBe(false)
@@ -77,7 +77,7 @@ it.skipIf(!browserBinary || !xrayBinary)(
     } finally {
       await harness?.service.cancel().catch(() => undefined)
       await authorization
-      await connected?.close().catch(() => undefined)
+      if (connected !== undefined) await within(connected.close(), 2_000).catch(() => undefined)
       const results = await Promise.allSettled([
         adapter.dispose(),
         start.dispose(),

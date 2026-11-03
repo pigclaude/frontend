@@ -10,7 +10,7 @@ import type {
 } from "@pigclaude/contracts/claude-account"
 import type { AccountRecord, LocalStore } from "@pigclaude/local-store"
 import type { EgressResult } from "@pigclaude/login-gate/egress-check"
-import type { ProxyBridge } from "@pigclaude/login-gate/proxy-bridge"
+import type { ProxyRuntime, StartProxyRuntime } from "@pigclaude/login-gate/proxy-runtime"
 import { createProxyAgent } from "@pigclaude/proxy-connection"
 import {
   assertClaudeCliIdentity,
@@ -81,7 +81,8 @@ export type ClaudeAccountServiceDeps = {
     SubscriptionOAuth,
     "buildAuthorizeUrl" | "startCallback" | "exchangeCode" | "readProfile"
   >
-  startBridge: (input: { upstreamProxyUrl: string }) => Promise<ProxyBridge>
+  /** 提供已接入的外部代理核心；未提供时，绑定代理授权保持不可用。 */
+  startProxyRuntime?: StartProxyRuntime
   checkEgress: (input: {
     bridgeUrl: string
     upstreamProxyUrl: string
@@ -133,7 +134,7 @@ export class ClaudeAccountService {
     const requestedAccountId = input.accountId
     const accountId = requestedAccountId ?? this.#id()
     const proxyId = input.proxyId
-    let bridge: ProxyBridge | null = null
+    let proxyRuntime: ProxyRuntime | null = null
     let bridgeUrl: string | null = null
     let callback: OAuthCallbackServer | null = null
     let launched: LaunchedBrowser | null = null
@@ -178,13 +179,16 @@ export class ClaudeAccountService {
       if (proxy !== null) this.#deps.browser.ensureBoundProxyProtection()
       await this.#deps.browser.ensureAvailable()
       attempt.claim()
-
       if (proxy !== null) {
-        bridge = await this.#deps.startBridge({ upstreamProxyUrl: proxy.url })
+        const startProxyRuntime = this.#deps.startProxyRuntime
+        if (startProxyRuntime === undefined) {
+          throw new ClaudeAccountError("PROXY_UNAVAILABLE", "Xray 代理尚未接入，请勿登录")
+        }
+        proxyRuntime = await startProxyRuntime({ upstreamProxyUrl: proxy.url })
         attempt.checkpoint()
-        const startedBridgeUrl = bridge?.url
+        const startedBridgeUrl = proxyRuntime?.url
         if (!isValidBridgeUrl(startedBridgeUrl)) {
-          throw new ClaudeAccountError("PROXY_UNAVAILABLE", "代理桥不可用，请勿登录")
+          throw new ClaudeAccountError("PROXY_UNAVAILABLE", "本机代理入口不可用，请勿登录")
         }
         bridgeUrl = startedBridgeUrl
         this.#emit(accountId, "checking-egress")
@@ -201,9 +205,7 @@ export class ClaudeAccountService {
           )
         }
       }
-
       const profileDir = this.#deps.browser.profileDir(accountId)
-
       this.#emit(accountId, "waiting-browser")
       const oauthRequest = createSubscriptionOAuthRequest()
       callback = await this.#deps.oauth.startCallback({ state: oauthRequest.state })
@@ -318,7 +320,7 @@ export class ClaudeAccountService {
         stopError = mapError(error)
         if (launched !== null) this.#pendingCleanup.set(accountId, launched)
       }
-      await bridge?.close().catch(() => undefined)
+      await proxyRuntime?.close().catch(() => undefined)
       const canEmit = attempt === null || this.#authorizations.canEmit(attempt)
       attempt?.finish(stopError)
       if (stopError !== null && !committed) {

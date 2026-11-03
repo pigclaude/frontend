@@ -7,7 +7,7 @@ import type { Dispatcher } from "undici"
 import type { ClaudeAccountEvent, ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { LocalStore, type AccountRecord } from "@pigclaude/local-store"
 import type { EgressResult } from "@pigclaude/login-gate/egress-check"
-import type { ProxyBridge } from "@pigclaude/login-gate/proxy-bridge"
+import type { ProxyRuntime } from "@pigclaude/login-gate/proxy-runtime"
 import { BrowserLaunchError, type LaunchBrowserInput } from "./fingerprint-chromium"
 import type { ClaudeAccountError } from "./errors"
 import { ClaudeAccountService, type ClaudeAccountServiceDeps } from "./account-service"
@@ -69,6 +69,7 @@ export async function createHarness(
     membershipWait?: () => Promise<void>
     callbackStartWait?: () => Promise<void>
     proxyProtectionUnavailable?: boolean
+    proxyRuntimeUnavailable?: boolean
     browser?: ClaudeAccountServiceDeps["browser"]
     oauth?: ClaudeAccountServiceDeps["oauth"]
   } = {},
@@ -199,11 +200,13 @@ export async function createHarness(
       : { readCliAccountMetadata: options.readCliAccountMetadata }),
     browser: options.browser ?? browser,
     oauth: options.oauth ?? oauth,
-    startBridge: async (input) => {
-      bridgeCalls.push(input)
-      if (options.bridgeMissing) return null as unknown as ProxyBridge
-      return bridge
-    },
+    startProxyRuntime: options.proxyRuntimeUnavailable
+      ? undefined
+      : async (input) => {
+          bridgeCalls.push(input)
+          if (options.bridgeMissing) return null as unknown as ProxyRuntime
+          return bridge
+        },
     checkEgress: async (input) => {
       egressCalls.push(input)
       if (options.bridgeUrlAfterEgress !== undefined) bridge.url = options.bridgeUrlAfterEgress

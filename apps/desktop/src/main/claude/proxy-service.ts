@@ -4,10 +4,11 @@ import { randomUUID } from "node:crypto"
 import type { EgressView, ProxyView } from "@pigclaude/contracts/claude-account"
 import type { IpProxy, LocalStore } from "@pigclaude/local-store"
 import { checkEgress, parseExitIp } from "@pigclaude/login-gate/egress-check"
-import { startProxyBridge } from "@pigclaude/login-gate/proxy-bridge"
+import type { StartProxyRuntime } from "@pigclaude/login-gate/proxy-runtime"
 import { createProxyAgent } from "@pigclaude/proxy-connection"
 import { fetch as undiciFetch, type ProxyAgent } from "undici"
 import { ClaudeAccountError } from "./errors"
+import { isValidBridgeUrl } from "./launch-argument-guard"
 
 const defaultCheckUrl = "https://www.cloudflare.com/cdn-cgi/trace"
 
@@ -16,6 +17,8 @@ export type ProxyServiceDeps = {
   store: LocalStore
   checkUrl?: string
   now?: () => number
+  /** 外部代理核心未接入时，出口一致性核对明确拒绝执行。 */
+  startProxyRuntime?: StartProxyRuntime
 }
 
 /** 本机代理服务。保证测试失败时返回失败结果而不是改走直连。 */
@@ -23,12 +26,14 @@ export class ProxyService {
   readonly #store: LocalStore
   readonly #checkUrl: string
   readonly #now: () => number
+  readonly #startProxyRuntime: StartProxyRuntime | undefined
 
   /** 创建绑定到本机代理文件的代理服务。 */
   constructor(deps: ProxyServiceDeps) {
     this.#store = deps.store
     this.#checkUrl = deps.checkUrl ?? defaultCheckUrl
     this.#now = deps.now ?? Date.now
+    this.#startProxyRuntime = deps.startProxyRuntime
   }
 
   /** 返回脱敏代理列表。 */
@@ -99,19 +104,26 @@ export class ProxyService {
     return toView(updated)
   }
 
-  /** 经代理桥和上游代理各查一次出口，要求一致。 */
+  /** 经外部代理核心的本机入口和上游代理各查一次出口，要求一致。 */
   async checkEgress(id: string): Promise<EgressView> {
     const proxy = await this.#store.getProxy(id)
     if (proxy === null) throw new ClaudeAccountError("PROXY_INVALID", "代理不存在")
-    const bridge = await startProxyBridge({ upstreamProxyUrl: proxy.url })
+    if (this.#startProxyRuntime === undefined) {
+      throw new ClaudeAccountError("PROXY_UNAVAILABLE", "Xray 代理尚未接入，无法核对浏览器出口")
+    }
+    const runtime = await this.#startProxyRuntime({ upstreamProxyUrl: proxy.url })
     try {
+      const bridgeUrl = runtime?.url
+      if (!isValidBridgeUrl(bridgeUrl)) {
+        throw new ClaudeAccountError("PROXY_UNAVAILABLE", "本机代理入口不可用，无法核对浏览器出口")
+      }
       return await checkEgress({
-        bridgeUrl: bridge.url,
+        bridgeUrl,
         upstreamProxyUrl: proxy.url,
         checkUrl: this.#checkUrl,
       })
     } finally {
-      await bridge.close()
+      await runtime?.close()
     }
   }
 }

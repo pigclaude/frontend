@@ -396,9 +396,6 @@ async function createHarness(options: {
         return options.profile ?? null
       },
     },
-    startBridge: async () => {
-      throw new Error("unexpected bridge")
-    },
     checkEgress: async () => ({ ok: true, ip: "203.0.113.42" }),
     ensureMembership: async () => {
       membershipCalls += 1

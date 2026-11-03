@@ -17,7 +17,6 @@ import type { MembershipView } from "@pigclaude/contracts/membership"
 import { isAccountSelectable, type ClaudeAccountEvent } from "@pigclaude/contracts/claude-account"
 import { LocalStore } from "@pigclaude/local-store"
 import { checkEgress } from "@pigclaude/login-gate/egress-check"
-import { startProxyBridge } from "@pigclaude/login-gate/proxy-bridge"
 import { createCallbackServer } from "./authorization/callback-server"
 import {
   createAuthorizationCallbackReceiver,
@@ -353,7 +352,6 @@ async function setupAuthorization(): Promise<void> {
     store: localStore,
     browser,
     oauth: new SubscriptionOAuth(),
-    startBridge: startProxyBridge,
     checkEgress,
     ensureMembership: async () => {
       const view = await composition.membershipGate.inspect()

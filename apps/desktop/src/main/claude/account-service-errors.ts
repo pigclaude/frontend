@@ -4,7 +4,6 @@ import type {
   ClaudeAccountErrorCode,
   ClaudeAccountEvent,
 } from "@pigclaude/contracts/claude-account"
-import { ProxyBridgeError } from "@pigclaude/login-gate/proxy-bridge"
 import { ClaudeAccountError } from "./errors"
 import { BrowserLaunchError } from "./fingerprint-chromium"
 import { SubscriptionOAuthError } from "./subscription-oauth"
@@ -17,12 +16,6 @@ export function mapError(error: unknown): ClaudeAccountError {
   }
   if (error instanceof SubscriptionOAuthError) {
     return new ClaudeAccountError(error.code, error.message)
-  }
-  if (error instanceof ProxyBridgeError) {
-    return new ClaudeAccountError(
-      error.code === "UNSUPPORTED_PROXY_SCHEME" ? "UNSUPPORTED_PROXY_SCHEME" : "PROXY_INVALID",
-      error.message,
-    )
   }
   return new ClaudeAccountError("UNEXPECTED_ERROR", "Claude 账号操作失败")
 }

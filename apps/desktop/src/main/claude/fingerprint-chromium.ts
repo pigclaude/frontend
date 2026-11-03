@@ -142,11 +142,11 @@ export class FingerprintChromiumAdapter {
     )
   }
 
-  /** 未有可信强制代理内核时拒绝绑定代理授权，不能按版本号或自报放行。 */
+  /** Xray 接入和代理保护未完成验收时拒绝绑定代理授权。 */
   ensureBoundProxyProtection(): void {
     throw new BrowserLaunchError(
       "BROWSER_START_FAILED",
-      "当前指纹内核无法证明受管代理保护，暂不能使用绑定代理授权",
+      "Xray 接入与受管代理保护尚未完成，暂不能使用绑定代理授权",
     )
   }
 

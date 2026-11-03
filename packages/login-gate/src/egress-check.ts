@@ -1,4 +1,4 @@
-// 负责比较代理桥和 daemon 同款 ProxyAgent 的出口 IP；不一致或失败时不允许登录。
+// 负责比较外部代理核心本机入口和 daemon 同款 ProxyAgent 的出口 IP；不一致或失败时不允许登录。
 
 import { isIP } from "node:net"
 import { createProxyAgent } from "@pigclaude/proxy-connection"
@@ -13,7 +13,7 @@ export type EgressResult =
 
 type FetchLike = typeof undiciFetch
 
-/** 分别经代理桥和上游代理请求出口检查 URL，要求两次 IP 相同。 */
+/** 分别经外部代理核心的本机入口和上游代理请求出口检查 URL，要求两次 IP 相同。 */
 export async function checkEgress(input: {
   bridgeUrl: string
   upstreamProxyUrl: string

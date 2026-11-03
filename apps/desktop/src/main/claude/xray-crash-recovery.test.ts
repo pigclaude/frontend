@@ -77,7 +77,7 @@ it.skipIf(!binary || process.platform === "win32").each([
       const watchdogPid = findWatchdog(child.pid)
       const target = stopGuard ? findWatchdog(watchdogPid) : watchdogPid
       process.kill(target, "SIGKILL")
-      expect(await waitForFile(outcome)).toBe("restored")
+      expect(await waitForFile(outcome, "Xray 未完成原端口恢复")).toBe("restored")
       expect(await portOpen(url)).toBe(true)
       await stopHost(child)
       await expect.poll(() => portOpen(url), { timeout: 4_000 }).toBe(false)
@@ -108,7 +108,7 @@ async function stopHost(child: ChildProcess): Promise<void> {
   })
 }
 
-async function waitForFile(path: string): Promise<string> {
+async function waitForFile(path: string, timeoutMessage = "合成宿主未启动 Xray"): Promise<string> {
   const deadline = Date.now() + 15_000
   while (Date.now() < deadline) {
     try {
@@ -117,7 +117,7 @@ async function waitForFile(path: string): Promise<string> {
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
   }
-  throw new Error("合成宿主未启动 Xray")
+  throw new Error(timeoutMessage)
 }
 
 async function portOpen(url: URL): Promise<boolean> {

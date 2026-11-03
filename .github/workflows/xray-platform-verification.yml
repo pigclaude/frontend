@@ -7,6 +7,7 @@ on:
     branches:
       - codex/issue9-platform-verification
       - codex/issue9-live-http-proxy
+      - codex/issue9-live-https-proxy
 
 permissions:
   contents: read
@@ -135,6 +136,26 @@ jobs:
             }
           }
           pnpm exec vitest run --maxWorkers=1 src/main/claude/fingerprint-chromium-live-http-proxy.integration.test.ts
+          exit $LASTEXITCODE
+      - name: 使用真实 HTTPS 上游代理验证 HTTPS 目标
+        if: github.ref == 'refs/heads/codex/issue9-live-https-proxy'
+        working-directory: apps/desktop
+        shell: pwsh
+        env:
+          PIGCLAUDE_TEST_LIVE_HTTPS_PROXY: "1"
+          PIGCLAUDE_TEST_HTTPS_PROXY_URL: ${{ secrets.PIGCLAUDE_XRAY_LIVE_HTTPS_PROXY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:PIGCLAUDE_TEST_HTTPS_PROXY_URL)) { throw "缺少 HTTPS 测试代理" }
+          $proxy = [Uri]$env:PIGCLAUDE_TEST_HTTPS_PROXY_URL
+          $parts = @($proxy.Host, $proxy.UserInfo) + @($proxy.UserInfo.Split(':', 2))
+          foreach ($part in $parts) {
+            $value = [Uri]::UnescapeDataString($part)
+            if ($value) {
+              $escaped = $value.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+              Write-Output "::add-mask::$escaped"
+            }
+          }
+          pnpm exec vitest run --maxWorkers=1 src/main/claude/fingerprint-chromium-live-https-proxy.integration.test.ts
           exit $LASTEXITCODE
       - name: 移除临时 Windows 证书
         if: always() && runner.os == 'Windows'

@@ -103,11 +103,15 @@ it.skipIf(!browserBinary || !xrayBinary)(
           const context = connection.contexts()[0]
           if (context === undefined) throw new Error("合成浏览器上下文不可用")
           const page = context.pages()[0] ?? (await context.newPage())
-          await expect
-            .poll(() => page.locator("html").getAttribute("data-synthetic-extension"), {
-              timeout: 10_000,
-            })
-            .toBe("ready")
+          try {
+            await expect
+              .poll(() => page.locator("html").getAttribute("data-synthetic-extension"), {
+                timeout: 10_000,
+              })
+              .toBe("ready")
+          } catch (error: unknown) {
+            throw new Error("等待扩展加载失败", { cause: error })
+          }
           return { browser: connection, page, pid: startedBrowser.pid }
         } catch (error: unknown) {
           await disconnectBrowser(connection)
@@ -140,20 +144,24 @@ it.skipIf(!browserBinary || !xrayBinary)(
       const watchdogPid = watchdogs[0]?.pid
       if (!watchdogPid) throw new Error("未找到本次 Xray 守护进程")
       process.kill(findTestXrayProcess(watchdogPid, xrayBinary), "SIGKILL")
-      await expect
-        .poll(
-          () => {
-            try {
-              if (watchdogs.length < 2) return false
-              runtime?.assertRunning?.()
-              return true
-            } catch {
-              return false
-            }
-          },
-          { timeout: 8_000 },
-        )
-        .toBe(true)
+      try {
+        await expect
+          .poll(
+            () => {
+              try {
+                if (watchdogs.length < 2) return false
+                runtime?.assertRunning?.()
+                return true
+              } catch {
+                return false
+              }
+            },
+            { timeout: 8_000 },
+          )
+          .toBe(true)
+      } catch (error: unknown) {
+        throw new Error("等待 Xray 恢复失败", { cause: error })
+      }
       const recovered = await context.newPage()
       await recovered.goto(`http://127.0.0.1:${fixture.originPort}/probe-recovered`)
       await recovered.close()
@@ -247,7 +255,13 @@ it.skipIf(!browserBinary || !xrayBinary)(
         await rm(directory, { recursive: true, force: true })
       } else {
         if (testFailure !== null) failures.unshift(testFailure)
-        throw new AggregateError(failures, `合成资源未确认回收；临时目录保留在 ${directory}`)
+        const details = failures.map((error) =>
+          error instanceof Error ? error.message : "未知错误",
+        )
+        throw new AggregateError(
+          failures,
+          `合成资源未确认回收；临时目录保留在 ${directory}；${details.join("；")}`,
+        )
       }
     }
     if (testFailure !== null) throw testFailure

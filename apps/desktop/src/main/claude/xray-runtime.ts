@@ -297,6 +297,7 @@ async function isPortOpen(port: number): Promise<boolean> {
     })
     socket.once("error", (error: NodeJS.ErrnoException) => {
       if (error.code === "ECONNREFUSED") resolve(false)
+      else if (error.code === "ECONNRESET") resolve(true)
       else reject(error)
     })
   })

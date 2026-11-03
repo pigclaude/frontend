@@ -39,5 +39,5 @@ jobs:
         run: |
           pnpm build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pnpm exec vitest run --maxWorkers=1 src/main/claude/xray-windows-watchdog-crash.integration.test.ts src/main/claude/xray-packaged-watchdog.integration.test.ts src/main/claude/xray-exit-marker.test.ts
+          pnpm exec vitest run --maxWorkers=1 src/main/claude/xray-windows-watchdog-crash.integration.test.ts src/main/claude/xray-packaged-watchdog.integration.test.ts src/main/claude/xray-exit-marker.test.ts src/main/claude/xray-port-reset.test.ts
           exit $LASTEXITCODE

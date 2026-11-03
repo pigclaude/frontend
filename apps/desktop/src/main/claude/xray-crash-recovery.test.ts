@@ -1,7 +1,7 @@
 // 验证独立合成宿主被强制结束后，其真实 Xray 本机入口也会关闭。
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process"
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { connect } from "node:net"
 import { tmpdir } from "node:os"
@@ -29,7 +29,7 @@ it.skipIf(!binary)(
       },
     )
     try {
-      const url = new URL(await waitForFile(output))
+      const url = new URL(await waitForFile(output, "合成宿主未启动 Xray", child))
       expect(await portOpen(url)).toBe(true)
       child.kill("SIGKILL")
       const deadline = Date.now() + 4_000
@@ -54,6 +54,7 @@ it.skipIf(!binary || process.platform === "win32").each([
     const directory = await mkdtemp(join(tmpdir(), "pigclaude-xray-crash-"))
     const output = join(directory, "ready")
     const outcome = join(directory, "close-result")
+    const targetFile = join(directory, "killed-watchdog")
     const require = createRequire(import.meta.url)
     const vitest = join(dirname(require.resolve("vitest/package.json")), "vitest.mjs")
     const fixture = resolve(import.meta.dirname, "xray-crash-fixture.test.ts")
@@ -66,18 +67,21 @@ it.skipIf(!binary || process.platform === "win32").each([
           ...process.env,
           PIGCLAUDE_TEST_XRAY_READY_FILE: output,
           PIGCLAUDE_TEST_XRAY_CLOSE_FILE: outcome,
+          PIGCLAUDE_TEST_XRAY_KILLED_FILE: targetFile,
         },
         detached: true,
         stdio: "ignore",
       },
     )
     try {
-      const url = new URL(await waitForFile(output))
+      const url = new URL(await waitForFile(output, "合成宿主未启动 Xray", child))
       if (child.pid === undefined) throw new Error("合成宿主未启动")
       const watchdogPid = findWatchdog(child.pid)
       const target = stopGuard ? findWatchdog(watchdogPid) : watchdogPid
+      await writeFile(`${targetFile}.tmp`, String(watchdogPid))
+      await rename(`${targetFile}.tmp`, targetFile)
       process.kill(target, "SIGKILL")
-      expect(await waitForFile(outcome, "Xray 未完成原端口恢复")).toBe("restored")
+      expect(await waitForFile(outcome, "Xray 未完成原端口恢复", child)).toBe("restored")
       expect(await portOpen(url)).toBe(true)
       await stopHost(child)
       await expect.poll(() => portOpen(url), { timeout: 4_000 }).toBe(false)
@@ -108,12 +112,19 @@ async function stopHost(child: ChildProcess): Promise<void> {
   })
 }
 
-async function waitForFile(path: string, timeoutMessage = "合成宿主未启动 Xray"): Promise<string> {
+async function waitForFile(
+  path: string,
+  timeoutMessage = "合成宿主未启动 Xray",
+  child?: ChildProcess,
+): Promise<string> {
   const deadline = Date.now() + 15_000
   while (Date.now() < deadline) {
     try {
       return await readFile(path, "utf8")
     } catch {
+      if (child !== undefined && (child.exitCode !== null || child.signalCode !== null)) {
+        throw new Error("合成宿主提前退出，未能完成 Xray 恢复验证")
+      }
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
   }

@@ -112,6 +112,7 @@ jobs:
             "src/main/claude/xray-egress.test.ts",
             "src/main/claude/xray-crash-recovery.test.ts",
             "src/main/claude/xray-exit-marker.test.ts",
+            "src/main/claude/xray-port-reset.test.ts",
             "src/main/claude/xray-windows-watchdog-crash.integration.test.ts",
             "src/main/claude/xray-packaged-watchdog.integration.test.ts",
             "src/main/claude/account-service-xray-oauth.integration.test.ts",

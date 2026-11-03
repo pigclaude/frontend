@@ -80,6 +80,29 @@ it("守护进程退出后原端口仍占用时，报告失败且不重启", asyn
   }
 }, 8_000)
 
+it.skipIf(process.platform !== "win32")(
+  "启动前守护进程异常退出且清理未确认时，不重启同一代理",
+  async () => {
+    const watchdogs: FakeWatchdog[] = []
+    const fakeSpawn = (() => {
+      const child = new FakeWatchdog(false)
+      watchdogs.push(child)
+      return child as unknown as ChildProcess
+    }) as typeof spawn
+    const start = createXrayRuntimeStarter({
+      binaryPath: process.execPath,
+      hostArch: process.arch,
+      spawn: fakeSpawn,
+      idleTimeoutMs: 0,
+    })
+    const input = { upstreamProxyUrl: "http://127.0.0.1:9" }
+    await expect(start(input)).rejects.toMatchObject({ code: "PROXY_UNAVAILABLE" })
+    await expect(start(input)).rejects.toMatchObject({ code: "PROXY_UNAVAILABLE" })
+    expect(watchdogs).toHaveLength(1)
+    await expect(start.dispose()).rejects.toMatchObject({ code: "PROXY_UNAVAILABLE" })
+  },
+)
+
 class FakeWatchdog extends EventEmitter {
   readonly pid = 1
   readonly stdin = new PassThrough()
@@ -87,9 +110,12 @@ class FakeWatchdog extends EventEmitter {
   exitCode: number | null = null
   signalCode: NodeJS.Signals | null = null
 
-  constructor() {
+  constructor(readyOnConfig = true) {
     super()
-    this.stdin.once("data", () => this.stdout.write("XRAY_READY\n"))
+    this.stdin.once("data", () => {
+      if (readyOnConfig) this.stdout.write("XRAY_READY\n")
+      else this.finish(1)
+    })
     this.stdin.once("finish", () => this.finish(0))
   }
 

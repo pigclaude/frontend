@@ -169,13 +169,13 @@ it.skipIf(!browserBinary || !xrayBinary)(
         if (runtime.ready === undefined) throw new Error("缺少恢复就绪检查")
         await runtime.ready()
         expect(runtime.url).toBe(previousUrl)
-        const page = await context.newPage()
+        const page = await within(context.newPage(), 5_000)
         const response = await page.goto(
           `http://127.0.0.1:${fixture.originPort}/probe-watchdog-recovered`,
           { timeout: 5_000 },
         )
         expect(response?.status()).toBe(200)
-        await page.close()
+        await within(page.close(), 5_000)
         const currentRequests = fixture.requests()
         expect(currentRequests.viaProxy).toBeGreaterThan(previousRequests.viaProxy)
         expect(currentRequests.direct).toBe(previousRequests.direct)
@@ -312,6 +312,20 @@ async function disconnectBrowser(browser: Browser): Promise<boolean> {
       ),
       new Promise<boolean>((resolve) => {
         timer = setTimeout(() => resolve(false), 2_000)
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
+
+async function within<T>(task: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      task,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("浏览器操作超时")), timeoutMs)
       }),
     ])
   } finally {

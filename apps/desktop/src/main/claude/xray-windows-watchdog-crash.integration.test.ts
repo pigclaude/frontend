@@ -17,7 +17,6 @@ it.skipIf(process.platform !== "win32" || !binary)(
     if (!binary) throw new Error("缺少测试用 Xray")
     const directory = await mkdtemp(join(tmpdir(), "pigclaude-xray-win-crash-"))
     const testBinary = join(directory, "xray.exe")
-    await copyFile(binary, testBinary)
     const watchdogs: ChildProcess[] = []
     const capture = ((command: string, args: string[], options: SpawnOptions) => {
       const child = spawn(command, args, options)
@@ -33,6 +32,7 @@ it.skipIf(process.platform !== "win32" || !binary)(
     let runtime: Awaited<ReturnType<typeof start>> | undefined
     let xrayPid: number | undefined
     try {
+      await copyFile(binary, testBinary)
       runtime = await start({ upstreamProxyUrl: "http://127.0.0.1:9" })
       const initialUrl = runtime.url
       const watchdog = watchdogs[0]
@@ -48,9 +48,25 @@ it.skipIf(process.platform !== "win32" || !binary)(
       expect(await portOpen(initialUrl)).toBe(true)
       await expect(runtime.close()).resolves.toBeUndefined()
     } finally {
-      await runtime?.close().catch(() => undefined)
-      if (xrayPid !== undefined) stopTestXray(xrayPid, testBinary)
-      await start.dispose().catch(() => undefined)
+      const failures: unknown[] = []
+      try {
+        await runtime?.close()
+      } catch (error: unknown) {
+        failures.push(error)
+      }
+      try {
+        if (xrayPid !== undefined) stopTestXray(xrayPid, testBinary)
+      } catch (error: unknown) {
+        failures.push(error)
+      }
+      try {
+        await start.dispose()
+      } catch (error: unknown) {
+        failures.push(error)
+      }
+      if (failures.length !== 0) {
+        throw new AggregateError(failures, `测试资源未确认回收，保留临时目录 ${directory}`)
+      }
       await rm(directory, { recursive: true, force: true })
     }
   },

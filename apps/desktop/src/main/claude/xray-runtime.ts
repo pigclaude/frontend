@@ -90,6 +90,9 @@ export function createXrayRuntimeStarter(options: XrayRuntimeOptions): XrayRunti
         return
       }
       if (target.exitCode === null && target.signalCode === null) await closeChild(target)
+      if (process.platform === "win32" && !started && !xrayExited && target.exitCode !== 0) {
+        throw unavailable()
+      }
       await waitForPortRelease(port)
       children.delete(target)
     }

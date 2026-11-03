@@ -2,7 +2,7 @@
 
 import { EventEmitter } from "node:events"
 import type { ChildProcess } from "node:child_process"
-import { chmod, mkdtemp, rm, stat, writeFile } from "node:fs/promises"
+import { copyFile, link, mkdtemp, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -458,8 +458,7 @@ async function fakeBinary(): Promise<string> {
     await rm(dir, { recursive: true, force: true })
   })
   const binary = join(dir, "Chromium")
-  await writeFile(binary, "#!/bin/sh\nexit 0\n")
-  await chmod(binary, 0o755)
+  await link(process.execPath, binary).catch(() => copyFile(process.execPath, binary))
   return binary
 }
 

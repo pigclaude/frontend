@@ -32,7 +32,9 @@ import { ClaudeAccountError } from "./claude/errors"
 import { FingerprintChromiumAdapter } from "./claude/fingerprint-chromium"
 import { registerClaudeIpc } from "./claude/ipc"
 import { ProxyService } from "./claude/proxy-service"
+import { runtimeHostArch } from "./claude/runtime-binary"
 import { SubscriptionOAuth } from "./claude/subscription-oauth"
+import { createXrayRuntimeStarter } from "./claude/xray-runtime"
 import { createDesktopComposition, type DesktopComposition } from "./composition"
 import { DeviceIdentityService } from "./device-identity"
 import { readDeviceInfo } from "./device-identity/device-info"
@@ -40,7 +42,7 @@ import { readDockIconDataUrl } from "./dock-icon"
 import { configureRuntimeProfile } from "./runtime-profile"
 import { registerMembershipIpc } from "./membership/ipc"
 import { readDesktopRuntimeEndpoints } from "./runtime-endpoints"
-import { WorkspaceStore } from "./runtime/workspace-store"
+import { registerWorkspaceIpc } from "./runtime/workspace-ipc"
 import { resolveClaudeBinaryPath } from "./session/claude-binary"
 import { cleanupStaleSessionDirs } from "./session/session-environment"
 import { SessionHost } from "./session/session-host"
@@ -64,6 +66,11 @@ const { rustBaseUrl, authOrigin, websiteOrigin } = readDesktopRuntimeEndpoints(
   bundleMetadata,
 )
 const hasSingleInstanceLock = configureRuntimeProfile(app, process.env["PIGCLAUDE_USER_DATA"])
+const hostArch = runtimeHostArch(app.runningUnderARM64Translation)
+const startProxyRuntime = createXrayRuntimeStarter({
+  hostArch,
+  resourcesPath: app.isPackaged ? process.resourcesPath : undefined,
+})
 let mainWindow: BrowserWindow | null = null
 let authorizationService: AuthorizationService | null = null
 let authorizationSetupError: string | undefined
@@ -72,7 +79,6 @@ let claudeAccountService: ClaudeAccountService | null = null
 let proxyService: ProxyService | null = null
 let sessionHost: SessionHost | null = null
 let usageRecorder: UsageRecorder | null = null
-let workspaceStore: WorkspaceStore | null = null
 let callbackServer: Awaited<ReturnType<typeof createCallbackServer>> | null = null
 let callbackReceiver: AuthorizationCallbackReceiver | null = null
 let authorizationReady = false
@@ -266,29 +272,10 @@ function registerIpcHandlers(): void {
     getUsage: () => usageRecorder,
     isTrusted: isTrustedSender,
   })
-  registerWorkspaceIpc()
-}
-
-/** 注册最近工作区的读取和追加；只保存路径，写操作只接受主窗口当前 frame。 */
-function registerWorkspaceIpc(): void {
-  ipcMain.handle("pigclaude:workspaces-list", async (event) => {
-    if (!isTrustedSender(event)) throw new Error("UNTRUSTED_WORKSPACE_REQUEST")
-    return getWorkspaceStore().list()
+  registerWorkspaceIpc({
+    filePath: () => join(app.getPath("userData"), "workspaces.json"),
+    isTrusted: isTrustedSender,
   })
-  ipcMain.handle("pigclaude:workspaces-add", async (event, value: unknown) => {
-    if (!isTrustedSender(event)) throw new Error("UNTRUSTED_WORKSPACE_REQUEST")
-    if (typeof value !== "string" || value.trim() === "") {
-      throw new Error("WORKSPACE_UNAVAILABLE: 工作区必须是绝对路径")
-    }
-    return getWorkspaceStore().add(value)
-  })
-}
-
-function getWorkspaceStore(): WorkspaceStore {
-  workspaceStore ??= new WorkspaceStore({
-    filePath: join(app.getPath("userData"), "workspaces.json"),
-  })
-  return workspaceStore
 }
 
 /** 应用退出时并行关闭账号启动入口和会话，再停 daemon 并等待账号与回调服务清理。 */
@@ -296,9 +283,13 @@ async function shutdownDesktop(): Promise<void> {
   const accounts = claudeAccountService?.dispose().catch(() => {
     console.error("CLAUDE_BROWSER_SHUTDOWN_FAILED")
   })
+  const proxyRuntime = startProxyRuntime.dispose().catch(() => {
+    console.error("XRAY_SHUTDOWN_FAILED")
+  })
   await sessionHost?.dispose().catch(() => undefined)
   await desktopComposition?.dispose().catch(() => undefined)
   await accounts
+  await proxyRuntime
   await callbackServer?.close().catch(() => undefined)
 }
 
@@ -346,6 +337,8 @@ async function setupAuthorization(): Promise<void> {
   const browser = new FingerprintChromiumAdapter({
     profilesRoot: join(app.getPath("userData"), "local", "browser-profiles"),
     binaryPath: process.env["PIGCLAUDE_FINGERPRINT_CHROMIUM_BIN"],
+    hostArch,
+    resourcesPath: app.isPackaged ? process.resourcesPath : undefined,
     screenSize: screen.getPrimaryDisplay().workAreaSize,
   })
   claudeAccountService = new ClaudeAccountService({
@@ -353,6 +346,7 @@ async function setupAuthorization(): Promise<void> {
     browser,
     oauth: new SubscriptionOAuth(),
     checkEgress,
+    startProxyRuntime,
     ensureMembership: async () => {
       const view = await composition.membershipGate.inspect()
       if (view.state !== "active") {
@@ -361,7 +355,7 @@ async function setupAuthorization(): Promise<void> {
     },
     onEvent: sendClaudeAccountEvent,
   })
-  proxyService = new ProxyService({ store: localStore })
+  proxyService = new ProxyService({ store: localStore, startProxyRuntime })
   usageRecorder = new UsageRecorder({ filePath: join(app.getPath("userData"), "usage.jsonl") })
   if (composition.runtime) {
     sessionHost = new SessionHost({

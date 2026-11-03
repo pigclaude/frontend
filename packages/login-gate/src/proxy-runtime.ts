@@ -4,6 +4,8 @@
 export type ProxyRuntime = {
   url: string
   close: () => Promise<void>
+  /** 若运行时支持状态核对，退出或开始关闭后必须拒绝后续使用。 */
+  assertRunning?: () => void
 }
 
 /** 启动指定上游的外部代理核心；失败时拒绝返回，不回退到系统网络。 */

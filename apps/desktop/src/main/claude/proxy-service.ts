@@ -117,11 +117,13 @@ export class ProxyService {
       if (!isValidBridgeUrl(bridgeUrl)) {
         throw new ClaudeAccountError("PROXY_UNAVAILABLE", "本机代理入口不可用，无法核对浏览器出口")
       }
-      return await checkEgress({
+      const result = await checkEgress({
         bridgeUrl,
         upstreamProxyUrl: proxy.url,
         checkUrl: this.#checkUrl,
       })
+      runtime.assertRunning?.()
+      return result
     } finally {
       await runtime?.close()
     }

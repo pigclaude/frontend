@@ -1,8 +1,7 @@
 // 负责直接启动 fingerprint-chromium 内核：每个账号一个 user-data-dir，CLI 传指纹，代理参数可选。
 
 import { spawn, type ChildProcess } from "node:child_process"
-import { constants } from "node:fs"
-import { access, mkdir, rm } from "node:fs/promises"
+import { mkdir, rm } from "node:fs/promises"
 import { homedir } from "node:os"
 import { isAbsolute, join, relative } from "node:path"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
@@ -12,6 +11,7 @@ import {
   localBridgePort,
   managedCallbackPort,
 } from "./launch-argument-guard"
+import { matchesRuntimeBinary, runtimeHostArch } from "./runtime-binary"
 
 const defaultStopTimeoutMs = 3_000
 
@@ -46,6 +46,10 @@ export type FingerprintChromiumConfig = {
   screenSize?: ScreenSize
   /** 参数解析所用的真实宿主平台；缺省取当前进程平台。 */
   hostPlatform?: NodeJS.Platform
+  /** 按宿主架构选择原生内核；缺省自动识别。 */
+  hostArch?: string
+  /** 安装包资源根目录；提供时不回退到系统内核。 */
+  resourcesPath?: string
 }
 
 /** 浏览器网络模式；绑定代理时必须提供本机代理桥和本次授权回调。 */
@@ -88,6 +92,8 @@ export class FingerprintChromiumAdapter {
   readonly #stopTimeoutMs: number
   readonly #screenSize: ScreenSize | undefined
   readonly #hostPlatform: NodeJS.Platform
+  readonly #hostArch: string
+  readonly #resourcesPath: string | undefined
   readonly #processes = new Map<string, ManagedProcess>()
   readonly #operations = new Map<string, Promise<void>>()
   readonly #stops = new Map<string, Set<{ expected?: ManagedProcess; promise: Promise<void> }>>()
@@ -103,6 +109,8 @@ export class FingerprintChromiumAdapter {
     this.#stopTimeoutMs = config.stopTimeoutMs ?? defaultStopTimeoutMs
     this.#screenSize = config.screenSize
     this.#hostPlatform = config.hostPlatform ?? process.platform
+    this.#hostArch = config.hostArch ?? runtimeHostArch()
+    this.#resourcesPath = config.resourcesPath
   }
 
   /** 返回账号的浏览器配置目录。保证目录名只来自账号 ID，不能越出 profilesRoot。 */
@@ -124,17 +132,20 @@ export class FingerprintChromiumAdapter {
     const candidates =
       configured !== undefined && configured !== ""
         ? [configured]
-        : [
-            "/Applications/fingerprint-chromium.app/Contents/MacOS/Chromium",
-            join(this.#homeDir, "Applications/fingerprint-chromium.app/Contents/MacOS/Chromium"),
-          ]
+        : this.#resourcesPath !== undefined
+          ? [packagedBrowserPath(this.#resourcesPath, this.#hostPlatform, this.#hostArch)]
+          : this.#hostPlatform === "darwin"
+            ? [
+                "/Applications/fingerprint-chromium.app/Contents/MacOS/Chromium",
+                join(
+                  this.#homeDir,
+                  "Applications/fingerprint-chromium.app/Contents/MacOS/Chromium",
+                ),
+              ]
+            : []
     for (const candidate of candidates) {
-      try {
-        await access(candidate, constants.X_OK)
+      if (await matchesRuntimeBinary(candidate, this.#hostPlatform, this.#hostArch))
         return candidate
-      } catch {
-        // 继续检查下一个候选。
-      }
     }
     throw new BrowserLaunchError(
       "BROWSER_MISSING",
@@ -295,6 +306,14 @@ export class FingerprintChromiumAdapter {
     })
     return current
   }
+}
+
+function packagedBrowserPath(root: string, platform: NodeJS.Platform, arch: string): string {
+  const directory = join(root, "pigclaude-runtime", "chromium", `${platform}-${arch}`)
+  if (platform === "darwin") {
+    return join(directory, "fingerprint-chromium.app", "Contents", "MacOS", "Chromium")
+  }
+  return join(directory, platform === "win32" ? "chrome.exe" : "chrome")
 }
 
 function validatedNetwork(network: LaunchBrowserNetwork): LaunchBrowserNetwork {

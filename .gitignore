@@ -12,3 +12,4 @@ playwright-report/
 
 **/release/
 .omc/
+apps/desktop/runtime-assets/pigclaude-runtime/

@@ -6,7 +6,6 @@ import type {
   ClaudeAccountEvent,
   ClaudeAccountErrorCode,
   ClaudeAccountView,
-  ClaudeFingerprintView,
 } from "@pigclaude/contracts/claude-account"
 import type { AccountRecord, LocalStore } from "@pigclaude/local-store"
 import type { EgressResult } from "@pigclaude/login-gate/egress-check"
@@ -25,6 +24,16 @@ import { readClaudeCliAccountMetadata, type ClaudeCliAccountMetadata } from "./c
 import { readClaudeCliCredential, type ClaudeCliCredential } from "./cli-credential-reader"
 import { AuthorizationLifecycle, type AuthorizationAttempt } from "./authorization-lifecycle"
 import { mapError, phaseFor } from "./account-service-errors"
+import type {
+  AuthorizeClaudeAccountInput,
+  ImportClaudeCliAccountInput,
+  UpdateClaudeAccountInput,
+} from "./account-service-inputs"
+export type {
+  AuthorizeClaudeAccountInput,
+  ImportClaudeCliAccountInput,
+  UpdateClaudeAccountInput,
+} from "./account-service-inputs"
 import { assertSameAccount, buildCredential, toView } from "./account-service-record"
 import { ClaudeAccountError } from "./errors"
 import type { FingerprintChromiumAdapter, LaunchedBrowser } from "./fingerprint-chromium"
@@ -41,29 +50,6 @@ import {
 const defaultEgressCheckUrl = "https://www.cloudflare.com/cdn-cgi/trace"
 // 导入时 access token 至少还要有 60 秒有效期，避免刚导入就过期。
 const cliImportExpiryMarginMs = 60_000
-
-/** 添加或重新授权 Claude 账号的输入。proxyId 为 null 表示使用系统网络。 */
-export type AuthorizeClaudeAccountInput = {
-  accountId?: string
-  displayName: string
-  proxyId: string | null
-  fingerprint: ClaudeFingerprintView
-}
-
-/** 修改账号设置的输入。proxyId 省略表示不变，null 表示解绑并使用系统网络。 */
-export type UpdateClaudeAccountInput = {
-  accountId: string
-  displayName?: string
-  enabled?: boolean
-  proxyId?: string | null
-  fingerprint?: ClaudeFingerprintView
-}
-
-/** 从 Claude CLI 导入账号的输入。confirmCopy 必须为 true，表示用户已确认复制凭据。 */
-export type ImportClaudeCliAccountInput = {
-  confirmCopy: boolean
-  displayName?: string
-}
 
 /** 账号服务依赖。所有外部副作用都通过端口注入。 */
 export type ClaudeAccountServiceDeps = {
@@ -198,6 +184,7 @@ export class ClaudeAccountService {
           checkUrl: this.#egressCheckUrl,
         })
         attempt.checkpoint()
+        proxyRuntime.assertRunning?.()
         if (!egress.ok) {
           throw new ClaudeAccountError(
             egress.reason === "mismatch" ? "EGRESS_MISMATCH" : "EGRESS_CHECK_FAILED",

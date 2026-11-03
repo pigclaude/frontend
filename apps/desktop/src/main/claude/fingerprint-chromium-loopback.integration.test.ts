@@ -141,15 +141,20 @@ it.skipIf(!browserBinary || !xrayBinary)(
         `http://synthetic.example.invalid:${fixture.originPort}/probe-domain`,
       )
       await remoteNamePage.close()
-      const watchdogPid = watchdogs[0]?.pid
-      if (!watchdogPid) throw new Error("未找到本次 Xray 守护进程")
-      process.kill(findTestXrayProcess(watchdogPid, xrayBinary), "SIGKILL")
+      const previousCount = watchdogs.length
+      const watchdog = watchdogs.at(-1)
+      if (watchdog?.pid === undefined) throw new Error("未找到本次 Xray 守护进程")
+      if (process.platform === "win32") {
+        if (!watchdog.kill("SIGKILL")) throw new Error("无法结束本次守护进程")
+      } else {
+        process.kill(findTestXrayProcess(watchdog.pid, xrayBinary), "SIGKILL")
+      }
       try {
         await expect
           .poll(
             () => {
               try {
-                if (watchdogs.length < 2) return false
+                if (watchdogs.length <= previousCount) return false
                 runtime?.assertRunning?.()
                 return true
               } catch {
@@ -162,32 +167,17 @@ it.skipIf(!browserBinary || !xrayBinary)(
       } catch (error: unknown) {
         throw new Error("等待 Xray 恢复失败", { cause: error })
       }
-      const recovered = await context.newPage()
-      await recovered.goto(`http://127.0.0.1:${fixture.originPort}/probe-recovered`)
-      await recovered.close()
-      if (process.platform === "win32") {
-        const previousRequests = fixture.requests()
-        const previousUrl = runtime.url
-        const previousCount = watchdogs.length
-        const watchdog = watchdogs.at(-1)
-        if (watchdog === undefined || !watchdog.kill("SIGKILL")) {
-          throw new Error("无法结束本次守护进程")
-        }
-        await expect.poll(() => watchdogs.length, { timeout: 8_000 }).toBeGreaterThan(previousCount)
-        if (runtime.ready === undefined) throw new Error("缺少恢复就绪检查")
-        await runtime.ready()
-        expect(runtime.url).toBe(previousUrl)
-        const page = await within(context.newPage(), 5_000)
-        const response = await page.goto(
-          `http://127.0.0.1:${fixture.originPort}/probe-watchdog-recovered`,
-          { timeout: 5_000 },
-        )
-        expect(response?.status()).toBe(200)
-        await within(page.close(), 5_000)
-        const currentRequests = fixture.requests()
-        expect(currentRequests.viaProxy).toBeGreaterThan(previousRequests.viaProxy)
-        expect(currentRequests.direct).toBe(previousRequests.direct)
-      }
+      const previousRequests = fixture.requests()
+      const recovered = await within(context.newPage(), 5_000)
+      const response = await recovered.goto(
+        `http://127.0.0.1:${fixture.originPort}/probe-recovered`,
+        { timeout: 5_000 },
+      )
+      expect(response?.status()).toBe(200)
+      await within(recovered.close(), 5_000)
+      const currentRequests = fixture.requests()
+      expect(currentRequests.viaProxy).toBeGreaterThan(previousRequests.viaProxy)
+      expect(currentRequests.direct).toBe(previousRequests.direct)
       const before = fixture.requests()
       fixture.failProxy()
       for (const phase of ["upstream-down", "xray-down"]) {

@@ -1,6 +1,6 @@
 // 用真实浏览器、Xray 与本机合成代理验证受限回环路由及真实授权回调。
 
-import { execFileSync, spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
+import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { createServer as createHttpServer } from "node:http"
 import { connect, type Socket } from "node:net"
@@ -11,6 +11,7 @@ import { chromium, errors, type Browser, type Page } from "@playwright/test"
 import { expect, it } from "vitest"
 import { FingerprintChromiumAdapter } from "./fingerprint-chromium"
 import { SubscriptionOAuth } from "./subscription-oauth"
+import { findTestXrayProcess } from "./xray-process-test-utils"
 import { createXrayRuntimeStarter } from "./xray-runtime"
 
 const browserBinary = process.env["PIGCLAUDE_TEST_CHROMIUM_BIN"]
@@ -135,34 +136,26 @@ it.skipIf(!browserBinary || !xrayBinary)(
         `http://synthetic.example.invalid:${fixture.originPort}/probe-domain`,
       )
       await remoteNamePage.close()
-      if (process.platform !== "win32") {
-        const watchdogPid = watchdogs[0]?.pid
-        if (!watchdogPid) throw new Error("未找到本次 Xray 守护进程")
-        const xrayPid = Number(
-          execFileSync("pgrep", ["-P", String(watchdogPid), "-f", xrayBinary], {
-            encoding: "utf8",
-          }).trim(),
+      const watchdogPid = watchdogs[0]?.pid
+      if (!watchdogPid) throw new Error("未找到本次 Xray 守护进程")
+      process.kill(findTestXrayProcess(watchdogPid, xrayBinary), "SIGKILL")
+      await expect
+        .poll(
+          () => {
+            try {
+              if (watchdogs.length < 2) return false
+              runtime?.assertRunning?.()
+              return true
+            } catch {
+              return false
+            }
+          },
+          { timeout: 8_000 },
         )
-        if (!Number.isInteger(xrayPid) || xrayPid <= 0) throw new Error("未找到本次 Xray 进程")
-        process.kill(xrayPid, "SIGKILL")
-        await expect
-          .poll(
-            () => {
-              try {
-                if (watchdogs.length < 2) return false
-                runtime?.assertRunning?.()
-                return true
-              } catch {
-                return false
-              }
-            },
-            { timeout: 8_000 },
-          )
-          .toBe(true)
-        const recovered = await context.newPage()
-        await recovered.goto(`http://127.0.0.1:${fixture.originPort}/probe-recovered`)
-        await recovered.close()
-      }
+        .toBe(true)
+      const recovered = await context.newPage()
+      await recovered.goto(`http://127.0.0.1:${fixture.originPort}/probe-recovered`)
+      await recovered.close()
       const before = fixture.requests()
       fixture.failProxy()
       for (const phase of ["upstream-down", "xray-down"]) {

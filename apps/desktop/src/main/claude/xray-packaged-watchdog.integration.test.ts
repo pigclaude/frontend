@@ -7,16 +7,18 @@ import { connect, createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { expect, it } from "vitest"
+import { findTestXrayProcess } from "./xray-process-test-utils"
 
 const binary = process.env["PIGCLAUDE_TEST_XRAY_BIN"]
 const enabled = process.env["PIGCLAUDE_TEST_BUILT_WATCHDOG"] === "1"
 const desktop = resolve(import.meta.dirname, "../../..")
 
-it.skipIf(!binary || !enabled || process.platform === "win32")(
+it.skipIf(!binary || !enabled)(
   "安装包资源中的守护程序能够启动并关闭真实 Xray",
   async () => {
     const directory = await mkdtemp(join(tmpdir(), "pigclaude-watchdog-package-"))
     let child: ChildProcess | undefined
+    let xrayPid: number | undefined
     let exited: Promise<{ code: number | null; signal: NodeJS.Signals | null }> | undefined
     let port: number | undefined
     try {
@@ -59,6 +61,10 @@ it.skipIf(!binary || !enabled || process.platform === "win32")(
         })}\n`,
       )
       await ready
+      if (process.platform === "win32") {
+        if (spawned.pid === undefined) throw new Error("守护程序身份未知")
+        xrayPid = findTestXrayProcess(spawned.pid, binary!)
+      }
       expect(await socksGreeting(port)).toEqual([5, 0])
       spawned.stdin?.end()
       expect(await within(exited, 5_000)).toEqual({ code: 0, signal: null })
@@ -79,7 +85,7 @@ it.skipIf(!binary || !enabled || process.platform === "win32")(
         const resourcesClosed =
           child.pid === undefined || port === undefined
             ? processClosed
-            : await waitForRelease(child.pid, port).catch(() => false)
+            : await waitForRelease(child.pid, port, xrayPid).catch(() => false)
         if (!processClosed || !resourcesClosed) {
           throw new Error(`守护程序或 Xray 未确认退出，保留临时目录 ${directory}`)
         }
@@ -133,13 +139,27 @@ async function socksGreeting(port: number): Promise<number[]> {
   })
 }
 
-async function waitForRelease(group: number, port: number): Promise<boolean> {
+async function waitForRelease(group: number, port: number, xrayPid?: number): Promise<boolean> {
   const deadline = Date.now() + 5_000
   while (Date.now() < deadline) {
-    if (!groupExists(group) && !(await portOpen(port))) return true
+    const processesStopped =
+      process.platform === "win32"
+        ? xrayPid !== undefined && !processExists(xrayPid)
+        : !groupExists(group)
+    if (processesStopped && !(await portOpen(port))) return true
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
   return false
+}
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error: unknown) {
+    if (error instanceof Error && "code" in error && error.code === "ESRCH") return false
+    throw error
+  }
 }
 
 function groupExists(group: number): boolean {

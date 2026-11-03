@@ -1,10 +1,11 @@
 // 验证相同代理配置复用 Xray，并在最后一个使用者释放后回收。
 
-import { execFileSync, spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
+import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import { createServer as createHttpServer } from "node:http"
 import { connect, createServer } from "node:net"
 import { createXrayHttpClient } from "@pigclaude/login-gate/xray-http"
 import { expect, it } from "vitest"
+import { findTestXrayProcess } from "./xray-process-test-utils"
 import { createXrayRuntimeStarter } from "./xray-runtime"
 
 const binary = process.env["PIGCLAUDE_TEST_XRAY_BIN"]
@@ -35,7 +36,7 @@ it.skipIf(!binary)(
   10_000,
 )
 
-it.skipIf(!binary || process.platform === "win32")(
+it.skipIf(!binary)(
   "Xray 意外退出后使用原端口和代理配置恢复",
   async () => {
     if (!binary) throw new Error("缺少测试用 Xray")
@@ -87,12 +88,7 @@ it.skipIf(!binary || process.platform === "win32")(
       const initialUrl = runtime.url
       const watchdogPid = watchdogs[0]?.pid
       if (!watchdogPid) throw new Error("未找到本次守护进程")
-      const xrayPid = Number(
-        execFileSync("pgrep", ["-P", String(watchdogPid), "-f", binary], {
-          encoding: "utf8",
-        }).trim(),
-      )
-      if (!Number.isInteger(xrayPid) || xrayPid <= 0) throw new Error("未找到本次 Xray 进程")
+      const xrayPid = findTestXrayProcess(watchdogPid, binary)
       process.kill(xrayPid, "SIGKILL")
       await expect
         .poll(

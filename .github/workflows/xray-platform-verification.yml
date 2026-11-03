@@ -1,0 +1,90 @@
+# 在原生 Windows 和 Linux x64 上验证预构建指纹浏览器与 Xray 的集成。
+name: Xray platform verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/issue9-platform-verification
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 获取并校验预构建浏览器与 Xray
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = Join-Path $env:RUNNER_TEMP "pigclaude-xray-verification"
+          $browserDir = Join-Path $root "browser"
+          $xrayDir = Join-Path $root "xray"
+          New-Item -ItemType Directory -Force $browserDir, $xrayDir | Out-Null
+          if ($IsWindows) {
+            $browserFile = "ungoogled-chromium_148.0.7778.215-1.1_windows_x64.zip"
+            $browserHash = "9ef3f471b7a6641b4224532522b29141ce3746e27d55788d88e2fd951f362579"
+            $browserName = "chrome.exe"
+            $xrayFile = "Xray-windows-64.zip"
+            $xrayHash = "2e04a9995a6f2ad1b28c0bb25c708ecb2695e43a1c9c7889c4b6ac2b48cf7a6a"
+            $xrayName = "xray.exe"
+          } else {
+            $browserFile = "ungoogled-chromium-148.0.7778.215-1-x86_64_linux.tar.xz"
+            $browserHash = "70d239830332e5820aa34dfcb284161cac0429eee25da642830afe04bda717f4"
+            $browserName = "chrome"
+            $xrayFile = "Xray-linux-64.zip"
+            $xrayHash = "e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214"
+            $xrayName = "xray"
+          }
+          $browserArchive = Join-Path $root $browserFile
+          $xrayArchive = Join-Path $root $xrayFile
+          Invoke-WebRequest "https://github.com/adryfish/fingerprint-chromium/releases/download/148.0.7778.215/$browserFile" -OutFile $browserArchive
+          Invoke-WebRequest "https://github.com/XTLS/Xray-core/releases/download/v26.10.31/$xrayFile" -OutFile $xrayArchive
+          if ((Get-FileHash $browserArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $browserHash) { throw "浏览器包校验失败" }
+          if ((Get-FileHash $xrayArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $xrayHash) { throw "Xray 包校验失败" }
+          if ($IsWindows) {
+            Expand-Archive $browserArchive -DestinationPath $browserDir
+          } else {
+            tar -xf $browserArchive -C $browserDir
+            if ($LASTEXITCODE -ne 0) { throw "浏览器包解压失败" }
+          }
+          Expand-Archive $xrayArchive -DestinationPath $xrayDir
+          $browsers = @(Get-ChildItem $browserDir -File -Recurse -Filter $browserName)
+          if ($browsers.Count -ne 1) { throw "无法确认唯一浏览器入口" }
+          $xray = Join-Path $xrayDir $xrayName
+          if (!(Test-Path $xray -PathType Leaf)) { throw "找不到 Xray 入口" }
+          if (!$IsWindows) { chmod 755 $xray }
+          "PIGCLAUDE_TEST_CHROMIUM_BIN=$($browsers[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PIGCLAUDE_TEST_XRAY_BIN=$xray" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PIGCLAUDE_TEST_BUILT_WATCHDOG=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: 构建桌面守护程序
+        run: pnpm --filter @pigclaude/desktop build
+      - name: 验证浏览器、Xray 和代理生命周期
+        working-directory: apps/desktop
+        shell: pwsh
+        run: |
+          $files = @(
+            "src/main/claude/fingerprint-chromium-loopback.integration.test.ts",
+            "src/main/claude/fingerprint-chromium-webrtc.integration.test.ts",
+            "src/main/claude/xray-pool.integration.test.ts",
+            "src/main/claude/xray-egress.test.ts",
+            "src/main/claude/xray-crash-recovery.test.ts",
+            "src/main/claude/xray-packaged-watchdog.integration.test.ts",
+            "src/main/claude/account-service-xray-oauth.integration.test.ts",
+            "src/main/claude/account-service-xray-proxy.integration.test.ts"
+          )
+          pnpm exec vitest run --maxWorkers=1 @files
+          exit $LASTEXITCODE

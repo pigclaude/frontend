@@ -19,19 +19,27 @@ export function watchProxyFailure(
   )
 }
 
-/** 返回授权码；Xray 恢复失败时明确报告代理错误。 */
+/** 返回授权码；浏览器关闭或 Xray 恢复失败时结束等待。 */
 export async function waitForProxyCallback(
   callback: OAuthCallbackServer,
   runtime: ProxyRuntime | null,
+  browserExited: Promise<void>,
 ): Promise<string> {
-  const code = callback.waitForCode()
-  if (runtime?.failure === undefined) return code
-  return Promise.race([
-    code,
-    runtime.failure.then((error) => {
-      throw error
+  const waiting: Array<Promise<string>> = [
+    callback.waitForCode(),
+    browserExited.then(() => {
+      callback.cancel()
+      throw new ClaudeAccountError("AUTHORIZATION_CANCELLED", "授权浏览器已关闭")
     }),
-  ])
+  ]
+  if (runtime?.failure !== undefined) {
+    waiting.push(
+      runtime.failure.then((error) => {
+        throw error
+      }),
+    )
+  }
+  return Promise.race(waiting)
 }
 
 /** 等待 Xray 的同端口恢复，并响应授权取消。 */

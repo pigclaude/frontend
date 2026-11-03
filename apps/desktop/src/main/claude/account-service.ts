@@ -227,7 +227,7 @@ export class ClaudeAccountService {
         assertCanSpawn,
       })
       attempt.checkpoint()
-      const code = await waitForProxyCallback(callback, proxyRuntime)
+      const code = await waitForProxyCallback(callback, proxyRuntime, launched.exited)
       attempt.checkpoint()
       await waitForProxyReady(proxyRuntime, authorizationSignal)
       this.#emit(accountId, "exchanging")

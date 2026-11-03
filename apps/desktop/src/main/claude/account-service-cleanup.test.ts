@@ -20,6 +20,7 @@ it("并发重试共享在途清理，失败后仍能再次重试", async () => {
     browser: {
       profileDir: "/synthetic",
       pid: 1234,
+      exited: new Promise<void>(() => undefined),
       stop: async () => {
         stops += 1
         if (stops === 1) throw new BrowserLaunchError("BROWSER_STOP_FAILED", "未退出")

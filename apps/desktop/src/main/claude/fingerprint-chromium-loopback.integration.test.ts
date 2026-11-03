@@ -2,13 +2,12 @@
 
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
-import { createServer as createHttpServer } from "node:http"
-import { connect, type Socket } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { chromium, errors, type Browser, type Page } from "@playwright/test"
 import { expect, it } from "vitest"
+import { createLoopbackFixture } from "./fingerprint-chromium-loopback-fixture"
 import { FingerprintChromiumAdapter } from "./fingerprint-chromium"
 import { SubscriptionOAuth } from "./subscription-oauth"
 import { findTestXrayProcess } from "./xray-process-test-utils"
@@ -119,6 +118,7 @@ it.skipIf(!browserBinary || !xrayBinary)(
       browser = launched.browser
       browserPid = launched.pid
       await launched.page.evaluate(() => localStorage.setItem("synthetic", "kept"))
+      const firstFingerprint = await readFingerprint(launched.page)
       if (!(await closeBrowser(browser, adapter, browserPid))) {
         throw new Error("首次合成浏览器未确认正常关闭")
       }
@@ -129,6 +129,7 @@ it.skipIf(!browserBinary || !xrayBinary)(
       browser = launched.browser
       browserPid = launched.pid
       expect(await launched.page.evaluate(() => localStorage.getItem("synthetic"))).toBe("kept")
+      expect(await readFingerprint(launched.page)).toEqual(firstFingerprint)
       const context = browser.contexts()[0]
       if (context === undefined) throw new Error("合成浏览器上下文不可用")
       const remoteNamePage = await context.newPage()
@@ -231,6 +232,20 @@ it.skipIf(!browserBinary || !xrayBinary)(
   45_000,
 )
 
+async function readFingerprint(page: Page): Promise<{
+  userAgent: string
+  platform: string
+  language: string
+  timezone: string
+}> {
+  return page.evaluate(() => ({
+    userAgent: navigator.userAgent,
+    platform: navigator.platform,
+    language: navigator.language,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  }))
+}
+
 async function closeBrowser(
   browser: Browser,
   adapter: FingerprintChromiumAdapter,
@@ -298,13 +313,13 @@ async function waitForProcessExit(pid: number | null): Promise<boolean> {
 
 async function createTestEnvironment(): Promise<{
   directory: string
-  fixture: Awaited<ReturnType<typeof createFixture>>
+  fixture: Awaited<ReturnType<typeof createLoopbackFixture>>
   callback: Awaited<ReturnType<SubscriptionOAuth["startCallback"]>>
 }> {
   const directory = await mkdtemp(join(tmpdir(), "pigclaude-real-loopback-"))
-  let fixture: Awaited<ReturnType<typeof createFixture>> | undefined
+  let fixture: Awaited<ReturnType<typeof createLoopbackFixture>> | undefined
   try {
-    fixture = await createFixture()
+    fixture = await createLoopbackFixture()
     const callback = await new SubscriptionOAuth().startCallback({
       state: "synthetic-state",
       timeoutMs: 60_000,
@@ -329,97 +344,4 @@ async function waitForDebugPort(path: string): Promise<number> {
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
   throw new Error("合成浏览器未就绪")
-}
-
-async function createFixture(): Promise<{
-  originPort: number
-  proxyPort: number
-  requests: () => { viaProxy: number; direct: number }
-  failProxy: () => void
-  close: () => Promise<void>
-}> {
-  let viaProxy = 0
-  let direct = 0
-  let dropping = false
-  const forwarded = new Set<number>()
-  const sockets = new Set<Socket>()
-  const origin = createHttpServer((request, response) => {
-    if (request.url?.startsWith("/probe")) {
-      if (request.socket.remotePort !== undefined && forwarded.has(request.socket.remotePort)) {
-        viaProxy += 1
-      } else {
-        direct += 1
-      }
-    }
-    response.setHeader("Connection", "close")
-    response.end("<!doctype html><title>synthetic</title>")
-  })
-  const originPort = await listen(origin)
-  const proxy = createHttpServer()
-  proxy.on("connection", (socket) => {
-    sockets.add(socket)
-    socket.once("close", () => sockets.delete(socket))
-    if (dropping) socket.destroy()
-  })
-  proxy.on("connect", (request, socket, head) => {
-    const expected = `Basic ${Buffer.from("synthetic:password").toString("base64")}`
-    if (
-      ![`127.0.0.1:${originPort}`, `synthetic.example.invalid:${originPort}`].includes(
-        request.url ?? "",
-      ) ||
-      request.headers["proxy-authorization"] !== expected
-    ) {
-      socket.end("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
-      return
-    }
-    const target = connect(originPort, "127.0.0.1", () => {
-      const port = target.localPort
-      if (port !== undefined) forwarded.add(port)
-      target.once("close", () => {
-        if (port !== undefined) forwarded.delete(port)
-      })
-      socket.write("HTTP/1.1 200 Connection Established\r\n\r\n")
-      if (head.length !== 0) target.write(head)
-      socket.pipe(target).pipe(socket)
-    })
-    sockets.add(target)
-    target.once("close", () => sockets.delete(target))
-    target.on("error", () => socket.destroy())
-    socket.on("error", () => target.destroy())
-  })
-  let proxyPort: number
-  try {
-    proxyPort = await listen(proxy)
-  } catch (error: unknown) {
-    origin.closeAllConnections()
-    await new Promise<void>((resolve) => origin.close(() => resolve()))
-    throw error
-  }
-  return {
-    originPort,
-    proxyPort,
-    requests: () => ({ viaProxy, direct }),
-    failProxy: () => {
-      dropping = true
-      for (const socket of sockets) socket.destroy()
-    },
-    close: async () => {
-      for (const socket of sockets) socket.destroy()
-      origin.closeAllConnections()
-      await Promise.all([
-        new Promise<void>((resolve) => origin.close(() => resolve())),
-        new Promise<void>((resolve) => proxy.close(() => resolve())),
-      ])
-    },
-  }
-}
-
-async function listen(server: ReturnType<typeof createHttpServer>): Promise<number> {
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject)
-    server.listen(0, "127.0.0.1", resolve)
-  })
-  const address = server.address()
-  if (address === null || typeof address === "string") throw new Error("合成服务未监听")
-  return address.port
 }

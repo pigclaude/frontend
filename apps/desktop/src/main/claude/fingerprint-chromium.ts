@@ -72,6 +72,8 @@ export type LaunchBrowserInput = {
 export type LaunchedBrowser = {
   profileDir: string
   pid: number | null
+  /** 浏览器进程结束时完成，供授权流程结束等待。 */
+  exited: Promise<void>
   /** 只停止这次启动的进程，不影响同账号后续启动的实例。 */
   stop: () => Promise<void>
 }
@@ -204,6 +206,7 @@ export class FingerprintChromiumAdapter {
       return {
         profileDir,
         pid: child.pid ?? null,
+        exited: waitForExit(managed),
         stop: () => this.#requestStop(accountId, managed),
       }
     })
@@ -395,6 +398,11 @@ function observeExit(
     finish()
   }
   return managed
+}
+
+function waitForExit(managed: ManagedProcess): Promise<void> {
+  if (managed.exited) return Promise.resolve()
+  return new Promise((resolve) => managed.waiters.add(resolve))
 }
 
 function waitUntilExit(managed: ManagedProcess, timeoutMs: number): Promise<boolean> {

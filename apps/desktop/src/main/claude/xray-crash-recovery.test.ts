@@ -10,7 +10,7 @@ import { expect, it } from "vitest"
 
 const binary = process.env["PIGCLAUDE_TEST_XRAY_BIN"]
 
-it.skipIf(!binary || process.platform === "win32")(
+it.skipIf(!binary)(
   "宿主被强制结束后回收真实 Xray",
   async () => {
     const directory = await mkdtemp(join(tmpdir(), "pigclaude-xray-crash-"))
@@ -24,7 +24,7 @@ it.skipIf(!binary || process.platform === "win32")(
       {
         cwd: resolve(import.meta.dirname, "../../.."),
         env: { ...process.env, PIGCLAUDE_TEST_XRAY_READY_FILE: output },
-        detached: true,
+        detached: process.platform !== "win32",
         stdio: "ignore",
       },
     )

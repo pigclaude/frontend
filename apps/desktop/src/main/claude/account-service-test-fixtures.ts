@@ -122,7 +122,7 @@ export async function createHarness(
   }
   let bridgeClosed = false
   const bridge = {
-    url: options.bridgeUrl ?? "http://127.0.0.1:9999",
+    url: options.bridgeUrl ?? "socks5://127.0.0.1:9999",
     close: async () => {
       bridgeClosed = true
     },

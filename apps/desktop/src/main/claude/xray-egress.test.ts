@@ -65,6 +65,75 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
     }
   })
 
+  it("出口检查重定向仍经过 Xray 与绑定代理", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pigclaude-xray-egress-"))
+    const fixture = await createProxyFixture()
+    try {
+      const store = new LocalStore(directory)
+      await store.saveProxy({
+        schemaVersion: 1,
+        id: "proxy",
+        name: "合成代理",
+        url: `http://user%40test:p%3Ass@127.0.0.1:${fixture.proxyPort}`,
+        lastTest: null,
+      })
+      const service = new ProxyService({
+        store,
+        checkUrl: `http://127.0.0.1:${fixture.targetPort}/redirect`,
+        ensureBrowserProxyProtection: allowSyntheticProbe,
+        startProxyRuntime: createXrayRuntimeStarter({
+          hostArch: process.arch,
+          binaryPath: xrayBinary,
+        }),
+      })
+      await expect(service.checkEgress("proxy")).resolves.toEqual({
+        ok: true,
+        ip: "198.51.100.42",
+      })
+      expect(fixture.targetRequests()).toBe(4)
+      expect(fixture.directRequests()).toBe(0)
+    } finally {
+      await fixture.close()
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  it.each([
+    ["first", 1],
+    ["second", 2],
+  ] as const)("出口检查在 %s 路拒绝重定向到本地 data 地址", async (phase, expectedRequests) => {
+    const directory = await mkdtemp(join(tmpdir(), "pigclaude-xray-egress-"))
+    const fixture = await createProxyFixture()
+    try {
+      const store = new LocalStore(directory)
+      await store.saveProxy({
+        schemaVersion: 1,
+        id: "proxy",
+        name: "合成代理",
+        url: `http://user%40test:p%3Ass@127.0.0.1:${fixture.proxyPort}`,
+        lastTest: null,
+      })
+      const service = new ProxyService({
+        store,
+        checkUrl: `http://127.0.0.1:${fixture.targetPort}/redirect-data-${phase}`,
+        ensureBrowserProxyProtection: allowSyntheticProbe,
+        startProxyRuntime: createXrayRuntimeStarter({
+          hostArch: process.arch,
+          binaryPath: xrayBinary,
+        }),
+      })
+      await expect(service.checkEgress("proxy")).resolves.toMatchObject({
+        ok: false,
+        reason: "proxy",
+      })
+      expect(fixture.targetRequests()).toBe(expectedRequests)
+      expect(fixture.directRequests()).toBe(0)
+    } finally {
+      await fixture.close()
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
   it("错误账密无法访问目标且不会转为直连", async () => {
     const directory = await mkdtemp(join(tmpdir(), "pigclaude-xray-egress-"))
     const fixture = await createProxyFixture()
@@ -292,18 +361,32 @@ async function createProxyFixture(credentials = "user@test:p:ss"): Promise<{
   proxyPort: number
   accepted: () => number
   targetRequests: () => number
+  directRequests: () => number
   failProxy: () => void
   onTarget: (callback: (count: number) => Promise<void>) => void
   close: () => Promise<void>
 }> {
   let accepted = 0
   let targetRequests = 0
+  let directRequests = 0
   let dropping = false
   let onTarget: (count: number) => Promise<void> = async () => undefined
   const sockets = new Set<Socket>()
-  const target = createHttpServer((_request, response) => {
+  const forwarded = new Set<number>()
+  const target = createHttpServer((request, response) => {
     targetRequests += 1
-    void onTarget(targetRequests).then(() => response.end("ip=198.51.100.42\n"))
+    if (request.socket.remotePort === undefined || !forwarded.has(request.socket.remotePort)) {
+      directRequests += 1
+    }
+    void onTarget(targetRequests).then(() => {
+      if (request.url === "/redirect") response.writeHead(302, { location: "/trace" }).end()
+      else if (
+        request.url === "/redirect-data-first" ||
+        (request.url === "/redirect-data-second" && targetRequests === 2)
+      ) {
+        response.writeHead(302, { location: "data:text/plain,ip%3D198.51.100.42" }).end()
+      } else response.end("ip=198.51.100.42\n")
+    })
   })
   const targetPort = await listen(target)
   const proxy = createHttpServer()
@@ -322,6 +405,11 @@ async function createProxyFixture(credentials = "user@test:p:ss"): Promise<{
       return
     }
     const upstream = connect(targetPort, "127.0.0.1", () => {
+      const port = upstream.localPort
+      if (port !== undefined) forwarded.add(port)
+      upstream.once("close", () => {
+        if (port !== undefined) forwarded.delete(port)
+      })
       accepted += 1
       socket.write("HTTP/1.1 200 Connection Established\r\n\r\n")
       if (head.length !== 0) upstream.write(head)
@@ -338,6 +426,7 @@ async function createProxyFixture(credentials = "user@test:p:ss"): Promise<{
     proxyPort,
     accepted: () => accepted,
     targetRequests: () => targetRequests,
+    directRequests: () => directRequests,
     onTarget: (callback) => {
       onTarget = callback
     },

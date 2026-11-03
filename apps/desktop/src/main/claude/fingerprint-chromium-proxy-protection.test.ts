@@ -36,7 +36,7 @@ it("blocks a bound launch with an unverified kernel before spawning or creating 
       authorizeUrl: "https://example.test/authorize",
       network: {
         mode: "bound",
-        bridgeUrl: "http://127.0.0.1:9000",
+        bridgeUrl: "socks5://127.0.0.1:9000",
         callbackUri: "http://localhost:1234/callback",
       },
       fingerprint,
@@ -84,7 +84,7 @@ it("blocks the product exit probe before starting Xray when browser protection i
       ensureBrowserProxyProtection: () => adapter.ensureBoundProxyProtection(),
       startProxyRuntime: async () => {
         started = true
-        return { url: "http://127.0.0.1:12345", close: async () => undefined }
+        return { url: "socks5://127.0.0.1:12345", close: async () => undefined }
       },
     })
     await expect(service.checkEgress("p1")).rejects.toMatchObject({
@@ -104,7 +104,7 @@ it("blocks the exit probe when no browser protection check is provided", async (
       store: harness.store,
       startProxyRuntime: async () => {
         started = true
-        return { url: "http://127.0.0.1:12345", close: async () => undefined }
+        return { url: "socks5://127.0.0.1:12345", close: async () => undefined }
       },
     })
     await expect(service.checkEgress("p1")).rejects.toMatchObject({
@@ -144,7 +144,7 @@ it("does not trust an environment override but keeps it usable on system network
       ...input,
       network: {
         mode: "bound",
-        bridgeUrl: "http://127.0.0.1:9000",
+        bridgeUrl: "socks5://127.0.0.1:9000",
         callbackUri: "http://localhost:1234/callback",
       },
     }),

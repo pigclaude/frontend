@@ -49,6 +49,7 @@ it("安装包资源目录与运行时解析目录一致", async () => {
     extraResources: [
       { from: "runtime-assets/pigclaude-runtime", to: "pigclaude-runtime" },
       { from: "out/main/xray-watchdog.js", to: "xray-watchdog.cjs" },
+      { from: "out/main/chunks", to: "chunks" },
     ],
   })
 })

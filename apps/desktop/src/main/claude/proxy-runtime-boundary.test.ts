@@ -4,6 +4,9 @@ import { createServer } from "node:http"
 import { describe, expect, it } from "vitest"
 import { createHarness, fingerprint } from "./account-service-test-fixtures"
 import { ProxyService } from "./proxy-service"
+import { createXrayRuntimeStarter } from "./xray-runtime"
+
+const xrayBinary = process.env["PIGCLAUDE_TEST_XRAY_BIN"]
 
 describe("外部代理核心接入边界", () => {
   it("缺少运行时时不创建授权回调、不检查出口、不启动浏览器", async () => {
@@ -108,9 +111,10 @@ describe("外部代理核心接入边界", () => {
         lastTest: null,
       })
       const invalidUrls = [
-        `http://user:secret@127.0.0.1:${address.port}`,
-        `${url}/extra`,
-        `http://localhost:${address.port}`,
+        `socks5://user:secret@127.0.0.1:${address.port}`,
+        `socks5://127.0.0.1:${address.port}/extra`,
+        `socks5://localhost:${address.port}`,
+        url,
       ]
       for (const invalidUrl of invalidUrls) {
         const service = new ProxyService({
@@ -141,8 +145,10 @@ describe("外部代理核心接入边界", () => {
     }
   })
 
-  it("出口核对使用校验过的同一本机入口快照", async () => {
+  it.skipIf(!xrayBinary)("出口核对使用校验过的同一本机入口快照", async () => {
+    if (!xrayBinary) throw new Error("缺少测试用 Xray")
     const harness = await createHarness()
+    const start = createXrayRuntimeStarter({ binaryPath: xrayBinary, hostArch: process.arch })
     let reads = 0
     let closed = false
     const body = "ip=198.51.100.42\n"
@@ -170,6 +176,7 @@ describe("外部代理核心接入边界", () => {
         url,
         lastTest: null,
       })
+      const runtime = await start({ upstreamProxyUrl: url })
       const service = new ProxyService({
         store: harness.store,
         checkUrl: "http://synthetic.invalid/check",
@@ -177,10 +184,11 @@ describe("外部代理核心接入边界", () => {
         startProxyRuntime: async () => ({
           get url() {
             reads += 1
-            return reads === 1 ? url : `${url}/extra`
+            return reads === 1 ? runtime.url : `${runtime.url}/extra`
           },
           close: async () => {
             closed = true
+            await runtime.close()
           },
         }),
       })
@@ -188,13 +196,17 @@ describe("外部代理核心接入边界", () => {
       expect(reads).toBe(1)
       expect(closed).toBe(true)
     } finally {
-      server.closeAllConnections()
-      if (server.listening) {
-        await new Promise<void>((resolve, reject) => {
-          server.close((error) => (error ? reject(error) : resolve()))
-        })
+      try {
+        await start.dispose()
+      } finally {
+        server.closeAllConnections()
+        if (server.listening) {
+          await new Promise<void>((resolve, reject) => {
+            server.close((error) => (error ? reject(error) : resolve()))
+          })
+        }
+        await harness.cleanup()
       }
-      await harness.cleanup()
     }
   })
 })

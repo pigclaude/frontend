@@ -8,9 +8,8 @@ import { createAuthorizationMiddleware } from "./src/dev/authorization-middlewar
 
 const stripComments = { legalComments: "none" as const }
 
-// workspace 包导出 TypeScript 源码，必须打进产物；electron-vite 默认会把 package.json
-// 里的依赖全部 external，运行时加载 .ts 会失败。
-const bundledWorkspacePackages = [
+// workspace 源码和安装包不携带的网络依赖必须打进产物，不能留给运行时解析。
+const bundledDependencies = [
   "@pigclaude/contracts",
   "@pigclaude/daemon",
   "@pigclaude/local-store",
@@ -18,6 +17,7 @@ const bundledWorkspacePackages = [
   "@pigclaude/proxy-connection",
   "@pigclaude/session-env",
   "@pigclaude/switcher",
+  "undici",
 ]
 
 /** 开发时让系统浏览器里的授权页通知桌面端。正式环境由权限服务接管。 */
@@ -37,7 +37,7 @@ export default defineConfig({
     build: {
       minify: true,
       sourcemap: false,
-      externalizeDeps: { exclude: bundledWorkspacePackages },
+      externalizeDeps: { exclude: bundledDependencies },
       rollupOptions: {
         input: {
           index: resolve(import.meta.dirname, "src/main/index.ts"),
@@ -51,7 +51,7 @@ export default defineConfig({
     build: {
       minify: true,
       sourcemap: false,
-      externalizeDeps: { exclude: bundledWorkspacePackages },
+      externalizeDeps: { exclude: bundledDependencies },
     },
   },
   renderer: {

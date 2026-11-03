@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest"
 import { checkEgress, parseExitIp } from "./egress-check.ts"
 
-const bridgeUrl = "http://127.0.0.1:1"
+const bridgeUrl = "socks5://127.0.0.1:1"
 const upstreamProxyUrl = "http://127.0.0.1:2"
 const checkUrl = "https://egress.test/trace"
 
@@ -28,7 +28,7 @@ describe("checkEgress", () => {
       bridgeUrl,
       upstreamProxyUrl,
       checkUrl,
-      fetch: sequenceFetch([
+      ...sequenceFetch([
         () => Promise.resolve(text("ip=203.0.113.42")),
         () => Promise.resolve(text("ip=203.0.113.42")),
       ]),
@@ -41,7 +41,7 @@ describe("checkEgress", () => {
       bridgeUrl,
       upstreamProxyUrl,
       checkUrl,
-      fetch: sequenceFetch([
+      ...sequenceFetch([
         () => Promise.resolve(text("ip=203.0.113.42")),
         () => Promise.resolve(text("ip=203.0.113.99")),
       ]),
@@ -55,7 +55,7 @@ describe("checkEgress", () => {
       bridgeUrl,
       upstreamProxyUrl,
       checkUrl,
-      fetch: sequenceFetch([
+      ...sequenceFetch([
         () => {
           calls += 1
           return Promise.reject(new Error("bridge down"))
@@ -73,7 +73,7 @@ describe("checkEgress", () => {
       bridgeUrl,
       upstreamProxyUrl,
       checkUrl,
-      fetch: sequenceFetch([() => Promise.reject(timeout)]),
+      ...sequenceFetch([() => Promise.reject(timeout)]),
     })
     expect(result).toEqual({ ok: false, reason: "timeout", message: "请勿登录" })
   })
@@ -83,7 +83,7 @@ describe("checkEgress", () => {
       bridgeUrl,
       upstreamProxyUrl,
       checkUrl,
-      fetch: sequenceFetch([() => Promise.resolve(text("not an ip"))]),
+      ...sequenceFetch([() => Promise.resolve(text("not an ip"))]),
     })
     expect(result).toEqual({ ok: false, reason: "parse", message: "请勿登录" })
   })
@@ -93,7 +93,7 @@ describe("checkEgress", () => {
       bridgeUrl,
       upstreamProxyUrl,
       checkUrl,
-      fetch: sequenceFetch([() => Promise.resolve(new Response("bad gateway", { status: 502 }))]),
+      ...sequenceFetch([() => Promise.resolve(new Response("bad gateway", { status: 502 }))]),
     })
     expect(result).toEqual({ ok: false, reason: "proxy", message: "请勿登录" })
   })
@@ -103,13 +103,25 @@ function text(body: string): Response {
   return new Response(body, { status: 200 })
 }
 
-function sequenceFetch(responses: Array<() => Promise<Response>>): typeof import("undici").fetch {
+function sequenceFetch(responses: Array<() => Promise<Response>>): {
+  fetch: typeof import("undici").fetch
+  fetchSocks: typeof import("node-fetch").default
+} {
   let index = 0
-  const fake = async (): Promise<Response> => {
+  const fake = async (
+    _url: unknown,
+    options: { dispatcher?: unknown; agent?: unknown },
+  ): Promise<Response> => {
+    if (options.dispatcher === undefined && options.agent === undefined) {
+      throw new Error("缺少代理客户端")
+    }
     const next = responses[index]
     index += 1
     if (next === undefined) throw new Error("unexpected fetch")
     return next()
   }
-  return fake as unknown as typeof import("undici").fetch
+  return {
+    fetch: fake as unknown as typeof import("undici").fetch,
+    fetchSocks: fake as unknown as typeof import("node-fetch").default,
+  }
 }

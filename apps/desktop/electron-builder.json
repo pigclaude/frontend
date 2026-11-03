@@ -33,6 +33,10 @@
     {
       "from": "out/main/xray-watchdog.js",
       "to": "xray-watchdog.cjs"
+    },
+    {
+      "from": "out/main/chunks",
+      "to": "chunks"
     }
   ],
   "extraMetadata": {

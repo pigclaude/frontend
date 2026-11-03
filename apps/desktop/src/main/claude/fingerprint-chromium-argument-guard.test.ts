@@ -63,7 +63,7 @@ describe("受管浏览器启动参数", () => {
       },
       get bridgeUrl() {
         bridgeReads += 1
-        return bridgeReads === 1 ? "http://127.0.0.1:9000" : "http://127.0.0.2:9000"
+        return bridgeReads === 1 ? "socks5://127.0.0.1:9000" : "socks5://127.0.0.2:9000"
       },
       get callbackUri() {
         callbackReads += 1
@@ -94,7 +94,7 @@ describe("受管浏览器启动参数", () => {
         authorizeUrl: "https://example.test/authorize",
         network: {
           mode: "bound",
-          bridgeUrl: "http://127.0.0.1:9000",
+          bridgeUrl: "socks5://127.0.0.1:9000",
           callbackUri: "http://localhost:1234/callback",
         },
         fingerprint: { ...fingerprint, unknownArgs: ["--profile-directory=other"] },
@@ -132,7 +132,7 @@ describe("受管浏览器启动参数", () => {
         accountId: "fixture",
         authorizeUrl: "https://example.test/authorize",
         fingerprint,
-        network: { mode: "bound", bridgeUrl: "http://127.0.0.1:9000", callbackUri },
+        network: { mode: "bound", bridgeUrl: "socks5://127.0.0.1:9000", callbackUri },
       }),
     ).rejects.toMatchObject({ message: "授权回调地址无效或与代理桥端口冲突" })
     expect(calls).toEqual([])
@@ -222,7 +222,7 @@ describe("受管浏览器启动参数", () => {
     })
     const network = {
       mode: "system",
-      bridgeUrl: "http://127.0.0.1:9000",
+      bridgeUrl: "socks5://127.0.0.1:9000",
     } as unknown as LaunchBrowserNetwork
     await expect(adapter.launch({ ...input, network })).rejects.toMatchObject({
       code: "BROWSER_START_FAILED",
@@ -232,10 +232,12 @@ describe("受管浏览器启动参数", () => {
 
   it.each([
     "http://127.0.0.1:0",
-    "http://127.0.0.1:65536",
-    "http://127.0.0.2:9000",
-    "http://user:secret@127.0.0.1:9000",
-    "http://127.0.0.1:9000/path",
+    "http://127.0.0.1:9000",
+    "socks5://127.0.0.1:0",
+    "socks5://127.0.0.1:65536",
+    "socks5://127.0.0.2:9000",
+    "socks5://user:secret@127.0.0.1:9000",
+    "socks5://127.0.0.1:9000/path",
   ])("rejects the invalid bound bridge %s without launching", async (bridgeUrl) => {
     const { adapter, calls } = await createAdapter("darwin")
     await expect(
@@ -264,7 +266,7 @@ describe("受管浏览器启动参数", () => {
         fingerprint: { ...fingerprint, unknownArgs },
         network: {
           mode: "bound",
-          bridgeUrl: "http://127.0.0.1:9000",
+          bridgeUrl: "socks5://127.0.0.1:9000",
           callbackUri: "http://localhost:1234/callback",
         },
       }),

@@ -1,4 +1,4 @@
-// 负责通过标准输入启动和回收 Xray，并将合成的本机 HTTP 入口连接到账号绑定的上游代理。
+// 负责通过标准输入启动和回收 Xray，并将本机 SOCKS5 入口连接到账号绑定的上游代理。
 
 import { spawn, type ChildProcess } from "node:child_process"
 import { createServer } from "node:net"
@@ -62,7 +62,7 @@ export function createXrayRuntimeStarter(options: XrayRuntimeOptions): XrayRunti
     if (disposed) throw unavailable()
     const config = {
       log: { loglevel: "warning" },
-      inbounds: [{ listen: "127.0.0.1", port, protocol: "http", settings: {} }],
+      inbounds: [{ listen: "127.0.0.1", port, protocol: "socks", settings: { udp: false } }],
       outbounds: [
         {
           protocol: "http",
@@ -95,7 +95,7 @@ export function createXrayRuntimeStarter(options: XrayRuntimeOptions): XrayRunti
     }
     const running = child
     return {
-      url: `http://127.0.0.1:${port}`,
+      url: `socks5://127.0.0.1:${port}`,
       close: () => closeChild(running),
       assertRunning: () => {
         if (

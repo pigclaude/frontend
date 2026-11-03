@@ -232,7 +232,7 @@ describe("FingerprintChromiumAdapter", () => {
       profilesRoot: root,
       spawn,
     })
-    for (const bridgeUrl of [undefined, "http://127.0.0.1:9000"]) {
+    for (const bridgeUrl of [undefined, "socks5://127.0.0.1:9000"]) {
       await expect(
         adapter.launch({
           accountId: "acc-1",
@@ -279,7 +279,7 @@ describe("FingerprintChromiumAdapter", () => {
           ...input,
           network: {
             mode: "bound",
-            bridgeUrl: "http://127.0.0.1:9000",
+            bridgeUrl: "socks5://127.0.0.1:9000",
             callbackUri: "http://localhost:1234/callback",
           },
         }),

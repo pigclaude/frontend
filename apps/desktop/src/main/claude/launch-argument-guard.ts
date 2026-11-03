@@ -35,13 +35,13 @@ export function launchArgumentConflict(
 /** 返回有效的本机代理入口端口，拒绝凭据或额外路径。 */
 export function localBridgePort(value: unknown): number | null {
   if (typeof value !== "string") return null
-  const match = /^http:\/\/127\.0\.0\.1:(\d{1,5})\/?$/.exec(value)
+  const match = /^socks5:\/\/127\.0\.0\.1:(\d{1,5})\/?$/.exec(value)
   if (match === null) return null
   const port = Number(match[1])
   return port >= 1 && port <= 65535 ? port : null
 }
 
-/** 校验外部代理核心的本机 HTTP 入口，拒绝凭据或额外路径。 */
+/** 校验 Xray 的本机 SOCKS5 入口，拒绝凭据或额外路径。 */
 export function isValidBridgeUrl(value: unknown): value is string {
   return localBridgePort(value) !== null
 }

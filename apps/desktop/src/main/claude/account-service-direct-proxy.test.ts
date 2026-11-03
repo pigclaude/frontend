@@ -141,7 +141,7 @@ describe("Claude 授权直接连接上游代理", () => {
     try {
       harness = await createHarness({
         oauth: createOAuth(fixture),
-        bridgeUrl: "http://127.0.0.1:1",
+        bridgeUrl: "socks5://127.0.0.1:1",
       })
       await harness.store.saveProxy({
         schemaVersion: 1,

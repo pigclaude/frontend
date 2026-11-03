@@ -345,7 +345,14 @@ function buildLaunchArgs(
 ): string[] {
   const args = [`--user-data-dir=${profileDir}`]
   if (network.mode === "bound") {
-    args.push(`--proxy-server=${network.bridgeUrl}`, "--proxy-bypass-list=localhost;127.0.0.1")
+    const callbackPort = managedCallbackPort(network.callbackUri)
+    if (callbackPort === null) {
+      throw new BrowserLaunchError("BROWSER_START_FAILED", "授权回调地址无效")
+    }
+    args.push(
+      `--proxy-server=${network.bridgeUrl}`,
+      `--proxy-bypass-list=<-loopback>;http://localhost:${callbackPort}`,
+    )
   }
   args.push(
     "--no-first-run",

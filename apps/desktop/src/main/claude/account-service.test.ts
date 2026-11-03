@@ -26,14 +26,14 @@ describe("ClaudeAccountService", () => {
     expect(harness.bridgeCalls).toEqual([{ upstreamProxyUrl: "http://127.0.0.1:1" }])
     expect(harness.egressCalls).toEqual([
       {
-        bridgeUrl: "http://127.0.0.1:9999",
+        bridgeUrl: "socks5://127.0.0.1:9999",
         upstreamProxyUrl: "http://127.0.0.1:1",
         checkUrl: "https://egress.test/trace",
       },
     ])
     expect(harness.launchInputs[0]?.network).toEqual({
       mode: "bound",
-      bridgeUrl: "http://127.0.0.1:9999",
+      bridgeUrl: "socks5://127.0.0.1:9999",
       callbackUri: "http://localhost:1234/callback",
     })
     expect(harness.exchangeDispatchers[0]).toBeDefined()
@@ -182,7 +182,7 @@ describe("ClaudeAccountService", () => {
   })
 
   it("rejects an invalid bound bridge before egress or browser launch", async () => {
-    const harness = await createHarness({ bridgeUrl: "http://127.0.0.1:0" })
+    const harness = await createHarness({ bridgeUrl: "socks5://127.0.0.1:0" })
     await expect(
       harness.service.authorize({ displayName: "工作账号", proxyId: "p1", fingerprint }),
     ).rejects.toMatchObject({ code: "PROXY_UNAVAILABLE" })

@@ -40,7 +40,7 @@ describe("Claude 账号授权快照", () => {
     expect(account).toMatchObject({ id: "acc-1", displayName: "原始名称", proxyId: "p1" })
     expect(harness.launchInputs[0]?.network).toEqual({
       mode: "bound",
-      bridgeUrl: "http://127.0.0.1:9999",
+      bridgeUrl: "socks5://127.0.0.1:9999",
       callbackUri: "http://localhost:1234/callback",
     })
     expect(harness.launchInputs[0]?.fingerprint.unknownArgs).toEqual([
@@ -49,12 +49,12 @@ describe("Claude 账号授权快照", () => {
   })
 
   it("uses the same bridge address for egress validation and browser launch", async () => {
-    const harness = await createHarness({ bridgeUrlAfterEgress: "http://127.0.0.1:9998" })
+    const harness = await createHarness({ bridgeUrlAfterEgress: "socks5://127.0.0.1:9998" })
     await harness.service.authorize({ displayName: "工作账号", proxyId: "p1", fingerprint })
-    expect(harness.egressCalls[0]?.bridgeUrl).toBe("http://127.0.0.1:9999")
+    expect(harness.egressCalls[0]?.bridgeUrl).toBe("socks5://127.0.0.1:9999")
     expect(harness.launchInputs[0]?.network).toEqual({
       mode: "bound",
-      bridgeUrl: "http://127.0.0.1:9999",
+      bridgeUrl: "socks5://127.0.0.1:9999",
       callbackUri: "http://localhost:1234/callback",
     })
   })
@@ -73,7 +73,7 @@ describe("Claude 账号授权快照", () => {
     await harness.service.authorize({ displayName: "工作账号", proxyId: "p1", fingerprint })
     expect(harness.launchInputs[0]?.network).toEqual({
       mode: "bound",
-      bridgeUrl: "http://127.0.0.1:9999",
+      bridgeUrl: "socks5://127.0.0.1:9999",
       callbackUri: "http://localhost:1234/callback",
     })
     expect(harness.authorizeRedirectUris).toEqual(["http://localhost:1234/callback"])

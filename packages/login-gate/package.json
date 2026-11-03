@@ -13,6 +13,8 @@
   "dependencies": {
     "@pigclaude/local-store": "workspace:*",
     "@pigclaude/proxy-connection": "workspace:*",
+    "node-fetch": "3.3.2",
+    "socks-proxy-agent": "10.1.0",
     "undici": "6.21.2"
   },
   "devDependencies": {

@@ -76,7 +76,7 @@ jobs:
         shell: pwsh
         run: |
           $cert = Join-Path $env:GITHUB_WORKSPACE "packages/login-gate/src/test-fixtures/loopback-ip-synthetic-cert.pem"
-          $command = Start-Process certutil.exe -ArgumentList @("-user", "-f", "-silent", "-addstore", "Root", "`"$cert`"") -PassThru -NoNewWindow
+          $command = Start-Process certutil.exe -ArgumentList @("-user", "-f", "-addstore", "Root", "`"$cert`"") -PassThru -NoNewWindow
           if (!$command.WaitForExit(30000)) { $command.Kill(); throw "证书导入超时" }
           if ($command.ExitCode -ne 0) { throw "证书导入失败" }
       - name: 在临时 Linux 环境信任合成目标证书
@@ -121,7 +121,7 @@ jobs:
           $cert = Join-Path $env:GITHUB_WORKSPACE "packages/login-gate/src/test-fixtures/loopback-ip-synthetic-cert.pem"
           if (Test-Path $cert) {
             $fingerprint = (Get-PfxCertificate -FilePath $cert).Thumbprint
-            certutil.exe -user -f -silent -delstore Root $fingerprint
+            certutil.exe -user -f -delstore Root $fingerprint
           }
           exit 0
       - name: 移除临时 Linux 证书

@@ -355,7 +355,11 @@ async function setupAuthorization(): Promise<void> {
     },
     onEvent: sendClaudeAccountEvent,
   })
-  proxyService = new ProxyService({ store: localStore, startProxyRuntime })
+  proxyService = new ProxyService({
+    store: localStore,
+    startProxyRuntime,
+    ensureBrowserProxyProtection: () => browser.ensureBoundProxyProtection(),
+  })
   usageRecorder = new UsageRecorder({ filePath: join(app.getPath("userData"), "usage.jsonl") })
   if (composition.runtime) {
     sessionHost = new SessionHost({

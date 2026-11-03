@@ -1,6 +1,7 @@
 // 负责用 electron-vite 分别构建主进程、预加载和渲染进程。
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "electron-vite"
+import { resolve } from "node:path"
 import type { Plugin } from "vite"
 import { DevAuthorizationFixture } from "./src/dev/authorization-fixture"
 import { createAuthorizationMiddleware } from "./src/dev/authorization-middleware"
@@ -37,6 +38,12 @@ export default defineConfig({
       minify: true,
       sourcemap: false,
       externalizeDeps: { exclude: bundledWorkspacePackages },
+      rollupOptions: {
+        input: {
+          index: resolve(import.meta.dirname, "src/main/index.ts"),
+          "xray-watchdog": resolve(import.meta.dirname, "xray-watchdog.cjs"),
+        },
+      },
     },
   },
   preload: {

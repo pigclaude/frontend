@@ -29,6 +29,10 @@
     {
       "from": "runtime-assets/pigclaude-runtime",
       "to": "pigclaude-runtime"
+    },
+    {
+      "from": "out/main/xray-watchdog.js",
+      "to": "xray-watchdog.cjs"
     }
   ],
   "extraMetadata": {

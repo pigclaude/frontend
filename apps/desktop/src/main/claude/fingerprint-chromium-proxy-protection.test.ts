@@ -10,6 +10,7 @@ import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { createHarness, seedAccount } from "./account-service-test-fixtures"
 import { ClaudeAccountError } from "./errors"
 import { FingerprintChromiumAdapter } from "./fingerprint-chromium"
+import { ProxyService } from "./proxy-service"
 
 const roots: string[] = []
 const fingerprint: ClaudeFingerprintView = {
@@ -71,6 +72,49 @@ it("blocks a bound account before bridge and callback without changing its saved
   expect(calls).toEqual([])
   expect(await harness.store.getAccount(existing.id)).toEqual(before)
   await expect(stat(join(root, existing.id))).rejects.toMatchObject({ code: "ENOENT" })
+})
+
+it("blocks the product exit probe before starting Xray when browser protection is unverified", async () => {
+  const { adapter } = await createAdapter()
+  const harness = await createHarness({ browser: adapter })
+  let started = false
+  try {
+    const service = new ProxyService({
+      store: harness.store,
+      ensureBrowserProxyProtection: () => adapter.ensureBoundProxyProtection(),
+      startProxyRuntime: async () => {
+        started = true
+        return { url: "http://127.0.0.1:12345", close: async () => undefined }
+      },
+    })
+    await expect(service.checkEgress("p1")).rejects.toMatchObject({
+      message: expect.stringContaining("受管代理保护"),
+    })
+    expect(started).toBe(false)
+  } finally {
+    await harness.cleanup()
+  }
+})
+
+it("blocks the exit probe when no browser protection check is provided", async () => {
+  const harness = await createHarness()
+  let started = false
+  try {
+    const service = new ProxyService({
+      store: harness.store,
+      startProxyRuntime: async () => {
+        started = true
+        return { url: "http://127.0.0.1:12345", close: async () => undefined }
+      },
+    })
+    await expect(service.checkEgress("p1")).rejects.toMatchObject({
+      code: "PROXY_UNAVAILABLE",
+      message: expect.stringContaining("浏览器代理保护"),
+    })
+    expect(started).toBe(false)
+  } finally {
+    await harness.cleanup()
+  }
 })
 
 it("keeps extension loading available for an explicitly unbound account", async () => {
@@ -164,6 +208,7 @@ async function createAdapter(useEnvironment = false) {
   }) as typeof spawn
   return {
     adapter: new FingerprintChromiumAdapter({
+      hostArch: process.arch,
       ...(useEnvironment
         ? { env: { PIGCLAUDE_FINGERPRINT_CHROMIUM_BIN: process.execPath } }
         : { binaryPath: process.execPath }),

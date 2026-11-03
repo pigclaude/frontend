@@ -306,6 +306,7 @@ async function createAdapter(hostPlatform: NodeJS.Platform) {
   }) as typeof spawn
   return {
     adapter: new FingerprintChromiumAdapter({
+      hostArch: process.arch,
       binaryPath: process.execPath,
       profilesRoot: root,
       hostPlatform,

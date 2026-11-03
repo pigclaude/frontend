@@ -19,6 +19,8 @@ export type ProxyServiceDeps = {
   now?: () => number
   /** 外部代理核心未接入时，出口一致性核对明确拒绝执行。 */
   startProxyRuntime?: StartProxyRuntime
+  /** 必须先证明所选浏览器具有受管代理保护，才能执行出口核对。 */
+  ensureBrowserProxyProtection?: () => void
 }
 
 /** 本机代理服务。保证测试失败时返回失败结果而不是改走直连。 */
@@ -27,6 +29,7 @@ export class ProxyService {
   readonly #checkUrl: string
   readonly #now: () => number
   readonly #startProxyRuntime: StartProxyRuntime | undefined
+  readonly #ensureBrowserProxyProtection: (() => void) | undefined
 
   /** 创建绑定到本机代理文件的代理服务。 */
   constructor(deps: ProxyServiceDeps) {
@@ -34,6 +37,7 @@ export class ProxyService {
     this.#checkUrl = deps.checkUrl ?? defaultCheckUrl
     this.#now = deps.now ?? Date.now
     this.#startProxyRuntime = deps.startProxyRuntime
+    this.#ensureBrowserProxyProtection = deps.ensureBrowserProxyProtection
   }
 
   /** 返回脱敏代理列表。 */
@@ -111,6 +115,10 @@ export class ProxyService {
     if (this.#startProxyRuntime === undefined) {
       throw new ClaudeAccountError("PROXY_UNAVAILABLE", "Xray 代理尚未接入，无法核对浏览器出口")
     }
+    if (this.#ensureBrowserProxyProtection === undefined) {
+      throw new ClaudeAccountError("PROXY_UNAVAILABLE", "浏览器代理保护未验证，无法核对出口")
+    }
+    this.#ensureBrowserProxyProtection()
     const runtime = await this.#startProxyRuntime({ upstreamProxyUrl: proxy.url })
     try {
       const bridgeUrl = runtime?.url

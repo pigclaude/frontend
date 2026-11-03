@@ -116,6 +116,7 @@ describe("外部代理核心接入边界", () => {
         const service = new ProxyService({
           store: harness.store,
           checkUrl: `${url}/check`,
+          ensureBrowserProxyProtection: () => undefined,
           startProxyRuntime: async () => ({
             url: invalidUrl,
             close: async () => {
@@ -172,6 +173,7 @@ describe("外部代理核心接入边界", () => {
       const service = new ProxyService({
         store: harness.store,
         checkUrl: "http://synthetic.invalid/check",
+        ensureBrowserProxyProtection: () => undefined,
         startProxyRuntime: async () => ({
           get url() {
             reads += 1

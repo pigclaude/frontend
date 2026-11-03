@@ -21,6 +21,7 @@ it.each([
     const root = join(directory, "runtime-assets", "pigclaude-runtime")
     const browserPath = join(root, "chromium", `${platform}-${name}`, browser)
     const xrayPath = join(root, "xray", `${platform}-${name}`, xray)
+    const watchdogPath = join(directory, "out", "main", "xray-watchdog.js")
     const context = { electronPlatformName: platform, arch, packager: { projectDir: directory } }
     try {
       await expect(checkResources(context)).rejects.toThrow("缺少")
@@ -29,6 +30,9 @@ it.each([
       await expect(checkResources(context)).rejects.toThrow("缺少")
       await mkdir(dirname(xrayPath), { recursive: true })
       await writeFile(xrayPath, "synthetic")
+      await expect(checkResources(context)).rejects.toThrow("缺少")
+      await mkdir(dirname(watchdogPath), { recursive: true })
+      await writeFile(watchdogPath, "synthetic")
       await expect(checkResources(context)).resolves.toBeUndefined()
     } finally {
       await rm(directory, { recursive: true, force: true })
@@ -42,6 +46,9 @@ it("安装包资源目录与运行时解析目录一致", async () => {
   )
   expect(config).toMatchObject({
     beforePack: "./verify-runtime-resources.cjs",
-    extraResources: [{ from: "runtime-assets/pigclaude-runtime", to: "pigclaude-runtime" }],
+    extraResources: [
+      { from: "runtime-assets/pigclaude-runtime", to: "pigclaude-runtime" },
+      { from: "out/main/xray-watchdog.js", to: "xray-watchdog.cjs" },
+    ],
   })
 })

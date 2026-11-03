@@ -13,6 +13,17 @@ import { createXrayRuntimeStarter } from "./xray-runtime"
 
 const xrayBinary = process.env["PIGCLAUDE_TEST_XRAY_BIN"]
 
+function allowSyntheticProbe(): void {}
+
+it("启动失败且无法确认回收时保留失败状态", async () => {
+  const start = createXrayRuntimeStarter({ binaryPath: process.execPath, hostArch: process.arch })
+  await expect(start({ upstreamProxyUrl: "http://127.0.0.1:9" })).rejects.toMatchObject({
+    code: "PROXY_UNAVAILABLE",
+  })
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  await expect(start.dispose()).rejects.toMatchObject({ code: "PROXY_UNAVAILABLE" })
+})
+
 describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
   it("通过本机 Xray 与合成账密代理取得相同出口", async () => {
     const directory = await mkdtemp(join(tmpdir(), "pigclaude-xray-egress-"))
@@ -30,8 +41,12 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
       const service = new ProxyService({
         store,
         checkUrl: `http://127.0.0.1:${fixture.targetPort}/trace`,
+        ensureBrowserProxyProtection: allowSyntheticProbe,
         startProxyRuntime: async (input) => {
-          runtime = await createXrayRuntimeStarter({ binaryPath: xrayBinary })(input)
+          runtime = await createXrayRuntimeStarter({
+            hostArch: process.arch,
+            binaryPath: xrayBinary,
+          })(input)
           return runtime
         },
       })
@@ -65,7 +80,11 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
       const service = new ProxyService({
         store,
         checkUrl: `http://127.0.0.1:${fixture.targetPort}/trace`,
-        startProxyRuntime: createXrayRuntimeStarter({ binaryPath: xrayBinary }),
+        ensureBrowserProxyProtection: allowSyntheticProbe,
+        startProxyRuntime: createXrayRuntimeStarter({
+          hostArch: process.arch,
+          binaryPath: xrayBinary,
+        }),
       })
 
       await expect(service.checkEgress("proxy")).resolves.toMatchObject({
@@ -97,7 +116,11 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
       const service = new ProxyService({
         store,
         checkUrl: `http://127.0.0.1:${fixture.targetPort}/trace`,
-        startProxyRuntime: createXrayRuntimeStarter({ binaryPath: xrayBinary }),
+        ensureBrowserProxyProtection: allowSyntheticProbe,
+        startProxyRuntime: createXrayRuntimeStarter({
+          hostArch: process.arch,
+          binaryPath: xrayBinary,
+        }),
       })
       await expect(service.checkEgress("proxy")).resolves.toEqual({
         ok: true,
@@ -122,10 +145,11 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
         url: `http://user%40test:p%3Ass@127.0.0.1:${fixture.proxyPort}`,
         lastTest: null,
       })
-      const start = createXrayRuntimeStarter({ binaryPath: xrayBinary })
+      const start = createXrayRuntimeStarter({ hostArch: process.arch, binaryPath: xrayBinary })
       const service = new ProxyService({
         store,
         checkUrl: `http://127.0.0.1:${fixture.targetPort}/trace`,
+        ensureBrowserProxyProtection: allowSyntheticProbe,
         startProxyRuntime: async (input) => {
           const runtime = await start(input)
           if (failure === "upstream") fixture.failProxy()
@@ -158,10 +182,11 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
         url: `http://user%40test:p%3Ass@127.0.0.1:${fixture.proxyPort}`,
         lastTest: null,
       })
-      const start = createXrayRuntimeStarter({ binaryPath: xrayBinary })
+      const start = createXrayRuntimeStarter({ hostArch: process.arch, binaryPath: xrayBinary })
       const service = new ProxyService({
         store,
         checkUrl: `http://127.0.0.1:${fixture.targetPort}/trace`,
+        ensureBrowserProxyProtection: allowSyntheticProbe,
         startProxyRuntime: async (input) => {
           const runtime = await start(input)
           fixture.onTarget(async (count) => {
@@ -194,7 +219,11 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
       const service = new ProxyService({
         store,
         checkUrl: `http://127.0.0.1:${fixture.targetPort}/trace`,
-        startProxyRuntime: createXrayRuntimeStarter({ binaryPath: join(directory, "missing") }),
+        ensureBrowserProxyProtection: allowSyntheticProbe,
+        startProxyRuntime: createXrayRuntimeStarter({
+          hostArch: process.arch,
+          binaryPath: join(directory, "missing"),
+        }),
       })
 
       await expect(service.checkEgress("proxy")).rejects.toMatchObject({
@@ -232,7 +261,12 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
       const service = new ProxyService({
         store,
         checkUrl: `http://127.0.0.1:${fixture.targetPort}/trace`,
-        startProxyRuntime: createXrayRuntimeStarter({ resourcesPath: directory, env: {} }),
+        ensureBrowserProxyProtection: allowSyntheticProbe,
+        startProxyRuntime: createXrayRuntimeStarter({
+          hostArch: process.arch,
+          resourcesPath: directory,
+          env: {},
+        }),
       })
       await expect(service.checkEgress("proxy")).resolves.toMatchObject({ ok: true })
     } finally {

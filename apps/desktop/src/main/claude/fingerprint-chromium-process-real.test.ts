@@ -18,6 +18,7 @@ it("confirms that the actual spawned child has exited before removing the profil
     return child
   }) as typeof spawn
   const adapter = new FingerprintChromiumAdapter({
+    hostArch: process.arch,
     binaryPath: process.execPath,
     profilesRoot: root,
     spawn: syntheticSpawn,

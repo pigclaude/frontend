@@ -2,10 +2,14 @@
 
 import { constants } from "node:fs"
 import { access, open } from "node:fs/promises"
+import { createRequire } from "node:module"
 import { machine } from "node:os"
+import { fileURLToPath } from "node:url"
 
 /** 结合当前应用的转译状态和系统机器类型识别宿主架构；无法识别时返回空字符串。 */
-export function runtimeHostArch(translated = false): string {
+export function runtimeHostArch(translated?: boolean): string {
+  translated ??= electronTranslation()
+  if (translated === undefined) return ""
   if (translated) return "arm64"
   const detected = (
     process.platform === "win32" ? (process.env["PROCESSOR_ARCHITEW6432"] ?? machine()) : machine()
@@ -13,6 +17,29 @@ export function runtimeHostArch(translated = false): string {
   if (detected === "amd64" || detected === "x86_64" || detected === "x64") return "x64"
   if (detected === "arm64" || detected === "aarch64") return "arm64"
   return ""
+}
+
+function electronTranslation(): boolean | undefined {
+  if (process.versions.electron === undefined) {
+    if (["darwin", "win32"].includes(process.platform) && process.arch === "x64") return undefined
+    return false
+  }
+  if (!["darwin", "win32"].includes(process.platform)) {
+    return false
+  }
+  try {
+    const anchor = typeof __filename === "string" ? __filename : fileURLToPath(import.meta.url)
+    const electron: unknown = createRequire(anchor)("electron")
+    if (typeof electron !== "object" || electron === null || !("app" in electron)) return undefined
+    const app = electron.app
+    if (typeof app !== "object" || app === null || !("runningUnderARM64Translation" in app)) {
+      return undefined
+    }
+    const value = app.runningUnderARM64Translation
+    return typeof value === "boolean" ? value : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /** 仅接受可执行且包含目标系统与架构的原生二进制，不启动待检查程序。 */

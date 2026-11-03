@@ -60,6 +60,44 @@ it("显式指定内核同样拒绝不匹配的架构", async () => {
   await expect(adapter.ensureAvailable()).rejects.toMatchObject({ code: "BROWSER_MISSING" })
 })
 
+it.skipIf(process.platform !== "darwin" && process.platform !== "win32")(
+  "无法读取 Electron 转译状态时，默认定位拒绝猜测架构",
+  async () => {
+    const root = await tempRoot()
+    const previous = Object.getOwnPropertyDescriptor(process.versions, "electron")
+    Object.defineProperty(process.versions, "electron", { value: "synthetic", configurable: true })
+    try {
+      const adapter = new FingerprintChromiumAdapter({
+        profilesRoot: join(root, "profiles"),
+        binaryPath: process.execPath,
+      })
+      await expect(adapter.ensureAvailable()).rejects.toMatchObject({ code: "BROWSER_MISSING" })
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(process.versions, "electron")
+      else Object.defineProperty(process.versions, "electron", previous)
+    }
+  },
+)
+
+it.skipIf(process.platform !== "darwin")(
+  "普通 Node 的 x64 进程无法证明是否转译时拒绝猜测宿主架构",
+  async () => {
+    const root = await tempRoot()
+    const previous = Object.getOwnPropertyDescriptor(process, "arch")
+    Object.defineProperty(process, "arch", { value: "x64", configurable: true })
+    try {
+      const adapter = new FingerprintChromiumAdapter({
+        profilesRoot: join(root, "profiles"),
+        binaryPath: process.execPath,
+      })
+      await expect(adapter.ensureAvailable()).rejects.toMatchObject({ code: "BROWSER_MISSING" })
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(process, "arch")
+      else Object.defineProperty(process, "arch", previous)
+    }
+  },
+)
+
 async function tempRoot(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "pigclaude-browser-resources-"))
   directories.push(directory)

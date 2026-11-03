@@ -104,6 +104,7 @@ it("waits for an in-flight launch before stopping all processes", async () => {
     return child as unknown as ChildProcess
   }) as typeof spawn
   const adapter = new FingerprintChromiumAdapter({
+    hostArch: process.arch,
     binaryPath: process.execPath,
     profilesRoot: root,
     spawn: fakeSpawn,
@@ -140,6 +141,7 @@ it("serializes concurrent launches for the same account", async () => {
     return child as unknown as ChildProcess
   }) as typeof spawn
   const adapter = new FingerprintChromiumAdapter({
+    hostArch: process.arch,
     binaryPath: process.execPath,
     profilesRoot: root,
     spawn: fakeSpawn,
@@ -170,6 +172,7 @@ it("does not let an old launch handle stop a newer instance", async () => {
     return child as unknown as ChildProcess
   }) as typeof spawn
   const adapter = new FingerprintChromiumAdapter({
+    hostArch: process.arch,
     binaryPath: process.execPath,
     profilesRoot: root,
     spawn: fakeSpawn,
@@ -293,6 +296,7 @@ it("does not reuse a stale instance stop when disposal must stop a newer instanc
     return child as unknown as ChildProcess
   }) as typeof spawn
   const adapter = new FingerprintChromiumAdapter({
+    hostArch: process.arch,
     binaryPath: process.execPath,
     profilesRoot: root,
     spawn: fakeSpawn,
@@ -318,6 +322,7 @@ it("keeps the current in-flight stop even when an older handle queues a stop", a
     return child as unknown as ChildProcess
   }) as typeof spawn
   const adapter = new FingerprintChromiumAdapter({
+    hostArch: process.arch,
     binaryPath: process.execPath,
     profilesRoot: root,
     spawn: fakeSpawn,
@@ -365,6 +370,7 @@ it("waits for every process to settle before reporting a stop-all failure", asyn
     return child as unknown as ChildProcess
   }) as typeof spawn
   const adapter = new FingerprintChromiumAdapter({
+    hostArch: process.arch,
     binaryPath: process.execPath,
     profilesRoot: root,
     spawn: fakeSpawn,
@@ -442,6 +448,7 @@ async function createAdapter(exitImmediately = false) {
   }) as typeof spawn
   return {
     adapter: new FingerprintChromiumAdapter({
+      hostArch: process.arch,
       binaryPath: process.execPath,
       profilesRoot: root,
       spawn: fakeSpawn,

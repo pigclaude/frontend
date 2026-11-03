@@ -2,7 +2,8 @@
 
 import { spawn, type ChildProcess } from "node:child_process"
 import { createServer } from "node:net"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 import type { ProxyRuntime, StartProxyRuntime } from "@pigclaude/login-gate/proxy-runtime"
 import { ClaudeAccountError } from "./errors"
 import { matchesRuntimeBinary, runtimeHostArch } from "./runtime-binary"
@@ -27,11 +28,16 @@ export function createXrayRuntimeStarter(options: XrayRuntimeOptions): XrayRunti
   const children = new Set<ChildProcess>()
   const pending = new Set<Promise<ProxyRuntime>>()
   const stopping = new WeakMap<ChildProcess, Promise<void>>()
+  const closing = new WeakSet<ChildProcess>()
   const closeChild = (child: ChildProcess): Promise<void> => {
+    closing.add(child)
     const existing = stopping.get(child)
     if (existing !== undefined) return existing
     const promise = stop(child)
     stopping.set(child, promise)
+    void promise.catch(() => {
+      if (stopping.get(child) === promise) stopping.delete(child)
+    })
     return promise
   }
   const startOne: StartProxyRuntime = async ({ upstreamProxyUrl }) => {
@@ -67,13 +73,18 @@ export function createXrayRuntimeStarter(options: XrayRuntimeOptions): XrayRunti
     }
     let child: ChildProcess | null = null
     try {
-      const spawned = spawn(binaryPath, ["run", "-config", "stdin:"], {
+      const watchdog = watchdogPath(options.resourcesPath)
+      const spawned = spawn(process.execPath, [watchdog, binaryPath], {
         stdio: ["pipe", "pipe", "ignore"],
         windowsHide: true,
+        detached: process.platform !== "win32",
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
       })
       child = spawned
       children.add(spawned)
-      spawned.once("close", () => children.delete(spawned))
+      spawned.once("close", (code, signal) => {
+        if (code === 0 && signal === null) children.delete(spawned)
+      })
       spawned.on("error", () => undefined)
       spawned.stdin?.on("error", () => undefined)
       await waitForStart(spawned, JSON.stringify(config), options.startupTimeoutMs ?? 5_000)
@@ -89,7 +100,7 @@ export function createXrayRuntimeStarter(options: XrayRuntimeOptions): XrayRunti
       assertRunning: () => {
         if (
           disposed ||
-          stopping.has(running) ||
+          closing.has(running) ||
           !children.has(running) ||
           running.exitCode !== null ||
           running.signalCode !== null
@@ -112,15 +123,32 @@ export function createXrayRuntimeStarter(options: XrayRuntimeOptions): XrayRunti
     {
       dispose: () => {
         disposed = true
-        return (disposePromise ??= (async () => {
+        if (disposePromise !== undefined) return disposePromise
+        const promise = (async () => {
           const stopped = await Promise.allSettled([...children].map(closeChild))
           await Promise.allSettled([...pending])
           if (stopped.some((result) => result.status === "rejected")) throw unavailable()
-        })())
+        })()
+        disposePromise = promise
+        void promise.catch(() => {
+          if (disposePromise === promise) disposePromise = undefined
+        })
+        return promise
       },
     },
   )
   return start
+}
+
+function watchdogPath(resourcesPath: string | undefined): string {
+  if (process.versions.electron !== undefined && resourcesPath !== undefined) {
+    return join(resourcesPath, "xray-watchdog.cjs")
+  }
+  const moduleDirectory =
+    typeof __dirname === "string" ? __dirname : dirname(fileURLToPath(import.meta.url))
+  return process.versions.electron === undefined
+    ? join(moduleDirectory, "../../../xray-watchdog.cjs")
+    : join(moduleDirectory, "../../xray-watchdog.cjs")
 }
 
 function parseUpstream(value: string): {
@@ -193,25 +221,29 @@ async function waitForStart(child: ChildProcess, config: string, timeoutMs: numb
     const failed = () => finish(false)
     const onData = (chunk: Buffer) => {
       output = (output + chunk.toString("utf8")).slice(-16_384)
-      if (/core: Xray [^\r\n]+ started(?:\r?\n|$)/.test(output)) finish(true)
+      if (output.includes("XRAY_READY\n")) finish(true)
     }
     child.once("error", failed)
     child.once("exit", failed)
     child.stdout?.on("data", onData)
     child.stdin?.once("error", failed)
-    child.stdin?.end(config)
+    child.stdin?.write(`${config}\n`)
   })
 }
 
 async function stop(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return
+  if (child.exitCode !== null || child.signalCode !== null) {
+    if (child.exitCode === 0 && child.signalCode === null) return
+    throw unavailable()
+  }
   await new Promise<void>((resolve, reject) => {
-    const done = () => {
+    const done = (code: number | null, signal: NodeJS.Signals | null) => {
       clearTimeout(force)
       clearTimeout(timeout)
       child.off("exit", done)
       child.off("close", done)
-      resolve()
+      if (code === 0 && signal === null) resolve()
+      else reject(unavailable())
     }
     const force = setTimeout(() => child.kill("SIGKILL"), 3_000)
     const timeout = setTimeout(() => {
@@ -221,7 +253,7 @@ async function stop(child: ChildProcess): Promise<void> {
     }, 4_000)
     child.once("exit", done)
     child.once("close", done)
-    child.kill("SIGTERM")
+    child.stdin?.end()
   })
 }
 

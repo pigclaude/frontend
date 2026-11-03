@@ -33,6 +33,7 @@ describe("FingerprintChromiumAdapter", () => {
   it("requires an explicit fingerprint-chromium binary", async () => {
     const root = await tempRoot()
     const adapter = new FingerprintChromiumAdapter({
+      hostArch: process.arch,
       binaryPath: "/definitely/not/fingerprint-chromium",
       profilesRoot: root,
     })
@@ -47,6 +48,7 @@ describe("FingerprintChromiumAdapter", () => {
     const calls: Array<{ binary: string; args: string[] }> = []
     const child = new FakeChild()
     const adapter = new FingerprintChromiumAdapter({
+      hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
       spawn: fakeSpawn((command, args) => {
@@ -90,6 +92,7 @@ describe("FingerprintChromiumAdapter", () => {
     const root = await tempRoot()
     const calls: string[][] = []
     const adapter = new FingerprintChromiumAdapter({
+      hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
       screenSize: { width: 2560, height: 1440 },
@@ -112,6 +115,7 @@ describe("FingerprintChromiumAdapter", () => {
     const root = await tempRoot()
     const calls: string[][] = []
     const adapter = new FingerprintChromiumAdapter({
+      hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
       spawn: fakeSpawn((_command, args) => {
@@ -149,6 +153,7 @@ describe("FingerprintChromiumAdapter", () => {
     const root = await tempRoot()
     let spawnCount = 0
     const adapter = new FingerprintChromiumAdapter({
+      hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
       spawn: fakeSpawn(() => {
@@ -180,6 +185,7 @@ describe("FingerprintChromiumAdapter", () => {
       return child
     })
     const adapter = new FingerprintChromiumAdapter({
+      hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
       spawn,
@@ -221,6 +227,7 @@ describe("FingerprintChromiumAdapter", () => {
       return new FakeChild()
     })
     const adapter = new FingerprintChromiumAdapter({
+      hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
       spawn,
@@ -253,6 +260,7 @@ describe("FingerprintChromiumAdapter", () => {
       const args = [`--${key}=example`]
       const calls: string[][] = []
       const adapter = new FingerprintChromiumAdapter({
+        hostArch: process.arch,
         binaryPath: binary,
         profilesRoot: root,
         spawn: fakeSpawn((_command, values) => {
@@ -289,6 +297,7 @@ describe("FingerprintChromiumAdapter", () => {
     const root = await tempRoot()
     const calls: string[][] = []
     const adapter = new FingerprintChromiumAdapter({
+      hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
       spawn: fakeSpawn((_command, args) => {
@@ -314,6 +323,7 @@ describe("FingerprintChromiumAdapter", () => {
     const root = await tempRoot()
     const children: FakeChild[] = []
     const adapter = new FingerprintChromiumAdapter({
+      hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
       spawn: fakeSpawn(() => {
@@ -342,6 +352,7 @@ describe("FingerprintChromiumAdapter", () => {
     const binary = await fakeBinary()
     const root = await tempRoot()
     const adapter = new FingerprintChromiumAdapter({
+      hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
       spawn: fakeSpawn(() => new FakeChild()),
@@ -363,6 +374,7 @@ describe("FingerprintChromiumAdapter", () => {
     const child = new FakeChild()
     child.exitOnTerminate = false
     const adapter = new FingerprintChromiumAdapter({
+      hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
       spawn: fakeSpawn(() => child),
@@ -383,6 +395,7 @@ describe("FingerprintChromiumAdapter", () => {
     const binary = await fakeBinary()
     const root = await tempRoot()
     const adapter = new FingerprintChromiumAdapter({
+      hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
       spawn: fakeSpawn(() => {
@@ -404,6 +417,7 @@ describe("FingerprintChromiumAdapter", () => {
   it("rejects account IDs that could escape the profile root", async () => {
     const root = await tempRoot()
     const adapter = new FingerprintChromiumAdapter({
+      hostArch: process.arch,
       binaryPath: "/tmp/chromium",
       profilesRoot: root,
     })
@@ -414,6 +428,7 @@ describe("FingerprintChromiumAdapter", () => {
     const binary = await fakeBinary()
     const root = await tempRoot()
     const adapter = new FingerprintChromiumAdapter({
+      hostArch: process.arch,
       profilesRoot: root,
       env: { PIGCLAUDE_FINGERPRINT_CHROMIUM_BIN: binary },
     })

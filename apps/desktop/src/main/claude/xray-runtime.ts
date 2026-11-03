@@ -140,9 +140,17 @@ export function createXrayRuntimeStarter(options: XrayRuntimeOptions): XrayRunti
         if (!started && (failedChild.exitCode !== null || failedChild.signalCode !== null)) {
           await exited?.catch(() => undefined)
         }
-        if (!started && xrayExited && (await isPortOpen(port))) {
-          children.delete(failedChild)
-          throw new XrayPortInUseError()
+        if (!started && xrayExited) {
+          let portOpen: boolean
+          try {
+            portOpen = await isPortOpen(port)
+          } catch {
+            throw unavailable()
+          }
+          if (portOpen) {
+            children.delete(failedChild)
+            throw new XrayPortInUseError()
+          }
         }
         try {
           await cleanupChild(failedChild)
@@ -281,7 +289,11 @@ async function reservePort(): Promise<number> {
 async function waitForPortRelease(port: number): Promise<void> {
   const deadline = Date.now() + 3_000
   while (Date.now() < deadline) {
-    if (!(await isPortOpen(port))) return
+    try {
+      if (!(await isPortOpen(port))) return
+    } catch (error: unknown) {
+      if (!(error instanceof Error && "code" in error && error.code === "ECONNRESET")) throw error
+    }
     await new Promise((resolve) => setTimeout(resolve, 25))
   }
   throw unavailable()
@@ -297,7 +309,6 @@ async function isPortOpen(port: number): Promise<boolean> {
     })
     socket.once("error", (error: NodeJS.ErrnoException) => {
       if (error.code === "ECONNREFUSED") resolve(false)
-      else if (error.code === "ECONNRESET") resolve(true)
       else reject(error)
     })
   })

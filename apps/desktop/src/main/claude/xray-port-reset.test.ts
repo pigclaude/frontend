@@ -3,7 +3,7 @@
 import type { ChildProcess, spawn } from "node:child_process"
 import { EventEmitter } from "node:events"
 import { PassThrough } from "node:stream"
-import { expect, it, vi } from "vitest"
+import { beforeEach, expect, it, vi } from "vitest"
 import { createXrayRuntimeStarter } from "./xray-runtime"
 
 const probe = vi.hoisted(() => ({ port: 31_337, attempts: 0 }))
@@ -25,6 +25,10 @@ vi.mock("node:net", async (loadOriginal) => {
       return socket
     },
   }
+})
+
+beforeEach(() => {
+  probe.attempts = 0
 })
 
 it("端口检查暂时被重置时，等待释放并按原端口恢复", async () => {
@@ -57,6 +61,31 @@ it("端口检查暂时被重置时，等待释放并按原端口恢复", async (
   }
 })
 
+it("首次启动失败时端口状态不明，不将其误判为端口占用", async () => {
+  const watchdogs: FakeWatchdog[] = []
+  const fakeSpawn = (() => {
+    const child = new FakeWatchdog(true)
+    watchdogs.push(child)
+    return child as unknown as ChildProcess
+  }) as typeof spawn
+  const start = createXrayRuntimeStarter({
+    binaryPath: process.execPath,
+    hostArch: process.arch,
+    spawn: fakeSpawn,
+    allocatePort: async () => probe.port,
+    idleTimeoutMs: 0,
+  })
+  try {
+    await expect(start({ upstreamProxyUrl: "http://127.0.0.1:9" })).rejects.toMatchObject({
+      code: "PROXY_UNAVAILABLE",
+    })
+    expect(watchdogs).toHaveLength(1)
+    expect(probe.attempts).toBe(1)
+  } finally {
+    await start.dispose()
+  }
+})
+
 class FakeWatchdog extends EventEmitter {
   readonly pid = 1
   readonly stdin = new PassThrough()
@@ -64,9 +93,16 @@ class FakeWatchdog extends EventEmitter {
   exitCode: number | null = null
   signalCode: NodeJS.Signals | null = null
 
-  constructor() {
+  constructor(exitBeforeReady = false) {
     super()
-    this.stdin.once("data", () => this.stdout.write("XRAY_READY\n"))
+    this.stdin.once("data", () => {
+      if (exitBeforeReady) {
+        this.stdout.write("XRAY_EXITED\n")
+        this.finish(1)
+      } else {
+        this.stdout.write("XRAY_READY\n")
+      }
+    })
     this.stdin.once("finish", () => this.finish(0))
   }
 

@@ -17,6 +17,7 @@ import {
 export type OnboardingScreenProps = {
   onFinish: () => void
   onOpenAuthorize: (state: OnboardingState) => void
+  onAddProxy: (input: { name: string; url: string }) => Promise<void>
   resume?: OnboardingState
 }
 
@@ -39,8 +40,14 @@ const stepCopy: Record<OnboardingStep, { icon: string; title: string; why: strin
 }
 
 /** 画出整窗引导，不带侧栏。保证每一步都能跳过，后一步不因前一步跳过而锁定。 */
-export function OnboardingScreen({ onFinish, onOpenAuthorize, resume }: OnboardingScreenProps) {
+export function OnboardingScreen({
+  onFinish,
+  onOpenAuthorize,
+  onAddProxy,
+  resume,
+}: OnboardingScreenProps) {
   const [state, setState] = useState(() => resume ?? createOnboardingState())
+  const [proxyPending, setProxyPending] = useState(false)
   const heading = useRef<HTMLHeadingElement>(null)
   const moved = useRef(resume !== undefined)
   const index = onboardingSteps.indexOf(state.step)
@@ -64,7 +71,13 @@ export function OnboardingScreen({ onFinish, onOpenAuthorize, resume }: Onboardi
     <div className="win onboarding" data-screen="onboarding">
       <div className="win-top">
         <TrafficLights />
-        <Button className="wizard-cancel" variant="ghost" size="sm" onClick={onFinish}>
+        <Button
+          className="wizard-cancel"
+          variant="ghost"
+          size="sm"
+          onClick={onFinish}
+          disabled={proxyPending}
+        >
           稍后再说
         </Button>
       </div>
@@ -84,6 +97,8 @@ export function OnboardingScreen({ onFinish, onOpenAuthorize, resume }: Onboardi
             <p className="onboarding-why">{copy.why}</p>
             {state.step === "proxy" ? (
               <ProxyStep
+                onAddProxy={onAddProxy}
+                onPendingChange={setProxyPending}
                 onAdded={() => advance({ type: "complete" })}
                 onSkip={() => advance({ type: "skip" })}
               />
@@ -108,14 +123,55 @@ export function OnboardingScreen({ onFinish, onOpenAuthorize, resume }: Onboardi
   )
 }
 
-/** 第 1 步：代理地址输入和「测试并添加」。目前只是界面层假行为，按下即视为添加成功。 */
-function ProxyStep({ onAdded, onSkip }: { onAdded: () => void; onSkip: () => void }) {
+/** 第 1 步：实际核对并保存代理，失败时保留当前输入。 */
+function ProxyStep({
+  onAddProxy,
+  onPendingChange,
+  onAdded,
+  onSkip,
+}: {
+  onAddProxy: (input: { name: string; url: string }) => Promise<void>
+  onPendingChange: (pending: boolean) => void
+  onAdded: () => void
+  onSkip: () => void
+}) {
   const [address, setAddress] = useState("")
-  const ready = address.trim() !== ""
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const inFlight = useRef(false)
+  const ready = address.trim() !== "" && !pending
 
   function submit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    if (ready) onAdded()
+    if (!ready || inFlight.current) return
+    let name: string
+    try {
+      const parsed = new URL(address.trim())
+      if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || !parsed.host)
+        throw new Error()
+      name = parsed.host
+    } catch {
+      setError("代理地址无效，请输入 HTTP 或 HTTPS 代理地址。")
+      return
+    }
+    inFlight.current = true
+    setPending(true)
+    setError(null)
+    onPendingChange(true)
+    void onAddProxy({ name, url: address.trim() }).then(
+      () => {
+        inFlight.current = false
+        setPending(false)
+        onPendingChange(false)
+        onAdded()
+      },
+      () => {
+        inFlight.current = false
+        setPending(false)
+        onPendingChange(false)
+        setError("代理验证失败，请检查代理和 Xray 后重试。")
+      },
+    )
   }
 
   return (
@@ -127,15 +183,17 @@ function ProxyStep({ onAdded, onSkip }: { onAdded: () => void; onSkip: () => voi
         placeholder="http://user:pass@host:8000"
         autoComplete="off"
         spellCheck={false}
+        disabled={pending}
         value={address}
         onChange={(event) => setAddress(event.target.value)}
       />
       <p className="onboarding-hint" id="onboarding-proxy-hint">
         支持 http、https，添加前会先测试一次；也可以跳过，让账号使用系统网络
       </p>
-      <StepFoot onSkip={onSkip}>
+      {error !== null && <p role="alert">{error}</p>}
+      <StepFoot onSkip={onSkip} disabled={pending}>
         <Button variant="primary" size="lg" type="submit" disabled={!ready}>
-          测试并添加
+          {pending ? "正在验证…" : "测试并添加"}
         </Button>
       </StepFoot>
     </form>
@@ -143,10 +201,18 @@ function ProxyStep({ onAdded, onSkip }: { onAdded: () => void; onSkip: () => voi
 }
 
 /** 每步底部一行：左边「跳过」，右边这一步的主操作。 */
-function StepFoot({ onSkip, children }: { onSkip: () => void; children: ReactNode }) {
+function StepFoot({
+  onSkip,
+  children,
+  disabled = false,
+}: {
+  onSkip: () => void
+  children: ReactNode
+  disabled?: boolean
+}) {
   return (
     <div className="onboarding-foot">
-      <Button variant="ghost" size="lg" type="button" onClick={onSkip}>
+      <Button variant="ghost" size="lg" type="button" onClick={onSkip} disabled={disabled}>
         跳过
       </Button>
       {children}

@@ -391,6 +391,7 @@ export function DesktopApp() {
     return (
       <OnboardingScreen
         key={onboardingReturn?.step ?? "start"}
+        onAddProxy={claudeAccounts.addVerifiedProxy}
         onFinish={finishOnboarding}
         onOpenAuthorize={openAuthorize}
         resume={onboardingReturn}

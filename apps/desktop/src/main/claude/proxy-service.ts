@@ -59,6 +59,37 @@ export class ProxyService {
     return toView(proxy)
   }
 
+  /** 使用 Xray 核对新代理出口，只有验证成功后才持久化。 */
+  async saveVerified(input: { name: string; url: string }): Promise<ProxyView> {
+    const name = input.name.trim()
+    if (name === "") throw new ClaudeAccountError("INVALID_INPUT", "代理名称不能为空")
+    assertProxyUrl(input.url)
+    const startedAt = Date.now()
+    let result: EgressView
+    try {
+      result = await this.checkProxyEgress(input.url)
+    } catch {
+      throw new ClaudeAccountError("PROXY_UNAVAILABLE", "代理验证失败，请检查代理和 Xray")
+    }
+    if (!result.ok) {
+      throw new ClaudeAccountError("PROXY_UNAVAILABLE", "代理验证失败，请检查代理和 Xray")
+    }
+    const proxy: IpProxy = {
+      schemaVersion: 1,
+      id: randomUUID(),
+      name,
+      url: input.url,
+      lastTest: {
+        ok: true,
+        ip: result.ip,
+        latencyMs: Date.now() - startedAt,
+        testedAt: new Date(this.#now()).toISOString(),
+      },
+    }
+    await this.#store.saveProxy(proxy)
+    return toView(proxy)
+  }
+
   /** 删除代理。保证不删除账号记录。 */
   async remove(id: string): Promise<void> {
     await this.#store.removeProxy(id)
@@ -108,10 +139,14 @@ export class ProxyService {
   async checkEgress(id: string): Promise<EgressView> {
     const proxy = await this.#store.getProxy(id)
     if (proxy === null) throw new ClaudeAccountError("PROXY_INVALID", "代理不存在")
+    return this.checkProxyEgress(proxy.url)
+  }
+
+  private async checkProxyEgress(upstreamProxyUrl: string): Promise<EgressView> {
     if (this.#startProxyRuntime === undefined) {
       throw new ClaudeAccountError("PROXY_UNAVAILABLE", "Xray 代理尚未接入，无法核对浏览器出口")
     }
-    const runtime = await this.#startProxyRuntime({ upstreamProxyUrl: proxy.url })
+    const runtime = await this.#startProxyRuntime({ upstreamProxyUrl })
     try {
       const bridgeUrl = runtime?.url
       if (!isValidBridgeUrl(bridgeUrl)) {
@@ -119,7 +154,7 @@ export class ProxyService {
       }
       const result = await checkEgress({
         bridgeUrl,
-        upstreamProxyUrl: proxy.url,
+        upstreamProxyUrl,
         checkUrl: this.#checkUrl,
       })
       runtime.assertRunning?.()

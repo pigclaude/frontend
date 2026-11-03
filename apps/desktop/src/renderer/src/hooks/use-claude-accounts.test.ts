@@ -94,6 +94,28 @@ function installBridge(overrides: {
 }
 
 describe("useClaudeAccounts errors", () => {
+  it("does not let an older proxy refresh erase a newly verified proxy", async () => {
+    installBridge({})
+    const proxies = window.pigclaude?.proxies
+    if (!proxies) throw new Error("proxy bridge missing")
+    let resolveOld: (items: ProxyView[]) => void = () => undefined
+    proxies.list = () =>
+      new Promise((resolve) => {
+        resolveOld = resolve
+      })
+    const verified: ProxyView = {
+      id: "verified",
+      name: "已验证代理",
+      url: "http://proxy.test:8000",
+      lastTest: { ok: true, ip: "203.0.113.42", latencyMs: 1, testedAt: "2026-11-04" },
+    }
+    proxies.saveVerified = async () => verified
+    await act(async () => root.render(createElement(Probe)))
+    await act(async () => controller?.addVerifiedProxy({ name: verified.name, url: verified.url }))
+    await act(async () => resolveOld([]))
+    expect(controller?.proxies).toEqual([verified])
+  })
+
   it("shows the main-process message without the Electron prefix and keeps it after refresh", async () => {
     const { list } = installBridge({
       remove: async () => {

@@ -124,6 +124,7 @@ function installBridge(userId = "u1"): (event: ClaudeAccountEvent) => void {
     proxies: {
       list: async () => [proxy],
       save: async () => proxy,
+      saveVerified: async () => proxy,
       remove: async () => undefined,
       test: async () => proxy,
     },
@@ -248,6 +249,61 @@ describe("desktop onboarding gate", () => {
 
     expect(container.textContent).toContain("第 2 步，共 3 步")
     expect(progress()).toEqual(["done", "current", "todo"])
+  })
+
+  it("tests and saves the onboarding proxy before showing it for account binding", async () => {
+    installBridge()
+    const bridge = window.pigclaude?.proxies
+    if (!bridge) throw new Error("missing synthetic proxy bridge")
+    const saved: ProxyView[] = []
+    bridge.list = vi.fn(async () => [...saved])
+    bridge.saveVerified = vi.fn(async (input) => {
+      const proxy: ProxyView = {
+        id: "new-proxy",
+        name: input.name,
+        url: "http://user:***@proxy.test:8000",
+        lastTest: { ok: true, ip: "203.0.113.42", latencyMs: 1, testedAt: "2026-11-04" },
+      }
+      saved.push(proxy)
+      return proxy
+    })
+    await act(async () => root.render(createElement(DesktopApp)))
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="代理地址"]')
+    await act(async () => {
+      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set
+      setValue?.call(input, "http://user:pass@proxy.test:8000")
+      input?.dispatchEvent(new Event("input", { bubbles: true }))
+    })
+    await click("测试并添加")
+    await click("添加账号")
+    await click("下一步")
+
+    expect(container.textContent).not.toContain("还没有代理")
+    expect(bridge.saveVerified).toHaveBeenCalledWith({
+      name: "proxy.test:8000",
+      url: "http://user:pass@proxy.test:8000",
+    })
+  })
+
+  it("stays on the proxy step when the Xray verification fails", async () => {
+    installBridge()
+    const bridge = window.pigclaude?.proxies
+    if (!bridge) throw new Error("missing synthetic proxy bridge")
+    bridge.saveVerified = vi.fn(async () => {
+      throw new Error("PROXY_UNAVAILABLE")
+    })
+    await act(async () => root.render(createElement(DesktopApp)))
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="代理地址"]')
+    await act(async () => {
+      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set
+      setValue?.call(input, "http://user:pass@proxy.test:8000")
+      input?.dispatchEvent(new Event("input", { bubbles: true }))
+    })
+    await click("测试并添加")
+
+    expect(container.textContent).toContain("代理验证失败")
+    expect(progress()).toEqual(["current", "todo", "todo"])
+    expect(container.textContent).not.toContain("第 2 步，共 3 步")
   })
 
   it("coalesces double clicks and waits for the old authorization to finish before retry", async () => {

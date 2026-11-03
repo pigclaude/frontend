@@ -1,0 +1,37 @@
+# 在 Windows 原生环境验证 Xray 守护进程异常退出后的资源回收。
+name: Xray Windows watchdog verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/issue9-windows-watchdog
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 获取并校验 Xray
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "pigclaude-xray-win.zip"
+          $directory = Join-Path $env:RUNNER_TEMP "pigclaude-xray-win"
+          Invoke-WebRequest "https://github.com/XTLS/Xray-core/releases/download/v26.10.31/Xray-windows-64.zip" -OutFile $archive
+          $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne "2e04a9995a6f2ad1b28c0bb25c708ecb2695e43a1c9c7889c4b6ac2b48cf7a6a") { throw "Xray 包校验失败" }
+          Expand-Archive $archive -DestinationPath $directory
+          "PIGCLAUDE_TEST_XRAY_BIN=$(Join-Path $directory 'xray.exe')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: 验证守护进程异常退出
+        working-directory: apps/desktop
+        run: pnpm exec vitest run --maxWorkers=1 src/main/claude/xray-windows-watchdog-crash.integration.test.ts

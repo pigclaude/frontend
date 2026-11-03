@@ -1,6 +1,6 @@
 // 为异常退出测试启动一个持有真实 Xray 的独立合成桌面进程。
 
-import { writeFile } from "node:fs/promises"
+import { rename, writeFile } from "node:fs/promises"
 import { it } from "vitest"
 import { createXrayRuntimeStarter } from "./xray-runtime"
 
@@ -14,7 +14,8 @@ it.skipIf(!output || !binary)(
     if (!output || !binary) throw new Error("缺少合成测试参数")
     const start = createXrayRuntimeStarter({ hostArch: process.arch, binaryPath: binary })
     const runtime = await start({ upstreamProxyUrl: "http://127.0.0.1:9" })
-    await writeFile(output, runtime.url)
+    await writeFile(`${output}.tmp`, runtime.url)
+    await rename(`${output}.tmp`, output)
     if (outcome !== undefined) {
       let interrupted = false
       const timer = setInterval(() => {
@@ -22,7 +23,9 @@ it.skipIf(!output || !binary)(
           runtime.assertRunning?.()
           if (interrupted) {
             clearInterval(timer)
-            void writeFile(outcome, "restored")
+            void writeFile(`${outcome}.tmp`, "restored").then(() =>
+              rename(`${outcome}.tmp`, outcome),
+            )
           }
         } catch {
           interrupted = true

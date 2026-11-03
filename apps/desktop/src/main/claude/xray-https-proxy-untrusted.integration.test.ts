@@ -17,8 +17,8 @@ const fixtures = resolve(
 it.skipIf(!binary)(
   "HTTPS 上游代理证书不受信任时拒绝连接，目标未收到请求",
   async () => {
-    const key = await readFile(join(fixtures, "loopback-ip-synthetic-key.pem"))
-    const cert = await readFile(join(fixtures, "loopback-ip-synthetic-cert.pem"))
+    const key = await readFile(join(fixtures, "localhost-synthetic-key.pem"))
+    const cert = await readFile(join(fixtures, "localhost-synthetic-cert.pem"))
     const proxy = createHttpsServer({ key, cert })
     let rejected = 0
     proxy.on("tlsClientError", () => {
@@ -35,9 +35,9 @@ it.skipIf(!binary)(
       idleTimeoutMs: 0,
     })
     try {
-      const proxyPort = await listen(proxy)
+      const proxyPort = await listen(proxy, "::")
       const targetPort = await listen(target)
-      const runtime = await start({ upstreamProxyUrl: `https://127.0.0.1:${proxyPort}` })
+      const runtime = await start({ upstreamProxyUrl: `https://localhost:${proxyPort}` })
       const client = createXrayHttpClient(runtime.url)
       try {
         await expect(
@@ -65,10 +65,13 @@ it.skipIf(!binary)(
   15_000,
 )
 
-async function listen(server: ReturnType<typeof createHttpServer>): Promise<number> {
+async function listen(
+  server: ReturnType<typeof createHttpServer>,
+  host = "127.0.0.1",
+): Promise<number> {
   await new Promise<void>((ready, reject) => {
     server.once("error", reject)
-    server.listen(0, "127.0.0.1", ready)
+    server.listen(0, host, ready)
   })
   const address = server.address()
   if (address === null || typeof address === "string") throw new Error("合成服务未启动")

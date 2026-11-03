@@ -53,7 +53,7 @@ it.skipIf(!browserBinary || !xrayBinary)(
       browser = await within(chromium.connectOverCDP(`http://127.0.0.1:${port}`), 5_000)
       const context = browser.contexts()[0]
       if (context === undefined) throw new Error("浏览器上下文不可用")
-      const page = await context.newPage()
+      const page = await within(context.newPage(), 5_000)
       const activeFixture = fixture
       const before = activeFixture.requests()
       try {

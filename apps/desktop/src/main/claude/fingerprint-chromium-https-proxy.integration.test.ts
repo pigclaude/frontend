@@ -100,7 +100,7 @@ it.skipIf(!browserBinary || !xrayBinary || !trustedTargetCertificate)(
       browser = await within(chromium.connectOverCDP(`http://127.0.0.1:${port}`), 5_000)
       const context = browser.contexts()[0]
       if (context === undefined) throw new Error("浏览器上下文不可用")
-      const page = await context.newPage()
+      const page = await within(context.newPage(), 5_000)
       const response = await page.goto(`https://127.0.0.1:${targetPort}/before`, {
         timeout: 10_000,
       })

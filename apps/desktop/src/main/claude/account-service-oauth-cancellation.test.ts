@@ -21,6 +21,7 @@ it.each(["exchange", "profile"] as const)("取消会中止 OAuth 的 %s 请求",
     buildAuthorizeUrl: () => "https://synthetic.invalid/authorize",
     startCallback: async () => ({
       redirectUri: "http://localhost:1234/callback",
+      isComplete: () => true,
       waitForCode: async () => "code",
       cancel: () => undefined,
       close: async () => undefined,

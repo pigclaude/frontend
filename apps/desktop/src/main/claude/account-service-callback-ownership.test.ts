@@ -1,12 +1,15 @@
 // 验证授权结束或取消时，浏览器退出之前始终保留本次回调和 Xray 资源。
 
 import { expect, it } from "vitest"
-import { createHarness, fingerprint, seedAccount } from "./account-service-test-fixtures"
-import { ClaudeAccountError } from "./errors"
+import {
+  createHarness,
+  createWaitingCallback,
+  fingerprint,
+  seedAccount,
+} from "./account-service-test-fixtures"
 import { BrowserLaunchError } from "./fingerprint-chromium"
 
 it("取消等待后，浏览器退出前不释放回调端口或 Xray", async () => {
-  let rejectCode: (error: Error) => void = () => undefined
   let releaseStop: () => void = () => undefined
   let observeStop: () => void = () => undefined
   let observeWaiting: () => void = () => undefined
@@ -20,17 +23,16 @@ it("取消等待后，浏览器退出前不释放回调端口或 Xray", async ()
     releaseStop = resolve
   })
   let closed = false
+  const waitingCallback = createWaitingCallback()
   const callback = {
-    redirectUri: "http://localhost:1234/callback",
-    waitForCode: () =>
-      new Promise<string>((_resolve, reject) => {
-        rejectCode = reject
-        observeWaiting()
-      }),
-    cancel: () => rejectCode(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消")),
+    ...waitingCallback,
+    waitForCode: () => {
+      observeWaiting()
+      return waitingCallback.waitForCode()
+    },
     close: async () => {
       closed = true
-      rejectCode(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消"))
+      await waitingCallback.close()
     },
   }
   const harness = await createHarness({
@@ -64,6 +66,7 @@ it("浏览器停止失败时保留回调和 Xray，重试成功后再释放", as
   let closed = false
   const callback = {
     redirectUri: "http://localhost:1234/callback",
+    isComplete: () => true,
     waitForCode: async () => "synthetic-code",
     cancel: () => undefined,
     close: async () => {
@@ -91,22 +94,21 @@ it("浏览器停止失败时保留回调和 Xray，重试成功后再释放", as
 })
 
 it("授权清理失败时不删除账号或配置目录", async () => {
-  let rejectCode: (error: Error) => void = () => undefined
   let observeWaiting: () => void = () => undefined
   const waiting = new Promise<void>((resolve) => {
     observeWaiting = resolve
   })
   let allowClose = false
+  const waitingCallback = createWaitingCallback()
   const callback = {
-    redirectUri: "http://localhost:1234/callback",
-    waitForCode: () =>
-      new Promise<string>((_resolve, reject) => {
-        rejectCode = reject
-        observeWaiting()
-      }),
-    cancel: () => rejectCode(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消")),
+    ...waitingCallback,
+    waitForCode: () => {
+      observeWaiting()
+      return waitingCallback.waitForCode()
+    },
     close: async () => {
       if (!allowClose) throw new Error("回调关闭失败")
+      await waitingCallback.close()
     },
   }
   const harness = await createHarness({ callback })
@@ -132,6 +134,7 @@ it("授权清理失败时不删除账号或配置目录", async () => {
 it("授权结束后仍有未回收资源时不删除账号", async () => {
   const callback = {
     redirectUri: "http://localhost:1234/callback",
+    isComplete: () => true,
     waitForCode: async () => "synthetic-code",
     cancel: () => undefined,
     close: async () => undefined,

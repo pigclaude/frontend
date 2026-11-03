@@ -8,6 +8,7 @@ it("rechecks pending cleanup after another account has passed the entry gate", a
   let releaseMembership: () => void = () => undefined
   let enterMembership: () => void = () => undefined
   let resolveCode: (code: string) => void = () => undefined
+  let callbackComplete = false
   const membershipGate = new Promise<void>((resolve) => {
     releaseMembership = resolve
   })
@@ -15,12 +16,16 @@ it("rechecks pending cleanup after another account has passed the entry gate", a
     enterMembership = resolve
   })
   const code = new Promise<string>((resolve) => {
-    resolveCode = resolve
+    resolveCode = (value) => {
+      callbackComplete = true
+      resolve(value)
+    }
   })
   let calls = 0
   const harness = await createHarness({
     callback: {
       redirectUri: "http://localhost:1234/callback",
+      isComplete: () => callbackComplete,
       waitForCode: () => code,
       cancel: () => undefined,
       close: async () => undefined,
@@ -63,6 +68,7 @@ it("回调正在关闭时不启动另一个浏览器，关闭失败后保留资�
   })
   const callback = {
     redirectUri: "http://localhost:1234/callback",
+    isComplete: () => true,
     waitForCode: async () => "synthetic-code",
     cancel: () => undefined,
     close: async () => {

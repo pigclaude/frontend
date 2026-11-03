@@ -70,6 +70,7 @@ it.each(["handshake", "body"] as const)(
           buildAuthorizeUrl: () => "https://synthetic.invalid/authorize",
           startCallback: async () => ({
             redirectUri: "http://localhost:1234/callback",
+            isComplete: () => true,
             waitForCode: async () => "code",
             cancel: () => undefined,
             close: async () => undefined,

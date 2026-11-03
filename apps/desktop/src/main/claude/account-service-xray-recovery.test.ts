@@ -10,6 +10,13 @@ it("回调到达时 Xray 正在恢复，等待恢复后继续授权", async () =
   let observeRestart: () => void = () => undefined
   let deliverCode: (code: string) => void = () => undefined
   let observeWaiting: () => void = () => undefined
+  let callbackComplete = false
+  const code = new Promise<string>((resolve) => {
+    deliverCode = (value) => {
+      callbackComplete = true
+      resolve(value)
+    }
+  })
   const exited = new Promise<void>((resolve) => {
     exit = resolve
   })
@@ -34,11 +41,11 @@ it("回调到达时 Xray 正在恢复，等待恢复后继续授权", async () =
     proxyRuntime: runtime,
     callback: {
       redirectUri: "http://localhost:1234/callback",
-      waitForCode: () =>
-        new Promise<string>((resolve) => {
-          deliverCode = resolve
-          observeWaiting()
-        }),
+      isComplete: () => callbackComplete,
+      waitForCode: () => {
+        observeWaiting()
+        return code
+      },
       cancel: () => undefined,
       close: async () => undefined,
     },

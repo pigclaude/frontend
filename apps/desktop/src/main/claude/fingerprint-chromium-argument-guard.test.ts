@@ -7,11 +7,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
-import {
-  FingerprintChromiumAdapter,
-  type LaunchBrowserInput,
-  type LaunchBrowserNetwork,
-} from "./fingerprint-chromium"
+import { type LaunchBrowserInput, type LaunchBrowserNetwork } from "./fingerprint-chromium"
+import { createSyntheticBrowserAdapter } from "./browser-startup-test-utils"
 
 const roots: string[] = []
 
@@ -150,6 +147,22 @@ describe("受管浏览器启动参数", () => {
     expect(calls).toEqual([])
   })
 
+  it("places the controlled startup switches before a raw argument terminator", async () => {
+    const { adapter, calls } = await createAdapter(process.platform)
+    await adapter.launch({
+      accountId: "fixture",
+      authorizeUrl: "https://example.test/authorize",
+      network: { mode: "system" },
+      fingerprint: { ...fingerprint, unknownArgs: ["--", "synthetic-value"] },
+    })
+    const args = calls[0] ?? []
+    const terminator = args.indexOf("--")
+    expect(terminator).toBeGreaterThan(0)
+    expect(args.indexOf("--remote-debugging-pipe")).toBeLessThan(terminator)
+    expect(args.indexOf("--no-startup-window")).toBeLessThan(terminator)
+    expect(args.slice(terminator)).toEqual(["--", "synthetic-value"])
+  })
+
   it.each([
     { args: ["--proxy-server"] },
     { args: ["--proxy-server="] },
@@ -190,10 +203,7 @@ describe("受管浏览器启动参数", () => {
       network: { mode: "system" },
       fingerprint: { ...fingerprint, unknownArgs },
     })
-    expect(calls[0]?.slice(-unknownArgs.length - 1)).toEqual([
-      ...unknownArgs,
-      "https://example.test/authorize",
-    ])
+    expect(calls[0]?.slice(-unknownArgs.length)).toEqual(unknownArgs)
   })
 
   it("does not treat a bound account with a missing bridge as system networking", async () => {
@@ -326,7 +336,7 @@ async function createAdapter(hostPlatform: NodeJS.Platform) {
     return child as unknown as ChildProcess
   }) as typeof spawn
   return {
-    adapter: new FingerprintChromiumAdapter({
+    adapter: createSyntheticBrowserAdapter({
       hostArch: process.arch,
       binaryPath: process.execPath,
       profilesRoot: root,

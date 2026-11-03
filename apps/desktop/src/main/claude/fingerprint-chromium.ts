@@ -5,6 +5,12 @@ import { mkdir, rm } from "node:fs/promises"
 import { homedir } from "node:os"
 import { isAbsolute, join, relative } from "node:path"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
+import { BrowserProcessExitedError } from "./browser-control-pipe"
+import {
+  BrowserStartupTimeoutError,
+  openAuthorizedPage,
+  type BrowserStartupInput,
+} from "./browser-startup"
 import { buildFingerprintArgs, ensureFingerprint, type ScreenSize } from "./fingerprint-args"
 import {
   launchArgumentConflict,
@@ -41,6 +47,8 @@ export type FingerprintChromiumConfig = {
   env?: Record<string, string | undefined>
   homeDir?: string
   spawn?: typeof spawn
+  /** 页面启动操作；缺省通过本次浏览器进程的管道执行。 */
+  openPage?: (input: BrowserStartupInput) => Promise<void>
   stopTimeoutMs?: number
   /** 宿主屏幕可用区域，用于计算默认窗口大小；缺省按 1920x1080。 */
   screenSize?: ScreenSize
@@ -66,6 +74,8 @@ export type LaunchBrowserInput = {
   signal?: AbortSignal
   /** 在同步创建进程前重新核对授权服务的启动条件。 */
   assertCanSpawn?: () => void
+  /** 打开授权页面前再次确认回调仍在等待。 */
+  assertCanNavigate?: () => void
 }
 
 /** 一次成功启动的结果。 */
@@ -76,6 +86,18 @@ export type LaunchedBrowser = {
   exited: Promise<void>
   /** 只停止这次启动的进程，不影响同账号后续启动的实例。 */
   stop: () => Promise<void>
+}
+
+/** 启动失败且进程未确认退出时，保留该实例供上层继续回收。 */
+export class BrowserStartupCleanupError extends BrowserLaunchError {
+  readonly browser: LaunchedBrowser
+
+  /** 创建携带待回收实例的脱敏错误。 */
+  constructor(browser: LaunchedBrowser) {
+    super("BROWSER_STOP_FAILED", "无法确认浏览器已退出，请手动关闭后重试")
+    this.name = "BrowserStartupCleanupError"
+    this.browser = browser
+  }
 }
 
 type ManagedProcess = {
@@ -91,6 +113,7 @@ export class FingerprintChromiumAdapter {
   readonly #env: Record<string, string | undefined>
   readonly #homeDir: string
   readonly #spawn: typeof spawn
+  readonly #openPage: (input: BrowserStartupInput) => Promise<void>
   readonly #stopTimeoutMs: number
   readonly #screenSize: ScreenSize | undefined
   readonly #hostPlatform: NodeJS.Platform
@@ -99,6 +122,7 @@ export class FingerprintChromiumAdapter {
   readonly #processes = new Map<string, ManagedProcess>()
   readonly #operations = new Map<string, Promise<void>>()
   readonly #stops = new Map<string, Set<{ expected?: ManagedProcess; promise: Promise<void> }>>()
+  readonly #shutdown = new AbortController()
   #closed = false
 
   /** 创建绑定到账号配置根目录的启动器。 */
@@ -108,6 +132,7 @@ export class FingerprintChromiumAdapter {
     this.#env = config.env ?? process.env
     this.#homeDir = config.homeDir ?? homedir()
     this.#spawn = config.spawn ?? spawn
+    this.#openPage = config.openPage ?? openAuthorizedPage
     this.#stopTimeoutMs = config.stopTimeoutMs ?? defaultStopTimeoutMs
     this.#screenSize = config.screenSize
     this.#hostPlatform = config.hostPlatform ?? process.platform
@@ -158,7 +183,7 @@ export class FingerprintChromiumAdapter {
   /** 启动内核并打开授权 URL。保证同一账号旧进程退出后才启动，种子由账号 ID 稳定生成。 */
   async launch(input: LaunchBrowserInput): Promise<LaunchedBrowser> {
     if (this.#closed) throw new BrowserLaunchError("BROWSER_START_FAILED", "浏览器启动器已关闭")
-    const { accountId, authorizeUrl, signal, assertCanSpawn } = input
+    const { accountId, authorizeUrl, signal, assertCanSpawn, assertCanNavigate } = input
     const validation = ensureFingerprint(input.fingerprint, accountId)
     if (!validation.ok) {
       throw new BrowserLaunchError("BROWSER_START_FAILED", validation.message)
@@ -182,18 +207,15 @@ export class FingerprintChromiumAdapter {
       await mkdir(profileDir, { recursive: true, mode: 0o700 })
       signal?.throwIfAborted()
       if (this.#closed) throw new BrowserLaunchError("BROWSER_START_FAILED", "浏览器启动器已关闭")
-      const args = buildLaunchArgs(
-        authorizeUrl,
-        network,
-        validation.fingerprint,
-        profileDir,
-        this.#screenSize,
-      )
+      const args = buildLaunchArgs(network, validation.fingerprint, profileDir, this.#screenSize)
       let child: ChildProcess
       let managed: ManagedProcess
       assertCanSpawn?.()
       try {
-        child = this.#spawn(binary, args, { detached: true, stdio: "ignore" })
+        child = this.#spawn(binary, args, {
+          detached: true,
+          stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"],
+        })
         managed = observeExit(child, (finished) => {
           if (this.#processes.get(accountId) === finished) this.#processes.delete(accountId)
         })
@@ -201,14 +223,59 @@ export class FingerprintChromiumAdapter {
       } catch {
         throw new BrowserLaunchError("BROWSER_START_FAILED", "启动指纹浏览器失败")
       }
-      child.unref()
       if (!managed.exited) this.#processes.set(accountId, managed)
-      return {
+      const launched: LaunchedBrowser = {
         profileDir,
         pid: child.pid ?? null,
         exited: waitForExit(managed),
         stop: () => this.#requestStop(accountId, managed),
       }
+      const startupSignal =
+        signal === undefined
+          ? this.#shutdown.signal
+          : AbortSignal.any([signal, this.#shutdown.signal])
+      let navigationError: unknown
+      let navigationBlocked = false
+      try {
+        await this.#openPage({
+          child,
+          authorizeUrl,
+          signal: startupSignal,
+          extensionArgs: validation.fingerprint.unknownArgs,
+          hostPlatform: this.#hostPlatform,
+          assertCanNavigate: () => {
+            try {
+              signal?.throwIfAborted()
+              if (this.#closed) {
+                throw new BrowserLaunchError("BROWSER_START_FAILED", "浏览器启动器已关闭")
+              }
+              assertCanSpawn?.()
+              assertCanNavigate?.()
+            } catch (error: unknown) {
+              navigationBlocked = true
+              navigationError = error
+              throw error
+            }
+          },
+        })
+        startupSignal.throwIfAborted()
+      } catch (error: unknown) {
+        try {
+          await this.#stopUnlocked(accountId, managed)
+        } catch {
+          throw new BrowserStartupCleanupError(launched)
+        }
+        signal?.throwIfAborted()
+        if (navigationBlocked) throw navigationError
+        if (this.#closed) throw new BrowserLaunchError("BROWSER_START_FAILED", "浏览器启动器已关闭")
+        if (error instanceof BrowserProcessExitedError) throw error
+        if (error instanceof BrowserStartupTimeoutError) {
+          throw new BrowserLaunchError("BROWSER_START_FAILED", error.message)
+        }
+        throw new BrowserLaunchError("BROWSER_START_FAILED", "无法确认扩展状态或打开授权页面")
+      }
+      child.unref()
+      return launched
     })
   }
 
@@ -283,6 +350,7 @@ export class FingerprintChromiumAdapter {
   /** 关闭启动入口并等待所有已开始的浏览器操作完成。 */
   async dispose(): Promise<void> {
     this.#closed = true
+    this.#shutdown.abort()
     const pending = [...this.#operations.values()]
     const [stops] = await Promise.allSettled([this.stopAll(), ...pending])
     if (stops?.status === "rejected") throw stops.reason
@@ -332,7 +400,6 @@ function validatedNetwork(network: LaunchBrowserNetwork): LaunchBrowserNetwork {
 }
 
 function buildLaunchArgs(
-  authorizeUrl: string,
   network: LaunchBrowserNetwork,
   fingerprint: ClaudeFingerprintView,
   profileDir: string,
@@ -355,8 +422,9 @@ function buildLaunchArgs(
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-sync",
+    "--remote-debugging-pipe",
+    "--no-startup-window",
     ...buildFingerprintArgs(fingerprint, { screen: screenSize }),
-    authorizeUrl,
   )
   return args
 }

@@ -3,8 +3,12 @@
 import { describe, expect, it } from "vitest"
 import { BrowserLaunchError } from "./fingerprint-chromium"
 import { ClaudeAccountError } from "./errors"
-import type { OAuthCallbackServer } from "./subscription-oauth"
-import { createHarness, fingerprint, seedAccount } from "./account-service-test-fixtures"
+import {
+  createHarness,
+  createWaitingCallback,
+  fingerprint,
+  seedAccount,
+} from "./account-service-test-fixtures"
 
 describe("ClaudeAccountService", () => {
   it.each(["default_public_interface_only", "default_public_and_private_interfaces"] as const)(
@@ -227,27 +231,7 @@ describe("ClaudeAccountService", () => {
   })
 
   it("cancels a pending authorization and stops the browser instance", async () => {
-    let rejectWait: ((error: Error) => void) | null = null
-    let cancelled = false
-    const callback: OAuthCallbackServer = {
-      redirectUri: "http://localhost:1234/callback",
-      waitForCode: () => {
-        if (cancelled) {
-          return Promise.reject(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消"))
-        }
-        return new Promise<string>((_resolve, reject) => {
-          rejectWait = reject
-        })
-      },
-      cancel: () => {
-        cancelled = true
-        rejectWait?.(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消"))
-      },
-      close: async () => {
-        cancelled = true
-        rejectWait?.(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消"))
-      },
-    }
+    const callback = createWaitingCallback()
     const harness = await createHarness({ callback })
     const pending = harness.service.authorize({
       displayName: "工作账号",

@@ -4,8 +4,13 @@ import { createServer, type Server } from "node:http"
 import { connect, createServer as createNetServer } from "node:net"
 import type { Duplex } from "node:stream"
 import { expect, it } from "vitest"
-import { createHarness, fingerprint, type Harness } from "./account-service-test-fixtures"
-import { SubscriptionOAuth } from "./subscription-oauth"
+import {
+  createHarness,
+  fingerprint,
+  waitForTestSignal,
+  type Harness,
+} from "./account-service-test-fixtures"
+import { SubscriptionOAuth, SubscriptionOAuthError } from "./subscription-oauth"
 import { createXrayRuntimeStarter } from "./xray-runtime"
 
 const binary = process.env["PIGCLAUDE_TEST_XRAY_BIN"]
@@ -63,6 +68,7 @@ it.skipIf(!binary).each(["before-token", "after-token"] as const)(
       hostArch: process.arch,
     })
     let harness: Harness | undefined
+    let authorization: Promise<unknown> | undefined
     try {
       const proxyUrl = `http://127.0.0.1:${upstreamPort}`
       const runtime = await start({ upstreamProxyUrl: proxyUrl })
@@ -71,26 +77,37 @@ it.skipIf(!binary).each(["before-token", "after-token"] as const)(
         profileUrl: `http://127.0.0.1:${targetPort}/profile`,
         timeoutMs: 3_000,
       })
+      let deliverCode: (value: string) => void = () => undefined
+      let rejectCode: (error: Error) => void = () => undefined
+      let callbackComplete = false
+      const code = new Promise<string>((resolve, reject) => {
+        deliverCode = (value) => {
+          if (callbackComplete) return
+          callbackComplete = true
+          resolve(value)
+        }
+        rejectCode = (error) => {
+          if (callbackComplete) return
+          callbackComplete = true
+          reject(error)
+        }
+      })
+      void code.catch(() => undefined)
+      const callback = {
+        redirectUri: "http://localhost:1234/callback",
+        isComplete: () => callbackComplete,
+        waitForCode: () => code,
+        cancel: () => rejectCode(new SubscriptionOAuthError("AUTHORIZATION_CANCELLED", "已取消")),
+        close: async () => {
+          rejectCode(new SubscriptionOAuthError("AUTHORIZATION_CANCELLED", "已取消"))
+        },
+      }
       harness = await createHarness({
         bridgeUrl: runtime.url,
         proxyRuntime: runtime,
         oauth: {
           buildAuthorizeUrl: () => "https://synthetic.invalid/authorize",
-          startCallback: async () => ({
-            redirectUri: "http://localhost:1234/callback",
-            waitForCode: async () => {
-              if (phase === "before-token") {
-                await runtime.close()
-                await new Promise<void>((resolve, reject) => {
-                  replacement.once("error", reject)
-                  replacement.listen(Number(new URL(runtime.url).port), "127.0.0.1", resolve)
-                })
-              }
-              return "synthetic-code"
-            },
-            cancel: () => undefined,
-            close: async () => undefined,
-          }),
+          startCallback: async () => callback,
           exchangeCode: async (input) => {
             const tokens = await client.exchangeCode(input)
             if (phase === "after-token") await runtime.close()
@@ -106,9 +123,19 @@ it.skipIf(!binary).each(["before-token", "after-token"] as const)(
         url: proxyUrl,
         lastTest: null,
       })
-      await expect(
-        harness.service.authorize({ displayName: "合成账号", proxyId: "p1", fingerprint }),
-      ).rejects.toMatchObject({
+      authorization = harness.service
+        .authorize({ displayName: "合成账号", proxyId: "p1", fingerprint })
+        .catch((error: unknown) => error)
+      await waitForTestSignal(harness.launched.promise, authorization)
+      if (phase === "before-token") {
+        await runtime.close()
+        await new Promise<void>((resolve, reject) => {
+          replacement.once("error", reject)
+          replacement.listen(Number(new URL(runtime.url).port), "127.0.0.1", resolve)
+        })
+      }
+      deliverCode("synthetic-code")
+      expect(await authorization).toMatchObject({
         code: "PROXY_UNAVAILABLE",
       })
       expect(upstreamRequests).toBe(phase === "before-token" ? 0 : 1)
@@ -116,6 +143,8 @@ it.skipIf(!binary).each(["before-token", "after-token"] as const)(
       expect(replacementConnections).toBe(0)
       expect(await harness.store.getAccount("acc-1")).toBeNull()
     } finally {
+      await harness?.service.cancel().catch(() => undefined)
+      await authorization
       for (const socket of sockets) socket.destroy()
       const cleanup = await Promise.allSettled([
         start.dispose(),
@@ -131,7 +160,7 @@ it.skipIf(!binary).each(["before-token", "after-token"] as const)(
       }
     }
   },
-  15_000,
+  25_000,
 )
 
 it.skipIf(!binary)("回调服务启动期间 Xray 退出时不启动浏览器", async () => {

@@ -52,11 +52,13 @@ describe("subscription oauth", () => {
     const oauth = new SubscriptionOAuth()
     const request = createSubscriptionOAuthRequest()
     const callback = await oauth.startCallback({ state: request.state, timeoutMs: 2_000 })
+    expect(callback.isComplete()).toBe(false)
     const response = await fetch(
       `${callback.redirectUri}?code=code-1&state=${encodeURIComponent(request.state)}`,
     )
     expect(response.status).toBe(200)
     expect(await response.text()).toContain("授权完成")
+    expect(callback.isComplete()).toBe(true)
     expect(await callback.waitForCode()).toBe("code-1")
     await callback.close()
   })

@@ -7,7 +7,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
-import { FingerprintChromiumAdapter } from "./fingerprint-chromium"
+import { createSyntheticBrowserAdapter } from "./browser-startup-test-utils"
 
 const roots: string[] = []
 const fingerprint: ClaudeFingerprintView = {
@@ -103,7 +103,7 @@ it("waits for an in-flight launch before stopping all processes", async () => {
     notifySpawn()
     return child as unknown as ChildProcess
   }) as typeof spawn
-  const adapter = new FingerprintChromiumAdapter({
+  const adapter = createSyntheticBrowserAdapter({
     hostArch: process.arch,
     binaryPath: process.execPath,
     profilesRoot: root,
@@ -140,7 +140,7 @@ it("serializes concurrent launches for the same account", async () => {
     else queueMicrotask(() => child.emit("spawn"))
     return child as unknown as ChildProcess
   }) as typeof spawn
-  const adapter = new FingerprintChromiumAdapter({
+  const adapter = createSyntheticBrowserAdapter({
     hostArch: process.arch,
     binaryPath: process.execPath,
     profilesRoot: root,
@@ -171,7 +171,7 @@ it("does not let an old launch handle stop a newer instance", async () => {
     queueMicrotask(() => child.emit("spawn"))
     return child as unknown as ChildProcess
   }) as typeof spawn
-  const adapter = new FingerprintChromiumAdapter({
+  const adapter = createSyntheticBrowserAdapter({
     hostArch: process.arch,
     binaryPath: process.execPath,
     profilesRoot: root,
@@ -295,7 +295,7 @@ it("does not reuse a stale instance stop when disposal must stop a newer instanc
     queueMicrotask(() => child.emit("spawn"))
     return child as unknown as ChildProcess
   }) as typeof spawn
-  const adapter = new FingerprintChromiumAdapter({
+  const adapter = createSyntheticBrowserAdapter({
     hostArch: process.arch,
     binaryPath: process.execPath,
     profilesRoot: root,
@@ -321,7 +321,7 @@ it("keeps the current in-flight stop even when an older handle queues a stop", a
     queueMicrotask(() => child.emit("spawn"))
     return child as unknown as ChildProcess
   }) as typeof spawn
-  const adapter = new FingerprintChromiumAdapter({
+  const adapter = createSyntheticBrowserAdapter({
     hostArch: process.arch,
     binaryPath: process.execPath,
     profilesRoot: root,
@@ -369,7 +369,7 @@ it("waits for every process to settle before reporting a stop-all failure", asyn
     queueMicrotask(() => child.emit("spawn"))
     return child as unknown as ChildProcess
   }) as typeof spawn
-  const adapter = new FingerprintChromiumAdapter({
+  const adapter = createSyntheticBrowserAdapter({
     hostArch: process.arch,
     binaryPath: process.execPath,
     profilesRoot: root,
@@ -447,7 +447,7 @@ async function createAdapter(exitImmediately = false) {
     return child as unknown as ChildProcess
   }) as typeof spawn
   return {
-    adapter: new FingerprintChromiumAdapter({
+    adapter: createSyntheticBrowserAdapter({
       hostArch: process.arch,
       binaryPath: process.execPath,
       profilesRoot: root,

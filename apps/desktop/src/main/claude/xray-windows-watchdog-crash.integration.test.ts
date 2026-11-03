@@ -1,12 +1,12 @@
 // 验证 Windows 守护进程被强制结束时，本次 Xray 进程能够退出。
 
-import { execFileSync, spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
+import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import { copyFile, mkdtemp, rm } from "node:fs/promises"
 import { connect } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, it } from "vitest"
-import { findTestXrayProcess } from "./xray-process-test-utils"
+import { findTestXrayProcess, stopTestXray, testProcessExists } from "./xray-process-test-utils"
 import { createXrayRuntimeStarter } from "./xray-runtime"
 
 const binary = process.env["PIGCLAUDE_TEST_XRAY_BIN"]
@@ -38,9 +38,9 @@ it.skipIf(process.platform !== "win32" || !binary)(
       const watchdog = watchdogs[0]
       if (watchdog?.pid === undefined) throw new Error("测试守护进程未启动")
       xrayPid = findTestXrayProcess(watchdog.pid, testBinary)
-      expect(processExists(xrayPid)).toBe(true)
+      expect(testProcessExists(xrayPid)).toBe(true)
       if (!watchdog.kill("SIGKILL")) throw new Error("未能结束测试守护进程")
-      await expect.poll(() => processExists(xrayPid!), { timeout: 6_000 }).toBe(false)
+      await expect.poll(() => testProcessExists(xrayPid!), { timeout: 6_000 }).toBe(false)
       await expect.poll(() => watchdogs.length, { timeout: 8_000 }).toBeGreaterThan(1)
       if (runtime.ready === undefined) throw new Error("缺少恢复就绪检查")
       await runtime.ready()
@@ -57,16 +57,6 @@ it.skipIf(process.platform !== "win32" || !binary)(
   25_000,
 )
 
-function processExists(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (error: unknown) {
-    if (error instanceof Error && "code" in error && error.code === "ESRCH") return false
-    throw error
-  }
-}
-
 async function portOpen(value: string): Promise<boolean> {
   const url = new URL(value)
   return new Promise((resolve) => {
@@ -76,24 +66,5 @@ async function portOpen(value: string): Promise<boolean> {
       resolve(true)
     })
     socket.once("error", () => resolve(false))
-  })
-}
-
-function stopTestXray(pid: number, binaryPath: string): void {
-  if (!processExists(pid)) return
-  const script = [
-    "$ErrorActionPreference = 'Stop'",
-    `$process = Get-Process -Id ${pid} -ErrorAction SilentlyContinue`,
-    "if ($null -eq $process) { exit 0 }",
-    "$handle = $process.Handle",
-    "if ($process.MainModule.FileName -ne $env:PIGCLAUDE_TEST_XRAY_PATH) { throw '进程身份不匹配' }",
-    "$process.Kill()",
-    "if (!$process.WaitForExit(5000)) { throw '测试进程未退出' }",
-    "$process.Dispose()",
-  ].join("; ")
-  execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
-    encoding: "utf8",
-    env: { ...process.env, PIGCLAUDE_TEST_XRAY_PATH: binaryPath },
-    timeout: 10_000,
   })
 }

@@ -157,6 +157,29 @@ it.skipIf(!browserBinary || !xrayBinary)(
       const recovered = await context.newPage()
       await recovered.goto(`http://127.0.0.1:${fixture.originPort}/probe-recovered`)
       await recovered.close()
+      if (process.platform === "win32") {
+        const previousRequests = fixture.requests()
+        const previousUrl = runtime.url
+        const previousCount = watchdogs.length
+        const watchdog = watchdogs.at(-1)
+        if (watchdog === undefined || !watchdog.kill("SIGKILL")) {
+          throw new Error("无法结束本次守护进程")
+        }
+        await expect.poll(() => watchdogs.length, { timeout: 8_000 }).toBeGreaterThan(previousCount)
+        if (runtime.ready === undefined) throw new Error("缺少恢复就绪检查")
+        await runtime.ready()
+        expect(runtime.url).toBe(previousUrl)
+        const page = await context.newPage()
+        const response = await page.goto(
+          `http://127.0.0.1:${fixture.originPort}/probe-watchdog-recovered`,
+          { timeout: 5_000 },
+        )
+        expect(response?.status()).toBe(200)
+        await page.close()
+        const currentRequests = fixture.requests()
+        expect(currentRequests.viaProxy).toBeGreaterThan(previousRequests.viaProxy)
+        expect(currentRequests.direct).toBe(previousRequests.direct)
+      }
       const before = fixture.requests()
       fixture.failProxy()
       for (const phase of ["upstream-down", "xray-down"]) {

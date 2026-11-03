@@ -111,6 +111,7 @@ jobs:
             "src/main/claude/xray-https-proxy-untrusted.integration.test.ts",
             "src/main/claude/xray-egress.test.ts",
             "src/main/claude/xray-crash-recovery.test.ts",
+            "src/main/claude/xray-windows-watchdog-crash.integration.test.ts",
             "src/main/claude/xray-packaged-watchdog.integration.test.ts",
             "src/main/claude/account-service-xray-oauth.integration.test.ts",
             "src/main/claude/account-service-xray-proxy.integration.test.ts"

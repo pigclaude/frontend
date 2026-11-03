@@ -34,4 +34,10 @@ jobs:
           "PIGCLAUDE_TEST_XRAY_BIN=$(Join-Path $directory 'xray.exe')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: 验证守护进程异常退出
         working-directory: apps/desktop
-        run: pnpm exec vitest run --maxWorkers=1 src/main/claude/xray-windows-watchdog-crash.integration.test.ts
+        env:
+          PIGCLAUDE_TEST_BUILT_WATCHDOG: "1"
+        run: |
+          pnpm build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm exec vitest run --maxWorkers=1 src/main/claude/xray-windows-watchdog-crash.integration.test.ts src/main/claude/xray-packaged-watchdog.integration.test.ts
+          exit $LASTEXITCODE

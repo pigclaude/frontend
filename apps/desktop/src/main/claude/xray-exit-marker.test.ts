@@ -2,6 +2,7 @@
 
 import type { ChildProcess, spawn } from "node:child_process"
 import { EventEmitter } from "node:events"
+import { createServer } from "node:net"
 import { PassThrough } from "node:stream"
 import { expect, it } from "vitest"
 import { createXrayRuntimeStarter } from "./xray-runtime"
@@ -44,6 +45,40 @@ it("收到 Xray 退出标记后立即视为不可用，并等待守护进程关�
     await Promise.allSettled([runtime?.close(), start.dispose()])
   }
 })
+
+it("守护进程退出后原端口仍占用时，报告失败且不重启", async () => {
+  const occupied = createServer()
+  await new Promise<void>((resolve, reject) => {
+    occupied.once("error", reject)
+    occupied.listen(0, "127.0.0.1", resolve)
+  })
+  const address = occupied.address()
+  if (address === null || typeof address === "string") throw new Error("测试端口未监听")
+  const watchdogs: FakeWatchdog[] = []
+  const fakeSpawn = (() => {
+    const child = new FakeWatchdog()
+    watchdogs.push(child)
+    return child as unknown as ChildProcess
+  }) as typeof spawn
+  const start = createXrayRuntimeStarter({
+    binaryPath: process.execPath,
+    hostArch: process.arch,
+    spawn: fakeSpawn,
+    allocatePort: async () => address.port,
+    idleTimeoutMs: 0,
+  })
+  let runtime: Awaited<ReturnType<typeof start>> | undefined
+  try {
+    runtime = await start({ upstreamProxyUrl: "http://127.0.0.1:9" })
+    if (runtime.failure === undefined || watchdogs[0] === undefined) throw new Error("测试未就绪")
+    watchdogs[0].finish(1)
+    await expect(runtime.failure).resolves.toMatchObject({ code: "PROXY_UNAVAILABLE" })
+    expect(watchdogs).toHaveLength(1)
+  } finally {
+    await new Promise<void>((resolve) => occupied.close(() => resolve()))
+    await Promise.allSettled([runtime?.close(), start.dispose()])
+  }
+}, 8_000)
 
 class FakeWatchdog extends EventEmitter {
   readonly pid = 1

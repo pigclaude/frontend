@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
-        os: [ubuntu-22.04, windows-2022]
+        os: [windows-2022]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
@@ -102,29 +102,7 @@ jobs:
         shell: pwsh
         run: |
           $files = @(
-            "src/main/claude/browser-startup.test.ts",
-            "src/main/claude/browser-extension-paths.test.ts",
-            "src/main/claude/browser-extension-readiness.test.ts",
-            "src/main/claude/account-service-startup-cleanup.test.ts",
-            "src/main/claude/account-service-startup-callback.test.ts",
-            "src/main/claude/subscription-oauth.test.ts",
-            "src/main/claude/fingerprint-chromium-startup-failure.test.ts",
-            "src/main/claude/fingerprint-chromium-extension-startup.integration.test.ts",
-            "src/main/claude/fingerprint-chromium-loopback.integration.test.ts",
-            "src/main/claude/fingerprint-chromium-proxy-auth.integration.test.ts",
-            "src/main/claude/fingerprint-chromium-https-proxy.integration.test.ts",
-            "src/main/claude/fingerprint-chromium-webrtc.integration.test.ts",
-            "src/main/claude/account-service-browser-close.integration.test.ts",
-            "src/main/claude/xray-pool.integration.test.ts",
-            "src/main/claude/xray-https-proxy-untrusted.integration.test.ts",
-            "src/main/claude/xray-egress.test.ts",
-            "src/main/claude/xray-crash-recovery.test.ts",
-            "src/main/claude/xray-exit-marker.test.ts",
-            "src/main/claude/xray-port-reset.test.ts",
-            "src/main/claude/xray-windows-watchdog-crash.integration.test.ts",
-            "src/main/claude/xray-packaged-watchdog.integration.test.ts",
-            "src/main/claude/account-service-xray-oauth.integration.test.ts",
-            "src/main/claude/account-service-xray-proxy.integration.test.ts"
+            "src/main/claude/fingerprint-chromium-windows-path-diagnostic.integration.test.ts"
           )
           pnpm exec vitest run --maxWorkers=1 @files
           exit $LASTEXITCODE

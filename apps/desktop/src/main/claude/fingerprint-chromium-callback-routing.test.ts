@@ -7,7 +7,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { expect, it } from "vitest"
-import { FingerprintChromiumAdapter } from "./fingerprint-chromium"
+import { createSyntheticBrowserAdapter } from "./browser-startup-test-utils"
 
 it("每次绑定启动只放行该次 localhost 回调端口，并保留扩展", async () => {
   const root = await mkdtemp(join(tmpdir(), "pigclaude-callback-route-"))
@@ -25,7 +25,7 @@ it("每次绑定启动只放行该次 localhost 回调端口，并保留扩展",
     queueMicrotask(() => child.emit("spawn"))
     return child as unknown as ChildProcess
   }) as typeof spawn
-  const adapter = new FingerprintChromiumAdapter({
+  const adapter = createSyntheticBrowserAdapter({
     binaryPath: process.execPath,
     hostArch: process.arch,
     profilesRoot: root,

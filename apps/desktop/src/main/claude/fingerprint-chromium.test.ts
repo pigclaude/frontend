@@ -7,7 +7,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
-import { BrowserLaunchError, FingerprintChromiumAdapter } from "./fingerprint-chromium"
+import { BrowserLaunchError } from "./fingerprint-chromium"
+import { createSyntheticBrowserAdapter } from "./browser-startup-test-utils"
 
 const cleanups: Array<() => Promise<void>> = []
 
@@ -32,7 +33,7 @@ const fingerprint: ClaudeFingerprintView = {
 describe("FingerprintChromiumAdapter", () => {
   it("requires an explicit fingerprint-chromium binary", async () => {
     const root = await tempRoot()
-    const adapter = new FingerprintChromiumAdapter({
+    const adapter = createSyntheticBrowserAdapter({
       hostArch: process.arch,
       binaryPath: "/definitely/not/fingerprint-chromium",
       profilesRoot: root,
@@ -42,12 +43,12 @@ describe("FingerprintChromiumAdapter", () => {
     })
   })
 
-  it("launches the kernel with profile, fingerprint and URL on system networking", async () => {
+  it("launches the kernel with the profile and fingerprint on system networking", async () => {
     const binary = await fakeBinary()
     const root = await tempRoot()
     const calls: Array<{ binary: string; args: string[] }> = []
     const child = new FakeChild()
-    const adapter = new FingerprintChromiumAdapter({
+    const adapter = createSyntheticBrowserAdapter({
       hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
@@ -71,6 +72,8 @@ describe("FingerprintChromiumAdapter", () => {
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-sync",
+      "--remote-debugging-pipe",
+      "--no-startup-window",
       "--fingerprint=123456",
       "--fingerprint-brand=Chrome",
       "--fingerprint-platform=macos",
@@ -83,7 +86,6 @@ describe("FingerprintChromiumAdapter", () => {
       "--fingerprinting-canvas-image-data-noise",
       "--fingerprinting-client-rects-noise=0",
       "--disable-spoofing=font",
-      "https://claude.test/authorize",
     ])
   })
 
@@ -91,7 +93,7 @@ describe("FingerprintChromiumAdapter", () => {
     const binary = await fakeBinary()
     const root = await tempRoot()
     const calls: string[][] = []
-    const adapter = new FingerprintChromiumAdapter({
+    const adapter = createSyntheticBrowserAdapter({
       hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
@@ -114,7 +116,7 @@ describe("FingerprintChromiumAdapter", () => {
     const binary = await fakeBinary()
     const root = await tempRoot()
     const calls: string[][] = []
-    const adapter = new FingerprintChromiumAdapter({
+    const adapter = createSyntheticBrowserAdapter({
       hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
@@ -152,7 +154,7 @@ describe("FingerprintChromiumAdapter", () => {
     const binary = await fakeBinary()
     const root = await tempRoot()
     let spawnCount = 0
-    const adapter = new FingerprintChromiumAdapter({
+    const adapter = createSyntheticBrowserAdapter({
       hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
@@ -184,7 +186,7 @@ describe("FingerprintChromiumAdapter", () => {
       calls.push(args)
       return child
     })
-    const adapter = new FingerprintChromiumAdapter({
+    const adapter = createSyntheticBrowserAdapter({
       hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
@@ -218,6 +220,8 @@ describe("FingerprintChromiumAdapter", () => {
     "no-proxy-server",
     "proxy-pac-url",
     "proxy-auto-detect",
+    "remote-debugging-pipe",
+    "no-startup-window",
   ])("rejects the managed %s key in either network mode", async (key) => {
     const binary = await fakeBinary()
     const root = await tempRoot()
@@ -226,7 +230,7 @@ describe("FingerprintChromiumAdapter", () => {
       calls.push(args)
       return new FakeChild()
     })
-    const adapter = new FingerprintChromiumAdapter({
+    const adapter = createSyntheticBrowserAdapter({
       hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
@@ -259,7 +263,7 @@ describe("FingerprintChromiumAdapter", () => {
       const root = await tempRoot()
       const args = [`--${key}=example`]
       const calls: string[][] = []
-      const adapter = new FingerprintChromiumAdapter({
+      const adapter = createSyntheticBrowserAdapter({
         hostArch: process.arch,
         binaryPath: binary,
         profilesRoot: root,
@@ -296,7 +300,7 @@ describe("FingerprintChromiumAdapter", () => {
     const binary = await fakeBinary()
     const root = await tempRoot()
     const calls: string[][] = []
-    const adapter = new FingerprintChromiumAdapter({
+    const adapter = createSyntheticBrowserAdapter({
       hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
@@ -315,14 +319,16 @@ describe("FingerprintChromiumAdapter", () => {
     expect(args.some((arg) => arg.startsWith("--proxy-server"))).toBe(false)
     expect(args).not.toContain("--proxy-bypass-list=localhost;127.0.0.1")
     expect(args).toContain(`--user-data-dir=${join(root, "acc-1")}`)
-    expect(args.at(-1)).toBe("https://claude.test/authorize")
+    expect(args).not.toContain("https://claude.test/authorize")
+    expect(args).toContain("--remote-debugging-pipe")
+    expect(args).toContain("--no-startup-window")
   })
 
   it("stops the previous process before launching the same account again", async () => {
     const binary = await fakeBinary()
     const root = await tempRoot()
     const children: FakeChild[] = []
-    const adapter = new FingerprintChromiumAdapter({
+    const adapter = createSyntheticBrowserAdapter({
       hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
@@ -351,7 +357,7 @@ describe("FingerprintChromiumAdapter", () => {
   it("deletes only the account profile directory", async () => {
     const binary = await fakeBinary()
     const root = await tempRoot()
-    const adapter = new FingerprintChromiumAdapter({
+    const adapter = createSyntheticBrowserAdapter({
       hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
@@ -373,7 +379,7 @@ describe("FingerprintChromiumAdapter", () => {
     const root = await tempRoot()
     const child = new FakeChild()
     child.exitOnTerminate = false
-    const adapter = new FingerprintChromiumAdapter({
+    const adapter = createSyntheticBrowserAdapter({
       hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
@@ -394,7 +400,7 @@ describe("FingerprintChromiumAdapter", () => {
   it("maps a spawn failure to BROWSER_START_FAILED", async () => {
     const binary = await fakeBinary()
     const root = await tempRoot()
-    const adapter = new FingerprintChromiumAdapter({
+    const adapter = createSyntheticBrowserAdapter({
       hostArch: process.arch,
       binaryPath: binary,
       profilesRoot: root,
@@ -416,7 +422,7 @@ describe("FingerprintChromiumAdapter", () => {
 
   it("rejects account IDs that could escape the profile root", async () => {
     const root = await tempRoot()
-    const adapter = new FingerprintChromiumAdapter({
+    const adapter = createSyntheticBrowserAdapter({
       hostArch: process.arch,
       binaryPath: "/tmp/chromium",
       profilesRoot: root,
@@ -427,7 +433,7 @@ describe("FingerprintChromiumAdapter", () => {
   it("reads the binary from the environment when no path is configured", async () => {
     const binary = await fakeBinary()
     const root = await tempRoot()
-    const adapter = new FingerprintChromiumAdapter({
+    const adapter = createSyntheticBrowserAdapter({
       hostArch: process.arch,
       profilesRoot: root,
       env: { PIGCLAUDE_FINGERPRINT_CHROMIUM_BIN: binary },

@@ -102,6 +102,14 @@ jobs:
         shell: pwsh
         run: |
           $files = @(
+            "src/main/claude/browser-startup.test.ts",
+            "src/main/claude/browser-extension-paths.test.ts",
+            "src/main/claude/browser-extension-readiness.test.ts",
+            "src/main/claude/account-service-startup-cleanup.test.ts",
+            "src/main/claude/account-service-startup-callback.test.ts",
+            "src/main/claude/subscription-oauth.test.ts",
+            "src/main/claude/fingerprint-chromium-startup-failure.test.ts",
+            "src/main/claude/fingerprint-chromium-extension-startup.integration.test.ts",
             "src/main/claude/fingerprint-chromium-loopback.integration.test.ts",
             "src/main/claude/fingerprint-chromium-proxy-auth.integration.test.ts",
             "src/main/claude/fingerprint-chromium-https-proxy.integration.test.ts",

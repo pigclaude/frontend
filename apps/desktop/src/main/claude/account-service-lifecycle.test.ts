@@ -1,7 +1,13 @@
 // 验证浏览器授权与删除、退出交错时不会误停进程或复活账号。
 
 import { describe, expect, it } from "vitest"
-import { createHarness, fingerprint, seedAccount } from "./account-service-test-fixtures"
+import {
+  createHarness,
+  createWaitingCallback,
+  fingerprint,
+  seedAccount,
+  waitForTestSignal,
+} from "./account-service-test-fixtures"
 import { ClaudeAccountError } from "./errors"
 import { BrowserLaunchError } from "./fingerprint-chromium"
 
@@ -11,24 +17,6 @@ function deferred() {
     resolve = done
   })
   return { promise, resolve }
-}
-
-function waitingCallback() {
-  let reject: (error: Error) => void = () => undefined
-  let closed = false
-  return {
-    redirectUri: "http://localhost:1234/callback",
-    waitForCode: () =>
-      new Promise<string>((_resolve, fail) => {
-        reject = fail
-      }),
-    cancel: () => reject(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消")),
-    close: async () => {
-      if (closed) return
-      closed = true
-      reject(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消"))
-    },
-  }
 }
 
 describe("Claude 账号授权生命周期", () => {
@@ -55,7 +43,7 @@ describe("Claude 账号授权生命周期", () => {
   })
 
   it("cancels a browser authorization before deleting its profile", async () => {
-    const callback = waitingCallback()
+    const callback = createWaitingCallback()
     const harness = await createHarness({ callback })
     await harness.store.saveAccount(seedAccount())
     const authorization = harness.service
@@ -92,7 +80,7 @@ describe("Claude 账号授权生命周期", () => {
   })
 
   it("rejects another valid authorization for the same account without cancelling the first", async () => {
-    const callback = waitingCallback()
+    const callback = createWaitingCallback()
     const harness = await createHarness({ callback })
     const first = harness.service
       .authorize({ displayName: "第一个", proxyId: null, fingerprint })
@@ -163,13 +151,18 @@ describe("Claude 账号授权生命周期", () => {
     const gate = deferred()
     const entered = deferred()
     let resolveCode: (code: string) => void = () => undefined
+    let complete = false
     const code = new Promise<string>((resolve) => {
-      resolveCode = resolve
+      resolveCode = (value) => {
+        complete = true
+        resolve(value)
+      }
     })
     let calls = 0
     const harness = await createHarness({
       callback: {
         redirectUri: "http://localhost:1234/callback",
+        isComplete: () => complete,
         waitForCode: () => code,
         cancel: () => undefined,
         close: async () => undefined,
@@ -198,14 +191,23 @@ describe("Claude 账号授权生命周期", () => {
   it("publishes authorization failure only after browser cleanup completes", async () => {
     const gate = deferred()
     const entered = deferred()
+    let rejectCode: (error: Error) => void = () => undefined
+    let complete = false
+    const code = new Promise<string>((_resolve, reject) => {
+      rejectCode = (error) => {
+        if (complete) return
+        complete = true
+        reject(error)
+      }
+    })
+    void code.catch(() => undefined)
     const harness = await createHarness({
       callback: {
         redirectUri: "http://localhost:1234/callback",
-        waitForCode: async () => {
-          throw new ClaudeAccountError("OAUTH_DENIED", "拒绝")
-        },
-        cancel: () => undefined,
-        close: async () => undefined,
+        isComplete: () => complete,
+        waitForCode: () => code,
+        cancel: () => rejectCode(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消")),
+        close: async () => rejectCode(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消")),
       },
       stopWait: () => {
         entered.resolve()
@@ -215,20 +217,34 @@ describe("Claude 账号授权生命周期", () => {
     const result = harness.service
       .authorize({ displayName: "账号", proxyId: null, fingerprint })
       .catch((error: unknown) => error)
-    await entered.promise
-    expect(harness.events.at(-1)?.phase).toBe("waiting-browser")
-    gate.resolve()
-    expect(await result).toMatchObject({ code: "OAUTH_DENIED" })
-    expect(harness.events.at(-1)).toMatchObject({ phase: "failed", errorCode: "OAUTH_DENIED" })
+    try {
+      await waitForTestSignal(harness.launched.promise, result)
+      rejectCode(new ClaudeAccountError("OAUTH_DENIED", "拒绝"))
+      await waitForTestSignal(entered.promise, result)
+      expect(harness.events.at(-1)?.phase).toBe("waiting-browser")
+      gate.resolve()
+      expect(await result).toMatchObject({ code: "OAUTH_DENIED" })
+      expect(harness.events.at(-1)).toMatchObject({ phase: "failed", errorCode: "OAUTH_DENIED" })
+    } finally {
+      gate.resolve()
+      await harness.service.cancel().catch(() => undefined)
+      await result
+      await harness.cleanup()
+    }
   })
 
   it("rejects reauthorization if its proxy or fingerprint changes during the browser session", async () => {
     let resolveCode: (code: string) => void = () => undefined
+    let complete = false
     const code = new Promise<string>((resolve) => {
-      resolveCode = resolve
+      resolveCode = (value) => {
+        complete = true
+        resolve(value)
+      }
     })
     const callback = {
       redirectUri: "http://localhost:1234/callback",
+      isComplete: () => complete,
       waitForCode: () => code,
       cancel: () => undefined,
       close: async () => undefined,
@@ -404,7 +420,7 @@ describe("Claude 账号授权生命周期", () => {
     const gate = deferred()
     const entered = deferred()
     const harness = await createHarness({
-      callback: waitingCallback(),
+      callback: createWaitingCallback(),
       stopError: new BrowserLaunchError("BROWSER_STOP_FAILED", "浏览器可能仍在运行"),
       stopWait: () => {
         entered.resolve()

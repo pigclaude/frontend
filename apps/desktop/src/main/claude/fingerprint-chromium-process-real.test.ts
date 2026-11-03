@@ -5,7 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, it } from "vitest"
-import { FingerprintChromiumAdapter } from "./fingerprint-chromium"
+import { createSyntheticBrowserAdapter } from "./browser-startup-test-utils"
 
 it("confirms that the actual spawned child has exited before removing the profile", async () => {
   const root = await mkdtemp(join(tmpdir(), "browser-real-process-"))
@@ -17,7 +17,7 @@ it("confirms that the actual spawned child has exited before removing the profil
     })
     return child
   }) as typeof spawn
-  const adapter = new FingerprintChromiumAdapter({
+  const adapter = createSyntheticBrowserAdapter({
     hostArch: process.arch,
     binaryPath: process.execPath,
     profilesRoot: root,

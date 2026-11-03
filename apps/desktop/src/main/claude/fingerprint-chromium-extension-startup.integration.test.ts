@@ -1,0 +1,294 @@
+// 用预构建浏览器和 Xray 验证扩展在首次目标页面加载时已经生效。
+
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { chromium, type Browser } from "@playwright/test"
+import { expect, it } from "vitest"
+import { fingerprint } from "./account-service-test-fixtures"
+import {
+  installSyntheticExtension,
+  SyntheticInstallerCleanupError,
+} from "./fingerprint-chromium-installed-extension-fixture"
+import { createLoopbackFixture } from "./fingerprint-chromium-loopback-fixture"
+import { FingerprintChromiumAdapter } from "./fingerprint-chromium"
+import { SubscriptionOAuth } from "./subscription-oauth"
+import { createXrayRuntimeStarter } from "./xray-runtime"
+
+const browserBinary = process.env["PIGCLAUDE_TEST_CHROMIUM_BIN"]
+const xrayBinary = process.env["PIGCLAUDE_TEST_XRAY_BIN"]
+const extensionCount = 24
+
+it.skipIf(!browserBinary || !xrayBinary)(
+  "多个扩展在通过 Xray 打开的首次目标页面生效",
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pigclaude-extension-startup-"))
+    const adapter = new FingerprintChromiumAdapter({
+      binaryPath: browserBinary,
+      hostArch: process.arch,
+      profilesRoot: join(directory, "profiles"),
+    })
+    const start = createXrayRuntimeStarter({
+      binaryPath: xrayBinary,
+      hostArch: process.arch,
+      idleTimeoutMs: 0,
+    })
+    let fixture: Awaited<ReturnType<typeof createLoopbackFixture>> | undefined
+    let callback: Awaited<ReturnType<SubscriptionOAuth["startCallback"]>> | undefined
+    let browser: Browser | undefined
+    try {
+      const extensions: string[] = []
+      for (let index = 0; index < extensionCount; index += 1) {
+        const extension = join(directory, `extension-${index}`)
+        extensions.push(extension)
+        await mkdir(extension)
+        await writeFile(
+          join(extension, "manifest.json"),
+          JSON.stringify({
+            manifest_version: 3,
+            name: `Synthetic Extension ${index}`,
+            version: "1.0",
+            content_scripts: [{ matches: ["http://127.0.0.1/*"], js: ["content.js"] }],
+          }),
+        )
+        await writeFile(
+          join(extension, "content.js"),
+          `document.documentElement.setAttribute("data-synthetic-${index}", "ready")`,
+        )
+      }
+      fixture = await createLoopbackFixture()
+      callback = await new SubscriptionOAuth().startCallback({ state: "synthetic" })
+      const runtime = await start({
+        upstreamProxyUrl: `http://synthetic:password@127.0.0.1:${fixture.proxyPort}`,
+      })
+      const target = `http://127.0.0.1:${fixture.originPort}/probe`
+      const launched = await adapter.launch({
+        accountId: "extension-startup",
+        authorizeUrl: target,
+        network: { mode: "bound", bridgeUrl: runtime.url, callbackUri: callback.redirectUri },
+        fingerprint: {
+          ...fingerprint,
+          unknownArgs: [
+            `--load-extension=${extensions.join(",")}`,
+            "--headless=new",
+            "--remote-debugging-port=0",
+            "--use-mock-keychain",
+          ],
+        },
+      })
+      const port = await debugPort(join(launched.profileDir, "DevToolsActivePort"))
+      browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: 5_000 })
+      const page = browser.contexts()[0]?.pages()[0]
+      if (page === undefined) throw new Error("首次目标页面不可用")
+      await page.waitForURL(target, { timeout: 10_000 })
+      await expect
+        .poll(
+          async () => {
+            const values = await Promise.all(
+              Array.from({ length: extensionCount }, (_, index) =>
+                page.locator("html").getAttribute(`data-synthetic-${index}`),
+              ),
+            )
+            return values.filter((value) => value === "ready").length
+          },
+          { timeout: 10_000 },
+        )
+        .toBe(extensionCount)
+      expect(fixture.requests()).toEqual({ viaProxy: 1, direct: 0 })
+    } finally {
+      await cleanupTest({ directory, adapter, start, browser, callback, fixture })
+    }
+  },
+  45_000,
+)
+
+it.skipIf(!browserBinary || !xrayBinary)(
+  "已安装扩展在浏览器重启后的首次目标页面生效",
+  async () => {
+    if (!browserBinary) throw new Error("缺少合成测试浏览器")
+    const directory = await mkdtemp(join(tmpdir(), "pigclaude-extension-persisted-"))
+    const extension = join(directory, "extension")
+    const adapter = new FingerprintChromiumAdapter({
+      binaryPath: browserBinary,
+      hostArch: process.arch,
+      profilesRoot: join(directory, "profiles"),
+    })
+    const start = createXrayRuntimeStarter({
+      binaryPath: xrayBinary,
+      hostArch: process.arch,
+      idleTimeoutMs: 0,
+    })
+    let fixture: Awaited<ReturnType<typeof createLoopbackFixture>> | undefined
+    let callback: Awaited<ReturnType<SubscriptionOAuth["startCallback"]>> | undefined
+    let browser: Browser | undefined
+    let installerError: SyntheticInstallerCleanupError | undefined
+    try {
+      await mkdir(extension)
+      await writeFile(
+        join(extension, "manifest.json"),
+        JSON.stringify({
+          manifest_version: 3,
+          name: "Synthetic Persisted Extension",
+          version: "1.0",
+          content_scripts: [{ matches: ["http://127.0.0.1/*"], js: ["content.js"] }],
+        }),
+      )
+      await writeFile(
+        join(extension, "content.js"),
+        'document.documentElement.setAttribute("data-synthetic-persisted", "ready")',
+      )
+      try {
+        await installSyntheticExtension({
+          binary: browserBinary,
+          profile: adapter.profileDir("persisted"),
+          extension,
+        })
+      } catch (error: unknown) {
+        if (error instanceof SyntheticInstallerCleanupError) installerError = error
+        throw error
+      }
+      fixture = await createLoopbackFixture()
+      callback = await new SubscriptionOAuth().startCallback({ state: "synthetic" })
+      const runtime = await start({
+        upstreamProxyUrl: `http://synthetic:password@127.0.0.1:${fixture.proxyPort}`,
+      })
+      const target = `http://127.0.0.1:${fixture.originPort}/probe`
+      const launched = await adapter.launch({
+        accountId: "persisted",
+        authorizeUrl: target,
+        network: { mode: "bound", bridgeUrl: runtime.url, callbackUri: callback.redirectUri },
+        fingerprint: {
+          ...fingerprint,
+          unknownArgs: ["--headless=new", "--remote-debugging-port=0", "--use-mock-keychain"],
+        },
+      })
+      const port = await debugPort(join(launched.profileDir, "DevToolsActivePort"))
+      browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: 5_000 })
+      const page = browser.contexts()[0]?.pages()[0]
+      if (page === undefined) throw new Error("首次目标页面不可用")
+      await page.waitForURL(target, { timeout: 10_000 })
+      await expect
+        .poll(() => page.locator("html").getAttribute("data-synthetic-persisted"), {
+          timeout: 10_000,
+        })
+        .toBe("ready")
+      expect(fixture.requests()).toEqual({ viaProxy: 1, direct: 0 })
+    } finally {
+      await cleanupTest({ directory, adapter, start, browser, callback, fixture, installerError })
+    }
+  },
+  45_000,
+)
+
+it.skipIf(!browserBinary || !xrayBinary)(
+  "明确指定的扩展无法加载时不打开目标页面",
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pigclaude-extension-invalid-"))
+    const extension = join(directory, "extension")
+    const adapter = new FingerprintChromiumAdapter({
+      binaryPath: browserBinary,
+      hostArch: process.arch,
+      profilesRoot: join(directory, "profiles"),
+    })
+    const start = createXrayRuntimeStarter({
+      binaryPath: xrayBinary,
+      hostArch: process.arch,
+      idleTimeoutMs: 0,
+    })
+    let fixture: Awaited<ReturnType<typeof createLoopbackFixture>> | undefined
+    let callback: Awaited<ReturnType<SubscriptionOAuth["startCallback"]>> | undefined
+    try {
+      await mkdir(extension)
+      await writeFile(join(extension, "manifest.json"), "{")
+      fixture = await createLoopbackFixture()
+      callback = await new SubscriptionOAuth().startCallback({ state: "synthetic" })
+      const runtime = await start({
+        upstreamProxyUrl: `http://synthetic:password@127.0.0.1:${fixture.proxyPort}`,
+      })
+      await expect(
+        adapter.launch({
+          accountId: "invalid-extension",
+          authorizeUrl: `http://127.0.0.1:${fixture.originPort}/probe`,
+          network: { mode: "bound", bridgeUrl: runtime.url, callbackUri: callback.redirectUri },
+          fingerprint: {
+            ...fingerprint,
+            unknownArgs: [`--load-extension=${extension}`, "--headless=new", "--use-mock-keychain"],
+          },
+        }),
+      ).rejects.toMatchObject({ code: "BROWSER_START_FAILED", message: "读取扩展状态超时" })
+      expect(fixture.requests()).toEqual({ viaProxy: 0, direct: 0 })
+    } finally {
+      await cleanupTest({ directory, adapter, start, callback, fixture })
+    }
+  },
+  45_000,
+)
+
+async function cleanupTest(input: {
+  directory: string
+  adapter: FingerprintChromiumAdapter
+  start: ReturnType<typeof createXrayRuntimeStarter>
+  browser?: Browser
+  callback?: Awaited<ReturnType<SubscriptionOAuth["startCallback"]>>
+  fixture?: Awaited<ReturnType<typeof createLoopbackFixture>>
+  installerError?: SyntheticInstallerCleanupError
+}): Promise<void> {
+  let disconnectError: unknown
+  if (input.browser !== undefined) {
+    try {
+      await within(input.browser.close(), 2_000)
+    } catch (error: unknown) {
+      disconnectError = error
+    }
+  }
+  try {
+    await input.adapter.dispose()
+  } catch (error: unknown) {
+    throw new Error(`浏览器未确认退出，保留合成资源 ${input.directory}`, { cause: error })
+  }
+  if (input.installerError !== undefined) {
+    throw new Error(`安装浏览器未确认退出，保留合成资源 ${input.directory}`, {
+      cause: input.installerError,
+    })
+  }
+  const results = await Promise.allSettled([
+    input.start.dispose(),
+    input.callback?.close(),
+    input.fixture?.close(),
+  ])
+  if (results.some((result) => result.status === "rejected")) {
+    throw new Error(`测试资源未确认回收，保留临时目录 ${input.directory}`)
+  }
+  await rm(input.directory, { recursive: true, force: true })
+  if (disconnectError !== undefined) {
+    throw new Error("未确认调试连接关闭", { cause: disconnectError })
+  }
+}
+
+async function debugPort(path: string): Promise<number> {
+  const deadline = Date.now() + 15_000
+  while (Date.now() < deadline) {
+    try {
+      const port = Number((await readFile(path, "utf8")).split("\n")[0])
+      if (Number.isInteger(port) && port > 0 && port <= 65_535) return port
+    } catch {
+      // 等待本次合成浏览器创建调试端口。
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  throw new Error("合成浏览器未就绪")
+}
+
+async function within<T>(task: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      task,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("浏览器操作超时")), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}

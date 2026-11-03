@@ -2,8 +2,12 @@
 
 import { describe, expect, it } from "vitest"
 import type { AuthorizeClaudeAccountInput } from "./account-service"
-import { ClaudeAccountError } from "./errors"
-import { createHarness, fingerprint, seedAccount } from "./account-service-test-fixtures"
+import {
+  createHarness,
+  createWaitingCallback,
+  fingerprint,
+  seedAccount,
+} from "./account-service-test-fixtures"
 
 describe("Claude 账号授权快照", () => {
   it("keeps the submitted account, proxy and fingerprint while membership is checked", async () => {
@@ -66,6 +70,7 @@ describe("Claude 账号授权快照", () => {
         reads += 1
         return reads === 1 ? "http://localhost:1234/callback" : "http://localhost:5678/callback"
       },
+      isComplete: () => true,
       waitForCode: async () => "code-1",
       cancel: () => undefined,
       close: async () => undefined,
@@ -84,18 +89,13 @@ describe("Claude 账号授权快照", () => {
 
   it("keeps an existing authorization cancellable when another request has conflicting arguments", async () => {
     let closed = false
-    let rejectWait: ((error: Error) => void) | null = null
+    const waiting = createWaitingCallback()
     const callback = {
-      redirectUri: "http://localhost:1234/callback",
-      waitForCode: () =>
-        new Promise<string>((_resolve, reject) => {
-          rejectWait = reject
-        }),
-      cancel: () => rejectWait?.(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消")),
+      ...waiting,
       close: async () => {
         if (closed) return
         closed = true
-        rejectWait?.(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消"))
+        await waiting.close()
       },
     }
     const harness = await createHarness({ callback })

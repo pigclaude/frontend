@@ -25,11 +25,12 @@ import { readClaudeCliCredential, type ClaudeCliCredential } from "./cli-credent
 import { AuthorizationLifecycle, type AuthorizationAttempt } from "./authorization-lifecycle"
 import { AuthorizationResourceCleanup } from "./account-service-cleanup"
 import {
-  waitForProxyCallback,
+  launchAndWaitForCallback,
   waitForProxyReady,
   watchProxyFailure,
 } from "./account-service-proxy-callback"
-import { mapError, phaseFor } from "./account-service-errors"
+import { mapError, phaseFor, requireMembership } from "./account-service-errors"
+import { readOptionalOAuthProfile } from "./account-service-oauth-profile"
 import type {
   AuthorizeClaudeAccountInput,
   ImportClaudeCliAccountInput,
@@ -42,7 +43,11 @@ export type {
 } from "./account-service-inputs"
 import { assertSameAccount, buildCredential, toView } from "./account-service-record"
 import { ClaudeAccountError } from "./errors"
-import type { FingerprintChromiumAdapter, LaunchedBrowser } from "./fingerprint-chromium"
+import {
+  BrowserStartupCleanupError,
+  type FingerprintChromiumAdapter,
+  type LaunchedBrowser,
+} from "./fingerprint-chromium"
 import { ensureFingerprint } from "./fingerprint-args"
 import { isValidBridgeUrl, launchArgumentConflict } from "./launch-argument-guard"
 import {
@@ -143,7 +148,7 @@ export class ClaudeAccountService {
       if (this.#authorizations.canEmit(attempt)) this.#emit(accountId, "preparing")
       const validation = ensureFingerprint(input.fingerprint, accountId)
       const displayName = input.displayName.trim()
-      await this.#ensureMembership()
+      await requireMembership(() => this.#deps.ensureMembership())
       attempt.checkpoint()
       if (displayName === "") throw new ClaudeAccountError("INVALID_INPUT", "账号名称不能为空")
       const existing =
@@ -215,19 +220,29 @@ export class ClaudeAccountService {
         codeChallenge: oauthRequest.codeChallenge,
       })
       await waitForProxyReady(proxyRuntime, authorizationSignal)
-      launched = await this.#deps.browser.launch({
-        accountId,
-        authorizeUrl,
-        network:
-          proxyId === null
-            ? { mode: "system" }
-            : { mode: "bound", bridgeUrl: bridgeUrl ?? "", callbackUri },
-        fingerprint,
+      const activeAttempt = attempt
+      const code = await launchAndWaitForCallback({
+        callback,
+        runtime: proxyRuntime,
         signal: authorizationSignal,
-        assertCanSpawn,
+        checkpoint: () => activeAttempt.checkpoint(),
+        onLaunched: (browser) => {
+          launched = browser
+        },
+        launch: (signal, assertCanNavigate) =>
+          this.#deps.browser.launch({
+            accountId,
+            authorizeUrl,
+            network:
+              proxyId === null
+                ? { mode: "system" }
+                : { mode: "bound", bridgeUrl: bridgeUrl ?? "", callbackUri },
+            fingerprint,
+            signal,
+            assertCanSpawn,
+            assertCanNavigate,
+          }),
       })
-      attempt.checkpoint()
-      const code = await waitForProxyCallback(callback, proxyRuntime, launched.exited)
       attempt.checkpoint()
       await waitForProxyReady(proxyRuntime, authorizationSignal)
       this.#emit(accountId, "exchanging")
@@ -312,6 +327,7 @@ export class ClaudeAccountService {
       committed = true
       return toView(record)
     } catch (error: unknown) {
+      if (error instanceof BrowserStartupCleanupError) launched = error.browser
       failure = mapError(
         attempt?.signal.aborted
           ? attempt.signal.reason
@@ -356,7 +372,7 @@ export class ClaudeAccountService {
     }
     const newId = this.#id()
     try {
-      await this.#ensureMembership()
+      await requireMembership(() => this.#deps.ensureMembership())
       const cli = await this.#readCliCredential()
       const metadata = await this.#readCliAccountMetadata()
       if (
@@ -365,7 +381,9 @@ export class ClaudeAccountService {
       ) {
         throw new ClaudeAccountError("CLI_CREDENTIAL_EXPIRED", claudeCliImportMessages.expired)
       }
-      const profile = await this.#readProfile(cli.accessToken)
+      const profile = await readOptionalOAuthProfile(() =>
+        this.#deps.oauth.readProfile({ accessToken: cli.accessToken }),
+      )
       const identity = mergeClaudeCliIdentity(cli, metadata, profile)
       const existing = findClaudeCliAccount(await this.#deps.store.listAccounts(), identity)
       assertClaudeCliIdentity(existing, identity)
@@ -469,24 +487,6 @@ export class ClaudeAccountService {
       throw new ClaudeAccountError("BROWSER_STOP_FAILED", "无法确认浏览器已退出，请手动关闭后重试")
     }
     await this.#pendingCleanup.retry()
-  }
-
-  /** 读取 profile 用于校正身份。保证失败时返回 null，不影响导入。 */
-  async #readProfile(accessToken: string): Promise<ClaudeOAuthProfile | null> {
-    try {
-      return await this.#deps.oauth.readProfile({ accessToken })
-    } catch {
-      return null
-    }
-  }
-
-  async #ensureMembership(): Promise<void> {
-    try {
-      await this.#deps.ensureMembership()
-    } catch (error: unknown) {
-      if (error instanceof ClaudeAccountError) throw error
-      throw new ClaudeAccountError("MEMBERSHIP_REQUIRED", "会员校验不通过")
-    }
   }
 
   #emit(

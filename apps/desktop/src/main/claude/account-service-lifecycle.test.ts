@@ -22,6 +22,7 @@ function waitingCallback() {
       new Promise<string>((_resolve, fail) => {
         reject = fail
       }),
+    cancel: () => reject(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消")),
     close: async () => {
       if (closed) return
       closed = true
@@ -170,6 +171,7 @@ describe("Claude 账号授权生命周期", () => {
       callback: {
         redirectUri: "http://localhost:1234/callback",
         waitForCode: () => code,
+        cancel: () => undefined,
         close: async () => undefined,
       },
       membershipWait: () => {
@@ -202,6 +204,7 @@ describe("Claude 账号授权生命周期", () => {
         waitForCode: async () => {
           throw new ClaudeAccountError("OAUTH_DENIED", "拒绝")
         },
+        cancel: () => undefined,
         close: async () => undefined,
       },
       stopWait: () => {
@@ -227,6 +230,7 @@ describe("Claude 账号授权生命周期", () => {
     const callback = {
       redirectUri: "http://localhost:1234/callback",
       waitForCode: () => code,
+      cancel: () => undefined,
       close: async () => undefined,
     }
     const harness = await createHarness({

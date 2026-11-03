@@ -169,6 +169,7 @@ it("keeps an existing system-network authorization cancellable after a bound att
         rejectWait = reject
       })
     },
+    cancel: () => rejectWait?.(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消")),
     close: async () => {
       rejectWait?.(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消"))
     },

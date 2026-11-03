@@ -2,7 +2,7 @@
 
 import { ClaudeAccountError } from "./errors"
 
-type Callback = { close: () => Promise<void> }
+type Callback = { cancel: () => void }
 
 /** 一次账号授权的取消、占用和完成状态。 */
 export class AuthorizationAttempt {
@@ -60,11 +60,11 @@ export class AuthorizationAttempt {
     this.#committing = true
   }
 
-  /** 标记取消并关闭已注册的授权回调；提交开始后返回明确状态。 */
+  /** 标记取消并结束回调等待；提交开始后返回明确状态。 */
   async cancel(): Promise<void> {
     if (this.#committing) throw new ClaudeAccountError("INVALID_INPUT", "授权正在保存，请稍候")
     this.#controller.abort(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "授权已取消"))
-    await this.#callback?.close()
+    this.#callback?.cancel()
   }
 
   /** 完成清理并释放账号占用；重复调用不产生副作用。 */
@@ -139,7 +139,9 @@ export class AuthorizationLifecycle {
     const attempts = [...this.#attempts].filter((attempt) => attempt.accountId === accountId)
     const deletion = Promise.resolve().then(async () => {
       await Promise.allSettled(attempts.map((attempt) => attempt.cancel()))
-      await Promise.all(attempts.map((attempt) => attempt.done))
+      const results = await Promise.all(attempts.map((attempt) => attempt.done))
+      const error = results.find((result) => result !== null)
+      if (error !== undefined && error !== null) throw error
       await remove()
     })
     this.#deletions.set(accountId, deletion)

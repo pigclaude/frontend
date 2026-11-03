@@ -1,4 +1,4 @@
-// 验证账号授权的令牌交换和资料请求直接使用同一上游代理，并在代理拒绝时不直连。
+// 验证账号授权的令牌交换和资料请求经 Xray 使用绑定的上游代理。
 
 import { createServer, type Server } from "node:http"
 import { connect } from "node:net"
@@ -7,6 +7,9 @@ import { describe, expect, it } from "vitest"
 import type { ClaudeAccountServiceDeps } from "./account-service"
 import { createHarness, fingerprint, type Harness } from "./account-service-test-fixtures"
 import { SubscriptionOAuth } from "./subscription-oauth"
+import { createXrayRuntimeStarter } from "./xray-runtime"
+
+const binary = process.env["PIGCLAUDE_TEST_XRAY_BIN"]
 
 type Fixture = {
   proxyUrl: string
@@ -127,6 +130,7 @@ function createOAuth(fixture: Fixture): ClaudeAccountServiceDeps["oauth"] {
     startCallback: async () => ({
       redirectUri: "http://localhost:1234/callback",
       waitForCode: async () => "synthetic-code",
+      cancel: () => undefined,
       close: async () => undefined,
     }),
     exchangeCode: (input) => client.exchangeCode(input),
@@ -134,22 +138,45 @@ function createOAuth(fixture: Fixture): ClaudeAccountServiceDeps["oauth"] {
   }
 }
 
-describe("Claude 授权直接连接上游代理", () => {
-  it("令牌交换和资料请求均经过带凭据的上游，而不使用代理桥", async () => {
-    const fixture = await startFixture()
-    let harness: Harness | undefined
+async function createBoundHarness(
+  fixture: Fixture,
+): Promise<{ harness: Harness; close: () => Promise<void> }> {
+  const start = createXrayRuntimeStarter({ binaryPath: binary, hostArch: process.arch })
+  let harness: Harness | undefined
+  const close = async () => {
+    const results = await Promise.allSettled([start.dispose(), harness?.cleanup()])
+    if (results.some((result) => result.status === "rejected")) {
+      throw new Error("Xray 代理测试资源未全部回收")
+    }
+  }
+  try {
+    const runtime = await start({ upstreamProxyUrl: fixture.proxyUrl })
+    harness = await createHarness({ oauth: createOAuth(fixture), bridgeUrl: runtime.url })
+    await harness.store.saveProxy({
+      schemaVersion: 1,
+      id: "p1",
+      name: "合成代理",
+      url: fixture.proxyUrl,
+      lastTest: null,
+    })
+    return { harness, close }
+  } catch (error) {
     try {
-      harness = await createHarness({
-        oauth: createOAuth(fixture),
-        bridgeUrl: "socks5://127.0.0.1:1",
-      })
-      await harness.store.saveProxy({
-        schemaVersion: 1,
-        id: "p1",
-        name: "合成代理",
-        url: fixture.proxyUrl,
-        lastTest: null,
-      })
+      await close()
+    } catch (cleanupError: unknown) {
+      throw new AggregateError([error, cleanupError], "Xray 测试准备失败且清理未完成")
+    }
+    throw error
+  }
+}
+
+describe("Claude 授权经 Xray 连接上游代理", () => {
+  it.skipIf(!binary)("令牌交换和资料请求经 Xray 到达带凭据的上游代理", async () => {
+    const fixture = await startFixture()
+    let bound: Awaited<ReturnType<typeof createBoundHarness>> | undefined
+    try {
+      bound = await createBoundHarness(fixture)
+      const { harness } = bound
       const result = await harness.service.authorize({
         displayName: "合成账号",
         proxyId: "p1",
@@ -168,25 +195,19 @@ describe("Claude 授权直接连接上游代理", () => {
       try {
         await fixture.close()
       } finally {
-        await harness?.cleanup()
+        await bound?.close()
       }
     }
   })
 
-  it.each(["reject", "disconnect"] as const)(
+  it.skipIf(!binary).each(["reject", "disconnect"] as const)(
     "上游代理 %s 时不连接目标，也不保存账号",
     async (behavior) => {
       const fixture = await startFixture(behavior)
-      let harness: Harness | undefined
+      let bound: Awaited<ReturnType<typeof createBoundHarness>> | undefined
       try {
-        harness = await createHarness({ oauth: createOAuth(fixture) })
-        await harness.store.saveProxy({
-          schemaVersion: 1,
-          id: "p1",
-          name: "合成代理",
-          url: fixture.proxyUrl,
-          lastTest: null,
-        })
+        bound = await createBoundHarness(fixture)
+        const { harness } = bound
         await expect(
           harness.service.authorize({ displayName: "合成账号", proxyId: "p1", fingerprint }),
         ).rejects.toMatchObject({ code: "OAUTH_EXCHANGE_FAILED" })
@@ -199,24 +220,18 @@ describe("Claude 授权直接连接上游代理", () => {
         try {
           await fixture.close()
         } finally {
-          await harness?.cleanup()
+          await bound?.close()
         }
       }
     },
   )
 
-  it("令牌交换后代理拒绝 profile 时不会直连，保留资料可选的既有合同", async () => {
+  it.skipIf(!binary)("令牌交换后代理拒绝 profile 时不会直连，保留资料可选的既有合同", async () => {
     const fixture = await startFixture("reject-profile")
-    let harness: Harness | undefined
+    let bound: Awaited<ReturnType<typeof createBoundHarness>> | undefined
     try {
-      harness = await createHarness({ oauth: createOAuth(fixture) })
-      await harness.store.saveProxy({
-        schemaVersion: 1,
-        id: "p1",
-        name: "合成代理",
-        url: fixture.proxyUrl,
-        lastTest: null,
-      })
+      bound = await createBoundHarness(fixture)
+      const { harness } = bound
       const result = await harness.service.authorize({
         displayName: "合成账号",
         proxyId: "p1",
@@ -233,7 +248,7 @@ describe("Claude 授权直接连接上游代理", () => {
       try {
         await fixture.close()
       } finally {
-        await harness?.cleanup()
+        await bound?.close()
       }
     }
   })

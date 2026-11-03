@@ -386,6 +386,9 @@ importers:
       node-fetch:
         specifier: 3.3.2
         version: 3.3.2
+      socks:
+        specifier: 2.8.10
+        version: 2.8.10
       socks-proxy-agent:
         specifier: 10.1.0
         version: 10.1.0

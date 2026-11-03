@@ -22,6 +22,7 @@ it("rechecks pending cleanup after another account has passed the entry gate", a
     callback: {
       redirectUri: "http://localhost:1234/callback",
       waitForCode: () => code,
+      cancel: () => undefined,
       close: async () => undefined,
     },
     membershipWait: () => {
@@ -49,4 +50,45 @@ it("rechecks pending cleanup after another account has passed the entry gate", a
   releaseMembership()
   expect(await second).toMatchObject({ code: "BROWSER_STOP_FAILED" })
   expect(harness.browserCalls.filter((call) => call === "launch")).toHaveLength(1)
+})
+
+it("回调正在关闭时不启动另一个浏览器，关闭失败后保留资源", async () => {
+  let observeClose: () => void = () => undefined
+  let releaseClose: () => void = () => undefined
+  const closing = new Promise<void>((resolve) => {
+    observeClose = resolve
+  })
+  const gate = new Promise<void>((resolve) => {
+    releaseClose = resolve
+  })
+  const callback = {
+    redirectUri: "http://localhost:1234/callback",
+    waitForCode: async () => "synthetic-code",
+    cancel: () => undefined,
+    close: async () => {
+      observeClose()
+      await gate
+      throw new Error("回调关闭失败")
+    },
+  }
+  const harness = await createHarness({ callback })
+  let first: Promise<unknown> | undefined
+  let second: Promise<unknown> | undefined
+  try {
+    await harness.store.saveAccount({ ...seedAccount(), id: "acc-2" })
+    first = harness.service.authorize({ displayName: "第一个", proxyId: "p1", fingerprint })
+    await closing
+    second = harness.service
+      .authorize({ accountId: "acc-2", displayName: "第二个", proxyId: "p1", fingerprint })
+      .catch((error: unknown) => error)
+    await Promise.race([second, new Promise((resolve) => setTimeout(resolve, 200))])
+    expect(harness.browserCalls.filter((call) => call === "launch")).toHaveLength(1)
+    expect(await second).toMatchObject({ code: "BROWSER_STOP_FAILED" })
+    releaseClose()
+    await first
+  } finally {
+    releaseClose()
+    await Promise.allSettled([first, second])
+    await harness.cleanup()
+  }
 })

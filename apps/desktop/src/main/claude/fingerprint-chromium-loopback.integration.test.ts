@@ -36,6 +36,7 @@ it.skipIf(!browserBinary || !xrayBinary)(
     let browserPid: number | null = null
     let browserStopped = false
     let gracefulShutdown = true
+    let testFailure: unknown = null
     try {
       const extension = join(directory, "extension")
       await mkdir(extension, { recursive: true })
@@ -122,6 +123,11 @@ it.skipIf(!browserBinary || !xrayBinary)(
       expect(await launched.page.evaluate(() => localStorage.getItem("synthetic"))).toBe("kept")
       const context = browser.contexts()[0]
       if (context === undefined) throw new Error("合成浏览器上下文不可用")
+      const remoteNamePage = await context.newPage()
+      await remoteNamePage.goto(
+        `http://synthetic.example.invalid:${fixture.originPort}/probe-domain`,
+      )
+      await remoteNamePage.close()
       const before = fixture.requests()
       fixture.failProxy()
       for (const phase of ["upstream-down", "xray-down"]) {
@@ -160,21 +166,23 @@ it.skipIf(!browserBinary || !xrayBinary)(
       callbackUrl.searchParams.set("code", "synthetic-code")
       await callbackPage.goto(callbackUrl.href, { timeout: 5_000 })
       await expect(callback.waitForCode()).resolves.toBe("synthetic-code")
+    } catch (error: unknown) {
+      testFailure = error
     } finally {
-      let cleanupFailed = false
+      const failures: unknown[] = []
       if (browser !== undefined) {
         try {
           gracefulShutdown = await closeBrowser(browser, adapter, browserPid)
-          if (!gracefulShutdown) cleanupFailed = true
-        } catch {
-          cleanupFailed = true
+          if (!gracefulShutdown) failures.push(new Error("浏览器未确认正常退出"))
+        } catch (error: unknown) {
+          failures.push(error)
         }
       }
       try {
         await adapter.dispose()
         browserStopped = true
-      } catch {
-        cleanupFailed = true
+      } catch (error: unknown) {
+        failures.push(error)
       }
       const cleanup = await Promise.allSettled([
         runtime?.close(),
@@ -182,11 +190,15 @@ it.skipIf(!browserBinary || !xrayBinary)(
         callback.close(),
         fixture.close(),
       ])
-      if (cleanup.some((entry) => entry.status === "rejected")) cleanupFailed = true
-      if (browserStopped && gracefulShutdown && !cleanupFailed) {
+      for (const result of cleanup) if (result.status === "rejected") failures.push(result.reason)
+      if (browserStopped && gracefulShutdown && failures.length === 0) {
         await rm(directory, { recursive: true, force: true })
-      } else throw new Error(`合成资源未确认回收；临时目录保留在 ${directory}`)
+      } else {
+        if (testFailure !== null) failures.unshift(testFailure)
+        throw new AggregateError(failures, `合成资源未确认回收；临时目录保留在 ${directory}`)
+      }
     }
+    if (testFailure !== null) throw testFailure
   },
   45_000,
 )
@@ -324,7 +336,9 @@ async function createFixture(): Promise<{
   proxy.on("connect", (request, socket, head) => {
     const expected = `Basic ${Buffer.from("synthetic:password").toString("base64")}`
     if (
-      request.url !== `127.0.0.1:${originPort}` ||
+      ![`127.0.0.1:${originPort}`, `synthetic.example.invalid:${originPort}`].includes(
+        request.url ?? "",
+      ) ||
       request.headers["proxy-authorization"] !== expected
     ) {
       socket.end("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")

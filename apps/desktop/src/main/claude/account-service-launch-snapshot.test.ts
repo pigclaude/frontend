@@ -67,6 +67,7 @@ describe("Claude 账号授权快照", () => {
         return reads === 1 ? "http://localhost:1234/callback" : "http://localhost:5678/callback"
       },
       waitForCode: async () => "code-1",
+      cancel: () => undefined,
       close: async () => undefined,
     }
     const harness = await createHarness({ callback })
@@ -90,6 +91,7 @@ describe("Claude 账号授权快照", () => {
         new Promise<string>((_resolve, reject) => {
           rejectWait = reject
         }),
+      cancel: () => rejectWait?.(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消")),
       close: async () => {
         if (closed) return
         closed = true

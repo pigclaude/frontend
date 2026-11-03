@@ -1,10 +1,16 @@
 // 负责 Claude 订阅账号的官方 OAuth：授权 URL、本机回调、code 交换、refresh 和 profile 读取。
 
-import { randomBytes, timingSafeEqual } from "node:crypto"
+import { randomBytes } from "node:crypto"
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import { sendCompletionPage } from "../authorization/completion-page"
 import { createPkceChallenge } from "../authorization/pkce"
-import { fetch as undiciFetch, type Dispatcher } from "undici"
+import { fetch as undiciFetch } from "undici"
+import {
+  oauthRequestSignal,
+  requestOAuth,
+  type OAuthRequestNetwork,
+} from "./subscription-oauth-request"
+import { callbackStateMatches, listenCallbackServer } from "./subscription-oauth-callback-support"
 
 const defaultAuthorizeUrl = "https://claude.com/cai/oauth/authorize"
 const defaultTokenUrl = "https://platform.claude.com/v1/oauth/token"
@@ -71,6 +77,8 @@ export type ClaudeOAuthProfile = {
 export type OAuthCallbackServer = {
   redirectUri: string
   waitForCode: () => Promise<string>
+  /** 结束等待，但保留回调监听直到浏览器退出。 */
+  cancel: () => void
   close: () => Promise<void>
 }
 
@@ -153,6 +161,15 @@ export class SubscriptionOAuth {
         response.end()
         return
       }
+      if (result.isComplete()) {
+        sendCompletionPage(response, {
+          kind: "error",
+          title: "授权已结束",
+          message: "本次授权已结束，请回到 PigClaude。",
+          hint: "如需授权，请重新开始。",
+        })
+        return
+      }
       const error = url.searchParams.get("error")
       if (error !== null) {
         sendCompletionPage(response, {
@@ -166,7 +183,7 @@ export class SubscriptionOAuth {
       }
       const state = url.searchParams.get("state") ?? ""
       const code = url.searchParams.get("code")
-      if (!safeEqual(state, input.state)) {
+      if (!callbackStateMatches(state, input.state)) {
         sendCompletionPage(response, {
           kind: "error",
           title: "授权未完成",
@@ -204,11 +221,11 @@ export class SubscriptionOAuth {
     }
 
     const ipv4 = createServer(handler)
-    const port = await listen(ipv4, "127.0.0.1")
+    const port = await listenCallbackServer(ipv4, "127.0.0.1")
     servers.push(ipv4)
     const ipv6 = createServer(handler)
     try {
-      await listen(ipv6, "::1", port)
+      await listenCallbackServer(ipv6, "::1", port)
       servers.push(ipv6)
     } catch {
       ipv6.close()
@@ -223,13 +240,18 @@ export class SubscriptionOAuth {
     }, input.timeoutMs ?? defaultCallbackTimeoutMs)
     timeout.unref?.()
 
-    let closed = false
+    let closing: Promise<void> | undefined
     return {
       redirectUri: `http://localhost:${port}/callback`,
       waitForCode: () => result.wait(),
-      close: async () => {
-        if (closed) return
-        closed = true
+      cancel: () =>
+        result.complete({
+          kind: "error",
+          code: "AUTHORIZATION_CANCELLED",
+          message: "授权已取消",
+        }),
+      close: () => {
+        if (closing !== undefined) return closing
         clearTimeout(timeout)
         result.complete({
           kind: "error",
@@ -237,26 +259,36 @@ export class SubscriptionOAuth {
           message: "授权已取消",
         })
         for (const server of servers) server.closeAllConnections()
-        await Promise.all(
+        const work = Promise.allSettled(
           servers.map(
             (server) =>
-              new Promise<void>((resolve) => {
-                server.close(() => resolve())
+              new Promise<void>((resolve, reject) => {
+                if (!server.listening) return resolve()
+                server.close((error) => (error ? reject(error) : resolve()))
               }),
           ),
-        )
+        ).then((results) => {
+          const failure = results.find((result) => result.status === "rejected")
+          if (failure?.status === "rejected") throw failure.reason
+        })
+        closing = work
+        void work.catch(() => {
+          if (closing === work) closing = undefined
+        })
+        return work
       },
     }
   }
 
-  /** 用授权 code 交换 token。保证只接受完整成功响应；没有 dispatcher 时使用系统网络。 */
-  async exchangeCode(input: {
-    code: string
-    state: string
-    codeVerifier: string
-    redirectUri: string
-    dispatcher?: Dispatcher
-  }): Promise<ClaudeOAuthTokens> {
+  /** 用授权 code 交换 token。保证只接受完整成功响应，并使用显式指定的网络。 */
+  async exchangeCode(
+    input: {
+      code: string
+      state: string
+      codeVerifier: string
+      redirectUri: string
+    } & OAuthRequestNetwork,
+  ): Promise<ClaudeOAuthTokens> {
     return this.#requestTokens(
       {
         grant_type: "authorization_code",
@@ -266,17 +298,18 @@ export class SubscriptionOAuth {
         code_verifier: input.codeVerifier,
         state: input.state,
       },
-      input.dispatcher,
+      input,
       "OAUTH_EXCHANGE_FAILED",
     )
   }
 
-  /** 用 refresh token 换新 token。保证 refresh token 轮换时保留新值；没有 dispatcher 时使用系统网络。 */
-  async refresh(input: {
-    refreshToken: string
-    scopes?: string[]
-    dispatcher?: Dispatcher
-  }): Promise<ClaudeOAuthTokens> {
+  /** 用 refresh token 换新 token。保证 refresh token 轮换时保留新值。 */
+  async refresh(
+    input: {
+      refreshToken: string
+      scopes?: string[]
+    } & OAuthRequestNetwork,
+  ): Promise<ClaudeOAuthTokens> {
     return this.#requestTokens(
       {
         grant_type: "refresh_token",
@@ -284,31 +317,35 @@ export class SubscriptionOAuth {
         client_id: this.#config.clientId,
         scope: (input.scopes ?? this.#config.scopes).join(" "),
       },
-      input.dispatcher,
+      input,
       "CREDENTIAL_REFRESH_FAILED",
       input.refreshToken,
     )
   }
 
-  /** 读取账号 profile。保证失败时返回 null，不阻断凭据保存；没有 dispatcher 时使用系统网络。 */
-  async readProfile(input: {
-    accessToken: string
-    dispatcher?: Dispatcher
-  }): Promise<ClaudeOAuthProfile | null> {
-    let response: Awaited<ReturnType<typeof undiciFetch>>
+  /** 读取账号 profile。保证失败时返回 null，不阻断凭据保存。 */
+  async readProfile(
+    input: {
+      accessToken: string
+    } & OAuthRequestNetwork,
+  ): Promise<ClaudeOAuthProfile | null> {
+    let response: Awaited<ReturnType<typeof requestOAuth>>
     try {
-      response = await this.#config.fetch(this.#config.profileUrl, {
-        method: "GET",
-        headers: { authorization: `Bearer ${input.accessToken}` },
-        ...(input.dispatcher === undefined ? {} : { dispatcher: input.dispatcher }),
-        signal: AbortSignal.timeout(this.#config.timeoutMs),
-        redirect: "manual",
-      })
+      response = await requestOAuth(
+        this.#config.fetch,
+        this.#config.profileUrl,
+        {
+          method: "GET",
+          headers: { authorization: `Bearer ${input.accessToken}` },
+          signal: oauthRequestSignal(this.#config.timeoutMs, input.signal),
+        },
+        input,
+      )
     } catch {
       return null
     }
     if (!response.ok) {
-      await response.body?.cancel().catch(() => undefined)
+      await response.discard()
       return null
     }
     let body: unknown
@@ -322,20 +359,23 @@ export class SubscriptionOAuth {
 
   async #requestTokens(
     body: Record<string, string>,
-    dispatcher: Dispatcher | undefined,
+    network: OAuthRequestNetwork,
     failureCode: SubscriptionOAuthErrorCode,
     fallbackRefreshToken?: string,
   ): Promise<ClaudeOAuthTokens> {
-    let response: Awaited<ReturnType<typeof undiciFetch>>
+    let response: Awaited<ReturnType<typeof requestOAuth>>
     try {
-      response = await this.#config.fetch(this.#config.tokenUrl, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-        ...(dispatcher === undefined ? {} : { dispatcher }),
-        signal: AbortSignal.timeout(this.#config.timeoutMs),
-        redirect: "manual",
-      })
+      response = await requestOAuth(
+        this.#config.fetch,
+        this.#config.tokenUrl,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+          signal: oauthRequestSignal(this.#config.timeoutMs, network.signal),
+        },
+        network,
+      )
     } catch {
       throw new SubscriptionOAuthError(failureCode, "OAuth 请求失败")
     }
@@ -376,6 +416,7 @@ export class SubscriptionOAuth {
 
 function createCallbackState(): {
   complete: (outcome: CallbackOutcome) => void
+  isComplete: () => boolean
   wait: () => Promise<string>
 } {
   let outcome: CallbackOutcome | null = null
@@ -388,6 +429,7 @@ function createCallbackState(): {
   }
   return {
     complete,
+    isComplete: () => outcome !== null,
     wait: async () => {
       const resolved =
         outcome ??
@@ -398,30 +440,6 @@ function createCallbackState(): {
       throw new SubscriptionOAuthError(resolved.code, resolved.message)
     },
   }
-}
-
-function listen(server: Server, host: string, port = 0): Promise<number> {
-  return new Promise<number>((resolve, reject) => {
-    const onError = (error: Error): void => {
-      reject(error)
-    }
-    server.once("error", onError)
-    server.listen(port, host, () => {
-      server.off("error", onError)
-      const address = server.address()
-      if (address === null || typeof address === "string") {
-        reject(new Error("回调服务器没有绑定端口"))
-        return
-      }
-      resolve(address.port)
-    })
-  })
-}
-
-function safeEqual(left: string, right: string): boolean {
-  const a = Buffer.from(left)
-  const b = Buffer.from(right)
-  return a.length === b.length && timingSafeEqual(a, b)
 }
 
 function parseProfile(value: unknown): ClaudeOAuthProfile | null {

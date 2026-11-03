@@ -7,6 +7,27 @@ import type { OAuthCallbackServer } from "./subscription-oauth"
 import { createHarness, fingerprint, seedAccount } from "./account-service-test-fixtures"
 
 describe("ClaudeAccountService", () => {
+  it.each(["default_public_interface_only", "default_public_and_private_interfaces"] as const)(
+    "rejects WebRTC policy %s before starting a bound proxy",
+    async (webrtcPolicy) => {
+      const harness = await createHarness()
+      const selected = { ...fingerprint, webrtcPolicy }
+      await expect(
+        harness.service.authorize({
+          displayName: "工作账号",
+          proxyId: "p1",
+          fingerprint: selected,
+        }),
+      ).rejects.toMatchObject({
+        code: "FINGERPRINT_INVALID",
+        message: expect.stringContaining("WebRTC"),
+      })
+      expect(harness.bridgeCalls).toEqual([])
+      expect(harness.callbackCalls).toEqual([])
+      expect(selected.webrtcPolicy).toBe(webrtcPolicy)
+    },
+  )
+
   it("adds an account only after egress, browser authorization and storage succeed", async () => {
     const harness = await createHarness()
     const view = await harness.service.authorize({
@@ -36,8 +57,10 @@ describe("ClaudeAccountService", () => {
       bridgeUrl: "socks5://127.0.0.1:9999",
       callbackUri: "http://localhost:1234/callback",
     })
-    expect(harness.exchangeDispatchers[0]).toBeDefined()
-    expect(harness.profileDispatchers[0]).toBeDefined()
+    expect(harness.exchangeXrayRequests[0]).toBeDefined()
+    expect(harness.profileXrayRequests[0]).toBe(harness.exchangeXrayRequests[0])
+    expect(harness.exchangeDispatchers).toEqual([undefined])
+    expect(harness.profileDispatchers).toEqual([undefined])
     expect(harness.bridgeClosed()).toBe(true)
     expect(harness.events.map((event) => event.phase)).toEqual([
       "preparing",
@@ -66,6 +89,8 @@ describe("ClaudeAccountService", () => {
     expect(harness.launchInputs[0]?.network).toEqual({ mode: "system" })
     expect(harness.exchangeDispatchers).toEqual([undefined])
     expect(harness.profileDispatchers).toEqual([undefined])
+    expect(harness.exchangeXrayRequests).toEqual([undefined])
+    expect(harness.profileXrayRequests).toEqual([undefined])
     expect(harness.events.map((event) => event.phase)).toEqual([
       "preparing",
       "waiting-browser",
@@ -237,6 +262,10 @@ describe("ClaudeAccountService", () => {
         return new Promise<string>((_resolve, reject) => {
           rejectWait = reject
         })
+      },
+      cancel: () => {
+        cancelled = true
+        rejectWait?.(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消"))
       },
       close: async () => {
         cancelled = true

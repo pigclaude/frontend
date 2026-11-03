@@ -10,7 +10,7 @@ import type {
 import type { AccountRecord, LocalStore } from "@pigclaude/local-store"
 import type { EgressResult } from "@pigclaude/login-gate/egress-check"
 import type { ProxyRuntime, StartProxyRuntime } from "@pigclaude/login-gate/proxy-runtime"
-import { createProxyAgent } from "@pigclaude/proxy-connection"
+import { createXrayHttpClient } from "@pigclaude/login-gate/xray-http"
 import {
   assertClaudeCliIdentity,
   buildClaudeCliAccountRecord,
@@ -23,6 +23,7 @@ import {
 import { readClaudeCliAccountMetadata, type ClaudeCliAccountMetadata } from "./cli-account-metadata"
 import { readClaudeCliCredential, type ClaudeCliCredential } from "./cli-credential-reader"
 import { AuthorizationLifecycle, type AuthorizationAttempt } from "./authorization-lifecycle"
+import { AuthorizationResourceCleanup } from "./account-service-cleanup"
 import { mapError, phaseFor } from "./account-service-errors"
 import type {
   AuthorizeClaudeAccountInput,
@@ -94,7 +95,7 @@ export class ClaudeAccountService {
   readonly #readCliCredential: () => Promise<ClaudeCliCredential>
   readonly #readCliAccountMetadata: () => Promise<ClaudeCliAccountMetadata | null>
   readonly #authorizations = new AuthorizationLifecycle()
-  readonly #pendingCleanup = new Map<string, LaunchedBrowser>()
+  readonly #pendingCleanup = new AuthorizationResourceCleanup()
 
   /** 创建绑定到账号库、fingerprint-chromium、OAuth 和出口检查端口的服务。 */
   constructor(deps: ClaudeAccountServiceDeps) {
@@ -128,9 +129,10 @@ export class ClaudeAccountService {
     let failure: ClaudeAccountError | null = null
     let committed = false
     const assertCanSpawn = () => {
-      if (this.#pendingCleanup.size !== 0) {
-        throw new ClaudeAccountError("BROWSER_STOP_FAILED", "请先关闭仍在运行的浏览器并重试取消")
+      if (this.#pendingCleanup.hasPending) {
+        throw new ClaudeAccountError("BROWSER_STOP_FAILED", "浏览器或授权资源尚未关闭，请稍后重试")
       }
+      proxyRuntime?.assertRunning?.()
     }
     try {
       assertCanSpawn()
@@ -155,7 +157,12 @@ export class ClaudeAccountService {
         throw new ClaudeAccountError("FINGERPRINT_INVALID", validation.message)
       }
       const fingerprint = validation.fingerprint
-      const conflict = launchArgumentConflict(fingerprint.unknownArgs ?? [], proxyId !== null)
+      const conflict = launchArgumentConflict(
+        fingerprint.unknownArgs ?? [],
+        proxyId !== null,
+        undefined,
+        fingerprint.webrtcPolicy,
+      )
       if (conflict !== null) throw new ClaudeAccountError("FINGERPRINT_INVALID", conflict)
       const proxy = proxyId === null ? null : await this.#deps.store.getProxy(proxyId)
       attempt.checkpoint()
@@ -217,9 +224,10 @@ export class ClaudeAccountService {
       attempt.checkpoint()
       const code = await callback.waitForCode()
       attempt.checkpoint()
+      proxyRuntime?.assertRunning?.()
       this.#emit(accountId, "exchanging")
 
-      const dispatcher = proxy === null ? null : createProxyAgent(proxy.url)
+      const xrayClient = proxy === null ? null : createXrayHttpClient(bridgeUrl ?? "")
       let tokens: ClaudeOAuthTokens
       let profile: ClaudeOAuthProfile | null
       try {
@@ -228,15 +236,19 @@ export class ClaudeAccountService {
           state: oauthRequest.state,
           codeVerifier: oauthRequest.codeVerifier,
           redirectUri: callbackUri,
-          ...(dispatcher === null ? {} : { dispatcher }),
+          signal: attempt.signal,
+          ...(xrayClient === null ? {} : { xrayRequest: xrayClient.request }),
         })
         attempt.checkpoint()
+        proxyRuntime?.assertRunning?.()
         profile = await this.#deps.oauth.readProfile({
           accessToken: tokens.accessToken,
-          ...(dispatcher === null ? {} : { dispatcher }),
+          signal: attempt.signal,
+          ...(xrayClient === null ? {} : { xrayRequest: xrayClient.request }),
         })
+        proxyRuntime?.assertRunning?.()
       } finally {
-        await dispatcher?.close().catch(() => undefined)
+        xrayClient?.close()
       }
 
       attempt.checkpoint()
@@ -296,18 +308,14 @@ export class ClaudeAccountService {
       committed = true
       return toView(record)
     } catch (error: unknown) {
-      failure = mapError(error)
+      failure = mapError(attempt?.signal.aborted ? attempt.signal.reason : error)
       throw failure
     } finally {
-      await callback?.close().catch(() => undefined)
-      let stopError: ClaudeAccountError | null = null
-      try {
-        await launched?.stop()
-      } catch (error: unknown) {
-        stopError = mapError(error)
-        if (launched !== null) this.#pendingCleanup.set(accountId, launched)
-      }
-      await proxyRuntime?.close().catch(() => undefined)
+      const stopError = await this.#pendingCleanup.close(accountId, {
+        browser: launched,
+        callback,
+        proxy: proxyRuntime,
+      })
       const canEmit = attempt === null || this.#authorizations.canEmit(attempt)
       attempt?.finish(stopError)
       if (stopError !== null && !committed) {
@@ -387,14 +395,7 @@ export class ClaudeAccountService {
   /** 取消并等待当前授权清理；提交已开始或浏览器未退出时返回明确错误。 */
   async cancel(): Promise<void> {
     await this.#authorizations.cancelCurrent()
-    for (const [accountId, launched] of [...this.#pendingCleanup.entries()].reverse()) {
-      try {
-        await launched.stop()
-      } catch (error: unknown) {
-        throw mapError(error)
-      }
-      if (this.#pendingCleanup.get(accountId) === launched) this.#pendingCleanup.delete(accountId)
-    }
+    await this.#pendingCleanup.retry()
   }
 
   /** 修改账号的显示名、启用状态、代理或指纹。保证不触碰凭据。 */
@@ -437,6 +438,7 @@ export class ClaudeAccountService {
   /** 删除账号。保证浏览器配置目录清理失败时保留本地账号。 */
   async remove(accountId: string): Promise<void> {
     await this.#authorizations.remove(accountId, async () => {
+      await this.#pendingCleanup.retryAccount(accountId)
       const account = await this.#deps.store.getAccount(accountId)
       if (account === null) return
       try {
@@ -456,6 +458,7 @@ export class ClaudeAccountService {
     if (results.some((result) => result.status === "rejected")) {
       throw new ClaudeAccountError("BROWSER_STOP_FAILED", "无法确认浏览器已退出，请手动关闭后重试")
     }
+    await this.#pendingCleanup.retry()
   }
 
   /** 读取 profile 用于校正身份。保证失败时返回 null，不影响导入。 */

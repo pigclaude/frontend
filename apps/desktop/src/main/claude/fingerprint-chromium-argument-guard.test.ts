@@ -270,7 +270,7 @@ describe("受管浏览器启动参数", () => {
           callbackUri: "http://localhost:1234/callback",
         },
       }),
-    ).rejects.toMatchObject({ message: expect.stringContaining("受管代理保护") })
+    ).rejects.toMatchObject({ message: expect.stringContaining("webrtc-ip-handling-policy") })
     expect(calls).toEqual([])
     expect(unknownArgs).toEqual([
       " --load-extension=/synthetic/extension ",
@@ -279,6 +279,26 @@ describe("受管浏览器启动参数", () => {
       "--disable-non-proxied-udp",
     ])
   })
+
+  it.each(["default_public_interface_only", "default_public_and_private_interfaces"] as const)(
+    "rejects WebRTC policy %s for a bound proxy before launching",
+    async (webrtcPolicy) => {
+      const { adapter, calls } = await createAdapter("darwin")
+      await expect(
+        adapter.launch({
+          accountId: "fixture",
+          authorizeUrl: "https://example.test/authorize",
+          fingerprint: { ...fingerprint, webrtcPolicy },
+          network: {
+            mode: "bound",
+            bridgeUrl: "socks5://127.0.0.1:9000",
+            callbackUri: "http://localhost:1234/callback",
+          },
+        }),
+      ).rejects.toMatchObject({ message: expect.stringContaining("WebRTC") })
+      expect(calls).toEqual([])
+    },
+  )
 
   it("uses the same fingerprint snapshot that it checked", async () => {
     const { adapter, calls } = await createAdapter("darwin")

@@ -8,6 +8,7 @@ import type { ClaudeAccountEvent, ClaudeFingerprintView } from "@pigclaude/contr
 import { LocalStore, type AccountRecord } from "@pigclaude/local-store"
 import type { EgressResult } from "@pigclaude/login-gate/egress-check"
 import type { ProxyRuntime } from "@pigclaude/login-gate/proxy-runtime"
+import type { XrayHttpRequest } from "@pigclaude/login-gate/xray-http"
 import { BrowserLaunchError, type LaunchBrowserInput } from "./fingerprint-chromium"
 import type { ClaudeAccountError } from "./errors"
 import { ClaudeAccountService, type ClaudeAccountServiceDeps } from "./account-service"
@@ -43,6 +44,8 @@ export type Harness = {
   exchangeRedirectUris: string[]
   exchangeDispatchers: Array<Dispatcher | undefined>
   profileDispatchers: Array<Dispatcher | undefined>
+  exchangeXrayRequests: Array<XrayHttpRequest | undefined>
+  profileXrayRequests: Array<XrayHttpRequest | undefined>
   launched: { promise: Promise<void>; resolve: () => void }
   bridgeClosed: () => boolean
   /** 仅清理本次夹具创建且经身份核验的临时目录。 */
@@ -64,6 +67,7 @@ export async function createHarness(
     readCliAccountMetadata?: ClaudeAccountServiceDeps["readCliAccountMetadata"]
     callback?: OAuthCallbackServer
     bridgeUrl?: string
+    proxyRuntime?: ProxyRuntime
     bridgeMissing?: boolean
     bridgeUrlAfterEgress?: string
     membershipWait?: () => Promise<void>
@@ -113,6 +117,8 @@ export async function createHarness(
   const exchangeRedirectUris: string[] = []
   const exchangeDispatchers: Array<Dispatcher | undefined> = []
   const profileDispatchers: Array<Dispatcher | undefined> = []
+  const exchangeXrayRequests: Array<XrayHttpRequest | undefined> = []
+  const profileXrayRequests: Array<XrayHttpRequest | undefined> = []
   let resolveLaunched: () => void = () => undefined
   const launched = {
     promise: new Promise<void>((resolve) => {
@@ -130,6 +136,7 @@ export async function createHarness(
   const callback = options.callback ?? {
     redirectUri: "http://localhost:1234/callback",
     waitForCode: async () => "code-1",
+    cancel: () => undefined,
     close: async () => undefined,
   }
   const browser = {
@@ -180,13 +187,19 @@ export async function createHarness(
       await options.callbackStartWait?.()
       return callback
     },
-    exchangeCode: async (input: { dispatcher?: Dispatcher; redirectUri: string }) => {
+    exchangeCode: async (input: {
+      dispatcher?: Dispatcher
+      xrayRequest?: XrayHttpRequest
+      redirectUri: string
+    }) => {
       exchangeRedirectUris.push(input.redirectUri)
       exchangeDispatchers.push(input.dispatcher)
+      exchangeXrayRequests.push(input.xrayRequest)
       return options.tokens ?? defaultTokens()
     },
-    readProfile: async (input: { dispatcher?: Dispatcher }) => {
+    readProfile: async (input: { dispatcher?: Dispatcher; xrayRequest?: XrayHttpRequest }) => {
       profileDispatchers.push(input.dispatcher)
+      profileXrayRequests.push(input.xrayRequest)
       return options.profile ?? defaultProfile()
     },
   }
@@ -205,7 +218,7 @@ export async function createHarness(
       : async (input) => {
           bridgeCalls.push(input)
           if (options.bridgeMissing) return null as unknown as ProxyRuntime
-          return bridge
+          return options.proxyRuntime ?? bridge
         },
     checkEgress: async (input) => {
       egressCalls.push(input)
@@ -234,6 +247,8 @@ export async function createHarness(
     exchangeRedirectUris,
     exchangeDispatchers,
     profileDispatchers,
+    exchangeXrayRequests,
+    profileXrayRequests,
     launched,
     bridgeClosed: () => bridgeClosed,
     cleanup,

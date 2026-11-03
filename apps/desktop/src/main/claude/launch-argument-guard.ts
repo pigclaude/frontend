@@ -10,7 +10,12 @@ const managedKeys = new Set([
   "proxy-auto-detect",
 ])
 
-const boundProxyKeys = new Set(["host-resolver-rules", "host-rules", "use-system-proxy-resolver"])
+const boundProxyKeys = new Set([
+  "host-resolver-rules",
+  "host-rules",
+  "use-system-proxy-resolver",
+  "webrtc-ip-handling-policy",
+])
 
 // 与 Chromium 148 的 POSIX ASCII 空白和 Windows 宽字符空白保持一致。
 const asciiBoundaryWhitespace = /^[\u0009-\u000d\u0020]+|[\u0009-\u000d\u0020]+$/g
@@ -22,12 +27,16 @@ export function launchArgumentConflict(
   args: readonly string[],
   proxyBound: boolean,
   hostPlatform: NodeJS.Platform = process.platform,
+  webrtcPolicy?: string,
 ): string | null {
   for (const arg of args) {
     const key = switchKey(arg, hostPlatform)
     if (key === null) continue
     if (managedKeys.has(key) || (proxyBound && boundProxyKeys.has(key)))
       return `原始参数 --${key} 与账号目录或网络设置冲突，请在高级设置中移除`
+  }
+  if (proxyBound && webrtcPolicy && webrtcPolicy !== "disable_non_proxied_udp") {
+    return "绑定代理时，WebRTC 策略须设为禁止非代理 UDP；请在指纹设置中修改"
   }
   return null
 }

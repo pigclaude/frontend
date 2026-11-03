@@ -174,6 +174,7 @@ export class FingerprintChromiumAdapter {
       validation.fingerprint.unknownArgs ?? [],
       network.mode === "bound",
       this.#hostPlatform,
+      validation.fingerprint.webrtcPolicy,
     )
     if (conflict !== null) throw new BrowserLaunchError("BROWSER_START_FAILED", conflict)
     if (network.mode === "bound") this.ensureBoundProxyProtection()
@@ -352,7 +353,9 @@ function buildLaunchArgs(
     args.push(
       `--proxy-server=${network.bridgeUrl}`,
       `--proxy-bypass-list=<-loopback>;http://localhost:${callbackPort}`,
+      "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1",
     )
+    if (!fingerprint.webrtcPolicy) args.push("--disable-non-proxied-udp")
   }
   args.push(
     "--no-first-run",

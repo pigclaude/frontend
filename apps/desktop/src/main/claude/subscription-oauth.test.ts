@@ -1,5 +1,6 @@
 // Claude 订阅 OAuth 测试。覆盖授权 URL、回调、code 交换、refresh、profile 和错误边界。
 
+import { createServer } from "node:net"
 import { ProxyAgent, type Dispatcher } from "undici"
 import { describe, expect, it } from "vitest"
 import { createPkceChallenge } from "../authorization/pkce"
@@ -95,6 +96,27 @@ describe("subscription oauth", () => {
     await expect(callback.waitForCode()).rejects.toMatchObject({
       code: "AUTHORIZATION_CANCELLED",
     })
+  })
+
+  it("取消等待时保留回调端口，显式关闭后才释放", async () => {
+    const callback = await new SubscriptionOAuth().startCallback({
+      state: "synthetic",
+      timeoutMs: 2_000,
+    })
+    const port = Number(new URL(callback.redirectUri).port)
+    try {
+      callback.cancel()
+      await expect(callback.waitForCode()).rejects.toMatchObject({
+        code: "AUTHORIZATION_CANCELLED",
+      })
+      expect(await canBind(port)).toBe(false)
+      const late = await fetch(`${callback.redirectUri}?code=synthetic&state=synthetic`)
+      expect(await late.text()).toContain("授权已结束")
+      await callback.close()
+      expect(await canBind(port)).toBe(true)
+    } finally {
+      await callback.close()
+    }
   })
 
   it("exchanges an authorization code with the injected dispatcher", async () => {
@@ -289,6 +311,22 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json" },
   })
+}
+
+async function canBind(port: number): Promise<boolean> {
+  const server = createServer()
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject)
+      server.listen(port, "127.0.0.1", resolve)
+    })
+    return true
+  } catch (error: unknown) {
+    if (error instanceof Error && "code" in error && error.code === "EADDRINUSE") return false
+    throw error
+  } finally {
+    if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
 }
 
 function sequenceFetch(

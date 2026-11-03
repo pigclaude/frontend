@@ -48,6 +48,7 @@ import { cleanupStaleSessionDirs } from "./session/session-environment"
 import { SessionHost } from "./session/session-host"
 import { registerSessionIpc } from "./session/session-ipc"
 import { createQuitCoordinator } from "./shutdown"
+import { shutdownDesktopResources } from "./shutdown-resources"
 import type { SessionHostEvent } from "./session/session-types"
 import { UsageRecorder } from "./session/usage-recorder"
 import { FileSecretVault } from "./secret-vault"
@@ -146,7 +147,13 @@ app.on(
   createQuitCoordinator({
     shutdown: shutdownDesktop,
     quit: () => app.quit(),
-    forceExit: () => app.exit(0),
+    onFailure: (reason) =>
+      dialog.showErrorBox(
+        "无法安全退出",
+        reason === "timeout"
+          ? "资源仍在关闭，请手动关闭浏览器并等待清理完成。"
+          : "浏览器或代理资源尚未关闭，请关闭相关浏览器后重试。",
+      ),
     onBeforeShutdown: () => {
       shutdownStarted = true
       closeStartupEvents()
@@ -278,19 +285,15 @@ function registerIpcHandlers(): void {
   })
 }
 
-/** 应用退出时并行关闭账号启动入口和会话，再停 daemon 并等待账号与回调服务清理。 */
+/** 应用退出时先关闭浏览器和账号资源，再关闭 Xray。 */
 async function shutdownDesktop(): Promise<void> {
-  const accounts = claudeAccountService?.dispose().catch(() => {
-    console.error("CLAUDE_BROWSER_SHUTDOWN_FAILED")
+  await shutdownDesktopResources({
+    accounts: () => claudeAccountService?.dispose() ?? Promise.resolve(),
+    sessions: () => sessionHost?.dispose() ?? Promise.resolve(),
+    composition: () => desktopComposition?.dispose() ?? Promise.resolve(),
+    xray: () => startProxyRuntime.dispose(),
+    callback: () => callbackServer?.close() ?? Promise.resolve(),
   })
-  const proxyRuntime = startProxyRuntime.dispose().catch(() => {
-    console.error("XRAY_SHUTDOWN_FAILED")
-  })
-  await sessionHost?.dispose().catch(() => undefined)
-  await desktopComposition?.dispose().catch(() => undefined)
-  await accounts
-  await proxyRuntime
-  await callbackServer?.close().catch(() => undefined)
 }
 
 /** 启动后已有授权时上报一次设备版本；失败只记日志，不重试也不提示用户。 */

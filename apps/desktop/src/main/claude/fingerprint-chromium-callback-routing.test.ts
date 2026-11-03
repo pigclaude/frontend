@@ -63,6 +63,11 @@ it("每次绑定启动只放行该次 localhost 回调端口，并保留扩展",
     expect(calls[1]).toContain("--proxy-bypass-list=<-loopback>;http://localhost:43124")
     expect(calls[1]).not.toContain("--proxy-bypass-list=<-loopback>;http://localhost:43123")
     expect(calls[1]).toContain("--load-extension=/synthetic/extension")
+    expect(calls[0]).toContain("--disable-non-proxied-udp")
+    expect(calls[1]).toContain("--disable-non-proxied-udp")
+    expect(calls[0]).toContain(
+      "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1",
+    )
   } finally {
     await adapter.dispose()
     await rm(root, { recursive: true, force: true })

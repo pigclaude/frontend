@@ -5,7 +5,8 @@
   "exports": {
     ".": "./src/login-gate.ts",
     "./proxy-runtime": "./src/proxy-runtime.ts",
-    "./egress-check": "./src/egress-check.ts"
+    "./egress-check": "./src/egress-check.ts",
+    "./xray-http": "./src/xray-http.ts"
   },
   "scripts": {
     "test": "vitest run"
@@ -14,6 +15,7 @@
     "@pigclaude/local-store": "workspace:*",
     "@pigclaude/proxy-connection": "workspace:*",
     "node-fetch": "3.3.2",
+    "socks": "2.8.10",
     "socks-proxy-agent": "10.1.0",
     "undici": "6.21.2"
   },

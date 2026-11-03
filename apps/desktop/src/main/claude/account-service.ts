@@ -31,6 +31,7 @@ import {
 } from "./account-service-proxy-callback"
 import { mapError, phaseFor, requireMembership } from "./account-service-errors"
 import { readOptionalOAuthProfile } from "./account-service-oauth-profile"
+import { authorizationStartUrl } from "./account-service-preflight"
 import type {
   AuthorizeClaudeAccountInput,
   ImportClaudeCliAccountInput,
@@ -57,7 +58,6 @@ import {
   type OAuthCallbackServer,
   type SubscriptionOAuth,
 } from "./subscription-oauth"
-
 const defaultEgressCheckUrl = "https://www.cloudflare.com/cdn-cgi/trace"
 // 导入时 access token 至少还要有 60 秒有效期，避免刚导入就过期。
 const cliImportExpiryMarginMs = 60_000
@@ -232,7 +232,7 @@ export class ClaudeAccountService {
         launch: (signal, assertCanNavigate) =>
           this.#deps.browser.launch({
             accountId,
-            authorizeUrl,
+            authorizeUrl: authorizationStartUrl(authorizeUrl, input.preflight),
             network:
               proxyId === null
                 ? { mode: "system" }

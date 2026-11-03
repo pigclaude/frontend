@@ -60,6 +60,7 @@ export type PigclaudeBridge = {
       displayName: string
       proxyId: string | null
       fingerprint: ClaudeFingerprintView
+      preflight?: "checkcc"
     }) => Promise<ClaudeAccountView>
     cancelAuthorization: () => Promise<void>
     update: (input: {

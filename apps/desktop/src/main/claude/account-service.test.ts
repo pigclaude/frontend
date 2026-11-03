@@ -8,9 +8,35 @@ import {
   createWaitingCallback,
   fingerprint,
   seedAccount,
+  waitForTestSignal,
 } from "./account-service-test-fixtures"
 
 describe("ClaudeAccountService", () => {
+  it("opens CheckCC before Claude in the same bound browser and waits for user authorization", async () => {
+    const callback = createWaitingCallback()
+    const harness = await createHarness({ callback })
+    const operation = harness.service.authorize({
+      displayName: "验收账号",
+      proxyId: "p1",
+      fingerprint,
+      preflight: "checkcc",
+    })
+    try {
+      await waitForTestSignal(harness.launched.promise, operation)
+      const launched = harness.launchInputs[0]
+      expect(launched?.network.mode).toBe("bound")
+      expect(launched?.authorizeUrl).toMatch(/^data:text\/html/)
+      const page = decodeURIComponent(launched?.authorizeUrl.split(",")[1] ?? "")
+      expect(page).toContain("https://checkcc.org/")
+      expect(page).toContain("required")
+      expect(harness.exchangeRedirectUris).toEqual([])
+    } finally {
+      await harness.service.cancel()
+      await operation.catch(() => undefined)
+      await harness.cleanup()
+    }
+  })
+
   it.each(["default_public_interface_only", "default_public_and_private_interfaces"] as const)(
     "rejects WebRTC policy %s before starting a bound proxy",
     async (webrtcPolicy) => {

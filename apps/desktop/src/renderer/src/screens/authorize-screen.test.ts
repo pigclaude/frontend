@@ -170,6 +170,18 @@ async function choose(id: string, value: string): Promise<void> {
 }
 
 describe("Claude account authorization wizard", () => {
+  it("only starts CheckCC preflight when the user chooses it", async () => {
+    const onStart = vi.fn()
+    await render({ proxies, account: savedAccount, onStart })
+    await click("下一步")
+    await click("绑定代理")
+    await click("保存并核对出口")
+    await click("先检测 CheckCC")
+    expect(onStart).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: "acc-1", proxyId: "sjc-02", preflight: "checkcc" }),
+    )
+  })
+
   it("submits the name, the chosen proxy and every fingerprint field", async () => {
     const onStart = vi.fn()
     await render({ proxies, onStart })

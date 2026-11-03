@@ -29,6 +29,7 @@ export type ClaudeAccountsController = {
     displayName: string
     proxyId: string | null
     fingerprint: ClaudeFingerprintView
+    preflight?: "checkcc"
   }) => Promise<void>
   /** 返回是否完成取消及清理；保存中或清理失败时返回 false。 */
   cancelAuthorization: () => Promise<boolean>
@@ -146,6 +147,7 @@ export function useClaudeAccounts(): ClaudeAccountsController {
       displayName: string
       proxyId: string | null
       fingerprint: ClaudeFingerprintView
+      preflight?: "checkcc"
     }) => {
       const request = ++authorizationRequest.current
       await wrap(

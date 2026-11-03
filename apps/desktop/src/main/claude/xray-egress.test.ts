@@ -58,6 +58,8 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
         url: `http://user%40test:p%3Ass@127.0.0.1:${fixture.proxyPort}`,
       })
       expect(result.lastTest).toMatchObject({ ok: true, ip: "198.51.100.42" })
+      expect(result.url).toContain("***")
+      expect(result.url).not.toContain("p%3Ass")
       expect(await store.listProxies()).toHaveLength(1)
       expect(fixture.accepted()).toBe(2)
       expect(fixture.directRequests()).toBe(0)

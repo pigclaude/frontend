@@ -34,6 +34,7 @@ it.skipIf(!browserBinary || !xrayBinary)(
     let callback: Awaited<ReturnType<SubscriptionOAuth["startCallback"]>> | undefined
     let runtime: Awaited<ReturnType<typeof starter>> | undefined
     let failure: unknown
+    let failed = false
     try {
       callback = await new SubscriptionOAuth().startCallback({ state: "synthetic" })
       runtime = await starter({
@@ -77,6 +78,7 @@ it.skipIf(!browserBinary || !xrayBinary)(
       expect(fixture.targetRequests()).toBe(before)
       expect(fixture.directRequests()).toBe(0)
     } catch (error: unknown) {
+      failed = true
       failure = error
     } finally {
       const cleanupErrors: unknown[] = []
@@ -93,8 +95,11 @@ it.skipIf(!browserBinary || !xrayBinary)(
         ...results.filter((result) => result.status === "rejected").map((result) => result.reason),
       )
       if (cleanupErrors.length)
-        throw new AggregateError([failure, ...cleanupErrors], `测试资源未确认回收：${directory}`)
-      if (failure) throw failure
+        throw new AggregateError(
+          [...(failed ? [failure] : []), ...cleanupErrors],
+          `测试资源未确认回收：${directory}`,
+        )
+      if (failed) throw failure
       await rm(directory, { recursive: true, force: true })
     }
   },

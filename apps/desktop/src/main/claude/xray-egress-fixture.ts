@@ -4,7 +4,10 @@ import { createServer as createHttpServer } from "node:http"
 import { connect, type Socket } from "node:net"
 
 /** 启动带认证的合成代理和目标服务，记录实际经过代理的请求。 */
-export async function createProxyFixture(credentials = "user@test:p:ss"): Promise<{
+export async function createProxyFixture(
+  credentials = "user@test:p:ss",
+  targetHost = "127.0.0.1",
+): Promise<{
   targetPort: number
   proxyPort: number
   accepted: () => number
@@ -46,7 +49,7 @@ export async function createProxyFixture(credentials = "user@test:p:ss"): Promis
   proxy.on("connect", (request, socket, head) => {
     const expected = `Basic ${Buffer.from(credentials).toString("base64")}`
     if (
-      request.url !== `127.0.0.1:${targetPort}` ||
+      request.url !== `${targetHost}:${targetPort}` ||
       request.headers["proxy-authorization"] !== expected
     ) {
       socket.end("HTTP/1.1 407 Proxy Authentication Required\r\nConnection: close\r\n\r\n")

@@ -112,6 +112,7 @@ jobs:
             "src/main/claude/fingerprint-chromium-startup-failure.test.ts",
             "src/main/claude/fingerprint-chromium-extension-startup.integration.test.ts",
             "src/main/claude/fingerprint-chromium-loopback.integration.test.ts",
+            "src/main/claude/fingerprint-chromium-dns-routing.integration.test.ts",
             "src/main/claude/fingerprint-chromium-proxy-auth.integration.test.ts",
             "src/main/claude/fingerprint-chromium-https-proxy.integration.test.ts",
             "src/main/claude/fingerprint-chromium-webrtc.integration.test.ts",

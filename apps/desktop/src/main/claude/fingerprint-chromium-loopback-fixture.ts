@@ -1,10 +1,10 @@
 // 为真实浏览器代理测试提供仅转发合成目标的认证代理。
 
-import { createServer as createHttpServer } from "node:http"
+import { createServer as createHttpServer, type RequestListener } from "node:http"
 import { connect, type Socket } from "node:net"
 
 /** 创建可记录请求来源并主动断开的本机合成代理。 */
-export async function createLoopbackFixture(): Promise<{
+export async function createLoopbackFixture(respond?: RequestListener): Promise<{
   originPort: number
   proxyPort: number
   requests: () => { viaProxy: number; direct: number }
@@ -27,7 +27,8 @@ export async function createLoopbackFixture(): Promise<{
       }
     }
     response.setHeader("Connection", "close")
-    response.end("<!doctype html><title>synthetic</title>")
+    if (respond) respond(request, response)
+    else response.end("<!doctype html><title>synthetic</title>")
   })
   const originPort = await listen(origin)
   const proxy = createHttpServer()
@@ -40,9 +41,11 @@ export async function createLoopbackFixture(): Promise<{
     const expected = `Basic ${Buffer.from("synthetic:password").toString("base64")}`
     if (request.headers["proxy-authorization"] !== expected) rejected += 1
     if (
-      ![`127.0.0.1:${originPort}`, `synthetic.example.invalid:${originPort}`].includes(
-        request.url ?? "",
-      ) ||
+      ![
+        `127.0.0.1:${originPort}`,
+        `localhost:${originPort}`,
+        `synthetic.example.invalid:${originPort}`,
+      ].includes(request.url ?? "") ||
       request.headers["proxy-authorization"] !== expected
     ) {
       socket.end("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")

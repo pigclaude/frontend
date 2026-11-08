@@ -110,7 +110,37 @@ it.skipIf(!browserBinary || !xrayBinary)(
               })
               .toBe("ready")
           } catch (error: unknown) {
-            throw new Error("等待扩展加载失败", { cause: error })
+            const requests = fixture.requests()
+            const targetPage = page.url().startsWith(`http://127.0.0.1:${fixture.originPort}/`)
+            let registered = -1
+            let reloadMarker = false
+            let title = "unknown"
+            try {
+              title = await within(page.title(), 2_000)
+              const registry = await within(context.newPage(), 3_000)
+              await registry.goto("chrome://extensions/", { timeout: 5_000 })
+              registered = await within(
+                registry.getByText("Synthetic Loopback Extension", { exact: true }).count(),
+                3_000,
+              )
+              await within(registry.close(), 2_000)
+              await page.reload({ timeout: 5_000 })
+              const deadline = Date.now() + 3_000
+              while (Date.now() < deadline && !reloadMarker) {
+                reloadMarker =
+                  (await within(
+                    page.locator("html").getAttribute("data-synthetic-extension"),
+                    1_000,
+                  )) === "ready"
+                if (!reloadMarker) await new Promise((resolve) => setTimeout(resolve, 50))
+              }
+            } catch {
+              // 诊断失败时继续报告原始测试失败。
+            }
+            throw new Error(
+              `[DEBUG-ext] target=${targetPage} title=${title} via=${requests.viaProxy} direct=${requests.direct} registered=${registered} reload=${reloadMarker}`,
+              { cause: error },
+            )
           }
           return { browser: connection, page, pid: startedBrowser.pid }
         } catch (error: unknown) {
@@ -295,7 +325,8 @@ async function closeBrowser(
     } finally {
       if (timer !== undefined) clearTimeout(timer)
     }
-    if (graceful) graceful = await waitForProcessExit(pid)
+    // 关闭命令可能在确认响应前断开调试连接；是否退出仍以独立进程观察为准。
+    graceful = await waitForProcessExit(pid)
   } finally {
     try {
       await adapter.stop("synthetic")

@@ -28,6 +28,7 @@ it("并发重试共享在途清理，失败后仍能再次重试", async () => {
     },
     callback: {
       redirectUri: "http://localhost:1234/callback",
+      isComplete: () => true,
       waitForCode: async () => "code",
       cancel: () => undefined,
       close: async () => {

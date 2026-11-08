@@ -1,11 +1,12 @@
-// 负责把账号指纹配置转换成 fingerprint-chromium 的启动参数，并按 AntBrowser 1.8.0 的规则校验取值。
+// 负责把账号指纹配置转换成 PigBrowser 启动参数，保留既有账号的自动种子算法。
 
 import { createHash } from "node:crypto"
-import type {
-  ClaudeFingerprintView,
-  FingerprintNoise,
-  FingerprintSpoofingCategory,
-  FingerprintWebrtcPolicy,
+import {
+  normalizeFingerprintSeed,
+  type ClaudeFingerprintView,
+  type FingerprintNoise,
+  type FingerprintSpoofingCategory,
+  type FingerprintWebrtcPolicy,
 } from "@pigclaude/contracts/claude-account"
 
 const maxSeed = 2_147_483_647
@@ -52,17 +53,9 @@ export type FingerprintValidation =
  * 保证只返回模型内的白名单字段、空值保留为空、平台别名归一、mac 统一为 macos。
  */
 export function validateFingerprint(value: ClaudeFingerprintView): FingerprintValidation {
-  const seed = value.seed.trim()
-  if (seed !== "") {
-    const seedNumber = Number(seed)
-    if (
-      !/^\d+$/.test(seed) ||
-      !Number.isSafeInteger(seedNumber) ||
-      seedNumber < 1 ||
-      seedNumber > maxSeed
-    ) {
-      return { ok: false, message: "指纹种子必须是 1 到 2147483647 的整数" }
-    }
+  const seed = normalizeFingerprintSeed(value.seed)
+  if (seed === null) {
+    return { ok: false, message: "指纹种子必须是 0 到 18446744073709551615 的整数" }
   }
 
   const canvasNoise = normalizeNoise(value.canvasNoise)
@@ -138,7 +131,7 @@ export function validateFingerprint(value: ClaudeFingerprintView): FingerprintVa
   return {
     ok: true,
     fingerprint: {
-      seed: seed === "" ? "" : String(Number(seed)),
+      seed,
       brand,
       platform,
       lang,

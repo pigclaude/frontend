@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { ClaudeAccountView, ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import type { ClaudeAccountService } from "./account-service"
+import type { ProxyService } from "./proxy-service"
 import { ClaudeAccountError } from "./errors"
 import { readAuthorizeInput, readImportInput, readUpdateInput, registerClaudeIpc } from "./ipc"
 
@@ -55,6 +56,15 @@ function expectInvalidInput(run: () => unknown): void {
 }
 
 describe("readAuthorizeInput", () => {
+  it("只接受明确启用的 CheckCC 检测入口", () => {
+    const input = { displayName: "工作账号", proxyId: "p1", fingerprint }
+    expect(readAuthorizeInput({ ...input, preflight: "checkcc" }).preflight).toBe("checkcc")
+    expect(readAuthorizeInput(input)).not.toHaveProperty("preflight")
+    for (const preflight of ["other", "https://example.com", true, null]) {
+      expectInvalidInput(() => readAuthorizeInput({ ...input, preflight }))
+    }
+  })
+
   it.each([
     [null, null],
     ["", null],
@@ -182,6 +192,28 @@ describe("claude CLI import IPC", () => {
       code: "UNEXPECTED_ERROR",
       message: "导入结果无效",
     })
+  })
+})
+
+describe("验证并保存代理 IPC", () => {
+  beforeEach(() => ipcHandlers.clear())
+
+  it("只接受可信窗口的请求，并把地址交给真实代理服务", async () => {
+    const saveVerified = vi.fn(async () => ({ id: "p1" }))
+    let trusted = false
+    registerClaudeIpc({
+      getService: () => null,
+      getProxyService: () => ({ saveVerified }) as unknown as ProxyService,
+      isTrusted: () => trusted,
+    })
+    const handler = ipcHandlers.get("pigclaude:proxies-save-verified")
+    if (handler === undefined) throw new Error("proxy handler not registered")
+    const input = { name: "测试代理", url: "http://user:pass@proxy.test:8000" }
+    await expect(handler({}, input)).rejects.toThrow("UNTRUSTED_REQUEST")
+    expect(saveVerified).not.toHaveBeenCalled()
+    trusted = true
+    await expect(handler({}, input)).resolves.toEqual({ id: "p1" })
+    expect(saveVerified).toHaveBeenCalledWith(input)
   })
 })
 

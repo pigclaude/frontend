@@ -77,6 +77,8 @@ export type ClaudeOAuthProfile = {
 export type OAuthCallbackServer = {
   redirectUri: string
   waitForCode: () => Promise<string>
+  /** 同步返回回调是否已有授权码或错误结果，不消费结果。 */
+  isComplete: () => boolean
   /** 结束等待，但保留回调监听直到浏览器退出。 */
   cancel: () => void
   close: () => Promise<void>
@@ -244,6 +246,7 @@ export class SubscriptionOAuth {
     return {
       redirectUri: `http://localhost:${port}/callback`,
       waitForCode: () => result.wait(),
+      isComplete: () => result.isComplete(),
       cancel: () =>
         result.complete({
           kind: "error",

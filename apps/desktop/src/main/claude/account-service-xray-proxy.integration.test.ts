@@ -129,6 +129,7 @@ function createOAuth(fixture: Fixture): ClaudeAccountServiceDeps["oauth"] {
     buildAuthorizeUrl: () => "https://synthetic.invalid/authorize",
     startCallback: async () => ({
       redirectUri: "http://localhost:1234/callback",
+      isComplete: () => true,
       waitForCode: async () => "synthetic-code",
       cancel: () => undefined,
       close: async () => undefined,

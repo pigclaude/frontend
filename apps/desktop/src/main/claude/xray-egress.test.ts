@@ -2,8 +2,7 @@
 
 import { spawn, type SpawnOptions } from "node:child_process"
 import { copyFile, link, mkdir, mkdtemp, rm } from "node:fs/promises"
-import { createServer as createHttpServer } from "node:http"
-import { connect, type Socket } from "node:net"
+import { connect } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { LocalStore } from "@pigclaude/local-store"
@@ -11,6 +10,7 @@ import type { ProxyRuntime } from "@pigclaude/login-gate/proxy-runtime"
 import { describe, expect, it } from "vitest"
 import { ProxyService } from "./proxy-service"
 import { createXrayRuntimeStarter } from "./xray-runtime"
+import { createProxyFixture } from "./xray-egress-fixture"
 
 const xrayBinary = process.env["PIGCLAUDE_TEST_XRAY_BIN"]
 
@@ -38,6 +38,68 @@ it("启动失败但已确认退出时，允许重新尝试", async () => {
 })
 
 describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
+  it("新代理通过 Xray 出口核对后才保存", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pigclaude-xray-new-proxy-"))
+    const fixture = await createProxyFixture()
+    const starter = createXrayRuntimeStarter({
+      idleTimeoutMs: 0,
+      hostArch: process.arch,
+      binaryPath: xrayBinary,
+    })
+    try {
+      const store = new LocalStore(directory)
+      const service = new ProxyService({
+        store,
+        checkUrl: `http://127.0.0.1:${fixture.targetPort}/trace`,
+        startProxyRuntime: starter,
+      })
+      const result = await service.saveVerified({
+        name: "验收代理",
+        url: `http://user%40test:p%3Ass@127.0.0.1:${fixture.proxyPort}`,
+      })
+      expect(result.lastTest).toMatchObject({ ok: true, ip: "198.51.100.42" })
+      expect(result.url).toContain("***")
+      expect(result.url).not.toContain("p%3Ass")
+      expect(await store.listProxies()).toHaveLength(1)
+      expect(fixture.accepted()).toBe(2)
+      expect(fixture.directRequests()).toBe(0)
+    } finally {
+      await starter.dispose()
+      await fixture.close()
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  it("Xray 出口核对失败时不保存新代理", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pigclaude-xray-rejected-proxy-"))
+    const fixture = await createProxyFixture()
+    const starter = createXrayRuntimeStarter({
+      idleTimeoutMs: 0,
+      hostArch: process.arch,
+      binaryPath: xrayBinary,
+    })
+    try {
+      const store = new LocalStore(directory)
+      const service = new ProxyService({
+        store,
+        checkUrl: `http://127.0.0.1:${fixture.targetPort}/trace`,
+        startProxyRuntime: starter,
+      })
+      await expect(
+        service.saveVerified({
+          name: "失败代理",
+          url: `http://bad:bad@127.0.0.1:${fixture.proxyPort}`,
+        }),
+      ).rejects.toMatchObject({ code: "PROXY_UNAVAILABLE" })
+      expect(await store.listProxies()).toEqual([])
+      expect(fixture.directRequests()).toBe(0)
+    } finally {
+      await starter.dispose()
+      await fixture.close()
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
   it("通过本机 Xray 与合成账密代理取得相同出口", async () => {
     const directory = await mkdtemp(join(tmpdir(), "pigclaude-xray-egress-"))
     const fixture = await createProxyFixture()
@@ -373,103 +435,4 @@ async function portIsOpen(url: URL): Promise<boolean> {
     })
     socket.once("error", () => resolve(false))
   })
-}
-
-async function createProxyFixture(credentials = "user@test:p:ss"): Promise<{
-  targetPort: number
-  proxyPort: number
-  accepted: () => number
-  targetRequests: () => number
-  directRequests: () => number
-  failProxy: () => void
-  onTarget: (callback: (count: number) => Promise<void>) => void
-  close: () => Promise<void>
-}> {
-  let accepted = 0
-  let targetRequests = 0
-  let directRequests = 0
-  let dropping = false
-  let onTarget: (count: number) => Promise<void> = async () => undefined
-  const sockets = new Set<Socket>()
-  const forwarded = new Set<number>()
-  const target = createHttpServer((request, response) => {
-    targetRequests += 1
-    if (request.socket.remotePort === undefined || !forwarded.has(request.socket.remotePort)) {
-      directRequests += 1
-    }
-    void onTarget(targetRequests).then(() => {
-      if (request.url === "/redirect") response.writeHead(302, { location: "/trace" }).end()
-      else if (
-        request.url === "/redirect-data-first" ||
-        (request.url === "/redirect-data-second" && targetRequests === 2)
-      ) {
-        response.writeHead(302, { location: "data:text/plain,ip%3D198.51.100.42" }).end()
-      } else response.end("ip=198.51.100.42\n")
-    })
-  })
-  const targetPort = await listen(target)
-  const proxy = createHttpServer()
-  proxy.on("connection", (socket) => {
-    sockets.add(socket)
-    socket.on("close", () => sockets.delete(socket))
-    if (dropping) socket.destroy()
-  })
-  proxy.on("connect", (request, socket, head) => {
-    const expected = `Basic ${Buffer.from(credentials).toString("base64")}`
-    if (
-      request.url !== `127.0.0.1:${targetPort}` ||
-      request.headers["proxy-authorization"] !== expected
-    ) {
-      socket.end("HTTP/1.1 407 Proxy Authentication Required\r\nConnection: close\r\n\r\n")
-      return
-    }
-    const upstream = connect(targetPort, "127.0.0.1", () => {
-      const port = upstream.localPort
-      if (port !== undefined) forwarded.add(port)
-      upstream.once("close", () => {
-        if (port !== undefined) forwarded.delete(port)
-      })
-      accepted += 1
-      socket.write("HTTP/1.1 200 Connection Established\r\n\r\n")
-      if (head.length !== 0) upstream.write(head)
-      socket.pipe(upstream).pipe(socket)
-    })
-    sockets.add(upstream)
-    upstream.on("close", () => sockets.delete(upstream))
-    upstream.on("error", () => socket.destroy())
-    socket.on("error", () => upstream.destroy())
-  })
-  const proxyPort = await listen(proxy)
-  return {
-    targetPort,
-    proxyPort,
-    accepted: () => accepted,
-    targetRequests: () => targetRequests,
-    directRequests: () => directRequests,
-    onTarget: (callback) => {
-      onTarget = callback
-    },
-    failProxy: () => {
-      dropping = true
-      for (const socket of sockets) socket.destroy()
-    },
-    close: async () => {
-      for (const socket of sockets) socket.destroy()
-      target.closeAllConnections()
-      await Promise.all([
-        new Promise<void>((resolve) => target.close(() => resolve())),
-        new Promise<void>((resolve) => proxy.close(() => resolve())),
-      ])
-    },
-  }
-}
-
-async function listen(server: ReturnType<typeof createHttpServer>): Promise<number> {
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject)
-    server.listen(0, "127.0.0.1", resolve)
-  })
-  const address = server.address()
-  if (address === null || typeof address === "string") throw new Error("合成服务未监听")
-  return address.port
 }

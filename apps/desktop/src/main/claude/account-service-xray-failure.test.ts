@@ -1,7 +1,7 @@
 // 验证 Xray 按原端口恢复失败时，正在等待浏览器授权的账号收到错误。
 
 import { expect, it } from "vitest"
-import { createHarness, fingerprint } from "./account-service-test-fixtures"
+import { createHarness, createWaitingCallback, fingerprint } from "./account-service-test-fixtures"
 import type { ClaudeAccountServiceDeps } from "./account-service"
 import { ClaudeAccountError } from "./errors"
 import { SubscriptionOAuth } from "./subscription-oauth"
@@ -68,6 +68,7 @@ it("回调启动期间 Xray 恢复失败时，创建完成后立即取消回调"
   const harness = await createHarness({
     callback: {
       redirectUri: "http://localhost:1234/callback",
+      isComplete: () => true,
       waitForCode: async () => "code",
       cancel: () => {
         cancelled = true
@@ -101,7 +102,6 @@ it("回调启动期间 Xray 恢复失败时，创建完成后立即取消回调"
 it("Xray 恢复失败时结束授权并报告代理不可用", async () => {
   let notifyFailure: (error: Error) => void = () => undefined
   let notifyWaiting: () => void = () => undefined
-  let rejectCode: (error: Error) => void = () => undefined
   const failure = new Promise<Error>((resolve) => {
     notifyFailure = resolve
   })
@@ -109,6 +109,7 @@ it("Xray 恢复失败时结束授权并报告代理不可用", async () => {
     notifyWaiting = resolve
   })
   let closed = false
+  const waitingCallback = createWaitingCallback()
   const harness = await createHarness({
     proxyRuntime: {
       url: "socks5://127.0.0.1:12345",
@@ -119,14 +120,11 @@ it("Xray 恢复失败时结束授权并报告代理不可用", async () => {
       assertRunning: () => undefined,
     },
     callback: {
-      redirectUri: "http://localhost:1234/callback",
-      waitForCode: () =>
-        new Promise<string>((_resolve, reject) => {
-          rejectCode = reject
-          notifyWaiting()
-        }),
-      cancel: () => rejectCode(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消")),
-      close: async () => rejectCode(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消")),
+      ...waitingCallback,
+      waitForCode: () => {
+        notifyWaiting()
+        return waitingCallback.waitForCode()
+      },
     },
   })
   const authorization = harness.service
@@ -143,7 +141,7 @@ it("Xray 恢复失败时结束授权并报告代理不可用", async () => {
     expect(harness.browserCalls).toContain("stop")
     expect(closed).toBe(true)
   } finally {
-    rejectCode(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消"))
+    waitingCallback.cancel()
     await authorization
     await harness.cleanup()
   }
@@ -170,6 +168,7 @@ it.each(["exchange", "profile"] as const)("Xray 恢复失败时中止进行中�
     buildAuthorizeUrl: () => "https://synthetic.invalid/authorize",
     startCallback: async () => ({
       redirectUri: "http://localhost:1234/callback",
+      isComplete: () => true,
       waitForCode: async () => "code",
       cancel: () => undefined,
       close: async () => undefined,

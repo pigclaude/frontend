@@ -1,13 +1,17 @@
-# 在原生 Windows 和 Linux x64 上验证预构建指纹浏览器与 Xray 的集成。
+# 在 Windows 和 Linux x64 上验证固定 PigBrowser 开发包与 Xray 的桌面集成。
 name: Xray platform verification
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - codex/issue9-platform-verification
-      - codex/issue9-live-http-proxy
-      - codex/issue9-live-https-proxy
+    inputs:
+      linux_pigbrowser_url:
+        description: 固定 Linux PigBrowser 开发包的下载地址
+        required: true
+        type: string
+      windows_pigbrowser_url:
+        description: 固定 Windows PigBrowser 开发包的下载地址
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -18,7 +22,7 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
-        os: [ubuntu-22.04, windows-2022]
+        os: [ubuntu-24.04, windows-2022]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
@@ -29,34 +33,38 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: 获取并校验预构建浏览器与 Xray
+      - name: 获取并校验固定 PigBrowser 与 Xray
         shell: pwsh
+        env:
+          LINUX_PIGBROWSER_URL: ${{ inputs.linux_pigbrowser_url }}
+          WINDOWS_PIGBROWSER_URL: ${{ inputs.windows_pigbrowser_url }}
         run: |
           $ErrorActionPreference = "Stop"
           $root = Join-Path $env:RUNNER_TEMP "pigclaude-xray-verification"
           $browserDir = Join-Path $root "browser"
           $xrayDir = Join-Path $root "xray"
           New-Item -ItemType Directory -Force $browserDir, $xrayDir | Out-Null
+          $catalog = Get-Content "apps/desktop/pigbrowser-artifacts.json" -Raw | ConvertFrom-Json
           if ($IsWindows) {
-            $browserFile = "ungoogled-chromium_148.0.7778.215-1.1_windows_x64.zip"
-            $browserHash = "9ef3f471b7a6641b4224532522b29141ce3746e27d55788d88e2fd951f362579"
-            $browserName = "chrome.exe"
+            $target = "win32-x64"
+            $browserUrl = $env:WINDOWS_PIGBROWSER_URL
             $xrayFile = "Xray-windows-64.zip"
             $xrayHash = "2e04a9995a6f2ad1b28c0bb25c708ecb2695e43a1c9c7889c4b6ac2b48cf7a6a"
             $xrayName = "xray.exe"
           } else {
-            $browserFile = "ungoogled-chromium-148.0.7778.215-1-x86_64_linux.tar.xz"
-            $browserHash = "70d239830332e5820aa34dfcb284161cac0429eee25da642830afe04bda717f4"
-            $browserName = "chrome"
+            $target = "linux-x64"
+            $browserUrl = $env:LINUX_PIGBROWSER_URL
             $xrayFile = "Xray-linux-64.zip"
             $xrayHash = "e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214"
             $xrayName = "xray"
           }
-          $browserArchive = Join-Path $root $browserFile
+          $artifact = $catalog.targets.$target
+          if ([string]::IsNullOrWhiteSpace($browserUrl)) { throw "缺少固定 PigBrowser 开发包地址" }
+          $browserArchive = Join-Path $root $artifact.archive
           $xrayArchive = Join-Path $root $xrayFile
-          Invoke-WebRequest "https://github.com/adryfish/fingerprint-chromium/releases/download/148.0.7778.215/$browserFile" -OutFile $browserArchive
+          Invoke-WebRequest $browserUrl -OutFile $browserArchive
           Invoke-WebRequest "https://github.com/XTLS/Xray-core/releases/download/v26.10.31/$xrayFile" -OutFile $xrayArchive
-          if ((Get-FileHash $browserArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $browserHash) { throw "浏览器包校验失败" }
+          if ((Get-FileHash $browserArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $artifact.sha256) { throw "浏览器包校验失败" }
           if ((Get-FileHash $xrayArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $xrayHash) { throw "Xray 包校验失败" }
           if ($IsWindows) {
             Expand-Archive $browserArchive -DestinationPath $browserDir
@@ -65,12 +73,17 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "浏览器包解压失败" }
           }
           Expand-Archive $xrayArchive -DestinationPath $xrayDir
-          $browsers = @(Get-ChildItem $browserDir -File -Recurse -Filter $browserName)
-          if ($browsers.Count -ne 1) { throw "无法确认唯一浏览器入口" }
+          $packages = @(Get-ChildItem $browserDir -Directory | Where-Object { Test-Path (Join-Path $_.FullName "manifest.json") })
+          if ($packages.Count -ne 1) { throw "无法确认唯一 PigBrowser 开发包" }
+          $packageRoot = $packages[0].FullName
+          node apps/desktop/stage-pigbrowser.cjs --package $packageRoot --target $target
+          if ($LASTEXITCODE -ne 0) { throw "PigBrowser 完整资源校验失败" }
+          $staged = Join-Path $env:GITHUB_WORKSPACE "apps/desktop/runtime-assets/pigclaude-runtime/pigbrowser/$target"
+          $browser = Join-Path $staged $artifact.executable
           $xray = Join-Path $xrayDir $xrayName
           if (!(Test-Path $xray -PathType Leaf)) { throw "找不到 Xray 入口" }
           if (!$IsWindows) { chmod 755 $xray }
-          "PIGCLAUDE_TEST_CHROMIUM_BIN=$($browsers[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PIGCLAUDE_TEST_CHROMIUM_BIN=$browser" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PIGCLAUDE_TEST_XRAY_BIN=$xray" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PIGCLAUDE_TEST_BUILT_WATCHDOG=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PIGCLAUDE_TEST_TRUST_TARGET_CERT=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -102,7 +115,20 @@ jobs:
         shell: pwsh
         run: |
           $files = @(
+            "src/main/claude/pigbrowser-locale.integration.test.ts",
+            "src/main/claude/fingerprint-chromium-resources.test.ts",
+            "src/main/claude/fingerprint-args.test.ts",
+            "src/main/claude/browser-startup.test.ts",
+            "src/main/claude/browser-extension-paths.test.ts",
+            "src/main/claude/browser-extension-readiness.test.ts",
+            "src/main/claude/browser-extension-resolver.test.ts",
+            "src/main/claude/account-service-startup-cleanup.test.ts",
+            "src/main/claude/account-service-startup-callback.test.ts",
+            "src/main/claude/subscription-oauth.test.ts",
+            "src/main/claude/fingerprint-chromium-startup-failure.test.ts",
+            "src/main/claude/fingerprint-chromium-extension-startup.integration.test.ts",
             "src/main/claude/fingerprint-chromium-loopback.integration.test.ts",
+            "src/main/claude/fingerprint-chromium-dns-routing.integration.test.ts",
             "src/main/claude/fingerprint-chromium-proxy-auth.integration.test.ts",
             "src/main/claude/fingerprint-chromium-https-proxy.integration.test.ts",
             "src/main/claude/fingerprint-chromium-webrtc.integration.test.ts",
@@ -110,6 +136,13 @@ jobs:
             "src/main/claude/xray-pool.integration.test.ts",
             "src/main/claude/xray-https-proxy-untrusted.integration.test.ts",
             "src/main/claude/xray-egress.test.ts",
+            "src/main/claude/ipc.test.ts",
+            "src/main/claude/account-service.test.ts",
+            "src/renderer/src/app-onboarding.test.ts",
+            "src/renderer/src/authorization-preflight.test.ts",
+            "src/renderer/src/screens/authorize-screen.test.ts",
+            "src/renderer/src/hooks/use-claude-accounts.test.ts",
+            "src/renderer/src/screens/onboarding-proxy-pending.test.ts",
             "src/main/claude/xray-crash-recovery.test.ts",
             "src/main/claude/xray-exit-marker.test.ts",
             "src/main/claude/xray-port-reset.test.ts",

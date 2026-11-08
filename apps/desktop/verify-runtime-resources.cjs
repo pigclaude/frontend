@@ -2,6 +2,7 @@
 
 const { stat } = require("node:fs/promises")
 const { join } = require("node:path")
+const { verifyPigbrowserPackage } = require("./pigbrowser-resources.cjs")
 
 /** 只允许浏览器、Xray 和构建后的守护程序都存在的目标平台进入打包。 */
 module.exports = async function verifyRuntimeResources(context) {
@@ -11,11 +12,16 @@ module.exports = async function verifyRuntimeResources(context) {
     throw new Error("不支持当前安装包的系统或 CPU 架构")
   }
   const root = join(context.packager.projectDir, "runtime-assets", "pigclaude-runtime")
-  const browserDirectory = join(root, "chromium", `${platform}-${arch}`)
-  const browser =
-    platform === "darwin"
-      ? join(browserDirectory, "fingerprint-chromium.app", "Contents", "MacOS", "Chromium")
-      : join(browserDirectory, platform === "win32" ? "chrome.exe" : "chrome")
+  const browserDirectory = join(root, "pigbrowser", `${platform}-${arch}`)
+  let browser
+  try {
+    const verified = await verifyPigbrowserPackage(browserDirectory, `${platform}-${arch}`)
+    browser = verified.executable
+  } catch (error) {
+    throw new Error(`缺少或损坏 ${platform}-${arch} PigBrowser 完整资源，请先准备固定开发包`, {
+      cause: error,
+    })
+  }
   const xray = join(root, "xray", `${platform}-${arch}`, platform === "win32" ? "xray.exe" : "xray")
   const watchdog = join(context.packager.projectDir, "out", "main", "xray-watchdog.js")
   try {

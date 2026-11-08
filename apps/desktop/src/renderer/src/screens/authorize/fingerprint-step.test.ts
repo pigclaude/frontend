@@ -94,7 +94,7 @@ describe("fingerprint step", () => {
     await type("step-seed", "not-a-seed")
     await clickText("保存并确认")
     expect(onSubmit).not.toHaveBeenCalled()
-    expect(container.textContent).toContain("指纹种子必须是 1 到 2147483647 的整数")
+    expect(container.textContent).toContain("指纹种子必须是 0 到 18446744073709551615 的整数")
 
     await type("step-seed", "123")
     await clickText("保存并确认")

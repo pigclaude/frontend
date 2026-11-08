@@ -8,6 +8,7 @@ import { chromium, type Browser } from "@playwright/test"
 import { expect, it } from "vitest"
 import { createHarness, fingerprint, type Harness } from "./account-service-test-fixtures"
 import type { ClaudeAccountServiceDeps } from "./account-service"
+import { createLoopbackFixture } from "./fingerprint-chromium-loopback-fixture"
 import { FingerprintChromiumAdapter, type LaunchedBrowser } from "./fingerprint-chromium"
 import { SubscriptionOAuth } from "./subscription-oauth"
 import { createXrayRuntimeStarter } from "./xray-runtime"
@@ -48,13 +49,41 @@ it.skipIf(!browserBinary || !xrayBinary)(
     let connected: Browser | undefined
     let authorization: Promise<unknown> | undefined
     let callback: Awaited<ReturnType<SubscriptionOAuth["startCallback"]>> | undefined
+    let fixture: Awaited<ReturnType<typeof createLoopbackFixture>> | undefined
     try {
-      const runtime = await start({ upstreamProxyUrl: "http://127.0.0.1:1" })
+      fixture = await createLoopbackFixture()
+      const upstreamProxyUrl = `http://synthetic:password@127.0.0.1:${fixture.proxyPort}`
+      const runtime = await start({ upstreamProxyUrl })
       callback = await new SubscriptionOAuth().startCallback({
         state: "synthetic",
         timeoutMs: 30_000,
       })
-      harness = await createHarness({ browser, callback, proxyRuntime: runtime })
+      const activeCallback = callback
+      const oauth = new SubscriptionOAuth({
+        authorizeUrl: `http://127.0.0.1:${fixture.originPort}/probe`,
+      })
+      harness = await createHarness({
+        browser,
+        callback,
+        proxyRuntime: runtime,
+        oauth: {
+          buildAuthorizeUrl: (input) => oauth.buildAuthorizeUrl(input),
+          startCallback: async () => activeCallback,
+          exchangeCode: async () => {
+            throw new Error("关闭浏览器后不应交换授权码")
+          },
+          readProfile: async () => {
+            throw new Error("关闭浏览器后不应读取账号信息")
+          },
+        },
+      })
+      await harness.store.saveProxy({
+        schemaVersion: 1,
+        id: "p1",
+        name: "p1",
+        url: upstreamProxyUrl,
+        lastTest: null,
+      })
       authorization = harness.service
         .authorize({
           displayName: "合成账号",
@@ -66,6 +95,13 @@ it.skipIf(!browserBinary || !xrayBinary)(
         })
         .catch((error: unknown) => error)
       const instance = await within(launched, 15_000)
+      const activeFixture = fixture
+      await expect
+        .poll(() => activeFixture.requests(), { timeout: 5_000 })
+        .toEqual({
+          viaProxy: 1,
+          direct: 0,
+        })
       const port = await debugPort(join(instance.profileDir, "DevToolsActivePort"))
       connected = await within(chromium.connectOverCDP(`http://127.0.0.1:${port}`), 5_000)
       const session = await within(connected.newBrowserCDPSession(), 5_000)
@@ -82,6 +118,7 @@ it.skipIf(!browserBinary || !xrayBinary)(
         adapter.dispose(),
         start.dispose(),
         callback?.close(),
+        fixture?.close(),
       ])
       await harness?.cleanup()
       if (results.some((result) => result.status === "rejected")) {

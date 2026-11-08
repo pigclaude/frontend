@@ -25,6 +25,7 @@ export type AuthorizeScreenProps = {
     displayName: string
     proxyId: string | null
     fingerprint: ClaudeFingerprintView
+    preflight?: "checkcc"
   }) => void
   onCancel: () => void
 }
@@ -49,20 +50,23 @@ export function AuthorizeScreen({
   )
   const selectedProxy = proxies.find((proxy) => proxy.id === proxyId) ?? null
   const launching = useRef(false)
+  const selectedPreflight = useRef<"checkcc" | undefined>(undefined)
   useEffect(() => {
     if (state.step === "waiting" || state.step === "completed" || state.error !== null) {
       launching.current = false
     }
   }, [state.step, state.error])
 
-  function startBrowserAuthorization() {
+  function startBrowserAuthorization(preflight?: "checkcc") {
     if (launching.current || name.trim() === "" || proxyId === null) return
     launching.current = true
+    selectedPreflight.current = preflight
     onStartBrowserAuthorization({
       accountId: account?.id,
       displayName: name.trim(),
       proxyId: proxyId === "" ? null : proxyId,
       fingerprint,
+      ...(preflight === "checkcc" ? { preflight } : {}),
     })
   }
 
@@ -255,9 +259,16 @@ export function AuthorizeScreen({
                   返回修改指纹
                 </Button>
                 <Button
+                  variant="secondary"
+                  disabled={name.trim() === "" || proxyId === null}
+                  onClick={() => startBrowserAuthorization("checkcc")}
+                >
+                  先检测 CheckCC
+                </Button>
+                <Button
                   variant="primary"
                   disabled={name.trim() === "" || proxyId === null}
-                  onClick={startBrowserAuthorization}
+                  onClick={() => startBrowserAuthorization()}
                 >
                   {proxyId === "" ? "开始授权" : state.error ? "重新核对" : "开始核对并授权"}
                 </Button>
@@ -266,8 +277,16 @@ export function AuthorizeScreen({
           ) : null}
           {state.step === "waiting" ? (
             <WizardBody
-              title="在外部浏览器里完成授权"
-              description="桌面端不会在软件窗口里确认授权。请在刚打开的指纹浏览器里完成登录。"
+              title={
+                selectedPreflight.current === "checkcc"
+                  ? "先完成浏览器环境检测"
+                  : "在外部浏览器里完成授权"
+              }
+              description={
+                selectedPreflight.current === "checkcc"
+                  ? "请在指纹浏览器中打开 CheckCC，确认检测结果后再继续授权。"
+                  : "桌面端不会在软件窗口里确认授权。请在刚打开的指纹浏览器里完成登录。"
+              }
             >
               <div className="browser-wait">
                 <Icon name="browser" />
@@ -280,7 +299,10 @@ export function AuthorizeScreen({
                 {state.error ? <span className="error-text">{state.error}</span> : null}
               </div>
               <div className="wizard-foot">
-                <Button variant="secondary" onClick={startBrowserAuthorization}>
+                <Button
+                  variant="secondary"
+                  onClick={() => startBrowserAuthorization(selectedPreflight.current)}
+                >
                   重新发起
                 </Button>
                 <Button variant="ghost" onClick={onCancel}>

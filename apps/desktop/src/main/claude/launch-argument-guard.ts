@@ -8,6 +8,8 @@ const managedKeys = new Set([
   "no-proxy-server",
   "proxy-pac-url",
   "proxy-auto-detect",
+  "remote-debugging-pipe",
+  "no-startup-window",
 ])
 
 const boundProxyKeys = new Set([
@@ -21,6 +23,14 @@ const boundProxyKeys = new Set([
 const asciiBoundaryWhitespace = /^[\u0009-\u000d\u0020]+|[\u0009-\u000d\u0020]+$/g
 const windowsBoundaryWhitespace =
   /^[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/g
+
+/** 按宿主的浏览器参数规则去除边界空白，不修改原始参数。 */
+export function trimLaunchArgument(arg: string, hostPlatform: NodeJS.Platform): string {
+  return arg.replace(
+    hostPlatform === "win32" ? windowsBoundaryWhitespace : asciiBoundaryWhitespace,
+    "",
+  )
+}
 
 /** 返回首个受管参数的脱敏错误；不修改输入数组。 */
 export function launchArgumentConflict(
@@ -66,7 +76,7 @@ export function managedCallbackPort(value: unknown): number | null {
 
 function switchKey(arg: string, hostPlatform: NodeJS.Platform): string | null {
   const windows = hostPlatform === "win32"
-  const value = arg.replace(windows ? windowsBoundaryWhitespace : asciiBoundaryWhitespace, "")
+  const value = trimLaunchArgument(arg, hostPlatform)
   const prefix = value.startsWith("--")
     ? 2
     : value.startsWith("-") || (windows && value.startsWith("/"))

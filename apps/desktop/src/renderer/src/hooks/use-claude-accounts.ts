@@ -29,6 +29,7 @@ export type ClaudeAccountsController = {
     displayName: string
     proxyId: string | null
     fingerprint: ClaudeFingerprintView
+    preflight?: "checkcc"
   }) => Promise<void>
   /** 返回是否完成取消及清理；保存中或清理失败时返回 false。 */
   cancelAuthorization: () => Promise<boolean>
@@ -43,6 +44,8 @@ export type ClaudeAccountsController = {
   /** 从 Claude CLI 导入账号；返回是否成功，成功后已刷新列表。 */
   importFromClaudeCli: (input: { confirmCopy: boolean; displayName?: string }) => Promise<boolean>
   saveProxy: (input: { id?: string; name: string; url: string }) => Promise<void>
+  /** 验证并保存新代理；失败时向调用方抛错。 */
+  addVerifiedProxy: (input: { name: string; url: string }) => Promise<void>
   removeProxy: (id: string) => Promise<void>
   testProxy: (id: string) => Promise<void>
   checkEgress: (id: string) => Promise<EgressView>
@@ -56,6 +59,7 @@ export function useClaudeAccounts(): ClaudeAccountsController {
   const [error, setError] = useState<string | null>(null)
   const mounted = useRef(true)
   const authorizationRequest = useRef(0)
+  const proxyRevision = useRef(0)
   const hasBridge =
     window.pigclaude?.claudeAccounts !== undefined && window.pigclaude?.proxies !== undefined
   const preview = !hasBridge
@@ -78,6 +82,7 @@ export function useClaudeAccounts(): ClaudeAccountsController {
   }, [])
 
   const refresh = useCallback(async () => {
+    const revision = proxyRevision.current
     if (previewBridge !== null) {
       setAccounts(await previewBridge.list())
       setProxies(previewProxies())
@@ -93,7 +98,7 @@ export function useClaudeAccounts(): ClaudeAccountsController {
       if (!mounted.current) return
       // 操作失败后紧跟的刷新不清错误；错误在下一次操作开始时清空。
       setAccounts(nextAccounts)
-      setProxies(nextProxies)
+      if (revision === proxyRevision.current) setProxies(nextProxies)
     } catch (caught: unknown) {
       if (mounted.current) setError(errorMessage(caught))
     }
@@ -142,6 +147,7 @@ export function useClaudeAccounts(): ClaudeAccountsController {
       displayName: string
       proxyId: string | null
       fingerprint: ClaudeFingerprintView
+      preflight?: "checkcc"
     }) => {
       const request = ++authorizationRequest.current
       await wrap(
@@ -236,6 +242,15 @@ export function useClaudeAccounts(): ClaudeAccountsController {
     [previewBridge, wrap],
   )
 
+  const addVerifiedProxy = useCallback(async (input: { name: string; url: string }) => {
+    const saveVerified = window.pigclaude?.proxies?.saveVerified
+    if (saveVerified === undefined) throw new Error("桌面代理验证服务不可用")
+    proxyRevision.current++
+    const saved = await saveVerified(input)
+    if (mounted.current)
+      setProxies((current) => [...current.filter((item) => item.id !== saved.id), saved])
+  }, [])
+
   const removeProxy = useCallback(
     async (id: string) => {
       await wrap(async () => {
@@ -283,6 +298,7 @@ export function useClaudeAccounts(): ClaudeAccountsController {
     remove,
     importFromClaudeCli,
     saveProxy,
+    addVerifiedProxy,
     removeProxy,
     testProxy,
     checkEgress,

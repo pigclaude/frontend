@@ -60,6 +60,7 @@ export type PigclaudeBridge = {
       displayName: string
       proxyId: string | null
       fingerprint: ClaudeFingerprintView
+      preflight?: "checkcc"
     }) => Promise<ClaudeAccountView>
     cancelAuthorization: () => Promise<void>
     update: (input: {
@@ -79,6 +80,7 @@ export type PigclaudeBridge = {
   proxies: {
     list: () => Promise<ProxyView[]>
     save: (input: { id?: string; name: string; url: string }) => Promise<ProxyView>
+    saveVerified?: (input: { name: string; url: string }) => Promise<ProxyView>
     remove: (id: string) => Promise<void>
     test: (id: string) => Promise<ProxyView>
   }
@@ -163,6 +165,12 @@ const bridge: PigclaudeBridge = {
     save: async (input) => {
       const value: unknown = await ipcRenderer.invoke("pigclaude:proxies-save", input)
       if (!isProxyView(value)) throw new Error("INVALID_PROXY_RESPONSE")
+      return value
+    },
+    saveVerified: async (input) => {
+      const value: unknown = await ipcRenderer.invoke("pigclaude:proxies-save-verified", input)
+      if (!isProxyView(value) || value.lastTest?.ok !== true || value.lastTest.ip === null)
+        throw new Error("INVALID_PROXY_RESPONSE")
       return value
     },
     remove: (id) => ipcRenderer.invoke("pigclaude:proxies-remove", id),

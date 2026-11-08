@@ -302,6 +302,7 @@ export function DesktopApp() {
     displayName: string
     proxyId: string | null
     fingerprint: ClaudeFingerprintView
+    preflight?: "checkcc"
   }): void {
     const start = () => {
       acceptAuthorizationEvents.current = true
@@ -391,6 +392,7 @@ export function DesktopApp() {
     return (
       <OnboardingScreen
         key={onboardingReturn?.step ?? "start"}
+        onAddProxy={claudeAccounts.addVerifiedProxy}
         onFinish={finishOnboarding}
         onOpenAuthorize={openAuthorize}
         resume={onboardingReturn}

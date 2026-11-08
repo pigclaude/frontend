@@ -170,6 +170,18 @@ async function choose(id: string, value: string): Promise<void> {
 }
 
 describe("Claude account authorization wizard", () => {
+  it("only starts CheckCC preflight when the user chooses it", async () => {
+    const onStart = vi.fn()
+    await render({ proxies, account: savedAccount, onStart })
+    await click("下一步")
+    await click("绑定代理")
+    await click("保存并核对出口")
+    await click("先检测 CheckCC")
+    expect(onStart).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: "acc-1", proxyId: "sjc-02", preflight: "checkcc" }),
+    )
+  })
+
   it("submits the name, the chosen proxy and every fingerprint field", async () => {
     const onStart = vi.fn()
     await render({ proxies, onStart })
@@ -247,7 +259,7 @@ describe("Claude account authorization wizard", () => {
     await type("authorize-hardwareConcurrency", "0")
     await click("保存并继续")
 
-    expect(container.textContent).toContain("指纹种子必须是 1 到 2147483647 的整数")
+    expect(container.textContent).toContain("指纹种子必须是 0 到 18446744073709551615 的整数")
     await clickId("authorize-group-device")
     expect(container.textContent).toContain("CPU 核心数必须是 1 到 128 的整数")
     expect(onStart).not.toHaveBeenCalled()

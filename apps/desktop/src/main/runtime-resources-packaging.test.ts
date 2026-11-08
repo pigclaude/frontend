@@ -1,4 +1,4 @@
-// 验证安装包资源检查拒绝缺失的浏览器或 Xray，并将两者复制到启动器约定的资源目录。
+// 验证打包拒绝缺少固定 PigBrowser 清单的占位资源，并核对安装资源目录约定。
 
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
@@ -11,15 +11,16 @@ const checkResources = createRequire(import.meta.url)(
 ) as (context: unknown) => Promise<void>
 
 it.each([
-  ["darwin", 3, "arm64", "fingerprint-chromium.app/Contents/MacOS/Chromium", "xray"],
-  ["win32", 1, "x64", "chrome.exe", "xray.exe"],
-  ["linux", 1, "x64", "chrome", "xray"],
+  ["darwin", 3, "arm64", "Chromium.app/Contents/MacOS/Chromium", "xray"],
+  ["win32", 1, "x64", "browser/chrome.exe", "xray.exe"],
+  ["linux", 1, "x64", "browser/chrome", "xray"],
 ] as const)(
-  "%s 安装包在两项运行资源齐备前拒绝打包",
+  "%s 安装包拒绝只有可执行占位文件或非批准清单的资源",
   async (platform, arch, name, browser, xray) => {
     const directory = await mkdtemp(join(tmpdir(), "pigclaude-package-resources-"))
     const root = join(directory, "runtime-assets", "pigclaude-runtime")
-    const browserPath = join(root, "chromium", `${platform}-${name}`, browser)
+    const browserRoot = join(root, "pigbrowser", `${platform}-${name}`)
+    const browserPath = join(browserRoot, browser)
     const xrayPath = join(root, "xray", `${platform}-${name}`, xray)
     const watchdogPath = join(directory, "out", "main", "xray-watchdog.js")
     const context = { electronPlatformName: platform, arch, packager: { projectDir: directory } }
@@ -33,7 +34,9 @@ it.each([
       await expect(checkResources(context)).rejects.toThrow("缺少")
       await mkdir(dirname(watchdogPath), { recursive: true })
       await writeFile(watchdogPath, "synthetic")
-      await expect(checkResources(context)).resolves.toBeUndefined()
+      await expect(checkResources(context)).rejects.toThrow("PigBrowser 完整资源")
+      await writeFile(join(browserRoot, "manifest.json"), "{}")
+      await expect(checkResources(context)).rejects.toThrow("PigBrowser 完整资源")
     } finally {
       await rm(directory, { recursive: true, force: true })
     }

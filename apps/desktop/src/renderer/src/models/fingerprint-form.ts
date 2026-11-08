@@ -3,6 +3,7 @@
 
 import {
   defaultClaudeFingerprint,
+  normalizeFingerprintSeed,
   type ClaudeFingerprintView,
   type FingerprintNoise,
   type FingerprintSpoofingCategory,
@@ -49,7 +50,7 @@ export function normalizeFingerprintForm(
 ): ClaudeFingerprintView {
   const merged = { ...defaultClaudeFingerprint(), ...(value ?? {}) }
   return {
-    seed: text(merged.seed),
+    seed: normalizeFingerprintSeed(text(merged.seed)) ?? text(merged.seed),
     brand: text(merged.brand),
     platform: normalizePlatform(merged.platform),
     lang: text(merged.lang),
@@ -84,8 +85,8 @@ export function normalizeFingerprintForm(
 export function validateFingerprintForm(value: ClaudeFingerprintView): FingerprintFormErrors {
   const errors: FingerprintFormErrors = {}
   const seed = value.seed.trim()
-  if (seed !== "" && !isIntegerInRange(seed, 1, 2_147_483_647)) {
-    errors.seed = "指纹种子必须是 1 到 2147483647 的整数"
+  if (normalizeFingerprintSeed(seed) === null) {
+    errors.seed = "指纹种子必须是 0 到 18446744073709551615 的整数"
   }
 
   const brand = value.brand.trim()

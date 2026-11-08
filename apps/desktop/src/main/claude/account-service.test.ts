@@ -3,10 +3,40 @@
 import { describe, expect, it } from "vitest"
 import { BrowserLaunchError } from "./fingerprint-chromium"
 import { ClaudeAccountError } from "./errors"
-import type { OAuthCallbackServer } from "./subscription-oauth"
-import { createHarness, fingerprint, seedAccount } from "./account-service-test-fixtures"
+import {
+  createHarness,
+  createWaitingCallback,
+  fingerprint,
+  seedAccount,
+  waitForTestSignal,
+} from "./account-service-test-fixtures"
 
 describe("ClaudeAccountService", () => {
+  it("opens CheckCC before Claude in the same bound browser and waits for user authorization", async () => {
+    const callback = createWaitingCallback()
+    const harness = await createHarness({ callback })
+    const operation = harness.service.authorize({
+      displayName: "验收账号",
+      proxyId: "p1",
+      fingerprint,
+      preflight: "checkcc",
+    })
+    try {
+      await waitForTestSignal(harness.launched.promise, operation)
+      const launched = harness.launchInputs[0]
+      expect(launched?.network.mode).toBe("bound")
+      expect(launched?.authorizeUrl).toMatch(/^data:text\/html/)
+      const page = decodeURIComponent(launched?.authorizeUrl.split(",")[1] ?? "")
+      expect(page).toContain("https://checkcc.org/")
+      expect(page).toContain("required")
+      expect(harness.exchangeRedirectUris).toEqual([])
+    } finally {
+      await harness.service.cancel()
+      await operation.catch(() => undefined)
+      await harness.cleanup()
+    }
+  })
+
   it.each(["default_public_interface_only", "default_public_and_private_interfaces"] as const)(
     "rejects WebRTC policy %s before starting a bound proxy",
     async (webrtcPolicy) => {
@@ -227,27 +257,7 @@ describe("ClaudeAccountService", () => {
   })
 
   it("cancels a pending authorization and stops the browser instance", async () => {
-    let rejectWait: ((error: Error) => void) | null = null
-    let cancelled = false
-    const callback: OAuthCallbackServer = {
-      redirectUri: "http://localhost:1234/callback",
-      waitForCode: () => {
-        if (cancelled) {
-          return Promise.reject(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消"))
-        }
-        return new Promise<string>((_resolve, reject) => {
-          rejectWait = reject
-        })
-      },
-      cancel: () => {
-        cancelled = true
-        rejectWait?.(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消"))
-      },
-      close: async () => {
-        cancelled = true
-        rejectWait?.(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消"))
-      },
-    }
+    const callback = createWaitingCallback()
     const harness = await createHarness({ callback })
     const pending = harness.service.authorize({
       displayName: "工作账号",
@@ -322,7 +332,7 @@ describe("ClaudeAccountService", () => {
     await expect(
       harness.service.update({
         accountId: "acc-1",
-        fingerprint: { ...fingerprint, seed: "0" },
+        fingerprint: { ...fingerprint, seed: "18446744073709551616" },
       }),
     ).rejects.toMatchObject({ code: "FINGERPRINT_INVALID" })
   })

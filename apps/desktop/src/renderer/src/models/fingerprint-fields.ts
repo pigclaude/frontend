@@ -139,7 +139,7 @@ export const fingerprintFieldMeta: Record<FingerprintEditableFieldKey, Fingerpri
   seed: {
     label: "指纹种子",
     hint: "自动模式按账号生成；也可以手动生成或填写一个固定种子。",
-    placeholder: "1–2147483647",
+    placeholder: "0–18446744073709551615",
     defaultLabel: "按账号自动生成",
     mono: true,
     control: "choice",
@@ -147,7 +147,7 @@ export const fingerprintFieldMeta: Record<FingerprintEditableFieldKey, Fingerpri
   brand: { label: "浏览器品牌", control: "select", options: fingerprintBrandOptions },
   brandVersion: {
     label: "浏览器版本",
-    placeholder: "例如 148.0.7778.215",
+    placeholder: "例如 156.0.8078.88",
     defaultLabel: "跟随内核版本",
     mono: true,
     control: "choice",
@@ -208,7 +208,7 @@ export const fingerprintFieldMeta: Record<FingerprintEditableFieldKey, Fingerpri
   canvasNoise: { label: "Canvas 噪声", hint: "为画布图像添加细微差异。", control: "noise" },
   clientRectsNoise: {
     label: "ClientRects 噪声",
-    hint: "为元素布局测量添加细微差异。",
+    hint: "使用指纹种子时，按参考内核规则选择关闭仍可能产生细微偏移。",
     control: "noise",
   },
   disableSpoofing: {

@@ -339,9 +339,9 @@ async function setupAuthorization(): Promise<void> {
 
   const browser = new FingerprintChromiumAdapter({
     profilesRoot: join(app.getPath("userData"), "local", "browser-profiles"),
-    binaryPath: process.env["PIGCLAUDE_FINGERPRINT_CHROMIUM_BIN"],
+    binaryPath: process.env["PIGCLAUDE_PIGBROWSER_BIN"],
     hostArch,
-    resourcesPath: app.isPackaged ? process.resourcesPath : undefined,
+    resourcesPath: app.isPackaged ? process.resourcesPath : join(__dirname, "../../runtime-assets"),
     screenSize: screen.getPrimaryDisplay().workAreaSize,
   })
   claudeAccountService = new ClaudeAccountService({

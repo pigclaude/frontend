@@ -42,6 +42,18 @@ export type ClaudeFingerprintView = {
   unknownArgs?: string[]
 }
 
+/** 归一化 PigBrowser 的 uint64 种子；空值表示按账号生成，非法值返回 null。 */
+export function normalizeFingerprintSeed(value: string): string | null {
+  const seed = value.trim()
+  if (seed === "") return ""
+  if (!/^\d+$/.test(seed)) return null
+  const normalized = seed.replace(/^0+(?=\d)/, "")
+  if (normalized.length > 20 || (normalized.length === 20 && normalized > "18446744073709551615")) {
+    return null
+  }
+  return normalized
+}
+
 /** AntBrowser 新 profile 的默认指纹。保证不硬编码语言、时区和种子，其余可选项为空。 */
 export function defaultClaudeFingerprint(): ClaudeFingerprintView {
   return {

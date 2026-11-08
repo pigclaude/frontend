@@ -6,11 +6,15 @@ import type {
 } from "@pigclaude/contracts/claude-account"
 import { ClaudeAccountError } from "./errors"
 import { BrowserLaunchError } from "./fingerprint-chromium"
+import { BrowserProcessExitedError } from "./browser-control-pipe"
 import { SubscriptionOAuthError } from "./subscription-oauth"
 
 /** 将外部错误映射为账号服务稳定错误。 */
 export function mapError(error: unknown): ClaudeAccountError {
   if (error instanceof ClaudeAccountError) return error
+  if (error instanceof BrowserProcessExitedError) {
+    return new ClaudeAccountError("AUTHORIZATION_CANCELLED", error.message)
+  }
   if (error instanceof BrowserLaunchError) {
     return new ClaudeAccountError(error.code, error.message)
   }
@@ -34,4 +38,14 @@ export function phaseFor(code: ClaudeAccountErrorCode): ClaudeAccountEvent["phas
     return "blocked"
   }
   return "failed"
+}
+
+/** 校验会员状态，并将非领域错误转换为稳定的会员错误。 */
+export async function requireMembership(check: () => Promise<void>): Promise<void> {
+  try {
+    await check()
+  } catch (error: unknown) {
+    if (error instanceof ClaudeAccountError) throw error
+    throw new ClaudeAccountError("MEMBERSHIP_REQUIRED", "会员校验不通过")
+  }
 }

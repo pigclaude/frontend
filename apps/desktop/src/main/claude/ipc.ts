@@ -60,6 +60,11 @@ export function registerClaudeIpc(options: ClaudeIpcOptions): void {
     assertTrusted(options, event)
     return requireProxyService(options).save(readProxyInput(value))
   })
+  ipcMain.handle("pigclaude:proxies-save-verified", async (event, value: unknown) => {
+    assertTrusted(options, event)
+    const input = readProxyInput(value)
+    return requireProxyService(options).saveVerified({ name: input.name, url: input.url })
+  })
   ipcMain.handle("pigclaude:proxies-remove", async (event, value: unknown) => {
     assertTrusted(options, event)
     await requireProxyService(options).remove(readProxyId(value))
@@ -98,11 +103,13 @@ export function readAuthorizeInput(value: unknown): AuthorizeClaudeAccountInput 
   if (displayName === null || !isClaudeFingerprintView(fingerprint)) {
     throw invalidInput()
   }
+  if (value.preflight !== undefined && value.preflight !== "checkcc") throw invalidInput()
   return {
     accountId: readOptionalString(value.accountId),
     displayName,
     proxyId: readAuthorizeProxyId(value.proxyId),
     fingerprint: fingerprint as ClaudeFingerprintView,
+    ...(value.preflight === "checkcc" ? { preflight: "checkcc" } : {}),
   }
 }
 

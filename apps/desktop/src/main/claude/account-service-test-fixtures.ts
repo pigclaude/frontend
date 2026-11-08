@@ -10,7 +10,7 @@ import type { EgressResult } from "@pigclaude/login-gate/egress-check"
 import type { ProxyRuntime } from "@pigclaude/login-gate/proxy-runtime"
 import type { XrayHttpRequest } from "@pigclaude/login-gate/xray-http"
 import type { LaunchBrowserInput } from "./fingerprint-chromium"
-import type { ClaudeAccountError } from "./errors"
+import { ClaudeAccountError } from "./errors"
 import { ClaudeAccountService, type ClaudeAccountServiceDeps } from "./account-service"
 import type {
   ClaudeOAuthProfile,
@@ -19,6 +19,54 @@ import type {
 } from "./subscription-oauth"
 
 const now = Date.parse("2026-10-21T00:00:00.000Z")
+
+/** 创建可重复读取取消结果的等待中合成回调。 */
+export function createWaitingCallback(): OAuthCallbackServer {
+  let reject: (error: Error) => void = () => undefined
+  let closed = false
+  let complete = false
+  const code = new Promise<string>((_resolve, fail) => {
+    reject = fail
+  })
+  void code.catch(() => undefined)
+  const cancel = () => {
+    if (complete) return
+    complete = true
+    reject(new ClaudeAccountError("AUTHORIZATION_CANCELLED", "取消"))
+  }
+  return {
+    redirectUri: "http://localhost:1234/callback",
+    isComplete: () => complete,
+    waitForCode: () => code,
+    cancel,
+    close: async () => {
+      if (closed) return
+      closed = true
+      cancel()
+    },
+  }
+}
+
+/** 等待合成流程到达指定阶段；流程提前结束或超时则明确失败。 */
+export async function waitForTestSignal(
+  signal: Promise<void>,
+  operation: Promise<unknown>,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      signal,
+      operation.then(() => {
+        throw new Error("合成流程在目标阶段前结束")
+      }),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("等待合成阶段超时")), 10_000)
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
 /** 测试用的合成 Claude 账号指纹。 */
 export const fingerprint: ClaudeFingerprintView = {
   seed: "123456",
@@ -135,6 +183,7 @@ export async function createHarness(
   }
   const callback = options.callback ?? {
     redirectUri: "http://localhost:1234/callback",
+    isComplete: () => true,
     waitForCode: async () => "code-1",
     cancel: () => undefined,
     close: async () => undefined,

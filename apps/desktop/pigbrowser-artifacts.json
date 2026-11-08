@@ -1,0 +1,24 @@
+{
+  "version": "156.0.8078.88",
+  "repository": "pigbrowser/pigbrowser",
+  "targets": {
+    "darwin-arm64": {
+      "archive": "pigbrowser-156.0.8078.88-macos-arm64-dev-7a0f7d8.zip",
+      "sha256": "b690639d37bda02087de90fc01f496fde614595b4d51579415cf1f80a7dca0f0",
+      "manifestSha256": "a195f40d69b28cf0d81dc80fc391cb34d7cddb09a7ef08b940c0ac488078c1fc",
+      "executable": "Chromium.app/Contents/MacOS/Chromium"
+    },
+    "win32-x64": {
+      "archive": "pigbrowser-156.0.8078.88-windows-x64-dev-bb8bcca.zip",
+      "sha256": "2b92eefddcd762d72b82dd92933150095f761fa8909f61ae16d695c8a75ab7e7",
+      "manifestSha256": "cb447a1e3453d7f883b68a8d42f770597c91f1144694e3f974e2d39da802d057",
+      "executable": "browser/chrome.exe"
+    },
+    "linux-x64": {
+      "archive": "pigbrowser-156.0.8078.88-linux-x64-dev-0a54aa1.tar.xz",
+      "sha256": "f4156c6227ed5f1dc783bf025df5c3b2905902cee97324193c6851098530ea84",
+      "manifestSha256": "a2d63eb1f903fd5b7475ceb4a19fe289644991a34f57605d679943a361de0235",
+      "executable": "browser/chrome"
+    }
+  }
+}

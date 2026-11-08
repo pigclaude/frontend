@@ -341,10 +341,19 @@ describe("fingerprint normalization", () => {
   it("prepares a normalized submission or returns field errors", () => {
     const valid = prepareFingerprintSubmission({ ...defaultFingerprintForm(), seed: " 123 " })
     expect(valid).toEqual({ ok: true, fingerprint: expect.objectContaining({ seed: "123" }) })
-    const invalid = prepareFingerprintSubmission({ ...defaultFingerprintForm(), seed: "0" })
+    for (const seed of ["0", "9007199254740993", "18446744073709551615"]) {
+      expect(prepareFingerprintSubmission({ ...defaultFingerprintForm(), seed })).toEqual({
+        ok: true,
+        fingerprint: expect.objectContaining({ seed }),
+      })
+    }
+    const invalid = prepareFingerprintSubmission({
+      ...defaultFingerprintForm(),
+      seed: "18446744073709551616",
+    })
     expect(invalid).toEqual({
       ok: false,
-      errors: { seed: "指纹种子必须是 1 到 2147483647 的整数" },
+      errors: { seed: "指纹种子必须是 0 到 18446744073709551615 的整数" },
     })
   })
 })
@@ -370,7 +379,7 @@ describe("fingerprint validation", () => {
   it("reports Chinese errors for seeds, versions, languages and time zones", () => {
     const errors = validateFingerprintForm({
       ...base,
-      seed: "0",
+      seed: "18446744073709551616",
       brand: "Firefox",
       brandVersion: "144.x",
       platform: "android",
@@ -380,7 +389,7 @@ describe("fingerprint validation", () => {
       timezone: "Mars/Olympus",
     })
     expect(errors).toMatchObject({
-      seed: "指纹种子必须是 1 到 2147483647 的整数",
+      seed: "指纹种子必须是 0 到 18446744073709551615 的整数",
       brand: "浏览器品牌仅支持 Chrome、Edge、Opera、Vivaldi",
       brandVersion: "品牌版本必须是数字点分格式，例如 144.0.7559.132",
       platform: "平台仅支持 windows、linux、macos",

@@ -15,12 +15,12 @@ afterEach(async () => {
 })
 
 it.each([
-  ["darwin", "arm64", "fingerprint-chromium.app/Contents/MacOS/Chromium"],
-  ["win32", "x64", "chrome.exe"],
-  ["linux", "x64", "chrome"],
+  ["darwin", "arm64", "Chromium.app/Contents/MacOS/Chromium"],
+  ["win32", "x64", "browser/chrome.exe"],
+  ["linux", "x64", "browser/chrome"],
 ] as const)("在 %s/%s 上选择匹配架构的随包内核", async (platform, arch, relative) => {
   const root = await tempRoot()
-  const binary = join(root, "pigclaude-runtime", "chromium", `${platform}-${arch}`, relative)
+  const binary = join(root, "pigclaude-runtime", "pigbrowser", `${platform}-${arch}`, relative)
   await writeBinary(binary, platform, arch)
   const adapter = new FingerprintChromiumAdapter({
     profilesRoot: join(root, "profiles"),
@@ -34,7 +34,7 @@ it.each([
 
 it("拒绝路径标记正确但二进制架构不匹配的内核", async () => {
   const root = await tempRoot()
-  const binary = join(root, "pigclaude-runtime", "chromium", "linux-x64", "chrome")
+  const binary = join(root, "pigclaude-runtime", "pigbrowser", "linux-x64", "browser", "chrome")
   await writeBinary(binary, "linux", "arm64")
   const adapter = new FingerprintChromiumAdapter({
     profilesRoot: join(root, "profiles"),

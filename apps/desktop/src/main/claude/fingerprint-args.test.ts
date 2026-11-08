@@ -214,6 +214,15 @@ describe("defaultWindowSize", () => {
 })
 
 describe("validateFingerprint", () => {
+  it.each(["0", "2147483648", "9007199254740993", "18446744073709551615"])(
+    "保留 PigBrowser 种子 %s 的完整十进制精度",
+    (seed) => {
+      const result = ensureFingerprint(fingerprint({ seed }), "acc-1")
+      expect(result).toMatchObject({ ok: true, fingerprint: { seed } })
+      expect(buildFingerprintArgs(fingerprint({ seed }))[0]).toBe(`--fingerprint=${seed}`)
+    },
+  )
+
   it("normalizes platform aliases and derives accept language", () => {
     expect(normalizePlatform("macOS")).toBe("macos")
     expect(validateFingerprint(fingerprint({ platform: "mac" }))).toMatchObject({
@@ -270,9 +279,9 @@ describe("validateFingerprint", () => {
 
   it("rejects invalid values with a Chinese reason", () => {
     const cases: Array<[string, ClaudeFingerprintView, string]> = [
-      ["seed 0", fingerprint({ seed: "0" }), "种子"],
+      ["seed 负数", fingerprint({ seed: "-1" }), "种子"],
       ["seed 非数字", fingerprint({ seed: "abc" }), "种子"],
-      ["seed 超范围", fingerprint({ seed: "2147483648" }), "种子"],
+      ["seed 超范围", fingerprint({ seed: "18446744073709551616" }), "种子"],
       ["brand", fingerprint({ brand: "Safari" }), "品牌"],
       ["brandVersion", fingerprint({ brandVersion: "144.x" }), "品牌版本"],
       ["brandVersion 段数", fingerprint({ brandVersion: "1.2.3.4.5.6" }), "品牌版本"],
@@ -360,7 +369,7 @@ describe("ensureFingerprint", () => {
       ok: true,
       fingerprint: { seed: "123456" },
     })
-    expect(ensureFingerprint(fingerprint({ seed: "0" }), "acc-1").ok).toBe(false)
+    expect(ensureFingerprint(fingerprint({ seed: "18446744073709551616" }), "acc-1").ok).toBe(false)
   })
 })
 

@@ -9,6 +9,7 @@ import { createProxyAgent } from "@pigclaude/proxy-connection"
 import { fetch as undiciFetch, type ProxyAgent } from "undici"
 import { ClaudeAccountError } from "./errors"
 import { isValidBridgeUrl } from "./launch-argument-guard"
+import type { BrowserProfileUsage } from "./browser-profile-usage"
 
 import { defaultEnvironmentExitUrl } from "./environment-targets"
 const defaultCheckUrl = defaultEnvironmentExitUrl
@@ -20,6 +21,7 @@ export type ProxyServiceDeps = {
   now?: () => number
   /** 外部代理核心未接入时，出口一致性核对明确拒绝执行。 */
   startProxyRuntime?: StartProxyRuntime
+  profileUsage?: BrowserProfileUsage
 }
 
 /** 本机代理服务。保证测试失败时返回失败结果而不是改走直连。 */
@@ -28,6 +30,7 @@ export class ProxyService {
   readonly #checkUrl: string
   readonly #now: () => number
   readonly #startProxyRuntime: StartProxyRuntime | undefined
+  readonly #profileUsage: BrowserProfileUsage | undefined
 
   /** 创建绑定到本机代理文件的代理服务。 */
   constructor(deps: ProxyServiceDeps) {
@@ -35,6 +38,7 @@ export class ProxyService {
     this.#checkUrl = deps.checkUrl ?? defaultCheckUrl
     this.#now = deps.now ?? Date.now
     this.#startProxyRuntime = deps.startProxyRuntime
+    this.#profileUsage = deps.profileUsage
   }
 
   /** 返回脱敏代理列表。 */
@@ -56,7 +60,15 @@ export class ProxyService {
       url: input.url,
       lastTest: existing?.url === input.url ? existing.lastTest : null,
     }
-    await this.#store.saveProxy(proxy)
+    const affected =
+      existing && existing.url !== proxy.url
+        ? (await this.#store.listBrowserProfiles())
+            .filter((profile) => profile.proxyId === proxy.id)
+            .map((profile) => profile.id)
+        : []
+    if (this.#profileUsage && affected.length)
+      await this.#profileUsage.editMany(affected, () => this.#store.saveProxy(proxy))
+    else await this.#store.saveProxy(proxy)
     return toView(proxy)
   }
 

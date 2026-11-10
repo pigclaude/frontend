@@ -138,9 +138,9 @@ export const fingerprintSpoofingCategories: {
 export const fingerprintFieldMeta: Record<FingerprintEditableFieldKey, FingerprintFieldMeta> = {
   seed: {
     label: "指纹种子",
-    hint: "自动模式按账号生成；也可以手动生成或填写一个固定种子。",
+    hint: "自动模式按浏览器配置生成；也可以手动生成或填写一个固定种子。",
     placeholder: "0–18446744073709551615",
-    defaultLabel: "按账号自动生成",
+    defaultLabel: "按配置自动生成",
     mono: true,
     control: "choice",
   },

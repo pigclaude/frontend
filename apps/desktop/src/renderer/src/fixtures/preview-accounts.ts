@@ -112,12 +112,9 @@ export function createPreviewAccountsBridge(input: {
   }
   return {
     list: async () => accounts,
-    authorize: async (request: {
-      accountId?: string
-      displayName: string
-      proxyId: string | null
-      fingerprint: ClaudeFingerprintView
-    }) => {
+    authorize: async (
+      request: import("../../../main/claude/account-service-inputs").AuthorizeClaudeAccountInput,
+    ) => {
       const event = (phase: ClaudeAccountEvent["phase"]): void => {
         emitLater({ accountId: "preview-new", phase, errorCode: null, message: null })
       }
@@ -132,8 +129,13 @@ export function createPreviewAccountsBridge(input: {
         subscriptionType: "max",
         needsReauth: false,
         credentialExpiresAt: Date.now() + 60 * 60 * 1_000,
-        proxyId: request.proxyId,
-        fingerprint: request.fingerprint,
+        ...(request.browserProfileId ? { browserProfileId: request.browserProfileId } : {}),
+        proxyId: request.proxyId ?? null,
+        fingerprint: request.fingerprint ?? {
+          ...defaultClaudeFingerprint(),
+          lang: "en-US",
+          timezone: "America/New_York",
+        },
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }

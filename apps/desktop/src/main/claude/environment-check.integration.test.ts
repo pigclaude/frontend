@@ -115,7 +115,7 @@ it.skipIf(!binary || !xray)(
 )
 
 it.skipIf(!binary || !xray)(
-  "系统网络记录自动配置基线，不要求应用内代理证据",
+  "系统网络使用同一实例配置，不要求应用内代理证据",
   async () => {
     await withEnvironmentBrowser(
       async ({ report, requests }) => {
@@ -250,7 +250,7 @@ async function withEnvironmentBrowser(
         : { mode: "bound", bridgeUrl: runtime.url, callbackUri: callback.redirectUri },
       fingerprint: {
         ...fingerprint,
-        ...(options.system ? { lang: "", timezone: "", acceptLang: "", platform: "" } : {}),
+        ...(options.system ? { platform: "" } : {}),
         unknownArgs: [
           "--headless=new",
           "--remote-debugging-port=0",
@@ -259,6 +259,7 @@ async function withEnvironmentBrowser(
         ],
       },
       environmentCheck: {
+        browserProfile: { id: "synthetic-profile", revision: 1 },
         runId: "synthetic-environment-run",
         startedAt: Date.now(),
         expectedExitIp: "1.1.1.1",

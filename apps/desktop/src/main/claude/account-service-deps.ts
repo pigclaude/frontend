@@ -9,10 +9,14 @@ import type { SubscriptionOAuth } from "./subscription-oauth"
 import type { ClaudeCliCredential } from "./cli-credential-reader"
 import type { ClaudeCliAccountMetadata } from "./cli-account-metadata"
 import type { NativeEnvironmentDiagnostics } from "./native-environment-model"
+import type { BrowserProfileUsage } from "./browser-profile-usage"
 
 /** 账号服务依赖。所有外部副作用都通过端口注入。 */
 export type ClaudeAccountServiceDeps = {
   store: LocalStore
+  profileUsage?: BrowserProfileUsage
+  systemLocale?: () => string
+  systemTimezone?: () => string
   browser: Pick<
     FingerprintChromiumAdapter,
     "ensureAvailable" | "launch" | "deleteProfile" | "profileDir" | "dispose"

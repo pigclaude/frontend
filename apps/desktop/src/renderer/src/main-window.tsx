@@ -7,6 +7,8 @@ import { AccountsScreen } from "./screens/accounts-screen"
 import { ChatScreen } from "./screens/chat-screen"
 import { EnvironmentScreen } from "./screens/environment-screen"
 import { ProxiesScreen } from "./screens/proxies-screen"
+import { BrowserProfilesScreen } from "./screens/browser-profiles-screen"
+import type { BrowserProfilesController } from "./hooks/use-browser-profiles"
 import { SettingsScreen } from "./screens/settings/settings-sections"
 import { TrayScreen } from "./screens/tray-screen"
 import { UsageScreen } from "./screens/usage-screen"
@@ -34,6 +36,7 @@ export type MainWindowProps = {
   canGoForward: boolean
   membership: MembershipView
   claudeAccounts: ClaudeAccountsController
+  browserProfiles?: BrowserProfilesController
   onNavigate: (screen: Screen) => void
   onBack: () => void
   onForward: () => void
@@ -51,6 +54,7 @@ export function MainWindow({
   canGoForward,
   membership,
   claudeAccounts,
+  browserProfiles,
   onNavigate,
   onBack,
   onForward,
@@ -227,6 +231,8 @@ export function MainWindow({
             <AccountsScreen
               accounts={accounts}
               proxies={proxies}
+              browserProfiles={browserProfiles?.profiles}
+              onOpenBrowserProfiles={() => onNavigate("browser-profiles")}
               error={pool.error}
               onOpenAuthorize={onOpenAuthorize}
               onReauthorize={(accountId) => {
@@ -235,7 +241,9 @@ export function MainWindow({
               }}
               onRemove={(accountId) => void pool.remove(accountId)}
               onUpdate={(input) => void pool.update(input)}
-              onImportFromClaudeCli={() => pool.importFromClaudeCli({ confirmCopy: true })}
+              onImportFromClaudeCli={(browserProfileId) =>
+                pool.importFromClaudeCli({ confirmCopy: true, browserProfileId })
+              }
             />
           </ScrollPanel>
         ) : null}
@@ -248,6 +256,11 @@ export function MainWindow({
               onSave={(input) => pool.saveProxy(input)}
               onRemove={(proxyId) => void pool.removeProxy(proxyId)}
             />
+          </ScrollPanel>
+        ) : null}
+        {screen === "browser-profiles" && browserProfiles ? (
+          <ScrollPanel>
+            <BrowserProfilesScreen controller={browserProfiles} proxies={pool.proxies} />
           </ScrollPanel>
         ) : null}
         {screen === "usage" ? (
@@ -275,7 +288,8 @@ export function MainWindow({
             />
           </ScrollPanel>
         ) : null}
-        {inSettings && !["accounts", "proxies", "usage", "environment"].includes(screen) ? (
+        {inSettings &&
+        !["accounts", "browser-profiles", "proxies", "usage", "environment"].includes(screen) ? (
           <SettingsScreen
             withdrawContextId={membership.actionContextId}
             key={screen}

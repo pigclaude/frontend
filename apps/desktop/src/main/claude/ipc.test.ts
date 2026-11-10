@@ -169,11 +169,16 @@ describe("claude CLI import IPC", () => {
     const service = fakeService()
     register(service, true)
 
-    const view = await invokeImport({ confirmCopy: true, displayName: " 工作账号 " })
+    const view = await invokeImport({
+      confirmCopy: true,
+      displayName: " 工作账号 ",
+      browserProfileId: "profile-1",
+    })
 
     expect(service.importFromClaudeCli).toHaveBeenCalledWith({
       confirmCopy: true,
       displayName: "工作账号",
+      browserProfileId: "profile-1",
     })
     expect(view).toEqual(importedView)
     expect(view).not.toHaveProperty("accessToken")
@@ -187,7 +192,9 @@ describe("claude CLI import IPC", () => {
     } as ClaudeAccountView)
     register(service, true)
 
-    await expect(invokeImport({ confirmCopy: true })).rejects.toMatchObject({
+    await expect(
+      invokeImport({ confirmCopy: true, browserProfileId: "profile-1" }),
+    ).rejects.toMatchObject({
       code: "UNEXPECTED_ERROR",
       message: "导入结果无效",
     })

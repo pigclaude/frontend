@@ -158,7 +158,7 @@ describe("ClaudeAccountService", () => {
     expect(harness.bridgeCalls).toEqual([])
     expect(harness.egressCalls).toEqual([])
     expect(harness.browserCalls).toEqual([])
-    expect(harness.events.at(-1)?.message).not.toContain("fixture-token")
+    expect(harness.events.at(-1)?.message ?? "").not.toContain("fixture-token")
     expect(await harness.store.getAccount(existing.id)).toEqual(before)
     const renamed = await harness.service.update({ accountId: existing.id, displayName: "改名" })
     expect(renamed.fingerprint.unknownArgs).toEqual([raw])

@@ -88,6 +88,8 @@ export function defaultClaudeFingerprint(): ClaudeFingerprintView {
 /** renderer 可见的 Claude 账号视图。保证不含 access/refresh token、PKCE 材料或代理密码。 */
 export type ClaudeAccountView = {
   id: string
+  /** 关联的独立浏览器实例配置；旧账号在迁移前可能尚未提供。 */
+  browserProfileId?: string
   displayName: string
   enabled: boolean
   email: string | null

@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
+import type { BrowserProfileView } from "@pigclaude/contracts/browser-profile"
+import { BrowserProfileSelect } from "../components/browser-profile-select"
 import { Button } from "../components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog"
 import { AccountDeleteDialog, AccountProxyDialog } from "../components/account-dialogs"
@@ -13,6 +15,7 @@ import { AccountDetailScreen } from "./account-detail-screen"
 /** 账号更新输入，字段与桌面桥一致；proxyId 为 null 表示解绑并改用系统网络。 */
 export type ClaudeAccountUpdate = {
   accountId: string
+  browserProfileId?: string
   displayName?: string
   enabled?: boolean
   proxyId?: string | null
@@ -23,12 +26,14 @@ export type ClaudeAccountUpdate = {
 export type AccountsScreenProps = {
   accounts: PoolAccount[]
   proxies: PoolProxy[]
+  browserProfiles?: BrowserProfileView[]
+  onOpenBrowserProfiles?: () => void
   onOpenAuthorize: () => void
   onReauthorize?: (accountId: string) => void
   onRemove?: (accountId: string) => void
   onUpdate?: (input: ClaudeAccountUpdate) => void
   /** 从 Claude CLI 导入账号；返回 false 表示失败，页面继续显示父组件传入的错误。 */
-  onImportFromClaudeCli?: () => Promise<boolean>
+  onImportFromClaudeCli?: (browserProfileId?: string) => Promise<boolean>
   /** 最近一次账号操作的错误，例如删除时浏览器配置目录清理失败。 */
   error?: string | null
 }
@@ -37,6 +42,8 @@ export type AccountsScreenProps = {
 export function AccountsScreen({
   accounts,
   proxies,
+  browserProfiles,
+  onOpenBrowserProfiles,
   onOpenAuthorize,
   onReauthorize,
   onRemove,
@@ -51,6 +58,8 @@ export function AccountsScreen({
   const [importOpen, setImportOpen] = useState(false)
   const [imported, setImported] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [bindingAccountId, setBindingAccountId] = useState<string | null>(null)
+  const [bindingProfileId, setBindingProfileId] = useState("")
 
   const selected = accounts.find((account) => account.id === selectedId) ?? null
   const attention = accounts.filter((account) => account.statusKind !== "ready")
@@ -96,13 +105,16 @@ export function AccountsScreen({
       />
       <ClaudeCliImportDialog
         open={importOpen}
+        profiles={browserProfiles}
         onOpenChange={setImportOpen}
-        onConfirm={() => {
+        onConfirm={(profileId) => {
           if (importing) return
           setImportOpen(false)
           setImported(false)
           setImporting(true)
-          const pending = onImportFromClaudeCli?.() ?? Promise.resolve(false)
+          const pending =
+            (profileId ? onImportFromClaudeCli?.(profileId) : onImportFromClaudeCli?.()) ??
+            Promise.resolve(false)
           void pending
             .then((ok) => {
               if (ok) setImported(true)
@@ -111,6 +123,45 @@ export function AccountsScreen({
             .finally(() => setImporting(false))
         }}
       />
+      <Dialog
+        open={bindingAccountId !== null}
+        onOpenChange={(open) => {
+          if (!open) setBindingAccountId(null)
+        }}
+      >
+        <DialogContent>
+          <div className="dialog-head">
+            <DialogTitle>更换浏览器配置</DialogTitle>
+            <DialogDescription>
+              账号使用新配置的指纹、代理、语言和时区；该账号原有登录数据保持独立。请先结束该账号的授权或会话。
+            </DialogDescription>
+          </div>
+          <div className="dialog-body">
+            <BrowserProfileSelect
+              id="account-browser-profile"
+              profiles={browserProfiles ?? []}
+              value={bindingProfileId}
+              onChange={setBindingProfileId}
+            />
+          </div>
+          <div className="dialog-foot">
+            <Button variant="ghost" onClick={() => setBindingAccountId(null)}>
+              取消
+            </Button>
+            <Button
+              variant="primary"
+              disabled={!bindingProfileId}
+              onClick={() => {
+                if (bindingAccountId)
+                  onUpdate?.({ accountId: bindingAccountId, browserProfileId: bindingProfileId })
+                setBindingAccountId(null)
+              }}
+            >
+              保存绑定
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   )
   if (selected) {
@@ -118,6 +169,13 @@ export function AccountsScreen({
       <>
         <AccountDetailScreen
           account={selected}
+          browserProfileName={
+            browserProfiles?.find((profile) => profile.id === selected.browserProfileId)?.name
+          }
+          onChangeBrowserProfile={() => {
+            setBindingProfileId(selected.browserProfileId ?? "")
+            setBindingAccountId(selected.id)
+          }}
           onBack={() => setSelectedId(null)}
           onReauthorize={() => {
             // 先判断回调是否存在；回调返回 void，不能用 ?? 兜底，否则会同时打开添加向导并清掉账号 id。
@@ -126,8 +184,12 @@ export function AccountsScreen({
           }}
           onDelete={() => setDeleteId(selected.id)}
           onToggleEnabled={() => onUpdate?.({ accountId: selected.id, enabled: !selected.enabled })}
-          onChangeProxy={() => setProxyId(selected.id)}
-          onEditFingerprint={() => setFingerprintId(selected.id)}
+          onChangeProxy={() =>
+            selected.browserProfileId ? onOpenBrowserProfiles?.() : setProxyId(selected.id)
+          }
+          onEditFingerprint={() =>
+            selected.browserProfileId ? onOpenBrowserProfiles?.() : setFingerprintId(selected.id)
+          }
         />
         {dialogs}
       </>
@@ -245,13 +307,16 @@ export function AccountsScreen({
 /** 从 Claude CLI 导入账号的确认弹层，说明复制范围、共享会话和 Keychain 弹窗。 */
 function ClaudeCliImportDialog({
   open,
+  profiles,
   onOpenChange,
   onConfirm,
 }: {
   open: boolean
+  profiles?: BrowserProfileView[]
   onOpenChange: (open: boolean) => void
-  onConfirm: () => void
+  onConfirm: (profileId?: string) => void
 }) {
+  const [profileId, setProfileId] = useState("")
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -261,14 +326,28 @@ function ClaudeCliImportDialog({
             将读取并复制 macOS 钥匙串中的 Claude CLI OAuth 凭据到本机账号库。原 CLI
             凭据不会删除，两个应用共享同一登录会话。两个应用共用同一个 refresh
             token，任一方刷新都可能让另一方需要重新登录或重新导入。读取时 Keychain 可能弹窗，显示
-            security。导入后的账号默认使用系统网络和默认指纹。
+            security。导入账号使用所选浏览器配置；命中已有账号时沿用其当前配置，账号登录数据独立。
           </DialogDescription>
         </div>
+        {profiles ? (
+          <div className="dialog-body">
+            <BrowserProfileSelect
+              id="import-browser-profile"
+              profiles={profiles}
+              value={profileId}
+              onChange={setProfileId}
+            />
+          </div>
+        ) : null}
         <div className="dialog-foot">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button variant="primary" onClick={onConfirm}>
+          <Button
+            variant="primary"
+            disabled={profiles !== undefined && !profileId}
+            onClick={() => onConfirm(profileId || undefined)}
+          >
             确认导入
           </Button>
         </div>

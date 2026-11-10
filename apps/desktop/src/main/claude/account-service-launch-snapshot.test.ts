@@ -27,6 +27,13 @@ describe("Claude 账号授权快照", () => {
     })
     await harness.store.saveAccount(seedAccount())
     const unknownArgs = ["--load-extension=/synthetic/extension"]
+    const savedProfile = await harness.store.getBrowserProfile("acc-1")
+    if (!savedProfile) throw new Error("合成浏览器配置不存在")
+    await harness.store.saveBrowserProfile({
+      ...savedProfile,
+      fingerprint: { ...savedProfile.fingerprint, unknownArgs },
+      revision: savedProfile.revision + 1,
+    })
     const input: AuthorizeClaudeAccountInput = {
       accountId: "acc-1",
       displayName: "原始名称",

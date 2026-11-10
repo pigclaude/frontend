@@ -46,6 +46,7 @@ export type BrowserStartupInput = {
   hostPlatform?: NodeJS.Platform
   environmentCheck?: EnvironmentCheckContext
   environmentTargets?: EnvironmentCheckTargets
+  registerGracefulClose?: (close: () => boolean) => void
 }
 
 /** 扩展状态确认后才打开授权地址；无法确认时不打开授权页面。 */
@@ -53,6 +54,7 @@ export async function openAuthorizedPage(input: BrowserStartupInput): Promise<vo
   const timeout = AbortSignal.timeout(input.environmentCheck ? 90_000 : startupTimeoutMs)
   const signal = input.signal === undefined ? timeout : AbortSignal.any([input.signal, timeout])
   const pipe = new BrowserControlPipe(input.child, signal)
+  input.registerGracefulClose?.(() => pipe.requestClose())
   let stage: keyof typeof startupStages = "extensionPaths"
   try {
     const platform = input.hostPlatform ?? process.platform

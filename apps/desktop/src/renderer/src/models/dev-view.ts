@@ -1,6 +1,6 @@
 // 负责解析开发期地址里的 screen、theme、glass 参数，让视觉回归能直接打开指定页面。
 import type { Screen } from "../screens/screen"
-import type { LoginView } from "./login-model"
+import { createLoginState, type LoginState, type LoginView } from "./login-model"
 import { onboardingSteps, type OnboardingStep } from "./onboarding-model"
 
 /** 开发期可以直接停住的登录阶段。 */
@@ -27,6 +27,7 @@ const screenNames: Record<Screen, true> = {
   chat: true,
   profile: true,
   accounts: true,
+  "browser-profiles": true,
   proxies: true,
   switching: true,
   usage: true,
@@ -60,4 +61,24 @@ export function parseDevView(search: string, dev: boolean): DevView | null {
     ...(phase && screen === "login" ? { phase } : {}),
     ...(step && screen === "onboarding" ? { step } : {}),
   }
+}
+
+/** 为只读开发预览生成明确的登录阶段，不参与真实授权。 */
+export function devLoginState(phase: DevLoginPhase | undefined): LoginState {
+  const idle = createLoginState()
+  if (phase === "waiting") {
+    return {
+      ...idle,
+      view: "waiting",
+      intent: "login",
+      sessionId: "dev-preview",
+      authorizationUrl: "https://pigclaude.example/oauth2/authorize",
+      expiresAt: 4_102_444_800_000,
+    }
+  }
+  if (phase === "confirming") {
+    return { ...idle, view: "confirming", intent: "login", displayName: "小猪" }
+  }
+  if (phase === "error") return { ...idle, view: "error", error: "授权已过期，请重新授权。" }
+  return idle
 }

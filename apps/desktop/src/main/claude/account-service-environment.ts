@@ -12,6 +12,7 @@ import { acceptsEnvironmentReport, environmentBinding } from "./environment-poli
 import { ClaudeAccountError } from "./errors"
 import type { NativeEnvironmentDiagnostics } from "./native-environment-model"
 import { unavailableNativeEvidence } from "./native-environment-evidence"
+import { sameProfileEnvironment } from "../session/profile-environment"
 
 /** 创建只认可本次启动快照的自检请求与消费屏障。 */
 export async function createAuthorizationEnvironmentCheck(
@@ -35,13 +36,18 @@ export async function createAuthorizationEnvironmentCheck(
   const runId = randomUUID()
   const startedAt = now()
   const native: NativeEnvironmentEvidence = structuredClone(observed)
-  const binding = environmentBinding({ ...input, nativeBinding: native?.binding })
+  const binding = environmentBinding({
+    ...input,
+    nativeBinding: native?.binding,
+    nativeEnvironment: native.environment,
+  })
   let latest: EnvironmentCheckReport | undefined
   const request: EnvironmentCheckRequest = {
     runId,
     startedAt,
     expectedExitIp: input.expectedExitIp,
     nativeEvidence: structuredClone(native),
+    browserProfile: input.browserProfile ? structuredClone(input.browserProfile) : undefined,
     onReport: (report) => {
       latest = structuredClone(report)
     },
@@ -52,6 +58,12 @@ export async function createAuthorizationEnvironmentCheck(
       if (
         !latest ||
         !native ||
+        !input.browserProfile ||
+        !native.environment ||
+        !sameProfileEnvironment(native.environment, {
+          locale: input.fingerprint.lang,
+          timezone: input.fingerprint.timezone,
+        }) ||
         !Number.isFinite(native.createdAt) ||
         native.createdAt > now() + 5_000 ||
         now() - native.createdAt >= 10 * 60 * 1_000 ||

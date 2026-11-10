@@ -68,7 +68,7 @@ describe("LocalStore", () => {
       fingerprint,
     })
     const names = await readdir(dir)
-    expect(names.sort()).toEqual(["accounts.json", "proxies.json"])
+    expect(names.sort()).toEqual(["accounts.json", "browser-profiles.json", "proxies.json"])
   })
 
   it("keeps both records when two saves of the same file overlap", async () => {
@@ -104,7 +104,9 @@ describe("LocalStore", () => {
     )
     const store = new LocalStore(dir)
     expect(await store.getAccount("legacy")).toEqual({
-      schemaVersion: 3,
+      schemaVersion: 4,
+      browserProfileId: "legacy",
+      browserProfileRevision: 1,
       id: "legacy",
       displayName: "legacy",
       enabled: true,
@@ -144,7 +146,8 @@ describe("LocalStore", () => {
     )
     const store = new LocalStore(dir)
     expect(await store.getAccount("acc-2")).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
+      browserProfileId: "acc-2",
       credential,
       proxyId: "p1",
       browserProfileDir: "",
@@ -203,6 +206,11 @@ describe("LocalStore", () => {
     await store.saveAccount(account("acc-1"))
     await store.saveAccount(account("acc-2"))
     await store.removeAccount("acc-1")
+    await expect(store.removeProxy("p1")).rejects.toThrow("PROXY_IN_USE")
+    await store.removeBrowserProfile("acc-1")
+    const profile = await store.getBrowserProfile("acc-2")
+    if (!profile) throw new Error("合成实例不存在")
+    await store.saveBrowserProfile({ ...profile, proxyId: "p2", revision: profile.revision + 1 })
     await store.removeProxy("p1")
     expect((await store.listAccounts()).map((item) => item.id)).toEqual(["acc-2"])
     expect((await store.listProxies()).map((item) => item.id)).toEqual(["p2"])
@@ -324,7 +332,9 @@ describe("LocalStore", () => {
     const store = new LocalStore(dir)
     await store.saveAccount({ ...account("acc-1"), proxyId: null })
     const raw = await readFile(join(dir, "accounts.json"), "utf8")
-    expect(raw).toContain('"proxyId":null')
+    expect(raw).toContain('"browserProfileId":"acc-1"')
+    expect(raw).not.toContain('"proxyId"')
+    expect(await readFile(join(dir, "browser-profiles.json"), "utf8")).toContain('"proxyId":null')
     const again = new LocalStore(dir)
     expect((await again.getAccount("acc-1"))?.proxyId).toBeNull()
   })

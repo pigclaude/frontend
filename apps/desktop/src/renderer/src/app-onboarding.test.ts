@@ -66,6 +66,7 @@ function installBridge(userId = "u1"): (event: ClaudeAccountEvent) => void {
   }
   const view = (): ClaudeAccountView => ({
     id: "acc-1",
+    browserProfileId: "profile-1",
     displayName: "主力 Max",
     enabled: true,
     email: "user@example.com",
@@ -87,6 +88,31 @@ function installBridge(userId = "u1"): (event: ClaudeAccountEvent) => void {
   })
   window.pigclaude = {
     platform: "darwin",
+    browserProfiles: {
+      list: async () => [
+        {
+          id: "profile-1",
+          name: "美国环境",
+          proxyId: "la-01",
+          fingerprint: view().fingerprint,
+          revision: 1,
+          boundAccounts: [],
+          inUse: false,
+          createdAt: "",
+          updatedAt: "",
+        },
+      ],
+      save: async () => {
+        throw new Error("此用例不修改配置")
+      },
+      remove: async () => undefined,
+      region: async () => ({
+        ip: "1.1.1.1",
+        countryCode: "US",
+        timezone: "America/Los_Angeles",
+        locale: "en-US",
+      }),
+    },
     membership: {
       inspect: async () => active(userId),
       subscribe: () => () => {},
@@ -336,8 +362,14 @@ describe("desktop onboarding gate", () => {
     await click("跳过")
     await click("添加账号")
     await click("下一步")
-    await click("绑定代理")
-    await click("保存并核对出口")
+    await act(async () => {
+      const profile = [...container.querySelectorAll("button")].find((item) =>
+        item.textContent?.includes("美国环境"),
+      )
+      if (!profile) throw new Error("预置浏览器配置不存在")
+      profile.click()
+    })
+    await click("使用此配置")
     const start = button("检测环境并准备授权")
     expect(start).toBeDefined()
     await act(async () => {
@@ -408,8 +440,14 @@ describe("desktop onboarding gate", () => {
     await click("跳过")
     await click("添加账号")
     await click("下一步")
-    await click("绑定代理")
-    await click("保存并核对出口")
+    await act(async () => {
+      const profile = [...container.querySelectorAll("button")].find((item) =>
+        item.textContent?.includes("美国环境"),
+      )
+      if (!profile) throw new Error("预置浏览器配置不存在")
+      profile.click()
+    })
+    await click("使用此配置")
     await click("检测环境并准备授权")
     await act(async () => {
       await Promise.resolve()

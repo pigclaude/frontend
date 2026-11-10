@@ -6,6 +6,9 @@ import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { LocalStore } from "@pigclaude/local-store"
 import { LocalDaemon } from "@pigclaude/daemon"
 import type { AccountChooser, ChosenAccount } from "./account-chooser"
+import { BrowserProfileUsage } from "../claude/browser-profile-usage"
+import { SessionAccountEnvironment } from "./session-account-environment"
+import type { ProfileEnvironment } from "../session/profile-environment"
 
 const defaultQuotaCooldownMs = 5 * 60 * 1_000
 const defaultBackoffMs = [1_000, 2_000, 5_000, 10_000] as const
@@ -55,8 +58,13 @@ export type LocalDaemonOptions = {
 
 /** runtime 依赖。时间、退避、休眠和 daemon 工厂都可注入。 */
 export type LocalRuntimeOptions = {
-  store: Pick<LocalStore, "listAccounts" | "getAccount" | "saveAccount" | "updateAccount">
-  chooser: Pick<AccountChooser, "choose" | "hasAvailableAccount">
+  store: Pick<
+    LocalStore,
+    "listAccounts" | "getAccount" | "getProxy" | "saveAccount" | "updateAccount"
+  >
+  profileUsage?: BrowserProfileUsage
+  chooser: Pick<AccountChooser, "choose" | "hasAvailableAccount"> &
+    Partial<Pick<AccountChooser, "hasIncompatibleAccount">>
   membership: LocalRuntimeMembership
   runAuthorized: <T>(operation: (signal: AbortSignal) => Promise<T>) => Promise<T>
   sessionToken?: string
@@ -72,7 +80,7 @@ type Lifecycle = { abort: AbortController }
 /** 本机 daemon 的生命周期和选号事件源。保证只在会员 active 时监听 loopback；启动失败按退避重试；会员失效或 stop 时中止请求并释放端口。 */
 export class LocalRuntime {
   readonly sessionToken: string
-  readonly chooser: Pick<AccountChooser, "choose" | "hasAvailableAccount">
+  readonly chooser: LocalRuntimeOptions["chooser"]
 
   readonly #store: LocalRuntimeOptions["store"]
   readonly #membership: LocalRuntimeMembership
@@ -85,6 +93,7 @@ export class LocalRuntime {
   readonly #listeners = new Set<(event: LocalRuntimeEvent) => void>()
   readonly #quotaRejections = new Set<string>()
   readonly #unsubscribe: () => void
+  readonly #environment: SessionAccountEnvironment
   #daemon: LocalDaemonHandle | null = null
   #lifecycle: Lifecycle | null = null
   #starting: { promise: Promise<void> } | null = null
@@ -99,6 +108,10 @@ export class LocalRuntime {
     this.sessionToken = options.sessionToken ?? randomBytes(32).toString("base64url")
     this.chooser = options.chooser
     this.#store = options.store
+    this.#environment = new SessionAccountEnvironment(
+      options.store,
+      options.profileUsage ?? new BrowserProfileUsage(),
+    )
     this.#membership = options.membership
     this.#authorized = options.runAuthorized
     this.#now = options.now ?? Date.now
@@ -191,6 +204,11 @@ export class LocalRuntime {
     this.#resetSessionTracking()
   }
 
+  /** CLI 启动前绑定确定环境，所有实际选号遵守同一语言和时区。 */
+  bindEnvironment(profile: ProfileEnvironment): Promise<() => void> {
+    return this.#environment.bind(profile)
+  }
+
   async #runStart(lifecycle: Lifecycle): Promise<void> {
     for (let attempt = 0; ; attempt += 1) {
       if (!this.#isCurrent(lifecycle)) return
@@ -227,7 +245,7 @@ export class LocalRuntime {
       port: 0,
       sessionToken: this.sessionToken,
       choose: (attempt) =>
-        this.chooser.choose({
+        this.#environment.choose(this.chooser, {
           rejectedIds: attempt.rejectedIds,
           ...(this.#preferredId === null ? {} : { preferredId: this.#preferredId }),
         }),

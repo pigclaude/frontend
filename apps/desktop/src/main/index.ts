@@ -36,6 +36,9 @@ import { runtimeHostArch } from "./claude/runtime-binary"
 import { SubscriptionOAuth } from "./claude/subscription-oauth"
 import { createXrayRuntimeStarter } from "./claude/xray-runtime"
 import { NativeEnvironmentInspector } from "./claude/native-environment"
+import { BrowserProfileService } from "./claude/browser-profile-service"
+import { BrowserProfileUsage } from "./claude/browser-profile-usage"
+import { registerBrowserProfileIpc } from "./claude/browser-profile-ipc"
 import { createDesktopComposition, type DesktopComposition } from "./composition"
 import { DeviceIdentityService } from "./device-identity"
 import { readDeviceInfo } from "./device-identity/device-info"
@@ -80,6 +83,7 @@ let authorizationSetupError: string | undefined
 let desktopComposition: DesktopComposition | null = null
 let claudeAccountService: ClaudeAccountService | null = null
 let proxyService: ProxyService | null = null
+let browserProfileService: BrowserProfileService | null = null
 let sessionHost: SessionHost | null = null
 let usageRecorder: UsageRecorder | null = null
 let callbackServer: Awaited<ReturnType<typeof createCallbackServer>> | null = null
@@ -276,6 +280,7 @@ function registerIpcHandlers(): void {
     getProxyService: () => proxyService,
     isTrusted: isTrustedSender,
   })
+  registerBrowserProfileIpc({ getService: () => browserProfileService, isTrusted: isTrustedSender })
   registerSessionIpc({
     getHost: () => sessionHost,
     getUsage: () => usageRecorder,
@@ -324,7 +329,9 @@ async function setupAuthorization(): Promise<void> {
   const deviceIdentity = new DeviceIdentityService()
   await deviceIdentity.read()
   callbackServer = await createCallbackServer(handleCallbackUrl)
-  const localStore = new LocalStore(join(app.getPath("userData"), "local"))
+  const systemLocale = () => app.getSystemLocale()
+  const profileUsage = new BrowserProfileUsage()
+  const localStore = new LocalStore(join(app.getPath("userData"), "local"), { systemLocale })
   const composition = createDesktopComposition({
     authOrigin,
     websiteOrigin,
@@ -335,6 +342,7 @@ async function setupAuthorization(): Promise<void> {
     onMembershipView: sendMembershipView,
     onAuthorizationState: sendAuthorizationState,
     localStore,
+    profileUsage,
   })
   desktopComposition = composition
   authorizationService = composition.authorizationService
@@ -346,8 +354,15 @@ async function setupAuthorization(): Promise<void> {
     resourcesPath: app.isPackaged ? process.resourcesPath : join(__dirname, "../../runtime-assets"),
     screenSize: screen.getPrimaryDisplay().workAreaSize,
   })
+  browserProfileService = new BrowserProfileService({
+    store: localStore,
+    usage: profileUsage,
+    systemLocale,
+  })
   claudeAccountService = new ClaudeAccountService({
     store: localStore,
+    profileUsage,
+    systemLocale,
     browser,
     oauth: new SubscriptionOAuth(),
     checkEgress,
@@ -365,6 +380,7 @@ async function setupAuthorization(): Promise<void> {
   })
   proxyService = new ProxyService({
     store: localStore,
+    profileUsage,
     startProxyRuntime,
   })
   usageRecorder = new UsageRecorder({ filePath: join(app.getPath("userData"), "usage.jsonl") })

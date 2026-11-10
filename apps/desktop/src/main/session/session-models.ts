@@ -13,6 +13,7 @@ import type {
 import type { ActiveSession } from "./session-host-support"
 import { assertWorkspace, createEnvironmentOrThrow, errorMessage } from "./session-host-support"
 import { normalizeSessionLocale, normalizeSessionTimezone } from "./session-locale"
+import { boundSessionEnvironment } from "./bound-session-environment"
 
 /** 模型查询依赖；所有会话状态通过参数传入，避免 SessionHost 主文件继续膨胀。 */
 export type SessionModelQueryOptions = {
@@ -47,9 +48,10 @@ export async function queryModels(options: SessionModelQueryOptions): Promise<Cl
     }
     const workspace = options.defaultWorkspace()
     await assertWorkspace(workspace)
-    const profile = await options.resolveProfile(null).catch(() => null)
+    const profile = await options.resolveProfile(null)
     const environment = await createEnvironmentOrThrow(
-      options.createEnvironment,
+      (input) =>
+        boundSessionEnvironment(options.runtime, profile, options.createEnvironment, input),
       {
         sessionId: options.newId(),
         workspace,

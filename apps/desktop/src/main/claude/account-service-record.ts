@@ -8,6 +8,7 @@ import { ClaudeAccountError } from "./errors"
 export function toView(account: AccountRecord): ClaudeAccountView {
   return {
     id: account.id,
+    ...(account.browserProfileId ? { browserProfileId: account.browserProfileId } : {}),
     displayName: account.displayName,
     enabled: account.enabled,
     email: account.credential?.email ?? null,

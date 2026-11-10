@@ -9,6 +9,7 @@ export function toPoolAccount(view: ClaudeAccountView, proxies: ProxyView[]): Po
   const statusKind = accountStatusKind(view)
   return {
     id: view.id,
+    ...(view.browserProfileId ? { browserProfileId: view.browserProfileId } : {}),
     name: view.displayName,
     mark: view.displayName.slice(0, 1) || "?",
     status: accountStatus(view, statusKind),

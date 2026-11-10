@@ -11,6 +11,7 @@ export type PoolAccountStatus = "ready" | "disabled" | "reauth" | "cooldown"
 /** 账号页面可编辑的脱敏记录。 */
 export type PoolAccount = {
   id: string
+  browserProfileId?: string
   name: string
   mark: string
   status: string

@@ -64,10 +64,12 @@ export type IpProxy = {
   lastTest: ProxyTestResult | null
 }
 
-/** 本机一条账号记录。保证凭据可空、需要重新授权时有明确标记；proxyId 为 null 表示不使用代理并走系统网络。 */
+/** 账号读取视图；v4 的环境来自关联实例，持久化只保存引用；v3 用于旧格式迁移。 */
 export type AccountRecord = {
-  schemaVersion: 3
+  schemaVersion: 3 | 4
   id: string
+  browserProfileId?: string
+  browserProfileRevision?: number
   displayName: string
   enabled: boolean
   credential: ClaudeCredential | null

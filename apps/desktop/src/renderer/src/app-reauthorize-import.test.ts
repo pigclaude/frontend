@@ -16,19 +16,14 @@ vi.mock("./hooks/use-appearance", () => ({
   }),
 }))
 
-type AuthorizeInput = {
-  accountId?: string
-  displayName: string
-  proxyId: string | null
-  fingerprint: ClaudeFingerprintView
-}
+type AuthorizeInput = import("../../main/claude/account-service-inputs").AuthorizeClaudeAccountInput
 
 const fingerprint: ClaudeFingerprintView = {
   seed: "",
   brand: "Chrome",
   platform: "macos",
-  lang: "",
-  timezone: "",
+  lang: "en-US",
+  timezone: "America/Chicago",
   canvasNoise: "",
   clientRectsNoise: "",
   brandVersion: "",
@@ -53,6 +48,7 @@ const fingerprint: ClaudeFingerprintView = {
 
 const importedAccount: ClaudeAccountView = {
   id: "acc-imported",
+  browserProfileId: "profile-imported",
   displayName: "CLI 账号",
   enabled: true,
   email: "cli@example.com",
@@ -144,6 +140,31 @@ function installBridge(): {
   })
   window.pigclaude = {
     platform: "darwin",
+    browserProfiles: {
+      list: async () => [
+        {
+          id: "profile-imported",
+          name: "导入账号环境",
+          proxyId: null,
+          fingerprint,
+          revision: 1,
+          boundAccounts: accounts.map((account) => ({ id: account.id, name: account.displayName })),
+          inUse: false,
+          createdAt: "",
+          updatedAt: "",
+        },
+      ],
+      save: async () => {
+        throw new Error("此用例不保存配置")
+      },
+      remove: async () => undefined,
+      region: async () => ({
+        ip: "1.1.1.1",
+        countryCode: "US",
+        timezone: "America/Chicago",
+        locale: "en-US",
+      }),
+    },
     membership: {
       inspect: async () => activeMembership(),
       subscribe: () => () => undefined,
@@ -185,6 +206,12 @@ describe("reauthorizing an imported account", () => {
     await flush()
 
     await click("从 Claude CLI 导入")
+    await act(async () => {
+      const picker = document.querySelector<HTMLSelectElement>("#import-browser-profile")
+      if (!picker) throw new Error("导入配置选择不存在")
+      picker.value = "profile-imported"
+      picker.dispatchEvent(new Event("change", { bubbles: true }))
+    })
     await click("确认导入", dialog() ?? document.body)
     await flush()
     expect(container.textContent).toContain("已从 Claude CLI 导入账号")
@@ -198,8 +225,7 @@ describe("reauthorizing an imported account", () => {
     expect(container.textContent).toContain("重新授权 Claude 账号")
 
     await click("下一步")
-    await click("使用系统网络")
-    await click("保存并继续")
+    await click("使用此配置")
     await click("检测环境并准备授权")
     await flush()
 
@@ -207,7 +233,7 @@ describe("reauthorizing an imported account", () => {
     expect(bridge.authorized[0]).toMatchObject({
       accountId: "acc-imported",
       displayName: "CLI 账号",
-      proxyId: null,
+      browserProfileId: "profile-imported",
     })
     expect(bridge.accounts().map((account) => account.id)).toEqual(["acc-imported"])
   })

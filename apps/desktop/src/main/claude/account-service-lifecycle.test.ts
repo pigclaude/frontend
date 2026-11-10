@@ -233,65 +233,6 @@ describe("Claude 账号授权生命周期", () => {
     }
   })
 
-  it("rejects reauthorization if its proxy or fingerprint changes during the browser session", async () => {
-    let resolveCode: (code: string) => void = () => undefined
-    let complete = false
-    const code = new Promise<string>((resolve) => {
-      resolveCode = (value) => {
-        complete = true
-        resolve(value)
-      }
-    })
-    const callback = {
-      redirectUri: "http://localhost:1234/callback",
-      isComplete: () => complete,
-      waitForCode: () => code,
-      cancel: () => undefined,
-      close: async () => undefined,
-    }
-    const harness = await createHarness({
-      callback,
-      profile: {
-        accountUuid: "old-account",
-        email: "old@example.com",
-        organizationUuid: "org",
-        subscriptionType: "max",
-        rateLimitTier: null,
-      },
-    })
-    await harness.store.saveAccount(seedAccount())
-    await harness.store.saveProxy({
-      schemaVersion: 1,
-      id: "p2",
-      name: "p2",
-      url: "http://127.0.0.1:2",
-      lastTest: null,
-    })
-    const authorization = harness.service
-      .authorize({
-        accountId: "acc-1",
-        displayName: "授权名称",
-        proxyId: null,
-        fingerprint,
-      })
-      .catch((error: unknown) => error)
-    await harness.launched.promise
-    await harness.service.update({
-      accountId: "acc-1",
-      displayName: "并发修改",
-      proxyId: "p2",
-      fingerprint: { ...fingerprint, seed: "999" },
-    })
-    resolveCode("synthetic-code")
-    expect(await authorization).toMatchObject({ code: "INVALID_INPUT" })
-    expect(await harness.store.getAccount("acc-1")).toMatchObject({
-      displayName: "并发修改",
-      proxyId: "p2",
-      fingerprint: { seed: "999" },
-      credential: { accessToken: "old-access" },
-    })
-  })
-
   it("keeps a deletion gate until concurrent deletions finish", async () => {
     const gate = deferred()
     const entered = deferred()

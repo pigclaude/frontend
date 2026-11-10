@@ -10,17 +10,8 @@ import type {
 import type { AccountRecord } from "@pigclaude/local-store"
 import type { ProxyRuntime } from "@pigclaude/login-gate/proxy-runtime"
 import { createXrayHttpClient } from "@pigclaude/login-gate/xray-http"
-import {
-  assertClaudeCliIdentity,
-  buildClaudeCliAccountRecord,
-  buildClaudeCliCredential,
-  claudeCliDisplayName,
-  claudeCliImportMessages,
-  findClaudeCliAccount,
-  mergeClaudeCliIdentity,
-} from "./claude-cli-import"
-import { readClaudeCliAccountMetadata, type ClaudeCliAccountMetadata } from "./cli-account-metadata"
-import { readClaudeCliCredential, type ClaudeCliCredential } from "./cli-credential-reader"
+import { importClaudeCliAccount } from "./account-service-cli-import"
+import { updateClaudeAccount } from "./account-service-update"
 import { AuthorizationLifecycle, type AuthorizationAttempt } from "./authorization-lifecycle"
 import { AuthorizationResourceCleanup } from "./account-service-cleanup"
 import {
@@ -29,9 +20,10 @@ import {
   watchProxyFailure,
 } from "./account-service-proxy-callback"
 import { mapError, phaseFor, requireMembership } from "./account-service-errors"
-import { readOptionalOAuthProfile } from "./account-service-oauth-profile"
 import type { ClaudeAccountServiceDeps } from "./account-service-deps"
 import { createAuthorizationEnvironmentCheck } from "./account-service-environment"
+import { accountBrowserProfile } from "./account-browser-profile"
+import { BrowserProfileUsage } from "./browser-profile-usage"
 /** 保留账号服务既有依赖类型入口。 */
 export type { ClaudeAccountServiceDeps } from "./account-service-deps"
 
@@ -58,8 +50,6 @@ import {
 } from "./subscription-oauth"
 import { defaultEnvironmentExitUrl } from "./environment-targets"
 const defaultEgressCheckUrl = defaultEnvironmentExitUrl
-// 导入时 access token 至少还要有 60 秒有效期，避免刚导入就过期。
-const cliImportExpiryMarginMs = 60_000
 
 /** Claude 账号服务。保证绑定代理时先核对出口；未绑定代理时直接使用系统网络，凭据只在全部成功后写入本机。 */
 export class ClaudeAccountService {
@@ -67,22 +57,15 @@ export class ClaudeAccountService {
   readonly #now: () => number
   readonly #id: () => string
   readonly #egressCheckUrl: string
-  readonly #readCliCredential: () => Promise<ClaudeCliCredential>
-  readonly #readCliAccountMetadata: () => Promise<ClaudeCliAccountMetadata | null>
   readonly #authorizations = new AuthorizationLifecycle()
   readonly #pendingCleanup = new AuthorizationResourceCleanup()
 
   /** 创建绑定到账号库、fingerprint-chromium、OAuth 和出口检查端口的服务。 */
   constructor(deps: ClaudeAccountServiceDeps) {
-    this.#deps = deps
+    this.#deps = { ...deps, profileUsage: deps.profileUsage ?? new BrowserProfileUsage() }
     this.#now = deps.now ?? Date.now
     this.#id = deps.id ?? randomUUID
     this.#egressCheckUrl = deps.egressCheckUrl ?? defaultEgressCheckUrl
-    // v1 只读默认 Keychain 项和默认 ~/.claude.json，不跟随 CLAUDE_CONFIG_DIR 的多候选。
-    this.#readCliCredential =
-      deps.readCliCredential ?? (() => readClaudeCliCredential({ configDir: null }))
-    this.#readCliAccountMetadata =
-      deps.readCliAccountMetadata ?? (() => readClaudeCliAccountMetadata({ configDir: null }))
   }
 
   /** 返回脱敏账号列表。保证不包含 token。 */
@@ -93,9 +76,20 @@ export class ClaudeAccountService {
 
   /** 添加或重新授权一个 Claude 账号。保证绑定代理时先核对出口；身份和存储全部通过后才保留凭据。 */
   async authorize(input: AuthorizeClaudeAccountInput): Promise<ClaudeAccountView> {
+    input = structuredClone(input)
     const requestedAccountId = input.accountId
     const accountId = requestedAccountId ?? this.#id()
-    const proxyId = input.proxyId
+    if (input.browserProfileId === undefined) {
+      const legacy = ensureFingerprint(input.fingerprint, accountId)
+      if (!legacy.ok) throw new ClaudeAccountError("FINGERPRINT_INVALID", legacy.message)
+      const conflict = launchArgumentConflict(
+        legacy.fingerprint.unknownArgs ?? [],
+        input.proxyId !== null,
+        undefined,
+        legacy.fingerprint.webrtcPolicy,
+      )
+      if (conflict) throw new ClaudeAccountError("FINGERPRINT_INVALID", conflict)
+    }
     let proxyRuntime: ProxyRuntime | null = null
     let bridgeUrl: string | null = null
     let expectedExitIp: string | null = null
@@ -105,6 +99,8 @@ export class ClaudeAccountService {
     const proxyFailure = new AbortController()
     let failure: ClaudeAccountError | null = null
     let committed = false
+    let releaseProfile: (() => void) | undefined
+    let nativeStarted = false
     const assertCanSpawn = () => {
       if (this.#pendingCleanup.hasPending) {
         throw new ClaudeAccountError("BROWSER_STOP_FAILED", "浏览器或授权资源尚未关闭，请稍后重试")
@@ -116,7 +112,17 @@ export class ClaudeAccountService {
       attempt = this.#authorizations.begin(accountId)
       const authorizationSignal = AbortSignal.any([attempt.signal, proxyFailure.signal])
       if (this.#authorizations.canEmit(attempt)) this.#emit(accountId, "preparing")
-      const validation = ensureFingerprint(input.fingerprint, accountId)
+      const selected = await accountBrowserProfile(this.#deps.store, input, accountId, {
+        usage: this.#deps.profileUsage,
+        systemLocale: this.#deps.systemLocale,
+        systemTimezone: this.#deps.systemTimezone,
+      })
+      releaseProfile = selected.release
+      const proxyId = selected.proxyId
+      const validation = ensureFingerprint(
+        selected.fingerprint,
+        selected.browserProfileId ?? accountId,
+      )
       const displayName = input.displayName.trim()
       await requireMembership(() => this.#deps.ensureMembership())
       attempt.checkpoint()
@@ -140,7 +146,7 @@ export class ClaudeAccountService {
         fingerprint.webrtcPolicy,
       )
       if (conflict !== null) throw new ClaudeAccountError("FINGERPRINT_INVALID", conflict)
-      const proxy = proxyId === null ? null : await this.#deps.store.getProxy(proxyId)
+      const proxy = selected.proxy
       attempt.checkpoint()
       if (proxyId !== null && proxy === null) {
         throw new ClaudeAccountError("PROXY_INVALID", "代理不存在")
@@ -177,7 +183,7 @@ export class ClaudeAccountService {
           )
         }
       }
-      const profileDir = this.#deps.browser.profileDir(accountId)
+      const profileDir = this.#deps.browser.profileDir(selected.browserDataId)
       this.#emit(accountId, "waiting-browser")
       const oauthRequest = createSubscriptionOAuthRequest()
       callback = await this.#deps.oauth.startCallback({ state: oauthRequest.state })
@@ -195,12 +201,14 @@ export class ClaudeAccountService {
         proxyId === null
           ? { mode: "system" as const }
           : { mode: "bound" as const, bridgeUrl: bridgeUrl ?? "", callbackUri }
+      nativeStarted = true
       const environment = await createAuthorizationEnvironmentCheck(
         {
           accountId,
           fingerprint,
           network,
           expectedExitIp,
+          browserProfile: { id: selected.browserProfileId, revision: selected.revision },
           proxyUrl: proxy?.url ?? null,
           signal: authorizationSignal,
         },
@@ -219,6 +227,8 @@ export class ClaudeAccountService {
         launch: (signal, assertCanNavigate) =>
           this.#deps.browser.launch({
             accountId,
+            browserProfileId: selected.browserProfileId,
+            browserDataId: selected.browserDataId,
             authorizeUrl,
             network,
             environmentCheck: environment.request,
@@ -231,6 +241,7 @@ export class ClaudeAccountService {
       attempt.checkpoint()
       await waitForProxyReady(proxyRuntime, authorizationSignal)
       environment.assertApproved()
+      await selected.assertCurrent()
       this.#emit(accountId, "exchanging")
 
       const xrayClient = proxy === null ? null : createXrayHttpClient(bridgeUrl ?? "")
@@ -258,11 +269,13 @@ export class ClaudeAccountService {
       }
       attempt.checkpoint()
       assertSameAccount(existing, profile)
+      await selected.assertCurrent()
       const credential = buildCredential(tokens, profile, existing?.credential ?? null)
       const timestamp = new Date(this.#now()).toISOString()
       const record: AccountRecord = {
         schemaVersion: 3,
         id: accountId,
+        ...(selected.browserProfileId ? { browserProfileId: selected.browserProfileId } : {}),
         displayName,
         enabled: existing?.enabled ?? true,
         credential,
@@ -327,6 +340,10 @@ export class ClaudeAccountService {
         browser: launched,
         callback,
         proxy: proxyRuntime,
+        releaseProfile,
+        nativeCleanup: nativeStarted
+          ? () => this.#deps.nativeDiagnostics?.settle?.() ?? Promise.resolve()
+          : undefined,
       })
       const canEmit = attempt === null || this.#authorizations.canEmit(attempt)
       attempt?.finish(stopError)
@@ -353,57 +370,7 @@ export class ClaudeAccountService {
    * 导入不发送授权阶段事件，避免驱动全局授权向导。
    */
   async importFromClaudeCli(input: ImportClaudeCliAccountInput): Promise<ClaudeAccountView> {
-    if (input.confirmCopy !== true) {
-      throw new ClaudeAccountError("INVALID_INPUT", claudeCliImportMessages.confirmCopy)
-    }
-    const newId = this.#id()
-    try {
-      await requireMembership(() => this.#deps.ensureMembership())
-      const cli = await this.#readCliCredential()
-      const metadata = await this.#readCliAccountMetadata()
-      if (
-        !Number.isFinite(cli.expiresAt) ||
-        cli.expiresAt <= this.#now() + cliImportExpiryMarginMs
-      ) {
-        throw new ClaudeAccountError("CLI_CREDENTIAL_EXPIRED", claudeCliImportMessages.expired)
-      }
-      const profile = await readOptionalOAuthProfile(() =>
-        this.#deps.oauth.readProfile({ accessToken: cli.accessToken }),
-      )
-      const identity = mergeClaudeCliIdentity(cli, metadata, profile)
-      const existing = findClaudeCliAccount(await this.#deps.store.listAccounts(), identity)
-      assertClaudeCliIdentity(existing, identity)
-      const makeRecord = (current: AccountRecord | null): AccountRecord => {
-        assertClaudeCliIdentity(current, identity)
-        const displayName =
-          current !== null && input.displayName === undefined
-            ? current.displayName
-            : claudeCliDisplayName(input.displayName ?? "", metadata, identity.email)
-        return buildClaudeCliAccountRecord({
-          existing: current,
-          newId,
-          displayName,
-          credential: buildClaudeCliCredential(cli, identity, current?.credential ?? null),
-          browserProfileDir: current?.browserProfileDir ?? this.#deps.browser.profileDir(newId),
-          now: new Date(this.#now()).toISOString(),
-        })
-      }
-      if (existing === null) {
-        const record = makeRecord(null)
-        await this.#deps.store.saveAccount(record)
-        return toView(record)
-      }
-      const updated = await this.#deps.store.updateAccount(existing.id, (current) => {
-        if (!isDeepStrictEqual(current.credential, existing.credential)) {
-          throw new ClaudeAccountError("INVALID_INPUT", "账号凭据已更新，请重新导入")
-        }
-        return makeRecord(current)
-      })
-      if (updated === null) throw new ClaudeAccountError("ACCOUNT_NOT_FOUND", "账号不存在")
-      return toView(updated)
-    } catch (error: unknown) {
-      throw mapError(error)
-    }
+    return importClaudeCliAccount(this.#deps, input, { now: this.#now, id: this.#id })
   }
 
   /** 取消并等待当前授权清理；提交已开始或浏览器未退出时返回明确错误。 */
@@ -415,39 +382,7 @@ export class ClaudeAccountService {
 
   /** 修改账号的显示名、启用状态、代理或指纹。保证不触碰凭据。 */
   async update(input: UpdateClaudeAccountInput): Promise<ClaudeAccountView> {
-    const account = await this.#deps.store.getAccount(input.accountId)
-    if (account === null) throw new ClaudeAccountError("ACCOUNT_NOT_FOUND", "账号不存在")
-    let displayName = account.displayName
-    if (input.displayName !== undefined) {
-      displayName = input.displayName.trim()
-      if (displayName === "") throw new ClaudeAccountError("INVALID_INPUT", "账号名称不能为空")
-    }
-    let proxyId = account.proxyId
-    if (input.proxyId !== undefined) {
-      if (input.proxyId === null) {
-        proxyId = null
-      } else {
-        const proxy = await this.#deps.store.getProxy(input.proxyId)
-        if (proxy === null) throw new ClaudeAccountError("PROXY_INVALID", "代理不存在")
-        proxyId = input.proxyId
-      }
-    }
-    let fingerprint = account.fingerprint
-    if (input.fingerprint !== undefined) {
-      const validation = ensureFingerprint(input.fingerprint, input.accountId)
-      if (!validation.ok) throw new ClaudeAccountError("FINGERPRINT_INVALID", validation.message)
-      fingerprint = validation.fingerprint
-    }
-    const updated = await this.#deps.store.updateAccount(input.accountId, (current) => ({
-      ...current,
-      displayName: input.displayName === undefined ? current.displayName : displayName,
-      enabled: input.enabled ?? current.enabled,
-      proxyId: input.proxyId === undefined ? current.proxyId : proxyId,
-      fingerprint: input.fingerprint === undefined ? current.fingerprint : fingerprint,
-      updatedAt: new Date(this.#now()).toISOString(),
-    }))
-    if (updated === null) throw new ClaudeAccountError("ACCOUNT_NOT_FOUND", "账号不存在")
-    return toView(updated)
+    return updateClaudeAccount(this.#deps, input, this.#now)
   }
 
   /** 删除账号。保证浏览器配置目录清理失败时保留本地账号。 */

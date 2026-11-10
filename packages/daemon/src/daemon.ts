@@ -9,6 +9,8 @@ import { createProxyAgent } from "@pigclaude/proxy-connection"
 import { fetch as undiciFetch, type ProxyAgent } from "undici"
 import { oauthBetaHeader, requestHeaders, sessionHeaderName } from "./daemon-headers.ts"
 import { daemonOrigin, daemonUpstreamUrl } from "./daemon-origin.ts"
+import { AccountEnvironmentMismatchError } from "./selection-error.ts"
+export { AccountEnvironmentMismatchError } from "./selection-error.ts"
 import {
   takeQuotaResponse,
   writeBuffered,
@@ -125,8 +127,14 @@ export class LocalDaemon {
         signal.addEventListener("abort", stop, { once: true })
         try {
           // 未分类错误的兜底；直连错误在 #forward 内单独分类。
-          await this.#forward(request, response).catch(() =>
-            writeErrorResponse(response, 503, "proxy_unavailable"),
+          await this.#forward(request, response).catch((error: unknown) =>
+            writeErrorResponse(
+              response,
+              503,
+              error instanceof AccountEnvironmentMismatchError
+                ? "account_environment_mismatch"
+                : "proxy_unavailable",
+            ),
           )
         } finally {
           signal.removeEventListener("abort", stop)

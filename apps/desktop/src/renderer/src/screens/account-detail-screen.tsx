@@ -7,6 +7,8 @@ import { accountNetworkLabel } from "../models/claude-account-view"
 /** 账号详情页面 props。 */
 export type AccountDetailScreenProps = {
   account: PoolAccount
+  browserProfileName?: string
+  onChangeBrowserProfile?: () => void
   onBack: () => void
   onReauthorize: () => void
   onDelete: () => void
@@ -18,6 +20,8 @@ export type AccountDetailScreenProps = {
 /** 绘制账号详情和操作入口。 */
 export function AccountDetailScreen({
   account,
+  browserProfileName,
+  onChangeBrowserProfile,
   onBack,
   onReauthorize,
   onDelete,
@@ -53,6 +57,26 @@ export function AccountDetailScreen({
           </Button>
         </div>
       </header>
+      {account.browserProfileId ? (
+        <section className="section">
+          <div className="section-head">
+            <h2>浏览器配置</h2>
+          </div>
+          <div className="group">
+            <div className="item">
+              <div className="main">
+                <div className="ttl">{browserProfileName ?? "关联配置"}</div>
+                <div className="desc">
+                  浏览器与 CLI 使用相同语言、时区和网络设置；账号登录数据独立。
+                </div>
+              </div>
+              <Button size="sm" variant="secondary" onClick={onChangeBrowserProfile}>
+                更换配置
+              </Button>
+            </div>
+          </div>
+        </section>
+      ) : null}
       <section className="section">
         <div className="section-head">
           <h2>额度</h2>
@@ -114,14 +138,18 @@ export function AccountDetailScreen({
         <div className="section-head">
           <h2>指纹</h2>
           <Button variant="plain" className="link" type="button" onClick={onEditFingerprint}>
-            编辑
+            {account.browserProfileId ? "编辑共享配置" : "编辑"}
           </Button>
         </div>
         <FingerprintSummary
           fingerprint={account.fingerprintDetail}
           fallbackSeed={account.fingerprint}
         />
-        <p className="note">下次重新授权时生效，已有的登录不受影响。</p>
+        <p className="note">
+          {account.browserProfileId
+            ? "环境修改统一在「浏览器指纹」中管理，影响引用该配置账号的后续启动；各账号不共享登录数据。"
+            : "下次重新授权时生效，已有的登录不受影响。"}
+        </p>
       </section>
       <section className="section">
         <div className="section-head">

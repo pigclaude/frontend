@@ -9,11 +9,12 @@ export function createNativeEvidence(
   checks: EnvironmentCheckItem[],
   createdAt: number,
   exitIp: string | null,
+  environment?: { locale: string; timezone: string },
 ): NativeEnvironmentEvidence {
   const binding = createHash("sha256")
-    .update(JSON.stringify([randomUUID(), createdAt, exitIp, checks]))
+    .update(JSON.stringify([randomUUID(), createdAt, exitIp, checks, environment]))
     .digest("hex")
-  return { binding, createdAt, exitIp, checks }
+  return { binding, createdAt, exitIp, checks, ...(environment ? { environment } : {}) }
 }
 
 /** 未接入诊断端口时明确显示未知，不把原有浏览器报告当成新增项目通过。 */

@@ -11,11 +11,13 @@ export type AuthorizationResources = {
   browser: LaunchedBrowser | null
   callback: OAuthCallbackServer | null
   proxy: ProxyRuntime | null
+  releaseProfile?: () => void
+  nativeCleanup?: () => Promise<void>
 }
 
 /** 跟踪未能回收的授权资源，阻止新授权越过清理边界。 */
 export class AuthorizationResourceCleanup {
-  readonly #pending = new Map<string, AuthorizationResources>()
+  readonly #pending = new Map<string, Set<AuthorizationResources>>()
   readonly #inFlight = new WeakMap<AuthorizationResources, Promise<ClaudeAccountError | null>>()
 
   /** 返回是否仍有资源需要重试回收。 */
@@ -43,36 +45,50 @@ export class AuthorizationResourceCleanup {
     accountId: string,
     resources: AuthorizationResources,
   ): Promise<ClaudeAccountError | null> {
-    if (resources.browser !== null || resources.callback !== null || resources.proxy !== null) {
-      this.#pending.set(accountId, resources)
+    if (
+      resources.browser !== null ||
+      resources.callback !== null ||
+      resources.proxy !== null ||
+      resources.releaseProfile ||
+      resources.nativeCleanup
+    ) {
+      this.#remember(accountId, resources)
     }
     try {
       await resources.browser?.stop()
       resources.browser = null
     } catch (error: unknown) {
-      this.#pending.set(accountId, resources)
+      this.#remember(accountId, resources)
       return mapError(error)
     }
     const results = await Promise.allSettled([
       resources.callback?.close(),
       resources.proxy?.close(),
+      resources.nativeCleanup?.(),
     ])
     if (results[0]?.status === "fulfilled") resources.callback = null
     if (results[1]?.status === "fulfilled") resources.proxy = null
+    if (results[2]?.status === "fulfilled") resources.nativeCleanup = undefined
     const failure = results.find((result) => result.status === "rejected")
     if (failure?.status === "rejected") {
-      this.#pending.set(accountId, resources)
+      this.#remember(accountId, resources)
       return mapError(failure.reason)
     }
-    if (this.#pending.get(accountId) === resources) this.#pending.delete(accountId)
+    resources.releaseProfile?.()
+    resources.releaseProfile = undefined
+    const pending = this.#pending.get(accountId)
+    pending?.delete(resources)
+    if (!pending?.size) this.#pending.delete(accountId)
     return null
   }
 
   /** 逐个重试未释放的资源；失败时保留记录并报告错误。 */
   async retry(): Promise<void> {
     for (const [accountId, resources] of [...this.#pending.entries()].reverse()) {
-      const error = await this.close(accountId, resources)
-      if (error !== null) throw error
+      for (const item of [...resources].reverse()) {
+        const error = await this.close(accountId, item)
+        if (error !== null) throw error
+      }
     }
   }
 
@@ -80,7 +96,15 @@ export class AuthorizationResourceCleanup {
   async retryAccount(accountId: string): Promise<void> {
     const resources = this.#pending.get(accountId)
     if (resources === undefined) return
-    const error = await this.close(accountId, resources)
-    if (error !== null) throw error
+    for (const item of [...resources].reverse()) {
+      const error = await this.close(accountId, item)
+      if (error !== null) throw error
+    }
+  }
+
+  #remember(accountId: string, resources: AuthorizationResources): void {
+    const pending = this.#pending.get(accountId) ?? new Set<AuthorizationResources>()
+    pending.add(resources)
+    this.#pending.set(accountId, pending)
   }
 }

@@ -24,15 +24,18 @@ export function syntheticEnvironmentReport(input: LaunchBrowserInput): Environme
     "webrtc",
     "claude-navigation",
     "proxy-dns",
+    "environment-consistency",
   ]
   return {
-    policy: "pigclaude-auth-environment/native-2",
+    policy: "pigclaude-auth-environment/profile-1",
     runId: request.runId,
     createdAt: request.startedAt,
     binding: environmentBinding({
       ...input,
       expectedExitIp: request.expectedExitIp,
       nativeBinding: request.nativeEvidence?.binding,
+      nativeEnvironment: request.nativeEvidence?.environment,
+      browserProfile: request.browserProfile,
     }),
     networkMode: input.network.mode,
     verdict: "passed",
@@ -60,11 +63,13 @@ export function syntheticNativeEvidence(
   createdAt: number,
   mode: "bound" | "system",
   exitIp: string | null,
+  environment = { locale: "en-US", timezone: "America/Los_Angeles" },
 ): NativeEnvironmentEvidence {
   return {
     binding: "synthetic-native-port",
     createdAt,
     exitIp,
+    environment,
     checks: (["cli-launch", "cli-protocol", "native-routes"] as const).map((id) => ({
       id,
       title: id,

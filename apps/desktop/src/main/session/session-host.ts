@@ -25,6 +25,7 @@ import {
 import type { ActiveSession } from "./session-host-support"
 import { normalizeSessionLocale, normalizeSessionTimezone } from "./session-locale"
 import { queryModels } from "./session-models"
+import { boundSessionEnvironment } from "./bound-session-environment"
 import type {
   ClaudeModel,
   SessionAdapterFactory,
@@ -153,10 +154,11 @@ export class SessionHost {
     this.#runtime.beginSession?.()
     this.#runtime.setPreferredAccount?.(input.accountId ?? null)
     const sessionId = this.#newId()
-    const profile = await this.#resolveProfile(input.accountId ?? null).catch(() => null)
+    const profile = await this.#resolveProfile(input.accountId ?? null)
     assertStartNotStopped(this.#stopRequested, this.#disposed)
     const environment = await createEnvironmentOrThrow(
-      this.#createEnvironment,
+      (environmentInput) =>
+        boundSessionEnvironment(this.#runtime, profile, this.#createEnvironment, environmentInput),
       {
         sessionId,
         workspace: input.workspace,

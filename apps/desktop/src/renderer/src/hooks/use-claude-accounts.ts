@@ -2,6 +2,7 @@
 // 没有桌面桥时使用只读演示数据，方便在浏览器里预览页面。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import type { AuthorizeClaudeAccountInput } from "../../../main/claude/account-service-inputs"
 import type {
   ClaudeAccountEvent,
   ClaudeAccountView,
@@ -24,16 +25,12 @@ export type ClaudeAccountsController = {
   /** 当前是否在没有桌面桥的浏览器预览里。 */
   preview: boolean
   refresh: () => Promise<void>
-  authorize: (input: {
-    accountId?: string
-    displayName: string
-    proxyId: string | null
-    fingerprint: ClaudeFingerprintView
-  }) => Promise<void>
+  authorize: (input: AuthorizeClaudeAccountInput) => Promise<void>
   /** 返回是否完成取消及清理；保存中或清理失败时返回 false。 */
   cancelAuthorization: () => Promise<boolean>
   update: (input: {
     accountId: string
+    browserProfileId?: string
     displayName?: string
     enabled?: boolean
     proxyId?: string | null
@@ -41,7 +38,11 @@ export type ClaudeAccountsController = {
   }) => Promise<void>
   remove: (accountId: string) => Promise<void>
   /** 从 Claude CLI 导入账号；返回是否成功，成功后已刷新列表。 */
-  importFromClaudeCli: (input: { confirmCopy: boolean; displayName?: string }) => Promise<boolean>
+  importFromClaudeCli: (input: {
+    confirmCopy: boolean
+    displayName?: string
+    browserProfileId?: string
+  }) => Promise<boolean>
   saveProxy: (input: { id?: string; name: string; url: string }) => Promise<void>
   /** 验证并保存新代理；失败时向调用方抛错。 */
   addVerifiedProxy: (input: { name: string; url: string }) => Promise<void>
@@ -141,12 +142,7 @@ export function useClaudeAccounts(): ClaudeAccountsController {
   )
 
   const authorize = useCallback(
-    async (input: {
-      accountId?: string
-      displayName: string
-      proxyId: string | null
-      fingerprint: ClaudeFingerprintView
-    }) => {
+    async (input: AuthorizeClaudeAccountInput) => {
       const request = ++authorizationRequest.current
       await wrap(
         async () => {
@@ -179,6 +175,7 @@ export function useClaudeAccounts(): ClaudeAccountsController {
   const update = useCallback(
     async (input: {
       accountId: string
+      browserProfileId?: string
       displayName?: string
       enabled?: boolean
       proxyId?: string | null
@@ -209,7 +206,11 @@ export function useClaudeAccounts(): ClaudeAccountsController {
   )
 
   const importFromClaudeCli = useCallback(
-    async (input: { confirmCopy: boolean; displayName?: string }): Promise<boolean> => {
+    async (input: {
+      confirmCopy: boolean
+      displayName?: string
+      browserProfileId?: string
+    }): Promise<boolean> => {
       setError(null)
       try {
         if (previewBridge !== null) {

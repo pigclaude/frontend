@@ -79,6 +79,22 @@ export class BrowserControlPipe {
     })
   }
 
+  /** 正常停止时请求浏览器写回账号数据；启动控制释放后仍仅能发送关闭命令。 */
+  requestClose(): boolean {
+    if (this.#failed || this.#input.destroyed || this.#input.writableEnded) return false
+    try {
+      const id = ++this.#nextId
+      this.#input.write(
+        `${JSON.stringify({ id, method: "Browser.close" })}\0`,
+        "utf8",
+        () => undefined,
+      )
+      return true
+    } catch {
+      return false
+    }
+  }
+
   /** 等待外部准备操作时，同样监听浏览器退出和管道故障。 */
   race<T>(task: Promise<T>): Promise<T> {
     return Promise.race([task, this.#failure])

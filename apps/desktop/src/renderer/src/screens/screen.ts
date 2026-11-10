@@ -8,6 +8,7 @@ export type Screen =
   | "chat"
   | "profile"
   | "accounts"
+  | "browser-profiles"
   | "proxies"
   | "switching"
   | "usage"

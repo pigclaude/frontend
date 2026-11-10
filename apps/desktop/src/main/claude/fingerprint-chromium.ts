@@ -15,6 +15,13 @@ export {
 } from "./browser-launch-errors"
 import { BrowserProcessExitedError } from "./browser-control-pipe"
 import {
+  observeExit,
+  waitForSpawn,
+  waitForExit,
+  waitUntilExit,
+  type ManagedProcess,
+} from "./browser-process"
+import {
   BrowserStartupTimeoutError,
   openAuthorizedPage,
   type BrowserStartupInput,
@@ -58,6 +65,8 @@ export type LaunchBrowserNetwork =
 
 /** 启动一次登录需要的输入，必须显式区分系统网络和已绑定代理。 */
 export type LaunchBrowserInput = {
+  browserProfileId?: string
+  browserDataId?: string
   accountId: string
   authorizeUrl: string
   network: LaunchBrowserNetwork
@@ -80,12 +89,6 @@ export type LaunchedBrowser = {
   exited: Promise<void>
   /** 只停止这次启动的进程，不影响同账号后续启动的实例。 */
   stop: () => Promise<void>
-}
-
-type ManagedProcess = {
-  child: ChildProcess
-  exited: boolean
-  waiters: Set<() => void>
 }
 
 /** 直接调用 PigBrowser 的启动器。保证进程和配置目录都绑定到单个账号。 */
@@ -225,6 +228,9 @@ export class FingerprintChromiumAdapter {
       try {
         await this.#openPage({
           child,
+          registerGracefulClose: (close) => {
+            managed.requestClose = close
+          },
           authorizeUrl,
           signal: startupSignal,
           extensionArgs: validation.fingerprint.unknownArgs,
@@ -232,6 +238,7 @@ export class FingerprintChromiumAdapter {
           environmentCheck: input.environmentCheck
             ? {
                 request: input.environmentCheck,
+                browserProfile: input.environmentCheck.browserProfile,
                 expectedExitIp: input.environmentCheck.expectedExitIp,
                 accountId,
                 fingerprint: validation.fingerprint,
@@ -315,6 +322,7 @@ export class FingerprintChromiumAdapter {
     if (managed === undefined || (expected !== undefined && managed !== expected)) return
     try {
       if (managed.exited) return
+      if (managed.requestClose?.() && (await waitUntilExit(managed, this.#stopTimeoutMs))) return
       managed.child.kill("SIGTERM")
       if (await waitUntilExit(managed, this.#stopTimeoutMs)) return
       managed.child.kill("SIGKILL")
@@ -431,64 +439,4 @@ function buildLaunchArgs(
     ...buildFingerprintArgs(fingerprint, { screen: screenSize }),
   )
   return args
-}
-
-function waitForSpawn(child: ChildProcess): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const onSpawn = (): void => {
-      child.off("error", onError)
-      resolve()
-    }
-    const onError = (): void => {
-      child.off("spawn", onSpawn)
-      reject(new Error("spawn failed"))
-    }
-    child.once("spawn", onSpawn)
-    child.once("error", onError)
-  })
-}
-
-function hasExitStatus(child: ChildProcess): boolean {
-  return typeof child.exitCode === "number" || typeof child.signalCode === "string"
-}
-
-function observeExit(
-  child: ChildProcess,
-  onExit: (process: ManagedProcess) => void,
-): ManagedProcess {
-  const managed: ManagedProcess = { child, exited: false, waiters: new Set() }
-  const finish = (): void => {
-    if (managed.exited) return
-    managed.exited = true
-    for (const waiter of managed.waiters) waiter()
-    managed.waiters.clear()
-    onExit(managed)
-  }
-  child.once("exit", finish)
-  if (hasExitStatus(child)) {
-    child.off("exit", finish)
-    finish()
-  }
-  return managed
-}
-
-function waitForExit(managed: ManagedProcess): Promise<void> {
-  if (managed.exited) return Promise.resolve()
-  return new Promise((resolve) => managed.waiters.add(resolve))
-}
-
-function waitUntilExit(managed: ManagedProcess, timeoutMs: number): Promise<boolean> {
-  if (managed.exited) return Promise.resolve(true)
-  return new Promise((resolve) => {
-    const finish = (): void => {
-      clearTimeout(timeout)
-      managed.waiters.delete(finish)
-      resolve(true)
-    }
-    const timeout = setTimeout(() => {
-      managed.waiters.delete(finish)
-      resolve(false)
-    }, timeoutMs)
-    managed.waiters.add(finish)
-  })
 }

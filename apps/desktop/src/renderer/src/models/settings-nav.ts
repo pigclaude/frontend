@@ -37,6 +37,12 @@ export const settingsNav: SettingsNavGroup[] = [
         label: "Claude 账号",
         keywords: ["授权", "指纹", "额度", "顺序"],
       },
+      {
+        screen: "browser-profiles",
+        icon: "finger",
+        label: "浏览器指纹",
+        keywords: ["实例", "配置", "语言", "时区", "CLI", "绑定"],
+      },
       { screen: "proxies", icon: "globe", label: "代理", keywords: ["出口", "测试", "绑定"] },
       {
         screen: "switching",

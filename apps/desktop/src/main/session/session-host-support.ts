@@ -152,6 +152,12 @@ export function redactSessionToken(message: string, token: string): string {
 /** 广播前脱敏：只有 error 事件可能带会话令牌。 */
 export function sanitizeSessionEvent(event: SessionEvent, token: string): SessionEvent {
   if (event.type !== "error") return event
+  if (classifyDaemonError(event.message) === "ACCOUNT_ENVIRONMENT_MISMATCH")
+    return {
+      ...event,
+      code: "ACCOUNT_ENVIRONMENT_MISMATCH",
+      message: "可用账号的语言或时区与当前 CLI 不一致，请选择目标账号并重新开始会话",
+    }
   return { ...event, message: redactSessionToken(event.message, token) }
 }
 

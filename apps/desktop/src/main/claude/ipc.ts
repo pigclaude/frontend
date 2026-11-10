@@ -30,6 +30,7 @@ export function registerClaudeIpc(options: ClaudeIpcOptions): void {
   ipcMain.handle("pigclaude:claude-accounts-authorize", async (event, value: unknown) => {
     assertTrusted(options, event)
     const service = requireService(options)
+    if (!isRecord(value) || typeof value.browserProfileId !== "string") throw invalidInput()
     return service.authorize(readAuthorizeInput(value))
   })
   ipcMain.handle("pigclaude:claude-accounts-cancel", async (event) => {
@@ -38,6 +39,8 @@ export function registerClaudeIpc(options: ClaudeIpcOptions): void {
   })
   ipcMain.handle("pigclaude:claude-accounts-update", async (event, value: unknown) => {
     assertTrusted(options, event)
+    if (isRecord(value) && (value.fingerprint !== undefined || value.proxyId !== undefined))
+      throw invalidInput()
     return requireService(options).update(readUpdateInput(value))
   })
   ipcMain.handle("pigclaude:claude-accounts-remove", async (event, value: unknown) => {
@@ -46,6 +49,12 @@ export function registerClaudeIpc(options: ClaudeIpcOptions): void {
   })
   ipcMain.handle("pigclaude:claude-accounts-import-cli", async (event, value: unknown) => {
     assertTrusted(options, event)
+    if (
+      !isRecord(value) ||
+      typeof value.browserProfileId !== "string" ||
+      !value.browserProfileId.trim()
+    )
+      throw invalidInput()
     const service = requireService(options)
     const view: unknown = await service.importFromClaudeCli(readImportInput(value))
     if (!isClaudeAccountView(view)) {
@@ -99,6 +108,23 @@ function requireProxyService(options: ClaudeIpcOptions): ProxyService {
 export function readAuthorizeInput(value: unknown): AuthorizeClaudeAccountInput {
   if (!isRecord(value)) throw invalidInput()
   const displayName = readString(value.displayName)
+  if (
+    typeof value.browserProfileId === "string" &&
+    value.browserProfileId.trim() &&
+    displayName !== null
+  ) {
+    if (
+      value.fingerprint !== undefined ||
+      value.proxyId !== undefined ||
+      value.preflight !== undefined
+    )
+      throw invalidInput()
+    return {
+      accountId: readOptionalString(value.accountId),
+      displayName,
+      browserProfileId: value.browserProfileId,
+    }
+  }
   const fingerprint = value.fingerprint
   if (displayName === null || !isClaudeFingerprintView(fingerprint)) {
     throw invalidInput()
@@ -125,6 +151,9 @@ export function readUpdateInput(value: unknown): UpdateClaudeAccountInput {
   if (fingerprint !== undefined && !isClaudeFingerprintView(fingerprint)) throw invalidInput()
   return {
     accountId,
+    ...(value.browserProfileId === undefined
+      ? {}
+      : { browserProfileId: readAccountId(value.browserProfileId) }),
     ...(displayName === undefined ? {} : { displayName }),
     ...(enabled === undefined ? {} : { enabled }),
     ...(proxyId === undefined ? {} : { proxyId }),
@@ -135,11 +164,18 @@ export function readUpdateInput(value: unknown): UpdateClaudeAccountInput {
 /** 解析从 Claude CLI 导入的请求。保证 confirmCopy 必须显式为 true，displayName 省略或为非空字符串。 */
 export function readImportInput(value: unknown): ImportClaudeCliAccountInput {
   if (!isRecord(value) || value.confirmCopy !== true) throw invalidInput()
-  if (value.displayName === undefined) return { confirmCopy: true }
+  const browserProfileId =
+    value.browserProfileId === undefined ? undefined : readAccountId(value.browserProfileId)
+  if (value.displayName === undefined)
+    return { confirmCopy: true, ...(browserProfileId ? { browserProfileId } : {}) }
   if (typeof value.displayName !== "string" || value.displayName.trim() === "") {
     throw invalidInput()
   }
-  return { confirmCopy: true, displayName: value.displayName.trim() }
+  return {
+    confirmCopy: true,
+    displayName: value.displayName.trim(),
+    ...(browserProfileId ? { browserProfileId } : {}),
+  }
 }
 
 /** 解析授权请求的 proxyId。保证 null 和空字符串都表示直连，缺省或其他类型不合法。 */

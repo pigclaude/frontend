@@ -56,7 +56,11 @@ describe("ClaudeAccountService.importFromClaudeCli", () => {
       proxyId: null,
       exhaustedUntil: null,
     })
-    expect(view.fingerprint).toEqual(defaultClaudeFingerprint())
+    expect(view.fingerprint).toEqual({
+      ...defaultClaudeFingerprint(),
+      lang: "en-US",
+      timezone: "UTC",
+    })
     expect(harness.profileTokens).toEqual([accessToken])
     expect(harness.membershipCalls).toBe(1)
 
@@ -73,7 +77,8 @@ describe("ClaudeAccountService.importFromClaudeCli", () => {
       subscriptionType: "max",
       rateLimitTier: "default_claude_max_20x",
     })
-    expect(stored?.browserProfileDir).toBe(join(harness.dir, "browser-profiles", "imported-id"))
+    expect(stored?.browserProfileDir).toBe("")
+    expect(stored?.browserProfileId).toBe("imported-id")
     expect(stored?.createdAt).toBe(new Date(now).toISOString())
     expect(stored?.updatedAt).toBe(new Date(now).toISOString())
     await expect(stat(stored?.browserProfileDir ?? "")).rejects.toThrow()
@@ -150,6 +155,13 @@ describe("ClaudeAccountService.importFromClaudeCli", () => {
         subscriptionType: "max",
       }),
     })
+    await harness.store.saveProxy({
+      schemaVersion: 1,
+      id: "p1",
+      name: "合成代理",
+      url: "http://127.0.0.1:1",
+      lastTest: null,
+    })
     await harness.store.saveAccount(
       seedAccount({
         credential: {
@@ -190,7 +202,8 @@ describe("ClaudeAccountService.importFromClaudeCli", () => {
     const stored = await harness.store.getAccount("existing-id")
     expect(stored?.credential?.accessToken).toBe(accessToken)
     expect(stored?.credential?.accountUuid).toBe("shared-uuid")
-    expect(stored?.browserProfileDir).toBe("/old/browser-profiles/existing-id")
+    expect(stored?.browserProfileDir).toBe("")
+    expect(stored?.browserProfileId).toBe("existing-id")
     expect(stored?.updatedAt).toBe(new Date(now).toISOString())
     expect(await harness.store.listAccounts()).toHaveLength(1)
     expect(harness.events).toEqual([])
@@ -363,7 +376,7 @@ async function createHarness(options: {
   membershipError?: ClaudeAccountError
 }): Promise<Harness> {
   const dir = await mkdtemp(join(tmpdir(), "claude-cli-import-"))
-  const store = new LocalStore(dir)
+  const store = new LocalStore(dir, { systemLocale: () => "en-US", systemTimezone: () => "UTC" })
   const events: ClaudeAccountEvent[] = []
   const profileTokens: string[] = []
   let membershipCalls = 0

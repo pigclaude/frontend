@@ -3,6 +3,7 @@
 import type { SessionErrorCode } from "./session-types"
 
 const daemonMarkers: ReadonlyArray<readonly [string, SessionErrorCode]> = [
+  ["account_environment_mismatch", "ACCOUNT_ENVIRONMENT_MISMATCH"],
   ["no_available_account", "NO_AVAILABLE_ACCOUNT"],
   ["proxy_unavailable", "PROXY_UNAVAILABLE"],
   ["upstream_unavailable", "NETWORK_UNAVAILABLE"],

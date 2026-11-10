@@ -15,6 +15,7 @@ import type { DeviceWithdrawalConfirmation } from "@pigclaude/contracts/desktop-
 import { DeviceWithdrawalService } from "./membership/device-withdrawal"
 import { MembershipGate } from "./membership/membership-gate"
 import { AccountChooser } from "./runtime/account-chooser"
+import type { BrowserProfileUsage } from "./claude/browser-profile-usage"
 import { LocalRuntime } from "./runtime/local-runtime"
 import type { DeviceIdentityService } from "./device-identity"
 import type { DeviceInfo } from "./device-identity/device-info"
@@ -40,6 +41,7 @@ export type DesktopCompositionOptions = {
   onAuthorizationState?: (event: AuthorizationStateEvent) => void
   /** 提供本机账号库时才装配 daemon 和选号；测试可省略。 */
   localStore?: LocalStore
+  profileUsage?: BrowserProfileUsage
 }
 /** composition 提供脱敏服务与本机退出，不跨 profile 或 Claude namespace 清理。 */
 export type DesktopComposition = {
@@ -119,8 +121,10 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
   const runtime = options.localStore
     ? new LocalRuntime({
         store: options.localStore,
+        profileUsage: options.profileUsage,
         chooser: new AccountChooser({
           store: options.localStore,
+          profileUsage: options.profileUsage,
           refresher: new CredentialRefresher({
             store: options.localStore,
             oauth: new SubscriptionOAuth(),

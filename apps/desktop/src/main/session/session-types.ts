@@ -12,6 +12,7 @@ import type {
   SessionThinking,
 } from "./session-events"
 import type { UsageRange, UsageRecord, UsageSummary } from "./usage-recorder"
+import type { ProfileEnvironment } from "./profile-environment"
 
 /** session.start 的输入；工作区必须是绝对目录，其余字段由 main 侧校验。 */
 export type SessionStartInput = {
@@ -40,10 +41,7 @@ export type SessionStatusView = {
 }
 
 /** 账号或系统提供的时区和 locale；用于会话环境和 Intl 预加载。 */
-export type SessionProfile = {
-  timezone: string
-  locale: string
-}
+export type SessionProfile = ProfileEnvironment
 
 /** 换号原因，与 LocalRuntime 一致。 */
 export type SessionAccountSwitchReason = "initial" | "switch" | "quota"
@@ -64,6 +62,7 @@ export type SessionErrorCode =
   | "MEMBERSHIP_REQUIRED"
   | "WORKSPACE_UNAVAILABLE"
   | "NO_AVAILABLE_ACCOUNT"
+  | "ACCOUNT_ENVIRONMENT_MISMATCH"
   | "CLAUDE_RUNTIME_UNAVAILABLE"
   | "DAEMON_UNAVAILABLE"
   | "PROXY_UNAVAILABLE"
@@ -110,6 +109,8 @@ export type SessionRuntime = {
   setPreferredAccount?(accountId: string | null): void
   /** 开始新会话前重置上一个会话的账号跟踪，保证首次选号广播 initial。 */
   beginSession?(): void
+  /** CLI 启动前固定环境，返回清理后使用的释放操作。 */
+  bindEnvironment?: (profile: SessionProfile) => (() => void) | Promise<() => void>
   /** 不刷新凭据地判断是否有可授权账号；启动前置条件。 */
   hasAvailableAccount(): Promise<boolean>
 }

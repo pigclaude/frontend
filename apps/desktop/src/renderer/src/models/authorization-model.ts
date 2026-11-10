@@ -9,6 +9,7 @@ export type AuthorizationStep = "name" | "proxy" | "fingerprint" | "exit" | "wai
 export type AuthorizationState = {
   step: AuthorizationStep
   accountName: string
+  browserProfileId: string | null
   proxyId: string | null
   /** 已确认的完整指纹；null 表示还没走到指纹步骤。 */
   fingerprint: ClaudeFingerprintView | null
@@ -24,6 +25,7 @@ export type AuthorizationState = {
 /** Claude 账号授权状态变化事件。 */
 export type AuthorizationEvent =
   | { type: "set-name"; accountName: string }
+  | { type: "select-browser-profile"; browserProfileId: string }
   | { type: "set-proxy"; proxyId: string | null }
   | { type: "set-fingerprint"; fingerprint: ClaudeFingerprintView }
   | { type: "advance" }
@@ -40,6 +42,7 @@ export function createAuthorizationState(): AuthorizationState {
   return {
     step: "name",
     accountName: "",
+    browserProfileId: null,
     proxyId: null,
     fingerprint: null,
     bridgeExit: "",
@@ -79,6 +82,8 @@ export function reduceAuthorizationState(
   event: AuthorizationEvent,
 ): AuthorizationState {
   if (event.type === "set-name") return { ...state, accountName: event.accountName, error: null }
+  if (event.type === "select-browser-profile")
+    return { ...state, browserProfileId: event.browserProfileId, step: "exit", error: null }
   if (event.type === "set-proxy") return { ...state, proxyId: event.proxyId, error: null }
   if (event.type === "set-fingerprint") {
     return { ...state, fingerprint: event.fingerprint, error: null }

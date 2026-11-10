@@ -392,7 +392,7 @@ describe("accounts screen", () => {
     expect(copy).toContain("两个应用共用同一个 refresh token")
     expect(copy).toContain("任一方刷新都可能让另一方需要重新登录或重新导入")
     expect(copy).toContain("security")
-    expect(copy).toContain("系统网络和默认指纹")
+    expect(copy).toContain("使用所选浏览器配置")
     expect(onImportFromClaudeCli).not.toHaveBeenCalled()
 
     await clickButton(button("取消", dialog() ?? document.body), "取消")

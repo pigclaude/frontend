@@ -173,7 +173,10 @@ export class NativeEnvironmentInspector implements NativeEnvironmentDiagnostics 
           remedy: "本轮只对实际启动材料和协议负责；内部 Intl 保持未覆盖说明",
         }),
       ]
-      return createNativeEvidence(checks, Date.now(), matched ? ips.daemonIp : null)
+      return createNativeEvidence(checks, Date.now(), matched ? ips.daemonIp : null, {
+        locale,
+        timezone,
+      })
     } finally {
       this.#controllers.delete(controller)
     }

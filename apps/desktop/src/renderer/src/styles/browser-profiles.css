@@ -1,0 +1,29 @@
+/* 浏览器配置管理沿用应用控件与指纹面板布局，不让 fieldset 默认边框改变内容区域。 */
+
+.browser-profile-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.browser-profile-select {
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  box-shadow: inset 0 0 0 var(--hair) var(--border-strong);
+}
+.browser-profile-select option {
+  color: var(--fg);
+  background: var(--bg);
+}
+.browser-profile-fields > .field {
+  margin-bottom: 14px;
+}
+.browser-profile-fields > .fingerprint-form {
+  margin-top: 16px;
+}

@@ -61,6 +61,7 @@ it("协议服务准备失败且清理未确认时，保留句柄并阻止新授�
     expect(harness.exchangeRedirectUris).toEqual([])
     release = true
     await diagnostics.settle()
+    await harness.service.cancel()
     expect(resources.retained?.listening).toBe(false)
     await expect(authorize()).resolves.toMatchObject({ displayName: "清理所有权验收" })
     expect(attempts).toBeGreaterThan(failedAttempts)

@@ -26,6 +26,7 @@ const definitions = {
   "native-routes": ["daemon 与刷新器传输路径", "always"],
   "proxy-dns": ["代理 DNS-over-HTTPS 实际查询", "bound"],
   "cli-intl": ["原生 CLI 内部 Intl 覆盖范围", "never"],
+  "environment-consistency": ["浏览器与 CLI 启动环境一致", "always"],
   location: ["同一 IP 的位置资料", "never"],
   scope: ["检测覆盖范围", "never"],
 } as const
@@ -42,6 +43,8 @@ export function environmentBinding(input: EnvironmentCheckBindingInput): string 
         input.network.mode === "bound" ? input.network.callbackUri : null,
         input.expectedExitIp,
         input.nativeBinding ?? null,
+        input.nativeEnvironment ?? null,
+        input.browserProfile ?? null,
       ]),
     )
     .digest("hex")

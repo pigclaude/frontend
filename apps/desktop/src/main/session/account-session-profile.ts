@@ -8,7 +8,7 @@ export async function accountSessionProfile(
   store: Pick<LocalStore, "listAccounts" | "listProxies">,
   accountId: string | null,
   systemLocale: () => string,
-): Promise<{ timezone: string; locale: string } | null> {
+): Promise<import("./session-types").SessionProfile | null> {
   const accounts = await store.listAccounts()
   const proxies = new Map((await store.listProxies()).map((proxy) => [proxy.id, proxy.url]))
   const available = accounts.filter((item) =>
@@ -25,9 +25,15 @@ export async function accountSessionProfile(
   )
   const account =
     accountId === null
-      ? (available[0] ?? accounts[0])
-      : (accounts.find((item) => item.id === accountId) ?? available[0] ?? accounts[0])
+      ? available[0]
+      : (available.find((item) => item.id === accountId) ?? available[0])
   return account === undefined
     ? null
-    : { timezone: account.fingerprint.timezone, locale: account.fingerprint.lang || systemLocale() }
+    : {
+        timezone: account.fingerprint.timezone,
+        locale: account.fingerprint.lang || systemLocale(),
+        browserProfileId: account.browserProfileId,
+        profileRevision: account.browserProfileRevision,
+        accountId: account.id,
+      }
 }

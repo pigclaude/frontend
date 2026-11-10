@@ -22,7 +22,8 @@ export function AccountDeleteDialog({
         <div className="dialog-head">
           <DialogTitle>删除「{accountName}」？</DialogTitle>
           <DialogDescription>
-            本机保存的凭据和指纹会一起删除，无法恢复。Claude 那边的账号不受影响。
+            本机账号凭据和该账号的浏览器登录数据会删除，共享浏览器配置保留。Claude
+            那边的账号不受影响。
           </DialogDescription>
         </div>
         <div className="dialog-foot">

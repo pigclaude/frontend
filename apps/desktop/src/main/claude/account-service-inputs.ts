@@ -6,13 +6,15 @@ import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 export type AuthorizeClaudeAccountInput = {
   accountId?: string
   displayName: string
-  proxyId: string | null
-  fingerprint: ClaudeFingerprintView
-}
+} & (
+  | { browserProfileId: string; proxyId?: never; fingerprint?: never }
+  | { browserProfileId?: undefined; proxyId: string | null; fingerprint: ClaudeFingerprintView }
+)
 
 /** 修改账号设置的输入。proxyId 省略表示不变，null 表示解绑并使用系统网络。 */
 export type UpdateClaudeAccountInput = {
   accountId: string
+  browserProfileId?: string
   displayName?: string
   enabled?: boolean
   proxyId?: string | null
@@ -23,4 +25,5 @@ export type UpdateClaudeAccountInput = {
 export type ImportClaudeCliAccountInput = {
   confirmCopy: boolean
   displayName?: string
+  browserProfileId?: string
 }

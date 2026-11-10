@@ -2,6 +2,7 @@
 /// <reference types="vite/client" />
 
 interface PigclaudeBridge {
+  browserProfiles?: import("@pigclaude/contracts/browser-profile").BrowserProfilesBridge
   platform: string
   openExternal?: (url: string) => Promise<void>
   setTheme?: (source: "light" | "dark" | "system") => Promise<void>

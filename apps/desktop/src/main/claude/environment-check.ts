@@ -27,6 +27,7 @@ import { inspectClaudeNavigation, inspectProxyFailure } from "./environment-web-
 import { localBridgePort, managedCallbackPort } from "./launch-argument-guard"
 import { unavailableNativeEvidence } from "./native-environment-evidence"
 import { environmentDnsCheck } from "./environment-dns"
+import { environmentConsistencyCheck } from "./environment-consistency"
 
 /** 从专用管道采集本次实例证据；清理无法确认时抛错，不生成放行报告。 */
 export async function inspectAuthorizationEnvironment(
@@ -78,6 +79,7 @@ export async function inspectAuthorizationEnvironment(
   const facts =
     initialFacts && observations.actualFacts ? [initialFacts, observations.actualFacts] : []
   const settings = environmentSettingsMatch(facts, context.fingerprint)
+  checks.push(environmentConsistencyCheck(context, facts))
   checks.push(
     environmentCheckItem(
       "settings",
@@ -154,6 +156,7 @@ export async function inspectAuthorizationEnvironment(
     binding: environmentBinding({
       ...context,
       nativeBinding: context.request.nativeEvidence?.binding,
+      nativeEnvironment: context.request.nativeEvidence?.environment,
     }),
     createdAt: Date.now(),
     networkMode: mode,

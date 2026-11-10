@@ -1,10 +1,10 @@
-// 在本机数据目录保存账号、明文凭据、用户设置的指纹和 IP 代理池。
+// 管理本机账号引用、独立浏览器配置与代理；变更排队，兼容迁移保留原始备份。
 
-import { randomUUID } from "node:crypto"
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
-import { basename, dirname, join } from "node:path"
-import { normalizeFingerprint, parseAccountRecord, parseProxy } from "./schema"
-import type { AccountRecord, IpProxy } from "./schema"
+import { join } from "node:path"
+import { normalizeFingerprint, parseProxy, type AccountRecord, type IpProxy } from "./schema"
+import { parseBrowserProfile, type BrowserProfileRecord } from "./browser-profile"
+import { parseStoredAccount, toAccountReference, type AccountReference } from "./account-reference"
+import { backupLocalJson, readStoredList, replaceStoredItem, writeStoredList } from "./local-json"
 
 export { normalizeFingerprint }
 export type {
@@ -17,199 +17,286 @@ export type {
   ProxyTestResult,
 } from "./schema"
 export type { ClaudeCredential } from "./credential"
+export type { BrowserProfileRecord } from "./browser-profile"
+export type { AccountReference } from "./account-reference"
 
-/** 账号局部更新或按当前记录计算新记录；updater 返回 null 表示跳过这次写入。 */
+/** 账号局部更新；环境属于实例，不通过账号更新另存副本。 */
 export type AccountUpdate =
-  Partial<Omit<AccountRecord, "id">> | ((account: AccountRecord) => AccountRecord | null)
+  | Partial<Omit<AccountRecord, "id" | "fingerprint" | "proxyId" | "browserProfileDir">>
+  | ((account: AccountRecord) => AccountRecord | null)
 
-/** 读写本机 proxies.json 与 accounts.json。保证按 id 覆盖，同一文件的保存排队，凭据不加密，文件留在本机。 */
+/** 迁移自动项时由真实宿主提供系统基线。 */
+export type LocalStoreOptions = { systemLocale?: () => string; systemTimezone?: () => string }
+
+/** 本机数据的单一写入队列；读取账号时解引用实例，避免两份环境配置分叉。 */
 export class LocalStore {
   readonly #dataDir: string
-  readonly #writes = new Map<string, Promise<void>>()
+  readonly #options: LocalStoreOptions
+  #writes: Promise<void> = Promise.resolve()
 
-  /** 保证后续读写都落在这个数据目录。 */
-  constructor(dataDir: string) {
+  /** 绑定本机目录和旧自动配置基线，不在构造时访问文件。 */
+  constructor(dataDir: string, options: LocalStoreOptions = {}) {
     this.#dataDir = dataDir
+    this.#options = options
   }
 
-  /** 按 id 保存或覆盖一条代理。保证同一文件里交错的保存不会丢掉另一条，未解析记录原样保留。 */
-  async saveProxy(proxy: IpProxy): Promise<void> {
-    await this.enqueue(this.proxiesPath(), async () => {
-      const stored = await readProxies(this.proxiesPath())
-      await writeStored(this.proxiesPath(), {
-        items: replaceById(stored.items, proxy),
+  /** 返回独立实例；旧账号先完成可重试迁移。 */
+  async listBrowserProfiles(): Promise<BrowserProfileRecord[]> {
+    await this.#migrate()
+    return (await this.#readProfiles()).items
+  }
+
+  /** 没有实例时返回 null，不创建账号私有副本。 */
+  async getBrowserProfile(id: string): Promise<BrowserProfileRecord | null> {
+    return (await this.listBrowserProfiles()).find((profile) => profile.id === id) ?? null
+  }
+
+  /** 原子保存可复用实例；更新必须推进一版，账号登录数据不属于配置记录。 */
+  async saveBrowserProfile(profile: BrowserProfileRecord): Promise<void> {
+    await this.#migrate()
+    await this.#enqueue(async () => {
+      const stored = await this.#readProfiles()
+      const current = stored.items.find((item) => item.id === profile.id)
+      if (current && profile.revision !== current.revision + 1)
+        throw new Error("BROWSER_PROFILE_CONFLICT: 浏览器配置版本已变化")
+      await writeStoredList(this.#profilesPath(), {
+        items: replaceStoredItem(stored.items, profile),
         invalid: stored.invalid,
       })
     })
   }
 
-  /** 按 id 删除一条代理。保证文件不存在或记录不存在时不报错，未解析记录原样保留。 */
+  /** 仅删除未绑定实例记录，进程和真实目录须由主进程先确认清理。 */
+  async removeBrowserProfile(id: string): Promise<void> {
+    await this.#migrate()
+    await this.#enqueue(async () => {
+      const accounts = await this.#readAccounts()
+      if (
+        accounts.items.some((account) => account.browserProfileId === id) ||
+        accounts.invalid.some((value) => rawReference(value, "browserProfileId", id))
+      )
+        throw new Error("BROWSER_PROFILE_IN_USE: 浏览器实例仍被账号绑定")
+      const stored = await this.#readProfiles()
+      await writeStoredList(this.#profilesPath(), {
+        items: stored.items.filter((profile) => profile.id !== id),
+        invalid: stored.invalid,
+      })
+    })
+  }
+
+  /** 保存代理并保留无法解析的未来记录。 */
+  async saveProxy(proxy: IpProxy): Promise<void> {
+    await this.#enqueue(async () => {
+      const stored = await this.#readProxies()
+      await writeStoredList(this.#proxiesPath(), {
+        items: replaceStoredItem(stored.items, proxy),
+        invalid: stored.invalid,
+      })
+    })
+  }
+
+  /** 拒绝删除被实例引用的代理，防止意外解绑或直连。 */
   async removeProxy(id: string): Promise<void> {
-    await this.enqueue(this.proxiesPath(), async () => {
-      const stored = await readProxies(this.proxiesPath())
-      await writeStored(this.proxiesPath(), {
+    await this.#migrate()
+    await this.#enqueue(async () => {
+      const profiles = await this.#readProfiles()
+      if (
+        profiles.items.some((profile) => profile.proxyId === id) ||
+        profiles.invalid.some((value) => rawReference(value, "proxyId", id))
+      )
+        throw new Error("PROXY_IN_USE: 代理仍被浏览器实例绑定")
+      const stored = await this.#readProxies()
+      await writeStoredList(this.#proxiesPath(), {
         items: stored.items.filter((proxy) => proxy.id !== id),
         invalid: stored.invalid,
       })
     })
   }
 
-  /** 按 id 读取代理。保证没有这条记录时返回 null。 */
+  /** 按 id 返回代理，缺失时不回退其他代理。 */
   async getProxy(id: string): Promise<IpProxy | null> {
-    const stored = await readProxies(this.proxiesPath())
-    return stored.items.find((proxy) => proxy.id === id) ?? null
+    return (await this.#readProxies()).items.find((proxy) => proxy.id === id) ?? null
   }
 
-  /** 返回全部已保存代理。保证文件不存在时返回空数组。 */
+  /** 返回全部有效代理，缺文件时为空列表。 */
   async listProxies(): Promise<IpProxy[]> {
-    return (await readProxies(this.proxiesPath())).items
+    return (await this.#readProxies()).items
   }
 
-  /** 按 id 保存或覆盖一条账号。保证明文写入 credential，保留指纹，同一文件里交错的保存不会丢掉另一条。 */
-  async saveAccount(account: AccountRecord): Promise<void> {
-    await this.enqueue(this.accountsPath(), async () => {
-      const stored = await readAccounts(this.accountsPath())
-      await writeStored(this.accountsPath(), {
-        items: replaceById(stored.items, account),
+  /** 保存账号引用，兼容旧调用；多个账号可引用同一配置，登录数据仍由各自 id 隔离。 */
+  async saveAccount(account: AccountRecord | AccountReference): Promise<void> {
+    await this.#migrate()
+    await this.#enqueue(async () => {
+      const stored = await this.#readAccounts()
+      let profileId = account.browserProfileId
+      if (!profileId && "fingerprint" in account) {
+        const profiles = await this.#readProfiles()
+        profileId = account.id
+        const existing = profiles.items.find((profile) => profile.id === profileId)
+        if (existing && existing.legacyAccountId !== account.id)
+          throw new Error("BROWSER_PROFILE_CONFLICT: 旧账号的浏览器标识已被占用")
+        if (!existing)
+          await writeStoredList(this.#profilesPath(), {
+            items: [...profiles.items, this.#legacyProfile(account)],
+            invalid: profiles.invalid,
+          })
+      }
+      if (!profileId || !(await this.#readProfiles()).items.some((item) => item.id === profileId))
+        throw new Error("BROWSER_PROFILE_NOT_FOUND: 浏览器实例配置不存在")
+      await writeStoredList(this.#accountsPath(), {
+        items: replaceStoredItem(stored.items, toAccountReference(account, profileId)),
         invalid: stored.invalid,
       })
     })
   }
 
-  /**
-   * 在写入队列内原子更新一条账号：读取最新记录、应用局部字段或 updater，再整体写回。
-   * 保证账号已被删除时返回 null 且不复活；updater 返回 null 时跳过写入。
-   */
+  /** 在队列内读取最新账号再更新，删除后不复活，环境字段不写回为账号副本。 */
   async updateAccount(id: string, update: AccountUpdate): Promise<AccountRecord | null> {
+    await this.#migrate()
     let updated: AccountRecord | null = null
-    await this.enqueue(this.accountsPath(), async () => {
-      const stored = await readAccounts(this.accountsPath())
-      const index = stored.items.findIndex((account) => account.id === id)
-      if (index < 0) return
-      const current = stored.items[index]
-      if (current === undefined) return
-      const next = typeof update === "function" ? update(current) : { ...current, ...update }
+    await this.#enqueue(async () => {
+      const stored = await this.#readAccounts()
+      const current = stored.items.find((account) => account.id === id)
+      if (!current || !current.browserProfileId) return
+      const resolved = this.#resolve(current, (await this.#readProfiles()).items)
+      const next = typeof update === "function" ? update(resolved) : { ...resolved, ...update }
       if (next === null) return
-      const committed: AccountRecord = { ...next, id: current.id }
-      updated = committed
-      await writeStored(this.accountsPath(), {
-        items: stored.items.map((account, itemIndex) =>
-          itemIndex === index ? committed : account,
-        ),
+      const profileId = next.browserProfileId ?? current.browserProfileId
+      const reference = toAccountReference({ ...next, id }, profileId)
+      updated = this.#resolve(reference, (await this.#readProfiles()).items)
+      await writeStoredList(this.#accountsPath(), {
+        items: replaceStoredItem(stored.items, reference),
         invalid: stored.invalid,
       })
     })
     return updated
   }
 
-  /** 按 id 删除一条账号。保证文件不存在或记录不存在时不报错，未解析记录原样保留。 */
+  /** 删除账号凭据和引用，独立实例与浏览器数据保留。 */
   async removeAccount(id: string): Promise<void> {
-    await this.enqueue(this.accountsPath(), async () => {
-      const stored = await readAccounts(this.accountsPath())
-      await writeStored(this.accountsPath(), {
+    await this.#migrate()
+    await this.#enqueue(async () => {
+      const stored = await this.#readAccounts()
+      await writeStoredList(this.#accountsPath(), {
         items: stored.items.filter((account) => account.id !== id),
         invalid: stored.invalid,
       })
     })
   }
 
-  /** 按 id 读取账号。保证没有这条记录时返回 null。 */
+  /** 返回账号当前实例的解引用视图，缺实例时明确报错。 */
   async getAccount(id: string): Promise<AccountRecord | null> {
-    const stored = await readAccounts(this.accountsPath())
-    return stored.items.find((account) => account.id === id) ?? null
+    return (await this.listAccounts()).find((account) => account.id === id) ?? null
   }
 
-  /** 返回全部已保存账号。保证文件不存在时返回空数组，旧记录在读取时迁移为 v3。 */
+  /** 返回当前实例环境，不从旧账号快照猜测或回退宿主环境。 */
   async listAccounts(): Promise<AccountRecord[]> {
-    return (await readAccounts(this.accountsPath())).items
+    await this.#migrate()
+    const stored = await this.#readAccounts()
+    const profiles = (await this.#readProfiles()).items
+    return stored.items.map((account) => this.#resolve(account, profiles))
   }
 
-  private accountsPath(): string {
+  #resolve(
+    account: AccountReference | AccountRecord,
+    profiles: BrowserProfileRecord[],
+  ): AccountRecord {
+    const profile = profiles.find((item) => item.id === account.browserProfileId)
+    if (!profile) throw new Error("BROWSER_PROFILE_NOT_FOUND: 账号关联的浏览器实例缺失")
+    return {
+      ...toAccountReference(account, profile.id),
+      browserProfileRevision: profile.revision,
+      fingerprint: structuredClone(profile.fingerprint),
+      proxyId: profile.proxyId,
+      browserProfileDir: "",
+    }
+  }
+
+  async #migrate(): Promise<void> {
+    await this.#enqueue(async () => {
+      const accounts = await this.#readAccounts()
+      const legacy = accounts.items.filter(
+        (account): account is AccountRecord => "fingerprint" in account,
+      )
+      if (!legacy.length) return
+      await backupLocalJson(
+        this.#accountsPath(),
+        join(this.#dataDir, "migration-backups", "browser-profiles-v1-accounts.json"),
+      )
+      const profiles = await this.#readProfiles()
+      for (const account of legacy) {
+        const existing = profiles.items.find((profile) => profile.id === account.id)
+        if (existing && existing.legacyAccountId !== account.id)
+          throw new Error("BROWSER_PROFILE_CONFLICT: 旧账号的浏览器标识已被占用")
+        if (!existing) profiles.items.push(this.#legacyProfile(account))
+      }
+      await writeStoredList(this.#profilesPath(), profiles)
+      await writeStoredList(this.#accountsPath(), {
+        items: accounts.items.map((account) =>
+          toAccountReference(account, account.browserProfileId ?? account.id),
+        ),
+        invalid: accounts.invalid,
+      })
+    })
+  }
+
+  #legacyProfile(account: AccountRecord): BrowserProfileRecord {
+    const locale = this.#options.systemLocale?.() ?? Intl.DateTimeFormat().resolvedOptions().locale
+    const timezone =
+      this.#options.systemTimezone?.() ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+    const profile: BrowserProfileRecord = {
+      schemaVersion: 1,
+      id: account.id,
+      legacyAccountId: account.id,
+      name: `${account.displayName} 的浏览器`,
+      proxyId: account.proxyId,
+      fingerprint: {
+        ...account.fingerprint,
+        lang: account.fingerprint.lang || locale,
+        timezone:
+          !account.fingerprint.timezone || account.fingerprint.timezone.toLowerCase() === "system"
+            ? timezone
+            : account.fingerprint.timezone,
+      },
+      revision: 1,
+      createdAt: account.createdAt,
+      updatedAt: account.updatedAt,
+    }
+    if (!parseBrowserProfile(profile))
+      throw new Error("BROWSER_PROFILE_CONFLICT: 旧浏览器数据标识无法安全迁移")
+    return profile
+  }
+
+  #accountsPath(): string {
     return join(this.#dataDir, "accounts.json")
   }
-
-  private proxiesPath(): string {
+  #profilesPath(): string {
+    return join(this.#dataDir, "browser-profiles.json")
+  }
+  #proxiesPath(): string {
     return join(this.#dataDir, "proxies.json")
   }
-
-  // 同一路径的写入排队。后一次要等前一次 rename 完成后再读，避免用旧快照盖掉刚写入的记录。
-  private enqueue(path: string, write: () => Promise<void>): Promise<void> {
-    const previous = this.#writes.get(path) ?? Promise.resolve()
-    const run = previous.then(write, write)
-    this.#writes.set(
-      path,
-      run.then(
-        () => undefined,
-        () => undefined,
-      ),
-    )
+  #readAccounts() {
+    return readStoredList(this.#accountsPath(), parseStoredAccount)
+  }
+  #readProfiles() {
+    return readStoredList(this.#profilesPath(), parseBrowserProfile)
+  }
+  #readProxies() {
+    return readStoredList(this.#proxiesPath(), parseProxy)
+  }
+  #enqueue(operation: () => Promise<void>): Promise<void> {
+    const run = this.#writes.then(operation, operation)
+    this.#writes = run.catch(() => undefined)
     return run
   }
 }
 
-function replaceById<T extends { id: string }>(items: readonly T[], next: T): T[] {
-  const index = items.findIndex((item) => item.id === next.id)
-  if (index < 0) return [...items, next]
-  return items.map((item, itemIndex) => (itemIndex === index ? next : item))
-}
-
-// 读取结果同时保留无法解析的原始条目；写回时把它们原样追加，避免未知/未来 schema 被静默删除。
-type StoredList<T> = { items: T[]; invalid: unknown[] }
-
-async function readAccounts(path: string): Promise<StoredList<AccountRecord>> {
-  return readList(path, parseAccountRecord)
-}
-
-async function readProxies(path: string): Promise<StoredList<IpProxy>> {
-  return readList(path, parseProxy)
-}
-
-async function readList<T>(
-  path: string,
-  parse: (value: unknown) => T | null,
-): Promise<StoredList<T>> {
-  const parsed = await readJson(path)
-  if (parsed === undefined) return { items: [], invalid: [] }
-  if (!Array.isArray(parsed)) throw new Error(`${basename(path)} 不是列表`)
-  const items: T[] = []
-  const invalid: unknown[] = []
-  for (const item of parsed) {
-    const record = parse(item)
-    // 跳过坏记录，避免一条损坏数据让整个账号库或代理库不可读；原始值留给下一次写回。
-    if (record === null) invalid.push(item)
-    else items.push(record)
-  }
-  return { items, invalid }
-}
-
-// 有效条目按调用方的顺序写回，未解析条目统一追加在末尾。
-async function writeStored<T>(path: string, stored: StoredList<T>): Promise<void> {
-  await writeJson(path, [...stored.items, ...stored.invalid])
-}
-
-async function readJson(path: string): Promise<unknown> {
-  try {
-    const text = await readFile(path, "utf8")
-    return JSON.parse(text) as unknown
-  } catch (error: unknown) {
-    if (isEnoent(error)) return undefined
-    throw error
-  }
-}
-
-// 先写同目录临时文件，再 rename 覆盖目标，避免读到半截 JSON；文件和临时文件都只给当前用户读写。
-async function writeJson(path: string, value: readonly unknown[]): Promise<void> {
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 })
-  const temporary = join(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`)
-  try {
-    await writeFile(temporary, JSON.stringify(value), { encoding: "utf8", mode: 0o600 })
-    await rename(temporary, path)
-  } catch (error: unknown) {
-    await rm(temporary, { force: true })
-    throw error
-  }
-}
-
-function isEnoent(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
+function rawReference(value: unknown, key: string, id: string): boolean {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    key in value &&
+    (value as Record<string, unknown>)[key] === id
+  )
 }

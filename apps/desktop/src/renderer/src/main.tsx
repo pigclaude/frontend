@@ -14,6 +14,7 @@ import "./styles/ui-controls.css"
 import "./styles/combobox.css"
 import "./styles/appearance-page.css"
 import "./styles/fingerprint.css"
+import "./styles/browser-profiles.css"
 import "./styles/glass.css"
 import "./styles/appearance.css"
 

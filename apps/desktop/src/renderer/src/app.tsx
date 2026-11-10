@@ -1,7 +1,6 @@
 // 负责把设计稿里的页面串成可切换的桌面界面，并承接主进程授权事件。
 import { useEffect, useRef, useState } from "react"
 import type { MembershipView } from "@pigclaude/contracts/membership"
-import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import type { AuthorizationStateEvent } from "../../main/authorization/types"
 import { AuthorizeScreen } from "./screens/authorize-screen"
 import { DesktopEntryScreen } from "./screens/desktop-entry-screen"
@@ -11,6 +10,8 @@ import { ToastProvider } from "./components/toast"
 import { TooltipProvider } from "./components/ui/tooltip"
 import { useAppearance } from "./hooks/use-appearance"
 import { useClaudeAccounts } from "./hooks/use-claude-accounts"
+import { useBrowserProfiles } from "./hooks/use-browser-profiles"
+import type { AuthorizeClaudeAccountInput } from "../../main/claude/account-service-inputs"
 import { useMembershipConfirmation } from "./hooks/use-membership-confirmation"
 import { markOnboardingSeen } from "./lib/onboarding-storage"
 import {
@@ -19,13 +20,12 @@ import {
   reduceAuthorizationState,
 } from "./models/authorization-model"
 import { toPoolProxy } from "./models/claude-account-view"
-import { parseDevView, type DevLoginPhase, type DevView } from "./models/dev-view"
+import { parseDevView, devLoginState, type DevView } from "./models/dev-view"
 import {
   acceptLoginStartResult,
   createLoginState,
   reduceLoginState,
   type LoginIntent,
-  type LoginState,
 } from "./models/login-model"
 import {
   initialMembershipView,
@@ -59,6 +59,10 @@ export function DesktopApp() {
   const screen = currentScreen(history)
   const appearance = useAppearance()
   const claudeAccounts = useClaudeAccounts()
+  const browserProfiles = useBrowserProfiles(
+    claudeAccounts.refresh,
+    membership.state === "active" || !window.pigclaude,
+  )
   const [reauthorizeAccountId, setReauthorizeAccountId] = useState<string | null>(null)
   // 引导进度放在这里而不是引导页内部，打开 Claude 授权页再回来时进度不会丢。
   const [onboardingReturn, setOnboardingReturn] = useState<OnboardingState | undefined>(() =>
@@ -297,12 +301,7 @@ export function DesktopApp() {
     setLoginState((current) => reduceLoginState(current, { type: "cancelled" }))
   }
 
-  function startClaudeAuthorization(input: {
-    accountId?: string
-    displayName: string
-    proxyId: string | null
-    fingerprint: ClaudeFingerprintView
-  }): void {
+  function startClaudeAuthorization(input: AuthorizeClaudeAccountInput): void {
     const start = () => {
       acceptAuthorizationEvents.current = true
       authorizationSession.current = null
@@ -402,6 +401,10 @@ export function DesktopApp() {
     return (
       <AuthorizeScreen
         state={authorizationState}
+        profiles={browserProfiles.profiles}
+        profilesLoading={browserProfiles.loading}
+        profilesError={browserProfiles.error}
+        onOpenProfiles={() => setScreen("browser-profiles")}
         proxies={claudeAccounts.proxies.map((proxy) => toPoolProxy(proxy, claudeAccounts.accounts))}
         account={claudeAccounts.accounts.find((item) => item.id === reauthorizeAccountId) ?? null}
         onEvent={(event) =>
@@ -422,6 +425,7 @@ export function DesktopApp() {
           canGoForward={canGoForward(history)}
           membership={membership}
           claudeAccounts={claudeAccounts}
+          browserProfiles={browserProfiles}
           onNavigate={setScreen}
           onBack={() => setHistory(goBack)}
           onForward={() => setHistory(goForward)}
@@ -447,25 +451,6 @@ function previewGateMessage(
 }
 
 // 开发期预览用的固定登录状态；时间戳取远期常量，保证截图不随时间变化。
-function devLoginState(phase: DevLoginPhase | undefined): LoginState {
-  const idle = createLoginState()
-  if (phase === "waiting") {
-    return {
-      ...idle,
-      view: "waiting",
-      intent: "login",
-      sessionId: "dev-preview",
-      authorizationUrl: "https://pigclaude.example/oauth2/authorize",
-      expiresAt: 4_102_444_800_000,
-    }
-  }
-  if (phase === "confirming") {
-    return { ...idle, view: "confirming", intent: "login", displayName: "小猪" }
-  }
-  if (phase === "error") return { ...idle, view: "error", error: "授权已过期，请重新授权。" }
-  return idle
-}
-
 function isAuthorizationFailure(event: AuthorizationStateEvent): boolean {
   return [
     "cancelled",

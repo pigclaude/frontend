@@ -107,6 +107,8 @@ export type Harness = {
 /** 创建只使用临时存储和合成外部依赖的账号服务。 */
 export async function createHarness(
   options: {
+    store?: LocalStore
+    id?: () => string
     egress?: EgressResult
     profile?: ClaudeOAuthProfile | null
     tokens?: ClaudeOAuthTokens
@@ -144,7 +146,7 @@ export async function createHarness(
     await rm(dir, { recursive: true })
     cleaned = true
   }
-  const store = new LocalStore(dir)
+  const store = options.store ?? new LocalStore(dir)
   try {
     await store.saveProxy({
       schemaVersion: 1,
@@ -270,6 +272,7 @@ export async function createHarness(
           input.startedAt,
           input.proxyUrl === null ? "system" : "bound",
           input.expectedExitIp,
+          { locale: input.fingerprint.lang, timezone: input.fingerprint.timezone },
         ),
       dispose: async () => undefined,
     },
@@ -297,7 +300,7 @@ export async function createHarness(
     },
     egressCheckUrl: "https://egress.test/trace",
     now: options.now ?? (() => now),
-    id: () => "acc-1",
+    id: options.id ?? (() => "acc-1"),
     onEvent: (event) => events.push(event),
   }
   return {

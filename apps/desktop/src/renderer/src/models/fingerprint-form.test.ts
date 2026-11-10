@@ -468,7 +468,7 @@ describe("fingerprint summary", () => {
 
   it("shows follow-the-default labels for an empty fingerprint", () => {
     const text = JSON.stringify(fingerprintSummaryGroups(undefined))
-    expect(text).toContain("按账号 ID 生成")
+    expect(text).toContain("按浏览器配置生成")
     expect(text).toContain("跟随系统语言")
     expect(text).toContain("系统时区")
     expect(text).toContain("跟随默认")

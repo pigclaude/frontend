@@ -128,9 +128,13 @@ describe("CredentialRefresher", () => {
 
   it("fails clearly when the account proxy is missing", async () => {
     const { store, account } = await fixture(now + 60 * 1_000)
-    await store.removeProxy("p1")
+    await expect(store.removeProxy("p1")).rejects.toThrow("PROXY_IN_USE")
+    const missingProxyStore = {
+      getProxy: async () => null,
+      updateAccount: store.updateAccount.bind(store),
+    }
     const refresher = new CredentialRefresher({
-      store,
+      store: missingProxyStore,
       oauth: fakeOAuth(async () => tokens()),
       now: () => now,
     })

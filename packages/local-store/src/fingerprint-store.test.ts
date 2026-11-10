@@ -121,7 +121,13 @@ describe("LocalStore fingerprint normalization", () => {
     const dir = await mkdtemp(join(tmpdir(), "fingerprint-"))
     const record = { ...account("acc-full"), fingerprint: extendedFingerprint }
     await new LocalStore(dir).saveAccount(record)
-    expect(await new LocalStore(dir).getAccount("acc-full")).toEqual(record)
+    expect(await new LocalStore(dir).getAccount("acc-full")).toEqual({
+      ...record,
+      schemaVersion: 4,
+      browserProfileId: "acc-full",
+      browserProfileRevision: 1,
+      browserProfileDir: "",
+    })
   })
 
   it("filters invalid optional fingerprint values without failing the file", async () => {
@@ -200,7 +206,7 @@ describe("LocalStore fingerprint normalization", () => {
     )
     const accountRecord = await new LocalStore(dir).getAccount("acc-v2")
     expect(accountRecord).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       credential,
       proxyId: "p1",
       browserProfileDir: "",
@@ -235,7 +241,7 @@ describe("LocalStore fingerprint normalization", () => {
       ]),
       "utf8",
     )
-    const store = new LocalStore(dir)
+    const store = new LocalStore(dir, { systemLocale: () => "en-US", systemTimezone: () => "UTC" })
     const accounts = await store.listAccounts()
     expect(accounts.map((item) => item.id)).toEqual([
       "null-fingerprint",
@@ -244,7 +250,11 @@ describe("LocalStore fingerprint normalization", () => {
       "acc-good",
     ])
     for (const id of ["null-fingerprint", "wrong-brand", "missing-timezone"]) {
-      expect(accounts.find((item) => item.id === id)?.fingerprint).toEqual(defaultFingerprint)
+      expect(accounts.find((item) => item.id === id)?.fingerprint).toEqual({
+        ...defaultFingerprint,
+        lang: "en-US",
+        timezone: "UTC",
+      })
     }
     expect(accounts.find((item) => item.id === "acc-good")?.fingerprint).toEqual({
       ...fingerprint,

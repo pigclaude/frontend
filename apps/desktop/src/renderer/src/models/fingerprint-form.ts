@@ -232,7 +232,7 @@ export function fingerprintSummaryGroups(
       id: "identity",
       title: "身份与定位",
       rows: [
-        { label: "指纹种子", value: value.seed || "按账号 ID 生成" },
+        { label: "指纹种子", value: value.seed || "按浏览器配置生成" },
         {
           label: "浏览器",
           value: `${value.brand || "Chrome"}${suffix(value.brandVersion) || "（跟随默认版本）"}`,

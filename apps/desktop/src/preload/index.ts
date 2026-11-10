@@ -1,5 +1,8 @@
 // 负责向渲染进程暴露桌面桥。只转发授权状态，不传递凭据。
 import { contextBridge, ipcRenderer } from "electron"
+import type { BrowserProfilesBridge } from "@pigclaude/contracts/browser-profile"
+import { browserProfilesBridge } from "./browser-profiles"
+import type { AuthorizeClaudeAccountInput } from "../main/claude/account-service-inputs"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import {
   isClaudeAccountEvent,
@@ -27,6 +30,7 @@ import type {
 
 /** 渲染进程能看到的桌面能力。不含凭据。 */
 export type PigclaudeBridge = {
+  browserProfiles?: BrowserProfilesBridge
   platform: string
   openExternal: (url: string) => Promise<void>
   setTheme: (source: "light" | "dark" | "system") => Promise<void>
@@ -55,15 +59,11 @@ export type PigclaudeBridge = {
   }
   claudeAccounts: {
     list: () => Promise<ClaudeAccountView[]>
-    authorize: (input: {
-      accountId?: string
-      displayName: string
-      proxyId: string | null
-      fingerprint: ClaudeFingerprintView
-    }) => Promise<ClaudeAccountView>
+    authorize: (input: AuthorizeClaudeAccountInput) => Promise<ClaudeAccountView>
     cancelAuthorization: () => Promise<void>
     update: (input: {
       accountId: string
+      browserProfileId?: string
       displayName?: string
       enabled?: boolean
       proxyId?: string | null
@@ -73,6 +73,7 @@ export type PigclaudeBridge = {
     importFromClaudeCli: (input: {
       confirmCopy: boolean
       displayName?: string
+      browserProfileId?: string
     }) => Promise<ClaudeAccountView>
     subscribe: (listener: (event: ClaudeAccountEvent) => void) => () => void
   }
@@ -95,6 +96,7 @@ export type PigclaudeBridge = {
 }
 
 const bridge: PigclaudeBridge = {
+  browserProfiles: browserProfilesBridge(),
   platform: process.platform,
   openExternal: (url) => ipcRenderer.invoke("pigclaude:open-external", url),
   setTheme: (source) => ipcRenderer.invoke("pigclaude:set-theme", source),

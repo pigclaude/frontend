@@ -25,6 +25,8 @@ import {
 import { environmentBinding, environmentCheckItem, environmentVerdict } from "./environment-policy"
 import { inspectClaudeNavigation, inspectProxyFailure } from "./environment-web-probes"
 import { localBridgePort, managedCallbackPort } from "./launch-argument-guard"
+import { unavailableNativeEvidence } from "./native-environment-evidence"
+import { environmentDnsCheck } from "./environment-dns"
 
 /** 从专用管道采集本次实例证据；清理无法确认时抛错，不生成放行报告。 */
 export async function inspectAuthorizationEnvironment(
@@ -61,11 +63,17 @@ export async function inspectAuthorizationEnvironment(
       /* 留为缺证据。 */
     }
     const secondary = await client.network(probe, targets.secondaryIp)
+    const dns =
+      targets.dnsQuery === undefined
+        ? undefined
+        : await client.network(probe, targets.dnsQuery, {
+            headers: { accept: "application/dns-json" },
+          })
     const ice = await readEnvironmentIce(client, probe, targets.stun).catch(() => ({
       completed: false,
       candidates: [],
     }))
-    return { primary, secondary, actualFacts, ice }
+    return { primary, secondary, actualFacts, ice, dns }
   })
   const facts =
     initialFacts && observations.actualFacts ? [initialFacts, observations.actualFacts] : []
@@ -89,6 +97,14 @@ export async function inspectAuthorizationEnvironment(
   )
   checks.push(...networkChecks(context, observations.primary, observations.secondary, targets))
   checks.push(networkPolicy(context))
+  checks.push(
+    environmentDnsCheck(
+      observations.dns,
+      targets.dnsQuery,
+      mode,
+      context.network.mode === "bound" ? context.network.bridgeUrl : null,
+    ),
+  )
   const publicCandidates = observations.ice.candidates.filter(candidateHasPublicAddress)
   checks.push(
     environmentCheckItem(
@@ -118,18 +134,27 @@ export async function inspectAuthorizationEnvironment(
   checks.push(await inspectProxyFailure(client, targets, mode))
   checks.push(await inspectClaudeNavigation(client, targets, mode))
   checks.push(
+    ...structuredClone(
+      context.request.nativeEvidence?.checks ?? unavailableNativeEvidence(Date.now(), mode).checks,
+    ),
+  )
+  checks.push(
     environmentCheckItem("scope", mode, "info", {
       expected: "只为本轮浏览器配置与所列请求提供证据",
       actual:
-        "DNS 规则已核对；独立 DNS 泄漏未测。宿主 UDP/IPv6 全局隔离、VM 文件/管理边界、真实 CLI 进程环境未覆盖。",
-      evidence: "当前架构为每账号 PigBrowser + Xray，未部署 Cage VM；不输出风险分或封号概率",
+        "原生浏览器、本机中转与 CLI 配置检查；CLI 内部 Intl 未确认。系统 DNS 泄漏、整机 UDP/IPv6、文件与管理接口沙箱未覆盖。",
+      evidence:
+        "本轮采用原生 PigBrowser + 本机 daemon + 账号代理，未运行虚拟机；不输出风险分或封号概率",
       remedy: "真实 Claude 登录由你完成；其他平台与真实 CLI 的验收分别记录",
     }),
   )
   return {
     policy: environmentPolicyVersion,
     runId: context.request.runId,
-    binding: environmentBinding(context),
+    binding: environmentBinding({
+      ...context,
+      nativeBinding: context.request.nativeEvidence?.binding,
+    }),
     createdAt: Date.now(),
     networkMode: mode,
     verdict: environmentVerdict(checks, mode),
@@ -148,7 +173,10 @@ function networkChecks(
   const validSecondary = validProbe(secondary, targets.secondaryIp)
   const a = validPrimary ? environmentResponseIp(primary.body) : null
   const b = validSecondary ? environmentResponseIp(secondary.body) : null
-  const expected = mode === "bound" ? publicEnvironmentIpv4(context.expectedExitIp) : a
+  const expected =
+    mode === "bound"
+      ? publicEnvironmentIpv4(context.expectedExitIp)
+      : (context.request.nativeEvidence?.exitIp ?? a)
   const complete = a !== null && b !== null && expected !== null
   const matches = complete && a === b && a === expected
   const exit = environmentCheckItem(

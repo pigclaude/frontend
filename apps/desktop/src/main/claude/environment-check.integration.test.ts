@@ -1,4 +1,4 @@
-// 使用固定实际 PigBrowser、Xray 和本机合成目标，从启动入口验证本地自检报告及授权门禁。
+// 使用实际 PigBrowser/Xray 验证浏览器报告；native 后端为明确合成端口，真实后端另由授权集成覆盖。
 
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -12,6 +12,7 @@ import { FingerprintChromiumAdapter } from "./fingerprint-chromium"
 import { createLoopbackFixture } from "./fingerprint-chromium-loopback-fixture"
 import { SubscriptionOAuth } from "./subscription-oauth"
 import { createXrayRuntimeStarter } from "./xray-runtime"
+import { syntheticNativeEvidence } from "./environment-check-test-fixtures"
 
 const binary = process.env["PIGCLAUDE_TEST_CHROMIUM_BIN"]
 const xray = process.env["PIGCLAUDE_TEST_XRAY_BIN"]
@@ -53,6 +54,7 @@ it.skipIf(!binary || !xray).each([
   { languageOverride: "fr-FR", expected: "blocked", checkId: "settings" },
   { challenge: true, expected: "incomplete", checkId: "claude-navigation" },
   { challenge200: true, expected: "incomplete", checkId: "claude-navigation" },
+  { dnsInvalid: true, expected: "incomplete", checkId: "proxy-dns" },
 ])(
   "实际采样异常 $checkId/$expected 时不暴露授权参数",
   async (options) => {
@@ -144,12 +146,30 @@ async function withEnvironmentBrowser(
     redirectedLogin?: boolean
     challenge200?: boolean
     largeLogin?: boolean
+    dnsInvalid?: boolean
   } = {},
 ): Promise<void> {
   const directory = await mkdtemp(join(tmpdir(), "pigclaude-environment-check-"))
   const fixture = await createLoopbackFixture((request, response) => {
     response.setHeader("Access-Control-Allow-Origin", "*")
-    if (request.url?.includes("/moved")) {
+    if (request.url?.includes("/dns")) {
+      response.setHeader("Content-Type", "application/dns-json")
+      response.end(
+        JSON.stringify(
+          options.dnsInvalid
+            ? {
+                Status: 0,
+                Question: [{ name: "wrong.example", type: 1 }],
+                Answer: [{ type: 1, data: "192.168.1.1" }],
+              }
+            : {
+                Status: 0,
+                Question: [{ name: "example.com.", type: 1 }],
+                Answer: [{ type: 1, data: "1.1.1.1" }],
+              },
+        ),
+      )
+    } else if (request.url?.includes("/moved")) {
       response.setHeader("Content-Type", "text/html")
       response.end('<!doctype html><input type="email">')
     } else if (request.url?.includes("/login")) {
@@ -188,6 +208,7 @@ async function withEnvironmentBrowser(
     secondaryIp: `http://127.0.0.1:${fixture.originPort}/probe/secondary`,
     claudeLogin: `http://127.0.0.1:${fixture.originPort}/probe/login`,
     stun: "stun:stun.cloudflare.com:3478",
+    dnsQuery: `http://127.0.0.1:${fixture.originPort}/probe/dns`,
   }
   let startupFailure: unknown
   const adapter = new FingerprintChromiumAdapter({
@@ -233,6 +254,11 @@ async function withEnvironmentBrowser(
         runId: "synthetic-environment-run",
         startedAt: Date.now(),
         expectedExitIp: "1.1.1.1",
+        nativeEvidence: syntheticNativeEvidence(
+          Date.now(),
+          options.system ? "system" : "bound",
+          "1.1.1.1",
+        ),
         onReport: (next) => {
           report = next
         },

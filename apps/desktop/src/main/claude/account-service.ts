@@ -195,9 +195,17 @@ export class ClaudeAccountService {
         proxyId === null
           ? { mode: "system" as const }
           : { mode: "bound" as const, bridgeUrl: bridgeUrl ?? "", callbackUri }
-      const environment = createAuthorizationEnvironmentCheck(
-        { accountId, fingerprint, network, expectedExitIp },
+      const environment = await createAuthorizationEnvironmentCheck(
+        {
+          accountId,
+          fingerprint,
+          network,
+          expectedExitIp,
+          proxyUrl: proxy?.url ?? null,
+          signal: authorizationSignal,
+        },
         this.#now,
+        this.#deps.nativeDiagnostics,
       )
       const activeAttempt = attempt
       const code = await launchAndWaitForCallback({
@@ -401,6 +409,7 @@ export class ClaudeAccountService {
   /** 取消并等待当前授权清理；提交已开始或浏览器未退出时返回明确错误。 */
   async cancel(): Promise<void> {
     await this.#authorizations.cancelCurrent()
+    await this.#deps.nativeDiagnostics?.settle?.()
     await this.#pendingCleanup.retry()
   }
 
@@ -460,7 +469,8 @@ export class ClaudeAccountService {
   async dispose(): Promise<void> {
     const browser = this.#deps.browser.dispose()
     const authorizations = this.#authorizations.dispose()
-    const results = await Promise.allSettled([browser, authorizations])
+    const native = this.#deps.nativeDiagnostics?.dispose()
+    const results = await Promise.allSettled([browser, authorizations, native])
     if (results.some((result) => result.status === "rejected")) {
       throw new ClaudeAccountError("BROWSER_STOP_FAILED", "无法确认浏览器已退出，请手动关闭后重试")
     }

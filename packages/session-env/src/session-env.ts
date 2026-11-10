@@ -1,5 +1,7 @@
 // 组装这次会话的环境变量，并把时区写进 Intl 预加载脚本。不读文件，不访问网络。用户设置里的路由、代理、云厂商开关和凭据不会进入这次会话。
 
+import { processLocale } from "./process-locale"
+
 const ignoredSettingsKeys = new Set([
   "ALL_PROXY",
   "ANTHROPIC_API_KEY",
@@ -35,7 +37,8 @@ export function buildSessionEnv(input: SessionEnvInput): {
   }
   env.ANTHROPIC_BASE_URL = input.daemonBaseUrl
   env.TZ = input.timezone
-  env.LANG = input.locale
+  env.LANG = processLocale(input.locale)
+  env.LC_ALL = env.LANG
   return { env, preloadSource: timezonePreload(input.timezone) }
 }
 

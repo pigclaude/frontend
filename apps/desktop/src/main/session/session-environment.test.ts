@@ -49,7 +49,8 @@ describe("SessionEnvironment", () => {
       CLAUDE_CODE_OAUTH_TOKEN: placeholderOAuthToken,
       CLAUDE_CONFIG_DIR: configDir,
       TZ: "America/Los_Angeles",
-      LANG: "en-US",
+      LANG: "en_US.UTF-8",
+      LC_ALL: "en_US.UTF-8",
       NODE_OPTIONS: `--require ${JSON.stringify(preloadPath)}`,
       ANTHROPIC_CUSTOM_HEADERS: "x-pigclaude-session: session-token-abc",
       NO_PROXY: "127.0.0.1,localhost",
@@ -59,7 +60,7 @@ describe("SessionEnvironment", () => {
     expect(environment.binaryPath).toBe("/opt/claude/bin/claude")
     expect(environment.timezone).toBe("America/Los_Angeles")
     expect(environment.env.TZ).toBe("America/Los_Angeles")
-    expect(environment.env.LANG).toBe("en-US")
+    expect(environment.env.LANG).toBe("en_US.UTF-8")
     expect(environment.env.NODE_OPTIONS).toContain(environment.sessionDir)
     expect(environment.env.NODE_OPTIONS).toContain("intl-preload.cjs")
 
@@ -94,7 +95,7 @@ describe("SessionEnvironment", () => {
 
       expect(environment.timezone).toBe(expectedTimezone)
       expect(environment.env.TZ).toBe(expectedTimezone)
-      expect(environment.env.LANG).toBe(expectedLocale)
+      expect(environment.env.LANG.replace(/\.UTF-8$/, "").replaceAll("_", "-")).toBe(expectedLocale)
       const preload = await readFile(join(environment.sessionDir, "intl-preload.cjs"), "utf8")
       expect(preload).toContain(JSON.stringify(expectedTimezone))
       expect(environment.env.TZ).not.toBe("")
@@ -164,7 +165,7 @@ describe("SessionEnvironment", () => {
     expect(environment.env.ANTHROPIC_CUSTOM_HEADERS).toBe("x-pigclaude-session: session-token-def")
     expect(environment.timezone).toBe("Asia/Tokyo")
     expect(environment.env.TZ).toBe("Asia/Tokyo")
-    expect(environment.env.LANG).toBe("ja-JP")
+    expect(environment.env.LANG).toBe("ja_JP.UTF-8")
     expect(serialized).not.toContain("real-user-token")
     expect(serialized).not.toContain("real-user-key")
     expect(serialized).not.toContain("real-oauth-token")

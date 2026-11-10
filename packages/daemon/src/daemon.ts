@@ -8,6 +8,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { createProxyAgent } from "@pigclaude/proxy-connection"
 import { fetch as undiciFetch, type ProxyAgent } from "undici"
 import { oauthBetaHeader, requestHeaders, sessionHeaderName } from "./daemon-headers.ts"
+import { daemonOrigin, daemonUpstreamUrl } from "./daemon-origin.ts"
 import {
   takeQuotaResponse,
   writeBuffered,
@@ -16,7 +17,6 @@ import {
   type BufferedUpstream,
 } from "./daemon-response.ts"
 
-const upstreamOrigin = "https://api.anthropic.com"
 // 超过 32 MiB 的消息请求体直接返回这次 429，不再为换号重发。
 const maxRetryBodyBytes = 32 * 1024 * 1024
 
@@ -50,6 +50,7 @@ export class LocalDaemon {
   readonly #onAccountSelected: (accountId: string, previousId: string | undefined) => void
   readonly #onExit: () => void
   readonly #server: Server
+  readonly #upstreamOrigin: URL
   #stopping = false
 
   /** 保证用给定端口、会话令牌、选号函数和回调准备服务，此时尚未监听。 */
@@ -61,8 +62,11 @@ export class LocalDaemon {
     onAccountRejected?: (accountId: string, reason: string) => void
     onAccountSelected?: (accountId: string, previousId: string | undefined) => void
     onExit?: () => void
+    /** 仅可信主进程诊断依赖可固定其他 origin，不从 IPC 或请求头读取。 */
+    upstreamOrigin?: URL
   }) {
     this.port = options.port
+    this.#upstreamOrigin = daemonOrigin(options.upstreamOrigin)
     this.#sessionToken = options.sessionToken
     this.#choose = options.choose
     this.#runAuthorized = options.runAuthorized
@@ -143,7 +147,7 @@ export class LocalDaemon {
       writeErrorResponse(response, 403, "invalid_session_token")
       return
     }
-    const upstreamUrl = upstreamUrlFor(request.url)
+    const upstreamUrl = daemonUpstreamUrl(request.url, this.#upstreamOrigin)
     if (upstreamUrl === null) {
       request.resume()
       writeErrorResponse(response, 503, "proxy_unavailable")
@@ -298,19 +302,6 @@ function fetchThroughProxy(
     redirect: "manual",
     signal: input.signal,
   })
-}
-
-function upstreamUrlFor(requestUrl: string | undefined): URL | null {
-  let incoming: URL
-  try {
-    incoming = new URL(requestUrl ?? "/", "http://127.0.0.1")
-  } catch {
-    return null
-  }
-  if (!incoming.pathname.startsWith("/") || incoming.pathname.startsWith("//")) return null
-  const upstream = new URL(incoming.pathname + incoming.search, upstreamOrigin)
-  if (upstream.protocol !== "https:" || upstream.host !== "api.anthropic.com") return null
-  return upstream
 }
 
 function readBody(request: IncomingMessage): Promise<Buffer> {

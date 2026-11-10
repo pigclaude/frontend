@@ -10,7 +10,10 @@ import type { EgressResult } from "@pigclaude/login-gate/egress-check"
 import type { ProxyRuntime } from "@pigclaude/login-gate/proxy-runtime"
 import type { XrayHttpRequest } from "@pigclaude/login-gate/xray-http"
 import type { LaunchBrowserInput } from "./fingerprint-chromium"
-import { syntheticEnvironmentReport } from "./environment-check-test-fixtures"
+import {
+  syntheticEnvironmentReport,
+  syntheticNativeEvidence,
+} from "./environment-check-test-fixtures"
 import { ClaudeAccountError } from "./errors"
 import { ClaudeAccountService, type ClaudeAccountServiceDeps } from "./account-service"
 import type {
@@ -126,6 +129,7 @@ export async function createHarness(
     browser?: ClaudeAccountServiceDeps["browser"]
     oauth?: ClaudeAccountServiceDeps["oauth"]
     now?: () => number
+    nativeDiagnostics?: ClaudeAccountServiceDeps["nativeDiagnostics"]
   } = {},
 ): Promise<Harness> {
   const dir = await mkdtemp(join(tmpdir(), "claude-account-"))
@@ -260,6 +264,15 @@ export async function createHarness(
       ? {}
       : { readCliAccountMetadata: options.readCliAccountMetadata }),
     browser: options.browser ?? browser,
+    nativeDiagnostics: options.nativeDiagnostics ?? {
+      inspect: async (input) =>
+        syntheticNativeEvidence(
+          input.startedAt,
+          input.proxyUrl === null ? "system" : "bound",
+          input.expectedExitIp,
+        ),
+      dispose: async () => undefined,
+    },
     oauth: options.oauth ?? oauth,
     startProxyRuntime: options.proxyRuntimeUnavailable
       ? undefined

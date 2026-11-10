@@ -21,6 +21,11 @@ const definitions = {
   "proxy-failure": ["失效代理演练（独立上下文）", "bound"],
   webrtc: ["WebRTC 公网候选采样", "bound"],
   "claude-navigation": ["Claude 公开页面顶层访问", "always"],
+  "cli-launch": ["原生 CLI 与独立启动配置", "always"],
+  "cli-protocol": ["原生 CLI 与本机中转协议", "always"],
+  "native-routes": ["daemon 与刷新器传输路径", "always"],
+  "proxy-dns": ["代理 DNS-over-HTTPS 实际查询", "bound"],
+  "cli-intl": ["原生 CLI 内部 Intl 覆盖范围", "never"],
   location: ["同一 IP 的位置资料", "never"],
   scope: ["检测覆盖范围", "never"],
 } as const
@@ -36,6 +41,7 @@ export function environmentBinding(input: EnvironmentCheckBindingInput): string 
         input.network.mode === "bound" ? input.network.bridgeUrl : null,
         input.network.mode === "bound" ? input.network.callbackUri : null,
         input.expectedExitIp,
+        input.nativeBinding ?? null,
       ]),
     )
     .digest("hex")

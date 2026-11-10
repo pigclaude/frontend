@@ -11,4 +11,5 @@ export const environmentCheckTargets: EnvironmentCheckTargets = {
   secondaryIp: "https://api-ipv4.ip.sb/geoip",
   claudeLogin: "https://claude.ai/login",
   stun: "stun:stun.cloudflare.com:3478",
+  dnsQuery: "https://1.1.1.1/dns-query?name=example.com&type=A",
 }

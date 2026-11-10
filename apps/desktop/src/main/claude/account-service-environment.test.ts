@@ -53,6 +53,10 @@ it.each([
   "failed",
   "old-run",
   "wrong-binding",
+  "old-native-scope",
+  "native-result-overwrite",
+  "native-snapshot-overwrite",
+  "native-item-missing",
   "different-config",
   "old-time",
   "forged-critical",
@@ -66,6 +70,23 @@ it.each([
     if (kind === "failed") first.state = "failed"
     if (kind === "old-run") report.runId = "previous-authorization"
     if (kind === "wrong-binding") report.binding = "different-environment"
+    if (kind === "old-native-scope")
+      Object.assign(report, { policy: "pigclaude-auth-environment/1" })
+    if (kind === "native-result-overwrite") {
+      const native = report.checks.find((check) => check.id === "cli-protocol")
+      if (!native) throw new Error("合成原生结果缺失")
+      native.actual = "未经主进程采样的替换结果"
+    }
+    if (kind === "native-snapshot-overwrite") {
+      const exposed = input.environmentCheck?.nativeEvidence?.checks.find(
+        (check) => check.id === "cli-protocol",
+      )
+      const reported = report.checks.find((check) => check.id === "cli-protocol")
+      if (!exposed || !reported) throw new Error("合成原生快照缺失")
+      exposed.actual = reported.actual = "同时篡改已暴露的快照与报告"
+    }
+    if (kind === "native-item-missing")
+      report.checks = report.checks.filter((check) => check.id !== "native-routes")
     if (kind === "different-config")
       return syntheticEnvironmentReport({
         ...input,

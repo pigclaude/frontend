@@ -8,6 +8,7 @@ import type { FingerprintChromiumAdapter } from "./fingerprint-chromium"
 import type { SubscriptionOAuth } from "./subscription-oauth"
 import type { ClaudeCliCredential } from "./cli-credential-reader"
 import type { ClaudeCliAccountMetadata } from "./cli-account-metadata"
+import type { NativeEnvironmentDiagnostics } from "./native-environment-model"
 
 /** 账号服务依赖。所有外部副作用都通过端口注入。 */
 export type ClaudeAccountServiceDeps = {
@@ -29,6 +30,8 @@ export type ClaudeAccountServiceDeps = {
     signal?: AbortSignal
   }) => Promise<EgressResult>
   ensureMembership: () => Promise<void>
+  /** 原生诊断只使用合成请求与固定出口查询，不使用真实 Claude 凭据。 */
+  nativeDiagnostics?: NativeEnvironmentDiagnostics
   /** 读取 Claude CLI Keychain 凭据；测试注入假实现，避免访问真实钥匙串。 */
   readCliCredential?: () => Promise<ClaudeCliCredential>
   /** 读取 Claude CLI 的 oauthAccount 元数据；返回 null 表示文件缺失或不可读。 */

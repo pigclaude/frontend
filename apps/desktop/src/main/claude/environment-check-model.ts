@@ -4,7 +4,7 @@ import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import type { LaunchBrowserNetwork } from "./fingerprint-chromium"
 
 /** 当前必需证据合同的版本；规则变化必须换版。 */
-export const environmentPolicyVersion = "pigclaude-auth-environment/1"
+export const environmentPolicyVersion = "pigclaude-auth-environment/native-2"
 
 /** 与现有授权等待期限一致的报告最长有效时间。 */
 export const environmentReportLifetimeMs = 10 * 60 * 1_000
@@ -19,6 +19,11 @@ export type EnvironmentCheckId =
   | "proxy-failure"
   | "webrtc"
   | "claude-navigation"
+  | "cli-launch"
+  | "cli-protocol"
+  | "native-routes"
+  | "proxy-dns"
+  | "cli-intl"
   | "location"
   | "scope"
 
@@ -53,6 +58,7 @@ export type EnvironmentCheckRequest = {
   runId: string
   startedAt: number
   expectedExitIp: string | null
+  nativeEvidence?: NativeEnvironmentEvidence
   onReport: (report: EnvironmentCheckReport) => void
 }
 
@@ -62,6 +68,15 @@ export type EnvironmentCheckBindingInput = {
   fingerprint: ClaudeFingerprintView
   network: LaunchBrowserNetwork
   expectedExitIp: string | null
+  nativeBinding?: string
+}
+
+/** 主进程本轮生成的原生证据；绑定与完整快照均不从页面或导出文件导入。 */
+export type NativeEnvironmentEvidence = {
+  binding: string
+  createdAt: number
+  exitIp: string | null
+  checks: EnvironmentCheckItem[]
 }
 
 /** 主进程固定的网络采样目标；仅测试依赖可替换为本机合成目标。 */
@@ -70,6 +85,7 @@ export type EnvironmentCheckTargets = {
   secondaryIp: string
   claudeLogin: string
   stun: string
+  dnsQuery?: string
 }
 
 /** 可信主进程交给实际浏览器的本轮配置和启动参数，不接受页面或 IPC 补写。 */

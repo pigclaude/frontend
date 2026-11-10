@@ -86,6 +86,46 @@ export async function inspectProxyFailure(
       evidence: "未创建应用内代理失效演练",
       remedy: "无需处理",
     })
+  if (!targets.dnsQuery)
+    return environmentCheckItem("proxy-failure", mode, "unknown", {
+      expected: "出口与 DoH 请求均无直连回退",
+      actual: "缺少本轮固定 DoH 目标",
+      evidence: "没有取得完整的两类请求演练证据",
+      remedy: "修正诊断目标后重新检测",
+    })
+  const results = []
+  for (const url of [targets.primaryIp, targets.dnsQuery])
+    results.push(await failedProxyRequest(client, url))
+  const failed = results.every(
+    (result) =>
+      result.connections > 0 &&
+      result.status === 0 &&
+      result.error !== null &&
+      result.error !== "probe_unavailable",
+  )
+  const state = results.some((result) => result.status > 0)
+    ? "failed"
+    : failed
+      ? "passed"
+      : "unknown"
+  return environmentCheckItem("proxy-failure", mode, state, {
+    expected: "出口与 DoH 各自入口收到连接，所测请求明确失败且无 HTTP 响应",
+    actual: results
+      .map(
+        (result, index) =>
+          `${index === 0 ? "出口" : "DoH"} 连接 ${result.connections} 次，HTTP ${result.status || "未收到"}`,
+      )
+      .join("；"),
+    evidence:
+      "每个请求使用独占拒绝入口与独立无账号 Cookie 上下文；只证明所测请求，不把超时当作成功",
+    remedy: state === "passed" ? "无需处理" : "检查代理失效行为与诊断入口记录后重新检测",
+  })
+}
+
+async function failedProxyRequest(
+  client: EnvironmentBrowserClient,
+  url: string,
+): Promise<{ connections: number; status: number; error: string | null }> {
   let connections = 0
   const sockets = new Set<Socket>()
   const server = createServer((socket) => {
@@ -102,19 +142,8 @@ export async function inspectProxyFailure(
     const address = server.address()
     if (!address || typeof address === "string") throw new Error("无法创建本机诊断入口")
     return await client.withPage(true, `socks5://127.0.0.1:${address.port}`, async (page) => {
-      const response = await client.network(page, targets.primaryIp, { navigation: true })
-      const failed =
-        connections > 0 &&
-        response.status === 0 &&
-        response.error !== null &&
-        response.error !== "probe_unavailable"
-      const state = response.status > 0 ? "failed" : failed ? "passed" : "unknown"
-      return environmentCheckItem("proxy-failure", mode, state, {
-        expected: "诊断入口收到连接，所选请求明确失败且未取得 HTTP 响应",
-        actual: `诊断连接 ${connections} 次；HTTP ${response.status || "未收到"}`,
-        evidence: `本轮独占拒绝入口、独立临时上下文；${response.error ?? "收到响应"}；只覆盖所测请求`,
-        remedy: state === "passed" ? "无需处理" : "检查浏览器的代理失效行为；超时不能代替失败证据",
-      })
+      const response = await client.network(page, url, { navigation: true })
+      return { connections, status: response.status, error: response.error }
     })
   } finally {
     for (const socket of sockets) socket.destroy()

@@ -34,6 +34,8 @@ export class EnvironmentBrowserClient {
   async wait<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
+      // 调用方已创建的命令即使遇到提前取消，也必须观察其拒绝，避免清理阶段遗留异常。
+      if (this.#signal.aborted) void operation.catch(() => undefined)
       this.#signal.throwIfAborted()
       return await this.#pipe.race(
         Promise.race([
@@ -143,7 +145,12 @@ export class EnvironmentBrowserClient {
   async network(
     page: EnvironmentPage,
     url: string,
-    options: { navigation?: boolean; timeoutMs?: number; readBody?: boolean } = {},
+    options: {
+      navigation?: boolean
+      timeoutMs?: number
+      readBody?: boolean
+      headers?: Record<string, string>
+    } = {},
   ): Promise<NativeEnvironmentResponse> {
     const navigation = options.navigation ?? false
     const timeoutMs = options.timeoutMs ?? 10_000
@@ -225,7 +232,7 @@ export class EnvironmentBrowserClient {
         await this.wait(
           this.evaluate(
             page,
-            `fetch(${JSON.stringify(url)}, {credentials:"omit",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer",signal:AbortSignal.timeout(${Math.max(500, timeoutMs - 500)})}).then(async response=>{await response.arrayBuffer();return true}).catch(()=>false)`,
+            `fetch(${JSON.stringify(url)}, {headers:${JSON.stringify(options.headers ?? {})},credentials:"omit",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer",signal:AbortSignal.timeout(${Math.max(500, timeoutMs - 500)})}).then(async response=>{await response.arrayBuffer();return true}).catch(()=>false)`,
           ),
           timeoutMs,
         )

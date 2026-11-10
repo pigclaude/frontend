@@ -14,7 +14,7 @@ import {
 import { join } from "node:path"
 import { readFileSync } from "node:fs"
 import type { MembershipView } from "@pigclaude/contracts/membership"
-import { isAccountSelectable, type ClaudeAccountEvent } from "@pigclaude/contracts/claude-account"
+import type { ClaudeAccountEvent } from "@pigclaude/contracts/claude-account"
 import { LocalStore } from "@pigclaude/local-store"
 import { checkEgress } from "@pigclaude/login-gate/egress-check"
 import { createCallbackServer } from "./authorization/callback-server"
@@ -35,6 +35,7 @@ import { ProxyService } from "./claude/proxy-service"
 import { runtimeHostArch } from "./claude/runtime-binary"
 import { SubscriptionOAuth } from "./claude/subscription-oauth"
 import { createXrayRuntimeStarter } from "./claude/xray-runtime"
+import { NativeEnvironmentInspector } from "./claude/native-environment"
 import { createDesktopComposition, type DesktopComposition } from "./composition"
 import { DeviceIdentityService } from "./device-identity"
 import { readDeviceInfo } from "./device-identity/device-info"
@@ -47,6 +48,7 @@ import { resolveClaudeBinaryPath } from "./session/claude-binary"
 import { cleanupStaleSessionDirs } from "./session/session-environment"
 import { SessionHost } from "./session/session-host"
 import { registerSessionIpc } from "./session/session-ipc"
+import { accountSessionProfile } from "./session/account-session-profile"
 import { createQuitCoordinator } from "./shutdown"
 import { shutdownDesktopResources } from "./shutdown-resources"
 import type { SessionHostEvent } from "./session/session-types"
@@ -350,6 +352,9 @@ async function setupAuthorization(): Promise<void> {
     oauth: new SubscriptionOAuth(),
     checkEgress,
     startProxyRuntime,
+    nativeDiagnostics: new NativeEnvironmentInspector({
+      systemLocale: () => app.getSystemLocale(),
+    }),
     ensureMembership: async () => {
       const view = await composition.membershipGate.inspect()
       if (view.state !== "active") {
@@ -371,31 +376,8 @@ async function setupAuthorization(): Promise<void> {
       userDataPath: app.getPath("userData"),
       resolveBinaryPath: () => resolveClaudeBinaryPath(),
       defaultWorkspace: () => app.getPath("home"),
-      resolveProfile: async (accountId) => {
-        const accounts = await localStore.listAccounts()
-        const proxies = new Map(
-          (await localStore.listProxies()).map((proxy) => [proxy.id, proxy.url]),
-        )
-        const available = accounts.filter((item) =>
-          isAccountSelectable(
-            {
-              enabled: item.enabled,
-              needsReauth: item.needsReauth,
-              hasCredential: item.credential !== null,
-              exhaustedUntil: item.exhaustedUntil,
-              proxyUrl: item.proxyId === null ? null : proxies.get(item.proxyId),
-            },
-            Date.now(),
-          ),
-        )
-        const account =
-          accountId === null
-            ? (available[0] ?? accounts[0])
-            : (accounts.find((item) => item.id === accountId) ?? available[0] ?? accounts[0])
-        return account === undefined
-          ? null
-          : { timezone: account.fingerprint.timezone, locale: account.fingerprint.lang }
-      },
+      resolveProfile: (accountId) =>
+        accountSessionProfile(localStore, accountId, () => app.getSystemLocale()),
     })
     sessionHost.subscribe(sendSessionEvent)
   }

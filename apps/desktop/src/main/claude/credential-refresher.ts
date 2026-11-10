@@ -14,7 +14,7 @@ const defaultRefreshWindowMs = 2 * 60 * 1_000
 
 /** 凭据刷新依赖。oauth 只使用 refresh，便于测试替换。 */
 export type CredentialRefresherDeps = {
-  store: LocalStore
+  store: Pick<LocalStore, "getProxy" | "updateAccount">
   oauth: Pick<SubscriptionOAuth, "refresh">
   now?: () => number
   refreshWindowMs?: number
@@ -22,7 +22,7 @@ export type CredentialRefresherDeps = {
 
 /** 刷新账号凭据。保证同一账号并发刷新只发一次请求，invalid_grant 后标记需要重新授权。 */
 export class CredentialRefresher {
-  readonly #store: LocalStore
+  readonly #store: CredentialRefresherDeps["store"]
   readonly #oauth: Pick<SubscriptionOAuth, "refresh">
   readonly #now: () => number
   readonly #refreshWindowMs: number

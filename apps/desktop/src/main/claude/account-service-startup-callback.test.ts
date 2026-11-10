@@ -2,6 +2,7 @@
 
 import { expect, it } from "vitest"
 import { createHarness, fingerprint } from "./account-service-test-fixtures"
+import { syntheticEnvironmentReport } from "./environment-check-test-fixtures"
 import { BrowserProcessExitedError } from "./browser-control-pipe"
 import type { LaunchedBrowser } from "./fingerprint-chromium"
 import { SubscriptionOAuthError } from "./subscription-oauth"
@@ -24,7 +25,8 @@ it("回调已收到授权码后浏览器退出，仍完成该次授权", async (
     browser: {
       ensureAvailable: async () => "/synthetic/browser",
       profileDir: () => "/synthetic/profile",
-      launch: () => {
+      launch: (input) => {
+        input.environmentCheck?.onReport(syntheticEnvironmentReport(input))
         notifyLaunch()
         return browserLaunch
       },
@@ -74,7 +76,8 @@ it("浏览器启动后回调先完成、窗口同轮退出时仍处理授权码"
     browser: {
       ensureAvailable: async () => "/synthetic/browser",
       profileDir: () => "/synthetic/profile",
-      launch: async () => {
+      launch: async (input) => {
+        input.environmentCheck?.onReport(syntheticEnvironmentReport(input))
         notifyLaunch()
         return { profileDir: "/synthetic/profile", pid: 1, exited, stop: async () => undefined }
       },

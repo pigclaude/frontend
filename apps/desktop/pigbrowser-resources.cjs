@@ -6,6 +6,11 @@ const { lstat, readFile, readdir, readlink } = require("node:fs/promises")
 const { isAbsolute, join, relative, resolve } = require("node:path")
 const artifacts = require("./pigbrowser-artifacts.json")
 
+/** 返回资源合同固定的 native 内核版本。 */
+function pigbrowserVersion() {
+  return artifacts.version
+}
+
 /** 返回已固定的平台产物；不支持的系统和架构明确失败。 */
 function pigbrowserArtifact(target) {
   const artifact = artifacts.targets[target]
@@ -78,4 +83,4 @@ async function listFiles(root, prefix = "") {
   return paths
 }
 
-module.exports = { pigbrowserArtifact, verifyPigbrowserPackage }
+module.exports = { pigbrowserArtifact, pigbrowserVersion, verifyPigbrowserPackage }

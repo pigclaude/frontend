@@ -8,8 +8,6 @@ export type AuthorizeClaudeAccountInput = {
   displayName: string
   proxyId: string | null
   fingerprint: ClaudeFingerprintView
-  /** 用户主动选择时，先在同一浏览器中打开 CheckCC 检测。 */
-  preflight?: "checkcc"
 }
 
 /** 修改账号设置的输入。proxyId 省略表示不变，null 表示解绑并使用系统网络。 */

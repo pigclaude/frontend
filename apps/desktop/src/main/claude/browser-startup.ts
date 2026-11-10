@@ -4,6 +4,11 @@ import type { ChildProcess } from "node:child_process"
 import { BrowserControlPipe } from "./browser-control-pipe"
 import { expectedExtensionPaths } from "./browser-extension-paths"
 import { createExtensionReadiness } from "./browser-extension-readiness"
+import { EnvironmentBrowserClient } from "./environment-browser-client"
+import { inspectAuthorizationEnvironment } from "./environment-check"
+import type { EnvironmentCheckContext, EnvironmentCheckTargets } from "./environment-check-model"
+import { environmentProgressPage, environmentReportPage } from "./environment-report-page"
+import { environmentCheckTargets } from "./environment-targets"
 
 const startupTimeoutMs = 20_000
 const extensionsUrl = "chrome://extensions/"
@@ -18,6 +23,7 @@ const startupStages = {
   closeControl: "关闭扩展状态页面",
   attachPage: "连接授权窗口",
   navigatePage: "打开授权页面",
+  environmentCheck: "执行授权环境自检",
   detachPage: "完成授权窗口启动",
 } as const
 
@@ -38,11 +44,13 @@ export type BrowserStartupInput = {
   assertCanNavigate?: () => void
   extensionArgs?: readonly string[]
   hostPlatform?: NodeJS.Platform
+  environmentCheck?: EnvironmentCheckContext
+  environmentTargets?: EnvironmentCheckTargets
 }
 
 /** 扩展状态确认后才打开授权地址；无法确认时不打开授权页面。 */
 export async function openAuthorizedPage(input: BrowserStartupInput): Promise<void> {
-  const timeout = AbortSignal.timeout(startupTimeoutMs)
+  const timeout = AbortSignal.timeout(input.environmentCheck ? 90_000 : startupTimeoutMs)
   const signal = input.signal === undefined ? timeout : AbortSignal.any([input.signal, timeout])
   const pipe = new BrowserControlPipe(input.child, signal)
   let stage: keyof typeof startupStages = "extensionPaths"
@@ -94,8 +102,26 @@ export async function openAuthorizedPage(input: BrowserStartupInput): Promise<vo
     await waitForExtensions()
     signal.throwIfAborted()
     input.assertCanNavigate?.()
-    stage = "navigatePage"
-    await navigate(pipe, targetSession, input.authorizeUrl)
+    if (input.environmentCheck) {
+      stage = "environmentCheck"
+      const client = new EnvironmentBrowserClient(pipe, signal)
+      const page = { targetId, sessionId: targetSession }
+      await client.command("Runtime.enable", {}, targetSession)
+      await client.render(page, environmentProgressPage())
+      const report = await inspectAuthorizationEnvironment(
+        client,
+        page,
+        input.environmentCheck,
+        input.environmentTargets ?? environmentCheckTargets,
+      )
+      signal.throwIfAborted()
+      input.assertCanNavigate?.()
+      await client.render(page, environmentReportPage(report, input.authorizeUrl))
+      input.environmentCheck.request.onReport(report)
+    } else {
+      stage = "navigatePage"
+      await navigate(pipe, targetSession, input.authorizeUrl)
+    }
     stage = "closeControl"
     const closed = await pipe.request("Target.closeTarget", { targetId: controlId })
     if (closed["success"] !== true) throw new Error("无法关闭扩展状态页面")

@@ -12,23 +12,21 @@ import {
 } from "./account-service-test-fixtures"
 
 describe("ClaudeAccountService", () => {
-  it("opens CheckCC before Claude in the same bound browser and waits for user authorization", async () => {
+  it("requires a fresh local check in the bound browser and waits for user authorization", async () => {
     const callback = createWaitingCallback()
     const harness = await createHarness({ callback })
     const operation = harness.service.authorize({
       displayName: "验收账号",
       proxyId: "p1",
       fingerprint,
-      preflight: "checkcc",
     })
     try {
       await waitForTestSignal(harness.launched.promise, operation)
       const launched = harness.launchInputs[0]
       expect(launched?.network.mode).toBe("bound")
-      expect(launched?.authorizeUrl).toMatch(/^data:text\/html/)
-      const page = decodeURIComponent(launched?.authorizeUrl.split(",")[1] ?? "")
-      expect(page).toContain("https://checkcc.org/")
-      expect(page).toContain("required")
+      expect(launched?.authorizeUrl).toMatch(/^https:/)
+      expect(launched?.environmentCheck?.runId).toBeTruthy()
+      expect(launched?.environmentCheck?.expectedExitIp).toBeTruthy()
       expect(harness.exchangeRedirectUris).toEqual([])
     } finally {
       await harness.service.cancel()

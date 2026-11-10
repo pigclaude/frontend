@@ -222,6 +222,11 @@ describe("FingerprintChromiumAdapter", () => {
     "proxy-auto-detect",
     "remote-debugging-pipe",
     "no-startup-window",
+    "ignore-certificate-errors",
+    "ignore-certificate-errors-spki-list",
+    "allow-insecure-localhost",
+    "disable-web-security",
+    "allow-running-insecure-content",
   ])("rejects the managed %s key in either network mode", async (key) => {
     const binary = await fakeBinary()
     const root = await tempRoot()

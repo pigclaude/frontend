@@ -30,6 +30,7 @@ export function phaseFor(code: ClaudeAccountErrorCode): ClaudeAccountEvent["phas
   if (
     code === "EGRESS_MISMATCH" ||
     code === "EGRESS_CHECK_FAILED" ||
+    code === "ENVIRONMENT_CHECK_FAILED" ||
     code === "PROXY_UNAVAILABLE" ||
     code === "PROXY_INVALID" ||
     code === "UNSUPPORTED_PROXY_SCHEME" ||

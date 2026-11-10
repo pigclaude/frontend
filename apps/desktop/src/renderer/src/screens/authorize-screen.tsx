@@ -25,7 +25,6 @@ export type AuthorizeScreenProps = {
     displayName: string
     proxyId: string | null
     fingerprint: ClaudeFingerprintView
-    preflight?: "checkcc"
   }) => void
   onCancel: () => void
 }
@@ -50,23 +49,20 @@ export function AuthorizeScreen({
   )
   const selectedProxy = proxies.find((proxy) => proxy.id === proxyId) ?? null
   const launching = useRef(false)
-  const selectedPreflight = useRef<"checkcc" | undefined>(undefined)
   useEffect(() => {
     if (state.step === "waiting" || state.step === "completed" || state.error !== null) {
       launching.current = false
     }
   }, [state.step, state.error])
 
-  function startBrowserAuthorization(preflight?: "checkcc") {
+  function startBrowserAuthorization() {
     if (launching.current || name.trim() === "" || proxyId === null) return
     launching.current = true
-    selectedPreflight.current = preflight
     onStartBrowserAuthorization({
       accountId: account?.id,
       displayName: name.trim(),
       proxyId: proxyId === "" ? null : proxyId,
       fingerprint,
-      ...(preflight === "checkcc" ? { preflight } : {}),
     })
   }
 
@@ -204,13 +200,13 @@ export function AuthorizeScreen({
           ) : null}
           {state.step === "exit" ? (
             <WizardBody
-              title={proxyId === "" ? "使用系统网络并打开授权页" : "核对出口并打开授权页"}
+              title="检测本次授权环境"
               description={
                 proxyId === ""
-                  ? "这个账号没有绑定代理，登录和对话请求都会从本机网络直接发出。"
+                  ? "使用系统网络检查浏览器配置、两个 IPv4 出口和 Claude 公开登录页。"
                   : proxyId === null
                     ? "原代理已不存在，请返回上一步重新选择网络出口。"
-                    : "主进程会先核对代理桥和 daemon 出口，一致后才会启动指纹浏览器内核。"
+                    : "先核对代理出口，再由本次 PigBrowser 采样配置、出口、代理路径和公开登录页。必需项通过后才提供授权入口。"
               }
             >
               <div className="group">
@@ -230,7 +226,7 @@ export function AuthorizeScreen({
                   <div className="item">
                     <div className="main">
                       <div className="ttl">出口核对</div>
-                      <div className="desc">系统网络，无需出口核对</div>
+                      <div className="desc">系统网络，仍检查两个 IPv4 原始探针</div>
                     </div>
                   </div>
                 ) : null}
@@ -259,34 +255,19 @@ export function AuthorizeScreen({
                   返回修改指纹
                 </Button>
                 <Button
-                  variant="secondary"
-                  disabled={name.trim() === "" || proxyId === null}
-                  onClick={() => startBrowserAuthorization("checkcc")}
-                >
-                  先检测 CheckCC
-                </Button>
-                <Button
                   variant="primary"
                   disabled={name.trim() === "" || proxyId === null}
                   onClick={() => startBrowserAuthorization()}
                 >
-                  {proxyId === "" ? "开始授权" : state.error ? "重新核对" : "开始核对并授权"}
+                  {state.error ? "重新自检" : "检测环境并准备授权"}
                 </Button>
               </div>
             </WizardBody>
           ) : null}
           {state.step === "waiting" ? (
             <WizardBody
-              title={
-                selectedPreflight.current === "checkcc"
-                  ? "先完成浏览器环境检测"
-                  : "在外部浏览器里完成授权"
-              }
-              description={
-                selectedPreflight.current === "checkcc"
-                  ? "请在指纹浏览器中打开 CheckCC，确认检测结果后再继续授权。"
-                  : "桌面端不会在软件窗口里确认授权。请在刚打开的指纹浏览器里完成登录。"
-              }
+              title="查看本机自检报告并继续授权"
+              description="请查看刚打开的 PigBrowser 自检报告。必需项全部通过后，点击报告中的继续按钮，由你完成 Claude 登录和授权。"
             >
               <div className="browser-wait">
                 <Icon name="browser" />
@@ -299,11 +280,8 @@ export function AuthorizeScreen({
                 {state.error ? <span className="error-text">{state.error}</span> : null}
               </div>
               <div className="wizard-foot">
-                <Button
-                  variant="secondary"
-                  onClick={() => startBrowserAuthorization(selectedPreflight.current)}
-                >
-                  重新发起
+                <Button variant="secondary" onClick={() => startBrowserAuthorization()}>
+                  重新自检
                 </Button>
                 <Button variant="ghost" onClick={onCancel}>
                   取消

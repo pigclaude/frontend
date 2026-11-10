@@ -200,7 +200,7 @@ describe("reauthorizing an imported account", () => {
     await click("下一步")
     await click("使用系统网络")
     await click("保存并继续")
-    await click("开始授权")
+    await click("检测环境并准备授权")
     await flush()
 
     expect(bridge.authorized).toHaveLength(1)

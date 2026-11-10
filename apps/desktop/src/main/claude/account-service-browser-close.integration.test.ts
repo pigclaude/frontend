@@ -12,6 +12,8 @@ import { createLoopbackFixture } from "./fingerprint-chromium-loopback-fixture"
 import { FingerprintChromiumAdapter, type LaunchedBrowser } from "./fingerprint-chromium"
 import { SubscriptionOAuth } from "./subscription-oauth"
 import { createXrayRuntimeStarter } from "./xray-runtime"
+import { openAuthorizedPage } from "./browser-startup"
+import type { EnvironmentCheckTargets } from "./environment-check-model"
 
 const browserBinary = process.env["PIGCLAUDE_TEST_CHROMIUM_BIN"]
 const xrayBinary = process.env["PIGCLAUDE_TEST_XRAY_BIN"]
@@ -20,10 +22,12 @@ it.skipIf(!browserBinary || !xrayBinary)(
   "用户关闭授权浏览器后结束授权并回收 Xray",
   async () => {
     const directory = await mkdtemp(join(tmpdir(), "pigclaude-browser-close-"))
+    let environmentTargets: EnvironmentCheckTargets | undefined
     const adapter = new FingerprintChromiumAdapter({
       binaryPath: browserBinary,
       hostArch: process.arch,
       profilesRoot: join(directory, "profiles"),
+      openPage: (input) => openAuthorizedPage({ ...input, environmentTargets }),
     })
     const start = createXrayRuntimeStarter({
       binaryPath: xrayBinary,
@@ -51,7 +55,19 @@ it.skipIf(!browserBinary || !xrayBinary)(
     let callback: Awaited<ReturnType<SubscriptionOAuth["startCallback"]>> | undefined
     let fixture: Awaited<ReturnType<typeof createLoopbackFixture>> | undefined
     try {
-      fixture = await createLoopbackFixture()
+      fixture = await createLoopbackFixture((request, response) => {
+        response.setHeader("Access-Control-Allow-Origin", "*")
+        if (request.url?.includes("login")) {
+          response.setHeader("Content-Type", "text/html")
+          response.end('<!doctype html><input type="email">')
+        } else response.end(JSON.stringify({ ip: "1.1.1.1" }))
+      })
+      environmentTargets = {
+        primaryIp: `http://127.0.0.1:${fixture.originPort}/probe/primary`,
+        secondaryIp: `http://127.0.0.1:${fixture.originPort}/probe/secondary`,
+        claudeLogin: `http://127.0.0.1:${fixture.originPort}/probe/login`,
+        stun: "stun:stun.cloudflare.com:3478",
+      }
       const upstreamProxyUrl = `http://synthetic:password@127.0.0.1:${fixture.proxyPort}`
       const runtime = await start({ upstreamProxyUrl })
       callback = await new SubscriptionOAuth().startCallback({
@@ -60,12 +76,13 @@ it.skipIf(!browserBinary || !xrayBinary)(
       })
       const activeCallback = callback
       const oauth = new SubscriptionOAuth({
-        authorizeUrl: `http://127.0.0.1:${fixture.originPort}/probe`,
+        authorizeUrl: "https://claude.test/oauth/authorize",
       })
       harness = await createHarness({
         browser,
         callback,
         proxyRuntime: runtime,
+        egress: { ok: true, ip: "1.1.1.1" },
         oauth: {
           buildAuthorizeUrl: (input) => oauth.buildAuthorizeUrl(input),
           startCallback: async () => activeCallback,
@@ -98,10 +115,8 @@ it.skipIf(!browserBinary || !xrayBinary)(
       const activeFixture = fixture
       await expect
         .poll(() => activeFixture.requests(), { timeout: 5_000 })
-        .toEqual({
-          viaProxy: 1,
-          direct: 0,
-        })
+        .toMatchObject({ direct: 0 })
+      expect(activeFixture.requests().viaProxy).toBeGreaterThanOrEqual(3)
       const port = await debugPort(join(instance.profileDir, "DevToolsActivePort"))
       connected = await within(chromium.connectOverCDP(`http://127.0.0.1:${port}`), 5_000)
       const session = await within(connected.newBrowserCDPSession(), 5_000)

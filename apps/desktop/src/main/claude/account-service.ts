@@ -7,9 +7,8 @@ import type {
   ClaudeAccountErrorCode,
   ClaudeAccountView,
 } from "@pigclaude/contracts/claude-account"
-import type { AccountRecord, LocalStore } from "@pigclaude/local-store"
-import type { EgressResult } from "@pigclaude/login-gate/egress-check"
-import type { ProxyRuntime, StartProxyRuntime } from "@pigclaude/login-gate/proxy-runtime"
+import type { AccountRecord } from "@pigclaude/local-store"
+import type { ProxyRuntime } from "@pigclaude/login-gate/proxy-runtime"
 import { createXrayHttpClient } from "@pigclaude/login-gate/xray-http"
 import {
   assertClaudeCliIdentity,
@@ -31,7 +30,11 @@ import {
 } from "./account-service-proxy-callback"
 import { mapError, phaseFor, requireMembership } from "./account-service-errors"
 import { readOptionalOAuthProfile } from "./account-service-oauth-profile"
-import { authorizationStartUrl } from "./account-service-preflight"
+import type { ClaudeAccountServiceDeps } from "./account-service-deps"
+import { createAuthorizationEnvironmentCheck } from "./account-service-environment"
+/** 保留账号服务既有依赖类型入口。 */
+export type { ClaudeAccountServiceDeps } from "./account-service-deps"
+
 import type {
   AuthorizeClaudeAccountInput,
   ImportClaudeCliAccountInput,
@@ -44,11 +47,7 @@ export type {
 } from "./account-service-inputs"
 import { assertSameAccount, buildCredential, toView } from "./account-service-record"
 import { ClaudeAccountError } from "./errors"
-import {
-  BrowserStartupCleanupError,
-  type FingerprintChromiumAdapter,
-  type LaunchedBrowser,
-} from "./fingerprint-chromium"
+import { BrowserStartupCleanupError, type LaunchedBrowser } from "./fingerprint-chromium"
 import { ensureFingerprint } from "./fingerprint-args"
 import { isValidBridgeUrl, launchArgumentConflict } from "./launch-argument-guard"
 import {
@@ -56,41 +55,11 @@ import {
   type ClaudeOAuthProfile,
   type ClaudeOAuthTokens,
   type OAuthCallbackServer,
-  type SubscriptionOAuth,
 } from "./subscription-oauth"
-const defaultEgressCheckUrl = "https://www.cloudflare.com/cdn-cgi/trace"
+import { defaultEnvironmentExitUrl } from "./environment-targets"
+const defaultEgressCheckUrl = defaultEnvironmentExitUrl
 // 导入时 access token 至少还要有 60 秒有效期，避免刚导入就过期。
 const cliImportExpiryMarginMs = 60_000
-
-/** 账号服务依赖。所有外部副作用都通过端口注入。 */
-export type ClaudeAccountServiceDeps = {
-  store: LocalStore
-  browser: Pick<
-    FingerprintChromiumAdapter,
-    "ensureAvailable" | "launch" | "deleteProfile" | "profileDir" | "dispose"
-  >
-  oauth: Pick<
-    SubscriptionOAuth,
-    "buildAuthorizeUrl" | "startCallback" | "exchangeCode" | "readProfile"
-  >
-  /** 提供已接入的外部代理核心；未提供时，绑定代理授权保持不可用。 */
-  startProxyRuntime?: StartProxyRuntime
-  checkEgress: (input: {
-    bridgeUrl: string
-    upstreamProxyUrl: string
-    checkUrl: string
-    signal?: AbortSignal
-  }) => Promise<EgressResult>
-  ensureMembership: () => Promise<void>
-  /** 读取 Claude CLI Keychain 凭据；测试注入假实现，避免访问真实钥匙串。 */
-  readCliCredential?: () => Promise<ClaudeCliCredential>
-  /** 读取 Claude CLI 的 oauthAccount 元数据；返回 null 表示文件缺失或不可读。 */
-  readCliAccountMetadata?: () => Promise<ClaudeCliAccountMetadata | null>
-  egressCheckUrl?: string
-  now?: () => number
-  id?: () => string
-  onEvent?: (event: ClaudeAccountEvent) => void
-}
 
 /** Claude 账号服务。保证绑定代理时先核对出口；未绑定代理时直接使用系统网络，凭据只在全部成功后写入本机。 */
 export class ClaudeAccountService {
@@ -129,6 +98,7 @@ export class ClaudeAccountService {
     const proxyId = input.proxyId
     let proxyRuntime: ProxyRuntime | null = null
     let bridgeUrl: string | null = null
+    let expectedExitIp: string | null = null
     let callback: OAuthCallbackServer | null = null
     let launched: LaunchedBrowser | null = null
     let attempt: AuthorizationAttempt | null = null
@@ -199,6 +169,7 @@ export class ClaudeAccountService {
         })
         attempt.checkpoint()
         await waitForProxyReady(proxyRuntime, authorizationSignal)
+        if (egress.ok) expectedExitIp = egress.ip
         if (!egress.ok) {
           throw new ClaudeAccountError(
             egress.reason === "mismatch" ? "EGRESS_MISMATCH" : "EGRESS_CHECK_FAILED",
@@ -220,6 +191,14 @@ export class ClaudeAccountService {
         codeChallenge: oauthRequest.codeChallenge,
       })
       await waitForProxyReady(proxyRuntime, authorizationSignal)
+      const network =
+        proxyId === null
+          ? { mode: "system" as const }
+          : { mode: "bound" as const, bridgeUrl: bridgeUrl ?? "", callbackUri }
+      const environment = createAuthorizationEnvironmentCheck(
+        { accountId, fingerprint, network, expectedExitIp },
+        this.#now,
+      )
       const activeAttempt = attempt
       const code = await launchAndWaitForCallback({
         callback,
@@ -232,11 +211,9 @@ export class ClaudeAccountService {
         launch: (signal, assertCanNavigate) =>
           this.#deps.browser.launch({
             accountId,
-            authorizeUrl: authorizationStartUrl(authorizeUrl, input.preflight),
-            network:
-              proxyId === null
-                ? { mode: "system" }
-                : { mode: "bound", bridgeUrl: bridgeUrl ?? "", callbackUri },
+            authorizeUrl,
+            network,
+            environmentCheck: environment.request,
             fingerprint,
             signal,
             assertCanSpawn,
@@ -245,6 +222,7 @@ export class ClaudeAccountService {
       })
       attempt.checkpoint()
       await waitForProxyReady(proxyRuntime, authorizationSignal)
+      environment.assertApproved()
       this.#emit(accountId, "exchanging")
 
       const xrayClient = proxy === null ? null : createXrayHttpClient(bridgeUrl ?? "")

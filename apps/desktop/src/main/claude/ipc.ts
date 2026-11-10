@@ -103,13 +103,12 @@ export function readAuthorizeInput(value: unknown): AuthorizeClaudeAccountInput 
   if (displayName === null || !isClaudeFingerprintView(fingerprint)) {
     throw invalidInput()
   }
-  if (value.preflight !== undefined && value.preflight !== "checkcc") throw invalidInput()
+  if (value.preflight !== undefined) throw invalidInput()
   return {
     accountId: readOptionalString(value.accountId),
     displayName,
     proxyId: readAuthorizeProxyId(value.proxyId),
     fingerprint: fingerprint as ClaudeFingerprintView,
-    ...(value.preflight === "checkcc" ? { preflight: "checkcc" } : {}),
   }
 }
 

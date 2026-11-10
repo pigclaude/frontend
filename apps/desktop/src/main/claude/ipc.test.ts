@@ -56,11 +56,10 @@ function expectInvalidInput(run: () => unknown): void {
 }
 
 describe("readAuthorizeInput", () => {
-  it("只接受明确启用的 CheckCC 检测入口", () => {
+  it("不接受旧的可选检测入口参数", () => {
     const input = { displayName: "工作账号", proxyId: "p1", fingerprint }
-    expect(readAuthorizeInput({ ...input, preflight: "checkcc" }).preflight).toBe("checkcc")
     expect(readAuthorizeInput(input)).not.toHaveProperty("preflight")
-    for (const preflight of ["other", "https://example.com", true, null]) {
+    for (const preflight of ["checkcc", "other", "https://example.com", true, null]) {
       expectInvalidInput(() => readAuthorizeInput({ ...input, preflight }))
     }
   })

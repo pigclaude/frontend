@@ -10,7 +10,8 @@ import { fetch as undiciFetch, type ProxyAgent } from "undici"
 import { ClaudeAccountError } from "./errors"
 import { isValidBridgeUrl } from "./launch-argument-guard"
 
-const defaultCheckUrl = "https://www.cloudflare.com/cdn-cgi/trace"
+import { defaultEnvironmentExitUrl } from "./environment-targets"
+const defaultCheckUrl = defaultEnvironmentExitUrl
 
 /** 代理服务依赖。保证渲染进程只拿到脱敏 URL。 */
 export type ProxyServiceDeps = {

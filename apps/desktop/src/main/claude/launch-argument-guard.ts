@@ -10,6 +10,11 @@ const managedKeys = new Set([
   "proxy-auto-detect",
   "remote-debugging-pipe",
   "no-startup-window",
+  "ignore-certificate-errors",
+  "ignore-certificate-errors-spki-list",
+  "allow-insecure-localhost",
+  "disable-web-security",
+  "allow-running-insecure-content",
 ])
 
 const boundProxyKeys = new Set([

@@ -10,6 +10,7 @@ import type { EgressResult } from "@pigclaude/login-gate/egress-check"
 import type { ProxyRuntime } from "@pigclaude/login-gate/proxy-runtime"
 import type { XrayHttpRequest } from "@pigclaude/login-gate/xray-http"
 import type { LaunchBrowserInput } from "./fingerprint-chromium"
+import { syntheticEnvironmentReport } from "./environment-check-test-fixtures"
 import { ClaudeAccountError } from "./errors"
 import { ClaudeAccountService, type ClaudeAccountServiceDeps } from "./account-service"
 import type {
@@ -124,6 +125,7 @@ export async function createHarness(
     proxyRuntimeUnavailable?: boolean
     browser?: ClaudeAccountServiceDeps["browser"]
     oauth?: ClaudeAccountServiceDeps["oauth"]
+    now?: () => number
   } = {},
 ): Promise<Harness> {
   const dir = await mkdtemp(join(tmpdir(), "claude-account-"))
@@ -196,6 +198,8 @@ export async function createHarness(
     profileDir: (accountId: string) => join(dir, "browser-profiles", accountId),
     launch: async (input: LaunchBrowserInput) => {
       input.assertCanSpawn?.()
+      // 此端口是合成外部浏览器；真实采样在实际内核集成测试中验证。
+      input.environmentCheck?.onReport(syntheticEnvironmentReport(input))
       browserCalls.push("launch")
       launchInputs.push(input)
       launched.resolve()
@@ -279,7 +283,7 @@ export async function createHarness(
       await options.membershipWait?.()
     },
     egressCheckUrl: "https://egress.test/trace",
-    now: () => now,
+    now: options.now ?? (() => now),
     id: () => "acc-1",
     onEvent: (event) => events.push(event),
   }

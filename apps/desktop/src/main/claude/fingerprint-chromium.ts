@@ -4,6 +4,15 @@ import { spawn, type ChildProcess } from "node:child_process"
 import { mkdir, rm } from "node:fs/promises"
 import { isAbsolute, join, relative } from "node:path"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
+import type { EnvironmentCheckRequest } from "./environment-check-model"
+import { approvedEnvironmentBrowser } from "./environment-runtime"
+import { BrowserLaunchError, BrowserStartupCleanupError } from "./browser-launch-errors"
+/** 保留启动器公共错误入口，定义与回收语义集中在错误模块。 */
+export {
+  BrowserLaunchError,
+  BrowserStartupCleanupError,
+  type BrowserErrorCode,
+} from "./browser-launch-errors"
 import { BrowserProcessExitedError } from "./browser-control-pipe"
 import {
   BrowserStartupTimeoutError,
@@ -22,25 +31,6 @@ const defaultStopTimeoutMs = 3_000
 // 固定 PigBrowser 156 的 CHROME_RESULT_CODE_UNSUPPORTED_PARAM。
 const unsupportedParameterExitCode = 13
 
-/** 浏览器启动器的稳定错误码。 */
-export type BrowserErrorCode =
-  | "BROWSER_MISSING"
-  | "BROWSER_START_FAILED"
-  | "BROWSER_STOP_FAILED"
-  | "BROWSER_PROFILE_DELETE_FAILED"
-
-/** PigBrowser 启动错误。保证错误消息不含凭据。 */
-export class BrowserLaunchError extends Error {
-  readonly code: BrowserErrorCode
-
-  /** 创建带错误码的浏览器启动错误。 */
-  constructor(code: BrowserErrorCode, message: string) {
-    super(message)
-    this.name = "BrowserLaunchError"
-    this.code = code
-  }
-}
-
 /** 启动器配置。binaryPath 优先，其次读取 PIGCLAUDE_PIGBROWSER_BIN。 */
 export type FingerprintChromiumConfig = {
   binaryPath?: string
@@ -49,6 +39,8 @@ export type FingerprintChromiumConfig = {
   spawn?: typeof spawn
   /** 页面启动操作；缺省通过本次浏览器进程的管道执行。 */
   openPage?: (input: BrowserStartupInput) => Promise<void>
+  /** 完整资源校验端口；测试可注入合成文件系统的验证结果。 */
+  verifyEnvironmentBrowser?: typeof approvedEnvironmentBrowser
   stopTimeoutMs?: number
   /** 宿主屏幕可用区域，用于计算默认窗口大小；缺省按 1920x1080。 */
   screenSize?: ScreenSize
@@ -70,6 +62,8 @@ export type LaunchBrowserInput = {
   authorizeUrl: string
   network: LaunchBrowserNetwork
   fingerprint: ClaudeFingerprintView
+  /** 由账号服务绑定本次自检；缺证据不能换取令牌。 */
+  environmentCheck?: EnvironmentCheckRequest
   /** 若提供，在创建进程前确认本次授权仍未取消。 */
   signal?: AbortSignal
   /** 在同步创建进程前重新核对授权服务的启动条件。 */
@@ -88,18 +82,6 @@ export type LaunchedBrowser = {
   stop: () => Promise<void>
 }
 
-/** 启动失败且进程未确认退出时，保留该实例供上层继续回收。 */
-export class BrowserStartupCleanupError extends BrowserLaunchError {
-  readonly browser: LaunchedBrowser
-
-  /** 创建携带待回收实例的脱敏错误。 */
-  constructor(browser: LaunchedBrowser) {
-    super("BROWSER_STOP_FAILED", "无法确认浏览器已退出，请手动关闭后重试")
-    this.name = "BrowserStartupCleanupError"
-    this.browser = browser
-  }
-}
-
 type ManagedProcess = {
   child: ChildProcess
   exited: boolean
@@ -113,6 +95,7 @@ export class FingerprintChromiumAdapter {
   readonly #env: Record<string, string | undefined>
   readonly #spawn: typeof spawn
   readonly #openPage: (input: BrowserStartupInput) => Promise<void>
+  readonly #verifyEnvironmentBrowser: typeof approvedEnvironmentBrowser
   readonly #stopTimeoutMs: number
   readonly #screenSize: ScreenSize | undefined
   readonly #hostPlatform: NodeJS.Platform
@@ -131,6 +114,7 @@ export class FingerprintChromiumAdapter {
     this.#env = config.env ?? process.env
     this.#spawn = config.spawn ?? spawn
     this.#openPage = config.openPage ?? openAuthorizedPage
+    this.#verifyEnvironmentBrowser = config.verifyEnvironmentBrowser ?? approvedEnvironmentBrowser
     this.#stopTimeoutMs = config.stopTimeoutMs ?? defaultStopTimeoutMs
     this.#screenSize = config.screenSize
     this.#hostPlatform = config.hostPlatform ?? process.platform
@@ -179,6 +163,9 @@ export class FingerprintChromiumAdapter {
       throw new BrowserLaunchError("BROWSER_START_FAILED", validation.message)
     }
     const network = validatedNetwork(input.network)
+    if (input.environmentCheck && this.#env["NODE_TLS_REJECT_UNAUTHORIZED"] === "0") {
+      throw new BrowserLaunchError("BROWSER_START_FAILED", "授权环境自检要求保留 TLS 证书校验")
+    }
     const conflict = launchArgumentConflict(
       validation.fingerprint.unknownArgs ?? [],
       network.mode === "bound",
@@ -190,6 +177,15 @@ export class FingerprintChromiumAdapter {
       signal?.throwIfAborted()
       if (this.#closed) throw new BrowserLaunchError("BROWSER_START_FAILED", "浏览器启动器已关闭")
       const binary = await this.ensureAvailable()
+      if (
+        input.environmentCheck &&
+        !(await this.#verifyEnvironmentBrowser(binary, this.#hostPlatform, this.#hostArch))
+      ) {
+        throw new BrowserLaunchError(
+          "BROWSER_START_FAILED",
+          "未能验证固定 PigBrowser 完整资源，请重新准备已批准开发包",
+        )
+      }
       signal?.throwIfAborted()
       if (this.#closed) throw new BrowserLaunchError("BROWSER_START_FAILED", "浏览器启动器已关闭")
       await this.#stopUnlocked(accountId)
@@ -233,6 +229,16 @@ export class FingerprintChromiumAdapter {
           signal: startupSignal,
           extensionArgs: validation.fingerprint.unknownArgs,
           hostPlatform: this.#hostPlatform,
+          environmentCheck: input.environmentCheck
+            ? {
+                request: input.environmentCheck,
+                expectedExitIp: input.environmentCheck.expectedExitIp,
+                accountId,
+                fingerprint: validation.fingerprint,
+                network,
+                launchArgs: args,
+              }
+            : undefined,
           assertCanNavigate: () => {
             try {
               signal?.throwIfAborted()

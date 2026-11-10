@@ -338,14 +338,14 @@ describe("desktop onboarding gate", () => {
     await click("下一步")
     await click("绑定代理")
     await click("保存并核对出口")
-    const start = button("开始核对并授权")
+    const start = button("检测环境并准备授权")
     expect(start).toBeDefined()
     await act(async () => {
       start?.click()
       start?.click()
     })
     expect(starts).toBe(1)
-    const retry = button("重新发起")
+    const retry = button("重新自检")
     expect(retry).toBeDefined()
     await act(async () => {
       retry?.click()
@@ -410,7 +410,7 @@ describe("desktop onboarding gate", () => {
     await click("下一步")
     await click("绑定代理")
     await click("保存并核对出口")
-    await click("开始核对并授权")
+    await click("检测环境并准备授权")
     await act(async () => {
       await Promise.resolve()
     })

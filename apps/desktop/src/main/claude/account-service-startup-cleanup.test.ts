@@ -21,6 +21,7 @@ it("启动失败但浏览器未退出时保留网络资源并阻止新授权", a
   const adapter = new FingerprintChromiumAdapter({
     hostArch: process.arch,
     binaryPath: process.execPath,
+    verifyEnvironmentBrowser: async () => true,
     profilesRoot: root,
     spawn: syntheticSpawn,
     stopTimeoutMs: 5,
@@ -101,6 +102,7 @@ it("启动失败且浏览器未退出时保留监听，但拒绝迟到的授权�
   const adapter = new FingerprintChromiumAdapter({
     hostArch: process.arch,
     binaryPath: process.execPath,
+    verifyEnvironmentBrowser: async () => true,
     profilesRoot: root,
     spawn: syntheticSpawn,
     stopTimeoutMs: 5,

@@ -170,15 +170,15 @@ async function choose(id: string, value: string): Promise<void> {
 }
 
 describe("Claude account authorization wizard", () => {
-  it("only starts CheckCC preflight when the user chooses it", async () => {
+  it("always starts the local environment check for reauthorization", async () => {
     const onStart = vi.fn()
     await render({ proxies, account: savedAccount, onStart })
     await click("下一步")
     await click("绑定代理")
     await click("保存并核对出口")
-    await click("先检测 CheckCC")
+    await click("检测环境并准备授权")
     expect(onStart).toHaveBeenCalledWith(
-      expect.objectContaining({ accountId: "acc-1", proxyId: "sjc-02", preflight: "checkcc" }),
+      expect.objectContaining({ accountId: "acc-1", proxyId: "sjc-02" }),
     )
   })
 
@@ -212,7 +212,7 @@ describe("Claude account authorization wizard", () => {
 
     expect(container.textContent).toContain("SJC-02 · 198.51.100.17")
     expect(container.textContent).toContain("Chrome · Windows")
-    await click("开始核对并授权")
+    await click("检测环境并准备授权")
     expect(onStart).toHaveBeenCalledTimes(1)
     expect(onStart).toHaveBeenCalledWith({
       accountId: undefined,
@@ -312,7 +312,7 @@ describe("Claude account authorization wizard", () => {
     expect(select("authorize-platform").textContent).toBe("Windows")
     expect(select("authorize-brand").textContent).toBe("Edge")
     await click("保存并核对出口")
-    await click("开始核对并授权")
+    await click("检测环境并准备授权")
 
     expect(onStart).toHaveBeenCalledWith({
       accountId: "acc-1",
@@ -338,7 +338,7 @@ describe("Claude account authorization wizard", () => {
     await click("下一步")
     await click("绑定代理")
     await click("保存并核对出口")
-    await click("开始核对并授权")
+    await click("检测环境并准备授权")
 
     expect(onStart).toHaveBeenCalledWith(
       expect.objectContaining({ fingerprint: expect.objectContaining({ unknownArgs }) }),
@@ -360,7 +360,7 @@ describe("Claude account authorization wizard", () => {
     expect(remove).not.toBeNull()
     await act(async () => remove?.click())
     await click("保存并核对出口")
-    await click("开始核对并授权")
+    await click("检测环境并准备授权")
 
     expect(onStart).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -376,10 +376,10 @@ describe("Claude account authorization wizard", () => {
 
     expect(container.querySelector(".error-text")?.textContent).toBe("请勿登录")
     expect(container.textContent).not.toContain("等待浏览器确认")
-    expect(button("开始核对并授权")).toBeUndefined()
+    expect(button("检测环境并准备授权")).toBeUndefined()
     expect(button("打开浏览器授权")).toBeUndefined()
 
-    await click("重新核对")
+    await click("重新自检")
     expect(onStart).toHaveBeenCalledTimes(1)
   })
 
@@ -396,8 +396,8 @@ describe("Claude account authorization wizard", () => {
     await click("保存并继续")
 
     expect(container.textContent).toContain("系统网络（直连）")
-    expect(container.textContent).toContain("系统网络，无需出口核对")
-    await click("开始授权")
+    expect(container.textContent).toContain("系统网络，仍检查两个 IPv4 原始探针")
+    await click("检测环境并准备授权")
     expect(onStart).toHaveBeenCalledWith(
       expect.objectContaining({ accountId: undefined, proxyId: null }),
     )
@@ -424,7 +424,7 @@ describe("Claude account authorization wizard", () => {
     await act(async () => (direct as HTMLButtonElement | undefined)?.click())
     await click("使用系统网络")
     await click("保存并继续")
-    await click("开始授权")
+    await click("检测环境并准备授权")
 
     expect(onStart).toHaveBeenCalledWith(
       expect.objectContaining({ accountId: "acc-1", proxyId: null }),
@@ -441,7 +441,7 @@ describe("Claude account authorization wizard", () => {
     )
     await click("使用系统网络")
     await click("保存并继续")
-    await click("开始授权")
+    await click("检测环境并准备授权")
 
     expect(onStart).toHaveBeenCalledWith(
       expect.objectContaining({ accountId: "acc-1", proxyId: null }),

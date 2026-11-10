@@ -12,12 +12,14 @@ it.each([
   { expectedIp: "8.8.8.8", passed: false },
   { expectedIp: "1.1.1.1", passed: true, locale: "zh-Hans-CN" },
   { expectedIp: "1.1.1.1", passed: true, locale: "sr-Latn-RS" },
+  { expectedIp: "1.1.1.1", passed: true, localeAlias: true },
 ])(
   "实际 native 与中转路径核对 $expectedIp，授权结果 $passed",
   async (options) => {
     const fixture = await createLoopbackFixture((_request, response) => response.end("1.1.1.1\n"))
     const diagnostics = new NativeEnvironmentInspector({
       exitTarget: `http://127.0.0.1:${fixture.originPort}/probe`,
+      ...(options.localeAlias ? { readAvailableLocales: async () => ["en_US.utf8"] } : {}),
     })
     let evidence: NativeEnvironmentEvidence | undefined
     const harness = await createHarness({

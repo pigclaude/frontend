@@ -38,6 +38,7 @@ export async function probeNativeCli(input: {
   locale: string
   signal: AbortSignal
   binary?: string
+  readAvailableLocales?: (signal: AbortSignal) => Promise<readonly string[]>
 }): Promise<NativeCliObservation> {
   input.signal.throwIfAborted()
   const binary = input.binary ?? resolveClaudeBinaryPath({ arch: runtimeHostArch() })
@@ -98,15 +99,20 @@ export async function probeNativeCli(input: {
     const available =
       process.platform === "win32"
         ? undefined
-        : await run("/usr/bin/locale", ["-a"], {
-            env: { ...safeEnvironment, LANG: "C", LC_ALL: "C" },
-            timeout: 3_000,
-            killSignal: "SIGKILL",
-            maxBuffer: 262_144,
-            signal: input.signal,
-          })
+        : input.readAvailableLocales
+          ? await input.readAvailableLocales(input.signal)
+          : (
+              await run("/usr/bin/locale", ["-a"], {
+                env: { ...safeEnvironment, LANG: "C", LC_ALL: "C" },
+                timeout: 3_000,
+                killSignal: "SIGKILL",
+                maxBuffer: 262_144,
+                signal: input.signal,
+              })
+            ).stdout.split(/\r?\n/)
     const localeAvailable =
-      available === undefined || available.stdout.split(/\r?\n/).includes(session.env.LANG)
+      available === undefined ||
+      available.some((name) => name.replace(/\.utf-?8(?=@|$)/i, ".UTF-8") === session.env.LANG)
     const versionResult = await run(binary, ["--version"], {
       cwd: directory,
       env: safeEnvironment,

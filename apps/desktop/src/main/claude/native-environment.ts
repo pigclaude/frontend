@@ -21,6 +21,7 @@ export type NativeEnvironmentOptions = {
   systemLocale?: () => string
   systemTimezone?: () => string
   diagnosticTimeoutMs?: number
+  readAvailableLocales?: (signal: AbortSignal) => Promise<readonly string[]>
 }
 
 /** 串行执行授权诊断，所有权和失败清理跨请求保持，禁止重叠运行或带病重试。 */
@@ -75,7 +76,13 @@ export class NativeEnvironmentInspector implements NativeEnvironmentDiagnostics 
         input.fingerprint.timezone || this.#options.systemTimezone?.(),
       )
       const [cli, routes] = await Promise.allSettled([
-        probeNativeCli({ timezone, locale, signal, binary: this.#options.binary }),
+        probeNativeCli({
+          timezone,
+          locale,
+          signal,
+          binary: this.#options.binary,
+          readAvailableLocales: this.#options.readAvailableLocales,
+        }),
         probeNativeRoutes(
           { ...input, signal },
           this.#options.exitTarget ?? defaultEnvironmentExitUrl,

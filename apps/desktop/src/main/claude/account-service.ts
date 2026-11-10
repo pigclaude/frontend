@@ -298,6 +298,7 @@ export class ClaudeAccountService {
             throw new ClaudeAccountError("INVALID_INPUT", "账号凭据已更新，请重新授权")
           }
           if (
+            current.browserProfileId !== selected.browserProfileId ||
             current.proxyId !== existing.proxyId ||
             !isDeepStrictEqual(current.fingerprint, existing.fingerprint)
           ) {

@@ -1,6 +1,6 @@
 // 本机账号库测试。重新打开后仍保留凭据和指纹；旧记录迁移；两次保存交错时两条记录都还在。
 
-import { mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
@@ -57,6 +57,30 @@ const credential: ClaudeCredential = {
 }
 
 describe("LocalStore", () => {
+  it("迁移遇到截断备份时保留原账号文件并拒绝继续", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "store-backup-"))
+    const original = JSON.stringify([account("acc-1")])
+    await writeFile(join(dir, "accounts.json"), original)
+    await mkdir(join(dir, "migration-backups"))
+    await writeFile(
+      join(dir, "migration-backups", "browser-profiles-v1-accounts.json"),
+      '[{"broken"',
+    )
+    await expect(new LocalStore(dir).listAccounts()).rejects.toThrow("备份")
+    expect(await readFile(join(dir, "accounts.json"), "utf8")).toBe(original)
+  })
+
+  it("迁移重试保留完整原始备份，不覆盖已发布的恢复数据", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "store-backup-"))
+    const original = JSON.stringify([account("acc-1")])
+    await writeFile(join(dir, "accounts.json"), original)
+    await mkdir(join(dir, "migration-backups"))
+    const backup = join(dir, "migration-backups", "browser-profiles-v1-accounts.json")
+    await writeFile(backup, original)
+    expect((await new LocalStore(dir).listAccounts())[0]?.browserProfileId).toBe("acc-1")
+    expect(await readFile(backup, "utf8")).toBe(original)
+  })
+
   it("keeps the credential and user-set fingerprint when the account is loaded again", async () => {
     const dir = await mkdtemp(join(tmpdir(), "store-"))
     const store = new LocalStore(dir)

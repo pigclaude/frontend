@@ -67,6 +67,9 @@ export async function accountBrowserProfile(
     throw new ClaudeAccountError("INVALID_INPUT", "请先在账号设置中更换浏览器配置")
   const release = options.usage?.acquire(profileId, randomUUID(), accountId) ?? (() => undefined)
   try {
+    const baseline = await store.getAccount(accountId)
+    if (input.accountId && (!baseline || baseline.browserProfileId !== profileId))
+      throw new ClaudeAccountError("INVALID_INPUT", "账号关联配置已变化，请重新选择并检测")
     const profile = await store.getBrowserProfile(profileId)
     if (!profile) throw new ClaudeAccountError("FINGERPRINT_INVALID", "浏览器实例配置不存在")
     const proxy = profile.proxyId === null ? null : await store.getProxy(profile.proxyId)
@@ -83,7 +86,13 @@ export async function accountBrowserProfile(
       assertCurrent: async () => {
         const latest = await store.getBrowserProfile(profile.id)
         const currentProxy = profile.proxyId === null ? null : await store.getProxy(profile.proxyId)
-        if (!isDeepStrictEqual(latest, profile) || currentProxy?.url !== proxy?.url)
+        const currentAccount = await store.getAccount(accountId)
+        if (
+          !isDeepStrictEqual(latest, profile) ||
+          currentProxy?.url !== proxy?.url ||
+          currentAccount?.browserProfileId !== baseline?.browserProfileId ||
+          !!currentAccount !== !!baseline
+        )
           throw new ClaudeAccountError(
             "ENVIRONMENT_CHECK_FAILED",
             "浏览器配置或代理已变化，请重新检测",

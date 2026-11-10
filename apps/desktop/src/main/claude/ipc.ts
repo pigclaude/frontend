@@ -30,7 +30,14 @@ export function registerClaudeIpc(options: ClaudeIpcOptions): void {
   ipcMain.handle("pigclaude:claude-accounts-authorize", async (event, value: unknown) => {
     assertTrusted(options, event)
     const service = requireService(options)
-    if (!isRecord(value) || typeof value.browserProfileId !== "string") throw invalidInput()
+    if (
+      !isRecord(value) ||
+      typeof value.browserProfileId !== "string" ||
+      !value.browserProfileId.trim() ||
+      value.fingerprint !== undefined ||
+      value.proxyId !== undefined
+    )
+      throw invalidInput()
     return service.authorize(readAuthorizeInput(value))
   })
   ipcMain.handle("pigclaude:claude-accounts-cancel", async (event) => {

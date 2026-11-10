@@ -23,6 +23,11 @@
 }
 .browser-profile-fields > .field {
   margin-bottom: 14px;
+  margin-inline: 24px;
+}
+.browser-profile-fields > .note,
+.browser-profile-fields > .btn {
+  margin-inline: 24px;
 }
 .browser-profile-fields > .fingerprint-form {
   margin-top: 16px;

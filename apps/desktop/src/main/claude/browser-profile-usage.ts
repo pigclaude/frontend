@@ -1,9 +1,12 @@
 // 在主进程中协调实例使用与配置修改，防止启动过程和编辑过程交错产生两份环境。
 
+import { ClaudeAccountError } from "./errors"
+
 /** 多个账号可同时读取同一配置，全部运行资源释放前禁止修改该配置。 */
 export class BrowserProfileUsage {
   readonly #owners = new Map<string, Map<string, { count: number; accountId?: string }>>()
   readonly #editing = new Set<string>()
+  readonly #editingAccounts = new Set<string>()
 
   /** 判断配置是否在运行中或正在被修改。 */
   inUse(id: string): boolean {
@@ -13,7 +16,8 @@ export class BrowserProfileUsage {
   /** 同步预占实例，返回幂等释放；预占后读取配置不会被产品编辑穿插。 */
   acquire(id: string, owner: string, accountId?: string): () => void {
     const existing = this.#owners.get(id)
-    if (this.#editing.has(id)) throw new Error("BROWSER_PROFILE_IN_USE: 浏览器实例正在使用")
+    if (this.#editing.has(id) || (accountId && this.#editingAccounts.has(accountId)))
+      throw new ClaudeAccountError("INVALID_INPUT", "浏览器配置或账号绑定正在修改，请稍后重试")
     const held = existing ?? new Map<string, { count: number; accountId?: string }>()
     const entry = held.get(owner) ?? { count: 0, accountId }
     entry.count++
@@ -34,6 +38,18 @@ export class BrowserProfileUsage {
     return [...this.#owners.values()].some((owners) =>
       [...owners.values()].some((entry) => entry.accountId === accountId),
     )
+  }
+
+  /** 账号引用从读取到提交全程互斥，期间不能启动该账号的授权或会话。 */
+  async editAccount<T>(accountId: string, operation: () => Promise<T>): Promise<T> {
+    if (this.accountInUse(accountId) || this.#editingAccounts.has(accountId))
+      throw new ClaudeAccountError("INVALID_INPUT", "请先结束该账号的授权或会话")
+    this.#editingAccounts.add(accountId)
+    try {
+      return await operation()
+    } finally {
+      this.#editingAccounts.delete(accountId)
+    }
   }
 
   /** 在没有使用者时执行整次配置修改，所有 await 期间保持编辑权。 */

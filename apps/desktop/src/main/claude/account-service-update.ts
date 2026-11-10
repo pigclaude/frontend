@@ -15,50 +15,59 @@ export async function updateClaudeAccount(
   input: UpdateClaudeAccountInput,
   now: () => number,
 ): Promise<ClaudeAccountView> {
-  const account = await deps.store.getAccount(input.accountId)
-  if (!account) throw new ClaudeAccountError("ACCOUNT_NOT_FOUND", "账号不存在")
-  const displayName = input.displayName?.trim() ?? account.displayName
-  if (!displayName) throw new ClaudeAccountError("INVALID_INPUT", "账号名称不能为空")
-  const profileId = input.browserProfileId ?? account.browserProfileId
-  if (!profileId) throw new ClaudeAccountError("FINGERPRINT_INVALID", "账号缺少浏览器配置")
   const usage = deps.profileUsage ?? new BrowserProfileUsage()
-  if (input.browserProfileId && usage.accountInUse(account.id))
-    throw new ClaudeAccountError("INVALID_INPUT", "请先结束该账号的授权或会话")
-  const release = usage.acquire(profileId, `settings-${account.id}`, account.id)
-  const profile = await deps.store.getBrowserProfile(profileId).finally(release)
-  if (!profile) throw new ClaudeAccountError("FINGERPRINT_INVALID", "浏览器配置不存在")
-  if (input.fingerprint !== undefined || input.proxyId !== undefined) {
-    if (
-      input.proxyId !== undefined &&
-      input.proxyId !== null &&
-      !(await deps.store.getProxy(input.proxyId))
-    )
-      throw new ClaudeAccountError("PROXY_INVALID", "代理不存在")
-    if (input.fingerprint !== undefined) {
-      const validation = ensureFingerprint(input.fingerprint, profileId)
-      if (!validation.ok) throw new ClaudeAccountError("FINGERPRINT_INVALID", validation.message)
+  const apply = async (): Promise<ClaudeAccountView> => {
+    const account = await deps.store.getAccount(input.accountId)
+    if (!account) throw new ClaudeAccountError("ACCOUNT_NOT_FOUND", "账号不存在")
+    const displayName = input.displayName?.trim() ?? account.displayName
+    if (!displayName) throw new ClaudeAccountError("INVALID_INPUT", "账号名称不能为空")
+    const profileId = input.browserProfileId ?? account.browserProfileId
+    if (!profileId) throw new ClaudeAccountError("FINGERPRINT_INVALID", "账号缺少浏览器配置")
+    const release = usage.acquire(profileId, `settings-${account.id}`)
+    try {
+      const profile = await deps.store.getBrowserProfile(profileId)
+      if (!profile) throw new ClaudeAccountError("FINGERPRINT_INVALID", "浏览器配置不存在")
+      if (input.fingerprint !== undefined || input.proxyId !== undefined) {
+        if (input.browserProfileId !== undefined)
+          throw new ClaudeAccountError("INVALID_INPUT", "更换配置引用时不能同时上传环境副本")
+        release()
+        if (
+          input.proxyId !== undefined &&
+          input.proxyId !== null &&
+          !(await deps.store.getProxy(input.proxyId))
+        )
+          throw new ClaudeAccountError("PROXY_INVALID", "代理不存在")
+        if (input.fingerprint !== undefined) {
+          const validation = ensureFingerprint(input.fingerprint, profileId)
+          if (!validation.ok)
+            throw new ClaudeAccountError("FINGERPRINT_INVALID", validation.message)
+        }
+        const service = new BrowserProfileService({
+          store: deps.store,
+          usage,
+          systemLocale: deps.systemLocale,
+          systemTimezone: deps.systemTimezone,
+        })
+        await service.save({
+          id: profile.id,
+          revision: profile.revision,
+          name: profile.name,
+          fingerprint: input.fingerprint ?? profile.fingerprint,
+          proxyId: input.proxyId === undefined ? profile.proxyId : input.proxyId,
+        })
+      }
+      const updated = await deps.store.updateAccount(account.id, (current) => ({
+        ...current,
+        browserProfileId: input.browserProfileId ?? current.browserProfileId,
+        displayName: input.displayName === undefined ? current.displayName : displayName,
+        enabled: input.enabled ?? current.enabled,
+        updatedAt: new Date(now()).toISOString(),
+      }))
+      if (!updated) throw new ClaudeAccountError("ACCOUNT_NOT_FOUND", "账号不存在")
+      return toView(updated)
+    } finally {
+      release()
     }
-    const service = new BrowserProfileService({
-      store: deps.store,
-      usage,
-      systemLocale: deps.systemLocale,
-      systemTimezone: deps.systemTimezone,
-    })
-    await service.save({
-      id: profile.id,
-      revision: profile.revision,
-      name: profile.name,
-      fingerprint: input.fingerprint ?? profile.fingerprint,
-      proxyId: input.proxyId === undefined ? profile.proxyId : input.proxyId,
-    })
   }
-  const updated = await deps.store.updateAccount(account.id, (current) => ({
-    ...current,
-    browserProfileId: profileId,
-    displayName: input.displayName === undefined ? current.displayName : displayName,
-    enabled: input.enabled ?? current.enabled,
-    updatedAt: new Date(now()).toISOString(),
-  }))
-  if (!updated) throw new ClaudeAccountError("ACCOUNT_NOT_FOUND", "账号不存在")
-  return toView(updated)
+  return input.browserProfileId === undefined ? apply() : usage.editAccount(input.accountId, apply)
 }

@@ -223,6 +223,29 @@ describe("验证并保存代理 IPC", () => {
   })
 })
 
+describe("产品授权只接受配置引用", () => {
+  it.each(["", "   "])("拒绝空引用 %j 携带旧指纹退回兼容入口", async (browserProfileId) => {
+    ipcHandlers.clear()
+    const authorize = vi.fn(async () => importedView)
+    const service = { ...fakeService(), authorize }
+    register(service, true)
+    const handler = ipcHandlers.get("pigclaude:claude-accounts-authorize")
+    if (!handler) throw new Error("授权入口未注册")
+    await expect(
+      handler(
+        {},
+        {
+          displayName: "账号",
+          browserProfileId,
+          fingerprint: importedView.fingerprint,
+          proxyId: null,
+        },
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" })
+    expect(authorize).not.toHaveBeenCalled()
+  })
+})
+
 function fakeService(result: ClaudeAccountView = importedView): {
   importFromClaudeCli: ReturnType<typeof vi.fn>
 } {

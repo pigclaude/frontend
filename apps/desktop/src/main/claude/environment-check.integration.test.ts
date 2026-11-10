@@ -82,7 +82,7 @@ it.skipIf(!binary || !xray)(
 )
 
 it.skipIf(!binary || !xray)(
-  "公开页面稍晚挂载登录控件时等待同一文档完成，不误报未知",
+  "公开页面超过五秒才挂载控件时仍等待同一文档完成",
   async () => {
     await withEnvironmentBrowser(
       async ({ report }) => {
@@ -165,7 +165,7 @@ async function withEnvironmentBrowser(
         response.end('<!doctype html><input type="email">')
       } else if (options.delayedLogin) {
         response.end(
-          '<!doctype html><title>Synthetic login</title><script>setTimeout(()=>document.body.appendChild(Object.assign(document.createElement("input"),{type:"email"})),500)</script>',
+          '<!doctype html><title>Synthetic login</title><script>setTimeout(()=>document.body.appendChild(Object.assign(document.createElement("input"),{type:"email"})),6000)</script>',
         )
       } else if (options.redirectedLogin) {
         response.end(

@@ -13,6 +13,15 @@ import type {
 } from "./environment-check-model"
 import { environmentCheckItem } from "./environment-policy"
 
+// 首次加载的登录 SPA 可能较慢；等待控件不改变文档身份、TLS 或挑战要求。
+const loginControlsTimeoutMs = 20_000
+type LoginDocumentResult = "confirmed" | "changed" | "pending"
+const documentEvidence = {
+  confirmed: "DOM 查询前后 frame/loader 均与响应一致",
+  changed: "顶层文档已变化，不能借用前一导航的响应",
+  pending: "20 秒内未确认同一文档就绪和登录控件",
+}
+
 /** 对公开登录页执行顶层导航，挑战与缺少登录控件均不自动通过。 */
 export async function inspectClaudeNavigation(
   client: EnvironmentBrowserClient,
@@ -29,6 +38,7 @@ export async function inspectClaudeNavigation(
     const transport = !targets.claudeLogin.startsWith("https:") || response.secure
     const challenge = response.headers["cf-mitigated"] === "challenge" || response.status === 403
     let login = false
+    let observation = "未取得同一导航文档的登录控件证据"
     if (
       response.status >= 200 &&
       response.status < 300 &&
@@ -38,9 +48,11 @@ export async function inspectClaudeNavigation(
       !challenge
     ) {
       try {
-        login = await confirmLoginDocument(client, page, response)
+        const result = await confirmLoginDocument(client, page, response)
+        login = result === "confirmed"
+        observation = documentEvidence[result]
       } catch {
-        /* 缺少稳定的登录控件不推测为成功。 */
+        observation = "无法读取稳定的顶层文档与登录控件"
       }
     }
     const state =
@@ -52,7 +64,7 @@ export async function inspectClaudeNavigation(
     return environmentCheckItem("claude-navigation", mode, state, {
       expected: "公开登录页顶层访问成功，并出现登录控件",
       actual: `HTTP ${response.status || "未收到"}；${login ? "有登录控件" : challenge ? "遇到验证或挑战" : "未确认登录控件"}`,
-      evidence: `无账号 Cookie 的独立页面；native 顶层导航；${login ? "DOM 查询前后 frame/loader 均与响应一致" : "未确认同一导航文档的登录控件"}；${response.error ?? (transport ? "传输验证正常" : "缺少安全传输证据")}`,
+      evidence: `无账号 Cookie 的独立页面；native 顶层导航；${observation}；${response.error ?? (transport ? "传输验证正常" : "缺少安全传输证据")}`,
       remedy:
         state === "passed"
           ? "由你继续完成真实登录"
@@ -117,14 +129,14 @@ async function confirmLoginDocument(
   client: EnvironmentBrowserClient,
   page: EnvironmentPage,
   response: NativeEnvironmentResponse,
-): Promise<boolean> {
+): Promise<LoginDocumentResult> {
   const sameDocument = (document: { frameId: string; loaderId: string; url: string }) =>
     document.frameId === response.frameId &&
     document.loaderId === response.loaderId &&
     new URL(document.url).origin === new URL(response.url).origin
-  const deadline = Date.now() + 5_000
+  const deadline = Date.now() + loginControlsTimeoutMs
   while (Date.now() < deadline) {
-    if (!sameDocument(await client.documentIdentity(page))) return false
+    if (!sameDocument(await client.documentIdentity(page))) return "changed"
     const dom = await client.evaluate(
       page,
       `({ready:document.readyState,url:location.href,login:!!document.querySelector('input[type="email"],input[name="email"],button[data-testid="google-signin"]')})`,
@@ -135,9 +147,9 @@ async function confirmLoginDocument(
       typeof dom.url !== "string" ||
       new URL(dom.url).origin !== new URL(response.url).origin
     )
-      return false
-    if (dom.ready === "complete" && dom.login === true) return true
+      return "changed"
+    if (dom.ready === "complete" && dom.login === true) return "confirmed"
     await client.wait(new Promise<void>((resolve) => setTimeout(resolve, 50)), 200)
   }
-  return false
+  return "pending"
 }

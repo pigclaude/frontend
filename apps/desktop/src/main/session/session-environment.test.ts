@@ -25,6 +25,46 @@ afterEach(async () => {
 })
 
 describe("SessionEnvironment", () => {
+  it.skipIf(process.platform === "win32")(
+    "不能保留指定脚本时拒绝启动且不创建配置目录",
+    async () => {
+      const userDataPath = await tempDir()
+      await expect(
+        SessionEnvironment.create({
+          sessionId: "unsupported-script",
+          workspace: "/tmp/workspace",
+          daemonBaseUrl: "http://127.0.0.1:47821",
+          sessionToken: "synthetic-unsupported-script",
+          timezone: "UTC",
+          locale: "zh-Hant-CN",
+          binaryPath: "/synthetic/claude",
+          userDataPath,
+        }),
+      ).rejects.toThrow("语言脚本")
+      await expect(stat(join(userDataPath, "sessions"))).rejects.toMatchObject({ code: "ENOENT" })
+    },
+  )
+
+  it.each([
+    ["zh-Hans-CN", "zh_CN.UTF-8"],
+    ["sr-Latn-RS", "sr_RS.UTF-8@latin"],
+  ])("把脚本语言 %s 转为系统接受的 locale", async (locale, expected) => {
+    const userDataPath = await tempDir()
+    const environment = await SessionEnvironment.create({
+      sessionId: "script-locale",
+      workspace: "/tmp/workspace",
+      daemonBaseUrl: "http://127.0.0.1:47821",
+      sessionToken: "synthetic-script-locale",
+      timezone: "UTC",
+      locale,
+      binaryPath: "/synthetic/claude",
+      userDataPath,
+    })
+    expect(environment.env.LANG).toBe(process.platform === "win32" ? locale : expected)
+    expect(environment.env.LC_ALL).toBe(environment.env.LANG)
+    await environment.cleanup()
+  })
+
   it("builds the isolated session environment from the design table", async () => {
     const userDataPath = await tempDir()
     const environment = await SessionEnvironment.create({

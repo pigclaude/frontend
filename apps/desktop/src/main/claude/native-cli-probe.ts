@@ -12,6 +12,7 @@ import { SessionEnvironment, placeholderOAuthToken } from "../session/session-en
 import { matchesRuntimeBinary, runtimeHostArch } from "./runtime-binary"
 import { resolveClaudeBinaryPath } from "../session/claude-binary"
 import { createNativeProtocolFixture } from "./native-protocol-fixture"
+import { NativeDiagnosticCleanupError } from "./native-diagnostic-cleanup"
 
 const run = promisify(execFile)
 
@@ -21,22 +22,14 @@ export type NativeCliObservation = {
   platform: string
   launched: boolean
   configurationPrivate: boolean
+  locale: string
+  localeAvailable: boolean
   launchEnvironmentMatches: boolean
   legacyPreloadRemoved: boolean
   nativeCredentialIsPlaceholder: boolean
   protocolPreserved: boolean
   metadataPresent: boolean
   bodyBytes: number
-}
-
-/** 诊断进程未确认回收时保留其重试操作，不能删除目录后宣称已清理。 */
-export class NativeDiagnosticCleanupError extends Error {
-  readonly cleanup: () => Promise<void>
-  /** 保留本轮拥有的清理句柄，不在错误中放入凭据或私有路径。 */
-  constructor(cleanup: () => Promise<void>) {
-    super("本轮原生诊断资源尚未确认回收")
-    this.cleanup = cleanup
-  }
 }
 
 /** 只向本机假端点发送合成请求，不读取真实账号、执行工具或调用远端模型。 */
@@ -58,6 +51,7 @@ export async function probeNativeCli(input: {
   let closed: Promise<void> = Promise.resolve()
   let actualEnvironment: Record<string, string | undefined> | undefined
   let actualCommand: string | undefined
+  let preparationCleanup: (() => Promise<void>) | undefined
   const controller = new AbortController()
   const abort = (): void => controller.abort(input.signal.reason)
   input.signal.addEventListener("abort", abort, { once: true })
@@ -101,6 +95,18 @@ export async function probeNativeCli(input: {
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
       DISABLE_TELEMETRY: "1",
     }
+    const available =
+      process.platform === "win32"
+        ? undefined
+        : await run("/usr/bin/locale", ["-a"], {
+            env: { ...safeEnvironment, LANG: "C", LC_ALL: "C" },
+            timeout: 3_000,
+            killSignal: "SIGKILL",
+            maxBuffer: 262_144,
+            signal: input.signal,
+          })
+    const localeAvailable =
+      available === undefined || available.stdout.split(/\r?\n/).includes(session.env.LANG)
     const versionResult = await run(binary, ["--version"], {
       cwd: directory,
       env: safeEnvironment,
@@ -175,6 +181,8 @@ export async function probeNativeCli(input: {
       launched: child?.pid !== undefined && actualCommand === binary,
       configurationPrivate:
         privateMode && actualEnvironment?.CLAUDE_CONFIG_DIR === session.configDir,
+      locale: session.env.LANG,
+      localeAvailable,
       launchEnvironmentMatches:
         actualEnvironment?.TZ === session.env.TZ &&
         actualEnvironment?.LANG === session.env.LANG &&
@@ -185,11 +193,19 @@ export async function probeNativeCli(input: {
       metadataPresent,
       bodyBytes: original?.body.length ?? 0,
     }
+  } catch (error: unknown) {
+    if (error instanceof NativeDiagnosticCleanupError) preparationCleanup = error.cleanup
+    throw error
   } finally {
+    const retry = async (): Promise<void> => {
+      const results = await Promise.allSettled([cleanup(), preparationCleanup?.()])
+      if (results.some((result) => result.status === "rejected"))
+        throw new Error("原生诊断准备与运行资源尚未全部回收")
+    }
     try {
-      await cleanup()
+      await retry()
     } catch {
-      throw new NativeDiagnosticCleanupError(cleanup)
+      throw new NativeDiagnosticCleanupError(retry)
     }
   }
 }

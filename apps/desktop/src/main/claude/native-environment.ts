@@ -7,7 +7,8 @@ import type {
   NativeEnvironmentDiagnostics,
   NativeEnvironmentInput,
 } from "./native-environment-model"
-import { NativeDiagnosticCleanupError, probeNativeCli } from "./native-cli-probe"
+import { probeNativeCli } from "./native-cli-probe"
+import { NativeDiagnosticCleanupError } from "./native-diagnostic-cleanup"
 import { probeNativeRoutes } from "./native-route-probe"
 import { defaultEnvironmentExitUrl } from "./environment-targets"
 import { normalizeSessionLocale, normalizeSessionTimezone } from "../session/session-locale"
@@ -99,6 +100,7 @@ export class NativeEnvironmentInspector implements NativeEnvironmentDiagnostics 
       const launchPassed =
         !!facts?.launched &&
         facts.configurationPrivate &&
+        facts.localeAvailable &&
         facts.launchEnvironmentMatches &&
         facts.legacyPreloadRemoved &&
         facts.nativeCredentialIsPlaceholder
@@ -117,10 +119,10 @@ export class NativeEnvironmentInspector implements NativeEnvironmentDiagnostics 
           {
             expected: `官方原生 CLI；独立配置；时区 ${timezone}、语言 ${locale}；无真实凭据`,
             actual: facts
-              ? `版本 ${facts.version}；${facts.platform}；实际进程与启动材料${launchPassed ? "核对一致" : "未通过核对"}`
+              ? `版本 ${facts.version}；${facts.platform}；LANG/LC_ALL ${facts.locale}；实际进程与启动材料${launchPassed ? "核对一致" : "未通过核对"}`
               : "未能完成实际原生 CLI 采样",
             evidence:
-              "生产会话适配器 + 官方 SDK native spawn；临时独立配置和占位 token；NODE_OPTIONS 由 SDK 删除；合成请求仅到本机",
+              "生产会话适配器 + 官方 SDK native spawn；临时独立配置和占位 token；POSIX 平台核对系统可用 locale；NODE_OPTIONS 由 SDK 删除；合成请求仅到本机",
             remedy: launchPassed
               ? "无需处理；不把启动变量视为内部 Intl 的直接观测"
               : "核对官方 CLI 资源、语言设置与本机诊断服务后重新检测",

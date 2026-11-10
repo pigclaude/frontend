@@ -55,6 +55,7 @@ it.skipIf(!binary || !xray).each([
   { challenge: true, expected: "incomplete", checkId: "claude-navigation" },
   { challenge200: true, expected: "incomplete", checkId: "claude-navigation" },
   { dnsInvalid: true, expected: "incomplete", checkId: "proxy-dns" },
+  { dnsWrongOwner: true, expected: "incomplete", checkId: "proxy-dns" },
 ])(
   "实际采样异常 $checkId/$expected 时不暴露授权参数",
   async (options) => {
@@ -147,6 +148,7 @@ async function withEnvironmentBrowser(
     challenge200?: boolean
     largeLogin?: boolean
     dnsInvalid?: boolean
+    dnsWrongOwner?: boolean
   } = {},
 ): Promise<void> {
   const directory = await mkdtemp(join(tmpdir(), "pigclaude-environment-check-"))
@@ -165,7 +167,13 @@ async function withEnvironmentBrowser(
             : {
                 Status: 0,
                 Question: [{ name: "example.com.", type: 1 }],
-                Answer: [{ type: 1, data: "1.1.1.1" }],
+                Answer: [
+                  {
+                    name: options.dnsWrongOwner ? "wrong.example" : "example.com.",
+                    type: 1,
+                    data: "1.1.1.1",
+                  },
+                ],
               },
         ),
       )

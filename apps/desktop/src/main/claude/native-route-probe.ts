@@ -8,7 +8,7 @@ import type { NativeEnvironmentInput } from "./native-environment-model"
 import { CredentialRefresher } from "./credential-refresher"
 import { buildCredential } from "./account-service-record"
 import { environmentResponseIp } from "./environment-address"
-import { NativeDiagnosticCleanupError } from "./native-cli-probe"
+import { NativeDiagnosticCleanupError } from "./native-diagnostic-cleanup"
 
 /** 两条独立客户端路径实际取得的原始 IPv4，只供本机比较。 */
 export type NativeRouteObservation = { daemonIp: string | null; refreshIp: string | null }

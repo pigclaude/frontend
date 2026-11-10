@@ -10,6 +10,8 @@ import { syntheticEnvironmentReport } from "./environment-check-test-fixtures"
 it.each([
   { expectedIp: "1.1.1.1", passed: true },
   { expectedIp: "8.8.8.8", passed: false },
+  { expectedIp: "1.1.1.1", passed: true, locale: "zh-Hans-CN" },
+  { expectedIp: "1.1.1.1", passed: true, locale: "sr-Latn-RS" },
 ])(
   "实际 native 与中转路径核对 $expectedIp，授权结果 $passed",
   async (options) => {
@@ -55,7 +57,7 @@ it.each([
       const operation = harness.service.authorize({
         displayName: "真实 native 合成验收",
         proxyId: "p1",
-        fingerprint,
+        fingerprint: { ...fingerprint, lang: options.locale ?? fingerprint.lang },
       })
       if (options.passed)
         await expect(operation).resolves.toMatchObject({ displayName: "真实 native 合成验收" })

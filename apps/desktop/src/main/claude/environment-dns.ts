@@ -45,7 +45,11 @@ export function environmentDnsCheck(
       ) {
         answers = data.Answer.filter(
           (answer: unknown) =>
-            record(answer) && answer.type === 1 && publicEnvironmentIpv4(answer.data) !== null,
+            record(answer) &&
+            answer.type === 1 &&
+            typeof answer.name === "string" &&
+            answer.name.replace(/\.$/, "").toLowerCase() === "example.com" &&
+            publicEnvironmentIpv4(answer.data) !== null,
         ).length
         valid = answers > 0
       }

@@ -11,6 +11,7 @@ import { connect } from "node:net"
 import type { Duplex } from "node:stream"
 import { randomUUID } from "node:crypto"
 import { LocalDaemon } from "@pigclaude/daemon"
+import { NativeDiagnosticCleanupError } from "./native-diagnostic-cleanup"
 
 /** 本机观察端保存的合成消息，只在内存比较，不进入报告或导出。 */
 export type NativeProtocolRequest = { headers: IncomingHttpHeaders; body: Buffer }
@@ -160,7 +161,7 @@ export async function createNativeProtocolFixture(): Promise<NativeProtocolFixtu
     try {
       await stop()
     } catch (cleanup: unknown) {
-      throw new AggregateError([error, cleanup], "原生协议诊断准备失败且未完成清理")
+      throw new NativeDiagnosticCleanupError(stop, { cause: new AggregateError([error, cleanup]) })
     }
     throw error
   }

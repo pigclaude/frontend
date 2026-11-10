@@ -112,7 +112,9 @@ export class EnvironmentBrowserClient {
       const page = { targetId, sessionId: text(attached, "sessionId") }
       await this.command("Runtime.enable", {}, page.sessionId)
       await this.command("Network.enable", {}, page.sessionId)
-      await this.command("Network.setCacheDisabled", { cacheDisabled: true }, page.sessionId)
+      // 独立上下文没有既有缓存；强制禁用会给顶层导航额外注入 no-cache 请求头。
+      // 普通账号页面仍禁用缓存，隔离页面继续由 native 响应来源检查拒绝缓存命中。
+      await this.command("Network.setCacheDisabled", { cacheDisabled: !isolated }, page.sessionId)
       await this.command("Network.setBypassServiceWorker", { bypass: true }, page.sessionId)
       return await operation(page)
     } finally {

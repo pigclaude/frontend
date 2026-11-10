@@ -72,6 +72,23 @@ it.skipIf(!binary || !xray).each([
 )
 
 it.skipIf(!binary || !xray)(
+  "全新隔离登录页不注入 no-cache 请求头且仍核对实际文档",
+  async () => {
+    await withEnvironmentBrowser(
+      async ({ page, report }) => {
+        expect(report()?.checks.find((item) => item.id === "claude-navigation")?.state).toBe(
+          "passed",
+        )
+        expect(report()?.verdict).toBe("passed")
+        expect(await page.locator("form").count()).toBe(1)
+      },
+      { cacheSensitiveLogin: true },
+    )
+  },
+  90_000,
+)
+
+it.skipIf(!binary || !xray)(
   "大型正常公开登录页不受出口探针正文上限影响",
   async () => {
     await withEnvironmentBrowser(
@@ -149,6 +166,7 @@ async function withEnvironmentBrowser(
     largeLogin?: boolean
     dnsInvalid?: boolean
     dnsWrongOwner?: boolean
+    cacheSensitiveLogin?: boolean
   } = {},
 ): Promise<void> {
   const directory = await mkdtemp(join(tmpdir(), "pigclaude-environment-check-"))
@@ -182,7 +200,12 @@ async function withEnvironmentBrowser(
       response.end('<!doctype html><input type="email">')
     } else if (request.url?.includes("/login")) {
       response.setHeader("Content-Type", "text/html")
-      if (options.challenge) {
+      if (
+        options.challenge ||
+        (options.cacheSensitiveLogin &&
+          (request.headers["cache-control"] === "no-cache" ||
+            request.headers["pragma"] === "no-cache"))
+      ) {
         response.statusCode = 403
         response.setHeader("cf-mitigated", "challenge")
         response.end("<!doctype html><title>Just a moment</title>")

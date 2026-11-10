@@ -68,6 +68,21 @@ export class EnvironmentBrowserClient {
     await this.command("Page.setDocumentContent", { frameId, html }, page.sessionId)
   }
 
+  /** 读取当前顶层文档的 native 身份，用于在 DOM 观测前后核对同一导航。 */
+  async documentIdentity(
+    page: EnvironmentPage,
+  ): Promise<{ frameId: string; loaderId: string; url: string }> {
+    const tree = await this.command("Page.getFrameTree", {}, page.sessionId)
+    if (!record(tree.frameTree) || !record(tree.frameTree.frame))
+      throw new Error("顶层文档证据缺失")
+    const frame = tree.frameTree.frame
+    return {
+      frameId: text(frame, "id"),
+      loaderId: text(frame, "loaderId"),
+      url: text(frame, "url"),
+    }
+  }
+
   /** 创建普通后台页面；isolated 时不携带账号 Cookie，proxy 仅用于失效演练。 */
   async withPage<T>(
     isolated: boolean,
@@ -124,15 +139,18 @@ export class EnvironmentBrowserClient {
     throw new Error("自检文档尚未就绪")
   }
 
-  /** 以 native Network 响应体采样；JS 只触发请求，不提交自报 IP。 */
+  /** 采集 native 响应与文档身份；IP 读取有上限的正文，控件导航可只读元数据。 */
   async network(
     page: EnvironmentPage,
     url: string,
-    navigation: boolean,
-    timeoutMs = 10_000,
+    options: { navigation?: boolean; timeoutMs?: number; readBody?: boolean } = {},
   ): Promise<NativeEnvironmentResponse> {
+    const navigation = options.navigation ?? false
+    const timeoutMs = options.timeoutMs ?? 10_000
     const observation: NativeEnvironmentResponse = {
       url,
+      frameId: null,
+      loaderId: null,
       status: 0,
       body: "",
       peerAddress: null,
@@ -144,6 +162,8 @@ export class EnvironmentBrowserClient {
       headers: {},
     }
     let requestId: string | undefined
+    let navigationFrame: unknown
+    let navigationLoader: unknown
     let finish: () => void = () => undefined
     const completed = new Promise<void>((resolve) => {
       finish = resolve
@@ -155,12 +175,18 @@ export class EnvironmentBrowserClient {
         message.method === "Network.requestWillBeSent" &&
         record(params.request) &&
         params.request.url === url &&
-        typeof params.requestId === "string"
-      )
+        typeof params.requestId === "string" &&
+        (!navigation || params.type === "Document")
+      ) {
         requestId = params.requestId
+        observation.frameId = typeof params.frameId === "string" ? params.frameId : null
+        observation.loaderId = typeof params.loaderId === "string" ? params.loaderId : null
+      }
       if (params.requestId !== requestId || requestId === undefined) return false
       if (message.method === "Network.responseReceived" && record(params.response)) {
         const response = params.response
+        if (typeof params.frameId === "string") observation.frameId = params.frameId
+        if (typeof params.loaderId === "string") observation.loaderId = params.loaderId
         observation.url = typeof response.url === "string" ? response.url : url
         observation.status = typeof response.status === "number" ? response.status : 0
         observation.peerAddress =
@@ -189,6 +215,8 @@ export class EnvironmentBrowserClient {
     try {
       if (navigation) {
         const result = await this.command("Page.navigate", { url }, page.sessionId)
+        navigationFrame = result.frameId
+        navigationLoader = result.loaderId
         if (typeof result.errorText === "string") {
           observation.error = "navigation_failed"
           finish()
@@ -203,7 +231,19 @@ export class EnvironmentBrowserClient {
         )
       }
       await this.wait(completed, timeoutMs)
-      if (requestId && observation.status > 0 && observation.error === null) {
+      if (
+        navigation &&
+        observation.status > 0 &&
+        observation.error === null &&
+        (observation.frameId !== navigationFrame || observation.loaderId !== navigationLoader)
+      )
+        observation.error = "document_mismatch"
+      if (
+        options.readBody !== false &&
+        requestId &&
+        observation.status > 0 &&
+        observation.error === null
+      ) {
         const result = await this.command("Network.getResponseBody", { requestId }, page.sessionId)
         if (typeof result.body === "string" && result.body.length <= 65_536) {
           observation.body =

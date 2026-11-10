@@ -94,6 +94,8 @@ export type BrowserEnvironmentFacts = {
 /** 由 native Network 事件与响应体组成的单次采样。 */
 export type NativeEnvironmentResponse = {
   url: string
+  frameId: string | null
+  loaderId: string | null
   status: number
   body: string
   peerAddress: string | null

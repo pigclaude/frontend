@@ -52,6 +52,7 @@ it.skipIf(!binary || !xray).each([
   { secondaryIp: "invalid-provider-body", expected: "incomplete", checkId: "exit" },
   { languageOverride: "fr-FR", expected: "blocked", checkId: "settings" },
   { challenge: true, expected: "incomplete", checkId: "claude-navigation" },
+  { challenge200: true, expected: "incomplete", checkId: "claude-navigation" },
 ])(
   "实际采样异常 $checkId/$expected 时不暴露授权参数",
   async (options) => {
@@ -63,6 +64,49 @@ it.skipIf(!binary || !xray).each([
       expect(html).not.toContain("synthetic-private-state")
       expect(html).not.toContain("claude.test/oauth/authorize")
     }, options)
+  },
+  90_000,
+)
+
+it.skipIf(!binary || !xray)(
+  "大型正常公开登录页不受出口探针正文上限影响",
+  async () => {
+    await withEnvironmentBrowser(
+      async ({ report }) => {
+        expect(report()?.verdict).toBe("passed")
+      },
+      { largeLogin: true },
+    )
+  },
+  90_000,
+)
+
+it.skipIf(!binary || !xray)(
+  "公开页面稍晚挂载登录控件时等待同一文档完成，不误报未知",
+  async () => {
+    await withEnvironmentBrowser(
+      async ({ report }) => {
+        expect(report()?.verdict).toBe("passed")
+      },
+      { delayedLogin: true },
+    )
+  },
+  90_000,
+)
+
+it.skipIf(!binary || !xray)(
+  "脚本跳转后的登录 DOM 不能借用前一文档的 native 响应放行",
+  async () => {
+    await withEnvironmentBrowser(
+      async ({ page, report }) => {
+        expect(report()?.verdict).not.toBe("passed")
+        expect(report()?.checks.find((item) => item.id === "claude-navigation")?.state).not.toBe(
+          "passed",
+        )
+        expect(await page.locator("form").count()).toBe(0)
+      },
+      { redirectedLogin: true },
+    )
   },
   90_000,
 )
@@ -96,17 +140,37 @@ async function withEnvironmentBrowser(
     challenge?: boolean
     languageOverride?: string
     system?: boolean
+    delayedLogin?: boolean
+    redirectedLogin?: boolean
+    challenge200?: boolean
+    largeLogin?: boolean
   } = {},
 ): Promise<void> {
   const directory = await mkdtemp(join(tmpdir(), "pigclaude-environment-check-"))
   const fixture = await createLoopbackFixture((request, response) => {
     response.setHeader("Access-Control-Allow-Origin", "*")
-    if (request.url?.includes("/login")) {
+    if (request.url?.includes("/moved")) {
+      response.setHeader("Content-Type", "text/html")
+      response.end('<!doctype html><input type="email">')
+    } else if (request.url?.includes("/login")) {
       response.setHeader("Content-Type", "text/html")
       if (options.challenge) {
         response.statusCode = 403
         response.setHeader("cf-mitigated", "challenge")
         response.end("<!doctype html><title>Just a moment</title>")
+      } else if (options.largeLogin) {
+        response.end(`<!doctype html><input type="email"><!--${"x".repeat(70_000)}-->`)
+      } else if (options.challenge200) {
+        response.setHeader("cf-mitigated", "challenge")
+        response.end('<!doctype html><input type="email">')
+      } else if (options.delayedLogin) {
+        response.end(
+          '<!doctype html><title>Synthetic login</title><script>setTimeout(()=>document.body.appendChild(Object.assign(document.createElement("input"),{type:"email"})),500)</script>',
+        )
+      } else if (options.redirectedLogin) {
+        response.end(
+          `<!doctype html><script>window.onload=()=>location.replace("http://localhost:${fixture.originPort}/probe/moved")</script>`,
+        )
       } else response.end('<!doctype html><title>Synthetic login</title><input type="email">')
     } else {
       response.setHeader("Content-Type", "application/json")
@@ -157,7 +221,7 @@ async function withEnvironmentBrowser(
         : { mode: "bound", bridgeUrl: runtime.url, callbackUri: callback.redirectUri },
       fingerprint: {
         ...fingerprint,
-        ...(options.system ? { lang: "", timezone: "", acceptLang: "" } : {}),
+        ...(options.system ? { lang: "", timezone: "", acceptLang: "", platform: "" } : {}),
         unknownArgs: [
           "--headless=new",
           "--remote-debugging-port=0",

@@ -75,7 +75,7 @@ export function environmentSettingsMatch(
     JSON.stringify(value.languages.map(canonical)) === JSON.stringify(languages) &&
     value.timezone === value.expectedTimezone &&
     JSON.stringify(value.offsets) === JSON.stringify(value.expectedOffsets) &&
-    value.platform === platform &&
+    (fingerprint.platform === "" || value.platform === platform) &&
     (!fingerprint.hardwareConcurrency ||
       value.hardwareConcurrency === Number(fingerprint.hardwareConcurrency))
   )

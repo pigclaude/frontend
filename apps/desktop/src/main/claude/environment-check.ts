@@ -52,7 +52,7 @@ export async function inspectAuthorizationEnvironment(
     () => undefined,
   )
   const observations = await client.withPage(false, undefined, async (probe) => {
-    const primary = await client.network(probe, targets.primaryIp, true)
+    const primary = await client.network(probe, targets.primaryIp, { navigation: true })
     let actualFacts: BrowserEnvironmentFacts | undefined
     try {
       await client.waitForDocument(probe)
@@ -60,7 +60,7 @@ export async function inspectAuthorizationEnvironment(
     } catch {
       /* 留为缺证据。 */
     }
-    const secondary = await client.network(probe, targets.secondaryIp, false)
+    const secondary = await client.network(probe, targets.secondaryIp)
     const ice = await readEnvironmentIce(client, probe, targets.stun).catch(() => ({
       completed: false,
       candidates: [],
@@ -76,7 +76,7 @@ export async function inspectAuthorizationEnvironment(
       mode,
       facts.length < 2 ? "unknown" : settings ? "passed" : "failed",
       {
-        expected: `语言 ${context.fingerprint.lang || "自动（记录实际基线）"}；时区 ${context.fingerprint.timezone || "自动"}；平台 ${context.fingerprint.platform}；CPU ${context.fingerprint.hardwareConcurrency || "自动"}`,
+        expected: `语言 ${context.fingerprint.lang || "自动（记录实际基线）"}；时区 ${context.fingerprint.timezone || "自动"}；平台 ${context.fingerprint.platform || "自动"}；CPU ${context.fingerprint.hardwareConcurrency || "自动"}`,
         actual: initialFacts
           ? `语言 ${initialFacts.language}；首选 ${initialFacts.languages.join(",")}；Intl ${initialFacts.locales.join(",")}；时区 ${initialFacts.timezone}；冬夏偏移 ${initialFacts.offsets.join(",")}；平台 ${initialFacts.platform}；CPU ${initialFacts.hardwareConcurrency}`
           : "未取得完整配置",

@@ -276,7 +276,7 @@ for (const theme of ["light", "dark"]) {
 
     const start = await height()
     await dialog.locator("#fingerprint-dialog-group-identity").focus()
-    // Radix 单选组在方向键按住期间才选中新项，按键需要有真实的按下时长。
+    // Base UI 单选组在方向键按住期间才选中新项，按键需要有真实的按下时长。
     await page.keyboard.press("ArrowRight", { delay: 50 })
     await expect(dialog.locator("#fingerprint-dialog-group-device")).toHaveAttribute(
       "aria-checked",

@@ -2,7 +2,7 @@
 
 .combobox-popover.popover {
   z-index: 90;
-  width: var(--radix-popover-trigger-width);
+  width: var(--anchor-width, 100%);
   min-width: min(240px, calc(100vw - 16px));
   max-width: calc(100vw - 16px);
   padding: 0;
@@ -46,7 +46,7 @@
 }
 
 .command-list {
-  max-height: min(264px, calc(var(--radix-popover-content-available-height) - 90px));
+  max-height: min(264px, calc(var(--available-height, 360px) - 90px));
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;

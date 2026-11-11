@@ -1,21 +1,37 @@
-// 负责模态对话框。底层是 shadcn 用的 Radix Dialog，蒙层和卡片用设计稿的 scrim / dialog。
-import * as DialogPrimitive from "@radix-ui/react-dialog"
-import type { ComponentProps } from "react"
+// 负责模态对话框。底层使用 Base UI Dialog，蒙层和卡片沿用 Pigcode 的 scrim / dialog。
+import { Dialog as BaseDialog } from "@base-ui/react/dialog"
+import type { ComponentProps, ReactElement } from "react"
 import { cn } from "../../lib/cn"
 
 /** 控制对话框开关。 */
-export function Dialog(props: ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root {...props} />
+export function Dialog(props: ComponentProps<typeof BaseDialog.Root>) {
+  return <BaseDialog.Root {...props} />
 }
 
 /** 打开对话框的按钮。 */
-export function DialogTrigger(props: ComponentProps<typeof DialogPrimitive.Trigger>) {
-  return <DialogPrimitive.Trigger {...props} />
+export function DialogTrigger({
+  asChild,
+  children,
+  ...props
+}: ComponentProps<typeof BaseDialog.Trigger> & { asChild?: boolean }) {
+  return (
+    <BaseDialog.Trigger {...props} {...(asChild ? { render: children as ReactElement } : {})}>
+      {asChild ? undefined : children}
+    </BaseDialog.Trigger>
+  )
 }
 
 /** 关闭对话框。 */
-export function DialogClose(props: ComponentProps<typeof DialogPrimitive.Close>) {
-  return <DialogPrimitive.Close {...props} />
+export function DialogClose({
+  asChild,
+  children,
+  ...props
+}: ComponentProps<typeof BaseDialog.Close> & { asChild?: boolean }) {
+  return (
+    <BaseDialog.Close {...props} {...(asChild ? { render: children as ReactElement } : {})}>
+      {asChild ? undefined : children}
+    </BaseDialog.Close>
+  )
 }
 
 /** 对话框面板，标题和说明由调用方放入。 */
@@ -23,11 +39,11 @@ export function DialogContent({
   className,
   children,
   ...props
-}: ComponentProps<typeof DialogPrimitive.Content>) {
+}: ComponentProps<typeof BaseDialog.Popup>) {
   return (
-    <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="scrim" />
-      <DialogPrimitive.Content
+    <BaseDialog.Portal>
+      <BaseDialog.Backdrop className="scrim" />
+      <BaseDialog.Popup
         className={cn("dialog", className)}
         style={{
           position: "fixed",
@@ -39,17 +55,17 @@ export function DialogContent({
         {...props}
       >
         {children}
-      </DialogPrimitive.Content>
-    </DialogPrimitive.Portal>
+      </BaseDialog.Popup>
+    </BaseDialog.Portal>
   )
 }
 
 /** 对话框标题。 */
-export function DialogTitle(props: ComponentProps<typeof DialogPrimitive.Title>) {
-  return <DialogPrimitive.Title {...props} />
+export function DialogTitle(props: ComponentProps<typeof BaseDialog.Title>) {
+  return <BaseDialog.Title {...props} />
 }
 
 /** 对话框说明。 */
-export function DialogDescription(props: ComponentProps<typeof DialogPrimitive.Description>) {
-  return <DialogPrimitive.Description {...props} />
+export function DialogDescription(props: ComponentProps<typeof BaseDialog.Description>) {
+  return <BaseDialog.Description {...props} />
 }

@@ -7,7 +7,7 @@ import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { ClaudeAccountView, ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { DesktopApp } from "./app"
 import { initialMembershipView } from "./models/membership-view"
-import { chooseSelect } from "./test-support/radix-select"
+import { chooseSelect } from "./test-support/base-ui-select"
 
 vi.mock("./hooks/use-appearance", () => ({
   useAppearance: () => ({

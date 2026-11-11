@@ -27,7 +27,7 @@
   transform: translateY(-70%) rotate(45deg);
   pointer-events: none;
 }
-/* 90px 是改用 Radix 之前原生 select 按当前选项撑开的宽度，保持像素一致；选项变了要重量 */
+/* 90px 是改用 Base UI 之前原生 select 按当前选项撑开的宽度，保持像素一致；选项变了要重量 */
 .select-trigger.select-bare {
   width: 90px;
 }
@@ -41,8 +41,8 @@
   white-space: nowrap;
 }
 .select-content {
-  min-width: var(--radix-select-trigger-width);
-  max-height: var(--radix-select-content-available-height);
+  min-width: var(--anchor-width, 0px);
+  max-height: var(--available-height, 280px);
   overflow: hidden;
 }
 .select-viewport {
@@ -71,7 +71,8 @@
 .seg .seg-item:hover {
   color: var(--fg);
 }
-.seg .seg-item[data-state="on"] {
+.seg .seg-item[data-state="on"],
+.seg .seg-item[data-checked] {
   background: var(--surface);
   color: var(--fg);
   box-shadow:
@@ -82,11 +83,12 @@
   outline: 1px solid var(--border-focus);
   outline-offset: 1px;
 }
-.radio[data-state="checked"] {
+.radio[data-state="checked"],
+.radio[data-checked] {
   background: var(--switch-on);
   box-shadow: none;
 }
-/* 只作用于 Radix 单选按钮里的指示点；列表选项的 .radio-dot 由 app.css 定义 */
+/* 只作用于 Base UI 单选按钮里的指示点；列表选项的 .radio-dot 由 app.css 定义 */
 .radio > .radio-dot {
   width: 6px;
   height: 6px;

@@ -1,7 +1,7 @@
 // 负责测试中填写指纹字段：先通过真实下拉切到自定义，再输入文本，不绕过控件交互。
 
 import { act } from "react"
-import { chooseSelect } from "./radix-select"
+import { chooseSelect } from "./base-ui-select"
 
 /** 填写文本或指纹自定义值，返回实际输入元素；未找到字段时明确失败。 */
 export async function fillFingerprintField(

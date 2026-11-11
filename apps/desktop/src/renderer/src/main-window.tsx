@@ -90,6 +90,10 @@ export function MainWindow({
   const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null)
   const [sessionWorkspace, setSessionWorkspace] = useState<string | null>(null)
   const [sessionStartedAt, setSessionStartedAt] = useState(() => new Date().toISOString())
+  const [appInfo, setAppInfo] = useState<{
+    appVersion: string
+    userDataPath: string
+  } | null>(null)
   const accounts = pool.accounts.map((account) => toPoolAccount(account, pool.proxies))
   const proxies = pool.proxies.map((proxy) => toPoolProxy(proxy, pool.accounts))
   const workspace = selectedWorkspace ?? workspaces.paths[0] ?? null
@@ -109,6 +113,14 @@ export function MainWindow({
   useEffect(() => {
     if (sessionId) setSessionStartedAt(new Date().toISOString())
   }, [sessionId])
+
+  useEffect(() => {
+    const read = window.pigclaude?.appInfo
+    if (!read) return
+    void read()
+      .then(setAppInfo)
+      .catch(() => undefined)
+  }, [])
 
   function settings(next: string): void {
     onNavigate(settingsLocation(next))
@@ -204,6 +216,10 @@ export function MainWindow({
     return (
       <SettingsScreen
         withdrawContextId={membership.actionContextId}
+        membership={membership}
+        appInfo={appInfo}
+        defaultWorkspace={workspace}
+        models={session.models}
         page={page}
         appearance={appearance}
         onNavigate={onNavigate}

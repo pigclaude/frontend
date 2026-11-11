@@ -61,12 +61,8 @@ import { registerFolderPickerIpc } from "./folder-picker"
 import { forwardFullScreen, registerWindowIpc } from "./window-ipc"
 import { electronMenuFactory } from "./native-menu"
 import { errorMessage } from "./error-message"
-import {
-  createMainWindowOptions,
-  developmentRendererUrl,
-  glassBackgroundColor,
-  readThemeSource,
-} from "./window-options"
+import { applyGlassBackground } from "./glass-background"
+import { createMainWindowOptions, developmentRendererUrl, readThemeSource } from "./window-options"
 
 const bundleMetadata: unknown = app.isPackaged
   ? JSON.parse(readFileSync(join(app.getAppPath(), "package.json"), "utf8"))
@@ -172,6 +168,10 @@ app.on(
 )
 
 function registerIpcHandlers(): void {
+  ipcMain.handle("pigclaude:app-info", () => ({
+    appVersion: app.getVersion(),
+    userDataPath: app.getPath("userData"),
+  }))
   registerFolderPickerIpc(ipcMain, (options) =>
     mainWindow ? dialog.showOpenDialog(mainWindow, options) : dialog.showOpenDialog(options),
   )
@@ -190,7 +190,9 @@ function registerIpcHandlers(): void {
     const source = readThemeSource(value)
     if (source) nativeTheme.themeSource = source
   })
-  nativeTheme.on("updated", applyGlassBackground)
+  nativeTheme.on("updated", () =>
+    applyGlassBackground(mainWindow, process.platform, nativeTheme.shouldUseDarkColors),
+  )
   ipcMain.handle("pigclaude:set-dock-icon", (_event, value: unknown) => {
     if (process.platform !== "darwin") return
     const dataUrl = readDockIconDataUrl(value)
@@ -484,16 +486,10 @@ function createWindow(): void {
   } else {
     void mainWindow.loadFile(join(__dirname, "../renderer/index.html"))
   }
-  applyGlassBackground()
+  applyGlassBackground(mainWindow, process.platform, nativeTheme.shouldUseDarkColors)
   mainWindow.once("ready-to-show", () => mainWindow?.show())
   mainWindow.once("closed", () => {
     void sessionHost?.stop().catch(() => undefined)
     mainWindow = null
   })
-}
-
-/** 外观变化时同步磨砂窗口的底色，深色下压暗系统材质。 */
-function applyGlassBackground(): void {
-  const color = glassBackgroundColor(process.platform, nativeTheme.shouldUseDarkColors)
-  if (color) mainWindow?.setBackgroundColor(color)
 }

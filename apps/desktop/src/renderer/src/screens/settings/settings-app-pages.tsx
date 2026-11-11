@@ -9,7 +9,7 @@ import { LockedValue, Segmented, SelectControl } from "./setting-controls"
 import { SettingPage, SettingRow, SettingSection } from "./setting-page"
 
 /** 通用：启动、Dock、快捷键、更新和侧栏会话分组。 */
-export function GeneralSettings() {
+export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
   const toast = useToast()
   const [grouping, setGrouping] = useState<"project" | "time">("project")
   return (
@@ -31,7 +31,7 @@ export function GeneralSettings() {
         </SettingRow>
       </SettingSection>
       <SettingSection title="更新">
-        <SettingRow title="自动检查更新" description="当前 0.1.0，已是最新">
+        <SettingRow title="自动检查更新" description={`当前版本 ${appVersion ?? "—"}`}>
           <Switch defaultChecked aria-label="自动检查更新" />
         </SettingRow>
       </SettingSection>
@@ -53,15 +53,23 @@ export function GeneralSettings() {
 }
 
 /** 会话：新会话默认值和会话进程的固定规则。 */
-export function SessionSettings() {
+export function SessionSettings({
+  workspace,
+  models,
+}: {
+  workspace?: string | null
+  models?: readonly { id: string; displayName: string }[]
+} = {}) {
   const toast = useToast()
-  const [model, setModel] = useState("Sonnet 5.5")
+  const modelList = models ?? []
+  const modelOptions = modelList.length > 0 ? modelList.map((item) => item.displayName) : ["—"]
+  const [model, setModel] = useState(modelOptions[0] ?? "—")
   const [permission, setPermission] = useState("每次询问")
   const [source, setSource] = useState<"bundled" | "local">("bundled")
   return (
     <SettingPage title="会话" sub="新会话的默认值，以及会话进程怎么运行">
       <SettingSection title="默认值">
-        <SettingRow title="默认工作区" description="~/workspace/pigclaude/frontend" mono>
+        <SettingRow title="默认工作区" description={workspace ?? "—"} mono>
           <Button size="sm" onClick={() => toast("已打开文件夹选择", "folder")}>
             选择
           </Button>
@@ -71,7 +79,7 @@ export function SessionSettings() {
             label="默认模型"
             value={model}
             width={150}
-            options={["Sonnet 5.5", "Opus 5.5", "Haiku 5.5"]}
+            options={modelOptions}
             onChange={setModel}
           />
         </SettingRow>
@@ -92,7 +100,7 @@ export function SessionSettings() {
             value={source}
             onChange={setSource}
             options={[
-              { value: "bundled", label: "内置 2.1.296" },
+              { value: "bundled", label: "内置版本 —" },
               { value: "local", label: "本机安装" },
             ]}
           />

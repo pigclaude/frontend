@@ -83,6 +83,7 @@ export function FingerprintForm({ value, errors = {}, idPrefix, onChange }: Fing
                 key={item.id}
                 id={`${idPrefix}-group-${item.id}`}
                 value={item.id}
+                aria-checked={active === item.id}
                 aria-controls={`${idPrefix}-panel-${item.id}`}
                 className="seg-item fp-tab"
               >

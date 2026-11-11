@@ -4,43 +4,19 @@ import { Icon } from "../../components/icon"
 import { useToast } from "@pigclaude/pigcode-ui-shell"
 import { Button } from "../../components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../components/ui/dialog"
-import { Input } from "../../components/ui/input"
-import { settingsFixture } from "../../fixtures/operations-fixtures"
-import { reducePrivacyState, validateRelayPort } from "../../models/operations-model"
+import { reducePrivacyState } from "../../models/operations-model"
 import { LockedValue, SelectControl } from "./setting-controls"
 import { SettingPage, SettingRow, SettingSection } from "./setting-page"
 
 /** 中继与网络：端口当场校验，代理不通时的行为固定为失败。 */
 export function NetworkSettings() {
   const toast = useToast()
-  const [port, setPort] = useState<string>(settingsFixture.relayPort)
   const [recheck, setRecheck] = useState("每 30 分钟")
-  const portValid = validateRelayPort(port)
   return (
     <SettingPage title="中继与网络">
       <SettingSection title="中继">
-        <SettingRow
-          title="中继端口"
-          description={
-            portValid ? (
-              <>
-                只监听 127.0.0.1 · <span className="status ok">运行中</span>
-              </>
-            ) : (
-              <span className="t-bad">端口要在 1024–65535 之间</span>
-            )
-          }
-        >
-          <Input
-            className={portValid ? "input mono port-input" : "input mono port-input is-error"}
-            value={port}
-            inputMode="numeric"
-            aria-label="中继端口"
-            aria-invalid={!portValid}
-            onChange={(event) => setPort(event.target.value)}
-          />
-        </SettingRow>
-        <SettingRow title="重启中继" description="已连续运行 6 天">
+        <SettingRow title="中继端口" description="本机运行时信息尚未接入" value="—" />
+        <SettingRow title="重启中继" description="运行时信息尚未接入">
           <Button size="sm" onClick={() => toast("中继已重启", "refresh")}>
             重启
           </Button>
@@ -71,14 +47,14 @@ export function NetworkSettings() {
 }
 
 /** 数据与隐私：数据目录、明文凭据提醒和清除用量记录。 */
-export function DataSettings() {
+export function DataSettings({ userDataPath }: { userDataPath: string | null }) {
   const toast = useToast()
   const [privacy, setPrivacy] = useState({ open: false, cleared: false })
   const [retention, setRetention] = useState("90 天")
   return (
     <SettingPage title="数据与隐私" sub="所有数据都在这台电脑上">
       <SettingSection title="数据目录">
-        <SettingRow title="数据目录" description={settingsFixture.dataDir} mono>
+        <SettingRow title="数据目录" description={userDataPath ?? "—"} mono>
           <Button size="sm" onClick={() => toast("已在访达中显示", "folder")}>
             在访达中显示
           </Button>
@@ -86,12 +62,12 @@ export function DataSettings() {
         <SettingRow
           title={<span className="mono">accounts.json</span>}
           description="Claude 账号的凭据与指纹，明文保存"
-          value="6.2 KB"
+          value="—"
         />
         <SettingRow
           title={<span className="mono">proxies.json</span>}
           description="代理地址与认证信息"
-          value="1.1 KB"
+          value="—"
         />
       </SettingSection>
       <p className="note">
@@ -110,7 +86,7 @@ export function DataSettings() {
         </SettingRow>
         <SettingRow
           title="清除用量记录"
-          description={privacy.cleared ? "已清除，新的请求会重新开始记录" : "312 条记录 · 48 KB"}
+          description={privacy.cleared ? "已清除，新的请求会重新开始记录" : "—"}
         >
           <Button
             variant="danger"
@@ -155,7 +131,7 @@ export function DataSettings() {
 }
 
 /** 关于：版本信息和检查更新。 */
-export function AboutSettings() {
+export function AboutSettings({ appVersion }: { appVersion: string | null }) {
   const toast = useToast()
   return (
     <SettingPage title="关于">
@@ -174,8 +150,8 @@ export function AboutSettings() {
         </div>
       </div>
       <SettingSection title="版本">
-        <SettingRow title="pigclaude" value={settingsFixture.version} />
-        <SettingRow title="内置 Claude Code" value={settingsFixture.claudeVersion} />
+        <SettingRow title="pigclaude" value={appVersion ?? "—"} />
+        <SettingRow title="内置 Claude Code" value="—" />
       </SettingSection>
     </SettingPage>
   )

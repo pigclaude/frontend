@@ -6,6 +6,7 @@ interface PigclaudeBridge {
   platform: string
   systemVersion?: string
   window?: import("../../preload/window-bridge").WindowBridge
+  appInfo?: () => Promise<{ appVersion: string; userDataPath: string }>
   openExternal?: (url: string) => Promise<void>
   setTheme?: (source: "light" | "dark" | "system") => Promise<void>
   setDockIcon?: (dataUrl: string) => Promise<void>

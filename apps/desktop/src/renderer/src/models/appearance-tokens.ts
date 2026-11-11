@@ -290,7 +290,7 @@ function colorVars(
   if (accent) Object.assign(vars, accentGroup(accent))
   if (bg && !env.glass) Object.assign(vars, cssOf(surfacePaints(bg, tone)))
   if (fg) Object.assign(vars, textGroup(fg, bg ?? pigclaudeBg[env.resolved]))
-  const g = settings.glass
+  const g = settings.sidebarTranslucency
   const glassMix = env.glass ? Math.min(1, g / defaultGlass) : 0
   if (bg || settings.contrast !== defaultContrast || (env.glass && g > 0 && g !== defaultGlass)) {
     Object.assign(vars, overlayGroup(tone, glassMix, settings.contrast))

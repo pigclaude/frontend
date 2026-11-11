@@ -10,7 +10,7 @@ import type {
   SaveBrowserProfileInput,
 } from "@pigclaude/contracts/browser-profile"
 import { BrowserProfileDialog } from "./browser-profile-dialog"
-import { chooseSelect } from "../test-support/radix-select"
+import { chooseSelect } from "../test-support/base-ui-select"
 
 let root: Root
 let container: HTMLDivElement

@@ -36,6 +36,8 @@ export type PigclaudeBridge = {
   /** 系统版本，例如 Windows 的 10.0.22631；判断有没有可用的磨砂材质。 */
   systemVersion: string
   window: WindowBridge
+  /** 读取当前发布版本和本机数据目录，设置页只展示真实运行时信息。 */
+  appInfo?: () => Promise<{ appVersion: string; userDataPath: string }>
   openExternal: (url: string) => Promise<void>
   setTheme: (source: "light" | "dark" | "system") => Promise<void>
   setDockIcon: (dataUrl: string) => Promise<void>
@@ -105,6 +107,7 @@ const bridge: PigclaudeBridge = {
   systemVersion:
     typeof process.getSystemVersion === "function" ? process.getSystemVersion() : "unknown",
   window: windowBridge(),
+  appInfo: () => ipcRenderer.invoke("pigclaude:app-info"),
   openExternal: (url) => ipcRenderer.invoke("pigclaude:open-external", url),
   setTheme: (source) => ipcRenderer.invoke("pigclaude:set-theme", source),
   setDockIcon: (dataUrl) => ipcRenderer.invoke("pigclaude:set-dock-icon", dataUrl),

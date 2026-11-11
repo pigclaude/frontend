@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { defaultFingerprintForm } from "../../models/fingerprint-form"
 import { FingerprintStep, type FingerprintStepProps } from "./fingerprint-step"
-import { chooseSelect } from "../../test-support/radix-select"
+import { chooseSelect } from "../../test-support/base-ui-select"
 import { fillFingerprintField } from "../../test-support/fingerprint-input"
 
 let root: Root

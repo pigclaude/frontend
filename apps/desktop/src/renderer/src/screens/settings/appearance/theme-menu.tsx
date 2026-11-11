@@ -53,7 +53,7 @@ function ThemeItem({
   onSelect: (id: string) => void
   actions?: { onRename: () => void; onRemove: () => void }
 }) {
-  // 只拦 click：pointerdown 照常冒泡，Radix 才知道指针是在菜单项里按下的，不会在 pointerup 时替我们选中主题
+  // 只拦 click：pointerdown 照常冒泡，Base UI 才知道指针是在菜单项里按下的，不会在 pointerup 时替我们选中主题
   const stop = (run: () => void) => (event: MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()

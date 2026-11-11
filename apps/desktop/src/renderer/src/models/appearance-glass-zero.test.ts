@@ -38,20 +38,31 @@ const opaqueNames = [
 describe("g=0：pigclaude 未改颜色", () => {
   for (const tone of ["light", "dark"] as const) {
     it(`${tone}：每个变量等于默认主题原值，--glass-tint 等于 --window`, () => {
-      const vars = deriveAppearance(withSettings({ glass: 0 }), [], env(tone, true)).vars
+      const vars = deriveAppearance(
+        withSettings({ sidebarTranslucency: 0 }),
+        [],
+        env(tone, true),
+      ).vars
       expect(vars).toEqual({})
     })
 
     it(`${tone}：--surface、--panel 与 --bg 可区分`, () => {
-      const vars = deriveAppearance(withSettings({ glass: 0 }), [], env(tone, true)).vars
+      const vars = deriveAppearance(
+        withSettings({ sidebarTranslucency: 0 }),
+        [],
+        env(tone, true),
+      ).vars
       expect(vars).toEqual({})
     })
   }
 })
 
 describe("g=0：改过颜色的主题（Claude）", () => {
-  const claude = (glass: number): AppearanceSettings =>
-    withSettings({ light: { ...defaultAppearance.light, themeId: "claude" }, glass })
+  const claude = (sidebarTranslucency: number): AppearanceSettings =>
+    withSettings({
+      light: { ...defaultAppearance.light, themeId: "claude" },
+      sidebarTranslucency,
+    })
 
   for (const tone of ["light", "dark"] as const) {
     it(`${tone}：等于同一主题的非磨砂推导`, () => {

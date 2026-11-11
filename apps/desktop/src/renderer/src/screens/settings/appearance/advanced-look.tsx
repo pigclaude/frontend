@@ -1,11 +1,11 @@
-// 负责「高级」的前两组：磨砂透明度与对比度，界面、内容、代码三个字号。
+// 负责「高级」的前两组：侧栏透明度与对比度，界面、内容、代码三个字号。
 import type { AppearanceController } from "../../../hooks/use-appearance"
 import type { AppearanceSettings } from "../../../models/appearance-settings"
 import { RangeControl } from "../setting-controls"
 import { SettingRow, SettingSection } from "../setting-page"
 import { NumberField } from "./number-field"
 
-type NumberKey = "glass" | "contrast" | "uiSize" | "contentSize" | "codeSize"
+type NumberKey = "sidebarTranslucency" | "contrast" | "uiSize" | "contentSize" | "codeSize"
 
 const sizes: {
   key: "uiSize" | "contentSize" | "codeSize"
@@ -25,7 +25,7 @@ const sizes: {
   },
 ]
 
-/** 渲染磨砂、对比度和字号三组设置。没有系统磨砂时磨砂行置灰并改说明。 */
+/** 渲染侧栏透明度、对比度和字号三组设置。没有系统材质时透明度行置灰。 */
 export function AdvancedLook({
   appearance,
   glassAvailable,
@@ -40,18 +40,20 @@ export function AdvancedLook({
     <>
       <SettingSection className="tight">
         <SettingRow
-          title="磨砂透明度"
-          description={glassAvailable ? "窗口透出桌面的程度，0 为实心底色" : "当前系统不支持磨砂"}
+          title="侧栏透明度"
+          description={
+            glassAvailable ? "侧栏透出桌面的程度，0 为实心底色" : "当前系统不支持透明侧栏"
+          }
         >
           <RangeControl
-            label="磨砂透明度"
-            value={settings.glass}
+            label="侧栏透明度"
+            value={settings.sidebarTranslucency}
             min={0}
             max={100}
             step={1}
             unit=""
             disabled={!glassAvailable}
-            onChange={set("glass")}
+            onChange={set("sidebarTranslucency")}
           />
         </SettingRow>
         <SettingRow title="对比度" description="细线、悬停与选中的深浅">

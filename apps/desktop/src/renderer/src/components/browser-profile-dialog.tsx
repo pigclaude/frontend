@@ -199,7 +199,7 @@ export function BrowserProfileDialog({
   )
 }
 
-/** Radix Select 不接受空串取值；用这个不会与代理 id 冲突的标记表示「系统网络」。 */
+/** Base UI Select 不接受空串取值；用这个不会与代理 id 冲突的标记表示「系统网络」。 */
 const systemNetwork = "__system-network__"
 
 function errorMessage(caught: unknown): string {

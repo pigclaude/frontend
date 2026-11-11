@@ -3,30 +3,36 @@ import { WithdrawAuthorization } from "../../components/withdraw-authorization"
 import { useState } from "react"
 import { Icon } from "../../components/icon"
 import { useToast } from "@pigclaude/pigcode-ui-shell"
+import type { MembershipView } from "@pigclaude/contracts/membership"
 import { Button } from "../../components/ui/button"
 import { Switch } from "../../components/ui/switch"
-import { settingsFixture } from "../../fixtures/operations-fixtures"
 import type { NavLocation } from "../../models/navigation"
 import { RangeControl } from "./setting-controls"
 import { SettingPage, SettingRow, SettingSection } from "./setting-page"
 
 /** 我的账户：pigclaude 使用权限，不涉及 Claude 订阅账号。 */
 export function ProfileSettings({
+  membership,
   onLogout,
   withdrawContextId,
 }: {
+  membership: MembershipView
   onLogout: () => void
   withdrawContextId?: string | undefined
 }) {
   const toast = useToast()
+  const accountName = membership.account?.nickname || "—"
+  const accountEmail = membership.account?.email || "—"
+  const verifiedAt = membership.lastVerifiedAt ? formatDateTime(membership.lastVerifiedAt) : "—"
+  const membershipStatus = membership.state === "active" ? "已开通" : "—"
   return (
     <SettingPage title="我的账户" sub="登录 pigclaude 的账户，只用来确认你能不能使用这套软件">
       <div className="group">
         <div className="me">
-          <span className="avatar lg">林</span>
+          <span className="avatar lg">{[accountName][0] ?? "—"}</span>
           <div className="grow">
-            <div className="me-name">{settingsFixture.accountName}</div>
-            <div className="muted">{settingsFixture.accountEmail}</div>
+            <div className="me-name">{accountName}</div>
+            <div className="muted">{accountEmail}</div>
           </div>
           <Button size="sm" onClick={() => toast("已在浏览器打开资料页", "external")}>
             编辑资料
@@ -35,19 +41,21 @@ export function ProfileSettings({
       </div>
       <SettingSection title="使用权限">
         <SettingRow title="状态">
-          <span className="status ok">已开通</span>
+          <span className={membership.state === "active" ? "status ok" : "status"}>
+            {membershipStatus}
+          </span>
         </SettingRow>
         <SettingRow
           title="上次校验"
           description="连不上服务时，沿用上次通过的结果"
-          value="今天 09:00 · 联网"
+          value={verifiedAt}
         />
       </SettingSection>
       <SettingSection title="登录">
         <SettingRow title="登录方式" description="在系统浏览器里完成，桌面端不接触密码">
           <span className="val">浏览器授权</span>
         </SettingRow>
-        <SettingRow title="这台电脑" value="MacBook Pro · 当前设备" />
+        <SettingRow title="这台电脑" value="—" />
       </SettingSection>
       <p className="note">
         <Icon name="lock" small />
@@ -62,6 +70,12 @@ export function ProfileSettings({
       </div>
     </SettingPage>
   )
+}
+
+function formatDateTime(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "—"
+  return date.toLocaleString("zh-CN", { dateStyle: "medium", timeStyle: "short" })
 }
 
 /** 切换规则：什么时候从一个 Claude 账号换到下一个。 */

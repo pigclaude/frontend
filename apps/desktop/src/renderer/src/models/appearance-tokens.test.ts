@@ -40,14 +40,14 @@ describe("默认设置", () => {
 
   it("不修改传入的默认设置", () => {
     const before = JSON.stringify(defaultAppearance)
-    deriveAppearance(withSettings({ glass: 0, contrast: 100 }), [], env("dark", true))
+    deriveAppearance(withSettings({ sidebarTranslucency: 0, contrast: 100 }), [], env("dark", true))
     expect(JSON.stringify(defaultAppearance)).toBe(before)
   })
 })
 
 describe("磨砂", () => {
   const at = (g: number, tone: "light" | "dark") =>
-    deriveAppearance(withSettings({ glass: g }), [], env(tone, true)).vars
+    deriveAppearance(withSettings({ sidebarTranslucency: g }), [], env(tone, true)).vars
 
   for (const tone of ["light", "dark"] as const) {
     it(`${tone}：g=0 时底层与抬起的表面不透明`, () => {
@@ -96,12 +96,14 @@ describe("磨砂", () => {
 
   it("g=60 且 bg 未改时不输出；非磨砂环境下改 g 也不输出", () => {
     expect(at(60, "light")).toEqual({})
-    expect(deriveAppearance(withSettings({ glass: 0 }), [], env("light", false)).vars).toEqual({})
+    expect(
+      deriveAppearance(withSettings({ sidebarTranslucency: 0 }), [], env("light", false)).vars,
+    ).toEqual({})
   })
 
   it("pigclaude 未改 bg 时保持白色调；改了 bg 用 bg 的 RGB", () => {
     expect(at(100, "light")["--bg"]).toBe("rgb(255 255 255 / 0.105)")
-    const tinted = setOverride(withSettings({ glass: 60 }), "light", "bg", "#FAF0E6")
+    const tinted = setOverride(withSettings({ sidebarTranslucency: 60 }), "light", "bg", "#FAF0E6")
     const vars = deriveAppearance(tinted, [], env("light", true)).vars
     expect(vars["--bg"]).toBe("rgb(250 240 230 / 0.3)")
     expect(vars["--window"]).toBeUndefined()

@@ -92,9 +92,10 @@ export function useAppearance() {
   }, [output])
 
   useEffect(() => {
-    const translucent = document.documentElement.dataset.glass === "true" && settings.glass > 0
+    const translucent =
+      document.documentElement.dataset.glass === "true" && settings.sidebarTranslucency > 0
     void window.pigcodeNative?.setWindowTranslucent?.(translucent)
-  }, [settings.glass])
+  }, [settings.sidebarTranslucency])
 
   const dockApplied = useRef(false)
   useEffect(() => {

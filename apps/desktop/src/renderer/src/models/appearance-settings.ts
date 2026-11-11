@@ -27,7 +27,8 @@ export type AppearanceSettings = {
   light: ThemeSlot
   dark: ThemeSlot
   overrides: Record<string, ModeOverrides>
-  glass: number
+  /** 侧栏与窗口边框的透明度；旧版 glass 值迁移到这里。 */
+  sidebarTranslucency: number
   contrast: number
   uiSize: number
   contentSize: number
@@ -57,7 +58,7 @@ export const defaultAppearance: AppearanceSettings = {
   light: defaultSlot,
   dark: defaultSlot,
   overrides: {},
-  glass: 0,
+  sidebarTranslucency: 0,
   contrast: 45,
   uiSize: 13,
   contentSize: 13.5,
@@ -142,7 +143,7 @@ function fromObject(o: Obj): AppearanceSettings {
     light: parseSlot(o.light),
     dark: parseSlot(o.dark),
     overrides: parseOverrides(o.overrides),
-    glass: num(o.glass, d.glass, 0, 100, 1),
+    sidebarTranslucency: num(o.sidebarTranslucency ?? o.glass, d.sidebarTranslucency, 0, 100, 1),
     contrast: num(o.contrast, d.contrast, 0, 100, 1),
     uiSize: num(o.uiSize, d.uiSize, 11, 18, 0.5),
     contentSize: num(o.contentSize, d.contentSize, 11, 20, 0.5),

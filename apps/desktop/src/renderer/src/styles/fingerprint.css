@@ -188,7 +188,8 @@
   white-space: nowrap;
 }
 
-.fp-tabs .seg-item[data-state="checked"] {
+.fp-tabs .seg-item[data-state="checked"],
+.fp-tabs .seg-item[data-checked] {
   background: var(--surface);
   color: var(--fg);
   box-shadow:
@@ -285,9 +286,18 @@
 }
 
 .fp-row .trail {
+  position: relative;
   flex: 0 1 auto;
   justify-content: flex-end;
   min-width: 0;
+}
+.fp-row .fp-choice {
+  position: relative;
+}
+.fp-row .trail > input[aria-hidden="true"],
+.fp-row .fp-choice > input[aria-hidden="true"] {
+  position: absolute !important;
+  inset: 0 auto auto 0 !important;
 }
 
 .fp-row .select-trigger,

@@ -23,11 +23,14 @@
 .radio-card:focus-visible {
   outline: none;
 }
-.mode-card[data-state="checked"] {
+.mode-card[data-state="checked"],
+.mode-card[data-checked] {
   color: var(--fg);
 }
 .mode-card[data-state="checked"] .mode-thumb,
-.dock-card[data-state="checked"] {
+.mode-card[data-checked] .mode-thumb,
+.dock-card[data-state="checked"],
+.dock-card[data-checked] {
   box-shadow:
     0 0 0 2px var(--switch-on),
     0 0 0 5px color-mix(in oklab, var(--switch-on) 22%, transparent);

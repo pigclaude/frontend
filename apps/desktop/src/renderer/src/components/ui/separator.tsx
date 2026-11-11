@@ -1,5 +1,5 @@
-// 负责分隔线。底层是 shadcn 用的 Radix Separator。
-import * as SeparatorPrimitive from "@radix-ui/react-separator"
+// 负责分隔线。底层使用 Base UI Separator。
+import { Separator as BaseSeparator } from "@base-ui/react/separator"
 import type { ComponentProps } from "react"
 import { cn } from "../../lib/cn"
 
@@ -7,15 +7,11 @@ import { cn } from "../../lib/cn"
 export function Separator({
   className,
   orientation = "horizontal",
-  decorative = true,
+  decorative: _decorative,
   ...props
-}: ComponentProps<typeof SeparatorPrimitive.Root>) {
+}: ComponentProps<typeof BaseSeparator> & { decorative?: boolean }) {
+  void _decorative
   return (
-    <SeparatorPrimitive.Root
-      orientation={orientation}
-      decorative={decorative}
-      className={cn("ui-separator", className)}
-      {...props}
-    />
+    <BaseSeparator orientation={orientation} className={cn("ui-separator", className)} {...props} />
   )
 }

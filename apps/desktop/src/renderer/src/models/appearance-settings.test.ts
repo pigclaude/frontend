@@ -28,7 +28,7 @@ describe("parseAppearance", () => {
 
   it("每个字段单独校验：非法用默认，数字夹到范围并取整", () => {
     const s = parseAppearance('{"version":1,"glass":"abc","uiSize":999,"contrast":70}', null)
-    expect(s.glass).toBe(0)
+    expect(s.sidebarTranslucency).toBe(0)
     expect(s.uiSize).toBe(18)
     expect(s.contrast).toBe(70)
     const t = parseAppearance(
@@ -36,7 +36,7 @@ describe("parseAppearance", () => {
       null,
     )
     expect(t.uiSize).toBe(13.5)
-    expect(t.glass).toBe(34)
+    expect(t.sidebarTranslucency).toBe(34)
     expect(t.codeSize).toBe(10)
     expect(t.motion).toBe("system")
     expect(t.mode).toBe("dark")
@@ -64,8 +64,19 @@ describe("parseAppearance", () => {
 
   it("序列化后能原样读回", () => {
     const changed = setOverride(defaultAppearance, "dark", "accent", "#112233")
-    const next = { ...changed, glass: 20, fullWidth: true, dockIcon: "night" as const }
+    const next = {
+      ...changed,
+      sidebarTranslucency: 20,
+      fullWidth: true,
+      dockIcon: "night" as const,
+    }
     expect(parseAppearance(serializeAppearance(next), null)).toEqual(next)
+  })
+
+  it("把旧 glass 值迁移到侧栏透明度，并且不再写回旧字段", () => {
+    const migrated = parseAppearance('{"version":1,"glass":60}', null)
+    expect(migrated.sidebarTranslucency).toBe(60)
+    expect(JSON.parse(serializeAppearance(migrated))).not.toHaveProperty("glass")
   })
 })
 
@@ -122,7 +133,12 @@ describe("setOverride", () => {
 
 describe("resetAppearance", () => {
   it("回默认并保留 advancedOpen", () => {
-    const s = { ...defaultAppearance, advancedOpen: true, glass: 5, mode: "dark" as const }
+    const s = {
+      ...defaultAppearance,
+      advancedOpen: true,
+      sidebarTranslucency: 5,
+      mode: "dark" as const,
+    }
     expect(resetAppearance(s)).toEqual({ ...defaultAppearance, advancedOpen: true })
   })
 })

@@ -257,7 +257,7 @@ button.item:hover,
 .input-group .ic {
   color: var(--muted);
 }
-/* 旧的 Radix 开关没有滑块元素，滑块画在 ::after 上；Base UI 开关自带 .switch-thumb，不再叠一个 */
+/* 旧的 Base UI 开关没有滑块元素，滑块画在 ::after 上；Base UI 开关自带 .switch-thumb，不再叠一个 */
 .switch:not(:has(> .switch-thumb))::after {
   content: "";
   position: absolute;
@@ -555,8 +555,8 @@ button.item:hover,
     opacity var(--t-fast) var(--ease),
     transform var(--t-fast) var(--ease);
 }
-/* Radix 用外层包装定位；浮层自身留在文档流里，包装才能量到高度并向上翻转 */
-[data-radix-popper-content-wrapper] > .popover {
+/* Base UI 用 Positioner 定位；浮层自身留在文档流里，包装才能量到高度并向上翻转 */
+.menu-positioner > .popover {
   position: relative;
 }
 .popover.is-open {

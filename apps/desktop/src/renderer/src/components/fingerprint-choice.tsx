@@ -1,6 +1,6 @@
 // 负责指纹的「自动、常用选项、自定义」控件，选择状态不写进指纹数据，外部草稿更新仍能正确回显。
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { FingerprintFieldOption } from "../models/fingerprint-fields"
 import { generateFingerprintSeed } from "../models/fingerprint-choices"
 import { Input } from "./ui/input"
@@ -51,6 +51,14 @@ export function FingerprintChoice({
     customDraft === value || (value !== "" && !options.some((item) => item.value === value))
   const a11y = { "aria-invalid": invalid, "aria-describedby": describedBy }
 
+  useEffect(() => {
+    if (!focusCustom.current || !custom) return
+    const input = field.current?.querySelector<HTMLInputElement>("input")
+    if (!input) return
+    focusCustom.current = false
+    input.focus()
+  }, [custom])
+
   function selectValue(next: string) {
     if (next === "__custom__") {
       focusCustom.current = true
@@ -68,9 +76,12 @@ export function FingerprintChoice({
 
   function restoreCustomFocus(event: Event) {
     if (!focusCustom.current) return
-    focusCustom.current = false
     event.preventDefault()
-    field.current?.querySelector<HTMLInputElement>("input")?.focus()
+    const input = field.current?.querySelector<HTMLInputElement>("input")
+    if (input) {
+      focusCustom.current = false
+      input.focus()
+    }
   }
 
   return (
@@ -116,6 +127,7 @@ export function FingerprintChoice({
         <Input
           id={`${id}-custom`}
           aria-label={`自定义${label}`}
+          autoFocus={focusCustom.current}
           value={value}
           placeholder={placeholder}
           className={mono ? "mono" : undefined}

@@ -1,0 +1,39 @@
+/*
+  pigclaude 设计系统 · 磨砂玻璃（桌面端）
+  做法参照 Cursor 的 glass 模式：窗口本身是系统磨砂材质（macOS vibrancy / Windows mica），
+  页面不再画任何不透明的底，所有表面都换成半透明的白或黑，让桌面颜色从每一层透出来。
+  只在 [data-glass="true"] 下生效；浏览器里仍使用 tokens.css 的不透明配色。
+  磨砂下各表面的颜色变量在 tokens.css 的 :root[data-glass="true"] 两块里，这里只放用到它们的规则。
+*/
+
+[data-glass="true"] body {
+  background: var(--glass-tint);
+}
+
+/* 侧栏底下就是系统材质，不需要再在页面里模糊 */
+[data-glass="true"] .sidebar {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* 盖在内容上的层自己做一次模糊，避免透出下面的文字 */
+[data-glass="true"] .dialog,
+[data-glass="true"] .drawer,
+[data-glass="true"] .composer {
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+[data-glass="true"] .dialog,
+[data-glass="true"] .drawer {
+  background: var(--popover-glass);
+}
+
+@media (max-width: 960px) {
+  [data-glass="true"] .sidebar,
+  [data-glass="true"] .app.is-collapsed .sidebar {
+    background: var(--popover-glass);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+  }
+}

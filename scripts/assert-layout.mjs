@@ -8,6 +8,13 @@ const electronEntries = new Set([
   join(root, "apps/desktop/src/preload/index.ts"),
 ])
 const layout = JSON.parse(await readFile(join(root, "layout.json"), "utf8"))
+// 从 Pigcode 固定提交原样拷入的文件由 assert-pigcode-source.mjs 按哈希核对，保留原有的入口文件与注释写法，
+// 这里只对它们放开「禁止 index 转发」和「中文文件头注释」两条；行数和 any 规则照常检查。
+const vendored = new Set(
+  JSON.parse(await readFile(join(root, "pigcode-source.json"), "utf8")).files.map((file) =>
+    join(root, file.path),
+  ),
+)
 
 async function directoryNames(relative) {
   const entries = await readdir(join(root, relative), { withFileTypes: true })
@@ -120,7 +127,11 @@ for (const relative of ["apps", "packages"]) {
       console.error(`${file} has ${lines} lines; limit is 500`)
       process.exitCode = 1
     }
-    if ((file.endsWith("/index.ts") || file.endsWith("/index.tsx")) && !electronEntries.has(file)) {
+    if (
+      (file.endsWith("/index.ts") || file.endsWith("/index.tsx")) &&
+      !electronEntries.has(file) &&
+      !vendored.has(file)
+    ) {
       console.error(`${file} barrel is not allowed`)
       process.exitCode = 1
     }
@@ -130,7 +141,7 @@ for (const relative of ["apps", "packages"]) {
         process.exitCode = 1
       }
     }
-    if (!hasChineseFileComment(source)) {
+    if (!vendored.has(file) && !hasChineseFileComment(source)) {
       console.error(`${file} is missing a Chinese file comment`)
       process.exitCode = 1
     }

@@ -1,0 +1,200 @@
+// 负责把 Pigcode 的界面包按固定提交拷入 packages/pigcode-*，并生成来源清单；同步新提交时重跑本脚本。
+import { execFileSync } from "node:child_process"
+import { createHash } from "node:crypto"
+import { mkdir, rm, writeFile } from "node:fs/promises"
+import { dirname, join } from "node:path"
+import prettier from "prettier"
+
+const frontend = join(import.meta.dirname, "..")
+const lockFile = join(frontend, "pigcode-source.json")
+
+/** 拷入的包：源包名 → 目标目录与目标包名；路径与导出结构保持不变。 */
+export const vendoredPackages = [
+  { source: "contracts", target: "pigcode-contracts", name: "@pigclaude/pigcode-contracts" },
+  {
+    source: "ui-primitives",
+    target: "pigcode-ui-primitives",
+    name: "@pigclaude/pigcode-ui-primitives",
+  },
+  { source: "ui-shell", target: "pigcode-ui-shell", name: "@pigclaude/pigcode-ui-shell" },
+  { source: "ui-settings", target: "pigcode-ui-settings", name: "@pigclaude/pigcode-ui-settings" },
+  {
+    source: "client-runtime",
+    target: "pigcode-client-runtime",
+    name: "@pigclaude/pigcode-client-runtime",
+  },
+]
+
+/** client-runtime 只取扩展点注册表；其余是 Host 连接、AppStore 与插件运行时，按规格不拷入。 */
+const partialPackages = {
+  "client-runtime": [
+    "src/extension-points.tsx",
+    "src/extension-points.test.tsx",
+    "src/global.d.ts",
+    "src/vite-env.d.ts",
+  ],
+  // 只取外观页与通用页；Agent、定时任务页属于 Pigcode 的产品功能，按规格不拷入。
+  "ui-settings": [
+    "src/appearance-code.tsx",
+    "src/appearance-fields.tsx",
+    "src/appearance-page.test.tsx",
+    "src/appearance-page.tsx",
+    "src/appearance-preview.tsx",
+    "src/appearance-transfer.tsx",
+    "src/choice-select.tsx",
+    "src/general-page.test.tsx",
+    "src/general-page.tsx",
+    "src/global.d.ts",
+    "src/preferences.ts",
+    // 外观页用它的 fill() 填文案模板；文件本身还含定时任务的格式化，原样保留不改。
+    "src/schedule-format.ts",
+    "src/sensitive-text.tsx",
+    "src/vite-env.d.ts",
+  ],
+}
+
+/** 部分拷入的包需要的入口：只导出实际拷入的模块。 */
+const partialEntries = {
+  "ui-settings": `/** 设置页面的公开入口：只含从 Pigcode 拷入的外观页与通用页。 */
+export * from "./appearance-page"
+export * from "./general-page"
+`,
+}
+
+/** 允许的机械替换：只改包名，不改任何逻辑、样式或文案。 */
+export function rewriteSource(text) {
+  let next = text
+  for (const item of vendoredPackages) {
+    next = next.replaceAll(`@pigcode/${item.source}`, item.name)
+  }
+  return next
+}
+
+/** 计算文件内容的 SHA256，清单与守卫共用这一种算法。 */
+export function sha256(buffer) {
+  return createHash("sha256").update(buffer).digest("hex")
+}
+
+function git(repo, ...args) {
+  return execFileSync("git", ["-C", repo, ...args], { maxBuffer: 256 << 20 })
+}
+
+async function vendor(repo, commit) {
+  const resolved = git(repo, "rev-parse", `${commit}^{commit}`).toString().trim()
+  const listed = git(repo, "ls-tree", "-r", "--name-only", resolved, "packages").toString()
+  const tree = new Set(listed.split("\n").filter(Boolean))
+  const files = []
+  for (const item of vendoredPackages) {
+    const prefix = `packages/${item.source}/`
+    const targetRoot = join(frontend, "packages", item.target)
+    // 只清掉上次拷入的内容，保留 pnpm 建好的 node_modules 链接。
+    for (const name of ["src", "package.json", "tsconfig.json"]) {
+      await rm(join(targetRoot, name), { recursive: true, force: true })
+    }
+    const only = partialPackages[item.source]
+    const wanted = [...tree].filter((path) => {
+      if (!path.startsWith(prefix)) return false
+      const rest = path.slice(prefix.length)
+      if (rest === "package.json" || rest === "tsconfig.json") return true
+      if (!rest.startsWith("src/")) return false
+      return only ? only.includes(rest) : true
+    })
+    const entry = partialEntries[item.source]
+    if (entry) {
+      const destination = join(targetRoot, "src/index.ts")
+      await mkdir(dirname(destination), { recursive: true })
+      await writeFile(destination, entry)
+      files.push({
+        path: `packages/${item.target}/src/index.ts`,
+        source: null,
+        sourceSha256: null,
+        sha256: sha256(Buffer.from(entry)),
+      })
+    }
+    for (const path of wanted.sort()) {
+      const rest = path.slice(prefix.length)
+      const original = git(repo, "show", `${resolved}:${path}`)
+      const isText = /\.(tsx?|css|json|md|svg)$/.test(rest)
+      let output = isText ? Buffer.from(rewriteSource(original.toString("utf8"))) : original
+      if (rest === "package.json")
+        output = Buffer.from(rewriteManifest(output.toString("utf8"), item))
+      if (rest === "tsconfig.json") output = Buffer.from(rewriteTsconfig(output.toString("utf8")))
+      // 改名后部分行超出 100 列：按本仓库 Prettier 配置重排，守卫记录的是重排后的内容。
+      if (/\.(tsx?|json|css)$/.test(rest)) {
+        const options = await prettier.resolveConfig(join(frontend, "package.json"))
+        output = Buffer.from(
+          await prettier.format(output.toString("utf8"), { ...options, filepath: rest }),
+        )
+      }
+      const destination = join(targetRoot, rest)
+      await mkdir(dirname(destination), { recursive: true })
+      await writeFile(destination, output)
+      files.push({
+        path: `packages/${item.target}/${rest}`,
+        source: path,
+        sourceSha256: sha256(original),
+        sha256: sha256(output),
+      })
+    }
+  }
+  const lock = {
+    repository: "pigcode/pigcode",
+    commit: resolved,
+    rule: "@pigcode/<package> → @pigclaude/pigcode-<package>；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
+    files,
+  }
+  await writeFile(lockFile, `${JSON.stringify(lock, null, 2)}\n`)
+  return lock
+}
+
+/** 本仓库各包独立安装测试依赖（Pigcode 把它们放在工作区根目录），版本与 Pigcode 根清单一致。 */
+const testDependencies = {
+  "@testing-library/dom": "10.4.1",
+  "@testing-library/react": "16.3.0",
+  "@testing-library/user-event": "14.6.1",
+  "@types/node": "24.10.1",
+  "@types/react": "19.2.2",
+  "@types/react-dom": "19.2.2",
+  jsdom: "26.1.0",
+  react: "19.2.3",
+  "react-dom": "19.2.3",
+  typescript: "5.9.3",
+  vitest: "4.0.16",
+}
+
+/** 包清单：改名、去掉 client-runtime 不再需要的依赖、给需要 DOM 的包补测试依赖。 */
+export function rewriteManifest(text, item) {
+  const manifest = JSON.parse(rewriteSource(text))
+  manifest.name = item.name
+  manifest.version = "0.0.0"
+  manifest.private = true
+  if (item.source === "client-runtime") {
+    manifest.exports = { ".": "./src/extension-points.tsx" }
+    delete manifest.dependencies["@pigcode/plugin-sdk"]
+    delete manifest.dependencies["@pigclaude/pigcode-contracts"]
+  }
+  manifest.scripts = {
+    typecheck: "tsc --noEmit",
+    test: "vitest run --passWithNoTests --config ../../vitest.pigcode.config.ts",
+  }
+  manifest.devDependencies = { ...(manifest.devDependencies ?? {}), ...testDependencies }
+  return `${JSON.stringify(manifest, null, 2)}\n`
+}
+
+/** tsconfig 继承本仓库的 Pigcode 严格配置，不引用 Pigcode 仓库根目录。 */
+export function rewriteTsconfig(text) {
+  const config = JSON.parse(text)
+  config.extends = "../../tsconfig.pigcode.json"
+  return `${JSON.stringify(config, null, 2)}\n`
+}
+
+if (import.meta.main) {
+  const repo = process.argv[2]
+  const commit = process.argv[3]
+  if (!repo || !commit) {
+    console.error("usage: node scripts/vendor-pigcode.mjs <pigcode-frontend-repo> <commit>")
+    process.exit(2)
+  }
+  const lock = await vendor(repo, commit)
+  console.log(`vendored ${lock.files.length} files from ${lock.commit}`)
+}

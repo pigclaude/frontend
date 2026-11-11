@@ -1,0 +1,338 @@
+/*
+  运行中指示：3×3 点阵，8 帧 × 175ms 一个循环（1.4s）。
+  每个点按帧号决定亮灭，帧之间不过渡（step-end），看起来像点阵屏上的游走动画。
+  帧（行优先编号 0–8）：
+    0: 3 5 6 8   1: 0 3 7 8   2: 0 3 4 7   3: 0 1 3 4 8
+    4: 1 3 4 5 6 8   5: 1 2 4 5 6   6: 2 4 5 7   7: 2 5 6 7
+*/
+.dot-matrix {
+  --dot-matrix-off: 0;
+  display: inline-grid;
+  flex: none;
+  grid-template-columns: repeat(3, var(--dot-matrix-dot));
+  grid-template-rows: repeat(3, var(--dot-matrix-dot));
+  justify-content: space-between;
+  align-content: space-between;
+  width: var(--dot-matrix-size);
+  height: var(--dot-matrix-size);
+  color: var(--fg-2);
+  vertical-align: middle;
+}
+.dot-matrix-cell {
+  width: var(--dot-matrix-dot);
+  height: var(--dot-matrix-dot);
+  border-radius: 50%;
+  background: currentColor;
+  opacity: var(--dot-matrix-off);
+  animation: 1.4s step-end infinite both;
+}
+.dot-matrix-cell.c0 {
+  animation-name: dot-matrix-c0;
+}
+.dot-matrix-cell.c1 {
+  animation-name: dot-matrix-c1;
+}
+.dot-matrix-cell.c2 {
+  animation-name: dot-matrix-c2;
+}
+.dot-matrix-cell.c3 {
+  animation-name: dot-matrix-c3;
+}
+.dot-matrix-cell.c4 {
+  animation-name: dot-matrix-c4;
+}
+.dot-matrix-cell.c5 {
+  animation-name: dot-matrix-c5;
+}
+.dot-matrix-cell.c6 {
+  animation-name: dot-matrix-c6;
+}
+.dot-matrix-cell.c7 {
+  animation-name: dot-matrix-c7;
+}
+.dot-matrix-cell.c8 {
+  animation-name: dot-matrix-c8;
+}
+/* 每 12.5% 一帧；关键帧只写亮灭发生变化的位置。 */
+@keyframes dot-matrix-c0 {
+  0% {
+    opacity: var(--dot-matrix-off);
+  }
+  12.5%,
+  37.5% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: var(--dot-matrix-off);
+  }
+}
+@keyframes dot-matrix-c1 {
+  0% {
+    opacity: var(--dot-matrix-off);
+  }
+  37.5%,
+  62.5% {
+    opacity: 1;
+  }
+  75%,
+  100% {
+    opacity: var(--dot-matrix-off);
+  }
+}
+@keyframes dot-matrix-c2 {
+  0% {
+    opacity: var(--dot-matrix-off);
+  }
+  62.5%,
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes dot-matrix-c3 {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  62.5%,
+  100% {
+    opacity: var(--dot-matrix-off);
+  }
+}
+@keyframes dot-matrix-c4 {
+  0% {
+    opacity: var(--dot-matrix-off);
+  }
+  25%,
+  75% {
+    opacity: 1;
+  }
+  87.5%,
+  100% {
+    opacity: var(--dot-matrix-off);
+  }
+}
+@keyframes dot-matrix-c5 {
+  0% {
+    opacity: 1;
+  }
+  12.5% {
+    opacity: var(--dot-matrix-off);
+  }
+  50%,
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes dot-matrix-c6 {
+  0% {
+    opacity: 1;
+  }
+  12.5% {
+    opacity: var(--dot-matrix-off);
+  }
+  50%,
+  62.5% {
+    opacity: 1;
+  }
+  75% {
+    opacity: var(--dot-matrix-off);
+  }
+  87.5%,
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes dot-matrix-c7 {
+  0% {
+    opacity: var(--dot-matrix-off);
+  }
+  12.5%,
+  25% {
+    opacity: 1;
+  }
+  37.5% {
+    opacity: var(--dot-matrix-off);
+  }
+  75%,
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes dot-matrix-c8 {
+  0%,
+  12.5% {
+    opacity: 1;
+  }
+  25% {
+    opacity: var(--dot-matrix-off);
+  }
+  37.5%,
+  50% {
+    opacity: 1;
+  }
+  62.5%,
+  100% {
+    opacity: var(--dot-matrix-off);
+  }
+}
+/* 减少动效：停在第 3 帧（左上角聚成一团、右下一点），仍能看出是“运行中”。 */
+@media (prefers-reduced-motion: reduce) {
+  .dot-matrix-cell {
+    animation: none;
+  }
+  .dot-matrix-cell.c0,
+  .dot-matrix-cell.c1,
+  .dot-matrix-cell.c3,
+  .dot-matrix-cell.c4,
+  .dot-matrix-cell.c8 {
+    opacity: 1;
+  }
+}
+
+/*
+  状态点（StatusDot）：同一种状态在侧栏、子代理标签、Agent 与插件列表里都是同一个颜色。
+  圆点和运行中的点阵都用 currentColor；色调写在 data-tone 上，每种色调一个主题颜色。
+*/
+.status-dot {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  color: var(--faint);
+}
+.status-dot::before {
+  width: var(--dot-size);
+  height: var(--dot-size);
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+.status-dot[data-tone="running"]::before {
+  display: none;
+}
+.status-dot .dot-matrix {
+  color: inherit;
+}
+.status-dot[data-tone="running"] {
+  color: var(--accent);
+}
+.status-dot[data-tone="ready"] {
+  color: var(--ok);
+}
+.status-dot[data-tone="warning"] {
+  color: var(--warn);
+}
+.status-dot[data-tone="error"] {
+  color: var(--bad);
+}
+.status-dot[data-tone="checking"] {
+  color: var(--info);
+  animation: status-pulse 1.2s ease-in-out infinite;
+}
+@keyframes status-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-dot[data-tone="checking"] {
+    animation: none;
+  }
+}
+
+/*
+  Agent 与插件的头像（EntityAvatar）：缩写和底色都来自 entityMark，色相写在 --entity-hue 上。
+  sm 是菜单、胶囊与标签里的，md 是模型菜单的左栏，lg 是设置里的列表；inline 是一行文字里的彩色缩写。
+*/
+.entity-avatar {
+  --entity-hue: 264;
+  --avatar-size: var(--avatar-lg);
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: 28%;
+  background: oklch(92% 0.045 var(--entity-hue));
+  color: oklch(42% 0.12 var(--entity-hue));
+  font-family: var(--font-ui);
+  font-size: calc(var(--avatar-size) * 0.4);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+[data-theme="dark"] .entity-avatar {
+  background: oklch(32% 0.06 var(--entity-hue));
+  color: oklch(86% 0.09 var(--entity-hue));
+}
+.entity-avatar[data-size="sm"] {
+  --avatar-size: var(--avatar-sm);
+}
+.entity-avatar[data-size="md"] {
+  --avatar-size: var(--avatar-md);
+}
+/* 跟随外层 AgentIcon 的尺寸 */
+.entity-avatar[data-size="fill"] {
+  --avatar-size: var(--agent-icon-size);
+}
+
+/*
+ * Agent 图标（agent-icon.tsx）：品牌标志或缩写头像，右下角是非默认实例的角标。
+ * 尺寸与 t3code 对齐：xs 12、sm 14、md 16、lg 20。
+ */
+.agent-icon {
+  --agent-icon-size: var(--agent-icon-md);
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: var(--agent-icon-size);
+  height: var(--agent-icon-size);
+}
+.agent-icon[data-size="xs"] {
+  --agent-icon-size: var(--agent-icon-xs);
+}
+.agent-icon[data-size="sm"] {
+  --agent-icon-size: var(--agent-icon-sm);
+}
+.agent-icon[data-size="lg"] {
+  --agent-icon-size: var(--agent-icon-lg);
+}
+.agent-brand {
+  width: 100%;
+  height: 100%;
+}
+/* Claude 两种主题都是品牌橙；OpenAI 跟随前景色。 */
+.agent-brand[data-brand="claude"] {
+  color: var(--brand-claude);
+}
+.agent-brand[data-brand="openai"] {
+  color: var(--fg);
+}
+.agent-icon-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: grid;
+  min-width: var(--agent-badge);
+  height: var(--agent-badge);
+  padding: 0 2px;
+  place-items: center;
+  border-radius: var(--r-full);
+  background: var(--muted);
+  color: var(--surface);
+  box-shadow: 0 0 0 1.5px var(--agent-icon-ring, var(--surface));
+  font-size: var(--agent-badge-fs);
+  font-weight: 650;
+  line-height: 1;
+}
+
+/* 一行文字里的缩写：只留颜色，字体与字号由所在的位置给（侧栏是 .sess-agent） */
+.entity-avatar[data-size="inline"] {
+  display: inline;
+  width: auto;
+  height: auto;
+  background: none;
+  font-weight: inherit;
+  line-height: inherit;
+}

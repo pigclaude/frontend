@@ -1,0 +1,213 @@
+/*
+  窗口外壳：.app 的网格（标题栏一行、侧栏与内容区一行），内容区里的聊天面板与右侧面板槽，
+  侧栏与右侧面板的拖动分隔条，以及窄窗口下右侧面板浮起来的排法。标题栏与顶行按钮在 titlebar.css，侧栏在 sidebar.css。
+  窗口按钮全部由系统绘制：macOS 的交通灯落在侧栏顶行；Windows/Linux 顶部是一条自绘标题栏，
+  系统的最小化、最大化与关闭按钮叠在标题栏上。侧栏、聊天区与右侧面板平铺在窗口里，之间只有一条细线。
+*/
+
+/* ─── 网格：第一行标题栏，第二行侧栏与内容区 ─────────────── */
+.app {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+  overflow: hidden;
+  transition: grid-template-columns var(--t-med) var(--ease);
+}
+.app.is-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+.workspace {
+  grid-row: 2;
+  grid-column: 2;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--divider);
+  /* 和侧栏之间的细线画在窗口底色上；压在更亮的内容区底色上时，浅色下和侧栏几乎一样深，看不出来 */
+  background: var(--bg) padding-box;
+}
+.app.is-collapsed .workspace {
+  border-left: 0;
+}
+
+/* ─── 聊天面板与右侧面板槽 ─────────────────────────────── */
+.panel {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+/*
+  聊天页的外层（app.tsx）：去设置、插件、定时任务页时不卸载，只是叠到下面藏起来。
+  content-visibility: hidden 跳过它的布局和绘制，同时留着渲染状态和滚动位置，回来时不用重新排版。
+*/
+.chat-keep {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.chat-keep[data-hidden] {
+  position: absolute;
+  inset: 0;
+  content-visibility: hidden;
+  pointer-events: none;
+}
+.panel-scroll {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+.right-panel-slot {
+  position: relative;
+  display: flex;
+  flex: none;
+  width: var(--right-w);
+  min-width: 320px;
+  min-height: 0;
+  max-width: 72%;
+  overflow: visible;
+  border-left: 1px solid var(--divider);
+  background: var(--bg);
+}
+.right-panel-slot[hidden] {
+  display: none;
+}
+.right-panel-slot > :not(.panel-resizer) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.app.is-right-max .panel {
+  display: none;
+}
+.app.is-right-max .right-panel-slot {
+  flex: 1;
+  width: auto;
+  max-width: none;
+  border-left: 0;
+}
+/* 侧栏收起后顶行按钮排进内容区顶栏的左端，顶栏让出它们的宽度 */
+.app.is-collapsed .panel-top,
+.app.is-collapsed.is-right-max .right-panel-bar {
+  padding-left: var(--controls-w);
+}
+
+/* ─── 拖动分隔条：右侧面板左边一条，侧栏右边一条 ─────────── */
+.panel-resizer {
+  position: absolute;
+  z-index: 20;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: var(--resizer-size);
+  cursor: col-resize;
+  touch-action: none;
+}
+/*
+  侧栏的分隔条放在网格里侧栏那一格的右沿，跨在内容区左边的细线上。
+  绝对定位的网格子元素没写结束线时会一直延到网格的边上，所以两条线都要写。
+*/
+.panel-resizer.sidebar-resizer {
+  grid-row: 2 / 3;
+  grid-column: 1 / 2;
+  right: -4px;
+  left: auto;
+}
+/*
+  高亮是一条 2px 的竖线，画在被拖动的面板这一侧、紧贴细线，同 Cursor：悬停与拖动时是墨色 12%，
+  没有过渡和延迟。Cursor 的分隔条不能用键盘聚焦；这里聚焦时换成强调色，不再叠全局的焦点描边。
+*/
+.panel-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  background: transparent;
+}
+.panel-resizer.sidebar-resizer::after {
+  right: 4px;
+  left: auto;
+}
+.panel-resizer:hover::after,
+.panel-resizer[data-resizing]::after {
+  background: var(--resizer-hover);
+}
+.panel-resizer:focus-visible {
+  outline: none;
+}
+.panel-resizer:focus-visible::after {
+  background: var(--accent);
+}
+body.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+/*
+  拖动分隔条时盖住整个窗口的透明层，同 Cursor：光标一直是 col-resize，指针下的行和按钮不出现悬停。
+  盖在所有层之上，包括内置浏览器的 webview 和弹层。
+*/
+.resize-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  cursor: col-resize;
+}
+/* 拖动时侧栏宽度跟手，不走收起与展开的过渡 */
+body.is-resizing .app {
+  transition: none;
+}
+body.is-resizing-rows {
+  cursor: row-resize;
+  user-select: none;
+}
+/* 拖动分隔条时 iframe 与内置浏览器的 webview 会吞掉指针事件。 */
+body.is-resizing iframe,
+body.is-resizing webview,
+body.is-resizing-rows iframe,
+body.is-resizing-rows webview {
+  pointer-events: none;
+}
+
+/* ─── 窄窗口：内容区占满，右侧面板浮在内容区上方，避免挤压聊天宽度 ─── */
+@media (max-width: 960px) {
+  .app,
+  .app.is-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .workspace,
+  .app.is-collapsed .workspace {
+    grid-column: 1;
+    border-left: 0;
+  }
+  .app.has-right .right-panel-slot {
+    position: fixed;
+    z-index: 60;
+    top: calc(var(--titlebar-h) + var(--topbar-h) + var(--gap));
+    right: var(--gap);
+    bottom: var(--gap);
+    left: auto;
+    width: min(460px, calc(100vw - 2 * var(--gap)));
+    max-width: none;
+    overflow: hidden;
+    border-left: 0;
+    border-radius: var(--r-panel);
+    box-shadow: var(--shadow-modal);
+  }
+  .app.is-right-max .right-panel-slot {
+    inset: calc(var(--titlebar-h) + var(--gap)) var(--gap) var(--gap);
+    width: auto;
+  }
+  .panel-resizer {
+    display: none;
+  }
+}

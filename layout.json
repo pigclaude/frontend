@@ -10,6 +10,11 @@
     "switcher",
     "web-ui",
     "api",
-    "contracts"
+    "contracts",
+    "pigcode-contracts",
+    "pigcode-ui-primitives",
+    "pigcode-client-runtime",
+    "pigcode-ui-shell",
+    "pigcode-ui-settings"
   ]
 }

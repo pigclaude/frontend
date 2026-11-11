@@ -38,6 +38,14 @@ Rust 使用 rustfmt：`edition = "2024"`，`max_width = 100`。
 - Rust 库代码不用 `unwrap`、`expect`、`panic`。`main.rs` 可以在启动失败时退出。
 - 提交前从聚合仓根目录通过 `pnpm --dir frontend exec eslint .`、`pnpm --dir frontend exec prettier --check .`、`cargo fmt --all --check --manifest-path backend/Cargo.toml` 和 `cargo clippy --manifest-path backend/Cargo.toml --workspace --all-targets -- -D warnings`。
 
+## Pigcode 界面包
+
+`packages/pigcode-*` 是从 pigcode/pigcode 固定提交原样拷入的界面层（规格见根仓库 #37）。固定提交和逐文件 SHA256 记在 `pigcode-source.json`，`pnpm --dir frontend pigcode:verify` 核对，`pnpm --dir frontend test` 也会跑它的守卫测试。
+
+- 不直接改这些包。PigClaude 自己的逻辑、产品名、本地存储键和原生桥放在桌面端的适配层。
+- 它们沿用 Pigcode 的写法：`src/index.ts` 入口和原有注释，按哈希核对，不受本仓库「不建 index.ts」「中文文件头」两条约束；行数上限和 `any` 规则照常适用。
+- 同步新提交：`pnpm --dir frontend pigcode:sync <pigcode frontend 仓库路径> <完整提交 SHA>`，再跑 `pnpm install`、`pigcode:verify`、各包的类型检查与测试和桌面端视觉套件。只取推送到 GitHub 的提交。
+
 ## Agent skills
 
 ### Issue tracker

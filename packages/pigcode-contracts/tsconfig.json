@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.pigcode.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"]
+}

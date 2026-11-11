@@ -1,0 +1,1309 @@
+{
+  "repository": "pigcode/pigcode",
+  "commit": "1d01d46d904fd0f5dd3a3a37700d4ed092bdfd33",
+  "rule": "@pigcode/<package> → @pigclaude/pigcode-<package>；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
+  "files": [
+    {
+      "path": "packages/pigcode-contracts/package.json",
+      "source": "packages/contracts/package.json",
+      "sourceSha256": "ba01ba6a9b0203a48764349b8dada156918bd7cd1cb997f141567419de0392ac",
+      "sha256": "ce814ca702669989c625693255b85048369982892bcd4084c05f1d95acdca2ea"
+    },
+    {
+      "path": "packages/pigcode-contracts/src/agents.ts",
+      "source": "packages/contracts/src/agents.ts",
+      "sourceSha256": "548be8abc9951057bbf7cfbe8e1e4f26e574b9f54eded27478724d5c5c33dd0f",
+      "sha256": "548be8abc9951057bbf7cfbe8e1e4f26e574b9f54eded27478724d5c5c33dd0f"
+    },
+    {
+      "path": "packages/pigcode-contracts/src/commands.ts",
+      "source": "packages/contracts/src/commands.ts",
+      "sourceSha256": "976f601c8f562320316dd28325f4b44fc966abfc7f46ea25edf2f9368085e545",
+      "sha256": "976f601c8f562320316dd28325f4b44fc966abfc7f46ea25edf2f9368085e545"
+    },
+    {
+      "path": "packages/pigcode-contracts/src/domain.test.ts",
+      "source": "packages/contracts/src/domain.test.ts",
+      "sourceSha256": "f0eb5bf62ff9cb7f88aedbaa50b37d3acea9fcac361e3fb48905567168befc53",
+      "sha256": "f0eb5bf62ff9cb7f88aedbaa50b37d3acea9fcac361e3fb48905567168befc53"
+    },
+    {
+      "path": "packages/pigcode-contracts/src/domain.ts",
+      "source": "packages/contracts/src/domain.ts",
+      "sourceSha256": "da98d5bca7bed181813cf9cdb1bd9228d2bc440126c341e1bb643cf62889a0d6",
+      "sha256": "da98d5bca7bed181813cf9cdb1bd9228d2bc440126c341e1bb643cf62889a0d6"
+    },
+    {
+      "path": "packages/pigcode-contracts/src/events.ts",
+      "source": "packages/contracts/src/events.ts",
+      "sourceSha256": "9198b6f849b6f720dccd12c80adbfa660c7fe5f2dd23e003a3323854fca61b1e",
+      "sha256": "9198b6f849b6f720dccd12c80adbfa660c7fe5f2dd23e003a3323854fca61b1e"
+    },
+    {
+      "path": "packages/pigcode-contracts/src/index.ts",
+      "source": "packages/contracts/src/index.ts",
+      "sourceSha256": "33dea93a068c7c0dae3c827b6066b91c3f7a0952b90fe68619c9485c1d116761",
+      "sha256": "33dea93a068c7c0dae3c827b6066b91c3f7a0952b90fe68619c9485c1d116761"
+    },
+    {
+      "path": "packages/pigcode-contracts/src/protocol.test.ts",
+      "source": "packages/contracts/src/protocol.test.ts",
+      "sourceSha256": "f3f8d4252e43057f2deaab6f9dd3e004a249907c70692cb0360cf3a47674fd9e",
+      "sha256": "f3f8d4252e43057f2deaab6f9dd3e004a249907c70692cb0360cf3a47674fd9e"
+    },
+    {
+      "path": "packages/pigcode-contracts/src/protocol.ts",
+      "source": "packages/contracts/src/protocol.ts",
+      "sourceSha256": "790cdca53ff9a200ed4da8093e5225752993efe7f750af728e220e5e22fd6d73",
+      "sha256": "790cdca53ff9a200ed4da8093e5225752993efe7f750af728e220e5e22fd6d73"
+    },
+    {
+      "path": "packages/pigcode-contracts/src/schedule-rules.test.ts",
+      "source": "packages/contracts/src/schedule-rules.test.ts",
+      "sourceSha256": "caf80cff7c13d4347166310ea8eac50b131d570c723eda9daa55977632dda5ca",
+      "sha256": "caf80cff7c13d4347166310ea8eac50b131d570c723eda9daa55977632dda5ca"
+    },
+    {
+      "path": "packages/pigcode-contracts/src/schedule-rules.ts",
+      "source": "packages/contracts/src/schedule-rules.ts",
+      "sourceSha256": "5aa2f88a3173e551ed4429c488bdacbab45a75ee44f3796553577d711eabbf6d",
+      "sha256": "5aa2f88a3173e551ed4429c488bdacbab45a75ee44f3796553577d711eabbf6d"
+    },
+    {
+      "path": "packages/pigcode-contracts/src/smoke.test.ts",
+      "source": "packages/contracts/src/smoke.test.ts",
+      "sourceSha256": "e55ce4bde4a777266d3c042d4ee5ee3f113732b04984de80c0597f9661f25ef9",
+      "sha256": "e55ce4bde4a777266d3c042d4ee5ee3f113732b04984de80c0597f9661f25ef9"
+    },
+    {
+      "path": "packages/pigcode-contracts/tsconfig.json",
+      "source": "packages/contracts/tsconfig.json",
+      "sourceSha256": "055076ab4314c141b41809604316512a8f25456a4f435145d8e154c5db940621",
+      "sha256": "83f0a89edf290162103a99170dbc883fd468759cc97399958ab81cb0aa7cda53"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/package.json",
+      "source": "packages/ui-primitives/package.json",
+      "sourceSha256": "da159fdc030afee8a3bc55d9af3678cf2eed1210498f303a9b209b97df3412c6",
+      "sha256": "9dce07d6707783caf1bc59b0a81d2e0d6dcc217f69ad22e3ce6890af7947245d"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/clipboard.ts",
+      "source": "packages/ui-primitives/src/clipboard.ts",
+      "sourceSha256": "a15eb9f03bec42138e89fd87737d161f8168331df5e1a21ccaa44ff303fcb103",
+      "sha256": "a15eb9f03bec42138e89fd87737d161f8168331df5e1a21ccaa44ff303fcb103"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/agent-icon.test.tsx",
+      "source": "packages/ui-primitives/src/components/agent-icon.test.tsx",
+      "sourceSha256": "a7178670918302678921a3cec72c9c6f2f230347dfc307686d4bc37f3174bb98",
+      "sha256": "a7178670918302678921a3cec72c9c6f2f230347dfc307686d4bc37f3174bb98"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/agent-icon.tsx",
+      "source": "packages/ui-primitives/src/components/agent-icon.tsx",
+      "sourceSha256": "a2020afe545243ddad0f1f353e62a0a02c7b433fd45d96b7ea84c5f5f7c27c80",
+      "sha256": "a2020afe545243ddad0f1f353e62a0a02c7b433fd45d96b7ea84c5f5f7c27c80"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/badge.tsx",
+      "source": "packages/ui-primitives/src/components/badge.tsx",
+      "sourceSha256": "4e96866c53036049fed442519f4498fa28238d1e6f527d1364f9236178e95120",
+      "sha256": "4e96866c53036049fed442519f4498fa28238d1e6f527d1364f9236178e95120"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/base-class.ts",
+      "source": "packages/ui-primitives/src/components/base-class.ts",
+      "sourceSha256": "ff719d76ac47bb071f59f6a4c6ab73d8f2dcf91ec877c7abf61a79552ee5ea88",
+      "sha256": "ff719d76ac47bb071f59f6a4c6ab73d8f2dcf91ec877c7abf61a79552ee5ea88"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/button.test.tsx",
+      "source": "packages/ui-primitives/src/components/button.test.tsx",
+      "sourceSha256": "73be7e15e68ba949036d61a03249044dfed1caad690a4ea44ca165d88d9c7e45",
+      "sha256": "73be7e15e68ba949036d61a03249044dfed1caad690a4ea44ca165d88d9c7e45"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/button.tsx",
+      "source": "packages/ui-primitives/src/components/button.tsx",
+      "sourceSha256": "3c8a36c4a24de28255d49f03c8d3bc452b1425286342b0db8c6377086ddf7ab4",
+      "sha256": "3c8a36c4a24de28255d49f03c8d3bc452b1425286342b0db8c6377086ddf7ab4"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/checkbox.tsx",
+      "source": "packages/ui-primitives/src/components/checkbox.tsx",
+      "sourceSha256": "ba3951598769ae5613776b8260d60d8620906a059858bac2934e1593b4fe5560",
+      "sha256": "ba3951598769ae5613776b8260d60d8620906a059858bac2934e1593b4fe5560"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/cn.ts",
+      "source": "packages/ui-primitives/src/components/cn.ts",
+      "sourceSha256": "31579aed6ef2800222fb39defc3ede21c282a462e0e50874ff90287985aa0674",
+      "sha256": "31579aed6ef2800222fb39defc3ede21c282a462e0e50874ff90287985aa0674"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/collapsible.tsx",
+      "source": "packages/ui-primitives/src/components/collapsible.tsx",
+      "sourceSha256": "393be7eccfc5724326a84f551a3be2401759ed05678b61bf570db45bf4c464ca",
+      "sha256": "393be7eccfc5724326a84f551a3be2401759ed05678b61bf570db45bf4c464ca"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/dialog.test.tsx",
+      "source": "packages/ui-primitives/src/components/dialog.test.tsx",
+      "sourceSha256": "618b1c2465998cd9884f22202256a997754e302c1ac27b050efe75ba48e79c1b",
+      "sha256": "618b1c2465998cd9884f22202256a997754e302c1ac27b050efe75ba48e79c1b"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/dialog.tsx",
+      "source": "packages/ui-primitives/src/components/dialog.tsx",
+      "sourceSha256": "dd710ac79e1ef62b68559e974d0c581b981a9e80ebdbec069fefe2d76b33d2e4",
+      "sha256": "dd710ac79e1ef62b68559e974d0c581b981a9e80ebdbec069fefe2d76b33d2e4"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/dot-matrix.tsx",
+      "source": "packages/ui-primitives/src/components/dot-matrix.tsx",
+      "sourceSha256": "09379a1662d8004f543993db987f607ad3da64d2a1d020924823f89510e976fd",
+      "sha256": "09379a1662d8004f543993db987f607ad3da64d2a1d020924823f89510e976fd"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/empty-state.test.tsx",
+      "source": "packages/ui-primitives/src/components/empty-state.test.tsx",
+      "sourceSha256": "367fa65f0c96ba28e06e45c0cb0d61af101a24c424cbf89e73bc57de15bfe81d",
+      "sha256": "367fa65f0c96ba28e06e45c0cb0d61af101a24c424cbf89e73bc57de15bfe81d"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/empty-state.tsx",
+      "source": "packages/ui-primitives/src/components/empty-state.tsx",
+      "sourceSha256": "4acd9174eb516d4ff99d739199a82b3afbc3de6e69915a74b3fbbedf93c77aad",
+      "sha256": "4acd9174eb516d4ff99d739199a82b3afbc3de6e69915a74b3fbbedf93c77aad"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/entity-avatar.test.tsx",
+      "source": "packages/ui-primitives/src/components/entity-avatar.test.tsx",
+      "sourceSha256": "1a15cd3cd207a68569c63fccea5bb3bf5220567c8724c215a25e46dda59b247c",
+      "sha256": "1a15cd3cd207a68569c63fccea5bb3bf5220567c8724c215a25e46dda59b247c"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/entity-avatar.tsx",
+      "source": "packages/ui-primitives/src/components/entity-avatar.tsx",
+      "sourceSha256": "693f401fd3e3fa54a493d4b32c993b4ecc60e2ad67b1a05752d171aaff7fc595",
+      "sha256": "693f401fd3e3fa54a493d4b32c993b4ecc60e2ad67b1a05752d171aaff7fc595"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/error-notice.test.tsx",
+      "source": "packages/ui-primitives/src/components/error-notice.test.tsx",
+      "sourceSha256": "b90939d3f879da7382de66d4347e2225ce42c55fc7a429b3b1a28977cc786fcb",
+      "sha256": "d601f7dfe4f2fdce4da4aa28af3306039368b9cda68e5832d0249b530b49b4a2"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/error-notice.tsx",
+      "source": "packages/ui-primitives/src/components/error-notice.tsx",
+      "sourceSha256": "5ab89d5d8e0afac17a1498a280bff39c6c0f847056a67b56b2598a3d568a7c20",
+      "sha256": "b99a3ea068c0714d5edbc97fe2c6ec1b43eb5f8aec90620a32c8b0c3fea1c7a9"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/field.tsx",
+      "source": "packages/ui-primitives/src/components/field.tsx",
+      "sourceSha256": "e8334d42599191af2b1c7fc57b05741e046ef58040c5e09bf05a5e024e45b29f",
+      "sha256": "e8334d42599191af2b1c7fc57b05741e046ef58040c5e09bf05a5e024e45b29f"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/file-icons.tsx",
+      "source": "packages/ui-primitives/src/components/file-icons.tsx",
+      "sourceSha256": "8771d6e622216fd53f02c35473b53c8aeb8b316abf3e4f2ca33247a3bd18fed8",
+      "sha256": "8771d6e622216fd53f02c35473b53c8aeb8b316abf3e4f2ca33247a3bd18fed8"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/input.tsx",
+      "source": "packages/ui-primitives/src/components/input.tsx",
+      "sourceSha256": "415dbd21c29024b956ce49794608343678cfdcd9142e76f6e7b2f03b30e733bf",
+      "sha256": "415dbd21c29024b956ce49794608343678cfdcd9142e76f6e7b2f03b30e733bf"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/install-dialog.test.tsx",
+      "source": "packages/ui-primitives/src/components/install-dialog.test.tsx",
+      "sourceSha256": "b42f74e378345d3f8c152dcfaa510efa0c28f0228e38ed23b1f4e5c0a4d65614",
+      "sha256": "b42f74e378345d3f8c152dcfaa510efa0c28f0228e38ed23b1f4e5c0a4d65614"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/install-dialog.tsx",
+      "source": "packages/ui-primitives/src/components/install-dialog.tsx",
+      "sourceSha256": "bd521c1fea057e9e6a4a3686a0e8faa6d75bb0d6f707353c66142edba9ef80df",
+      "sha256": "bd521c1fea057e9e6a4a3686a0e8faa6d75bb0d6f707353c66142edba9ef80df"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/list-row.test.tsx",
+      "source": "packages/ui-primitives/src/components/list-row.test.tsx",
+      "sourceSha256": "886b1af8b90d3c7d6ccf8a024a52ba1b26170ce8b6a7e10dab0fe288cb9190c6",
+      "sha256": "886b1af8b90d3c7d6ccf8a024a52ba1b26170ce8b6a7e10dab0fe288cb9190c6"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/list-row.tsx",
+      "source": "packages/ui-primitives/src/components/list-row.tsx",
+      "sourceSha256": "1efb3b01df2d8ec88861b895234a1a350c3c1aece16dab8b55248a0125dcac73",
+      "sha256": "1efb3b01df2d8ec88861b895234a1a350c3c1aece16dab8b55248a0125dcac73"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/menu.test.tsx",
+      "source": "packages/ui-primitives/src/components/menu.test.tsx",
+      "sourceSha256": "fe307a608eb7e0d8b7496a65bf2a2967bc717b47e4a592f66e5b607e6192bfdd",
+      "sha256": "fe307a608eb7e0d8b7496a65bf2a2967bc717b47e4a592f66e5b607e6192bfdd"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/menu.tsx",
+      "source": "packages/ui-primitives/src/components/menu.tsx",
+      "sourceSha256": "6f20f29c14567466d027ef21a71dfd76730fa8b11d4f871f50acc4cf1cd569d6",
+      "sha256": "6f20f29c14567466d027ef21a71dfd76730fa8b11d4f871f50acc4cf1cd569d6"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/popover.tsx",
+      "source": "packages/ui-primitives/src/components/popover.tsx",
+      "sourceSha256": "80d9d0acef547660963cf2b8a5a3ac0b10b88009287e3893d5a65503d7ca3bea",
+      "sha256": "80d9d0acef547660963cf2b8a5a3ac0b10b88009287e3893d5a65503d7ca3bea"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/radio-group.tsx",
+      "source": "packages/ui-primitives/src/components/radio-group.tsx",
+      "sourceSha256": "76a27a406176161f24f0b37148d216dade9d69818266da0b0214a535938200e4",
+      "sha256": "76a27a406176161f24f0b37148d216dade9d69818266da0b0214a535938200e4"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/scroll-area.tsx",
+      "source": "packages/ui-primitives/src/components/scroll-area.tsx",
+      "sourceSha256": "c27ce1bdb8427297e1fcf10f411b09f10a3708402e2a4d539cd34e0ca9ac134a",
+      "sha256": "c27ce1bdb8427297e1fcf10f411b09f10a3708402e2a4d539cd34e0ca9ac134a"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/search-field.test.tsx",
+      "source": "packages/ui-primitives/src/components/search-field.test.tsx",
+      "sourceSha256": "e196619d3e548d2382487ad2d45ac55cd4f23e0807edef0d325a8c86c97d9e98",
+      "sha256": "e196619d3e548d2382487ad2d45ac55cd4f23e0807edef0d325a8c86c97d9e98"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/search-field.tsx",
+      "source": "packages/ui-primitives/src/components/search-field.tsx",
+      "sourceSha256": "b62e1e468632fa6ebe0166f05e5ddc9c8755db6ad10699aa908c78dd093b0ce5",
+      "sha256": "b62e1e468632fa6ebe0166f05e5ddc9c8755db6ad10699aa908c78dd093b0ce5"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/segmented-control.test.tsx",
+      "source": "packages/ui-primitives/src/components/segmented-control.test.tsx",
+      "sourceSha256": "0f1704deaa21ff6090a2a63f6a42d27eee3a9e3e124fe2cc2ad714163c647106",
+      "sha256": "0f1704deaa21ff6090a2a63f6a42d27eee3a9e3e124fe2cc2ad714163c647106"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/segmented-control.tsx",
+      "source": "packages/ui-primitives/src/components/segmented-control.tsx",
+      "sourceSha256": "a386b275345e5fd2354cc1921539ff7f2f1fd3534f3979dd0a92de7a068d856b",
+      "sha256": "a386b275345e5fd2354cc1921539ff7f2f1fd3534f3979dd0a92de7a068d856b"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/select.test.tsx",
+      "source": "packages/ui-primitives/src/components/select.test.tsx",
+      "sourceSha256": "5d4c3f26151670da7213ca4eea0c9b66680aca4c946390816773d23ab862f5c2",
+      "sha256": "5d4c3f26151670da7213ca4eea0c9b66680aca4c946390816773d23ab862f5c2"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/select.tsx",
+      "source": "packages/ui-primitives/src/components/select.tsx",
+      "sourceSha256": "6d8eacb768c2c69bd0a03e9c363d3df65743a67c32a775a6eb0c0dc0e6909eca",
+      "sha256": "6d8eacb768c2c69bd0a03e9c363d3df65743a67c32a775a6eb0c0dc0e6909eca"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/separator.tsx",
+      "source": "packages/ui-primitives/src/components/separator.tsx",
+      "sourceSha256": "d3969dcfffe1b91a631df2517e2df6a023167386284337a5e7674064256448d3",
+      "sha256": "d3969dcfffe1b91a631df2517e2df6a023167386284337a5e7674064256448d3"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/setting-page.tsx",
+      "source": "packages/ui-primitives/src/components/setting-page.tsx",
+      "sourceSha256": "069ca97464c672da419486bbeae7cf484e03897d2eede0e0287648ff664614e7",
+      "sha256": "069ca97464c672da419486bbeae7cf484e03897d2eede0e0287648ff664614e7"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/skeleton.tsx",
+      "source": "packages/ui-primitives/src/components/skeleton.tsx",
+      "sourceSha256": "ef938f86c8e30ed5b267de1b204b45779fc0439c6bc69c322f2ff1b060e6e108",
+      "sha256": "ef938f86c8e30ed5b267de1b204b45779fc0439c6bc69c322f2ff1b060e6e108"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/slider.tsx",
+      "source": "packages/ui-primitives/src/components/slider.tsx",
+      "sourceSha256": "ca2520990c2b8474467e179ea979f36308e2f97fd4e808c80409df859c94dc72",
+      "sha256": "ca2520990c2b8474467e179ea979f36308e2f97fd4e808c80409df859c94dc72"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/spinner.tsx",
+      "source": "packages/ui-primitives/src/components/spinner.tsx",
+      "sourceSha256": "9b6c859ebb2a6133248e6512bad8ee0d910eeddfaa69e749b51d16ddfdce2c6a",
+      "sha256": "9b6c859ebb2a6133248e6512bad8ee0d910eeddfaa69e749b51d16ddfdce2c6a"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/status-dot.test.tsx",
+      "source": "packages/ui-primitives/src/components/status-dot.test.tsx",
+      "sourceSha256": "7de50870ccf67d5b5d7bfe86d75ac559e1b3670d79bba3e6afb0bdb3ffa077e9",
+      "sha256": "7de50870ccf67d5b5d7bfe86d75ac559e1b3670d79bba3e6afb0bdb3ffa077e9"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/status-dot.tsx",
+      "source": "packages/ui-primitives/src/components/status-dot.tsx",
+      "sourceSha256": "f0891f6ddfbeff3b46d09367c7da86675217dcaec376cb04d7eb8804fbdc865a",
+      "sha256": "f0891f6ddfbeff3b46d09367c7da86675217dcaec376cb04d7eb8804fbdc865a"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/switch.test.tsx",
+      "source": "packages/ui-primitives/src/components/switch.test.tsx",
+      "sourceSha256": "fbf1a7346bc27078aecadcd25ef9c4957862242dc5faa0cdc9536899caf5cad2",
+      "sha256": "fbf1a7346bc27078aecadcd25ef9c4957862242dc5faa0cdc9536899caf5cad2"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/switch.tsx",
+      "source": "packages/ui-primitives/src/components/switch.tsx",
+      "sourceSha256": "11a5d97a6eb20df6e06fa013402b500d9ac973a5a0317a2fda142634ff8ea4d7",
+      "sha256": "11a5d97a6eb20df6e06fa013402b500d9ac973a5a0317a2fda142634ff8ea4d7"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/tabs.tsx",
+      "source": "packages/ui-primitives/src/components/tabs.tsx",
+      "sourceSha256": "4c1dc5cfd2fb655084ac0008c3970ad7e7d65386cbcce65dcfd447562352a61d",
+      "sha256": "4c1dc5cfd2fb655084ac0008c3970ad7e7d65386cbcce65dcfd447562352a61d"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/textarea.tsx",
+      "source": "packages/ui-primitives/src/components/textarea.tsx",
+      "sourceSha256": "de51886611ac9cf2a4747cc95b5b10443839164a2a82cfc33ede37dd746374e8",
+      "sha256": "de51886611ac9cf2a4747cc95b5b10443839164a2a82cfc33ede37dd746374e8"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/components/tooltip.tsx",
+      "source": "packages/ui-primitives/src/components/tooltip.tsx",
+      "sourceSha256": "4f076c7b2de695a915e5847285f234707ba369b3a7db8ecaab888165fb9e7e3b",
+      "sha256": "4f076c7b2de695a915e5847285f234707ba369b3a7db8ecaab888165fb9e7e3b"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/global.d.ts",
+      "source": "packages/ui-primitives/src/global.d.ts",
+      "sourceSha256": "6c7b6ec036e69cb4fdcfa67a1ee8f851f7a18c3abc44e1fd7f5368f8b01c467a",
+      "sha256": "6c7b6ec036e69cb4fdcfa67a1ee8f851f7a18c3abc44e1fd7f5368f8b01c467a"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/highlight.test.ts",
+      "source": "packages/ui-primitives/src/highlight.test.ts",
+      "sourceSha256": "d225e8647ff34186e204da1d75ee0d5b3e43866181858b36075091a659730085",
+      "sha256": "d225e8647ff34186e204da1d75ee0d5b3e43866181858b36075091a659730085"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/highlight.ts",
+      "source": "packages/ui-primitives/src/highlight.ts",
+      "sourceSha256": "fe662ccff49600cd45913728a233649d8820cc9496ada6179348c708f205392c",
+      "sha256": "fe662ccff49600cd45913728a233649d8820cc9496ada6179348c708f205392c"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/index.ts",
+      "source": "packages/ui-primitives/src/index.ts",
+      "sourceSha256": "0f9909cd4b05953ebf4533a73bbe9d62d0cc353413aede16ced0d1a4c1055c07",
+      "sha256": "0f9909cd4b05953ebf4533a73bbe9d62d0cc353413aede16ced0d1a4c1055c07"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/locale/agents.messages.ts",
+      "source": "packages/ui-primitives/src/locale/agents.messages.ts",
+      "sourceSha256": "ed473cf3639108174b5020a3aa516ade0a7d7f7b0b8cb29c94a5061be905f1cb",
+      "sha256": "ed473cf3639108174b5020a3aa516ade0a7d7f7b0b8cb29c94a5061be905f1cb"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/locale/appearance.messages.ts",
+      "source": "packages/ui-primitives/src/locale/appearance.messages.ts",
+      "sourceSha256": "9959150b794073ec614f11b6ccfaccff08a42a12c07a6dab8b1bc9a531a8b35e",
+      "sha256": "9959150b794073ec614f11b6ccfaccff08a42a12c07a6dab8b1bc9a531a8b35e"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/locale/browser.messages.ts",
+      "source": "packages/ui-primitives/src/locale/browser.messages.ts",
+      "sourceSha256": "caa6b36dce6c8a51d71bc21e445911f394d18d876aa6d4fa457d63470c9abac7",
+      "sha256": "caa6b36dce6c8a51d71bc21e445911f394d18d876aa6d4fa457d63470c9abac7"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/locale/conversation.messages.ts",
+      "source": "packages/ui-primitives/src/locale/conversation.messages.ts",
+      "sourceSha256": "7e1a1a0a9ee78061c3104891d64973e6ab1beae109b3a058cad05f541ebf1c86",
+      "sha256": "7e1a1a0a9ee78061c3104891d64973e6ab1beae109b3a058cad05f541ebf1c86"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/locale/files.messages.ts",
+      "source": "packages/ui-primitives/src/locale/files.messages.ts",
+      "sourceSha256": "2d769f002b5b95fbfbae149fc4293c8c24cba95c23cf375d5dd2f99efb9f54d0",
+      "sha256": "2d769f002b5b95fbfbae149fc4293c8c24cba95c23cf375d5dd2f99efb9f54d0"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/locale/locale.test.tsx",
+      "source": "packages/ui-primitives/src/locale/locale.test.tsx",
+      "sourceSha256": "d75ea2d234499d205710df959372350e3e7ec00898cc11d75083659c140ea46e",
+      "sha256": "d75ea2d234499d205710df959372350e3e7ec00898cc11d75083659c140ea46e"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/locale/locale.tsx",
+      "source": "packages/ui-primitives/src/locale/locale.tsx",
+      "sourceSha256": "fc9701f543dab16344c942495f343710477bc7a02cc227b69bd8650de370f638",
+      "sha256": "fc9701f543dab16344c942495f343710477bc7a02cc227b69bd8650de370f638"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/locale/messages.en-US.ts",
+      "source": "packages/ui-primitives/src/locale/messages.en-US.ts",
+      "sourceSha256": "5e918c2ada5b595e2fa08910bb79f321493b28d7a5d811d325d75cf7caa4f220",
+      "sha256": "5e918c2ada5b595e2fa08910bb79f321493b28d7a5d811d325d75cf7caa4f220"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/locale/messages.zh-CN.ts",
+      "source": "packages/ui-primitives/src/locale/messages.zh-CN.ts",
+      "sourceSha256": "eea0829dc6837ae1716d05e6c3a3316503a2f634300384daf5e6657fcd48e03e",
+      "sha256": "eea0829dc6837ae1716d05e6c3a3316503a2f634300384daf5e6657fcd48e03e"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/locale/new-thread.messages.ts",
+      "source": "packages/ui-primitives/src/locale/new-thread.messages.ts",
+      "sourceSha256": "80bae9ca98f17c3bcb7cfc272b564b49009feb0c97487ef220b3c4b2e751553c",
+      "sha256": "80bae9ca98f17c3bcb7cfc272b564b49009feb0c97487ef220b3c4b2e751553c"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/locale/plugins.messages.ts",
+      "source": "packages/ui-primitives/src/locale/plugins.messages.ts",
+      "sourceSha256": "96f4a91c0ea586df71b3748d5b9465a6513929b7f1906113fc6d72c4b77cdad5",
+      "sha256": "96f4a91c0ea586df71b3748d5b9465a6513929b7f1906113fc6d72c4b77cdad5"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/locale/schedules.messages.ts",
+      "source": "packages/ui-primitives/src/locale/schedules.messages.ts",
+      "sourceSha256": "808ec307834675c3ab04bd5b29f63c8c2d2eac3090b8bd31443b41d138c94e4f",
+      "sha256": "808ec307834675c3ab04bd5b29f63c8c2d2eac3090b8bd31443b41d138c94e4f"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/locale/workbench.messages.ts",
+      "source": "packages/ui-primitives/src/locale/workbench.messages.ts",
+      "sourceSha256": "8b3c575765578dcd65385f8d512ae9a960de5d751650fb34ba2d731224ef769f",
+      "sha256": "8b3c575765578dcd65385f8d512ae9a960de5d751650fb34ba2d731224ef769f"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/preferences.ts",
+      "source": "packages/ui-primitives/src/preferences.ts",
+      "sourceSha256": "4aed7e4c6c99e7fd0cc2a6bb587b459a38cae5614682e17b02afb590b7df1e71",
+      "sha256": "4aed7e4c6c99e7fd0cc2a6bb587b459a38cae5614682e17b02afb590b7df1e71"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/shortcut.test.ts",
+      "source": "packages/ui-primitives/src/shortcut.test.ts",
+      "sourceSha256": "23d5de8f2fd1641507104fee5ab4a930529612b8da205da1fb899707c6a411d1",
+      "sha256": "23d5de8f2fd1641507104fee5ab4a930529612b8da205da1fb899707c6a411d1"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/shortcut.ts",
+      "source": "packages/ui-primitives/src/shortcut.ts",
+      "sourceSha256": "53e395dd76a706242f3e5287336b7c4c17948642641417207c8735f4af47bb28",
+      "sha256": "53e395dd76a706242f3e5287336b7c4c17948642641417207c8735f4af47bb28"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/smoke.test.tsx",
+      "source": "packages/ui-primitives/src/smoke.test.tsx",
+      "sourceSha256": "272d6fd2cbbb233f977dfd72fddd093e1e564fb41c4459bdcf11e6c9eadee5eb",
+      "sha256": "272d6fd2cbbb233f977dfd72fddd093e1e564fb41c4459bdcf11e6c9eadee5eb"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/agents.css",
+      "source": "packages/ui-primitives/src/styles/agents.css",
+      "sourceSha256": "6cd20dde1a79d826cd8eb74d8939b66a37e593cbfcac09dae330d393efc2aabe",
+      "sha256": "6cd20dde1a79d826cd8eb74d8939b66a37e593cbfcac09dae330d393efc2aabe"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/appearance.css",
+      "source": "packages/ui-primitives/src/styles/appearance.css",
+      "sourceSha256": "f127ca96c1732160a58f6465a6fc402813aa59b8367c12b835b3c65662919e5b",
+      "sha256": "f127ca96c1732160a58f6465a6fc402813aa59b8367c12b835b3c65662919e5b"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/approvals.css",
+      "source": "packages/ui-primitives/src/styles/approvals.css",
+      "sourceSha256": "6b58fc457cc2f3a09419f4e943b42a9c5824746589192f6a442c36092b247c9a",
+      "sha256": "6b58fc457cc2f3a09419f4e943b42a9c5824746589192f6a442c36092b247c9a"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/base.css",
+      "source": "packages/ui-primitives/src/styles/base.css",
+      "sourceSha256": "d1d30da49342bd07822dfc7fb05c6fd1493d552f0f73a963e6e1a89b3955f3e7",
+      "sha256": "d1d30da49342bd07822dfc7fb05c6fd1493d552f0f73a963e6e1a89b3955f3e7"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/browser.css",
+      "source": "packages/ui-primitives/src/styles/browser.css",
+      "sourceSha256": "e722493740f7a29535a6ec31fb6808b26af1c29823f7e4dcbf3e90900d74710f",
+      "sha256": "e722493740f7a29535a6ec31fb6808b26af1c29823f7e4dcbf3e90900d74710f"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/checkpoints.css",
+      "source": "packages/ui-primitives/src/styles/checkpoints.css",
+      "sourceSha256": "8e32c830276b7ab3dfba216048196b61297f50486f184a8abc1585f7f20161ec",
+      "sha256": "8e32c830276b7ab3dfba216048196b61297f50486f184a8abc1585f7f20161ec"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/chips.css",
+      "source": "packages/ui-primitives/src/styles/chips.css",
+      "sourceSha256": "64f9c06ac33ec00a8bff13dd42f062e80c3c56579e960b03afcf2d1bf86dc4ab",
+      "sha256": "64f9c06ac33ec00a8bff13dd42f062e80c3c56579e960b03afcf2d1bf86dc4ab"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/code-block.css",
+      "source": "packages/ui-primitives/src/styles/code-block.css",
+      "sourceSha256": "8209c8a6ec1671fbf0a1862a7d38f0fa90a7b4aaeb61f647cade4fa91c64c732",
+      "sha256": "8209c8a6ec1671fbf0a1862a7d38f0fa90a7b4aaeb61f647cade4fa91c64c732"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/composer-input.css",
+      "source": "packages/ui-primitives/src/styles/composer-input.css",
+      "sourceSha256": "f46a6f3598fd7354b673d30d0394c1cfa863c0336ef81131d08c4d277934343c",
+      "sha256": "f46a6f3598fd7354b673d30d0394c1cfa863c0336ef81131d08c4d277934343c"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/composer.css",
+      "source": "packages/ui-primitives/src/styles/composer.css",
+      "sourceSha256": "8a778b689ecc0bce8c517010ed03fc46be696d0966e181c91bb9e3dd2a445854",
+      "sha256": "8a778b689ecc0bce8c517010ed03fc46be696d0966e181c91bb9e3dd2a445854"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/controls.css",
+      "source": "packages/ui-primitives/src/styles/controls.css",
+      "sourceSha256": "ef0b11e47bcc2741b650df435ab441e7e799240673d3f256dce6f256de46509f",
+      "sha256": "ef0b11e47bcc2741b650df435ab441e7e799240673d3f256dce6f256de46509f"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/dialogs.css",
+      "source": "packages/ui-primitives/src/styles/dialogs.css",
+      "sourceSha256": "457459e1dc84ce9556d74367374a6cb605f79f52774d47656099b106c73e4a2f",
+      "sha256": "457459e1dc84ce9556d74367374a6cb605f79f52774d47656099b106c73e4a2f"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/diff.css",
+      "source": "packages/ui-primitives/src/styles/diff.css",
+      "sourceSha256": "ac5f8bb75900d0a2530359825aeae50349a71f239cb1633d42469c0f64078639",
+      "sha256": "ac5f8bb75900d0a2530359825aeae50349a71f239cb1633d42469c0f64078639"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/drawer.css",
+      "source": "packages/ui-primitives/src/styles/drawer.css",
+      "sourceSha256": "b494261fb8377737f0341613893fe7e785344d90ab037f4dea98a0c26ba6e4c2",
+      "sha256": "b494261fb8377737f0341613893fe7e785344d90ab037f4dea98a0c26ba6e4c2"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/empty-states.css",
+      "source": "packages/ui-primitives/src/styles/empty-states.css",
+      "sourceSha256": "072e23881e5a1c5b6e4b62133a3ae235cd29d4960d31f2f0a84c1e5f386479c6",
+      "sha256": "072e23881e5a1c5b6e4b62133a3ae235cd29d4960d31f2f0a84c1e5f386479c6"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/fields.css",
+      "source": "packages/ui-primitives/src/styles/fields.css",
+      "sourceSha256": "836c54670612594a76343e48f3b754ab35d78a14edec8147222d31561e98b014",
+      "sha256": "836c54670612594a76343e48f3b754ab35d78a14edec8147222d31561e98b014"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/file-summary.css",
+      "source": "packages/ui-primitives/src/styles/file-summary.css",
+      "sourceSha256": "a30c321eda8d12ba4ea538488eba3389d6cfb4762e991ca79ce677bac420d2c1",
+      "sha256": "a30c321eda8d12ba4ea538488eba3389d6cfb4762e991ca79ce677bac420d2c1"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/files.css",
+      "source": "packages/ui-primitives/src/styles/files.css",
+      "sourceSha256": "73e6eeceda14607f32b6da00befe599efd5397d5a3c560333e5c3ab972a1c9bc",
+      "sha256": "73e6eeceda14607f32b6da00befe599efd5397d5a3c560333e5c3ab972a1c9bc"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/glass.css",
+      "source": "packages/ui-primitives/src/styles/glass.css",
+      "sourceSha256": "945e9f597588d1858ca084cc43c6e72c7e5278208f1ef2def5abf571e560f0b9",
+      "sha256": "945e9f597588d1858ca084cc43c6e72c7e5278208f1ef2def5abf571e560f0b9"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/globals.css",
+      "source": "packages/ui-primitives/src/styles/globals.css",
+      "sourceSha256": "e580fb10c9f2ac79f8eb1f9ea2c29e8002b1e868494f12ccbb356ab650b4ec50",
+      "sha256": "e580fb10c9f2ac79f8eb1f9ea2c29e8002b1e868494f12ccbb356ab650b4ec50"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/indicators.css",
+      "source": "packages/ui-primitives/src/styles/indicators.css",
+      "sourceSha256": "c5f9669ca5fd0da3feadc45a087fae0f4fe6be5b349d351b6abd04ca8d652ef8",
+      "sha256": "c5f9669ca5fd0da3feadc45a087fae0f4fe6be5b349d351b6abd04ca8d652ef8"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/list-rows.css",
+      "source": "packages/ui-primitives/src/styles/list-rows.css",
+      "sourceSha256": "b04611fb638cb059bc68c8ab2160e6cfe2d947c1bb8ea68e98d3fe3201cb877a",
+      "sha256": "b04611fb638cb059bc68c8ab2160e6cfe2d947c1bb8ea68e98d3fe3201cb877a"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/markdown.css",
+      "source": "packages/ui-primitives/src/styles/markdown.css",
+      "sourceSha256": "ba75cdbf0496ec7cca4e520b44e88e614ab33e79e9fa2fa932d5a8d84236be4e",
+      "sha256": "ba75cdbf0496ec7cca4e520b44e88e614ab33e79e9fa2fa932d5a8d84236be4e"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/menus.css",
+      "source": "packages/ui-primitives/src/styles/menus.css",
+      "sourceSha256": "825f58ab7d5ca908381b1a5c0c1e66fe88ba44b3e4d7bed490d901c4f7b7b69a",
+      "sha256": "825f58ab7d5ca908381b1a5c0c1e66fe88ba44b3e4d7bed490d901c4f7b7b69a"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/motion.css",
+      "source": "packages/ui-primitives/src/styles/motion.css",
+      "sourceSha256": "4e9b62f588281624df91f103bb54b40766216809a2803be74784905debd51913",
+      "sha256": "4e9b62f588281624df91f103bb54b40766216809a2803be74784905debd51913"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/new-thread.css",
+      "source": "packages/ui-primitives/src/styles/new-thread.css",
+      "sourceSha256": "3fa0cf580b4fd3487c916320c4c9ce9553de52c25e0e03822e1d158fe76a34ac",
+      "sha256": "3fa0cf580b4fd3487c916320c4c9ce9553de52c25e0e03822e1d158fe76a34ac"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/open-in.css",
+      "source": "packages/ui-primitives/src/styles/open-in.css",
+      "sourceSha256": "625b4a4207409d5353b3893e5137bf1f6734021c1a19cfd5be77f94995114d6a",
+      "sha256": "625b4a4207409d5353b3893e5137bf1f6734021c1a19cfd5be77f94995114d6a"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/palette.css",
+      "source": "packages/ui-primitives/src/styles/palette.css",
+      "sourceSha256": "02067933c743725dfe1e1af365525967016c06ae9f8efa6a2f849bc9c12b9f0f",
+      "sha256": "02067933c743725dfe1e1af365525967016c06ae9f8efa6a2f849bc9c12b9f0f"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/plugins.css",
+      "source": "packages/ui-primitives/src/styles/plugins.css",
+      "sourceSha256": "ff06ffaea9d6e8070160758c7520fa631b68503978b222c1da29fd43284fd7d7",
+      "sha256": "ff06ffaea9d6e8070160758c7520fa631b68503978b222c1da29fd43284fd7d7"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/pr-panel.css",
+      "source": "packages/ui-primitives/src/styles/pr-panel.css",
+      "sourceSha256": "117ba1163cb8e32c86ee724db282443012de8bb9259e8a0c2d48d13354562d7f",
+      "sha256": "117ba1163cb8e32c86ee724db282443012de8bb9259e8a0c2d48d13354562d7f"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/project-dialog.css",
+      "source": "packages/ui-primitives/src/styles/project-dialog.css",
+      "sourceSha256": "4df0b9a6618e268ab8b0eb5e1441d46ee884594f1dfc4ae8487356e2027e7e72",
+      "sha256": "4df0b9a6618e268ab8b0eb5e1441d46ee884594f1dfc4ae8487356e2027e7e72"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/schedules.css",
+      "source": "packages/ui-primitives/src/styles/schedules.css",
+      "sourceSha256": "91a7e66ef9489720080bfc143ec55b3cd02ddd680576c31e355a1f20510c6631",
+      "sha256": "91a7e66ef9489720080bfc143ec55b3cd02ddd680576c31e355a1f20510c6631"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/search-fields.css",
+      "source": "packages/ui-primitives/src/styles/search-fields.css",
+      "sourceSha256": "4e052728c556e4226a841382bb422b216e05ca233731c4353edf41d2d26a5279",
+      "sha256": "4e052728c556e4226a841382bb422b216e05ca233731c4353edf41d2d26a5279"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/settings-page.css",
+      "source": "packages/ui-primitives/src/styles/settings-page.css",
+      "sourceSha256": "b320b52a3f7967bf0df5fe5460489c44a957f531e6142079be1e5aef10c10d05",
+      "sha256": "b320b52a3f7967bf0df5fe5460489c44a957f531e6142079be1e5aef10c10d05"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/sidebar.css",
+      "source": "packages/ui-primitives/src/styles/sidebar.css",
+      "sourceSha256": "9e4d94389f9d3a5cb2f8879199af3605c7cf4f15508d7d088a54f3943244747e",
+      "sha256": "9e4d94389f9d3a5cb2f8879199af3605c7cf4f15508d7d088a54f3943244747e"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/status-panel.css",
+      "source": "packages/ui-primitives/src/styles/status-panel.css",
+      "sourceSha256": "a4bb680f6e919ac063d5709e6ceab124ea951918a68fc40db564247f04f5d50a",
+      "sha256": "a4bb680f6e919ac063d5709e6ceab124ea951918a68fc40db564247f04f5d50a"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/surface-launcher.css",
+      "source": "packages/ui-primitives/src/styles/surface-launcher.css",
+      "sourceSha256": "64c9f08e1eca5c63d3d37620e0c8a0da5bcea86b9acda88dd41a8fe048309717",
+      "sha256": "64c9f08e1eca5c63d3d37620e0c8a0da5bcea86b9acda88dd41a8fe048309717"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/surface-tabs.css",
+      "source": "packages/ui-primitives/src/styles/surface-tabs.css",
+      "sourceSha256": "a5d4a8fc408f12704142a3a3650b2ca0ac27ce0b9f1d276dd0f15dda92d0bdd7",
+      "sha256": "a5d4a8fc408f12704142a3a3650b2ca0ac27ce0b9f1d276dd0f15dda92d0bdd7"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/tabs.css",
+      "source": "packages/ui-primitives/src/styles/tabs.css",
+      "sourceSha256": "f792128b0ae340708967f288fe2af7386301dc38ff65b434d1d62be3dc98bcdb",
+      "sha256": "f792128b0ae340708967f288fe2af7386301dc38ff65b434d1d62be3dc98bcdb"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/terminal.css",
+      "source": "packages/ui-primitives/src/styles/terminal.css",
+      "sourceSha256": "ef212b00c0a9da59de084f83b8caf0b66956fb5e796886eb76a9125d586c5490",
+      "sha256": "ef212b00c0a9da59de084f83b8caf0b66956fb5e796886eb76a9125d586c5490"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/thread-header.css",
+      "source": "packages/ui-primitives/src/styles/thread-header.css",
+      "sourceSha256": "2014725e4cacc212fa091a1acc7afcab261cc27e00b79940f523f436168ce4ef",
+      "sha256": "2014725e4cacc212fa091a1acc7afcab261cc27e00b79940f523f436168ce4ef"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/timeline.css",
+      "source": "packages/ui-primitives/src/styles/timeline.css",
+      "sourceSha256": "d1a5795c9228e25096b72ec2bf73deb264dbb3e7fa6423f16b6a965711527414",
+      "sha256": "d1a5795c9228e25096b72ec2bf73deb264dbb3e7fa6423f16b6a965711527414"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/titlebar.css",
+      "source": "packages/ui-primitives/src/styles/titlebar.css",
+      "sourceSha256": "49d2027c955a5f529da4003d5c480320cb7fe54519cf34c01784c70f0da4f7d6",
+      "sha256": "49d2027c955a5f529da4003d5c480320cb7fe54519cf34c01784c70f0da4f7d6"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/toast.css",
+      "source": "packages/ui-primitives/src/styles/toast.css",
+      "sourceSha256": "6d8c575af5a00721c6593225bb3a3699bf2b1d9cb545a24de87cebe007c37079",
+      "sha256": "6d8c575af5a00721c6593225bb3a3699bf2b1d9cb545a24de87cebe007c37079"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/tokens.css",
+      "source": "packages/ui-primitives/src/styles/tokens.css",
+      "sourceSha256": "b82f86da5e407531761048086b9ae4285fe7a9b42b8b76aac130f5e1b4396f06",
+      "sha256": "b82f86da5e407531761048086b9ae4285fe7a9b42b8b76aac130f5e1b4396f06"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/tool-cards.css",
+      "source": "packages/ui-primitives/src/styles/tool-cards.css",
+      "sourceSha256": "f1b414427b77811e7b3987811e3b2473b47685c4ed1d48d006063f9be2690567",
+      "sha256": "f1b414427b77811e7b3987811e3b2473b47685c4ed1d48d006063f9be2690567"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/tool-row.css",
+      "source": "packages/ui-primitives/src/styles/tool-row.css",
+      "sourceSha256": "0a8660a5e0e2db9fae8a564101876b16418eb5011f2a8838ef03df171234744a",
+      "sha256": "0a8660a5e0e2db9fae8a564101876b16418eb5011f2a8838ef03df171234744a"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/turn-nav.css",
+      "source": "packages/ui-primitives/src/styles/turn-nav.css",
+      "sourceSha256": "40148188626304cff672a6941d52d958194c6377533410ce95120bbcd29e4dec",
+      "sha256": "40148188626304cff672a6941d52d958194c6377533410ce95120bbcd29e4dec"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/workbench.css",
+      "source": "packages/ui-primitives/src/styles/workbench.css",
+      "sourceSha256": "f9e432f64d9168c890c8d440f70099205e43cb5493a057aed79d62498b692818",
+      "sha256": "f9e432f64d9168c890c8d440f70099205e43cb5493a057aed79d62498b692818"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/styles/workspace.css",
+      "source": "packages/ui-primitives/src/styles/workspace.css",
+      "sourceSha256": "da60d65a28479f8b845cf584a1c81448059febdb3d8e15d311cd37cd02ec12e0",
+      "sha256": "da60d65a28479f8b845cf584a1c81448059febdb3d8e15d311cd37cd02ec12e0"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/appearance-glass.ts",
+      "source": "packages/ui-primitives/src/theme/appearance-glass.ts",
+      "sourceSha256": "230d1bc41bff4bb8451a324539e94a0d7ac79dcc05e0a9a60ee08835ecc3a19b",
+      "sha256": "230d1bc41bff4bb8451a324539e94a0d7ac79dcc05e0a9a60ee08835ecc3a19b"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/appearance-settings.ts",
+      "source": "packages/ui-primitives/src/theme/appearance-settings.ts",
+      "sourceSha256": "2cc76faec277969ec416d58810f92513f2ef00fb30ee48b8b7c9fb9e7d058e0e",
+      "sha256": "2cc76faec277969ec416d58810f92513f2ef00fb30ee48b8b7c9fb9e7d058e0e"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/appearance-storage.ts",
+      "source": "packages/ui-primitives/src/theme/appearance-storage.ts",
+      "sourceSha256": "0a3007027b12bb4d4efd9ddb95cd71725908e1f070295082512e86415485b790",
+      "sha256": "0a3007027b12bb4d4efd9ddb95cd71725908e1f070295082512e86415485b790"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/appearance-tokens.ts",
+      "source": "packages/ui-primitives/src/theme/appearance-tokens.ts",
+      "sourceSha256": "ffcbde8c293364f0f17a6a1d32c83fd230610a5fd74e9e9d0d675a6d0fc221ea",
+      "sha256": "ffcbde8c293364f0f17a6a1d32c83fd230610a5fd74e9e9d0d675a6d0fc221ea"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/apply-appearance.ts",
+      "source": "packages/ui-primitives/src/theme/apply-appearance.ts",
+      "sourceSha256": "78a8da9150dfff43d3f54e743b02688f784caa601955e1c69ddae5d3f8a83c9a",
+      "sha256": "78a8da9150dfff43d3f54e743b02688f784caa601955e1c69ddae5d3f8a83c9a"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/color-math.ts",
+      "source": "packages/ui-primitives/src/theme/color-math.ts",
+      "sourceSha256": "6476384096e1ed89c0b17ecddd9f25ca60410743065ea2df1a76cb6e9e22fc7f",
+      "sha256": "6476384096e1ed89c0b17ecddd9f25ca60410743065ea2df1a76cb6e9e22fc7f"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/resolve-color.ts",
+      "source": "packages/ui-primitives/src/theme/resolve-color.ts",
+      "sourceSha256": "77d66fa93b2c373caf9467e3ae76be38ff1f386dc3995fd213b7cf509b2c8ae5",
+      "sha256": "77d66fa93b2c373caf9467e3ae76be38ff1f386dc3995fd213b7cf509b2c8ae5"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/theme-code.test.ts",
+      "source": "packages/ui-primitives/src/theme/theme-code.test.ts",
+      "sourceSha256": "9ff8ac36c272950d487ca0ebf9f93d80113665ee5aa60839981a4b2b82c79bfa",
+      "sha256": "9ff8ac36c272950d487ca0ebf9f93d80113665ee5aa60839981a4b2b82c79bfa"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/theme-code.ts",
+      "source": "packages/ui-primitives/src/theme/theme-code.ts",
+      "sourceSha256": "1ad81e754ceff9157ff5739a4eef4922c009e74265b113c6731aee9c2587085d",
+      "sha256": "1ad81e754ceff9157ff5739a4eef4922c009e74265b113c6731aee9c2587085d"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/theme-file.ts",
+      "source": "packages/ui-primitives/src/theme/theme-file.ts",
+      "sourceSha256": "0bab8a02c3732c62f222c5e8e701713cf5481e2beff0437c81acf2cbe0c49993",
+      "sha256": "0bab8a02c3732c62f222c5e8e701713cf5481e2beff0437c81acf2cbe0c49993"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/theme-import.test.ts",
+      "source": "packages/ui-primitives/src/theme/theme-import.test.ts",
+      "sourceSha256": "5fa3baec434b03cc83f09b60c089f9643aa2b7324f9698fdbc5591b36a2a3705",
+      "sha256": "5fa3baec434b03cc83f09b60c089f9643aa2b7324f9698fdbc5591b36a2a3705"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/theme-import.ts",
+      "source": "packages/ui-primitives/src/theme/theme-import.ts",
+      "sourceSha256": "914c0186b1f50c05b6804d14b503571ee31211db252ff70e56201868c9cdd60c",
+      "sha256": "914c0186b1f50c05b6804d14b503571ee31211db252ff70e56201868c9cdd60c"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/theme-model.test.ts",
+      "source": "packages/ui-primitives/src/theme/theme-model.test.ts",
+      "sourceSha256": "1a753d754319369faa27a5ea8c63ae9482d61578107ccb23204387f0f83733c5",
+      "sha256": "1a753d754319369faa27a5ea8c63ae9482d61578107ccb23204387f0f83733c5"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/theme-model.ts",
+      "source": "packages/ui-primitives/src/theme/theme-model.ts",
+      "sourceSha256": "156fab1893badf648b3f2afac14e2dce8abe04b444c2a525ff5e115173cc48dc",
+      "sha256": "156fab1893badf648b3f2afac14e2dce8abe04b444c2a525ff5e115173cc48dc"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/theme-presets.ts",
+      "source": "packages/ui-primitives/src/theme/theme-presets.ts",
+      "sourceSha256": "70363027d93e1fb3757e74af72b496abec6c59e2e37354cb60af2f34916cb1ad",
+      "sha256": "70363027d93e1fb3757e74af72b496abec6c59e2e37354cb60af2f34916cb1ad"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/theme-preview.ts",
+      "source": "packages/ui-primitives/src/theme/theme-preview.ts",
+      "sourceSha256": "bfe129b9a905cd8afd01b848c61a6f43fdc59cad10ea5d026a720c44e03d2b26",
+      "sha256": "bfe129b9a905cd8afd01b848c61a6f43fdc59cad10ea5d026a720c44e03d2b26"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/theme-tokens.test.ts",
+      "source": "packages/ui-primitives/src/theme/theme-tokens.test.ts",
+      "sourceSha256": "63c7d7da43258ecd3847477c0128b82d463d243c90c720ad7ac80d41f99bbd31",
+      "sha256": "63c7d7da43258ecd3847477c0128b82d463d243c90c720ad7ac80d41f99bbd31"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/theme-tokens.ts",
+      "source": "packages/ui-primitives/src/theme/theme-tokens.ts",
+      "sourceSha256": "d70f285698f4935317c982c4906326af3588d3f60b381f600f3ede75830905ba",
+      "sha256": "d70f285698f4935317c982c4906326af3588d3f60b381f600f3ede75830905ba"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/use-appearance.test.tsx",
+      "source": "packages/ui-primitives/src/theme/use-appearance.test.tsx",
+      "sourceSha256": "e85647885496207e0758dbf2dfea2d9f69824113c8bb1cd50e6b598a2d6d37b7",
+      "sha256": "e85647885496207e0758dbf2dfea2d9f69824113c8bb1cd50e6b598a2d6d37b7"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/use-appearance.ts",
+      "source": "packages/ui-primitives/src/theme/use-appearance.ts",
+      "sourceSha256": "465515942f05ea0f81b524777f319dc0f55a7bb64e819f0374028c9667d05e5e",
+      "sha256": "465515942f05ea0f81b524777f319dc0f55a7bb64e819f0374028c9667d05e5e"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/use-theme.test.tsx",
+      "source": "packages/ui-primitives/src/theme/use-theme.test.tsx",
+      "sourceSha256": "37a3dee152a46e8ea7d38d68ecd030924638c20b036819fa578168069c9f78d0",
+      "sha256": "37a3dee152a46e8ea7d38d68ecd030924638c20b036819fa578168069c9f78d0"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/theme/use-theme.ts",
+      "source": "packages/ui-primitives/src/theme/use-theme.ts",
+      "sourceSha256": "c4a0cd27388af76a60c12f1205264672a188269c532e9686f1ae5682a5598f26",
+      "sha256": "3e71d1d53f67aaa5092b27f337f4a165e79d2c463ae54e4a6146e81c325940f8"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/time.test.ts",
+      "source": "packages/ui-primitives/src/time.test.ts",
+      "sourceSha256": "498417cae9c6afe299ab0885c61ae403fe2c1c4b3b8d871389661717db12cffe",
+      "sha256": "498417cae9c6afe299ab0885c61ae403fe2c1c4b3b8d871389661717db12cffe"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/time.ts",
+      "source": "packages/ui-primitives/src/time.ts",
+      "sourceSha256": "eff468fd3981ad302784133966f90569282267b4f2b30e9a8cc95b515fff9aac",
+      "sha256": "eff468fd3981ad302784133966f90569282267b4f2b30e9a8cc95b515fff9aac"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/src/vite-env.d.ts",
+      "source": "packages/ui-primitives/src/vite-env.d.ts",
+      "sourceSha256": "32e0f5bf095fb76762df88fffc9f1d7b62279220d7a1a24fbea290b4eb569f73",
+      "sha256": "32e0f5bf095fb76762df88fffc9f1d7b62279220d7a1a24fbea290b4eb569f73"
+    },
+    {
+      "path": "packages/pigcode-ui-primitives/tsconfig.json",
+      "source": "packages/ui-primitives/tsconfig.json",
+      "sourceSha256": "3471a454db57dbec879aa68a1def058903c1d2142c7dd864f994c1ecdc0dce61",
+      "sha256": "18f0a81153e3027bb9f330e80eda11aebb6cfd6d490089091067427231734e48"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/package.json",
+      "source": "packages/ui-shell/package.json",
+      "sourceSha256": "daeef9734ec7586f1edab2b559f142f5082c02d8aae7cdad30e7b1640bd52cd2",
+      "sha256": "fbb67d4cb4bfd2588d3e218d5732497e904f1facb75321e411d7a73ca1458bfa"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/add-project-dialog.test.tsx",
+      "source": "packages/ui-shell/src/add-project-dialog.test.tsx",
+      "sourceSha256": "0c65ad76e03bf47f3760e3580009c47f7b3005e59e0d6e8d65f56bf02cc21b89",
+      "sha256": "9f7228a24424061191f8c669d353adb49d365dfccf45e0c696f9b18dcf31c6b5"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/add-project-dialog.tsx",
+      "source": "packages/ui-shell/src/add-project-dialog.tsx",
+      "sourceSha256": "375df87ad31cc863ffcbd12be8908adea8d34fc66cbb5e12003ca773fc802219",
+      "sha256": "a87e80b568501a19c6a54b7aee444d8aff212bb568586ad0d8364e549ce6aa90"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/app-renderer.tsx",
+      "source": "packages/ui-shell/src/app-renderer.tsx",
+      "sourceSha256": "61267a90f7b5e5bc9b305bdf5df6920c1e2ff2f851018d953e41ac1ab051250c",
+      "sha256": "bd6fb1347a1e323ae6adcc3d0d426aedd33c88499ef9877c945c5cf23a46d281"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/builtin-commands.ts",
+      "source": "packages/ui-shell/src/builtin-commands.ts",
+      "sourceSha256": "de3e54f3197cfe25b96e4e3892b0e6ea5401cf469ed466986defc08190f178ec",
+      "sha256": "ede307d21abb3aabdaeaa6659b6f6e1207c536988470e2ee011ee9225756da2f"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/command-palette.test.tsx",
+      "source": "packages/ui-shell/src/command-palette.test.tsx",
+      "sourceSha256": "0e64baffee224ce6d554ec7d6ed68a179813e2ae7caed72bd772b341f6f73fff",
+      "sha256": "706e716118d03d834342c0208682481281d1a22d2b414e3adcf6c6670e692267"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/command-palette.tsx",
+      "source": "packages/ui-shell/src/command-palette.tsx",
+      "sourceSha256": "ec61ac2d7afeef381549f86be5aecc3dff97cdc0aa34ad49ccb4a9a425e5fc04",
+      "sha256": "74b84f7b9a4ec7293880320b658b184d8f468dba32bd4b1a468fdfe5f881cf12"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/global.d.ts",
+      "source": "packages/ui-shell/src/global.d.ts",
+      "sourceSha256": "6c7b6ec036e69cb4fdcfa67a1ee8f851f7a18c3abc44e1fd7f5368f8b01c467a",
+      "sha256": "6c7b6ec036e69cb4fdcfa67a1ee8f851f7a18c3abc44e1fd7f5368f8b01c467a"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/icon.tsx",
+      "source": "packages/ui-shell/src/icon.tsx",
+      "sourceSha256": "985f333676acaf5aa1c08b66eaf2a704c7745335f6f625b1bccd17a86af57c49",
+      "sha256": "985f333676acaf5aa1c08b66eaf2a704c7745335f6f625b1bccd17a86af57c49"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/index.ts",
+      "source": "packages/ui-shell/src/index.ts",
+      "sourceSha256": "9eea546d548e182d52c545aad34954cece7e8dba88147ece8586eb5b81047e34",
+      "sha256": "9eea546d548e182d52c545aad34954cece7e8dba88147ece8586eb5b81047e34"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/open-in.test.tsx",
+      "source": "packages/ui-shell/src/open-in.test.tsx",
+      "sourceSha256": "a4ad3d5ad38e9c634514b0c4151af7b4dfd2647cd5b14599657d350f08cb049f",
+      "sha256": "b3ef51c84c165a399fb5e1b63bd4891b1aa7013a25a5122ecff0d56ee3b2e291"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/open-in.tsx",
+      "source": "packages/ui-shell/src/open-in.tsx",
+      "sourceSha256": "8dfe34366ab9259d7b7e4408048e42f1955e96ce2a78a2603d2aa7277e1f6a39",
+      "sha256": "649c4e3e0cfa2017de9a85f272c532a4b01c747efb955d4e3d9f4585696deb2b"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/panel-resizer.test.tsx",
+      "source": "packages/ui-shell/src/panel-resizer.test.tsx",
+      "sourceSha256": "86bcc1cff69009b67a37a1b648641282621f5e41c0868f5995f57b099c8fb0b0",
+      "sha256": "27716d41edab17d623ccc5e15430c6b69bd2c9d6a253bf0a8813b7d82646b99c"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/panel-resizer.tsx",
+      "source": "packages/ui-shell/src/panel-resizer.tsx",
+      "sourceSha256": "36a595ebffa7b47848940e22e624f85eae38143505db501d014e94f64d29f322",
+      "sha256": "6f97400f109449e974bfb14e3a92eb884a35af4e73547ef71d0c1e1c3aeaee72"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/plugin-panel.test.tsx",
+      "source": "packages/ui-shell/src/plugin-panel.test.tsx",
+      "sourceSha256": "fc55027edb798c360a9cede33c3d2e240e50bd519546c3701d7d5b890b546f3a",
+      "sha256": "e7552851ba81cd47277a81155b48da7aca0c1e83236006b0d14eb236ec0561ec"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/plugin-panel.tsx",
+      "source": "packages/ui-shell/src/plugin-panel.tsx",
+      "sourceSha256": "5aad48bc6d5915555d147f4fe2058fcea0b8a863e412967faf5d985f848cece8",
+      "sha256": "7ca80d7efc44670cd84c5c716dea2f4943f36f80f44628c226fce5648caa3808"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/settings-sidebar.test.tsx",
+      "source": "packages/ui-shell/src/settings-sidebar.test.tsx",
+      "sourceSha256": "19d59546582d5032cbb4f071958d5bc3f2afaba04f499d726fe87e90fa3567de",
+      "sha256": "70acc7213cef8ad546cf32d3f71c93d3777442e1876bad4f0afb1ee96b25e9b2"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/settings-sidebar.tsx",
+      "source": "packages/ui-shell/src/settings-sidebar.tsx",
+      "sourceSha256": "72c92453a79994de003e8b832824a827fb9b6b4203391bfacf003bddfc2e9c03",
+      "sha256": "cfbc69dafe3732c00c31333638055e1f3cd2d2f0bf047220c7a95b83f058a028"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/settings-view.tsx",
+      "source": "packages/ui-shell/src/settings-view.tsx",
+      "sourceSha256": "7b1043963f2164462311024cf8d623775edd67ceffeae7376907a66867c87a18",
+      "sha256": "e45cf5651a0880f17b62a8ccd2cad6f566ffdb1e76201a896d8dbb81dcd6b048"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/shell.test.tsx",
+      "source": "packages/ui-shell/src/shell.test.tsx",
+      "sourceSha256": "715eafb4b2a136e867af2a3ff5784abcdad49fb419b3cda09f88cb4b4f4389b5",
+      "sha256": "e09a2a3e529224a1733f90995249bf1f2352a79b915780155402ae8639591af4"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/shell.tsx",
+      "source": "packages/ui-shell/src/shell.tsx",
+      "sourceSha256": "8be9fb98189a2aa0e61694ece7b34dee8ad9bc01d17acfafdebb6739596cf5e9",
+      "sha256": "7ac1777161fc66065536bbf3546fe601b5ec2a9a075e67746fd16b603ce7b0f0"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/side-scroll.test.tsx",
+      "source": "packages/ui-shell/src/side-scroll.test.tsx",
+      "sourceSha256": "b37fafbe4d3e9a66a84c44a17aa45e407c0c7d9a26c5da9a1ee95874f72c7cac",
+      "sha256": "b37fafbe4d3e9a66a84c44a17aa45e407c0c7d9a26c5da9a1ee95874f72c7cac"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/side-scroll.tsx",
+      "source": "packages/ui-shell/src/side-scroll.tsx",
+      "sourceSha256": "938ca9c5e7d1a6f0a48c68394eadfe3b638ec9f8ff11b8a2dcdbc3c9d775dd57",
+      "sha256": "938ca9c5e7d1a6f0a48c68394eadfe3b638ec9f8ff11b8a2dcdbc3c9d775dd57"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/sidebar-rows.tsx",
+      "source": "packages/ui-shell/src/sidebar-rows.tsx",
+      "sourceSha256": "66a46f5876a640d4432db9f7a14cc9a0826ce54ad044b17a5120189727243725",
+      "sha256": "fd7d83ba448a427fd0c71a900502ba6ab6621a5ff1f125766deb0ee3742f51d9"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/thread-status.ts",
+      "source": "packages/ui-shell/src/thread-status.ts",
+      "sourceSha256": "5d514e6f24bb28dd8458192eeeef053b89cade068a541ee37eb30f1f7f846012",
+      "sha256": "f1f1f7fb9b7ecd95df89966c1e1e3fe8c4eab307304f7113166c0444ec967fff"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/title-bar-menus.ts",
+      "source": "packages/ui-shell/src/title-bar-menus.ts",
+      "sourceSha256": "b7e1ddcb1a77151982581b7a02b45f94b6f40c67c1413878538ef36e960bb27a",
+      "sha256": "5d40580be1b98a2ff5cbd3eca037194a367e2591a5e0a4d82968071cc0fa1b80"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/title-bar.tsx",
+      "source": "packages/ui-shell/src/title-bar.tsx",
+      "sourceSha256": "1e574b6c9e811b744c60c4d6dc0cf28c37d586f1b47b2af47572486f25f262a8",
+      "sha256": "1e574b6c9e811b744c60c4d6dc0cf28c37d586f1b47b2af47572486f25f262a8"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/toast.tsx",
+      "source": "packages/ui-shell/src/toast.tsx",
+      "sourceSha256": "46265a27e5c3df843d8e2e4f0e0f24d3d163f8afb005ce80dd3ca80a9d5aaa01",
+      "sha256": "46265a27e5c3df843d8e2e4f0e0f24d3d163f8afb005ce80dd3ca80a9d5aaa01"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/vite-env.d.ts",
+      "source": "packages/ui-shell/src/vite-env.d.ts",
+      "sourceSha256": "fa26eaa7984b88ad69aaa5ca09e8485ab3d66616a054f48eace177ef831c606a",
+      "sha256": "fa26eaa7984b88ad69aaa5ca09e8485ab3d66616a054f48eace177ef831c606a"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/window-controls.tsx",
+      "source": "packages/ui-shell/src/window-controls.tsx",
+      "sourceSha256": "f6e2dddba82d636ecc493e2037add05387c7408b7f34f94b0fd63a8a2180e280",
+      "sha256": "0d5fad1db941b1b74f922f8dc312a24b07485175e9379cdc3147c92f0ab46050"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/window-state.ts",
+      "source": "packages/ui-shell/src/window-state.ts",
+      "sourceSha256": "8bb2bf8daca4cd916f4ef477f1a119f2838a38c28b632a9b4c40b5d501af185d",
+      "sha256": "1601947e0dab42b0277aa0b48c78b7c2f2acdf1c212d8f6824a07483b4c8f439"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/workspace-sidebar.test.tsx",
+      "source": "packages/ui-shell/src/workspace-sidebar.test.tsx",
+      "sourceSha256": "c8a429803084437f06820c08f47cd3a02be032aa20f67e91479f0aacf29877fa",
+      "sha256": "04cd9f610f86cf3e2b6e3a1fe481cd979b3810d73ec2ea0cf83eb05f70b8c3b5"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/src/workspace-sidebar.tsx",
+      "source": "packages/ui-shell/src/workspace-sidebar.tsx",
+      "sourceSha256": "85af5a5df843dfbac4d1bd89fc66d59a4782c6e919597891f7254fbf67213580",
+      "sha256": "89c86781455ee05a07b08529b783833a426f65630ae989bd122594cc3d3fc5d8"
+    },
+    {
+      "path": "packages/pigcode-ui-shell/tsconfig.json",
+      "source": "packages/ui-shell/tsconfig.json",
+      "sourceSha256": "3471a454db57dbec879aa68a1def058903c1d2142c7dd864f994c1ecdc0dce61",
+      "sha256": "18f0a81153e3027bb9f330e80eda11aebb6cfd6d490089091067427231734e48"
+    },
+    {
+      "path": "packages/pigcode-ui-settings/src/index.ts",
+      "source": null,
+      "sourceSha256": null,
+      "sha256": "a6fafea3924defa321a207312528058cdf24e9f41114137f77099eb55fa40f56"
+    },
+    {
+      "path": "packages/pigcode-ui-settings/package.json",
+      "source": "packages/ui-settings/package.json",
+      "sourceSha256": "c436a4bd7cf8a879986574cc986ffe2151d11d222229e89690328b1b05a65585",
+      "sha256": "80892fc5301b3f25c246d8164b94ca131d8f900a9053efa3d299d1a53ec484b3"
+    },
+    {
+      "path": "packages/pigcode-ui-settings/src/appearance-code.tsx",
+      "source": "packages/ui-settings/src/appearance-code.tsx",
+      "sourceSha256": "6d3ee88b4ad0206f544bbf558753ae9faea1fc73b2c38718fbfad97bb531cf48",
+      "sha256": "13dc1b0f80561fe2fe4da188fc49f5c973a48506264607e8733aaa9ee15b4b91"
+    },
+    {
+      "path": "packages/pigcode-ui-settings/src/appearance-fields.tsx",
+      "source": "packages/ui-settings/src/appearance-fields.tsx",
+      "sourceSha256": "8b7ebb727d4719cc22ad2ce1520fa3491775da70d8ac1dcf0e5667a451d6d031",
+      "sha256": "aee6c7b7f6db78556434425e21440288d13570072dc7d168347feefe00d89123"
+    },
+    {
+      "path": "packages/pigcode-ui-settings/src/appearance-page.test.tsx",
+      "source": "packages/ui-settings/src/appearance-page.test.tsx",
+      "sourceSha256": "8a92eff15534842f6eb3ea53280ea53b63b1c6866cd7e3df73ddbe3e2625da21",
+      "sha256": "fc0d6ec628ac17dbe19affbfb8667bc8bc0257a9ee084639bd69a47bcee7033a"
+    },
+    {
+      "path": "packages/pigcode-ui-settings/src/appearance-page.tsx",
+      "source": "packages/ui-settings/src/appearance-page.tsx",
+      "sourceSha256": "65871a7c9687bd0a31b5de4184b382ba35f66de9a3b60dd25fae9cef00a147b8",
+      "sha256": "0dc4df077c560e2d0c7911295c40e9b67bcce3f5072d9c73da661213bdc3830e"
+    },
+    {
+      "path": "packages/pigcode-ui-settings/src/appearance-preview.tsx",
+      "source": "packages/ui-settings/src/appearance-preview.tsx",
+      "sourceSha256": "d8c957d2d66138dcccad89af5240e9746c71228c74356570b09f5b9f9112074f",
+      "sha256": "a42dd444e56fea26fe4655357cfaf51f18948bb4dd7be74910f4ecc1b53ddb04"
+    },
+    {
+      "path": "packages/pigcode-ui-settings/src/appearance-transfer.tsx",
+      "source": "packages/ui-settings/src/appearance-transfer.tsx",
+      "sourceSha256": "6aaf6b3e49b4b73c4336616388fc2228d1d30b4c8555dd4e3b5416c4c15b3b10",
+      "sha256": "b77ff072578d2b540aa217b9e2656e24d33dce0379d5bdb864c46a526e223ba9"
+    },
+    {
+      "path": "packages/pigcode-ui-settings/src/choice-select.tsx",
+      "source": "packages/ui-settings/src/choice-select.tsx",
+      "sourceSha256": "cce0ec104ff9a4828cf18c2d70a97dee90c1a9a9dbe61cab647e7bd71be2bc28",
+      "sha256": "751dc5bc0c116a13c869f097467cf7c7e5ea9f2fd9769b9e855cf42d3d1e1ce0"
+    },
+    {
+      "path": "packages/pigcode-ui-settings/src/general-page.test.tsx",
+      "source": "packages/ui-settings/src/general-page.test.tsx",
+      "sourceSha256": "3f50c60480707e008af4d74599570922b02ea7a77e2a1eb94b0b7a7642eae5e9",
+      "sha256": "d5b392b2e1b5887223d1a563c8f22b2d2232002bd4f292721bb582c469d9e10c"
+    },
+    {
+      "path": "packages/pigcode-ui-settings/src/general-page.tsx",
+      "source": "packages/ui-settings/src/general-page.tsx",
+      "sourceSha256": "5b41d6018b2c74d0ec3b3b94e99778f3d51140e9aa0b48b7e3edd322a9a97619",
+      "sha256": "3f022a18fac6b44556400db0fc190aa1968ac522d4a0a5e7018f3321b35089c3"
+    },
+    {
+      "path": "packages/pigcode-ui-settings/src/global.d.ts",
+      "source": "packages/ui-settings/src/global.d.ts",
+      "sourceSha256": "6c7b6ec036e69cb4fdcfa67a1ee8f851f7a18c3abc44e1fd7f5368f8b01c467a",
+      "sha256": "6c7b6ec036e69cb4fdcfa67a1ee8f851f7a18c3abc44e1fd7f5368f8b01c467a"
+    },
+    {
+      "path": "packages/pigcode-ui-settings/src/preferences.ts",
+      "source": "packages/ui-settings/src/preferences.ts",
+      "sourceSha256": "72cef9b0b4f948d61404abef91d3d0cc5d8ef72d535b88ff3d492804ad44fd30",
+      "sha256": "72cef9b0b4f948d61404abef91d3d0cc5d8ef72d535b88ff3d492804ad44fd30"
+    },
+    {
+      "path": "packages/pigcode-ui-settings/src/schedule-format.ts",
+      "source": "packages/ui-settings/src/schedule-format.ts",
+      "sourceSha256": "95e2048d58862f3cfe218c55d77347ac6c596960ec8dc6cc61a1871059fc926c",
+      "sha256": "e934f36e520bd1e3a01a66ce15d3e95eed6011b57626b740a3932e8f0614fcc8"
+    },
+    {
+      "path": "packages/pigcode-ui-settings/src/sensitive-text.tsx",
+      "source": "packages/ui-settings/src/sensitive-text.tsx",
+      "sourceSha256": "d8acf86c5e4348244aa8623cbd28f5936c92fe8ca0fe155e8c4742583670dea8",
+      "sha256": "d97528337cf1a891212978a44c01e16fc8dfc63733f038b8376b42aadab56256"
+    },
+    {
+      "path": "packages/pigcode-ui-settings/src/vite-env.d.ts",
+      "source": "packages/ui-settings/src/vite-env.d.ts",
+      "sourceSha256": "fa26eaa7984b88ad69aaa5ca09e8485ab3d66616a054f48eace177ef831c606a",
+      "sha256": "fa26eaa7984b88ad69aaa5ca09e8485ab3d66616a054f48eace177ef831c606a"
+    },
+    {
+      "path": "packages/pigcode-ui-settings/tsconfig.json",
+      "source": "packages/ui-settings/tsconfig.json",
+      "sourceSha256": "6c488d95d23760b5d5a1e518c11e0f35785867d99bf493d39dbebc9d9144365a",
+      "sha256": "52cb9243947646017a3f3fc80d094d8ce477a43b440285559677152e692a0bd2"
+    },
+    {
+      "path": "packages/pigcode-client-runtime/package.json",
+      "source": "packages/client-runtime/package.json",
+      "sourceSha256": "0cf628049f290931e30dd1b8420825217222bdca602fe5ba93e8c4577a44277f",
+      "sha256": "02deeb89619576cf9f0cc0917bcac6222a1bca9e405caca2f81b47003866af54"
+    },
+    {
+      "path": "packages/pigcode-client-runtime/src/extension-points.test.tsx",
+      "source": "packages/client-runtime/src/extension-points.test.tsx",
+      "sourceSha256": "d1c99c2d86db34661729fad691077d21e5eff577c12ad9c4ea18cadf488e848e",
+      "sha256": "d1c99c2d86db34661729fad691077d21e5eff577c12ad9c4ea18cadf488e848e"
+    },
+    {
+      "path": "packages/pigcode-client-runtime/src/extension-points.tsx",
+      "source": "packages/client-runtime/src/extension-points.tsx",
+      "sourceSha256": "b33816133bfaeb3adc35f6048656fab3e99e3d7aff41a96046ab4334e9f8e4f2",
+      "sha256": "47da5eaf125a4fb7742202d75fac9f2278df2cb7bd9fb382f56cb062cfc42804"
+    },
+    {
+      "path": "packages/pigcode-client-runtime/src/global.d.ts",
+      "source": "packages/client-runtime/src/global.d.ts",
+      "sourceSha256": "6c7b6ec036e69cb4fdcfa67a1ee8f851f7a18c3abc44e1fd7f5368f8b01c467a",
+      "sha256": "6c7b6ec036e69cb4fdcfa67a1ee8f851f7a18c3abc44e1fd7f5368f8b01c467a"
+    },
+    {
+      "path": "packages/pigcode-client-runtime/src/vite-env.d.ts",
+      "source": "packages/client-runtime/src/vite-env.d.ts",
+      "sourceSha256": "fa26eaa7984b88ad69aaa5ca09e8485ab3d66616a054f48eace177ef831c606a",
+      "sha256": "fa26eaa7984b88ad69aaa5ca09e8485ab3d66616a054f48eace177ef831c606a"
+    },
+    {
+      "path": "packages/pigcode-client-runtime/tsconfig.json",
+      "source": "packages/client-runtime/tsconfig.json",
+      "sourceSha256": "3471a454db57dbec879aa68a1def058903c1d2142c7dd864f994c1ecdc0dce61",
+      "sha256": "18f0a81153e3027bb9f330e80eda11aebb6cfd6d490089091067427231734e48"
+    }
+  ]
+}

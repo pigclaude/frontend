@@ -36,17 +36,45 @@ export function accountNetworkLabel(account: PoolAccount): string {
   return account.proxyName ?? "代理不可用"
 }
 
+/** 代理还没有测试结果时 exit / region 使用的占位文字。 */
+const untestedLabel = "待检测"
+
 /** 把代理视图映射成代理页记录。保证失败结果不被显示成可用。 */
 export function toPoolProxy(view: ProxyView, accounts: ClaudeAccountView[]): PoolProxy {
   return {
     id: view.id,
     name: view.name,
-    exit: view.lastTest?.ip ?? "待检测",
-    region: view.lastTest?.testedAt ? "已测试" : "待检测",
+    exit: view.lastTest?.ip ?? untestedLabel,
+    region: view.lastTest?.testedAt ? "已测试" : untestedLabel,
     latency: view.lastTest?.latencyMs ?? 0,
     accountId: accounts.find((account) => account.proxyId === view.id)?.id ?? null,
     available: view.lastTest?.ok ?? false,
   }
+}
+
+/** 代理是否从未测试过。只认 toPoolProxy 写入的占位，不另起一套判断。 */
+function isUntested(proxy: PoolProxy): boolean {
+  return proxy.region === untestedLabel
+}
+
+/** 代理行的说明文字：未测试只说一次「尚未测试出口」，测过但没拿到出口 IP 时如实说明。 */
+export function proxyDescription(proxy: PoolProxy): string {
+  if (isUntested(proxy)) return "尚未测试出口"
+  if (proxy.exit === untestedLabel) return `未取得出口 IP · ${proxy.region}`
+  return `${proxy.exit} · ${proxy.region}`
+}
+
+/** 代理状态分三种：可用、尚未测试、测试未通过。未测试不显示成失败，也不显示成可用。 */
+export function proxyStatus(proxy: PoolProxy): { tone: "ok" | "idle" | "bad"; label: string } {
+  if (proxy.available) return { tone: "ok", label: `${proxy.latency} ms` }
+  if (isUntested(proxy)) return { tone: "idle", label: "待检测" }
+  return { tone: "bad", label: "未通过测试" }
+}
+
+/** 状态圆点的类名：可用为绿、测试失败为红，未测试保持中性。 */
+export function proxyStatusClass(proxy: PoolProxy): string {
+  const { tone } = proxyStatus(proxy)
+  return tone === "idle" ? "status" : `status ${tone}`
 }
 
 function accountStatusKind(view: ClaudeAccountView): PoolAccountStatus {

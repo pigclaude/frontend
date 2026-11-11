@@ -50,7 +50,11 @@ export function OptionRows({
   }
   return (
     <section aria-label="价格档位" className="flex flex-col gap-3">
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && (
+        <p role="alert" className="text-sm text-danger-ink">
+          {error}
+        </p>
+      )}
       <div className={`hidden gap-3 pb-1 text-xs text-meta ${columns} md:grid`}>
         <span>月数</span>
         <span>优惠方式</span>
@@ -196,7 +200,7 @@ export function OptionRows({
             {(errors?.[`option.${i}.months`] ||
               errors?.[`option.${i}.value`] ||
               errors?.[`option.${i}.badge`]) && (
-              <div className="mt-2 space-y-1 text-xs text-destructive">
+              <div className="mt-2 space-y-1 text-xs text-danger-ink">
                 {errors?.[`option.${i}.months`] && (
                   <p id={`${prefix}-${i}-months`}>
                     档位 {i + 1}：{errors[`option.${i}.months`]}

@@ -129,7 +129,7 @@ function SecuritySection({
               <p className="text-xs text-meta">只读权限，可查看配置与历史。</p>
             )}
             {settings.error && (
-              <p role="alert" className="text-sm text-destructive">
+              <p role="alert" className="text-sm text-danger-ink">
                 {settings.error}
               </p>
             )}

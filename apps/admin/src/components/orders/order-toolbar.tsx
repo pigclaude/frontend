@@ -131,7 +131,7 @@ export function OrderToolbar({
               />
             </label>
             {reversed && (
-              <p id="order-range-error" className="text-xs text-destructive">
+              <p id="order-range-error" className="text-xs text-danger-ink">
                 截止时间不能早于起始时间
               </p>
             )}

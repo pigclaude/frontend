@@ -1,5 +1,6 @@
 // 负责展示单个 Claude 账号的额度、网络出口、指纹和凭据状态。
 import { Button } from "../components/ui/button"
+import { Icon } from "../components/icon"
 import { FingerprintSummary } from "../components/fingerprint-summary"
 import type { PoolAccount } from "../fixtures/pool-fixtures"
 import { accountNetworkLabel } from "../models/claude-account-view"
@@ -32,7 +33,8 @@ export function AccountDetailScreen({
   return (
     <div className="page narrow">
       <Button variant="plain" className="back" type="button" onClick={onBack}>
-        ‹ 账号
+        <Icon name="left" small />
+        账号
       </Button>
       <header className="page-head who-head">
         <div className="row">

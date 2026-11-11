@@ -40,7 +40,7 @@ export function BenefitListEditor({
               }
             />
             {errors?.[`benefit.${i}`] && (
-              <p id={`${prefix}-benefit-${i}`} className="text-xs text-destructive">
+              <p id={`${prefix}-benefit-${i}`} className="text-xs text-danger-ink">
                 权益 {i + 1}：{errors[`benefit.${i}`]}
               </p>
             )}
@@ -82,7 +82,7 @@ export function BenefitListEditor({
           </div>
         </div>
       ))}
-      {errors?.["benefit.8"] && <p className="text-xs text-destructive">{errors["benefit.8"]}</p>}
+      {errors?.["benefit.8"] && <p className="text-xs text-danger-ink">{errors["benefit.8"]}</p>}
       {value.length === 0 && (
         <p className="text-xs text-meta">还没有权益，添加后会显示在会员卡上。</p>
       )}

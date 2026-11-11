@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog"
 import { Button } from "./ui/button"
 import type { PoolProxy } from "../fixtures/pool-fixtures"
+import { proxyDescription, proxyStatus, proxyStatusClass } from "../models/claude-account-view"
 
 /** 删除账号确认弹层。 */
 export function AccountDeleteDialog({
@@ -112,13 +113,9 @@ export function AccountProxyDialog({
                 <span className="radio-dot" />
                 <div className="grow">
                   <b>{proxy.name}</b>
-                  <div className="desc">
-                    {proxy.exit} · {proxy.region}
-                  </div>
+                  <div className="desc">{proxyDescription(proxy)}</div>
                 </div>
-                <span className={proxy.available ? "status ok" : "status bad"}>
-                  {proxy.available ? `${proxy.latency} ms` : "不可用"}
-                </span>
+                <span className={proxyStatusClass(proxy)}>{proxyStatus(proxy).label}</span>
               </Button>
             ))}
           </div>

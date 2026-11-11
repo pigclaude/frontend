@@ -1,4 +1,11 @@
 /* 会员页、结算栏、付款面板和购买记录的布局；颜色全部来自共享主题 token。 */
+/* 支付渠道品牌色：深浅主题相同，集中定义，避免同一色值散落多处。 */
+:root {
+  --pay-alipay: #1677ff;
+  --pay-alipay-hover: #0f62d6;
+  --pay-wxpay: #07c160;
+}
+
 .membership-page {
   padding-bottom: 48px;
 }
@@ -301,10 +308,10 @@
   height: 12px;
   flex-shrink: 0;
   border-radius: 4px;
-  background: #1677ff;
+  background: var(--pay-alipay);
 }
 .pay-dot[data-channel="wxpay"] {
-  background: #07c160;
+  background: var(--pay-wxpay);
 }
 
 /* ─── 付款面板 ───────────────────────────────────────────────── */
@@ -415,12 +422,12 @@
   height: 36px;
   border: 3px solid #fff;
   border-radius: 9px;
-  background: #1677ff;
+  background: var(--pay-alipay);
   color: #fff;
   transform: translate(-50%, -50%);
 }
 .pay-qr-mark[data-channel="wxpay"] {
-  background: #07c160;
+  background: var(--pay-wxpay);
 }
 .pay-qr-mark svg {
   width: 22px;
@@ -437,11 +444,11 @@
 }
 .pay-alipay-link {
   margin-top: 6px;
-  background: #1677ff;
+  background: var(--pay-alipay);
   color: #fff;
 }
 .pay-alipay-link:hover {
-  background: #0f62d6;
+  background: var(--pay-alipay-hover);
 }
 .pay-state {
   display: flex;

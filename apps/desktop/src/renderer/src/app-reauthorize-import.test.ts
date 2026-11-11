@@ -7,6 +7,7 @@ import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { ClaudeAccountView, ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { DesktopApp } from "./app"
 import { initialMembershipView } from "./models/membership-view"
+import { chooseSelect } from "./test-support/radix-select"
 
 vi.mock("./hooks/use-appearance", () => ({
   useAppearance: () => ({
@@ -206,12 +207,9 @@ describe("reauthorizing an imported account", () => {
     await flush()
 
     await click("从 Claude CLI 导入")
-    await act(async () => {
-      const picker = document.querySelector<HTMLSelectElement>("#import-browser-profile")
-      if (!picker) throw new Error("导入配置选择不存在")
-      picker.value = "profile-imported"
-      picker.dispatchEvent(new Event("change", { bubbles: true }))
-    })
+    const picker = document.querySelector<HTMLElement>("#import-browser-profile")
+    if (!picker) throw new Error("导入配置选择不存在")
+    await chooseSelect(picker, "导入账号环境 · en-US · America/Chicago")
     await click("确认导入", dialog() ?? document.body)
     await flush()
     expect(container.textContent).toContain("已从 Claude CLI 导入账号")

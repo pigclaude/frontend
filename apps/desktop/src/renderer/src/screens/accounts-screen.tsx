@@ -8,6 +8,7 @@ import { Button } from "../components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog"
 import { AccountDeleteDialog, AccountProxyDialog } from "../components/account-dialogs"
 import { FingerprintDialog } from "../components/fingerprint-dialog"
+import { Icon } from "../components/icon"
 import type { PoolAccount, PoolProxy } from "../fixtures/pool-fixtures"
 import { accountNetworkLabel } from "../models/claude-account-view"
 import { AccountDetailScreen } from "./account-detail-screen"
@@ -272,9 +273,7 @@ export function AccountsScreen({
               key={account.id}
               onClick={() => setSelectedId(account.id)}
             >
-              <span className="grip">
-                <span>⋮</span>
-              </span>
+              <Icon name="grip" className="grip" />
               <span className="avatar">{account.mark}</span>
               <div className="main">
                 <div className="ttl">{account.name}</div>
@@ -288,9 +287,7 @@ export function AccountsScreen({
                   <span className="num">{account.usage === null ? "—" : `${account.usage}%`}</span>
                 </div>
               </div>
-              <span className="chev">
-                <span>›</span>
-              </span>
+              <Icon name="right" small className="chev" />
             </Button>
           ))}
         </div>
@@ -364,7 +361,7 @@ function statusLabel(kind: PoolAccount["statusKind"]): string {
 }
 
 function statusClass(kind: PoolAccount["statusKind"]): string {
-  if (kind === "cooldown") return "status warn"
+  if (kind === "cooldown" || kind === "reauth") return "status warn"
   if (kind === "ready") return "status ok"
-  return "status info"
+  return "status"
 }

@@ -837,6 +837,7 @@ a.item,
   min-width: 0;
 }
 .item .desc {
+  display: block;
   font-size: var(--fs-sm);
   color: var(--muted);
   margin-top: 1px;
@@ -1221,6 +1222,18 @@ kbd {
 }
 .choice {
   position: relative;
+  width: 100%;
+  text-align: left;
+}
+.choice .desc {
+  display: block;
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.choice b {
+  display: block;
+  font-weight: 500;
 }
 .choice + .choice::before {
   content: "";
@@ -1235,7 +1248,7 @@ kbd {
 .choice:hover {
   background: var(--hover);
 }
-.radio-dot {
+.choice .radio-dot {
   width: 14px;
   height: 14px;
   border-radius: 50%;
@@ -1247,11 +1260,11 @@ kbd {
   display: grid;
   place-items: center;
 }
-.is-selected .radio-dot {
+.choice.is-selected .radio-dot {
   background: var(--primary);
   box-shadow: none;
 }
-.is-selected .radio-dot::after {
+.choice.is-selected .radio-dot::after {
   content: "";
   width: 5px;
   height: 5px;

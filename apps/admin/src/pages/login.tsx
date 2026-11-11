@@ -56,7 +56,7 @@ export default function LoginPage() {
           {error || held ? (
             <>
               {error && (
-                <p role="alert" className="text-sm text-destructive">
+                <p role="alert" className="text-sm text-danger-ink">
                   {error}
                 </p>
               )}

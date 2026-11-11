@@ -137,7 +137,7 @@ export function UserPicker({
                 <Skeleton className="h-10 w-full" />
               </div>
             ) : current.error ? (
-              <p role="alert" className="p-2 text-sm text-destructive">
+              <p role="alert" className="p-2 text-sm text-danger-ink">
                 {current.error}
               </p>
             ) : current.items.length === 0 ? (

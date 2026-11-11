@@ -228,7 +228,7 @@ export function TierEditor({
                     onChange={(event) => edit({ ...draft, [field]: event.target.value })}
                   />
                   {fields[field] && (
-                    <p id={`error-${field}`} className="text-sm text-destructive">
+                    <p id={`error-${field}`} className="text-sm text-danger-ink">
                       {fields[field]}
                     </p>
                   )}
@@ -257,7 +257,7 @@ export function TierEditor({
                   onChange={(e) => edit({ ...draft, tagline: e.target.value })}
                 />
                 {fields.tagline && (
-                  <p id="error-tagline" className="text-sm text-destructive">
+                  <p id="error-tagline" className="text-sm text-danger-ink">
                     {fields.tagline}
                   </p>
                 )}
@@ -307,12 +307,12 @@ export function TierEditor({
               }
             />
             {previewError?.key === key && (
-              <p role="alert" className="mt-3 text-sm text-destructive">
+              <p role="alert" className="mt-3 text-sm text-danger-ink">
                 {previewError.message}
               </p>
             )}
             {error && (
-              <p role="alert" className="mt-3 text-sm text-destructive">
+              <p role="alert" className="mt-3 text-sm text-danger-ink">
                 {error}
               </p>
             )}

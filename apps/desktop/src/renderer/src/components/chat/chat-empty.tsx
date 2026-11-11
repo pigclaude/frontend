@@ -67,7 +67,7 @@ export function ChatEmpty({
               </Button>
             ) : null}
           </div>
-          <h1 style={{ fontSize: 22, margin: "8px 0 0" }}>
+          <h1 className="hero-title">
             {workspace === null ? "先选择一个工作区" : "让 Claude 在这个文件夹里工作"}
           </h1>
           <Composer
@@ -83,20 +83,20 @@ export function ChatEmpty({
             </p>
           )}
           {modelsError === null ? null : (
-            <p className="note">
+            <p className="note hero-note">
               模型列表不可用：{modelsError}{" "}
               <Button variant="ghost" size="sm" onClick={onRetryModels}>
                 重试
               </Button>
             </p>
           )}
-          <div className="row">
+          <div className="row hero-start">
             <Button variant="primary" disabled={workspace === null} onClick={onStart}>
               开始会话
             </Button>
             <span className="note">会话通过本机中继发出，只记录用量元数据。</span>
           </div>
-          <div className="section-head" style={{ marginTop: 12 }}>
+          <div className="section-head hero-recent">
             <h2>最近工作区</h2>
           </div>
           {workspaceOptions.length === 0 ? (

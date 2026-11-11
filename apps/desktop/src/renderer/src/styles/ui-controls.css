@@ -174,7 +174,8 @@
   opacity: 0.4;
   pointer-events: none;
 }
-.radio-dot {
+/* 只作用于 Radix 单选按钮里的指示点；列表选项的 .radio-dot 由 app.css 定义 */
+.radio > .radio-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;

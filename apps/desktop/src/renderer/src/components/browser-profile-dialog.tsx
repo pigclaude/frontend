@@ -8,6 +8,7 @@ import type {
   SaveBrowserProfileInput,
 } from "@pigclaude/contracts/browser-profile"
 import { FingerprintForm } from "./fingerprint-form"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select"
 import {
   prepareFingerprintSubmission,
   type FingerprintFormErrors,
@@ -126,28 +127,32 @@ export function BrowserProfileDialog({
             </div>
             <div className="field">
               <label htmlFor="browser-profile-proxy">绑定代理</label>
-              <select
-                id="browser-profile-proxy"
-                className="browser-profile-select"
-                value={proxyId}
-                onChange={(event) => {
-                  const next = event.target.value
+              <Select
+                disabled={busy}
+                value={proxyId === "" ? systemNetwork : proxyId}
+                onValueChange={(choice) => {
+                  const next = choice === systemNetwork ? "" : choice
                   setProxyId(next)
                   setRegion(null)
                   if (next && !profile) void initialize(next)
                 }}
               >
-                <option value="">不使用代理（系统网络）</option>
-                {proxyId && !proxies.some((proxy) => proxy.id === proxyId) ? (
-                  <option value={proxyId}>原代理已不存在，请重新选择</option>
-                ) : null}
-                {proxies.map((proxy) => (
-                  <option key={proxy.id} value={proxy.id}>
-                    {proxy.name}
-                    {proxy.lastTest?.ip ? ` · ${proxy.lastTest.ip}` : " · 未确认出口"}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="browser-profile-proxy">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={systemNetwork}>不使用代理（系统网络）</SelectItem>
+                  {proxyId && !proxies.some((proxy) => proxy.id === proxyId) ? (
+                    <SelectItem value={proxyId}>原代理已不存在，请重新选择</SelectItem>
+                  ) : null}
+                  {proxies.map((proxy) => (
+                    <SelectItem key={proxy.id} value={proxy.id}>
+                      {proxy.name}
+                      {proxy.lastTest?.ip ? ` · ${proxy.lastTest.ip}` : " · 未确认出口"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             {proxyId ? (
               <Button variant="secondary" onClick={() => void initialize(proxyId)}>
@@ -193,6 +198,9 @@ export function BrowserProfileDialog({
     </Dialog>
   )
 }
+
+/** Radix Select 不接受空串取值；用这个不会与代理 id 冲突的标记表示「系统网络」。 */
+const systemNetwork = "__system-network__"
 
 function errorMessage(caught: unknown): string {
   return caught instanceof Error

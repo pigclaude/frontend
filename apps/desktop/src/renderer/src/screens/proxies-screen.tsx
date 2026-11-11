@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog"
 import { AddProxyDialog } from "../components/proxy-dialogs"
 import type { PoolProxy } from "../fixtures/pool-fixtures"
+import { proxyDescription, proxyStatus, proxyStatusClass } from "../models/claude-account-view"
 
 /** 代理列表页面 props；数据来自 useClaudeAccounts。 */
 export type ProxiesScreenProps = {
@@ -12,20 +13,12 @@ export type ProxiesScreenProps = {
   onTest?: (proxyId: string) => Promise<void> | void
   onSave?: (input: { id?: string; name: string; url: string }) => Promise<void> | void
   onRemove?: (proxyId: string) => Promise<void> | void
-  onOpenProxy?: (proxy: PoolProxy) => void
   /** 最近一次代理操作的错误，例如地址不是 HTTP/HTTPS。 */
   error?: string | null
 }
 
 /** 绘制代理列表、编辑弹层和删除确认。 */
-export function ProxiesScreen({
-  proxies,
-  onTest,
-  onSave,
-  onRemove,
-  onOpenProxy,
-  error,
-}: ProxiesScreenProps) {
+export function ProxiesScreen({ proxies, onTest, onSave, onRemove, error }: ProxiesScreenProps) {
   const [addOpen, setAddOpen] = useState(false)
   const [editing, setEditing] = useState<PoolProxy | null>(null)
   const [deleting, setDeleting] = useState<PoolProxy | null>(null)
@@ -89,21 +82,12 @@ export function ProxiesScreen({
       <div className="group">
         {proxies.map((proxy) => (
           <div className="item" key={proxy.id}>
-            <Button
-              variant="plain"
-              className="main"
-              type="button"
-              onClick={() => onOpenProxy?.(proxy)}
-            >
-              <span className="ttl">{proxy.name}</span>
-              <span className="desc">
-                {proxy.exit} · {proxy.region}
-              </span>
-            </Button>
+            <div className="main">
+              <div className="ttl">{proxy.name}</div>
+              <div className="desc">{proxyDescription(proxy)}</div>
+            </div>
             <span className="trail">
-              <span className={proxy.available ? "status ok" : "status bad"}>
-                {proxy.available ? `${proxy.latency} ms` : "未通过测试"}
-              </span>
+              <span className={proxyStatusClass(proxy)}>{proxyStatus(proxy).label}</span>
               <Button
                 size="sm"
                 variant="secondary"

@@ -11,7 +11,7 @@ import { formatFen } from "@pigclaude/web-ui/lib/format"
 import { useQuery } from "@tanstack/react-query"
 import { homeSessionGeneration } from "@/lib/session-generation"
 import { homeApi } from "@/lib/api"
-import { QueryError, QueryLoading } from "@/components/query-state"
+import { QueryEmpty, QueryError, QueryLoading } from "@/components/query-state"
 
 /** 让公开首页与会员页共享真实套餐缓存和精确价格展示。 */
 export function Pricing() {
@@ -102,7 +102,7 @@ export function Pricing() {
                   <BenefitGrid items={tier.benefits} />
                 </>
               ) : (
-                <p className="query-state">暂无可用套餐</p>
+                <QueryEmpty label="暂无可用套餐" />
               )}
               {navigationError && (
                 <QueryError

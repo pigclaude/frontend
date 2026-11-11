@@ -9,11 +9,11 @@ async function openEditor(page: Page, theme: string, glass = "0"): Promise<void>
   await expect(page.getByRole("dialog")).toBeVisible()
 }
 
-async function openWizard(page: Page, theme: string, glass: string): Promise<void> {
-  await page.goto(`/?screen=authorize&theme=${theme}&glass=${glass}`)
-  await page.getByRole("button", { name: "下一步", exact: true }).click()
-  await page.getByRole("button", { name: "使用系统网络", exact: true }).click()
-  await expect(page.getByRole("heading", { name: "设置浏览器指纹", exact: true })).toBeVisible()
+// #35 起授权向导只选择已有浏览器配置；指纹表单在浏览器配置弹层里编辑，同一个 FingerprintForm。
+async function openProfileEditor(page: Page, theme: string, glass: string): Promise<void> {
+  await page.goto(`/?screen=browser-profiles&theme=${theme}&glass=${glass}`)
+  await page.getByRole("button", { name: "创建浏览器配置", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "创建浏览器配置", exact: true })).toBeVisible()
 }
 
 /** 弹层和字段滚动区都没有横向溢出，并且每行右侧的控件都留在所在行里。 */
@@ -86,8 +86,8 @@ test("fingerprint glass surfaces: only the light glass dialog uses --field", asy
     await openEditor(page, theme, glass)
     expect(await surfaceUses(page, ".fingerprint-dialog", token), `${theme} ${glass}`).toBe(true)
   }
-  await openWizard(page, "light", "1")
-  expect(await surfaceUses(page, ".fingerprint-window", "--panel")).toBe(true)
+  await openProfileEditor(page, "light", "1")
+  expect(await surfaceUses(page, ".fingerprint-dialog", "--field")).toBe(true)
 })
 
 for (const theme of ["light", "dark"]) {
@@ -226,28 +226,25 @@ for (const theme of ["light", "dark"]) {
     await expect(dialog).toBeHidden()
   })
 
-  test(`fingerprint authorization ${theme}: fits the wizard and keeps the draft`, async ({
+  test(`fingerprint profile ${theme}: fits the dialog and keeps the draft across groups`, async ({
     page,
   }, testInfo) => {
-    await page.goto(`/?screen=authorize&theme=${theme}`)
-    await page.getByRole("button", { name: "下一步", exact: true }).click()
-    await page.getByRole("button", { name: "使用系统网络", exact: true }).click()
-    await expect(page.getByRole("heading", { name: "设置浏览器指纹", exact: true })).toBeVisible()
-    await expect(page.getByRole("button", { name: "保存并继续", exact: true })).toBeInViewport({
+    await openProfileEditor(page, theme, "0")
+    const dialog = page.locator(".fingerprint-dialog")
+    await expect(dialog.getByRole("button", { name: "保存配置", exact: true })).toBeInViewport({
       ratio: 1,
     })
-    await page.getByRole("combobox", { name: "指纹种子", exact: true }).click()
+    await dialog.getByRole("combobox", { name: "指纹种子", exact: true }).click()
     await page.getByRole("option", { name: "自定义…", exact: true }).click()
-    await page.getByLabel("自定义指纹种子", { exact: true }).fill("654321")
-    await page.locator("#authorize-group-compat").click()
-    await page.locator("#authorize-canvasNoise-1").click()
-    await page.locator("#authorize-group-identity").click()
-    await expect(page.getByLabel("自定义指纹种子", { exact: true })).toHaveValue("654321")
-    await page.getByLabel("自定义指纹种子", { exact: true }).scrollIntoViewIfNeeded()
-    await expect(page.getByLabel("自定义指纹种子", { exact: true })).toBeInViewport({ ratio: 1 })
-    await page.screenshot({ path: testInfo.outputPath("fingerprint-authorization.png") })
-    await page.getByRole("button", { name: "保存并继续", exact: true }).click()
-    await expect(page.getByRole("button", { name: "开始授权", exact: true })).toBeVisible()
+    await dialog.getByLabel("自定义指纹种子", { exact: true }).fill("654321")
+    await dialog.locator("#browser-profile-group-compat").click()
+    await dialog.locator("#browser-profile-canvasNoise-1").click()
+    await dialog.locator("#browser-profile-group-identity").click()
+    await expect(dialog.getByLabel("自定义指纹种子", { exact: true })).toHaveValue("654321")
+    await dialog.getByLabel("自定义指纹种子", { exact: true }).scrollIntoViewIfNeeded()
+    await expect(dialog.getByLabel("自定义指纹种子", { exact: true })).toBeInViewport({ ratio: 1 })
+    expect(await fitsHorizontally(dialog)).toBe(true)
+    await page.screenshot({ path: testInfo.outputPath("fingerprint-profile.png") })
   })
 
   test(`fingerprint layout ${theme}: long values fit, height stays fixed, arrows switch groups`, async ({
@@ -331,8 +328,8 @@ for (const theme of ["light", "dark"]) {
           await dialog.locator(`#fingerprint-dialog-group-${group}`).click()
           await dialog.screenshot({ path: testInfo.outputPath(`dialog-${width}-${group}.png`) })
         }
-        await openWizard(page, theme, glass)
-        await page.screenshot({ path: testInfo.outputPath(`wizard-${width}.png`) })
+        await openProfileEditor(page, theme, glass)
+        await page.screenshot({ path: testInfo.outputPath(`profile-${width}.png`) })
       }
     })
   }

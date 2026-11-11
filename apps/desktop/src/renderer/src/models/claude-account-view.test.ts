@@ -6,7 +6,14 @@ import type {
   ClaudeFingerprintView,
   ProxyView,
 } from "@pigclaude/contracts/claude-account"
-import { accountNetworkLabel, toPoolAccount, toPoolProxy } from "./claude-account-view"
+import {
+  accountNetworkLabel,
+  proxyDescription,
+  proxyStatus,
+  proxyStatusClass,
+  toPoolAccount,
+  toPoolProxy,
+} from "./claude-account-view"
 
 const fingerprint: ClaudeFingerprintView = {
   seed: "123456",
@@ -90,5 +97,27 @@ describe("claude account view mapping", () => {
     const mapped = toPoolProxy({ ...proxy, lastTest: null }, [])
     expect(mapped.exit).toBe("待检测")
     expect(mapped.available).toBe(false)
+  })
+
+  it("tells untested proxies apart from failed ones", () => {
+    const untested = toPoolProxy({ ...proxy, lastTest: null }, [])
+    expect(proxyDescription(untested)).toBe("尚未测试出口")
+    expect(proxyStatus(untested)).toEqual({ tone: "idle", label: "待检测" })
+
+    const failed = toPoolProxy(
+      {
+        ...proxy,
+        lastTest: { ok: false, ip: null, latencyMs: 0, testedAt: "2026-10-21T00:00:00.000Z" },
+      },
+      [],
+    )
+    expect(proxyStatus(failed)).toEqual({ tone: "bad", label: "未通过测试" })
+    expect(proxyDescription(failed)).toBe("未取得出口 IP · 已测试")
+    expect(proxyStatusClass(failed)).toBe("status bad")
+    expect(proxyStatusClass(untested)).toBe("status")
+
+    const tested = toPoolProxy(proxy, [])
+    expect(proxyDescription(tested)).toBe("203.0.113.42 · 已测试")
+    expect(proxyStatus(tested)).toEqual({ tone: "ok", label: "186 ms" })
   })
 })

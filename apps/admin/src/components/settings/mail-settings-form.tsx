@@ -295,7 +295,7 @@ export function MailSettingsForm({
           {testMessage && (
             <p
               role={testMessage.ok ? "status" : "alert"}
-              className={testMessage.ok ? "text-sm text-success-ink" : "text-sm text-destructive"}
+              className={testMessage.ok ? "text-sm text-success-ink" : "text-sm text-danger-ink"}
             >
               {testMessage.text}
             </p>

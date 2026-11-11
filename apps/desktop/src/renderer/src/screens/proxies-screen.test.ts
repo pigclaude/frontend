@@ -145,8 +145,12 @@ describe("proxies screen", () => {
     await render([tested, untested, failed], { onTest })
 
     expect(row("LA-01")?.textContent).toContain("186 ms")
-    expect(row("SEA-03")?.textContent).toContain("未通过测试")
     expect(row("SEA-03")?.textContent).toContain("待检测")
+    expect(row("SEA-03")?.textContent).not.toContain(" ms")
+    expect(row("SEA-03")?.querySelector(".status.ok")).toBeNull()
+    expect(row("SEA-03")?.querySelector(".status.bad")).toBeNull()
+    expect(row("SJC-02")?.textContent).toContain("未取得出口 IP")
+    expect(row("SJC-02")?.querySelector(".status.bad")).not.toBeNull()
     expect(row("SJC-02")?.textContent).toContain("未通过测试")
 
     await clickButton(button("全部测试"), "全部测试")

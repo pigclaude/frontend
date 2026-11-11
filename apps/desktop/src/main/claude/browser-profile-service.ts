@@ -17,8 +17,8 @@ import { systemLocale, systemTimezone } from "../session/session-locale"
 export type BrowserProfileServiceOptions = {
   store: LocalStore
   usage: BrowserProfileUsage
-  systemLocale?: () => string
-  systemTimezone?: () => string
+  systemLocale?: (() => string) | undefined
+  systemTimezone?: (() => string) | undefined
   readRegion?: (proxyUrl: string) => Promise<BrowserProfileRegion>
   id?: () => string
   now?: () => number

@@ -14,10 +14,10 @@ import { TrafficLights } from "../components/traffic-lights"
 export type AuthorizeScreenProps = {
   state: AuthorizationState
   profiles?: BrowserProfileView[]
-  profilesLoading?: boolean
+  profilesLoading?: boolean | undefined
   profilesError?: string | null
   proxies: PoolProxy[]
-  account?: ClaudeAccountView | null
+  account?: ClaudeAccountView | null | undefined
   onEvent: (event: AuthorizationEvent) => void
   onStartBrowserAuthorization: (input: AuthorizeClaudeAccountInput) => void
   onCancel: () => void

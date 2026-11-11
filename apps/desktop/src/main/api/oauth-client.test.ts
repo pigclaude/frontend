@@ -26,7 +26,7 @@ describe("OAuthClient native public protocol", () => {
     ["win32", "windows"],
     ["linux", "linux"],
   ] as const)("maps %s only in the prepare network DTO", async (platform, expected) => {
-    const calls: { url: string; init?: RequestInit }[] = []
+    const calls: { url: string; init?: RequestInit | undefined }[] = []
     const client = new OAuthClient({
       baseUrl,
       fetcher: async (url, init) => {
@@ -78,7 +78,7 @@ describe("OAuthClient native public protocol", () => {
     expect(new Headers(calls[0]?.init?.headers).has("authorization")).toBe(false)
   })
   it("reports only os and app version through the captured Bearer", async () => {
-    const calls: { url: string; init?: RequestInit }[] = []
+    const calls: { url: string; init?: RequestInit | undefined }[] = []
     const client = new OAuthClient({
       baseUrl,
       accessToken: async () => "pc_at_fixture",
@@ -116,7 +116,7 @@ describe("OAuthClient native public protocol", () => {
     expect(authorization).toBe("Bearer pc_at_startup")
   })
   it("exchanges, rotates and revokes with form bodies and no cookies or client secret", async () => {
-    const calls: { url: string; init?: RequestInit }[] = []
+    const calls: { url: string; init?: RequestInit | undefined }[] = []
     const client = new OAuthClient({
       baseUrl,
       accessToken: async () => "unrelated",

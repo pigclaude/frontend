@@ -41,7 +41,7 @@ export type ClaudeAccountsController = {
   importFromClaudeCli: (input: {
     confirmCopy: boolean
     displayName?: string
-    browserProfileId?: string
+    browserProfileId?: string | undefined
   }) => Promise<boolean>
   saveProxy: (input: { id?: string; name: string; url: string }) => Promise<void>
   /** 验证并保存新代理；失败时向调用方抛错。 */
@@ -209,7 +209,7 @@ export function useClaudeAccounts(): ClaudeAccountsController {
     async (input: {
       confirmCopy: boolean
       displayName?: string
-      browserProfileId?: string
+      browserProfileId?: string | undefined
     }): Promise<boolean> => {
       setError(null)
       try {

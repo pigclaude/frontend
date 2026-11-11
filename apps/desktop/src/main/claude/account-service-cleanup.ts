@@ -11,8 +11,8 @@ export type AuthorizationResources = {
   browser: LaunchedBrowser | null
   callback: OAuthCallbackServer | null
   proxy: ProxyRuntime | null
-  releaseProfile?: () => void
-  nativeCleanup?: () => Promise<void>
+  releaseProfile?: (() => void) | undefined
+  nativeCleanup?: (() => Promise<void>) | undefined
 }
 
 /** 跟踪未能回收的授权资源，阻止新授权越过清理边界。 */

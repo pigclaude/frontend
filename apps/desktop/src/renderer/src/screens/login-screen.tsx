@@ -10,11 +10,11 @@ import type { LoginIntent, LoginState } from "../models/login-model"
 /** 浏览器授权登录页面 props。授权完成后由会员状态决定去向，页面不再提供成功页。 */
 export type LoginScreenProps = {
   state: LoginState
-  gateMessage?: string
+  gateMessage?: string | undefined
   signingOut?: boolean
-  withdrawContextId?: string
-  canWithdraw?: boolean
-  onRetrySignOut?: () => void
+  withdrawContextId?: string | undefined
+  canWithdraw?: boolean | undefined
+  onRetrySignOut?: (() => void) | undefined
   onAuthorize: (intent: LoginIntent) => void
   onCancel: () => void
   onReset: () => void

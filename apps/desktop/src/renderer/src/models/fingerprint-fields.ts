@@ -46,13 +46,17 @@ export type FingerprintFieldControl =
   "choice" | "select" | "resolution" | "custom-resolution" | "noise" | "spoofing" | "args"
 
 /** 下拉选项。 */
-export type FingerprintFieldOption = { value: string; label: string; keywords?: string[] }
+export type FingerprintFieldOption = {
+  value: string
+  label: string
+  keywords?: string[] | undefined
+}
 
 /** 单个字段的展示元数据。保证标签、提示和控件类型集中在这一处。 */
 export type FingerprintFieldMeta = {
   label: string
   hint?: string
-  placeholder?: string
+  placeholder?: string | undefined
   mono?: boolean
   control: FingerprintFieldControl
   options?: FingerprintFieldOption[]
@@ -62,7 +66,7 @@ export type FingerprintFieldMeta = {
 /** 分组里的一个小组，对应设置页的一张分组卡片；有说明时只含一个字段，说明即该字段的提示。 */
 export type FingerprintSection = {
   title: string
-  description?: string
+  description?: string | undefined
   fields: FingerprintEditableFieldKey[]
 }
 

@@ -8,7 +8,7 @@ import { accountNetworkLabel } from "../models/claude-account-view"
 /** 账号详情页面 props。 */
 export type AccountDetailScreenProps = {
   account: PoolAccount
-  browserProfileName?: string
+  browserProfileName?: string | undefined
   onChangeBrowserProfile?: () => void
   onBack: () => void
   onReauthorize: () => void

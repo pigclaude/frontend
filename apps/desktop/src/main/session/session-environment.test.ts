@@ -135,12 +135,14 @@ describe("SessionEnvironment", () => {
 
       expect(environment.timezone).toBe(expectedTimezone)
       expect(environment.env.TZ).toBe(expectedTimezone)
-      expect(environment.env.LANG.replace(/\.UTF-8$/, "").replaceAll("_", "-")).toBe(expectedLocale)
+      expect(environment.env.LANG?.replace(/\.UTF-8$/, "").replaceAll("_", "-")).toBe(
+        expectedLocale,
+      )
       const preload = await readFile(join(environment.sessionDir, "intl-preload.cjs"), "utf8")
       expect(preload).toContain(JSON.stringify(expectedTimezone))
       expect(environment.env.TZ).not.toBe("")
       expect(environment.env.LANG).not.toBe("")
-      expect(environment.env.TZ.toLowerCase()).not.toBe("system")
+      expect(environment.env.TZ?.toLowerCase()).not.toBe("system")
 
       await environment.cleanup()
     },

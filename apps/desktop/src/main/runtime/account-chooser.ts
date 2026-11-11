@@ -28,7 +28,7 @@ export type AccountChooserOptions = {
   store: Pick<LocalStore, "listAccounts" | "listProxies">
   refresher: Pick<CredentialRefresher, "refreshIfNeeded">
   now?: () => number
-  profileUsage?: BrowserProfileUsage
+  profileUsage?: BrowserProfileUsage | undefined
 }
 
 type EligibleAccount = {

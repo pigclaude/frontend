@@ -5,8 +5,8 @@ import { fingerprintSummaryGroups, normalizeFingerprintForm } from "../models/fi
 
 /** 指纹摘要 props。fallbackSeed 用于旧记录只保存了种子字符串的情况。 */
 export type FingerprintSummaryProps = {
-  fingerprint?: ClaudeFingerprintView
-  fallbackSeed?: string
+  fingerprint?: ClaudeFingerprintView | undefined
+  fallbackSeed?: string | undefined
 }
 
 /** 渲染分组指纹摘要。保证空值显示为「跟随默认」而不是空白。 */

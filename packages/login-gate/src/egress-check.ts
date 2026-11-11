@@ -80,10 +80,11 @@ export async function checkEgress(input: {
     upstreamAgent = createProxyAgent(input.upstreamProxyUrl)
     const dispatcher = upstreamAgent
     const upstreamTimeout = AbortSignal.timeout(timeoutMs)
-    upstreamSignal =
+    const requestSignal =
       input.signal === undefined
         ? upstreamTimeout
         : AbortSignal.any([upstreamTimeout, input.signal])
+    upstreamSignal = requestSignal
     destroyUpstream = () => {
       destroying ??= dispatcher.destroy()
       void destroying.catch(() => undefined)
@@ -93,7 +94,7 @@ export async function checkEgress(input: {
     const throughUpstream = await readExitIp(checkUrl, (url) =>
       fetchFn(url, {
         dispatcher,
-        signal: upstreamSignal,
+        signal: requestSignal,
         redirect: "manual",
       }),
     )

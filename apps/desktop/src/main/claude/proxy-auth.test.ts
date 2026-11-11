@@ -128,7 +128,7 @@ describe("桌面代理认证", () => {
           refresh: async ({ dispatcher }) => {
             expect(dispatcher).toBeDefined()
             const response = await undiciFetch("http://unresolvable.invalid/refresh", {
-              dispatcher,
+              ...(dispatcher === undefined ? {} : { dispatcher }),
               signal: AbortSignal.timeout(3_000),
             })
             expect(response.status).toBe(200)

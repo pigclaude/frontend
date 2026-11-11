@@ -4,7 +4,7 @@ import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 
 /** 添加或重新授权 Claude 账号的输入。proxyId 为 null 表示使用系统网络。 */
 export type AuthorizeClaudeAccountInput = {
-  accountId?: string
+  accountId?: string | undefined
   displayName: string
 } & (
   | { browserProfileId: string; proxyId?: never; fingerprint?: never }

@@ -14,7 +14,7 @@ export function WithdrawAuthorization({
   contextId,
   more = false,
 }: {
-  contextId?: string
+  contextId?: string | undefined
   more?: boolean
 }) {
   const [confirmation, setConfirmation] = useState<{

@@ -40,7 +40,7 @@ const unsupportedParameterExitCode = 13
 
 /** 启动器配置。binaryPath 优先，其次读取 PIGCLAUDE_PIGBROWSER_BIN。 */
 export type FingerprintChromiumConfig = {
-  binaryPath?: string
+  binaryPath?: string | undefined
   profilesRoot: string
   env?: Record<string, string | undefined>
   spawn?: typeof spawn
@@ -50,7 +50,7 @@ export type FingerprintChromiumConfig = {
   verifyEnvironmentBrowser?: typeof approvedEnvironmentBrowser
   stopTimeoutMs?: number
   /** 宿主屏幕可用区域，用于计算默认窗口大小；缺省按 1920x1080。 */
-  screenSize?: ScreenSize
+  screenSize?: ScreenSize | undefined
   /** 参数解析所用的真实宿主平台；缺省取当前进程平台。 */
   hostPlatform?: NodeJS.Platform
   /** 按宿主架构选择原生内核；缺省自动识别。 */
@@ -106,7 +106,10 @@ export class FingerprintChromiumAdapter {
   readonly #resourcesPath: string | undefined
   readonly #processes = new Map<string, ManagedProcess>()
   readonly #operations = new Map<string, Promise<void>>()
-  readonly #stops = new Map<string, Set<{ expected?: ManagedProcess; promise: Promise<void> }>>()
+  readonly #stops = new Map<
+    string,
+    Set<{ expected?: ManagedProcess | undefined; promise: Promise<void> }>
+  >()
   readonly #shutdown = new AbortController()
   #closed = false
 

@@ -16,7 +16,7 @@ export function ProfileSettings({
   withdrawContextId,
 }: {
   onLogout: () => void
-  withdrawContextId?: string
+  withdrawContextId?: string | undefined
 }) {
   const toast = useToast()
   return (

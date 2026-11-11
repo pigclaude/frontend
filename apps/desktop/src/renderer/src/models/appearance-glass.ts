@@ -18,6 +18,17 @@ export function paint(color: Hex, alpha = 1, css?: string): Paint {
   return { css: css ?? (alpha === 1 ? color : withAlpha(color, alpha)), color, alpha }
 }
 
+/** 磨砂表面在 g=0 时对应的不透明变量名。保证查表的键都在不透明配色里。 */
+export type OpaqueSurfaceName =
+  | "--window"
+  | "--sidebar"
+  | "--bg"
+  | "--surface"
+  | "--panel"
+  | "--popover"
+  | "--popover-glass"
+  | "--avatar"
+
 /** glass.css 中一个半透明表面：变量名、色调来源、在 g=60 时的 alpha。 */
 export type GlassBase = {
   name: string
@@ -27,7 +38,7 @@ export type GlassBase = {
   color: Hex
   alpha: number
   /** g=0 时对应的不透明变量（--glass-tint 是页面底色，对应 --window）。 */
-  opaque: string
+  opaque: OpaqueSurfaceName
 }
 
 /**
@@ -70,7 +81,7 @@ export const glassBases: Record<Tone, readonly GlassBase[]> = {
  * pigclaude 未改 bg 时的不透明配色，css 原文抄自 styles/tokens.css（改 tokens.css 时同步改这里），
  * color 是对应 oklch 的近似 sRGB，只用于 0 < g < 60 的插值。
  */
-export const pigclaudeOpaque: Record<Tone, Record<string, Paint>> = {
+export const pigclaudeOpaque: Record<Tone, Record<OpaqueSurfaceName | "--field-hl", Paint>> = {
   light: {
     "--window": paint("#F0F0F1", 1, "oklch(95.6% 0.0012 270)"),
     "--sidebar": paint("#EDEDEE", 0.62, "oklch(94.6% 0.0015 270 / 0.62)"),
@@ -125,7 +136,7 @@ export function blendPaint(from: Paint, to: Paint, s: number): string {
   if (alpha <= 0) return "transparent"
   const a = hexToRgb(from.color)
   const b = hexToRgb(to.color)
-  const mix = (i: number) => (a[i] * from.alpha * (1 - s) + b[i] * to.alpha * s) / alpha
+  const mix = (i: 0 | 1 | 2) => (a[i] * from.alpha * (1 - s) + b[i] * to.alpha * s) / alpha
   return withAlpha(rgbToHex([mix(0), mix(1), mix(2)]), alpha)
 }
 
@@ -141,7 +152,7 @@ export function deriveGlassVars(
   tone: Tone,
   tint: GlassTint | null,
   g: number,
-  opaque: Record<string, Paint>,
+  opaque: Record<OpaqueSurfaceName, Paint>,
 ): Record<string, string> {
   const vars: Record<string, string> = {}
   for (const item of glassBases[tone]) {

@@ -9,7 +9,7 @@ import type { SecretVault } from "../secret-vault"
 import type { PigclaudeApi } from "../api/pigclaude-api-client"
 import { PigclaudeApiError } from "../api/oauth-client"
 import { OAuthTokenManager, codeOf, type OAuthSnapshot } from "../authorization/oauth-token-manager"
-import { recoveryView } from "./recovery-view"
+import { recoveryView, type RecoveryMembershipView } from "./recovery-view"
 import { DESKTOP_BUSINESS_SCOPES } from "@pigclaude/contracts/desktop-membership"
 import { randomUUID } from "node:crypto"
 
@@ -76,7 +76,7 @@ export class MembershipGate {
     const owner = this.#tokens.owner
     if (this.#disposed) return this.view()
     let identity: OAuthSnapshot | undefined
-    let recovered: MembershipView | undefined
+    let recovered: RecoveryMembershipView | undefined
     try {
       const snapshot = await this.#tokens.snapshot()
       if (!snapshot) {

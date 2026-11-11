@@ -291,7 +291,7 @@ function fetchDirect(input: UpstreamRequest): ReturnType<typeof undiciFetch> {
   return undiciFetch(input.url, {
     method: input.method,
     headers: input.headers,
-    body: input.body,
+    ...(input.body === undefined ? {} : { body: input.body }),
     redirect: "manual",
     signal: input.signal,
   })
@@ -305,7 +305,7 @@ function fetchThroughProxy(
   return undiciFetch(input.url, {
     method: input.method,
     headers: input.headers,
-    body: input.body,
+    ...(input.body === undefined ? {} : { body: input.body }),
     dispatcher: agent,
     redirect: "manual",
     signal: input.signal,

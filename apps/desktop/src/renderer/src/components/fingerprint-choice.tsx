@@ -35,13 +35,13 @@ export function FingerprintChoice({
   value: string
   defaultLabel: string
   options: FingerprintFieldOption[]
-  placeholder?: string
+  placeholder?: string | undefined
   numeric?: boolean
-  mono?: boolean
+  mono?: boolean | undefined
   generateSeed?: boolean
   searchable?: boolean
   invalid: boolean
-  describedBy?: string
+  describedBy?: string | undefined
   onChange: (value: string) => void
 }) {
   const [customDraft, setCustomDraft] = useState<string | null>(null)

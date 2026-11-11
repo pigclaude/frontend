@@ -62,15 +62,15 @@ export type LocalRuntimeOptions = {
     LocalStore,
     "listAccounts" | "getAccount" | "getProxy" | "saveAccount" | "updateAccount"
   >
-  profileUsage?: BrowserProfileUsage
+  profileUsage?: BrowserProfileUsage | undefined
   chooser: Pick<AccountChooser, "choose" | "hasAvailableAccount"> &
     Partial<Pick<AccountChooser, "hasIncompatibleAccount">>
   membership: LocalRuntimeMembership
   runAuthorized: <T>(operation: (signal: AbortSignal) => Promise<T>) => Promise<T>
-  sessionToken?: string
+  sessionToken?: string | undefined
   now?: () => number
-  quotaCooldownMs?: number
-  backoffMs?: readonly number[]
+  quotaCooldownMs?: number | undefined
+  backoffMs?: readonly number[] | undefined
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>
   createDaemon?: (options: LocalDaemonOptions) => LocalDaemonHandle
 }

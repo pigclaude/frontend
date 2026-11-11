@@ -29,7 +29,8 @@ export class OAuthTokenManager {
   #record: OAuthDesktopSession | null = null
   #writes: Promise<void> = Promise.resolve()
   #loading: Promise<void> | null = null
-  #refresh: { owner: number; promise: Promise<void>; recoveryKey?: string } | null = null
+  #refresh: { owner: number; promise: Promise<void>; recoveryKey?: string | undefined } | null =
+    null
   #capabilityRecoveryDenied: { owner: number; keys: Set<string> } | null = null
   readonly #invalidatedGrantListeners = new Set<(owner: number) => void>()
 

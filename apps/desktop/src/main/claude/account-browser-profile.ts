@@ -28,9 +28,9 @@ export async function accountBrowserProfile(
   input: AuthorizeClaudeAccountInput,
   accountId: string,
   options: {
-    usage?: BrowserProfileUsage
-    systemLocale?: () => string
-    systemTimezone?: () => string
+    usage?: BrowserProfileUsage | undefined
+    systemLocale?: (() => string) | undefined
+    systemTimezone?: (() => string) | undefined
   } = {},
 ): Promise<AccountBrowserProfile> {
   let profileId = input.browserProfileId

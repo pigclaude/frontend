@@ -30,9 +30,9 @@ function tokenValue(tone: Tone, name: string): string {
   const start = tone === "light" ? ':root,\n[data-theme="light"] {' : '[data-theme="dark"] {'
   const from = tokensCss.indexOf(start)
   const block = tokensCss.slice(from, tokensCss.indexOf("\n}", from))
-  const match = new RegExp(`\\n\\s*${name}:\\s*([^;]+);`).exec(block)
-  if (!match) throw new Error(`tokens.css 没有 ${name}`)
-  return match[1].trim()
+  const value = new RegExp(`\\n\\s*${name}:\\s*([^;]+);`).exec(block)?.[1]
+  if (value === undefined) throw new Error(`tokens.css 没有 ${name}`)
+  return value.trim()
 }
 
 // 磨砂下会被改写、g=0 时必须回到不透明配色的变量；--glass-tint 对应不透明时的 --window

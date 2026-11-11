@@ -66,7 +66,7 @@ export function RangeControl({
         step={step}
         value={[value]}
         aria-label={label}
-        disabled={disabled}
+        {...(disabled === undefined ? {} : { disabled })}
         onValueChange={(next) => next[0] !== undefined && onChange(next[0])}
       />
       {/* 数值和单位保持为两个文本节点，与改动前 {value}% 的渲染逐像素一致 */}

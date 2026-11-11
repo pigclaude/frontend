@@ -16,8 +16,8 @@ export function Slider({
   return (
     <SliderPrimitive.Root
       className={cn("slider", className)}
-      value={value}
-      defaultValue={defaultValue}
+      {...(value === undefined ? {} : { value })}
+      {...(defaultValue === undefined ? {} : { defaultValue })}
       {...props}
     >
       <SliderPrimitive.Track className="slider-track">

@@ -12,12 +12,12 @@ export type AuthorizationRequest = {
   purpose: AuthorizationPurpose
   mode: AuthorizationMode
   /** 仅关联同一次 UI 准备与取消，不作为身份、设备或授权材料。 */
-  clientRequestId?: string
-  accountName?: string
-  proxyId?: string
-  fingerprintSeed?: string
-  bridgeExit?: string
-  daemonExit?: string
+  clientRequestId?: string | undefined
+  accountName?: string | undefined
+  proxyId?: string | undefined
+  fingerprintSeed?: string | undefined
+  bridgeExit?: string | undefined
+  daemonExit?: string | undefined
 }
 
 /** 一次待完成的授权会话。保证 verifier 只留在主进程内。 */
@@ -34,17 +34,17 @@ export type AuthorizationSession = {
 
 /** 浏览器回调传回的授权码或失败信息。保证解析结果不直接携带秘密。 */
 export type AuthorizationCallback = {
-  code?: string
-  state?: string
-  error?: string
-  errorDescription?: string
+  code?: string | undefined
+  state?: string | undefined
+  error?: string | undefined
+  errorDescription?: string | undefined
 }
 
 /** 授权服务交换出的秘密和脱敏身份信息。保证秘密只进入主进程的 vault。 */
 export type AuthorizationToken = {
   accessToken?: string
   refreshToken?: string
-  credential?: string
+  credential?: string | undefined
   accountId: string
   displayName: string
   expiresAt: number

@@ -35,7 +35,7 @@ describe("CredentialRefresher", () => {
 
   it("refreshes a near-expiry credential and persists the rotated tokens", async () => {
     const { store, account } = await fixture(now + 60 * 1_000)
-    const calls: Array<{ refreshToken: string; scopes?: string[] }> = []
+    const calls: Array<{ refreshToken: string; scopes?: string[] | undefined }> = []
     const dispatchers: Array<Dispatcher | undefined> = []
     const refresher = new CredentialRefresher({
       store,

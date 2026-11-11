@@ -13,8 +13,8 @@ export type RecoveryScreenProps = {
   membership: MembershipView
   onCheck: () => Promise<void>
   onAuthorize: (intent: LoginIntent) => void
-  onOpenWebsite?: () => Promise<void>
-  canWithdraw?: boolean
+  onOpenWebsite?: (() => Promise<void>) | undefined
+  canWithdraw?: boolean | undefined
 }
 /** 展示当前账号的可信状态，未知错误不引导续费，历史等级明确标注。 */
 export function RecoveryScreen({

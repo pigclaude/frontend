@@ -39,9 +39,9 @@ export type AuthorizationServiceOptions = {
   /** 配置后第一方登录使用标准 OAuth context。 */
   startAuthorization?: AuthorizationStart
   /** 设备身份只由主进程平台服务读取，不从 renderer 或旧仓库恢复。 */
-  deviceIdentity?: Pick<DeviceIdentityService, "read">
+  deviceIdentity?: Pick<DeviceIdentityService, "read"> | undefined
   /** 电脑名、系统版本和应用版本读取，默认读取当前系统。 */
-  deviceInfo?: () => Promise<DeviceInfo>
+  deviceInfo?: (() => Promise<DeviceInfo>) | undefined
   /** Rust exchange 完成后把脱敏设备元数据交给会员 gate。 */
   onCompleted?: (input: {
     session: AuthorizationSession
@@ -50,7 +50,7 @@ export type AuthorizationServiceOptions = {
   /** 候选授权未提交时重新核验原登录，不把本机旧材料当作有效权限。 */
   onAbandoned?: (session: AuthorizationSession) => Promise<void>
   /** 仅为已核验的当前回调发布兑换及保存进度；普通取消不打断原子写入。 */
-  onProgress?: (event: AuthorizationStateEvent) => void
+  onProgress?: ((event: AuthorizationStateEvent) => void) | undefined
   /** 独立 Claude provider 端口，不消费第一方 grant。 */
   claudeAuthorization?: ClaudeAuthorizationAdapter
   /** 仅执行本机写入；与现有 writer fence 同步，不得进行网络请求。 */

@@ -19,7 +19,7 @@ export type FingerprintStepProps = {
   idPrefix?: string
   onChange: (fingerprint: ClaudeFingerprintView) => void
   onSubmit: (fingerprint: ClaudeFingerprintView) => void
-  onBack?: () => void
+  onBack?: (() => void) | undefined
 }
 
 /** 渲染指纹步骤；校验失败时停留在本步骤并显示字段级错误。 */

@@ -8,8 +8,8 @@ import { XrayStartupCleanupError } from "./xray-runtime-errors"
 type Entry = {
   refs: number
   startup: Promise<XrayCoreRuntime>
-  current?: XrayCoreRuntime
-  timer?: ReturnType<typeof setTimeout>
+  current?: XrayCoreRuntime | undefined
+  timer?: ReturnType<typeof setTimeout> | undefined
   listeners: Set<(error: Error) => void>
 }
 

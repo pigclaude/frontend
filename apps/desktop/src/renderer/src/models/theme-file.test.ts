@@ -1,7 +1,7 @@
 // 校验主题 JSON 的导入解析与导出序列化。
 import { describe, expect, it } from "vitest"
 import { parseThemeFile, serializeTheme } from "./theme-file"
-import { builtInThemes } from "./theme-presets"
+import { findTheme } from "./theme-presets"
 
 const sample = JSON.stringify({
   schema: "pigclaude-theme/1",
@@ -106,7 +106,11 @@ describe("serializeTheme", () => {
   })
 
   it("pigclaude 使用回退颜色，且没有 accent 时不输出 accent", () => {
-    const text = serializeTheme(builtInThemes[0], { dark: { accent: "#123456" } }, fallback)
+    const text = serializeTheme(
+      findTheme("pigclaude", []),
+      { dark: { accent: "#123456" } },
+      fallback,
+    )
     const parsed: unknown = JSON.parse(text)
     expect(parsed).toEqual({
       schema: "pigclaude-theme/1",

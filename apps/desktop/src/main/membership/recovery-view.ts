@@ -2,8 +2,11 @@
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { DesktopRecoverySnapshot } from "@pigclaude/contracts/desktop-membership"
 
+/** 恢复视图。保证 recovery 字段始终存在。 */
+export type RecoveryMembershipView = MembershipView & Required<Pick<MembershipView, "recovery">>
+
 /** active 恢复事实也先保持受限，只有独立业务核验才能发布 active。 */
-export function recoveryView(facts: DesktopRecoverySnapshot): MembershipView {
+export function recoveryView(facts: DesktopRecoverySnapshot): RecoveryMembershipView {
   return {
     startupPhase: "settled",
     revision: 0,

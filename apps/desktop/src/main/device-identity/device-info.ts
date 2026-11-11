@@ -23,7 +23,7 @@ export type DeviceInfoDeps = {
   /** 系统主机名，默认 os.hostname。 */
   hostname?: () => string
   /** 系统电脑名，读取失败返回 null；默认只在 macOS 调用 scutil。 */
-  computerName?: () => Promise<string | null>
+  computerName?: (() => Promise<string | null>) | undefined
   /** /etc/os-release 内容，读取失败返回 null；默认读取固定路径。 */
   readOsRelease?: () => Promise<string | null>
   /** 应用版本，默认 Electron app.getVersion。 */

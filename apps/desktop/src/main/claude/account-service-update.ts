@@ -58,7 +58,9 @@ export async function updateClaudeAccount(
       }
       const updated = await deps.store.updateAccount(account.id, (current) => ({
         ...current,
-        browserProfileId: input.browserProfileId ?? current.browserProfileId,
+        ...(input.browserProfileId === undefined
+          ? {}
+          : { browserProfileId: input.browserProfileId }),
         displayName: input.displayName === undefined ? current.displayName : displayName,
         enabled: input.enabled ?? current.enabled,
         updatedAt: new Date(now()).toISOString(),

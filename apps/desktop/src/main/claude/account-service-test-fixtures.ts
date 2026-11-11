@@ -130,7 +130,7 @@ export async function createHarness(
     proxyRuntimeUnavailable?: boolean
     browser?: ClaudeAccountServiceDeps["browser"]
     oauth?: ClaudeAccountServiceDeps["oauth"]
-    now?: () => number
+    now?: (() => number) | undefined
     nativeDiagnostics?: ClaudeAccountServiceDeps["nativeDiagnostics"]
   } = {},
 ): Promise<Harness> {

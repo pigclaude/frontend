@@ -37,7 +37,7 @@ export function createMainWindowOptions({
   preloadPath: string
   isPackaged: boolean
 }): BrowserWindowConstructorOptions {
-  const options: BrowserWindowConstructorOptions = {
+  const options = {
     width: 1200,
     height: 800,
     show: false,
@@ -45,7 +45,7 @@ export function createMainWindowOptions({
     autoHideMenuBar: true,
     title: "pigclaude",
     webPreferences: { preload: preloadPath, sandbox: false, devTools: !isPackaged },
-  }
+  } satisfies BrowserWindowConstructorOptions
   if (platform === "darwin") {
     return {
       ...options,

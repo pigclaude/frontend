@@ -7,7 +7,7 @@ import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from ".
 import { Popover, PopoverContent, PopoverTrigger } from "./popover"
 
 /** 一个组合框选项；关键词可补充别名而不影响展示文字和最终保存值。 */
-export type ComboboxOption = { value: string; label: string; keywords?: string[] }
+export type ComboboxOption = { value: string; label: string; keywords?: string[] | undefined }
 
 /** 提供名称、代码搜索与自定义入口，选择后关闭，重新打开时清空上次搜索。 */
 export function Combobox({
@@ -27,7 +27,7 @@ export function Combobox({
   options: ComboboxOption[]
   customOption: ComboboxOption
   invalid?: boolean
-  describedBy?: string
+  describedBy?: string | undefined
   onValueChange: (value: string) => void
   onCloseAutoFocus?: (event: Event) => void
 }) {

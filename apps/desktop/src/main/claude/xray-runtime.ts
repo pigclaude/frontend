@@ -12,8 +12,8 @@ import { XrayPortInUseError, XrayStartupCleanupError } from "./xray-runtime-erro
 
 /** Xray 运行实例的可执行文件和启动超时。 */
 export type XrayRuntimeOptions = {
-  binaryPath?: string
-  resourcesPath?: string
+  binaryPath?: string | undefined
+  resourcesPath?: string | undefined
   env?: Record<string, string | undefined>
   hostPlatform?: NodeJS.Platform
   hostArch?: string

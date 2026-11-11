@@ -13,7 +13,7 @@ export function SigninPanel({
 }: {
   icon: string
   tone?: "bad"
-  busy?: boolean
+  busy?: boolean | undefined
   title: ReactNode
   sub: string
   children?: ReactNode

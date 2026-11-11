@@ -28,9 +28,17 @@ function preset(
   }
 }
 
+const pigclaudeTheme: ThemeDefinition = {
+  id: "pigclaude",
+  name: "pigclaude",
+  builtIn: true,
+  light: null,
+  dark: null,
+}
+
 /** 内置主题，顺序固定：pigclaude、chatgpt、claude、linear、github、dracula、nord、solarized。 */
 export const builtInThemes: readonly ThemeDefinition[] = [
-  { id: "pigclaude", name: "pigclaude", builtIn: true, light: null, dark: null },
+  pigclaudeTheme,
   preset(
     "chatgpt",
     "ChatGPT",
@@ -60,6 +68,6 @@ export function findTheme(id: string, custom: readonly ThemeDefinition[]): Theme
   return (
     custom.find((theme) => theme.id === id) ??
     builtInThemes.find((theme) => theme.id === id) ??
-    builtInThemes[0]
+    pigclaudeTheme
   )
 }

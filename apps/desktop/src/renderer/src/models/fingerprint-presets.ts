@@ -227,11 +227,13 @@ export function applyFingerprintPreset(
   current: ClaudeFingerprintView,
   preset: FingerprintPreset,
 ): ClaudeFingerprintView {
-  const next: ClaudeFingerprintView = {
-    ...preset.fingerprint,
-    seed: current.seed,
-    unknownArgs: current.unknownArgs,
+  const next: ClaudeFingerprintView = { ...preset.fingerprint, seed: current.seed }
+  if (current.unknownArgs === undefined) delete next.unknownArgs
+  else next.unknownArgs = current.unknownArgs
+  for (const field of fingerprintLegacyFields) {
+    const value = current[field.key]
+    if (value === undefined) delete next[field.key]
+    else next[field.key] = value
   }
-  for (const field of fingerprintLegacyFields) next[field.key] = current[field.key]
   return next
 }

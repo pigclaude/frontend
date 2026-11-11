@@ -18,7 +18,7 @@ export type OnboardingScreenProps = {
   onFinish: () => void
   onOpenAuthorize: (state: OnboardingState) => void
   onAddProxy: (input: { name: string; url: string }) => Promise<void>
-  resume?: OnboardingState
+  resume?: OnboardingState | undefined
 }
 
 const stepCopy: Record<OnboardingStep, { icon: string; title: string; why: string }> = {

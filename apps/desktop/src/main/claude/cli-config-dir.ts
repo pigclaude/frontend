@@ -2,7 +2,7 @@
 
 /** 配置目录解析输入。显式 configDir 优先于 CLAUDE_CONFIG_DIR，null 表示强制默认目录。 */
 export type ClaudeCliConfigDirInput = {
-  configDir?: string | null
+  configDir?: string | null | undefined
   env?: NodeJS.ProcessEnv
 }
 

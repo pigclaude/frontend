@@ -60,7 +60,7 @@ it.skipIf(!browserBinary || !xrayBinary)(
       id: string,
       network: LaunchBrowserNetwork,
       url: string,
-      webrtcPolicy: ClaudeFingerprintView["webrtcPolicy"],
+      webrtcPolicy: NonNullable<ClaudeFingerprintView["webrtcPolicy"]>,
     ): Promise<Page> => {
       const fingerprint: ClaudeFingerprintView = {
         seed: "42",

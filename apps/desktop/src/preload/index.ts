@@ -73,7 +73,7 @@ export type PigclaudeBridge = {
     importFromClaudeCli: (input: {
       confirmCopy: boolean
       displayName?: string
-      browserProfileId?: string
+      browserProfileId?: string | undefined
     }) => Promise<ClaudeAccountView>
     subscribe: (listener: (event: ClaudeAccountEvent) => void) => () => void
   }

@@ -3,7 +3,7 @@ import type { Hex } from "./color-math"
 import { mixHex, readableOn } from "./color-math"
 import type { AppearanceSettings } from "./appearance-settings"
 import { activeSlot } from "./appearance-settings"
-import type { GlassTint, Paint } from "./appearance-glass"
+import type { GlassTint, OpaqueSurfaceName, Paint } from "./appearance-glass"
 import {
   blendPaint,
   defaultGlass,
@@ -197,7 +197,10 @@ function accentGroup(accent: Hex): Vars {
 }
 
 // 比例取自 tokens.css 中 pigclaude 各表面相对 --bg 的明暗差
-function surfacePaints(bg: Hex, tone: Tone): Record<string, Paint> {
+function surfacePaints(
+  bg: Hex,
+  tone: Tone,
+): Record<OpaqueSurfaceName | "--wall-1" | "--wall-2", Paint> {
   if (tone === "light") {
     return {
       "--window": paint(mixHex(bg, black, 0.015)),

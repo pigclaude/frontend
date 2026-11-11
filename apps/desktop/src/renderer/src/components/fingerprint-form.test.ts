@@ -34,7 +34,7 @@ function Harness({
   onChange,
 }: {
   initial: ClaudeFingerprintView
-  errors?: FingerprintFormErrors
+  errors?: FingerprintFormErrors | undefined
   onChange: (value: ClaudeFingerprintView) => void
 }) {
   const [value, setValue] = useState(initial)

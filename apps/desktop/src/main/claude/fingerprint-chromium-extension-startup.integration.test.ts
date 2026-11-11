@@ -254,9 +254,9 @@ async function cleanupTest(input: {
   directory: string
   adapter: FingerprintChromiumAdapter
   start: ReturnType<typeof createXrayRuntimeStarter>
-  browser?: Browser
-  callback?: Awaited<ReturnType<SubscriptionOAuth["startCallback"]>>
-  fixture?: Awaited<ReturnType<typeof createLoopbackFixture>>
+  browser?: Browser | undefined
+  callback?: Awaited<ReturnType<SubscriptionOAuth["startCallback"]>> | undefined
+  fixture?: Awaited<ReturnType<typeof createLoopbackFixture>> | undefined
 }): Promise<void> {
   let disconnectError: unknown
   if (input.browser !== undefined) {

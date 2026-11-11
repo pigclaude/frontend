@@ -27,7 +27,7 @@ export type ClaudeAccountUpdate = {
 export type AccountsScreenProps = {
   accounts: PoolAccount[]
   proxies: PoolProxy[]
-  browserProfiles?: BrowserProfileView[]
+  browserProfiles?: BrowserProfileView[] | undefined
   onOpenBrowserProfiles?: () => void
   onOpenAuthorize: () => void
   onReauthorize?: (accountId: string) => void
@@ -309,7 +309,7 @@ function ClaudeCliImportDialog({
   onConfirm,
 }: {
   open: boolean
-  profiles?: BrowserProfileView[]
+  profiles?: BrowserProfileView[] | undefined
   onOpenChange: (open: boolean) => void
   onConfirm: (profileId?: string) => void
 }) {

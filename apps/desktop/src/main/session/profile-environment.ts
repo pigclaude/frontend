@@ -4,9 +4,9 @@
 export type ProfileEnvironment = {
   locale: string
   timezone: string
-  browserProfileId?: string
-  profileRevision?: number
-  accountId?: string
+  browserProfileId?: string | undefined
+  profileRevision?: number | undefined
+  accountId?: string | undefined
 }
 
 /** 只接受明确、合法的语言和 IANA 时区，不能在比较时回退宿主值。 */

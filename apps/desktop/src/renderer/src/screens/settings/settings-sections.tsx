@@ -8,7 +8,7 @@ import { AboutSettings, DataSettings, NetworkSettings } from "./settings-system-
 
 /** 设置页面 props。 */
 export type SettingsScreenProps = {
-  withdrawContextId?: string
+  withdrawContextId?: string | undefined
   screen: Screen
   appearance: AppearanceController
   onNavigate: (screen: Screen) => void

@@ -59,8 +59,8 @@ export type EnvironmentCheckRequest = {
   runId: string
   startedAt: number
   expectedExitIp: string | null
-  nativeEvidence?: NativeEnvironmentEvidence
-  browserProfile?: { id: string; revision: number }
+  nativeEvidence?: NativeEnvironmentEvidence | undefined
+  browserProfile?: { id: string; revision: number } | undefined
   onReport: (report: EnvironmentCheckReport) => void
 }
 
@@ -70,9 +70,9 @@ export type EnvironmentCheckBindingInput = {
   fingerprint: ClaudeFingerprintView
   network: LaunchBrowserNetwork
   expectedExitIp: string | null
-  nativeBinding?: string
-  nativeEnvironment?: { locale: string; timezone: string }
-  browserProfile?: { id: string; revision: number }
+  nativeBinding?: string | undefined
+  nativeEnvironment?: { locale: string; timezone: string } | undefined
+  browserProfile?: { id: string; revision: number } | undefined
 }
 
 /** 主进程本轮生成的原生证据；绑定与完整快照均不从页面或导出文件导入。 */

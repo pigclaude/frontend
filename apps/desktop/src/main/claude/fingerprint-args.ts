@@ -42,7 +42,7 @@ const resolutionPattern = /^(\d{3,5}),(\d{3,5})$/
 export type ScreenSize = { width: number; height: number }
 
 /** 构建启动参数的可选输入。保证不传屏幕尺寸时按 AntBrowser 的 1920x1080 兜底。 */
-export type FingerprintArgsOptions = { screen?: ScreenSize }
+export type FingerprintArgsOptions = { screen?: ScreenSize | undefined }
 
 /** 指纹校验结果。失败时带中文原因，成功时返回只含白名单字段的归一化配置。 */
 export type FingerprintValidation =

@@ -244,7 +244,7 @@ export class OAuthClient {
           const response = await this.#fetcher(new URL(path, this.#baseUrl).toString(), {
             method: options.method,
             headers,
-            body: options.body,
+            ...(options.body === undefined ? {} : { body: options.body }),
             signal: controller.signal,
             credentials: "omit",
             redirect: "error",

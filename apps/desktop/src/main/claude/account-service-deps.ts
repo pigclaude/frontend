@@ -14,9 +14,9 @@ import type { BrowserProfileUsage } from "./browser-profile-usage"
 /** 账号服务依赖。所有外部副作用都通过端口注入。 */
 export type ClaudeAccountServiceDeps = {
   store: LocalStore
-  profileUsage?: BrowserProfileUsage
-  systemLocale?: () => string
-  systemTimezone?: () => string
+  profileUsage?: BrowserProfileUsage | undefined
+  systemLocale?: (() => string) | undefined
+  systemTimezone?: (() => string) | undefined
   browser: Pick<
     FingerprintChromiumAdapter,
     "ensureAvailable" | "launch" | "deleteProfile" | "profileDir" | "dispose"
@@ -26,7 +26,7 @@ export type ClaudeAccountServiceDeps = {
     "buildAuthorizeUrl" | "startCallback" | "exchangeCode" | "readProfile"
   >
   /** 提供已接入的外部代理核心；未提供时，绑定代理授权保持不可用。 */
-  startProxyRuntime?: StartProxyRuntime
+  startProxyRuntime?: StartProxyRuntime | undefined
   checkEgress: (input: {
     bridgeUrl: string
     upstreamProxyUrl: string

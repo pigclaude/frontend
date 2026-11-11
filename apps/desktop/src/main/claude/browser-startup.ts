@@ -42,10 +42,10 @@ export type BrowserStartupInput = {
   authorizeUrl: string
   signal?: AbortSignal
   assertCanNavigate?: () => void
-  extensionArgs?: readonly string[]
+  extensionArgs?: readonly string[] | undefined
   hostPlatform?: NodeJS.Platform
-  environmentCheck?: EnvironmentCheckContext
-  environmentTargets?: EnvironmentCheckTargets
+  environmentCheck?: EnvironmentCheckContext | undefined
+  environmentTargets?: EnvironmentCheckTargets | undefined
   registerGracefulClose?: (close: () => boolean) => void
 }
 

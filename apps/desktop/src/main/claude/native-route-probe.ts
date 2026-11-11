@@ -84,7 +84,7 @@ export async function probeNativeRoutes(
         const response = await upstreamFetch(target, {
           method: "GET",
           headers: { "user-agent": "PigClaude-environment-check/2" },
-          dispatcher,
+          ...(dispatcher === undefined ? {} : { dispatcher }),
           signal: input.signal,
           redirect: "error",
         })

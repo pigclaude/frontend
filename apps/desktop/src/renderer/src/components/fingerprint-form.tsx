@@ -19,7 +19,7 @@ import { RadioGroup, RadioGroupCard } from "./ui/radio-group"
 /** 指纹表单的受控草稿、字段错误与稳定控件标识。 */
 export type FingerprintFormProps = {
   value: ClaudeFingerprintView
-  errors?: FingerprintFormErrors
+  errors?: FingerprintFormErrors | undefined
   idPrefix: string
   onChange: (value: ClaudeFingerprintView) => void
 }

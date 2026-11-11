@@ -37,8 +37,8 @@ export async function probeNativeCli(input: {
   timezone: string
   locale: string
   signal: AbortSignal
-  binary?: string
-  readAvailableLocales?: (signal: AbortSignal) => Promise<readonly string[]>
+  binary?: string | undefined
+  readAvailableLocales?: ((signal: AbortSignal) => Promise<readonly string[]>) | undefined
 }): Promise<NativeCliObservation> {
   input.signal.throwIfAborted()
   const binary = input.binary ?? resolveClaudeBinaryPath({ arch: runtimeHostArch() })
@@ -87,6 +87,8 @@ export async function probeNativeCli(input: {
       userDataPath: directory,
     })
     const session = environment
+    const sessionLocale = session.env.LANG
+    if (sessionLocale === undefined) throw new Error("会话环境缺少语言设置")
     const safeEnvironment = {
       ...session.env,
       PATH:
@@ -187,7 +189,7 @@ export async function probeNativeCli(input: {
       launched: child?.pid !== undefined && actualCommand === binary,
       configurationPrivate:
         privateMode && actualEnvironment?.CLAUDE_CONFIG_DIR === session.configDir,
-      locale: session.env.LANG,
+      locale: sessionLocale,
       localeAvailable,
       launchEnvironmentMatches:
         actualEnvironment?.TZ === session.env.TZ &&

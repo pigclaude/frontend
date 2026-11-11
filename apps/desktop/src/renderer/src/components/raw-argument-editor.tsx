@@ -17,9 +17,9 @@ export function RawArgumentEditor({
 }: {
   id: string
   args: string[]
-  placeholder?: string
+  placeholder?: string | undefined
   invalid: boolean
-  describedBy?: string
+  describedBy?: string | undefined
   onChange: (args: string[]) => void
 }) {
   const container = useRef<HTMLDivElement>(null)

@@ -32,7 +32,7 @@ function setup(
   } = {},
 ) {
   const vault = new ProfileVault()
-  const calls: { path: string; init?: RequestInit }[] = []
+  const calls: { path: string; init?: RequestInit | undefined }[] = []
   const composition = createDesktopComposition({
     vault,
     authOrigin: origin,

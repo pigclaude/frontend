@@ -31,8 +31,8 @@ describe("builtInThemes", () => {
 
   it("pigclaude 的颜色为 null，其余主题的颜色都是合法 Hex", () => {
     const [first, ...rest] = builtInThemes
-    expect(first.light).toBeNull()
-    expect(first.dark).toBeNull()
+    expect(first?.light).toBeNull()
+    expect(first?.dark).toBeNull()
     for (const theme of rest) {
       for (const colors of [theme.light, theme.dark]) {
         expect(colors).not.toBeNull()

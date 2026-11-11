@@ -4,7 +4,10 @@ import { ClaudeAccountError } from "./errors"
 
 /** 多个账号可同时读取同一配置，全部运行资源释放前禁止修改该配置。 */
 export class BrowserProfileUsage {
-  readonly #owners = new Map<string, Map<string, { count: number; accountId?: string }>>()
+  readonly #owners = new Map<
+    string,
+    Map<string, { count: number; accountId?: string | undefined }>
+  >()
   readonly #editing = new Set<string>()
   readonly #editingAccounts = new Set<string>()
 
@@ -18,7 +21,7 @@ export class BrowserProfileUsage {
     const existing = this.#owners.get(id)
     if (this.#editing.has(id) || (accountId && this.#editingAccounts.has(accountId)))
       throw new ClaudeAccountError("INVALID_INPUT", "浏览器配置或账号绑定正在修改，请稍后重试")
-    const held = existing ?? new Map<string, { count: number; accountId?: string }>()
+    const held = existing ?? new Map<string, { count: number; accountId?: string | undefined }>()
     const entry = held.get(owner) ?? { count: 0, accountId }
     entry.count++
     held.set(owner, entry)

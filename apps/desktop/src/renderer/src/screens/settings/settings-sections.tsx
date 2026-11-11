@@ -1,6 +1,6 @@
 // 负责按当前设置子页选出对应的设置页面。
 import type { AppearanceController } from "../../hooks/use-appearance"
-import type { Screen } from "../screen"
+import type { NavLocation } from "../../models/navigation"
 import { ProfileSettings, SwitchingSettings } from "./settings-account-pages"
 import { AppearancePage } from "./appearance/appearance-page"
 import { GeneralSettings, MenubarSettings, SessionSettings } from "./settings-app-pages"
@@ -9,28 +9,28 @@ import { AboutSettings, DataSettings, NetworkSettings } from "./settings-system-
 /** 设置页面 props。 */
 export type SettingsScreenProps = {
   withdrawContextId?: string | undefined
-  screen: Screen
+  page: string
   appearance: AppearanceController
-  onNavigate: (screen: Screen) => void
+  onNavigate: (location: NavLocation) => void
   onLogout: () => void
 }
 
 /** 根据当前设置子页绘制原型对应的设置内容；未知子页显示关于。 */
 export function SettingsScreen({
-  screen,
+  page,
   appearance,
   onNavigate,
   onLogout,
   withdrawContextId,
 }: SettingsScreenProps) {
-  if (screen === "profile")
+  if (page === "profile")
     return <ProfileSettings onLogout={onLogout} withdrawContextId={withdrawContextId} />
-  if (screen === "switching") return <SwitchingSettings onNavigate={onNavigate} />
-  if (screen === "general") return <GeneralSettings />
-  if (screen === "appearance") return <AppearancePage appearance={appearance} />
-  if (screen === "session") return <SessionSettings />
-  if (screen === "menubar") return <MenubarSettings onNavigate={onNavigate} />
-  if (screen === "network") return <NetworkSettings />
-  if (screen === "data") return <DataSettings />
+  if (page === "switching") return <SwitchingSettings onNavigate={onNavigate} />
+  if (page === "general") return <GeneralSettings />
+  if (page === "appearance") return <AppearancePage appearance={appearance} />
+  if (page === "session") return <SessionSettings />
+  if (page === "menubar") return <MenubarSettings onNavigate={onNavigate} />
+  if (page === "network") return <NetworkSettings />
+  if (page === "data") return <DataSettings />
   return <AboutSettings />
 }

@@ -3,7 +3,7 @@ import type { ModeOverrides } from "./appearance-settings"
 import { parseHex } from "./color-math"
 import type { ThemeColors, ThemeDefinition } from "./theme-presets"
 
-const SCHEMA = "pigclaude-theme/1"
+const SCHEMAS = ["pigclaude-theme/1", "pigcode-theme/1"] as const
 
 /** 导入结果：成功带主题，失败带可直接展示给用户的原因。 */
 export type ThemeFileResult = { ok: true; theme: ThemeDefinition } | { ok: false; reason: string }
@@ -37,8 +37,11 @@ export function parseThemeFile(text: string, existingNames: readonly string[]): 
   } catch {
     return { ok: false, reason: "不是有效的 JSON，请检查内容是否完整" }
   }
-  if (!isRecord(data) || data.schema !== SCHEMA) {
-    return { ok: false, reason: `不是 pigclaude 主题文件格式（需要 schema 为 ${SCHEMA}）` }
+  if (!isRecord(data) || !SCHEMAS.includes(data.schema as (typeof SCHEMAS)[number])) {
+    return {
+      ok: false,
+      reason: "不是 Pigcode 主题文件格式（需要 schema 为 pigclaude-theme/1 或 pigcode-theme/1）",
+    }
   }
   const name = typeof data.name === "string" ? data.name.trim() : ""
   if (!name) return { ok: false, reason: "主题缺少名字" }
@@ -78,7 +81,7 @@ export function serializeTheme(
 ): string {
   return JSON.stringify(
     {
-      schema: SCHEMA,
+      schema: "pigcode-theme/1",
       name: theme.name,
       light: merged(theme.light ?? pigclaudeFallback.light, overrides?.light),
       dark: merged(theme.dark ?? pigclaudeFallback.dark, overrides?.dark),

@@ -2,11 +2,11 @@
 import { WithdrawAuthorization } from "../../components/withdraw-authorization"
 import { useState } from "react"
 import { Icon } from "../../components/icon"
-import { useToast } from "../../components/toast"
+import { useToast } from "@pigclaude/pigcode-ui-shell"
 import { Button } from "../../components/ui/button"
 import { Switch } from "../../components/ui/switch"
 import { settingsFixture } from "../../fixtures/operations-fixtures"
-import type { Screen } from "../screen"
+import type { NavLocation } from "../../models/navigation"
 import { RangeControl } from "./setting-controls"
 import { SettingPage, SettingRow, SettingSection } from "./setting-page"
 
@@ -65,7 +65,7 @@ export function ProfileSettings({
 }
 
 /** 切换规则：什么时候从一个 Claude 账号换到下一个。 */
-export function SwitchingSettings({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
+export function SwitchingSettings({ onNavigate }: { onNavigate: (location: NavLocation) => void }) {
   const [fiveHour, setFiveHour] = useState(100)
   const [sevenDay, setSevenDay] = useState(100)
   return (
@@ -106,7 +106,7 @@ export function SwitchingSettings({ onNavigate }: { onNavigate: (screen: Screen)
             variant="plain"
             className="link"
             type="button"
-            onClick={() => onNavigate("accounts")}
+            onClick={() => onNavigate({ kind: "settings", page: "accounts" })}
           >
             Claude 账号
           </Button>{" "}

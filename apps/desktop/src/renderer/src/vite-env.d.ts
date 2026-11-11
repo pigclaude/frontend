@@ -4,10 +4,12 @@
 interface PigclaudeBridge {
   browserProfiles?: import("@pigclaude/contracts/browser-profile").BrowserProfilesBridge
   platform: string
+  systemVersion?: string
+  window?: import("../../preload/window-bridge").WindowBridge
   openExternal?: (url: string) => Promise<void>
   setTheme?: (source: "light" | "dark" | "system") => Promise<void>
   setDockIcon?: (dataUrl: string) => Promise<void>
-  pickFolder?: () => Promise<string | null>
+  pickFolder?: (labels?: { title?: string; buttonLabel?: string }) => Promise<string | null>
   startAuthorization?: (
     request: import("../../main/authorization/types").AuthorizationRequest,
   ) => Promise<import("../../main/authorization/types").AuthorizationStartResult>

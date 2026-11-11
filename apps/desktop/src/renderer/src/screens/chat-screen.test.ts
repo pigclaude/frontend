@@ -143,7 +143,7 @@ describe("chat screen", () => {
       }),
     )
     expect(session.send).not.toHaveBeenCalled()
-    expect(onOpen).toHaveBeenCalledWith("chat")
+    expect(onOpen).toHaveBeenCalledWith({ kind: "session" })
   })
 
   it("offers a direct account in the account menu without any proxy", async () => {
@@ -199,7 +199,7 @@ describe("chat screen", () => {
     await act(async () => root.render(createElement(Harness)))
     await clickButton(button("开始会话"), "开始会话")
 
-    expect(onOpen).toHaveBeenCalledWith("chat")
+    expect(onOpen).toHaveBeenCalledWith({ kind: "session" })
     expect(container.textContent).toContain("先看")
     expect(container.textContent).not.toContain("先选择一个工作区")
   })

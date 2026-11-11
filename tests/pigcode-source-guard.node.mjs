@@ -1,10 +1,12 @@
-// 负责证明 Pigcode 来源守卫的判定：原样拷入通过，直接改拷入文件、多出清单外文件、删掉清单内文件都失败。
+// 负责证明 Pigcode 来源守卫的判定：原样拷入通过，直接改拷入文件、多出清单外文件、删掉清单内文件都失败；
+// 以及同步时只做登记过的替换：包名、点分存储键前缀、主语言包里的产品名。
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { cp, mkdtemp, readFile, rm, writeFile, appendFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test } from "node:test"
+import { rewriteSource } from "../scripts/vendor-pigcode.mjs"
 
 const frontend = join(import.meta.dirname, "..")
 const guard = join(frontend, "scripts/assert-pigcode-source.mjs")
@@ -56,6 +58,35 @@ test("删掉清单内的文件失败", async () => {
   const result = await run((root) => rm(join(root, sample.path)))
   assert.equal(result.status, 1)
   assert.match(result.stderr, /missing/)
+})
+
+test("同步只替换包名与点分存储键，主题文件格式和主题代码前缀保持 Pigcode 的写法", () => {
+  const source = [
+    'import { Button } from "@pigcode/ui-primitives"',
+    'const KEY = "pigcode.sidebarWidth"',
+    'const SCHEMA = "pigcode-theme/1"',
+    'export const themeCodePrefix = "pigcode-theme-v1:"',
+    '  "menu.about": "关于 Pigcode",',
+  ].join("\n")
+  assert.equal(
+    rewriteSource(source, "src/panel-resizer.tsx"),
+    [
+      'import { Button } from "@pigclaude/pigcode-ui-primitives"',
+      'const KEY = "pigclaude.sidebarWidth"',
+      'const SCHEMA = "pigcode-theme/1"',
+      'export const themeCodePrefix = "pigcode-theme-v1:"',
+      '  "menu.about": "关于 Pigcode",',
+    ].join("\n"),
+  )
+})
+
+test("产品名只在登记的主语言包里替换", () => {
+  const text = '  "menu.about": "关于 Pigcode",\n  "plugins.creator.guide": "Pigcode 插件创建指南",'
+  assert.equal(
+    rewriteSource(text, "src/locale/messages.zh-CN.ts"),
+    '  "menu.about": "关于 PigClaude",\n  "plugins.creator.guide": "PigClaude 插件创建指南",',
+  )
+  assert.equal(rewriteSource(text, "src/locale/plugins.messages.ts"), text)
 })
 
 test("固定提交不是完整 SHA 时失败", async () => {

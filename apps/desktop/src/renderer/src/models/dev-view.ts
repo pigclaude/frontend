@@ -1,6 +1,7 @@
-// 负责解析开发期地址里的 screen、theme、glass 参数，让视觉回归能直接打开指定页面。
-import type { Screen } from "../screens/screen"
+// 负责解析开发期地址里的 screen、theme、glass 参数，让视觉回归能直接打开指定页面；
+// screen 用页面名表示，和导航位置一一对应。
 import { createLoginState, type LoginState, type LoginView } from "./login-model"
+import type { NavLocation } from "./navigation"
 import { onboardingSteps, type OnboardingStep } from "./onboarding-model"
 
 /** 开发期可以直接停住的登录阶段。 */
@@ -8,54 +9,91 @@ export type DevLoginPhase = Extract<LoginView, "idle" | "waiting" | "confirming"
 
 const loginPhases: readonly DevLoginPhase[] = ["idle", "waiting", "confirming", "error"]
 
+/** 设置页的页面名，也是设置页的 id。 */
+const settingsPageNames = [
+  "profile",
+  "accounts",
+  "browser-profiles",
+  "proxies",
+  "switching",
+  "usage",
+  "environment",
+  "general",
+  "appearance",
+  "session",
+  "menubar",
+  "network",
+  "data",
+  "about",
+] as const
+
+/** 开发期地址里 screen 参数能用的页面名。 */
+export type DevScreen =
+  | "login"
+  | "onboarding"
+  | "authorize"
+  | "chat-new"
+  | "chat"
+  | "tray"
+  | (typeof settingsPageNames)[number]
+
+/** 全部页面名；视觉回归按这个顺序截图。 */
+export const allScreens: readonly DevScreen[] = [
+  "login",
+  "onboarding",
+  "chat-new",
+  "chat",
+  ...settingsPageNames,
+  "tray",
+  "authorize",
+]
+
 /**
- * 开发期要直接打开的页面、主题和玻璃效果。
+ * 开发期要直接打开的位置、主题和玻璃效果。
  * phase 让登录页停在指定阶段（同时当作未登录），step 让引导停在指定步骤。
  */
 export type DevView = {
-  screen: Screen
+  location: NavLocation
   theme: "light" | "dark"
   glass: boolean
   phase?: DevLoginPhase
   step?: OnboardingStep
 }
 
-const screenNames: Record<Screen, true> = {
-  login: true,
-  onboarding: true,
-  "chat-new": true,
-  chat: true,
-  profile: true,
-  accounts: true,
-  "browser-profiles": true,
-  proxies: true,
-  switching: true,
-  usage: true,
-  environment: true,
-  general: true,
-  appearance: true,
-  session: true,
-  tray: true,
-  menubar: true,
-  network: true,
-  data: true,
-  about: true,
-  authorize: true,
+/** 页面名对应的导航位置。 */
+export function locationOfScreen(name: DevScreen): NavLocation {
+  if (name === "login" || name === "onboarding" || name === "authorize") {
+    return { kind: "flow", flow: name }
+  }
+  if (name === "chat-new") return { kind: "draft" }
+  if (name === "chat") return { kind: "session" }
+  if (name === "tray") return { kind: "tray" }
+  return { kind: "settings", page: name }
 }
 
-/** 全部页面名，顺序与 Screen 联合类型一致。 */
-export const allScreens = Object.keys(screenNames) as Screen[]
+/** 导航位置对应的页面名；设置页就是它的 id。 */
+export function screenOfLocation(location: NavLocation): string {
+  if (location.kind === "draft") return "chat-new"
+  if (location.kind === "session") return "chat"
+  if (location.kind === "settings") return location.page
+  if (location.kind === "flow") return location.flow
+  return "tray"
+}
+
+function isDevScreen(name: string): name is DevScreen {
+  return (allScreens as readonly string[]).includes(name)
+}
 
 /** 解析地址查询串。非开发模式或页面名不合法时返回 null；缺省主题为 light，缺省玻璃为关。 */
 export function parseDevView(search: string, dev: boolean): DevView | null {
   if (!dev) return null
   const params = new URLSearchParams(search)
   const screen = params.get("screen")
-  if (!screen || !Object.hasOwn(screenNames, screen)) return null
+  if (!screen || !isDevScreen(screen)) return null
   const phase = loginPhases.find((name) => name === params.get("phase"))
   const step = onboardingSteps.find((name) => name === params.get("step"))
   return {
-    screen: screen as Screen,
+    location: locationOfScreen(screen),
     theme: params.get("theme") === "dark" ? "dark" : "light",
     glass: params.get("glass") === "1",
     ...(phase && screen === "login" ? { phase } : {}),

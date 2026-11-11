@@ -5,25 +5,6 @@
   height: 28px;
   padding: 0;
 }
-
-.select-trigger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  width: 100%;
-  height: 26px;
-  position: relative;
-  padding: 0 26px 0 9px;
-  border: 0;
-  border-radius: var(--r-md);
-  background: transparent;
-  color: var(--fg);
-  font-size: var(--fs-md);
-  text-align: left;
-  box-shadow: inset 0 0 0 var(--hair) var(--border-strong);
-  transition: box-shadow var(--t-fast);
-}
 .select-trigger:hover {
   background: var(--hover);
 }
@@ -33,10 +14,6 @@
 }
 .select-trigger[data-placeholder] {
   color: var(--faint);
-}
-.select-trigger[data-disabled] {
-  opacity: 0.4;
-  pointer-events: none;
 }
 .select-trigger::after {
   content: "";
@@ -83,45 +60,6 @@
   display: inline-flex;
 }
 
-.slider {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: 16px;
-  touch-action: none;
-  user-select: none;
-}
-.slider[data-disabled] {
-  opacity: 0.4;
-  pointer-events: none;
-}
-.slider-track {
-  position: relative;
-  flex: 1;
-  height: 4px;
-  overflow: hidden;
-  border-radius: var(--r-full);
-  background: var(--track);
-}
-.slider-range {
-  position: absolute;
-  height: 100%;
-  background: var(--fg-2);
-}
-.slider-thumb {
-  display: block;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--knob);
-  box-shadow: var(--shadow-knob);
-}
-.slider-thumb:focus-visible {
-  outline: 1px solid var(--border-focus);
-  outline-offset: 2px;
-}
-
 .seg .seg-item {
   height: 22px;
   padding: 0 10px;
@@ -144,35 +82,9 @@
   outline: 1px solid var(--border-focus);
   outline-offset: 1px;
 }
-
-.radio-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.radio {
-  display: inline-grid;
-  place-items: center;
-  flex: none;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: var(--surface);
-  box-shadow: inset 0 0 0 var(--hair) var(--border-strong);
-}
 .radio[data-state="checked"] {
   background: var(--switch-on);
   box-shadow: none;
-}
-.radio:focus-visible {
-  outline: 1px solid var(--border-focus);
-  outline-offset: 2px;
-}
-.radio[data-disabled] {
-  opacity: 0.4;
-  pointer-events: none;
 }
 /* 只作用于 Radix 单选按钮里的指示点；列表选项的 .radio-dot 由 app.css 定义 */
 .radio > .radio-dot {
@@ -182,27 +94,10 @@
   background: var(--knob);
 }
 
-.collapsible-content {
-  overflow: hidden;
-}
-
 .ui-label {
   color: var(--fg-2);
   font-size: var(--fs-sm);
   font-weight: 500;
-}
-
-.ui-separator {
-  flex: none;
-  background: var(--border-strong);
-}
-.ui-separator[data-orientation="horizontal"] {
-  width: 100%;
-  height: var(--hair);
-}
-.ui-separator[data-orientation="vertical"] {
-  width: var(--hair);
-  height: 100%;
 }
 
 /* 原生 range 自带 2px 外边距，轨道和滑块整体右移 2px；保留它让像素与改动前一致 */

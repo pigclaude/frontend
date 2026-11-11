@@ -66,7 +66,7 @@ describe("OpenInButton", () => {
     expect(items[2]?.querySelector(".app-icon.is-letter")?.textContent).toBe("G")
     await userEvent.click(screen.getByRole("menuitem", { name: "Cursor" }))
     expect(openWithApp).toHaveBeenLastCalledWith("cursor", "/Users/me/app")
-    expect(window.localStorage.getItem("pigcode.openInApp")).toBe("cursor")
+    expect(window.localStorage.getItem("pigclaude.openInApp")).toBe("cursor")
     expect(await screen.findByRole("button", { name: "在 Cursor 中打开" })).toBeTruthy()
     // 挂载时取一次，每次打开菜单再刷新。
     expect(listOpenApps).toHaveBeenCalledTimes(2)

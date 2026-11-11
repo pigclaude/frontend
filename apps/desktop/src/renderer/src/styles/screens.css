@@ -1,48 +1,5 @@
 /* 负责 renderer 各页面的局部布局、会话内容和登录/授权窗口样式。 */
 
-.view {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.thread {
-  flex: 1;
-  overflow: auto;
-  padding: 8px 28px 24px;
-}
-
-.msgs {
-  display: flex;
-  max-width: 680px;
-  margin: 0 auto;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.msg-user {
-  align-self: flex-end;
-  max-width: 82%;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: var(--panel);
-  font-family: var(--font-content);
-  font-size: var(--fs-content);
-  font-weight: var(--font-weight-content);
-  line-height: 1.65;
-}
-
-.msg-ai {
-  display: flex;
-  flex-direction: column;
-  gap: 11px;
-  font-family: var(--font-content);
-  font-size: var(--fs-content);
-  font-weight: var(--font-weight-content);
-  line-height: 1.72;
-}
-
 .msg-ai code {
   padding: 1px 4px;
   border-radius: 4px;
@@ -52,55 +9,7 @@
   font-weight: var(--font-weight-code);
 }
 
-.composer-wrap {
-  padding: 0 28px 14px;
-}
-
-.composer {
-  position: relative;
-  max-width: 680px;
-  margin: 0 auto;
-  border-radius: var(--r-xl);
-  background: var(--surface);
-  box-shadow:
-    inset 0 0 0 var(--hair) var(--composer-ring),
-    var(--shadow-composer);
-  transition: box-shadow var(--t-med) var(--ease);
-}
-
 /* 聚焦只把细线加深一点，边框粗细不变 */
-.composer:focus-within {
-  box-shadow:
-    inset 0 0 0 var(--hair) var(--composer-ring-focus),
-    var(--shadow-composer-focus);
-}
-
-.composer .tiptap {
-  min-height: 46px;
-  max-height: 220px;
-  overflow: auto;
-  padding: 13px 16px 4px;
-  outline: none;
-  background: none;
-  font-size: var(--fs-lg);
-  line-height: 1.6;
-}
-
-.composer.is-tall .tiptap {
-  min-height: 70px;
-}
-
-.composer .tiptap p {
-  margin: 0;
-}
-
-.composer .tiptap p.is-editor-empty:first-child::before {
-  float: left;
-  height: 0;
-  color: var(--faint);
-  content: attr(data-placeholder);
-  pointer-events: none;
-}
 
 /* 工具栏：左侧放附件和权限，右侧放账号、模型、思考深度和发送 */
 .composer-bar {
@@ -142,39 +51,6 @@
   flex: none;
 }
 
-.chip-btn {
-  display: inline-flex;
-  height: 28px;
-  min-width: 0;
-  align-items: center;
-  gap: 5px;
-  padding: 0 8px;
-  border-radius: var(--r-full);
-  color: var(--fg-2);
-  font-size: var(--fs-sm);
-  white-space: nowrap;
-  transition:
-    background var(--t-fast),
-    color var(--t-fast);
-}
-
-.chip-btn > .ic:first-child {
-  color: var(--muted);
-}
-
-.chip-btn .chip-caret {
-  width: 11px;
-  height: 11px;
-  margin-left: -1px;
-  color: var(--faint);
-}
-
-.chip-btn:hover,
-.chip-btn[aria-expanded="true"] {
-  background: var(--hover);
-  color: var(--fg);
-}
-
 .send {
   display: grid;
   width: 28px;
@@ -190,26 +66,10 @@
     color var(--t-fast);
 }
 
-.send:hover {
-  background: var(--primary-hover);
-}
-
 .send .ic {
   width: 15px;
   height: 15px;
   stroke-width: 2;
-}
-
-.send[aria-disabled="true"] {
-  background: var(--active);
-  color: var(--faint);
-  pointer-events: none;
-}
-
-@media (max-width: 720px) {
-  .composer .chip-btn .chip-label-optional {
-    display: none;
-  }
 }
 
 .hero {
@@ -300,62 +160,6 @@
 
 .sg span {
   color: var(--muted);
-}
-
-.drawer {
-  position: absolute;
-  top: 40px;
-  right: 0;
-  bottom: 0;
-  width: 300px;
-  overflow: auto;
-  padding: 4px 14px 24px;
-  background: var(--bg);
-  box-shadow: inset var(--hair) 0 0 var(--border-strong);
-}
-
-.perm {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border-radius: var(--r-lg);
-  background: var(--surface);
-  box-shadow:
-    inset 0 0 0 var(--hair) var(--border-strong),
-    var(--shadow-btn);
-}
-
-.perm .q {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-weight: 500;
-}
-
-.perm pre {
-  margin: 0;
-  padding: 8px 10px;
-  overflow-x: auto;
-  border-radius: var(--r-md);
-  background: var(--panel);
-  font-family: var(--font-mono);
-  font-size: var(--fs-code);
-  font-weight: var(--font-weight-code);
-}
-
-.perm .acts {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.perm-done {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--muted);
-  font-size: var(--fs-sm);
 }
 
 .win {

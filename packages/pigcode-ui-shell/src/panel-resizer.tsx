@@ -25,7 +25,7 @@ const SIDEBAR: PanelWidth = {
   min: 210,
   initial: 260,
   max: () => 400,
-  storageKey: "pigcode.sidebarWidth",
+  storageKey: "pigclaude.sidebarWidth",
 }
 
 /** 右栏：最宽占窗口的 58%，默认宽度与 tokens.css 的 --right-w 相同。 */
@@ -34,7 +34,7 @@ const RIGHT: PanelWidth = {
   initial: 460,
   max: () =>
     Math.max(320, Math.round((typeof window === "undefined" ? 1200 : window.innerWidth) * 0.58)),
-  storageKey: "pigcode.rightWidth",
+  storageKey: "pigclaude.rightWidth",
 }
 
 /** 方向键一次调整的宽度。 */

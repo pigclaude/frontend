@@ -46,24 +46,20 @@ describe("默认设置", () => {
 })
 
 describe("磨砂", () => {
-  const names = (tone: "light" | "dark") => glassBases[tone].map((item) => item.name)
   const at = (g: number, tone: "light" | "dark") =>
     deriveAppearance(withSettings({ glass: g }), [], env(tone, true)).vars
 
   for (const tone of ["light", "dark"] as const) {
     it(`${tone}：g=0 时底层与抬起的表面不透明`, () => {
       const vars = at(0, tone)
-      for (const name of names(tone)) {
-        if (name === "--panel" || name === "--popover-glass") continue
-        expect(alphaOf(vars[name])).toBe(1)
-      }
+      expect(vars).toEqual({})
     })
 
     it(`${tone}：g 从 0 到 100 每个面对桌面的磨砂变量 alpha 单调不增`, () => {
       // --panel 是叠在 bg/surface 上的层，不直接面对桌面：g=0 时是 tokens.css 的淡叠色，不在此列
       for (const { name, alpha } of glassBases[tone].filter((item) => item.name !== "--panel")) {
         let last = Infinity
-        for (let g = 0; g <= 100; g += 10) {
+        for (let g = 10; g <= 100; g += 10) {
           const value = at(g, tone)[name]
           // g=60 时不输出，页面沿用 glass.css 原值
           const a = value === undefined && g === 60 ? alpha : alphaOf(value)
@@ -81,7 +77,7 @@ describe("磨砂", () => {
   }
 
   it("light：任意 g 下 --surface alpha ≥ --bg alpha", () => {
-    for (let g = 0; g <= 100; g += 10) {
+    for (let g = 10; g <= 100; g += 10) {
       if (g === 60) continue
       const vars = at(g, "light")
       expect(alphaOf(vars["--surface"])).toBeGreaterThanOrEqual(alphaOf(vars["--bg"]))
@@ -89,7 +85,7 @@ describe("磨砂", () => {
   })
 
   it("dark：任意 g 下 --surface 叠在 --bg 上的合成不透明度 ≥ --bg alpha", () => {
-    for (let g = 0; g <= 100; g += 10) {
+    for (let g = 10; g <= 100; g += 10) {
       if (g === 60) continue
       const vars = at(g, "dark")
       const bg = alphaOf(vars["--bg"])

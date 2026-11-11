@@ -1,13 +1,11 @@
 // 负责把设计稿里的页面串成可切换的桌面界面，并承接主进程授权事件。
 import { useEffect, useRef, useState } from "react"
 import type { MembershipView } from "@pigclaude/contracts/membership"
-import type { AuthorizationStateEvent } from "../../main/authorization/types"
 import { AuthorizeScreen } from "./screens/authorize-screen"
 import { DesktopEntryScreen } from "./screens/desktop-entry-screen"
 import { OnboardingScreen } from "./screens/onboarding-screen"
 import { MainWindow } from "./main-window"
-import { ToastProvider } from "./components/toast"
-import { TooltipProvider } from "./components/ui/tooltip"
+import { AppProviders } from "./app-providers"
 import { useAppearance } from "./hooks/use-appearance"
 import { useClaudeAccounts } from "./hooks/use-claude-accounts"
 import { useBrowserProfiles } from "./hooks/use-browser-profiles"
@@ -19,8 +17,13 @@ import {
   createAuthorizationState,
   reduceAuthorizationState,
 } from "./models/authorization-model"
+import {
+  authorizationErrorMessage,
+  authorizationStatusText,
+  isAuthorizationFailure,
+} from "./models/authorization-status"
 import { toPoolProxy } from "./models/claude-account-view"
-import { parseDevView, devLoginState, type DevView } from "./models/dev-view"
+import { parseDevView, devLoginState, screenOfLocation, type DevView } from "./models/dev-view"
 import {
   acceptLoginStartResult,
   createLoginState,
@@ -32,7 +35,7 @@ import {
   membershipGateMessage,
   newerMembershipView,
 } from "./models/membership-view"
-import { initialScreenAfterLogin } from "./models/onboarding-gate"
+import { initialLocationAfterLogin } from "./models/onboarding-gate"
 import {
   createOnboardingState,
   resumeOnboarding,
@@ -41,22 +44,38 @@ import {
 import {
   canGoBack,
   canGoForward,
-  createScreenHistory,
-  currentScreen,
+  createHistory,
+  currentLocation,
   goBack,
   goForward,
-  pushScreen,
-} from "./models/screen-history"
-import type { Screen } from "./screens/screen"
+  pushLocation,
+  type FlowName,
+  type NavLocation,
+} from "./models/navigation"
 
-/** 按登录状态和当前页面画出整窗。 */
+const login: NavLocation = { kind: "flow", flow: "login" }
+
+function isFlow(location: NavLocation, flow: FlowName): boolean {
+  return location.kind === "flow" && location.flow === flow
+}
+
+/** 整窗：外面套上语言、提示与扩展点注册表，里面按登录状态和当前位置画。 */
 export function DesktopApp() {
+  return (
+    <AppProviders>
+      <DesktopGate />
+    </AppProviders>
+  )
+}
+
+/** 按登录状态和当前位置画出整窗。 */
+function DesktopGate() {
   const [devView] = useState(() => parseDevView(window.location.search, import.meta.env.DEV))
   const [membership, setMembership] = useState<MembershipView>(initialMembershipView)
   const [loginState, setLoginState] = useState(() => devLoginState(devView?.phase))
   const [authorizationState, setAuthorizationState] = useState(createAuthorizationState)
-  const [history, setHistory] = useState(() => createScreenHistory(devView?.screen ?? "login"))
-  const screen = currentScreen(history)
+  const [history, setHistory] = useState(() => createHistory(devView?.location ?? login))
+  const location = currentLocation(history) ?? login
   const appearance = useAppearance()
   const claudeAccounts = useClaudeAccounts()
   const browserProfiles = useBrowserProfiles(
@@ -83,13 +102,14 @@ export function DesktopApp() {
     signOutState.error === null &&
     (browserPreview ? devView?.phase === undefined : membership.state === "active")
   const startupSettled = membership.startupPhase !== "checking"
-  const gatedScreen: Screen | null =
-    canUseDesktop && screen === "login" && startupSettled
+  const gatedLocation: NavLocation | null =
+    canUseDesktop && isFlow(location, "login") && startupSettled
       ? browserPreview
-        ? "onboarding"
-        : initialScreenAfterLogin(membership)
+        ? { kind: "flow", flow: "onboarding" }
+        : initialLocationAfterLogin(membership)
       : null
-  const shownScreen = gatedScreen ?? screen
+  const gatedKey = gatedLocation ? screenOfLocation(gatedLocation) : null
+  const shown = gatedLocation ?? location
   const confirmMembership = useMembershipConfirmation({
     confirming: loginState.view === "confirming",
     membership,
@@ -125,32 +145,34 @@ export function DesktopApp() {
     setAuthorizationState((current) => ({ ...current, error: claudeAccounts.error }))
   }, [claudeAccounts.error])
 
-  // 渲染时已经直接画出 gatedScreen，这里只把历史记录补成同一屏，中间不会先画登录页。
+  // 渲染时已经直接画出 gatedLocation，这里只把历史记录补成同一个位置，中间不会先画登录页。
+  const onLogin = isFlow(location, "login")
   useEffect(() => {
     if (!startupSettled) return
-    if (gatedScreen) {
-      setHistory(createScreenHistory(gatedScreen))
-    } else if (!canUseDesktop && screen !== "login") {
-      setHistory((current) => pushScreen(current, "login"))
+    if (gatedLocation) {
+      setHistory(createHistory(gatedLocation))
+    } else if (!canUseDesktop && !onLogin) {
+      setHistory((current) => pushLocation(current, login))
     }
-  }, [canUseDesktop, gatedScreen, screen, startupSettled])
+    // gatedLocation 每次渲染都是新对象，用 gatedKey 判断它是否变化。
+  }, [canUseDesktop, gatedKey, onLogin, startupSettled])
 
-  function setScreen(next: Screen): void {
-    setHistory((current) => pushScreen(current, next))
+  function navigate(next: NavLocation): void {
+    setHistory((current) => pushLocation(current, next))
   }
 
   function openAuthorize(returnTo?: OnboardingState, accountId?: string | null): void {
     setReauthorizeAccountId(accountId ?? null)
     setAuthorizationState(createAuthorizationState())
     setOnboardingReturn(returnTo)
-    setScreen("authorize")
+    navigate({ kind: "flow", flow: "authorize" })
   }
 
   function finishOnboarding(): void {
     const userId = membership.account?.userId
     if (userId) markOnboardingSeen(userId)
     setOnboardingReturn(undefined)
-    setHistory(createScreenHistory("chat"))
+    setHistory(createHistory({ kind: "session" }))
   }
 
   useEffect(() => {
@@ -204,7 +226,7 @@ export function DesktopApp() {
           setLoginState((current) =>
             reduceLoginState(current, {
               type: "failed",
-              error: event.error ?? statusText(event.status),
+              error: event.error ?? authorizationStatusText(event.status),
             }),
           )
         }
@@ -231,7 +253,7 @@ export function DesktopApp() {
           setAuthorizationState((current) =>
             reduceAuthorizationState(current, {
               type: "failed",
-              error: event.error ?? statusText(event.status),
+              error: event.error ?? authorizationStatusText(event.status),
             }),
           )
         }
@@ -271,7 +293,7 @@ export function DesktopApp() {
         acceptLoginStartResult(current, intent, {
           ok: false,
           status: "network-error",
-          error: errorMessage(error),
+          error: authorizationErrorMessage(error),
         }),
       )
     }
@@ -333,7 +355,9 @@ export function DesktopApp() {
     setAuthorizationState(createAuthorizationState())
     setReauthorizeAccountId(null)
     setHistory((current) =>
-      canGoBack(current) ? goBack(current) : pushScreen(current, "accounts"),
+      canGoBack(current)
+        ? goBack(current)
+        : pushLocation(current, { kind: "settings", page: "accounts" }),
     )
   }
 
@@ -347,7 +371,7 @@ export function DesktopApp() {
     setLoginState(createLoginState())
     setAuthorizationState(createAuthorizationState())
     setOnboardingReturn(undefined)
-    setHistory(createScreenHistory("login"))
+    setHistory(createHistory(login))
     try {
       if (!browserPreview) {
         const signOut = window.pigclaude?.membership?.signOut
@@ -358,13 +382,16 @@ export function DesktopApp() {
       }
       setSignOutState({ pending: false, error: null })
     } catch (error: unknown) {
-      setSignOutState({ pending: false, error: `退出登录失败：${errorMessage(error)}` })
+      setSignOutState({
+        pending: false,
+        error: `退出登录失败：${authorizationErrorMessage(error)}`,
+      })
     } finally {
       signOutInFlight.current = false
     }
   }
 
-  if (!canUseDesktop || shownScreen === "login") {
+  if (!canUseDesktop || isFlow(shown, "login")) {
     return (
       <DesktopEntryScreen
         membership={membership}
@@ -386,7 +413,7 @@ export function DesktopApp() {
       />
     )
   }
-  if (shownScreen === "onboarding") {
+  if (isFlow(shown, "onboarding")) {
     return (
       <OnboardingScreen
         key={onboardingReturn?.step ?? "start"}
@@ -397,14 +424,14 @@ export function DesktopApp() {
       />
     )
   }
-  if (shownScreen === "authorize") {
+  if (isFlow(shown, "authorize")) {
     return (
       <AuthorizeScreen
         state={authorizationState}
         profiles={browserProfiles.profiles}
         profilesLoading={browserProfiles.loading}
         profilesError={browserProfiles.error}
-        onOpenProfiles={() => setScreen("browser-profiles")}
+        onOpenProfiles={() => navigate({ kind: "settings", page: "browser-profiles" })}
         proxies={claudeAccounts.proxies.map((proxy) => toPoolProxy(proxy, claudeAccounts.accounts))}
         account={claudeAccounts.accounts.find((item) => item.id === reauthorizeAccountId) ?? null}
         onEvent={(event) =>
@@ -417,26 +444,23 @@ export function DesktopApp() {
   }
 
   return (
-    <TooltipProvider>
-      <ToastProvider>
-        <MainWindow
-          screen={shownScreen}
-          canGoBack={canGoBack(history)}
-          canGoForward={canGoForward(history)}
-          membership={membership}
-          claudeAccounts={claudeAccounts}
-          browserProfiles={browserProfiles}
-          onNavigate={setScreen}
-          onBack={() => setHistory(goBack)}
-          onForward={() => setHistory(goForward)}
-          onOpenAuthorize={() => openAuthorize()}
-          onReauthorizeAccount={(accountId) => openAuthorize(undefined, accountId)}
-          onLogout={() => void logout()}
-          theme={appearance.resolved}
-          appearance={appearance}
-        />
-      </ToastProvider>
-    </TooltipProvider>
+    <MainWindow
+      location={shown}
+      screen={screenOfLocation(shown)}
+      canGoBack={canGoBack(history)}
+      canGoForward={canGoForward(history)}
+      membership={membership}
+      claudeAccounts={claudeAccounts}
+      browserProfiles={browserProfiles}
+      onNavigate={navigate}
+      onBack={() => setHistory(goBack)}
+      onForward={() => setHistory(goForward)}
+      onOpenAuthorize={() => openAuthorize()}
+      onReauthorizeAccount={(accountId) => openAuthorize(undefined, accountId)}
+      onLogout={() => void logout()}
+      theme={appearance.resolved}
+      appearance={appearance}
+    />
   )
 }
 
@@ -448,34 +472,4 @@ function previewGateMessage(
 ): string | undefined {
   if (browserPreview && devView?.phase !== undefined) return undefined
   return membershipGateMessage(membership)
-}
-
-// 开发期预览用的固定登录状态；时间戳取远期常量，保证截图不随时间变化。
-function isAuthorizationFailure(event: AuthorizationStateEvent): boolean {
-  return [
-    "cancelled",
-    "denied",
-    "expired",
-    "state-mismatch",
-    "proxy-mismatch",
-    "network-error",
-    "exchange-error",
-  ].includes(event.status)
-}
-
-function statusText(status: AuthorizationStateEvent["status"]): string {
-  const messages: Partial<Record<AuthorizationStateEvent["status"], string>> = {
-    cancelled: "已取消授权",
-    denied: "浏览器拒绝了授权",
-    expired: "授权链接已过期",
-    "state-mismatch": "授权回调校验失败",
-    "proxy-mismatch": "登录出口不一致",
-    "network-error": "授权服务不可用",
-    "exchange-error": "授权码交换失败",
-  }
-  return messages[status] ?? "授权未完成"
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "授权服务不可用"
 }

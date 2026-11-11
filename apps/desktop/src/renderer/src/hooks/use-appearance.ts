@@ -9,6 +9,7 @@ import { deriveAppearance } from "../models/appearance-tokens"
 import { parseDevView } from "../models/dev-view"
 import { resolveTheme } from "../models/theme-model"
 import type { ThemeDefinition } from "../models/theme-presets"
+import { parseCssColor } from "@pigclaude/pigcode-ui-primitives/theme-tokens"
 
 const darkQuery = "(prefers-color-scheme: dark)"
 const motionQuery = "(prefers-reduced-motion: reduce)"
@@ -69,6 +70,31 @@ export function useAppearance() {
   useEffect(() => {
     void window.pigclaude?.setTheme?.(settings.mode)
   }, [settings.mode])
+
+  // 让 Windows/Linux 原生标题栏和页面 token 同步；窗口材质只在能力存在且用户打开透明度时启用。
+  const titleBarReported = useRef("")
+  useEffect(() => {
+    const native = window.pigcodeNative
+    if (!native?.setTitleBarColors) return
+    const rootStyle = getComputedStyle(document.documentElement)
+    const color =
+      parseCssColor(output.vars["--window"] ?? "") ??
+      parseCssColor(rootStyle.getPropertyValue("--window")) ??
+      parseCssColor(rootStyle.getPropertyValue("--bg"))
+    const symbolColor =
+      parseCssColor(output.vars["--fg-2"] ?? "") ??
+      parseCssColor(rootStyle.getPropertyValue("--fg-2"))
+    if (!color || !symbolColor) return
+    const key = `${color}${symbolColor}`
+    if (key === titleBarReported.current) return
+    titleBarReported.current = key
+    void native.setTitleBarColors({ color, symbolColor })
+  }, [output])
+
+  useEffect(() => {
+    const translucent = document.documentElement.dataset.glass === "true" && settings.glass > 0
+    void window.pigcodeNative?.setWindowTranslucent?.(translucent)
+  }, [settings.glass])
 
   const dockApplied = useRef(false)
   useEffect(() => {

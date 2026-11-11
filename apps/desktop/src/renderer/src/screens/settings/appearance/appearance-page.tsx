@@ -1,6 +1,6 @@
 // 负责「外观」设置页：模式、主题分组、高级折叠区，以及导入导出和各个确认对话框。
 import { useState } from "react"
-import { useToast } from "../../../components/toast"
+import { useToast } from "@pigclaude/pigcode-ui-shell"
 import type { AppearanceController } from "../../../hooks/use-appearance"
 import { editTone, exportTheme, shownColors, type Tone } from "../../../models/theme-editing"
 import { SettingPage, SettingRow, SettingSection } from "../setting-page"

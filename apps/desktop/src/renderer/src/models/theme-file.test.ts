@@ -31,6 +31,11 @@ describe("parseThemeFile", () => {
     expect(theme.id.length).toBeGreaterThan(0)
   })
 
+  it("兼容 Pigcode 主题文件 schema", () => {
+    const theme = ok(sample.replace("pigclaude-theme/1", "pigcode-theme/1"))
+    expect(theme.name).toBe("我的蓝")
+  })
+
   it("缺 dark 时 dark 等于 light", () => {
     const theme = ok(
       JSON.stringify({
@@ -102,7 +107,7 @@ describe("serializeTheme", () => {
     expect(back.name).toBe("我的蓝")
     expect(back.light).toEqual({ bg: "#EEEEEE", fg: "#0D0D0D", accent: "#0169CC" })
     expect(back.dark).toEqual(theme.dark)
-    expect(text).toContain('\n  "schema": "pigclaude-theme/1"')
+    expect(text).toContain('\n  "schema": "pigcode-theme/1"')
   })
 
   it("pigclaude 使用回退颜色，且没有 accent 时不输出 accent", () => {
@@ -113,7 +118,7 @@ describe("serializeTheme", () => {
     )
     const parsed: unknown = JSON.parse(text)
     expect(parsed).toEqual({
-      schema: "pigclaude-theme/1",
+      schema: "pigcode-theme/1",
       name: "pigclaude",
       light: { bg: "#F5F5F5", fg: "#111111" },
       dark: { bg: "#1A1A1A", fg: "#EEEEEE", accent: "#123456" },

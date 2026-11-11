@@ -57,7 +57,7 @@ export const defaultAppearance: AppearanceSettings = {
   light: defaultSlot,
   dark: defaultSlot,
   overrides: {},
-  glass: 60,
+  glass: 0,
   contrast: 45,
   uiSize: 13,
   contentSize: 13.5,

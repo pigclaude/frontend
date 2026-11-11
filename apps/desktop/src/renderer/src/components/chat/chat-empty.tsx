@@ -4,7 +4,7 @@ import { Icon } from "../icon"
 import { Button } from "../ui/button"
 import { Composer, type ComposerSettings } from "../composer"
 import { projectNameFromPath } from "../../models/project-model"
-import type { Screen } from "../../screens/screen"
+import type { NavLocation } from "../../models/navigation"
 
 /** 新会话空状态 props。 */
 export type ChatEmptyProps = {
@@ -20,7 +20,7 @@ export type ChatEmptyProps = {
   onSubmit: (text: string) => boolean | Promise<boolean>
   onRetryModels: () => void
   onCancelModels: () => void
-  onOpen: (screen: Screen) => void
+  onOpen: (location: NavLocation) => void
 }
 
 /** 绘制空状态；没有工作区时只提示选择，不伪造聊天内容。 */
@@ -48,7 +48,7 @@ export function ChatEmpty({
           className="icon-btn"
           type="button"
           aria-label="环境检测"
-          onClick={() => onOpen("environment")}
+          onClick={() => onOpen({ kind: "settings", page: "environment" })}
         >
           <Icon name="server" />
         </Button>

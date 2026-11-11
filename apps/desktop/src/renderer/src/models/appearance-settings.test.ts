@@ -28,7 +28,7 @@ describe("parseAppearance", () => {
 
   it("每个字段单独校验：非法用默认，数字夹到范围并取整", () => {
     const s = parseAppearance('{"version":1,"glass":"abc","uiSize":999,"contrast":70}', null)
-    expect(s.glass).toBe(60)
+    expect(s.glass).toBe(0)
     expect(s.uiSize).toBe(18)
     expect(s.contrast).toBe(70)
     const t = parseAppearance(

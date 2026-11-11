@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react"
 /** 侧栏会话的排法：按项目分组，或所有会话按最近更新排成一列。 */
 export type SidebarGrouping = "project" | "time"
 
-const GROUPING_KEY = "pigcode.sidebarGrouping"
+const GROUPING_KEY = "pigclaude.sidebarGrouping"
 const listeners = new Set<() => void>()
 
 function readGrouping(): SidebarGrouping {

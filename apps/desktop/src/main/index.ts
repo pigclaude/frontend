@@ -57,6 +57,10 @@ import { shutdownDesktopResources } from "./shutdown-resources"
 import type { SessionHostEvent } from "./session/session-types"
 import { UsageRecorder } from "./session/usage-recorder"
 import { FileSecretVault } from "./secret-vault"
+import { registerFolderPickerIpc } from "./folder-picker"
+import { forwardFullScreen, registerWindowIpc } from "./window-ipc"
+import { electronMenuFactory } from "./native-menu"
+import { errorMessage } from "./error-message"
 import {
   createMainWindowOptions,
   developmentRendererUrl,
@@ -168,16 +172,19 @@ app.on(
 )
 
 function registerIpcHandlers(): void {
-  ipcMain.handle("pigclaude:pick-folder", async () => {
-    const options: Electron.OpenDialogOptions = {
-      title: "选择项目文件夹",
-      buttonLabel: "添加项目",
-      properties: ["openDirectory", "createDirectory"],
-    }
-    const result = mainWindow
-      ? await dialog.showOpenDialog(mainWindow, options)
-      : await dialog.showOpenDialog(options)
-    return result.canceled ? null : (result.filePaths[0] ?? null)
+  registerFolderPickerIpc(ipcMain, (options) =>
+    mainWindow ? dialog.showOpenDialog(mainWindow, options) : dialog.showOpenDialog(options),
+  )
+  registerWindowIpc({
+    ipcMain,
+    windows: BrowserWindow,
+    nativeTheme,
+    menus: electronMenuFactory(),
+    platform: process.platform,
+    systemVersion:
+      typeof process.getSystemVersion === "function" ? process.getSystemVersion() : "unknown",
+    allowDevRoles: !app.isPackaged,
+    isTrusted: isTrustedSender,
   })
   ipcMain.handle("pigclaude:set-theme", (_event, value: unknown) => {
     const source = readThemeSource(value)
@@ -199,7 +206,6 @@ function registerIpcHandlers(): void {
     if (typeof value !== "string" || !isAllowedAuthorizationUrl(value, authOrigin)) return
     await shell.openExternal(value)
   })
-
   registerMembershipIpc({
     getComposition: () => desktopComposition,
     isTrusted: isTrustedSender,
@@ -207,7 +213,6 @@ function registerIpcHandlers(): void {
       callbackReceiver?.clearPending()
     },
   })
-
   ipcMain.handle("pigclaude:authorization-start", async (event, value: unknown) => {
     const request = readAuthorizationRequest(value)
     if (!request || !authorizationReady || !authorizationService || !callbackServer) {
@@ -466,8 +471,10 @@ function createWindow(): void {
       platform: process.platform,
       preloadPath: join(__dirname, "../preload/index.js"),
       isPackaged: app.isPackaged,
+      dark: nativeTheme.shouldUseDarkColors,
     }),
   )
+  forwardFullScreen(mainWindow)
   const devRendererUrl = developmentRendererUrl(
     app.isPackaged,
     process.env["ELECTRON_RENDERER_URL"],
@@ -489,8 +496,4 @@ function createWindow(): void {
 function applyGlassBackground(): void {
   const color = glassBackgroundColor(process.platform, nativeTheme.shouldUseDarkColors)
   if (color) mainWindow?.setBackgroundColor(color)
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "授权服务不可用"
 }

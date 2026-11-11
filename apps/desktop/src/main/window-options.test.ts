@@ -1,9 +1,18 @@
-// 验证主窗口在 macOS 上使用磨砂材质，并只接受已知的外观值。
+// 验证主窗口按系统选择标题栏与材质、有最小宽度，并只接受已知的外观值和标题栏颜色。
 import { describe, expect, it } from "vitest"
-import { createMainWindowOptions, glassBackgroundColor, readThemeSource } from "./window-options"
+import {
+  MIN_WINDOW_WIDTH,
+  createMainWindowOptions,
+  defaultTitleBarColors,
+  glassBackgroundColor,
+  readThemeSource,
+  readTitleBarColors,
+  windowBackground,
+  windowMaterial,
+} from "./window-options"
 
 describe("window options", () => {
-  it("macOS 窗口透明并使用常亮的磨砂材质", () => {
+  it("macOS 窗口透明、使用常亮的磨砂材质，交通灯落在侧栏顶行", () => {
     const options = createMainWindowOptions({
       platform: "darwin",
       preloadPath: "/preload.js",
@@ -12,10 +21,11 @@ describe("window options", () => {
     expect(options.backgroundColor).toBe("#00FFFFFF")
     expect(options.vibrancy).toBe("sidebar")
     expect(options.visualEffectState).toBe("active")
-    expect(options.trafficLightPosition).toEqual({ x: 16, y: 12 })
+    expect(options.titleBarStyle).toBe("hiddenInset")
+    expect(options.trafficLightPosition).toEqual({ x: 14, y: 12 })
   })
 
-  it("Windows 窗口使用 mica 材质", () => {
+  it("Windows 使用 mica 材质，系统窗口按钮以 36px 高的 overlay 叠在自绘标题栏上", () => {
     const options = createMainWindowOptions({
       platform: "win32",
       preloadPath: "/preload.js",
@@ -23,6 +33,30 @@ describe("window options", () => {
     })
     expect(options.backgroundMaterial).toBe("mica")
     expect(options.backgroundColor).toBe("#00000000")
+    expect(options.titleBarStyle).toBe("hidden")
+    expect(options.titleBarOverlay).toMatchObject({ height: 36 })
+  })
+
+  it("Linux 同样隐藏系统标题栏，标题栏底色取默认主题的窗口色", () => {
+    const options = createMainWindowOptions({
+      platform: "linux",
+      preloadPath: "/preload.js",
+      isPackaged: true,
+      dark: true,
+    })
+    const colors = defaultTitleBarColors(true)
+    expect(colors).not.toBeNull()
+    expect(options.titleBarStyle).toBe("hidden")
+    expect(options.titleBarOverlay).toEqual({ ...colors, height: 36 })
+    expect(options.backgroundColor).toBe(colors?.color)
+  })
+
+  it("各系统的主窗口都不能窄于 640px", () => {
+    expect(MIN_WINDOW_WIDTH).toBe(640)
+    for (const platform of ["darwin", "win32", "linux"] as const) {
+      const options = createMainWindowOptions({ platform, preloadPath: "/p.js", isPackaged: true })
+      expect(options.minWidth).toBe(640)
+    }
   })
 
   it("深色下压暗 macOS 材质，没有磨砂的系统不改底色", () => {
@@ -36,5 +70,23 @@ describe("window options", () => {
     expect(readThemeSource("system")).toBe("system")
     expect(readThemeSource("purple")).toBeNull()
     expect(readThemeSource(1)).toBeNull()
+  })
+
+  it("标题栏颜色只接受六位十六进制色", () => {
+    expect(readTitleBarColors({ color: "#112233", symbolColor: "#aabbcc" })).toEqual({
+      color: "#112233",
+      symbolColor: "#aabbcc",
+    })
+    expect(readTitleBarColors({ color: "#123", symbolColor: "#aabbcc" })).toBeNull()
+    expect(readTitleBarColors({ color: "#112233" })).toBeNull()
+    expect(readTitleBarColors(null)).toBeNull()
+  })
+
+  it("侧栏透明时窗口完全透明并换成更透的材质，关掉时回到默认窗口色", () => {
+    expect(windowBackground(true, false)).toBe("#00000000")
+    expect(windowBackground(false, false)).toBe(defaultTitleBarColors(false)?.color)
+    expect(windowMaterial("darwin", true)).toEqual({ vibrancy: "fullscreen-ui" })
+    expect(windowMaterial("win32", false)).toEqual({ backgroundMaterial: "mica" })
+    expect(windowMaterial("linux", true)).toBeNull()
   })
 })

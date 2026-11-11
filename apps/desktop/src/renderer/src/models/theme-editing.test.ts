@@ -251,7 +251,7 @@ describe("exportTheme", () => {
     let settings = setAccentMode(base, [], "light", "custom")
     settings = setOverride(settings, "dark", "bg", "#101010")
     const json = JSON.parse(exportTheme(settings, [], "light"))
-    expect(json.schema).toBe("pigclaude-theme/1")
+    expect(json.schema).toBe("pigcode-theme/1")
     expect(json.light.accent).toBe(pigclaudeColors.light.accent)
     expect(json.dark.bg).toBe("#101010")
   })

@@ -16,7 +16,7 @@ export interface OpenApp {
   icon: string | null
 }
 
-const PREFERRED_KEY = "pigcode.openInApp"
+const PREFERRED_KEY = "pigclaude.openInApp"
 
 /** 按系统习惯称呼文件管理器：访达、资源管理器，其他平台统称文件管理器。 */
 export function revealLabelKey(platform: string = nativePlatform()): MessageKey {

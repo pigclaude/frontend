@@ -366,6 +366,10 @@
 }
 
 /* 浅色玻璃弹层的底是半透明白，--panel 叠上去看不出卡片，改用带透明度的深色 --field */
+.fingerprint-dialog .fp-section .group {
+  background: var(--panel);
+}
+
 [data-glass="true"]:not([data-theme="dark"]) .fingerprint-dialog .fp-section .group,
 [data-glass="true"]:not([data-theme="dark"]) .fingerprint-dialog .fp-environment-icon {
   background: var(--field);

@@ -192,7 +192,7 @@ describe("Shell", () => {
   })
 
   it("resizes the right panel from its separator and remembers the width", () => {
-    window.localStorage.removeItem("pigcode.rightWidth")
+    window.localStorage.removeItem("pigclaude.rightWidth")
     const { container } = renderShell()
     const app = container.querySelector(".app") as HTMLElement
     const separator = screen.getByRole("separator", { name: "右侧面板" })
@@ -200,7 +200,7 @@ describe("Shell", () => {
     expect(app.style.getPropertyValue("--right-w")).toBe("460px")
     fireEvent.keyDown(separator, { key: "ArrowLeft" })
     expect(app.style.getPropertyValue("--right-w")).toBe("484px")
-    expect(window.localStorage.getItem("pigcode.rightWidth")).toBe("484")
+    expect(window.localStorage.getItem("pigclaude.rightWidth")).toBe("484")
     fireEvent.doubleClick(separator)
     expect(app.style.getPropertyValue("--right-w")).toBe("460px")
   })
@@ -290,14 +290,14 @@ describe("Shell", () => {
     })
 
     it("follows the time order when the sidebar is arranged by time", () => {
-      window.localStorage.setItem("pigcode.sidebarGrouping", "time")
+      window.localStorage.setItem("pigclaude.sidebarGrouping", "time")
       try {
         const onOpenThread = vi.fn()
         renderShell({ projects, threads, onOpenThread })
         fireEvent.keyDown(window, { key: "1", code: "Digit1", ctrlKey: true })
         expect(onOpenThread).toHaveBeenCalledExactlyOnceWith("t3")
       } finally {
-        window.localStorage.removeItem("pigcode.sidebarGrouping")
+        window.localStorage.removeItem("pigclaude.sidebarGrouping")
       }
     })
 

@@ -1,0 +1,40 @@
+/*
+  PigClaude 在 Pigcode tokens 之外还需要的少量变量：额度条文字、整窗卡片与输入框的柔和阴影、
+  整窗流程里的自绘交通灯，以及颜色选择器的色域。能用 Pigcode 基础 token 表达的都引用基础 token。
+*/
+:root,
+[data-theme="light"] {
+  --quota: var(--fg-2);
+  --shadow-soft: var(--shadow-raised), 0 8px 28px oklch(0% 0 0 / 0.05);
+  --shadow-composer-focus: var(--shadow-composer), 0 0 0 1px var(--composer-ring-focus);
+  --tl-glyph: oklch(0% 0 0 / 0.5);
+  --tl-close: oklch(68% 0.2 27);
+  --tl-min: oklch(83% 0.16 85);
+  --tl-max: oklch(74% 0.18 145);
+  --tl-edge: oklch(0% 0 0 / 0.12);
+}
+
+[data-theme="dark"] {
+  --shadow-soft: var(--shadow-raised), 0 8px 28px oklch(0% 0 0 / 0.3);
+  --tl-glyph: oklch(0% 0 0 / 0.55);
+  --tl-edge: oklch(0% 0 0 / 0.3);
+}
+
+/* 颜色选择器的色域：白到透明、黑到透明、色相彩虹和拖柄白圈，与主题无关 */
+:root {
+  --picker-white: oklch(100% 0 0);
+  --picker-black: oklch(0% 0 0);
+  --picker-edge: oklch(0% 0 0 / 0.14);
+  --picker-hue: linear-gradient(
+    to right,
+    #ff0000,
+    #ffff00,
+    #00ff00,
+    #00ffff,
+    #0000ff,
+    #ff00ff,
+    #ff0000
+  );
+  --picker-knob-shadow:
+    0 0 0 2px var(--picker-white), 0 0 0 2.5px oklch(0% 0 0 / 0.18), 0 1px 4px oklch(0% 0 0 / 0.3);
+}

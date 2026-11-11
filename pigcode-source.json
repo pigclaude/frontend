@@ -1,7 +1,7 @@
 {
   "repository": "pigcode/pigcode",
   "commit": "1d01d46d904fd0f5dd3a3a37700d4ed092bdfd33",
-  "rule": "@pigcode/<package> → @pigclaude/pigcode-<package>；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
+  "rule": "@pigcode/<package> → @pigclaude/pigcode-<package>；\"pigcode.<key>\" 存储键 → \"pigclaude.<key>\"；productNameFiles 里的 Pigcode → PigClaude；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
   "files": [
     {
       "path": "packages/pigcode-contracts/package.json",
@@ -451,13 +451,13 @@
       "path": "packages/pigcode-ui-primitives/src/locale/messages.en-US.ts",
       "source": "packages/ui-primitives/src/locale/messages.en-US.ts",
       "sourceSha256": "5e918c2ada5b595e2fa08910bb79f321493b28d7a5d811d325d75cf7caa4f220",
-      "sha256": "5e918c2ada5b595e2fa08910bb79f321493b28d7a5d811d325d75cf7caa4f220"
+      "sha256": "a82459d473a173f83ad9c34d77eab1ea8cf3e1520c882bbb4ea3347c132f56e3"
     },
     {
       "path": "packages/pigcode-ui-primitives/src/locale/messages.zh-CN.ts",
       "source": "packages/ui-primitives/src/locale/messages.zh-CN.ts",
       "sourceSha256": "eea0829dc6837ae1716d05e6c3a3316503a2f634300384daf5e6657fcd48e03e",
-      "sha256": "eea0829dc6837ae1716d05e6c3a3316503a2f634300384daf5e6657fcd48e03e"
+      "sha256": "5f9dbcafa15eaf86b515383ffa945724810d74e160328a0b43cdd70b7ca6e513"
     },
     {
       "path": "packages/pigcode-ui-primitives/src/locale/new-thread.messages.ts",
@@ -487,7 +487,7 @@
       "path": "packages/pigcode-ui-primitives/src/preferences.ts",
       "source": "packages/ui-primitives/src/preferences.ts",
       "sourceSha256": "4aed7e4c6c99e7fd0cc2a6bb587b459a38cae5614682e17b02afb590b7df1e71",
-      "sha256": "4aed7e4c6c99e7fd0cc2a6bb587b459a38cae5614682e17b02afb590b7df1e71"
+      "sha256": "57b6809337fb81b45c6883af4f9b0a959ec61daf555a2ea163612c91634e0a0c"
     },
     {
       "path": "packages/pigcode-ui-primitives/src/shortcut.test.ts",
@@ -967,13 +967,13 @@
       "path": "packages/pigcode-ui-shell/package.json",
       "source": "packages/ui-shell/package.json",
       "sourceSha256": "daeef9734ec7586f1edab2b559f142f5082c02d8aae7cdad30e7b1640bd52cd2",
-      "sha256": "fbb67d4cb4bfd2588d3e218d5732497e904f1facb75321e411d7a73ca1458bfa"
+      "sha256": "dd85d449ae587d6124edcbbfb5927d1b0771bdcae310ee8176b13ec81797466d"
     },
     {
       "path": "packages/pigcode-ui-shell/src/add-project-dialog.test.tsx",
       "source": "packages/ui-shell/src/add-project-dialog.test.tsx",
       "sourceSha256": "0c65ad76e03bf47f3760e3580009c47f7b3005e59e0d6e8d65f56bf02cc21b89",
-      "sha256": "9f7228a24424061191f8c669d353adb49d365dfccf45e0c696f9b18dcf31c6b5"
+      "sha256": "0a749ed5ab782bc66bff3ce1fae5dc67d4438648211304d868c1342e0a5f6553"
     },
     {
       "path": "packages/pigcode-ui-shell/src/add-project-dialog.tsx",
@@ -1027,25 +1027,25 @@
       "path": "packages/pigcode-ui-shell/src/open-in.test.tsx",
       "source": "packages/ui-shell/src/open-in.test.tsx",
       "sourceSha256": "a4ad3d5ad38e9c634514b0c4151af7b4dfd2647cd5b14599657d350f08cb049f",
-      "sha256": "b3ef51c84c165a399fb5e1b63bd4891b1aa7013a25a5122ecff0d56ee3b2e291"
+      "sha256": "ce73bd4679c316521d820c7ac5cd409cdd7c4c6a3903b10dad0ca0aaee361450"
     },
     {
       "path": "packages/pigcode-ui-shell/src/open-in.tsx",
       "source": "packages/ui-shell/src/open-in.tsx",
       "sourceSha256": "8dfe34366ab9259d7b7e4408048e42f1955e96ce2a78a2603d2aa7277e1f6a39",
-      "sha256": "649c4e3e0cfa2017de9a85f272c532a4b01c747efb955d4e3d9f4585696deb2b"
+      "sha256": "af0197ae867d275493171f35d8f8d4da0a5ee62d16b27f0aa6321551cee69ead"
     },
     {
       "path": "packages/pigcode-ui-shell/src/panel-resizer.test.tsx",
       "source": "packages/ui-shell/src/panel-resizer.test.tsx",
       "sourceSha256": "86bcc1cff69009b67a37a1b648641282621f5e41c0868f5995f57b099c8fb0b0",
-      "sha256": "27716d41edab17d623ccc5e15430c6b69bd2c9d6a253bf0a8813b7d82646b99c"
+      "sha256": "9b030c908a62fee54ad2805a8123371207335324aafb0d3e4b444265fa7e2b1e"
     },
     {
       "path": "packages/pigcode-ui-shell/src/panel-resizer.tsx",
       "source": "packages/ui-shell/src/panel-resizer.tsx",
       "sourceSha256": "36a595ebffa7b47848940e22e624f85eae38143505db501d014e94f64d29f322",
-      "sha256": "6f97400f109449e974bfb14e3a92eb884a35af4e73547ef71d0c1e1c3aeaee72"
+      "sha256": "ec70350ab9d0b1eac67abf08b0392444bec2b89740aacd934ee5851662c7b54e"
     },
     {
       "path": "packages/pigcode-ui-shell/src/plugin-panel.test.tsx",
@@ -1081,7 +1081,7 @@
       "path": "packages/pigcode-ui-shell/src/shell.test.tsx",
       "source": "packages/ui-shell/src/shell.test.tsx",
       "sourceSha256": "715eafb4b2a136e867af2a3ff5784abcdad49fb419b3cda09f88cb4b4f4389b5",
-      "sha256": "e09a2a3e529224a1733f90995249bf1f2352a79b915780155402ae8639591af4"
+      "sha256": "17bb8ee4e1c7d4f279af3592738de28d42015c77ac5a61448e0dbb1a718d1c4a"
     },
     {
       "path": "packages/pigcode-ui-shell/src/shell.tsx",
@@ -1153,7 +1153,7 @@
       "path": "packages/pigcode-ui-shell/src/workspace-sidebar.test.tsx",
       "source": "packages/ui-shell/src/workspace-sidebar.test.tsx",
       "sourceSha256": "c8a429803084437f06820c08f47cd3a02be032aa20f67e91479f0aacf29877fa",
-      "sha256": "04cd9f610f86cf3e2b6e3a1fe481cd979b3810d73ec2ea0cf83eb05f70b8c3b5"
+      "sha256": "490b596f90813b964d3ddd2b6cb9f86703b4dbc170b8621c87048106aa5b2786"
     },
     {
       "path": "packages/pigcode-ui-shell/src/workspace-sidebar.tsx",

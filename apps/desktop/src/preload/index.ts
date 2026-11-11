@@ -2,6 +2,7 @@
 import { contextBridge, ipcRenderer } from "electron"
 import type { BrowserProfilesBridge } from "@pigclaude/contracts/browser-profile"
 import { browserProfilesBridge } from "./browser-profiles"
+import { windowBridge, type WindowBridge } from "./window-bridge"
 import type { AuthorizeClaudeAccountInput } from "../main/claude/account-service-inputs"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import {
@@ -32,10 +33,13 @@ import type {
 export type PigclaudeBridge = {
   browserProfiles?: BrowserProfilesBridge
   platform: string
+  /** 系统版本，例如 Windows 的 10.0.22631；判断有没有可用的磨砂材质。 */
+  systemVersion: string
+  window: WindowBridge
   openExternal: (url: string) => Promise<void>
   setTheme: (source: "light" | "dark" | "system") => Promise<void>
   setDockIcon: (dataUrl: string) => Promise<void>
-  pickFolder: () => Promise<string | null>
+  pickFolder: (labels?: { title?: string; buttonLabel?: string }) => Promise<string | null>
   startAuthorization: (request: AuthorizationRequest) => Promise<AuthorizationStartResult>
   cancelAuthorization: (sessionId: string) => Promise<AuthorizationStateEvent>
   onAuthorizationState: (listener: (event: AuthorizationStateEvent) => void) => () => void
@@ -98,10 +102,13 @@ export type PigclaudeBridge = {
 const bridge: PigclaudeBridge = {
   browserProfiles: browserProfilesBridge(),
   platform: process.platform,
+  systemVersion:
+    typeof process.getSystemVersion === "function" ? process.getSystemVersion() : "unknown",
+  window: windowBridge(),
   openExternal: (url) => ipcRenderer.invoke("pigclaude:open-external", url),
   setTheme: (source) => ipcRenderer.invoke("pigclaude:set-theme", source),
   setDockIcon: (dataUrl) => ipcRenderer.invoke("pigclaude:set-dock-icon", dataUrl),
-  pickFolder: () => ipcRenderer.invoke("pigclaude:pick-folder"),
+  pickFolder: (labels) => ipcRenderer.invoke("pigclaude:pick-folder", labels),
   startAuthorization: (request) => ipcRenderer.invoke("pigclaude:authorization-start", request),
   cancelAuthorization: (sessionId) =>
     ipcRenderer.invoke("pigclaude:authorization-cancel", sessionId),

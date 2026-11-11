@@ -1,0 +1,71 @@
+/* 负责 PigClaude 外壳适配层的少量样式；窗口、侧栏、菜单和分隔条由 Pigcode 样式提供。 */
+
+.side-notice {
+  display: flex;
+  align-items: stretch;
+  margin: 0 8px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.side-notice-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  color: var(--fg-2);
+  text-align: left;
+}
+
+.side-notice-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.side-notice-title {
+  color: var(--fg);
+  font-size: var(--fs-sm);
+}
+
+.side-notice-desc {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.side-notice-close {
+  align-self: flex-start;
+  margin: 3px;
+}
+
+.account-menu-user {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px;
+}
+
+.account-menu-name {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.account-menu-mail {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.menu-meta {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+@media (max-width: 640px) {
+  .side-notice {
+    margin-inline: 6px;
+  }
+}

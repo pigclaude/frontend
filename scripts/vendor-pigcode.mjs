@@ -61,13 +61,35 @@ export * from "./general-page"
 `,
 }
 
-/** 允许的机械替换：只改包名，不改任何逻辑、样式或文案。 */
-export function rewriteSource(text) {
+/** 点分的本地存储键（侧栏宽度、侧栏排法等）改用 PigClaude 的前缀；主题文件格式与主题代码前缀不在此列。 */
+const storageKey = /"pigcode\.([A-Za-z]+)"/g
+
+/** 产品名只在主语言包及其断言测试里替换；其他来源文件保持 Pigcode 原文。 */
+export const productNameFiles = new Set([
+  "src/locale/messages.zh-CN.ts",
+  "src/locale/messages.en-US.ts",
+  "src/add-project-dialog.test.tsx",
+])
+
+/**
+ * 允许的机械替换：包名、点分的本地存储键前缀、主语言包里的产品名。不改任何逻辑或样式。
+ * rest 是文件在包内的路径，用来判断要不要替换产品名。
+ */
+export function rewriteSource(text, rest = "") {
   let next = text
   for (const item of vendoredPackages) {
     next = next.replaceAll(`@pigcode/${item.source}`, item.name)
   }
+  next = next.replace(storageKey, '"pigclaude.$1"')
+  if (productNameFiles.has(rest)) next = next.replaceAll("Pigcode", "PigClaude")
   return next
+}
+
+/** ui-shell 另外导出的模块：PigClaude 用它们组合自己的外壳（侧栏分隔条、侧栏滚动区、标题栏菜单）。 */
+export const shellSubpathExports = {
+  "./panel-resizer": "./src/panel-resizer.tsx",
+  "./side-scroll": "./src/side-scroll.tsx",
+  "./title-bar-menus": "./src/title-bar-menus.ts",
 }
 
 /** 计算文件内容的 SHA256，清单与守卫共用这一种算法。 */
@@ -115,7 +137,7 @@ async function vendor(repo, commit) {
       const rest = path.slice(prefix.length)
       const original = git(repo, "show", `${resolved}:${path}`)
       const isText = /\.(tsx?|css|json|md|svg)$/.test(rest)
-      let output = isText ? Buffer.from(rewriteSource(original.toString("utf8"))) : original
+      let output = isText ? Buffer.from(rewriteSource(original.toString("utf8"), rest)) : original
       if (rest === "package.json")
         output = Buffer.from(rewriteManifest(output.toString("utf8"), item))
       if (rest === "tsconfig.json") output = Buffer.from(rewriteTsconfig(output.toString("utf8")))
@@ -140,7 +162,7 @@ async function vendor(repo, commit) {
   const lock = {
     repository: "pigcode/pigcode",
     commit: resolved,
-    rule: "@pigcode/<package> → @pigclaude/pigcode-<package>；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
+    rule: '@pigcode/<package> → @pigclaude/pigcode-<package>；"pigcode.<key>" 存储键 → "pigclaude.<key>"；productNameFiles 里的 Pigcode → PigClaude；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排',
     files,
   }
   await writeFile(lockFile, `${JSON.stringify(lock, null, 2)}\n`)
@@ -172,6 +194,9 @@ export function rewriteManifest(text, item) {
     manifest.exports = { ".": "./src/extension-points.tsx" }
     delete manifest.dependencies["@pigcode/plugin-sdk"]
     delete manifest.dependencies["@pigclaude/pigcode-contracts"]
+  }
+  if (item.source === "ui-shell") {
+    manifest.exports = { ...manifest.exports, ...shellSubpathExports }
   }
   manifest.scripts = {
     typecheck: "tsc --noEmit",

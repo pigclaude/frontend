@@ -136,7 +136,7 @@ describe("WorkspaceSidebar", () => {
   })
 
   it("switches to a single list sorted by time from the filter menu and remembers it", async () => {
-    window.localStorage.removeItem("pigcode.sidebarGrouping")
+    window.localStorage.removeItem("pigclaude.sidebarGrouping")
     render(
       <LocaleProvider locale="zh-CN">
         <WorkspaceSidebar
@@ -167,8 +167,8 @@ describe("WorkspaceSidebar", () => {
     expect(
       Array.from(document.querySelectorAll(".sess-project")).map((node) => node.textContent),
     ).toEqual(["beta", "alpha", "alpha"])
-    expect(window.localStorage.getItem("pigcode.sidebarGrouping")).toBe("time")
-    window.localStorage.removeItem("pigcode.sidebarGrouping")
+    expect(window.localStorage.getItem("pigclaude.sidebarGrouping")).toBe("time")
+    window.localStorage.removeItem("pigclaude.sidebarGrouping")
   })
 
   it("animates a dot matrix for running threads and keeps a status dot for the rest", () => {

@@ -1,0 +1,72 @@
+// 负责前进后退的历史：新会话、进行中的会话、设置页、托盘预览与整窗流程都是可以回去的位置。
+// 位置与历史的形状和 Pigcode 的 NavLocation 一致；PigClaude 只有一个活动会话，会话位置不带 id。
+
+/** 在外壳之外整窗渲染的流程。 */
+export type FlowName = "login" | "onboarding" | "authorize"
+
+/** 一个可以回去的位置。 */
+export type NavLocation =
+  | { kind: "draft" }
+  | { kind: "session" }
+  | { kind: "settings"; page: string }
+  | { kind: "tray" }
+  | { kind: "flow"; flow: FlowName }
+
+/** 历史记录与当前所在的下标。 */
+export type NavHistory = {
+  entries: NavLocation[]
+  index: number
+}
+
+/** 最多保留的历史条数；超出时丢弃最早的。 */
+const MAX_ENTRIES = 50
+
+/** 从一个位置开始新的历史。 */
+export function createHistory(location: NavLocation): NavHistory {
+  return { entries: [location], index: 0 }
+}
+
+/** 两个位置是否相同。 */
+export function sameLocation(a: NavLocation | null, b: NavLocation | null): boolean {
+  if (!a || !b || a.kind !== b.kind) return false
+  if (a.kind === "settings" && b.kind === "settings") return a.page === b.page
+  if (a.kind === "flow" && b.kind === "flow") return a.flow === b.flow
+  return true
+}
+
+/** 当前位置；历史为空时为 null。 */
+export function currentLocation(history: NavHistory): NavLocation | null {
+  return history.entries[history.index] ?? null
+}
+
+/** 记录一次导航：与当前位置相同时原样返回；否则丢掉前进分支再追加。 */
+export function pushLocation(history: NavHistory, location: NavLocation): NavHistory {
+  if (sameLocation(currentLocation(history), location)) return history
+  const entries = [...history.entries.slice(0, history.index + 1), location].slice(-MAX_ENTRIES)
+  return { entries, index: entries.length - 1 }
+}
+
+/** 是否还有可后退的位置。 */
+export function canGoBack(history: NavHistory): boolean {
+  return history.index > 0
+}
+
+/** 是否还有可前进的位置。 */
+export function canGoForward(history: NavHistory): boolean {
+  return history.index >= 0 && history.index < history.entries.length - 1
+}
+
+/** 后退一步；已在最早的位置时原样返回。 */
+export function goBack(history: NavHistory): NavHistory {
+  return canGoBack(history) ? { ...history, index: history.index - 1 } : history
+}
+
+/** 前进一步；已在最新的位置时原样返回。 */
+export function goForward(history: NavHistory): NavHistory {
+  return canGoForward(history) ? { ...history, index: history.index + 1 } : history
+}
+
+/** 是否在外壳里显示（会话、设置、托盘预览）；整窗流程不在外壳里。 */
+export function inShell(location: NavLocation): boolean {
+  return location.kind !== "flow"
+}

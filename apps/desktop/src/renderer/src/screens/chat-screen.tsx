@@ -17,7 +17,7 @@ import { Button } from "../components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog"
 import type { SessionController } from "../hooks/use-session"
 import { projectNameFromPath } from "../models/project-model"
-import type { Screen } from "./screen"
+import type { NavLocation } from "../models/navigation"
 
 /** 会话页面 props。 */
 export type ChatScreenProps = {
@@ -30,7 +30,7 @@ export type ChatScreenProps = {
   onPickWorkspace: () => void
   onSelectWorkspace: (path: string) => void
   onWorkspaceUsed: (path: string) => void
-  onOpen: (screen: Screen) => void
+  onOpen: (location: NavLocation) => void
   smartPunctuation: boolean
 }
 
@@ -140,7 +140,7 @@ export function ChatScreen({
     })
     if (ok) {
       onWorkspaceUsed(target)
-      if (fresh) onOpen("chat")
+      if (fresh) onOpen({ kind: "session" })
     }
     return ok
   }

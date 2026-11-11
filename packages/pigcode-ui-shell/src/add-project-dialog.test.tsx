@@ -84,7 +84,7 @@ describe("AddProjectDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "选择文件夹" }))
     await userEvent.click(screen.getByRole("button", { name: "创建项目" }))
     expect(pickFolder).toHaveBeenCalledTimes(2)
-    expect(screen.getByText("Pigcode 可读取和编辑这个文件夹")).toBeTruthy()
+    expect(screen.getByText("PigClaude 可读取和编辑这个文件夹")).toBeTruthy()
     expect(onAdd).not.toHaveBeenCalled()
     expect(onOpenChange).not.toHaveBeenCalled()
   })

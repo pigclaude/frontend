@@ -1,0 +1,58 @@
+// 负责主窗口外壳的文案：侧栏底部账户菜单、账号提醒、添加项目对话框与外壳命令；合并进各语言的主词典。
+
+/** 简体中文。 */
+export const shellZhCN = {
+  "shell.account.menu": "账户菜单",
+  "shell.account.signedOut": "未登录",
+  "shell.account.profile": "我的账户",
+  "shell.account.claudeAccounts": "Claude 账号",
+  "shell.account.settings": "设置",
+  "shell.account.themeDark": "切换深色",
+  "shell.account.themeLight": "切换浅色",
+  "shell.account.logout": "退出登录",
+  "shell.notice.reauth": "{name} 需要重新授权",
+  "shell.notice.reauthMany": "{count} 个 Claude 账号需要重新授权",
+  "shell.notice.paused": "已暂停参与自动切换",
+  "shell.notice.dismiss": "隐藏提醒",
+  "shell.session.untitled": "新会话",
+  "shell.project.added": "已添加工作区 {name}",
+  "shell.project.unavailable": "工作区不可用",
+  "shell.project.title": "添加项目",
+  "shell.project.description": "会话在这个文件夹里运行，项目名取自文件夹名。",
+  "shell.project.folder": "文件夹",
+  "shell.project.pick": "选择…",
+  "shell.project.pickerTitle": "选择项目文件夹",
+  "shell.project.pickerButton": "添加项目",
+  "shell.project.namePreview": "项目名：{name}",
+  "shell.project.pathHint": "填写或选择一个文件夹",
+  "shell.project.add": "添加",
+}
+
+/** 英文；键与简体中文一致，缺键时编译失败。 */
+export const shellEnUS = {
+  "shell.account.menu": "Account menu",
+  "shell.account.signedOut": "Not signed in",
+  "shell.account.profile": "My account",
+  "shell.account.claudeAccounts": "Claude accounts",
+  "shell.account.settings": "Settings",
+  "shell.account.themeDark": "Switch to dark",
+  "shell.account.themeLight": "Switch to light",
+  "shell.account.logout": "Sign out",
+  "shell.notice.reauth": "{name} needs to be reauthorized",
+  "shell.notice.reauthMany": "{count} Claude accounts need to be reauthorized",
+  "shell.notice.paused": "Paused from automatic switching",
+  "shell.notice.dismiss": "Hide reminder",
+  "shell.session.untitled": "New session",
+  "shell.project.added": "Added workspace {name}",
+  "shell.project.unavailable": "Workspace unavailable",
+  "shell.project.title": "Add project",
+  "shell.project.description":
+    "Sessions run in this folder. The project is named after the folder.",
+  "shell.project.folder": "Folder",
+  "shell.project.pick": "Choose…",
+  "shell.project.pickerTitle": "Choose a project folder",
+  "shell.project.pickerButton": "Add project",
+  "shell.project.namePreview": "Project name: {name}",
+  "shell.project.pathHint": "Type or choose a folder",
+  "shell.project.add": "Add",
+} satisfies Record<keyof typeof shellZhCN, string>

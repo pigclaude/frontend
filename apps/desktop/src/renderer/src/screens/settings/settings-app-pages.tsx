@@ -1,10 +1,10 @@
 // 负责「通用」「会话」「托盘与菜单栏」三个应用设置页；「外观」见 appearance/appearance-page.tsx。
 import { useState } from "react"
-import { useToast } from "../../components/toast"
+import { useToast } from "@pigclaude/pigcode-ui-shell"
 import { Button } from "../../components/ui/button"
 import { Kbd } from "../../components/ui/kbd"
 import { Switch } from "../../components/ui/switch"
-import type { Screen } from "../screen"
+import type { NavLocation } from "../../models/navigation"
 import { LockedValue, Segmented, SelectControl } from "./setting-controls"
 import { SettingPage, SettingRow, SettingSection } from "./setting-page"
 
@@ -112,13 +112,13 @@ export function SessionSettings() {
 }
 
 /** 托盘与菜单栏：菜单栏文字和托盘面板内容。 */
-export function MenubarSettings({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
+export function MenubarSettings({ onNavigate }: { onNavigate: (location: NavLocation) => void }) {
   const [label, setLabel] = useState("62% · 主力")
   return (
     <SettingPage
       title="托盘与菜单栏"
       actions={
-        <Button variant="ghost" onClick={() => onNavigate("tray")}>
+        <Button variant="ghost" onClick={() => onNavigate({ kind: "tray" })}>
           预览托盘
         </Button>
       }

@@ -67,7 +67,7 @@ export const enUS = {
   "menu.fullScreen": "Toggle Full Screen",
   "menu.reload": "Reload",
   "menu.devTools": "Developer Tools",
-  "menu.about": "About Pigcode",
+  "menu.about": "About PigClaude",
   "tabs.status.queued": "Queued",
   "tabs.status.running": "Running",
   "tabs.status.waitingApproval": "Waiting for approval",
@@ -101,12 +101,12 @@ export const enUS = {
   "settings.pageError": "This settings page couldn't be shown",
   "settings.pluginPages": "Plugin settings",
   "settings.about": "About",
-  "settings.about.description": "Pigcode desktop",
+  "settings.about.description": "PigClaude desktop",
   "settings.about.version": "Version",
   "settings.general.pageTitle": "General settings",
   "settings.general.startup": "Startup",
   "settings.general.launchAtLogin": "Launch at login",
-  "settings.general.launchAtLogin.description": "Open Pigcode automatically after signing in",
+  "settings.general.launchAtLogin.description": "Open PigClaude automatically after signing in",
   "settings.general.showInDock": "Show in Dock",
   "settings.general.showInDock.description": "When off, only show in the menu bar",
   "settings.general.updates": "Updates",
@@ -168,7 +168,7 @@ export const enUS = {
   "project.add.thisComputer": "This computer",
   "project.add.folder": "Source folder",
   "project.add.choose": "Choose folder",
-  "project.add.chooseHint": "Pigcode can read and edit this folder",
+  "project.add.chooseHint": "PigClaude can read and edit this folder",
   "project.add.change": "Change folder",
   "project.add.pickerTitle": "Choose a project folder",
   "project.add.pickerButton": "Choose",
@@ -353,7 +353,7 @@ export const enUS = {
   "chat.notice.mcp.bridge.failed":
     "Plugin tools are not connected: the {name} server failed to start. The model cannot see plugin tools in this turn.",
   "chat.notice.host.restarted":
-    "Pigcode restarted, so this turn was interrupted. Any pending approvals went with the agent process — send the message again to continue.",
+    "PigClaude restarted, so this turn was interrupted. Any pending approvals went with the agent process — send the message again to continue.",
   "chat.notice.session.resumeFailed":
     "Could not resume the agent's previous session (its record is gone), so this turn started a new one with the recent conversation.",
   "chat.notice.ultracode.unavailable":

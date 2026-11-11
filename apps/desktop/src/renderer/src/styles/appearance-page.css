@@ -23,25 +23,8 @@
 .radio-card:focus-visible {
   outline: none;
 }
-.mode-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted);
-  font-size: var(--fs-xs);
-}
 .mode-card[data-state="checked"] {
   color: var(--fg);
-}
-.mode-thumb {
-  display: flex;
-  width: 92px;
-  height: 58px;
-  overflow: hidden;
-  border-radius: 9px;
-  box-shadow: 0 0 0 var(--hair) var(--border-strong);
-  transition: box-shadow var(--t-fast);
 }
 .mode-card[data-state="checked"] .mode-thumb,
 .dock-card[data-state="checked"] {
@@ -49,7 +32,6 @@
     0 0 0 2px var(--switch-on),
     0 0 0 5px color-mix(in oklab, var(--switch-on) 22%, transparent);
 }
-.mode-card:focus-visible .mode-thumb,
 .dock-card:focus-visible {
   outline: 1px solid var(--border-focus);
   outline-offset: 6px;

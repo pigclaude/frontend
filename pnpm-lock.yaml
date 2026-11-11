@@ -123,6 +123,21 @@ importers:
       '@pigclaude/login-gate':
         specifier: workspace:*
         version: link:../../packages/login-gate
+      '@pigclaude/pigcode-client-runtime':
+        specifier: workspace:*
+        version: link:../../packages/pigcode-client-runtime
+      '@pigclaude/pigcode-contracts':
+        specifier: workspace:*
+        version: link:../../packages/pigcode-contracts
+      '@pigclaude/pigcode-ui-primitives':
+        specifier: workspace:*
+        version: link:../../packages/pigcode-ui-primitives
+      '@pigclaude/pigcode-ui-settings':
+        specifier: workspace:*
+        version: link:../../packages/pigcode-ui-settings
+      '@pigclaude/pigcode-ui-shell':
+        specifier: workspace:*
+        version: link:../../packages/pigcode-ui-shell
       '@pigclaude/proxy-connection':
         specifier: workspace:*
         version: link:../../packages/proxy-connection

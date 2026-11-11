@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { LocaleProvider } from "@pigclaude/pigcode-ui-primitives"
 import { Shell } from "./shell"
 
-const KEY = "pigcode.sidebarWidth"
+const KEY = "pigclaude.sidebarWidth"
 
 beforeEach(() => window.localStorage.removeItem(KEY))
 afterEach(() => {

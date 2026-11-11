@@ -292,10 +292,12 @@ function colorVars(
   if (fg) Object.assign(vars, textGroup(fg, bg ?? pigclaudeBg[env.resolved]))
   const g = settings.glass
   const glassMix = env.glass ? Math.min(1, g / defaultGlass) : 0
-  if (bg || settings.contrast !== defaultContrast || (glassMix < 1 && env.glass)) {
+  if (bg || settings.contrast !== defaultContrast || (env.glass && g > 0 && g !== defaultGlass)) {
     Object.assign(vars, overlayGroup(tone, glassMix, settings.contrast))
   }
-  if (env.glass && (bg || g !== defaultGlass)) Object.assign(vars, glassGroup(bg, tone, env, g))
+  if (env.glass && (bg || (g > 0 && g !== defaultGlass))) {
+    Object.assign(vars, glassGroup(bg, tone, env, g))
+  }
   return vars
 }
 

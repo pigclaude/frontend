@@ -1,9 +1,12 @@
-// 测试登录后第一屏的判断：会员有效、有账号且本机没看过引导才进引导，否则进主界面。
+// 测试登录后第一个位置的判断：会员有效、有账号且本机没看过引导才进引导，否则进会话。
 import { describe, expect, it } from "vitest"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import { markOnboardingSeen, type OnboardingStorage } from "../lib/onboarding-storage"
 import { initialMembershipView } from "./membership-view"
-import { initialScreenAfterLogin } from "./onboarding-gate"
+import { initialLocationAfterLogin } from "./onboarding-gate"
+
+const onboarding = { kind: "flow", flow: "onboarding" }
+const session = { kind: "session" }
 
 function fakeStorage(): OnboardingStorage {
   const data = new Map<string, string>()
@@ -23,24 +26,24 @@ function active(userId: string | null): MembershipView {
   }
 }
 
-describe("initialScreenAfterLogin", () => {
+describe("initialLocationAfterLogin", () => {
   it("opens onboarding for an active account that has not seen it", () => {
-    expect(initialScreenAfterLogin(active("u1"), fakeStorage())).toBe("onboarding")
+    expect(initialLocationAfterLogin(active("u1"), fakeStorage())).toEqual(onboarding)
   })
 
   it("opens chat once the account has seen onboarding", () => {
     const storage = fakeStorage()
     markOnboardingSeen("u1", storage)
-    expect(initialScreenAfterLogin(active("u1"), storage)).toBe("chat")
-    expect(initialScreenAfterLogin(active("u2"), storage)).toBe("onboarding")
+    expect(initialLocationAfterLogin(active("u1"), storage)).toEqual(session)
+    expect(initialLocationAfterLogin(active("u2"), storage)).toEqual(onboarding)
   })
 
   it("opens chat when there is no account to key the flag on", () => {
-    expect(initialScreenAfterLogin(active(null), fakeStorage())).toBe("chat")
+    expect(initialLocationAfterLogin(active(null), fakeStorage())).toEqual(session)
   })
 
   it("opens chat when membership is not active", () => {
     const view = { ...active("u1"), state: "offline_grace" as const }
-    expect(initialScreenAfterLogin(view, fakeStorage())).toBe("chat")
+    expect(initialLocationAfterLogin(view, fakeStorage())).toEqual(session)
   })
 })

@@ -47,8 +47,10 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
 /** 会话：新会话默认值和会话进程的固定规则。 */
 export function SessionSettings({
   workspace,
+  defaultModel,
 }: {
   workspace?: string | null
+  defaultModel?: string | null
 } = {}) {
   return (
     <SettingPage
@@ -61,11 +63,14 @@ export function SessionSettings({
           description={workspace ?? "—"}
           mono
         />
-        <SettingRow title={desktopText("settings.settings-app-pages.20")} value="—" />
+        <SettingRow
+          title={desktopText("settings.settings-app-pages.20")}
+          value={defaultModel ?? "—"}
+        />
         <SettingRow
           title={desktopText("settings.settings-app-pages.22")}
           description={desktopText("settings.settings-app-pages.23")}
-          value="—"
+          value={desktopText("settings.settings-app-pages.25")}
         />
       </SettingSection>
       <SettingSection title={desktopText("settings.settings-app-pages.28")}>

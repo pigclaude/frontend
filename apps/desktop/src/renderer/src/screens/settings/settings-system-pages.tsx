@@ -61,7 +61,7 @@ export function DataSettings({ userDataPath }: { userDataPath: string | null }) 
           <SettingRow
             title={t("appSettings.retention")}
             description={t("appSettings.metadataOnly")}
-            value="—"
+            value={t("appSettings.retentionPeriod")}
           />
           <SettingRow title={t("appSettings.clearUsage")} value="—" />
         </SettingSection>

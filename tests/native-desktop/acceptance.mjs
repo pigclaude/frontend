@@ -9,6 +9,7 @@ import { promisify } from "node:util"
 import { _electron, expect } from "@playwright/test"
 import { startMembershipFixture } from "./membership-fixture.mjs"
 import { verifySystemControls } from "./window-controls.mjs"
+import { systemInput } from "./system-pointer.mjs"
 
 const out = resolve(process.argv[2] ?? "test-results/native-desktop")
 await mkdir(out, { recursive: true })
@@ -193,6 +194,15 @@ try {
     pass(
       "system pointer title-bar drag, native menu selection, side mouse buttons and window buttons",
     )
+    await application.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0]
+      const update = window.setTitleBarOverlay.bind(window)
+      Reflect.set(window, "acceptanceOverlayUpdates", [])
+      window.setTitleBarOverlay = (options) => {
+        Reflect.get(window, "acceptanceOverlayUpdates").push(options)
+        return update(options)
+      }
+    })
   }
 
   const separator = page.getByRole("separator").first()
@@ -291,6 +301,21 @@ try {
 
   await page.getByRole("button", { name: "设置", exact: true }).click()
   await page.getByRole("button", { name: "外观", exact: true }).click()
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.dataset.motion))
+    .toBe("reduce")
+  pass("system reduced-motion preference reaches appearance")
+  if (platform === "darwin") {
+    const icon = () => application.evaluate(({ app }) => app.dock.getIcon().toDataURL())
+    const initialIcon = await icon()
+    const picker = page.getByRole("radiogroup", { name: "Dock 图标", exact: true })
+    await picker.getByRole("radio", { name: "粉色", exact: true }).click()
+    await expect.poll(icon).not.toBe(initialIcon)
+    await picker.getByRole("radio", { name: "经典", exact: true }).click()
+    await expect.poll(icon).not.toBe("")
+    pass("macOS Dock icon selection updates the native icon")
+  }
   await page
     .getByRole("radiogroup", { name: "模式", exact: true })
     .getByRole("radio", { name: "深色", exact: true })
@@ -303,6 +328,16 @@ try {
     .toBe("dark")
   pass("appearance change reaches renderer and persisted setting")
   await capture(page, "appearance-dark")
+  if (platform !== "darwin") {
+    const colors = await application.evaluate(({ BrowserWindow }) =>
+      Reflect.get(BrowserWindow.getAllWindows()[0], "acceptanceOverlayUpdates").at(-1),
+    )
+    assert.ok(colors?.color && colors?.symbolColor)
+    assert.equal(colors.height, 36)
+    report.darkOverlay = colors
+    await systemInput("capture", join(out, "native-dark-window.png"))
+    pass("dark theme updates actual native title bar overlay")
+  }
   await closeApplication()
   page = await launch()
   await expect(screen(page, "chat")).toBeVisible()

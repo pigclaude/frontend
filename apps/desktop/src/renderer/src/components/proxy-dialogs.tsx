@@ -33,16 +33,18 @@ export function AddProxyDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <div className="dialog-head">
-          <DialogTitle>
-            {editing === null
-              ? desktopText("pool.proxy-dialogs.3")
-              : desktopText("pool.proxy-dialogs.4")}
-          </DialogTitle>
-          <DialogDescription>
-            {editing === null
-              ? desktopText("pool.proxy-dialogs.5")
-              : desktopText("pool.proxy-dialogs.6")}
-          </DialogDescription>
+          <div className="dialog-heading">
+            <DialogTitle className="dialog-title">
+              {editing === null
+                ? desktopText("pool.proxy-dialogs.3")
+                : desktopText("pool.proxy-dialogs.4")}
+            </DialogTitle>
+            <DialogDescription className="dialog-desc">
+              {editing === null
+                ? desktopText("pool.proxy-dialogs.5")
+                : desktopText("pool.proxy-dialogs.6")}
+            </DialogDescription>
+          </div>
         </div>
         <div className="dialog-body">
           <div className="field">

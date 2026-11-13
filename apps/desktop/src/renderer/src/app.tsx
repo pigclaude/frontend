@@ -1,5 +1,6 @@
 // 负责把设计稿里的页面串成可切换的桌面界面，并承接主进程授权事件。
 import { useEffect, useRef, useState } from "react"
+import { desktopText } from "./locale/text"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import { AuthorizeScreen } from "./screens/authorize-screen"
 import { DesktopEntryScreen } from "./screens/desktop-entry-screen"
@@ -274,7 +275,10 @@ function DesktopGate() {
     const startAuthorization = bridge?.authorization?.start ?? bridge?.startAuthorization
     if (!startAuthorization) {
       setLoginState((current) =>
-        reduceLoginState(current, { type: "failed", error: "桌面授权桥不可用" }),
+        reduceLoginState(current, {
+          type: "failed",
+          error: desktopText("flows.app.bridgeUnavailable"),
+        }),
       )
       return
     }
@@ -375,16 +379,16 @@ function DesktopGate() {
     try {
       if (!browserPreview) {
         const signOut = window.pigclaude?.membership?.signOut
-        if (!signOut) throw new Error("桌面退出服务不可用")
+        if (!signOut) throw new Error(desktopText("flows.app.signOutUnavailable"))
         const view = await signOut()
-        if (view.state !== "signed_out") throw new Error("本机授权材料未完成清理")
+        if (view.state !== "signed_out") throw new Error(desktopText("flows.app.signOutIncomplete"))
         setMembership((current) => newerMembershipView(current, view))
       }
       setSignOutState({ pending: false, error: null })
     } catch (error: unknown) {
       setSignOutState({
         pending: false,
-        error: `退出登录失败：${authorizationErrorMessage(error)}`,
+        error: desktopText("flows.app.signOutError", { error: authorizationErrorMessage(error) }),
       })
     } finally {
       signOutInFlight.current = false
@@ -401,7 +405,7 @@ function DesktopGate() {
         gateMessage={
           signOutState.error ??
           (signOutState.pending
-            ? "正在退出登录…"
+            ? desktopText("flows.app.signingOut")
             : previewGateMessage(browserPreview, devView, membership))
         }
         signingOut={signOutState.pending}

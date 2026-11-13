@@ -146,10 +146,14 @@ export function AccountsScreen({
       >
         <DialogContent>
           <div className="dialog-head">
-            <DialogTitle>{desktopText("pool.accounts-screen.changeBrowserProfile")}</DialogTitle>
-            <DialogDescription>
-              {desktopText("pool.accounts-screen.changeBrowserProfileDescription")}
-            </DialogDescription>
+            <div className="dialog-heading">
+              <DialogTitle className="dialog-title">
+                {desktopText("pool.accounts-screen.changeBrowserProfile")}
+              </DialogTitle>
+              <DialogDescription className="dialog-desc">
+                {desktopText("pool.accounts-screen.changeBrowserProfileDescription")}
+              </DialogDescription>
+            </div>
           </div>
           <div className="dialog-body">
             <BrowserProfileSelect
@@ -279,12 +283,7 @@ export function AccountsScreen({
             key={account.id}
             render={<button type="button" />}
             onClick={() => setSelectedId(account.id)}
-            leading={
-              <>
-                <Icon name="grip" className="pool-account-grip" />
-                <span className="pool-account-mark">{account.mark}</span>
-              </>
-            }
+            leading={<span className="pool-account-mark">{account.mark}</span>}
             title={account.name}
             description={
               <>
@@ -322,10 +321,14 @@ function ClaudeCliImportDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <div className="dialog-head">
-          <DialogTitle>{desktopText("pool.accounts-screen.importTitle")}</DialogTitle>
-          <DialogDescription>
-            {desktopText("pool.accounts-screen.importDescription")}
-          </DialogDescription>
+          <div className="dialog-heading">
+            <DialogTitle className="dialog-title">
+              {desktopText("pool.accounts-screen.importTitle")}
+            </DialogTitle>
+            <DialogDescription className="dialog-desc">
+              {desktopText("pool.accounts-screen.importDescription")}
+            </DialogDescription>
+          </div>
         </div>
         {profiles ? (
           <div className="dialog-body">

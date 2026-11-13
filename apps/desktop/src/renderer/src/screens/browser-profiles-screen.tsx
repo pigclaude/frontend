@@ -126,17 +126,17 @@ export function BrowserProfilesScreen({ controller, proxies }: BrowserProfilesSc
         <DialogContent>
           <div className="dialog-head">
             <DialogTitle>
-              {desktopText("pool.browser-profiles-screen.deletePrefix")}
-              {deleting?.name}
-              {desktopText("pool.browser-profiles-screen.deleteDescription")}
+              {desktopText("pool.browser-profiles-screen.deleteTitle", {
+                name: deleting?.name ?? "",
+              })}
             </DialogTitle>
             <DialogDescription>
-              {desktopText("pool.browser-profiles-screen.cancel")}
+              {desktopText("pool.browser-profiles-screen.deleteDescription")}
             </DialogDescription>
           </div>
           <div className="dialog-foot">
             <Button variant="ghost" disabled={deletingBusy} onClick={() => setDeleting(null)}>
-              {desktopText("pool.browser-profiles-screen.confirmDelete")}
+              {desktopText("pool.browser-profiles-screen.cancel")}
             </Button>
             <Button
               variant="solidDanger"
@@ -151,7 +151,7 @@ export function BrowserProfilesScreen({ controller, proxies }: BrowserProfilesSc
                   .finally(() => setDeletingBusy(false))
               }}
             >
-              {desktopText("pool.browser-profiles-screen.19")}
+              {desktopText("pool.browser-profiles-screen.confirmDelete")}
             </Button>
           </div>
         </DialogContent>

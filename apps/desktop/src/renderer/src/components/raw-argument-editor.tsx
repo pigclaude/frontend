@@ -1,5 +1,6 @@
 // 负责逐项编辑含换行或单独空项的原始启动参数，保留换行类型与参数边界。
 
+import { desktopText } from "../locale/text"
 import { Fragment, useLayoutEffect, useRef } from "react"
 import { Button } from "./ui/button"
 import { Textarea } from "./ui/textarea"
@@ -66,7 +67,10 @@ export function RawArgumentEditor({
                       id={fieldId}
                       data-raw-argument={argument}
                       data-raw-line={lineIndex}
-                      aria-label={`原始参数 ${argument + 1} 第 ${lineIndex + 1} 行`}
+                      aria-label={desktopText("fingerprintExtra.raw-argument-editor.1", {
+                        value1: String(argument + 1),
+                        value2: String(lineIndex + 1),
+                      })}
                       aria-invalid={invalid}
                       aria-describedby={describedBy}
                       className="mono fp-arguments"
@@ -92,13 +96,17 @@ export function RawArgumentEditor({
                     {separator ? (
                       <div className="fp-line-break">
                         <span>
-                          换行（{separator === "\r\n" ? "CRLF" : separator === "\r" ? "CR" : "LF"}）
+                          {desktopText("fingerprintExtra.raw-argument-editor.2")}
+                          {separator === "\r\n" ? "CRLF" : separator === "\r" ? "CR" : "LF"}）
                         </span>
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
-                          aria-label={`删除原始参数 ${argument + 1} 的换行 ${lineIndex + 1}`}
+                          aria-label={desktopText("fingerprintExtra.raw-argument-editor.3", {
+                            value1: String(argument + 1),
+                            value2: String(lineIndex + 1),
+                          })}
                           onClick={() => {
                             pendingFocus.current = {
                               argument,
@@ -111,7 +119,7 @@ export function RawArgumentEditor({
                             )
                           }}
                         >
-                          删除换行
+                          {desktopText("fingerprintExtra.raw-argument-editor.4")}
                         </Button>
                       </div>
                     ) : null}
@@ -123,7 +131,9 @@ export function RawArgumentEditor({
               type="button"
               variant="ghost"
               size="sm"
-              aria-label={`删除原始参数 ${argument + 1}`}
+              aria-label={desktopText("fingerprintExtra.raw-argument-editor.5", {
+                value1: String(argument + 1),
+              })}
               onClick={() => {
                 pendingFocus.current =
                   args.length === 1
@@ -132,7 +142,7 @@ export function RawArgumentEditor({
                 onChange(args.filter((_arg, index) => index !== argument))
               }}
             >
-              删除
+              {desktopText("fingerprintExtra.raw-argument-editor.6")}
             </Button>
           </div>
         )
@@ -143,13 +153,13 @@ export function RawArgumentEditor({
         type="button"
         variant="ghost"
         size="sm"
-        aria-label="添加原始参数"
+        aria-label={desktopText("fingerprintExtra.raw-argument-editor.7")}
         onClick={() => {
           pendingFocus.current = { argument: args.length, line: 0 }
           onChange([...args, ""])
         }}
       >
-        添加参数
+        {desktopText("fingerprintExtra.raw-argument-editor.8")}
       </Button>
     </div>
   )

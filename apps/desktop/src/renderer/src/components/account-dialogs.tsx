@@ -23,11 +23,14 @@ export function AccountDeleteDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <div className="dialog-head">
-          <DialogTitle>
-            {desktopText("pool.account-dialogs.1")}
-            {accountName}」？
-          </DialogTitle>
-          <DialogDescription>{desktopText("pool.account-dialogs.2")}</DialogDescription>
+          <div className="dialog-heading">
+            <DialogTitle className="dialog-title">
+              {desktopText("pool.account-dialogs.deleteTitle", { name: accountName })}
+            </DialogTitle>
+            <DialogDescription className="dialog-desc">
+              {desktopText("pool.account-dialogs.2")}
+            </DialogDescription>
+          </div>
         </div>
         <div className="dialog-foot">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
@@ -77,12 +80,14 @@ export function AccountProxyDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <div className="dialog-head">
-          <DialogTitle>
-            {desktopText("pool.account-dialogs.5")}
-            {accountName}
-            {desktopText("pool.account-dialogs.6")}
-          </DialogTitle>
-          <DialogDescription>{desktopText("pool.account-dialogs.7")}</DialogDescription>
+          <div className="dialog-heading">
+            <DialogTitle className="dialog-title">
+              {desktopText("pool.account-dialogs.networkTitle", { name: accountName })}
+            </DialogTitle>
+            <DialogDescription className="dialog-desc">
+              {desktopText("pool.account-dialogs.7")}
+            </DialogDescription>
+          </div>
         </div>
         <div className="dialog-body">
           <SettingSection>

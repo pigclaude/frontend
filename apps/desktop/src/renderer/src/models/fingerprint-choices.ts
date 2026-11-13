@@ -1,5 +1,6 @@
 // 负责可自定义指纹字段的常用选项；空值仍由控件表示自动或跟随默认，不改变存储语义。
 
+import { desktopText } from "../locale/text"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import type { FingerprintEditableFieldKey, FingerprintFieldOption } from "./fingerprint-fields"
 
@@ -18,12 +19,12 @@ export const fingerprintChoiceKeys = [
 export type FingerprintChoiceFieldKey = (typeof fingerprintChoiceKeys)[number]
 
 const languages: FingerprintFieldOption[] = [
-  { value: "zh-CN", label: "简体中文（zh-CN）" },
-  { value: "zh-TW", label: "繁體中文（zh-TW）" },
-  { value: "en-US", label: "英语 · 美国（en-US）" },
-  { value: "en-GB", label: "英语 · 英国（en-GB）" },
-  { value: "en-SG", label: "英语 · 新加坡（en-SG）" },
-  { value: "ja-JP", label: "日本語（ja-JP）" },
+  { value: "zh-CN", label: desktopText("fingerprintExtra.fingerprint-choices.1") },
+  { value: "zh-TW", label: desktopText("fingerprintExtra.fingerprint-choices.2") },
+  { value: "en-US", label: desktopText("fingerprintExtra.fingerprint-choices.3") },
+  { value: "en-GB", label: desktopText("fingerprintExtra.fingerprint-choices.4") },
+  { value: "en-SG", label: desktopText("fingerprintExtra.fingerprint-choices.5") },
+  { value: "ja-JP", label: desktopText("fingerprintExtra.fingerprint-choices.6") },
   { value: "ko-KR", label: "한국어（ko-KR）" },
   { value: "de-DE", label: "Deutsch（de-DE）" },
   { value: "fr-FR", label: "Français（fr-FR）" },
@@ -39,50 +40,153 @@ const languages: FingerprintFieldOption[] = [
 ]
 
 const languageKeywords: Record<string, string[]> = {
-  "zh-CN": ["中文", "汉语", "中国", "简体", "chinese", "china"],
-  "zh-TW": ["中文", "台湾", "台灣", "繁体", "繁體", "chinese", "taiwan"],
-  "en-US": ["英文", "英语", "美国", "美式", "english", "usa"],
-  "en-GB": ["英文", "英语", "英国", "英式", "english", "uk"],
-  "en-SG": ["英文", "英语", "新加坡", "english", "singapore"],
-  "ja-JP": ["日语", "日本", "japanese", "japan"],
-  "ko-KR": ["韩语", "韩国", "korean", "korea"],
-  "de-DE": ["德语", "德国", "german", "germany"],
-  "fr-FR": ["法语", "法国", "french", "france"],
-  "es-ES": ["西班牙语", "西语", "西班牙", "spanish", "spain"],
-  "pt-BR": ["葡萄牙语", "葡语", "巴西", "portuguese", "brazil"],
-  "it-IT": ["意大利语", "意大利", "italian", "italy"],
-  "ru-RU": ["俄语", "俄罗斯", "russian", "russia"],
-  "vi-VN": ["越南语", "越南", "vietnamese", "vietnam"],
-  "th-TH": ["泰语", "泰国", "thai", "thailand"],
-  "id-ID": ["印尼语", "印尼", "印度尼西亚", "indonesian", "indonesia"],
-  "hi-IN": ["印地语", "印度", "hindi", "india"],
-  "ar-SA": ["阿拉伯语", "阿语", "沙特", "arabic"],
+  "zh-CN": [
+    desktopText("fingerprintExtra.fingerprint-choices.7"),
+    desktopText("fingerprintExtra.fingerprint-choices.8"),
+    desktopText("fingerprintExtra.fingerprint-choices.9"),
+    desktopText("fingerprintExtra.fingerprint-choices.10"),
+    "chinese",
+    "china",
+  ],
+  "zh-TW": [
+    desktopText("fingerprintExtra.fingerprint-choices.11"),
+    desktopText("fingerprintExtra.fingerprint-choices.12"),
+    desktopText("fingerprintExtra.fingerprint-choices.13"),
+    desktopText("fingerprintExtra.fingerprint-choices.14"),
+    desktopText("fingerprintExtra.fingerprint-choices.15"),
+    "chinese",
+    "taiwan",
+  ],
+  "en-US": [
+    desktopText("fingerprintExtra.fingerprint-choices.16"),
+    desktopText("fingerprintExtra.fingerprint-choices.17"),
+    desktopText("fingerprintExtra.fingerprint-choices.18"),
+    desktopText("fingerprintExtra.fingerprint-choices.19"),
+    "english",
+    "usa",
+  ],
+  "en-GB": [
+    desktopText("fingerprintExtra.fingerprint-choices.20"),
+    desktopText("fingerprintExtra.fingerprint-choices.21"),
+    desktopText("fingerprintExtra.fingerprint-choices.22"),
+    desktopText("fingerprintExtra.fingerprint-choices.23"),
+    "english",
+    "uk",
+  ],
+  "en-SG": [
+    desktopText("fingerprintExtra.fingerprint-choices.24"),
+    desktopText("fingerprintExtra.fingerprint-choices.25"),
+    desktopText("fingerprintExtra.fingerprint-choices.26"),
+    "english",
+    "singapore",
+  ],
+  "ja-JP": [
+    desktopText("fingerprintExtra.fingerprint-choices.27"),
+    desktopText("fingerprintExtra.fingerprint-choices.28"),
+    "japanese",
+    "japan",
+  ],
+  "ko-KR": [
+    desktopText("fingerprintExtra.fingerprint-choices.29"),
+    desktopText("fingerprintExtra.fingerprint-choices.30"),
+    "korean",
+    "korea",
+  ],
+  "de-DE": [
+    desktopText("fingerprintExtra.fingerprint-choices.31"),
+    desktopText("fingerprintExtra.fingerprint-choices.32"),
+    "german",
+    "germany",
+  ],
+  "fr-FR": [
+    desktopText("fingerprintExtra.fingerprint-choices.33"),
+    desktopText("fingerprintExtra.fingerprint-choices.34"),
+    "french",
+    "france",
+  ],
+  "es-ES": [
+    desktopText("fingerprintExtra.fingerprint-choices.35"),
+    desktopText("fingerprintExtra.fingerprint-choices.36"),
+    desktopText("fingerprintExtra.fingerprint-choices.37"),
+    "spanish",
+    "spain",
+  ],
+  "pt-BR": [
+    desktopText("fingerprintExtra.fingerprint-choices.38"),
+    desktopText("fingerprintExtra.fingerprint-choices.39"),
+    desktopText("fingerprintExtra.fingerprint-choices.40"),
+    "portuguese",
+    "brazil",
+  ],
+  "it-IT": [
+    desktopText("fingerprintExtra.fingerprint-choices.41"),
+    desktopText("fingerprintExtra.fingerprint-choices.42"),
+    "italian",
+    "italy",
+  ],
+  "ru-RU": [
+    desktopText("fingerprintExtra.fingerprint-choices.43"),
+    desktopText("fingerprintExtra.fingerprint-choices.44"),
+    "russian",
+    "russia",
+  ],
+  "vi-VN": [
+    desktopText("fingerprintExtra.fingerprint-choices.45"),
+    desktopText("fingerprintExtra.fingerprint-choices.46"),
+    "vietnamese",
+    "vietnam",
+  ],
+  "th-TH": [
+    desktopText("fingerprintExtra.fingerprint-choices.47"),
+    desktopText("fingerprintExtra.fingerprint-choices.48"),
+    "thai",
+    "thailand",
+  ],
+  "id-ID": [
+    desktopText("fingerprintExtra.fingerprint-choices.49"),
+    desktopText("fingerprintExtra.fingerprint-choices.50"),
+    desktopText("fingerprintExtra.fingerprint-choices.51"),
+    "indonesian",
+    "indonesia",
+  ],
+  "hi-IN": [
+    desktopText("fingerprintExtra.fingerprint-choices.52"),
+    desktopText("fingerprintExtra.fingerprint-choices.53"),
+    "hindi",
+    "india",
+  ],
+  "ar-SA": [
+    desktopText("fingerprintExtra.fingerprint-choices.54"),
+    desktopText("fingerprintExtra.fingerprint-choices.55"),
+    desktopText("fingerprintExtra.fingerprint-choices.56"),
+    "arabic",
+  ],
 }
 
 const timezones: FingerprintFieldOption[] = [
-  { value: "system", label: "系统时区（显式指定）" },
-  { value: "UTC", label: "协调世界时（UTC）" },
-  { value: "Asia/Shanghai", label: "上海（Asia/Shanghai）" },
-  { value: "Asia/Hong_Kong", label: "香港（Asia/Hong_Kong）" },
-  { value: "Asia/Taipei", label: "台北（Asia/Taipei）" },
-  { value: "Asia/Tokyo", label: "东京（Asia/Tokyo）" },
-  { value: "Asia/Seoul", label: "首尔（Asia/Seoul）" },
-  { value: "Asia/Singapore", label: "新加坡（Asia/Singapore）" },
-  { value: "Asia/Bangkok", label: "曼谷（Asia/Bangkok）" },
-  { value: "Asia/Kolkata", label: "加尔各答（Asia/Kolkata）" },
-  { value: "Asia/Dubai", label: "迪拜（Asia/Dubai）" },
-  { value: "America/Los_Angeles", label: "洛杉矶（America/Los_Angeles）" },
-  { value: "America/New_York", label: "纽约（America/New_York）" },
-  { value: "America/Chicago", label: "芝加哥（America/Chicago）" },
-  { value: "America/Denver", label: "丹佛（America/Denver）" },
-  { value: "America/Toronto", label: "多伦多（America/Toronto）" },
-  { value: "America/Sao_Paulo", label: "圣保罗（America/Sao_Paulo）" },
-  { value: "Europe/London", label: "伦敦（Europe/London）" },
-  { value: "Europe/Berlin", label: "柏林（Europe/Berlin）" },
-  { value: "Europe/Paris", label: "巴黎（Europe/Paris）" },
-  { value: "Europe/Moscow", label: "莫斯科（Europe/Moscow）" },
-  { value: "Australia/Sydney", label: "悉尼（Australia/Sydney）" },
-  { value: "Pacific/Auckland", label: "奥克兰（Pacific/Auckland）" },
+  { value: "system", label: desktopText("fingerprintExtra.fingerprint-choices.57") },
+  { value: "UTC", label: desktopText("fingerprintExtra.fingerprint-choices.58") },
+  { value: "Asia/Shanghai", label: desktopText("fingerprintExtra.fingerprint-choices.59") },
+  { value: "Asia/Hong_Kong", label: desktopText("fingerprintExtra.fingerprint-choices.60") },
+  { value: "Asia/Taipei", label: desktopText("fingerprintExtra.fingerprint-choices.61") },
+  { value: "Asia/Tokyo", label: desktopText("fingerprintExtra.fingerprint-choices.62") },
+  { value: "Asia/Seoul", label: desktopText("fingerprintExtra.fingerprint-choices.63") },
+  { value: "Asia/Singapore", label: desktopText("fingerprintExtra.fingerprint-choices.64") },
+  { value: "Asia/Bangkok", label: desktopText("fingerprintExtra.fingerprint-choices.65") },
+  { value: "Asia/Kolkata", label: desktopText("fingerprintExtra.fingerprint-choices.66") },
+  { value: "Asia/Dubai", label: desktopText("fingerprintExtra.fingerprint-choices.67") },
+  { value: "America/Los_Angeles", label: desktopText("fingerprintExtra.fingerprint-choices.68") },
+  { value: "America/New_York", label: desktopText("fingerprintExtra.fingerprint-choices.69") },
+  { value: "America/Chicago", label: desktopText("fingerprintExtra.fingerprint-choices.70") },
+  { value: "America/Denver", label: desktopText("fingerprintExtra.fingerprint-choices.71") },
+  { value: "America/Toronto", label: desktopText("fingerprintExtra.fingerprint-choices.72") },
+  { value: "America/Sao_Paulo", label: desktopText("fingerprintExtra.fingerprint-choices.73") },
+  { value: "Europe/London", label: desktopText("fingerprintExtra.fingerprint-choices.74") },
+  { value: "Europe/Berlin", label: desktopText("fingerprintExtra.fingerprint-choices.75") },
+  { value: "Europe/Paris", label: desktopText("fingerprintExtra.fingerprint-choices.76") },
+  { value: "Europe/Moscow", label: desktopText("fingerprintExtra.fingerprint-choices.77") },
+  { value: "Australia/Sydney", label: desktopText("fingerprintExtra.fingerprint-choices.78") },
+  { value: "Pacific/Auckland", label: desktopText("fingerprintExtra.fingerprint-choices.79") },
 ]
 
 const platformVersions = new Map([
@@ -124,19 +228,30 @@ export function fingerprintChoices(
       return [
         ...languages.map((language) => ({
           value: `${language.value},${language.value.split("-")[0]}`,
-          label: `${language.label}优先`,
+          label: desktopText("fingerprintExtra.fingerprint-choices.80", {
+            value1: String(language.label),
+          }),
           keywords: languageKeywords[language.value],
         })),
-        { value: "zh-CN,zh,en-US,en", label: "简体中文优先，英语备用" },
-        { value: "zh-TW,zh,en-US,en", label: "繁體中文优先，英语备用" },
-        { value: "en-US,en,zh-CN,zh", label: "英语优先，简体中文备用" },
+        {
+          value: "zh-CN,zh,en-US,en",
+          label: desktopText("fingerprintExtra.fingerprint-choices.81"),
+        },
+        {
+          value: "zh-TW,zh,en-US,en",
+          label: desktopText("fingerprintExtra.fingerprint-choices.82"),
+        },
+        {
+          value: "en-US,en,zh-CN,zh",
+          label: desktopText("fingerprintExtra.fingerprint-choices.83"),
+        },
       ]
     case "timezone":
       return timezones
     case "hardwareConcurrency":
       return [1, 2, 4, 6, 8, 10, 12, 16, 20, 24, 32, 48, 64, 96, 128].map((cores) => ({
         value: String(cores),
-        label: `${cores} 核`,
+        label: desktopText("fingerprintExtra.fingerprint-choices.84", { value1: String(cores) }),
       }))
   }
 }

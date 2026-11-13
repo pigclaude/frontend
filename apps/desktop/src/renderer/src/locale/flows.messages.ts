@@ -1,6 +1,11 @@
 // 负责整窗流程的简体中文界面文案。
 /** 桌面界面的文案表，键供对应页面读取。 */
 export const flowsZhCN = {
+  "flows.app.bridgeUnavailable": "桌面授权桥不可用",
+  "flows.app.signOutUnavailable": "桌面退出服务不可用",
+  "flows.app.signOutIncomplete": "本机授权材料未完成清理",
+  "flows.app.signOutError": "退出登录失败：{error}",
+  "flows.app.signingOut": "正在退出登录…",
   "flows.login-screen.savingTitle": "正在保存授权…",
   "flows.login-screen.savingDescription": "保存完成后将确认会员状态，请稍候。",
   "flows.login-screen.signOutRetry": "欢迎使用 PigClaude",

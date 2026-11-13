@@ -22,6 +22,7 @@ export const appSettingsZhCN = {
   "appSettings.proxiesFile": "代理地址与认证信息",
   "appSettings.usageRecords": "用量记录",
   "appSettings.retention": "保留",
+  "appSettings.retentionPeriod": "30 天",
   "appSettings.metadataOnly": "只有元数据，不含提示词和回复",
   "appSettings.clearUsage": "清除用量记录",
   "appSettings.about": "关于",

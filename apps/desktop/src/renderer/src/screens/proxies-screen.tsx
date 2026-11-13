@@ -151,13 +151,14 @@ export function ProxiesScreen({ proxies, onTest, onSave, onRemove, error }: Prox
       >
         <DialogContent>
           <div className="dialog-head">
-            <DialogTitle>
-              {desktopText("pool.proxies-screen.deletePrefix")}
-              {deleting?.name ?? ""}」？
-            </DialogTitle>
-            <DialogDescription>
-              {desktopText("pool.proxies-screen.deleteDescription")}
-            </DialogDescription>
+            <div className="dialog-heading">
+              <DialogTitle className="dialog-title">
+                {desktopText("pool.proxies-screen.deleteTitle", { name: deleting?.name ?? "" })}
+              </DialogTitle>
+              <DialogDescription className="dialog-desc">
+                {desktopText("pool.proxies-screen.deleteDescription")}
+              </DialogDescription>
+            </div>
           </div>
           <div className="dialog-foot">
             <Button variant="ghost" onClick={() => setDeleting(null)}>

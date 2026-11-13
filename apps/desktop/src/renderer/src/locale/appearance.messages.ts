@@ -1,6 +1,19 @@
 // 负责 PigClaude 的 Dock 外观设置文案。
 /** 外观适配层的简体中文文案。 */
 export const appearanceZhCN = {
+  "appearance.contentFont": "正文字体",
+  "appearance.contentFont.same": "与界面相同",
+  "appearance.contentFont.serif": "衬线",
+  "appearance.contentFont.rounded": "圆体",
+  "appearance.uiWeight": "界面字重",
+  "appearance.contentWeight": "正文字重",
+  "appearance.codeWeight": "代码字重",
+  "appearance.weight.regular": "常规",
+  "appearance.weight.medium": "中等",
+  "appearance.diffMarker": "差异标记",
+  "appearance.diffMarker.color": "颜色",
+  "appearance.fullWidth": "页面全宽显示",
+  "appearance.pointerCursor": "使用指针光标",
   "appearance.additional": "其他外观设置",
   "appearance.split": "分别设置浅色和深色模式",
   "appearance.smoothing": "字体平滑",
@@ -17,6 +30,19 @@ export const appearanceZhCN = {
 
 /** Dock 外观设置的英文文案。 */
 export const appearanceEnUS = {
+  "appearance.contentFont": "Content font",
+  "appearance.contentFont.same": "Same as interface",
+  "appearance.contentFont.serif": "Serif",
+  "appearance.contentFont.rounded": "Rounded",
+  "appearance.uiWeight": "Interface weight",
+  "appearance.contentWeight": "Content weight",
+  "appearance.codeWeight": "Code weight",
+  "appearance.weight.regular": "Regular",
+  "appearance.weight.medium": "Medium",
+  "appearance.diffMarker": "Diff markers",
+  "appearance.diffMarker.color": "Color",
+  "appearance.fullWidth": "Full-width pages",
+  "appearance.pointerCursor": "Use pointer cursor",
   "appearance.additional": "Additional appearance settings",
   "appearance.split": "Use separate light and dark themes",
   "appearance.smoothing": "Font smoothing",

@@ -17,6 +17,7 @@ import {
 import { ScrollPanel } from "@pigclaude/ui-shell"
 import type { AppearanceController } from "../../../hooks/use-appearance"
 import { useText } from "../../../locale/text"
+import { AppearanceOptions } from "./appearance-options"
 import { DockIconPicker } from "./dock-icon-picker"
 
 /** 外观与主题编辑由 Pigcode 提供，Dock 图标沿用 PigClaude 的本机选项。 */
@@ -33,7 +34,11 @@ export function AppearancePage({ appearance }: { appearance: AppearanceControlle
               aria-label={t("appearance.split")}
               checked={appearance.settings.splitModes}
               onCheckedChange={(splitModes) =>
-                appearance.update((current) => ({ ...current, splitModes }))
+                appearance.update((current) => ({
+                  ...current,
+                  splitModes,
+                  dark: splitModes && !current.splitModes ? { ...current.light } : current.dark,
+                }))
               }
             />
           </SettingRow>
@@ -61,6 +66,7 @@ export function AppearancePage({ appearance }: { appearance: AppearanceControlle
               </SettingRow>
             </>
           ) : null}
+          <AppearanceOptions appearance={appearance} />
           <SettingRow title={t("appearance.reset")}>
             <Button size="sm" onClick={() => setConfirmReset(true)}>
               {t("appearance.reset")}

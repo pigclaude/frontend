@@ -85,7 +85,7 @@ export const poolZhCN = {
   "pool.proxies-screen.delete": "删除",
   "pool.proxies-screen.noFallback":
     "已绑定代理的请求不会直连：代理不可用时以 503 结束，不会回退到本机网络。",
-  "pool.proxies-screen.deletePrefix": "删除代理「",
+  "pool.proxies-screen.deleteTitle": "删除代理「{name}」？",
   "pool.proxies-screen.deleteDescription":
     "删除后，绑定它的账号会因找不到代理而不可用，已保存的登录不会自动失效。",
   "pool.proxies-screen.cancel": "取消",
@@ -106,19 +106,17 @@ export const poolZhCN = {
   "pool.browser-profiles-screen.edit": "编辑",
   "pool.browser-profiles-screen.deleteNamed": "删除 {value1}",
   "pool.browser-profiles-screen.delete": "删除",
-  "pool.browser-profiles-screen.deletePrefix": "删除「",
-  "pool.browser-profiles-screen.deleteDescription": "」的配置？",
-  "pool.browser-profiles-screen.cancel":
+  "pool.browser-profiles-screen.deleteTitle": "删除「{name}」的配置？",
+  "pool.browser-profiles-screen.deleteDescription":
     "仅删除这份未被账号引用的环境配置。账号凭据与登录数据由各账号单独管理。",
-  "pool.browser-profiles-screen.confirmDelete": "取消",
-  "pool.browser-profiles-screen.19": "删除配置",
-  "pool.account-dialogs.1": "删除「",
+  "pool.browser-profiles-screen.cancel": "取消",
+  "pool.browser-profiles-screen.confirmDelete": "删除配置",
+  "pool.account-dialogs.deleteTitle": "删除「{name}」？",
   "pool.account-dialogs.2":
     "本机账号凭据和该账号的浏览器登录数据会删除，共享浏览器配置保留。Claude 那边的账号不受影响。",
   "pool.account-dialogs.3": "取消",
   "pool.account-dialogs.4": "删除",
-  "pool.account-dialogs.5": "给「",
-  "pool.account-dialogs.6": "」设置网络出口",
+  "pool.account-dialogs.networkTitle": "给「{name}」设置网络出口",
   "pool.account-dialogs.7":
     "绑定代理后，登录和对话都会从新的代理出口发出；不使用代理则走系统网络。",
   "pool.account-dialogs.8": "不使用代理（系统网络直连）",

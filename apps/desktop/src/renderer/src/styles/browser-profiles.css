@@ -31,7 +31,3 @@
   background: var(--avatar);
   color: var(--fg-2);
 }
-
-.pool-account-grip {
-  color: var(--muted);
-}

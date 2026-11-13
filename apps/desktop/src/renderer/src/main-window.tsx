@@ -219,6 +219,10 @@ export function MainWindow({
         membership={membership}
         appInfo={appInfo}
         defaultWorkspace={workspace}
+        defaultModel={
+          (session.models.find((model) => model.isDefault) ?? session.models[0])?.displayName ??
+          null
+        }
         page={page}
         appearance={appearance}
         onNavigate={onNavigate}

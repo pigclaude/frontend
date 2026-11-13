@@ -17,6 +17,7 @@ export type SettingsScreenProps = {
   membership: MembershipView
   appInfo: { appVersion: string; userDataPath: string } | null
   defaultWorkspace: string | null
+  defaultModel: string | null
 }
 
 /** 根据当前设置子页绘制原型对应的设置内容；未知子页显示关于。 */
@@ -29,6 +30,7 @@ export function SettingsScreen({
   membership,
   appInfo,
   defaultWorkspace,
+  defaultModel,
 }: SettingsScreenProps) {
   if (page === "profile")
     return (
@@ -41,7 +43,8 @@ export function SettingsScreen({
   if (page === "switching") return <SwitchingSettings onNavigate={onNavigate} />
   if (page === "general") return <GeneralSettings appVersion={appInfo?.appVersion ?? null} />
   if (page === "appearance") return <AppearancePage appearance={appearance} />
-  if (page === "session") return <SessionSettings workspace={defaultWorkspace} />
+  if (page === "session")
+    return <SessionSettings workspace={defaultWorkspace} defaultModel={defaultModel} />
   if (page === "menubar") return <MenubarSettings onNavigate={onNavigate} />
   if (page === "network") return <NetworkSettings />
   if (page === "data") return <DataSettings userDataPath={appInfo?.userDataPath ?? null} />

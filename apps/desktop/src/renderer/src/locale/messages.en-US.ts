@@ -2,6 +2,7 @@
 import type { zhCN } from "./messages.zh-CN"
 import { permissionEnUS } from "./permission.messages"
 import { shellEnUS } from "./shell.messages"
+import { fingerprintExtraZhCN } from "./fingerprint-extra.messages"
 import { fingerprintZhCN } from "./fingerprint.messages"
 import { poolZhCN } from "./pool.messages"
 import { flowsZhCN } from "./flows.messages"
@@ -13,6 +14,7 @@ import { appearanceEnUS } from "./appearance.messages"
 export const enUS = {
   ...shellEnUS,
   ...permissionEnUS,
+  ...fingerprintExtraZhCN,
   ...fingerprintZhCN,
   ...poolZhCN,
   ...flowsZhCN,

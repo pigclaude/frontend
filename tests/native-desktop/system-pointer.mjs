@@ -32,11 +32,16 @@ export async function systemInput(action, ...values) {
       "1",
       "sleep",
       "0.15",
-      "mousemove",
-      toX,
-      toY,
-      "sleep",
-      "0.2",
+      ...Array.from({ length: 8 }, (_, index) => {
+        const ratio = (index + 1) / 8
+        return [
+          "mousemove",
+          String(Math.round(Number(x) + (Number(toX) - Number(x)) * ratio)),
+          String(Math.round(Number(y) + (Number(toY) - Number(y)) * ratio)),
+          "sleep",
+          "0.08",
+        ]
+      }).flat(),
       "mouseup",
       "1",
     ],

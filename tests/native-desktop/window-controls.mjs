@@ -96,6 +96,11 @@ export async function verifySystemControls(application, page, nativeState, out) 
 
 /** 点击系统标题栏关闭按钮，并等待窗口关闭。 */
 export async function closeFromTitleBar(application, page) {
+  await application.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0]
+    window.setAlwaysOnTop(true)
+    window.focus()
+  })
   const window = await application.evaluate(({ BrowserWindow, screen }) => ({
     bounds: BrowserWindow.getAllWindows()[0].getContentBounds(),
     scale: screen.getPrimaryDisplay().scaleFactor,

@@ -37,8 +37,9 @@ async function launch() {
     },
     timeout: 45_000,
   })
-  const page = await application.firstWindow({ timeout: 30_000 })
-  await page.waitForFunction(() => !!window.pigclaude?.membership)
+  const page = await application.firstWindow({ timeout: 25_000 })
+  page.setDefaultTimeout(10_000)
+  await page.waitForFunction(() => !!window.pigclaude?.membership, null, { timeout: 15_000 })
   return page
 }
 
@@ -49,10 +50,17 @@ async function closeApplication() {
   const process = current.process()
   if (process.exitCode !== null || process.signalCode !== null) return
   const timeout = setTimeout(() => process.kill(), 5000)
+  let deadline
   try {
-    await current.close()
+    await Promise.race([
+      current.close(),
+      new Promise((_, reject) => {
+        deadline = setTimeout(() => reject(new Error("Electron 退出超时")), 8000)
+      }),
+    ])
   } finally {
     clearTimeout(timeout)
+    clearTimeout(deadline)
   }
 }
 
@@ -91,10 +99,10 @@ function screen(page, id) {
 try {
   let page = await launch()
   report.environment = await nativeState()
-  await expect(page.getByRole("heading", { name: "欢迎使用 PigClaude" })).toBeVisible()
-  assert.equal(await page.locator("[data-main-window]").count(), 0)
   assert.equal(report.environment.encryption, true)
   if (process.platform === "linux") assert.equal(report.environment.keyring, "gnome_libsecret")
+  await expect(page.getByRole("heading", { name: "欢迎使用 PigClaude" })).toBeVisible()
+  assert.equal(await page.locator("[data-main-window]").count(), 0)
   await capture(page, "login")
   pass("signed out remains in welcome, OS safeStorage available")
   const prepared = page.getByRole("button", { name: "复制链接", exact: true })

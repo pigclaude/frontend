@@ -16,7 +16,11 @@ export async function verifySystemControls(application, page, nativeState, out) 
   )
   const physical = (value) => value * (process.platform === "win32" ? initial.scale : 1)
   const point = (x, y) => [physical(content.x + x), physical(content.y + y)]
-  await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].focus())
+  await application.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0]
+    window.setAlwaysOnTop(true)
+    window.focus()
+  })
   await systemInput("capture", join(out, "native-desktop.png"))
   const drag = point(Math.min(470, overlay.right - 40), 17)
   await systemInput("drag", ...drag, drag[0] + 60, drag[1] + 40)
@@ -85,6 +89,9 @@ export async function verifySystemControls(application, page, nativeState, out) 
   await expect
     .poll(async () => (await nativeState()).maximized, { message: "原生还原按钮" })
     .toBe(false)
+  await application.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].setAlwaysOnTop(false),
+  )
 }
 
 /** 点击系统标题栏关闭按钮，并等待窗口关闭。 */

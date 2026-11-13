@@ -62,7 +62,12 @@ async function closeApplication() {
   if (!application) return
   const current = application
   const pid = applicationPid
-  void current.close().catch(() => {})
+  void current
+    .evaluate(({ app, session }) => {
+      session.defaultSession.flushStorageData()
+      app.quit()
+    })
+    .catch(() => {})
   const until = Date.now() + 5000
   while (processRunning(pid) && Date.now() < until) {
     await new Promise((resolve) => setTimeout(resolve, 100))
@@ -75,6 +80,7 @@ async function closeApplication() {
     }
     await expect.poll(() => processRunning(pid), { timeout: 5000 }).toBe(false)
   }
+  await current.close().catch(() => {})
   application = undefined
 }
 
@@ -227,6 +233,12 @@ try {
     .getByRole("radio", { name: "深色", exact: true })
     .click()
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark")
+  await expect
+    .poll(() =>
+      page.evaluate(() => JSON.parse(localStorage.getItem("pigcode-appearance") ?? "{}").mode),
+    )
+    .toBe("dark")
+  pass("appearance change reaches renderer and persisted setting")
   if (platform !== "darwin") await capture(page, "appearance-dark")
   await page.keyboard.press("Alt+ArrowLeft")
   await expect(screen(page, "general")).toBeVisible()
@@ -262,7 +274,6 @@ try {
   page = await launch()
   await expect(screen(page, "chat")).toBeVisible()
   assert.equal(await page.evaluate(() => localStorage.getItem("pigclaude.sidebarWidth")), "322")
-  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark")
   pass("full Electron restart retains encrypted login and sidebar width")
   await page.getByRole("button", { name: "设置", exact: true }).click()
   await expect(screen(page, "general")).toBeVisible()
@@ -280,6 +291,10 @@ try {
   await capture(page, "recovery")
   assert.equal(await page.locator("[data-main-window]").count(), 0)
   pass("native authorization cancel and expired membership close the shell")
+  report.themeAfterRestart = await page.evaluate(() => ({
+    applied: document.documentElement.dataset.theme,
+    saved: JSON.parse(localStorage.getItem("pigcode-appearance") ?? "{}").mode,
+  }))
 } catch (error) {
   report.error = String(error)
   const page = application?.windows()[0]

@@ -215,10 +215,11 @@ describe("reauthorizing an imported account", () => {
     expect(container.textContent).toContain("已从 Claude CLI 导入账号")
     expect(bridge.accounts().map((account) => account.id)).toEqual(["acc-imported"])
 
-    const row = [...container.querySelectorAll("button.item")].find((item) =>
+    const row = [...container.querySelectorAll<HTMLButtonElement>("button.list-row")].find((item) =>
       item.textContent?.includes("CLI 账号"),
     )
-    await act(async () => (row as HTMLButtonElement | undefined)?.click())
+    expect(row).toBeDefined()
+    await act(async () => row?.click())
     await click("重新授权")
     expect(container.textContent).toContain("重新授权 Claude 账号")
 

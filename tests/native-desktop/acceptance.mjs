@@ -6,6 +6,7 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { _electron, expect } from "@playwright/test"
 import { startMembershipFixture } from "./membership-fixture.mjs"
+import { closeFromTitleBar, verifySystemControls } from "./window-controls.mjs"
 
 const out = resolve(process.argv[2] ?? "test-results/native-desktop")
 await mkdir(out, { recursive: true })
@@ -130,6 +131,12 @@ try {
   }
   pass("real native title bar and system button reservation")
   await capture(page, "shell-wide")
+  if (platform !== "darwin") {
+    await verifySystemControls(application, page, nativeState, out)
+    pass(
+      "system pointer title-bar drag, native menu selection, side mouse buttons and window buttons",
+    )
+  }
 
   const separator = page.getByRole("separator").first()
   const original = await separator.boundingBox()
@@ -153,7 +160,7 @@ try {
   await toggle.click()
   await page.locator(".drawer-scrim").click({ position: { x: 850, y: 360 } })
   await expect(page.locator("[data-main-window]")).not.toHaveClass(/is-drawer-open/)
-  await setWidth(640)
+  await setWidth(600)
   assert.equal((await nativeState()).min[0], 640)
   await expect.poll(() => page.evaluate(() => innerWidth)).toBe(640)
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 640)
@@ -200,7 +207,8 @@ try {
   await expect(screen(page, "chat")).toBeVisible()
   assert.equal(await page.evaluate(() => localStorage.getItem("pigclaude.sidebarWidth")), "322")
   pass("full Electron restart retains encrypted login and sidebar width")
-  await page.keyboard.press(`${mod}+,`)
+  await page.getByRole("button", { name: "设置", exact: true }).click()
+  await expect(screen(page, "general")).toBeVisible()
   await page.getByRole("button", { name: "Claude 账号", exact: true }).click()
   await page.getByRole("button", { name: "添加账号", exact: true }).click()
   await capture(page, "authorize")
@@ -212,6 +220,10 @@ try {
   await capture(page, "recovery")
   assert.equal(await page.locator("[data-main-window]").count(), 0)
   pass("native authorization cancel and expired membership close the shell")
+  if (platform !== "darwin") {
+    await closeFromTitleBar(application, page)
+    pass("system window close button")
+  }
 } catch (error) {
   report.error = String(error)
   const page = application?.windows()[0]

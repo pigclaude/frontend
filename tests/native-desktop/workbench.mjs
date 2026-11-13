@@ -7,6 +7,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { promisify } from "node:util"
 import { expect } from "@playwright/test"
+import { verifyTerminalDrawer } from "./terminal-drawer.mjs"
 
 const exec = promisify(execFile)
 
@@ -48,11 +49,7 @@ export async function verifyWorkbench(page, application, output, provider = fals
     await page.evaluate((root) => window.pigclaude.workspaces.add(root), root)
     await page.reload()
     await expect(page.locator("[data-main-window]")).toBeVisible()
-    await page.getByRole("button", { name: "切换底部终端", exact: true }).click()
-    const drawer = page.getByRole("region", { name: "底部终端" })
-    await expect(drawer.getByTestId("terminal-view")).toBeVisible()
-    await drawer.getByRole("button", { name: "关闭终端面板", exact: true }).click()
-    await expect(drawer).toBeHidden()
+    await verifyTerminalDrawer(page, root, output)
     await page.getByRole("button", { name: "切换右侧面板", exact: true }).click()
     const panel = page.locator(".right-panel-slot")
     await expect(panel).toBeVisible()

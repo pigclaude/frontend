@@ -24,6 +24,28 @@
   color: var(--muted);
   font-size: var(--fs-xs);
 }
-.pigclaude-terminal-drawer {
-  height: min(36vh, 320px);
+.terminal-drawer-resizer {
+  touch-action: none;
+}
+.terminal-drawer-resizer::after {
+  position: absolute;
+  top: 4px;
+  right: 0;
+  left: 0;
+  height: 2px;
+  content: "";
+}
+.terminal-drawer-resizer:hover::after,
+.terminal-drawer-resizer[data-resizing]::after {
+  background: var(--resizer-hover);
+}
+.terminal-drawer-resizer:focus-visible {
+  outline: none;
+}
+.terminal-drawer-resizer:focus-visible::after {
+  background: var(--accent);
+}
+.terminal-tab-suffix {
+  flex: none;
+  white-space: pre;
 }

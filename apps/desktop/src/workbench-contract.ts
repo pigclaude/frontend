@@ -63,6 +63,9 @@ export type WorkbenchBrowserAction = "back" | "forward" | "reload" | "stop" | "d
 /** 页面选择器只返回用户选中的元素信息。 */
 export type WorkbenchBrowserElement = { selector: string; text: string; url: string }
 
+/** 终端打开后的公开信息，用于展示 shell 名称与工作目录。 */
+export type WorkbenchTerminalInfo = { shell: string; cwd: string }
+
 /** 工作台事件按资源 ID 投递，终端内容只来自用户创建的本地 shell。 */
 export type WorkbenchEvent =
   | { type: "terminal-data"; id: string; data: string }
@@ -90,7 +93,12 @@ export type WorkbenchBridge = {
     root: string,
     input: { title: string; body?: string; base?: string },
   ) => Promise<void>
-  terminalOpen: (root: string, id: string) => Promise<void>
+  terminalOpen: (
+    root: string,
+    id: string,
+    cols?: number,
+    rows?: number,
+  ) => Promise<WorkbenchTerminalInfo>
   terminalWrite: (id: string, data: string) => Promise<void>
   terminalResize: (id: string, cols: number, rows: number) => Promise<void>
   terminalClose: (id: string) => Promise<void>

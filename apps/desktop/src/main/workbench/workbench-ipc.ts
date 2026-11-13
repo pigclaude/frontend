@@ -150,12 +150,15 @@ export class WorkbenchIpc {
         ...(base === undefined ? {} : { base: string(base, 250) }),
       })
     })
-    handle("terminal-open", async (_window, event, [root, id]) => {
+    handle("terminal-open", async (_window, event, [root, id, cols, rows]) => {
       const directory = await project(root)
       if (!options.isTrusted(event) || options.membership()?.state !== "active") {
         throw new Error("MEMBERSHIP_REQUIRED")
       }
-      this.#terminals.open(event.sender, resourceId(id), directory)
+      return this.#terminals.open(event.sender, resourceId(id), directory, {
+        cols: number(cols === undefined ? 80 : cols, 1, 500),
+        rows: number(rows === undefined ? 24 : rows, 1, 300),
+      })
     })
     handle("terminal-write", (_window, event, [id, data]) =>
       this.#terminals.write(event.sender, resourceId(id), string(data, 128 * 1024)),

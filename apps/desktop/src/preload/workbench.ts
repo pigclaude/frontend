@@ -20,7 +20,7 @@ export function workbenchBridge(): WorkbenchBridge {
     restore: (root, id) => invoke("checkpoint-restore", root, id),
     pullRequest: (root) => invoke("pr", root),
     createPullRequest: (root, input) => invoke("pr-create", root, input),
-    terminalOpen: (root, id) => invoke("terminal-open", root, id),
+    terminalOpen: (root, id, cols, rows) => invoke("terminal-open", root, id, cols, rows),
     terminalWrite: (id, data) => invoke("terminal-write", id, data),
     terminalResize: (id, cols, rows) => invoke("terminal-resize", id, cols, rows),
     terminalClose: (id) => invoke("terminal-close", id),

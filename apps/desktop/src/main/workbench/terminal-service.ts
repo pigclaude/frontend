@@ -1,10 +1,11 @@
 // 启动和管理工作台的真实 PTY，按主窗口绑定输入、尺寸、输出和进程生命周期。
 import { execFile } from "node:child_process"
 import { createRequire } from "node:module"
+import { basename } from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
 import type { WebContents } from "electron"
 import type { IPty } from "node-pty"
-import type { WorkbenchEvent } from "../../workbench-contract"
+import type { WorkbenchEvent, WorkbenchTerminalInfo } from "../../workbench-contract"
 import { workbenchChildEnv } from "./child-env"
 
 const requirePty = createRequire(import.meta.url)
@@ -21,7 +22,12 @@ export class WorkbenchTerminals {
   readonly #entries = new Map<string, TerminalEntry>()
 
   /** 在已经验证的项目目录启动交互式 shell，拒绝重复的资源 ID。 */
-  open(owner: WebContents, id: string, root: string): void {
+  open(
+    owner: WebContents,
+    id: string,
+    root: string,
+    size: { cols: number; rows: number },
+  ): WorkbenchTerminalInfo {
     if (this.#entries.has(id) || this.#entries.size >= maxTerminals) {
       throw new Error("WORKBENCH_TERMINAL_LIMIT")
     }
@@ -34,8 +40,8 @@ export class WorkbenchTerminals {
     try {
       child = spawn(shell, [], {
         cwd: root,
-        cols: 80,
-        rows: 24,
+        cols: size.cols,
+        rows: size.rows,
         name: "xterm-256color",
         env: { ...workbenchChildEnv(), TERM: "xterm-256color", COLORTERM: "truecolor" },
       })
@@ -56,6 +62,7 @@ export class WorkbenchTerminals {
       confirmExit()
       this.#send(owner, { type: "terminal-exit", id, exitCode })
     })
+    return { cwd: root, shell: basename(shell.replaceAll("\\", "/")).replace(/\.exe$/i, "") }
   }
 
   /** 将当前窗口的键盘输入写到指定 PTY。 */

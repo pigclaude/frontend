@@ -75,5 +75,19 @@ for (const theme of ["light", "dark"] as const) {
     expect(width).toEqual({ inner: 420, scroll: 420, scale: String(18 / 13) })
     await page.evaluate(() => document.fonts.ready)
     await expect(page).toHaveScreenshot(`authorize-compact-${theme}.png`, options)
+    await page.getByRole("button", { name: "使用此配置", exact: true }).click()
+    await expect(page.getByRole("heading", { name: "检测本次授权环境", exact: true })).toBeVisible()
+    const check = page.getByRole("button", { name: "检测环境并准备授权", exact: true })
+    await expect(check).toBeInViewport()
+    await expect(page).toHaveScreenshot(`authorize-environment-compact-${theme}.png`, options)
+    await check.click()
+    await expect(
+      page.getByRole("heading", { name: "查看本机自检报告并继续授权", exact: true }),
+    ).toBeVisible()
+    await expect(page.getByRole("button", { name: "重新自检", exact: true })).toBeInViewport()
+    await expect(page).toHaveScreenshot(`authorize-waiting-compact-${theme}.png`, options)
+    await expect(page.getByRole("heading", { name: "已加入号池", exact: true })).toBeVisible()
+    await expect(page.getByRole("button", { name: "回到账号", exact: true })).toBeInViewport()
+    await expect(page).toHaveScreenshot(`authorize-completed-compact-${theme}.png`, options)
   })
 }

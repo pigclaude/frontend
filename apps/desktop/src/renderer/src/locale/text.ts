@@ -4,6 +4,9 @@ import { useLocale, type Locale } from "@pigclaude/ui-primitives"
 import { enUS } from "./messages.en-US"
 import { zhCN } from "./messages.zh-CN"
 
+/** 当前桌面应用交付的界面语言。 */
+export const desktopLocale: Locale = "zh-CN"
+
 /** PigClaude 的全部文案键。 */
 export type TextKey = keyof typeof zhCN
 
@@ -35,6 +38,6 @@ export function desktopText(
   key: TextKey,
   values?: Readonly<Record<string, string | number>>,
 ): string {
-  const label = text("zh-CN", key)
+  const label = text(desktopLocale, key)
   return values ? fill(label, values) : label
 }

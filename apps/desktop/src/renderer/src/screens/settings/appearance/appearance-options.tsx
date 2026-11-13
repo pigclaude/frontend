@@ -1,12 +1,15 @@
 // 保留 PigClaude 旧外观中可独立设置的正文字体、字重和交互显示项。
 import {
+  fontDisplayName,
+  fontFromDisplayName,
+  Input,
   SegmentedControl,
   SettingRow,
   Switch,
   type AppearanceController,
   type AppearanceSettings,
 } from "@pigclaude/ui-primitives"
-import { useText } from "../../../locale/text"
+import { useText, type TextKey } from "../../../locale/text"
 
 /** 显示 Pigcode 外观页未提供的 PigClaude 本机偏好。 */
 export function AppearanceOptions({ appearance }: { appearance: AppearanceController }) {
@@ -35,6 +38,27 @@ export function AppearanceOptions({ appearance }: { appearance: AppearanceContro
           onValueChange={(value) => set("contentFont", value)}
         />
       </SettingRow>
+      {settings.splitModes
+        ? (["light", "dark"] as const).map((mode) => {
+            const key: TextKey = mode === "light" ? "appearance.lightFont" : "appearance.darkFont"
+            return (
+              <SettingRow key={mode} title={t(key)}>
+                <Input
+                  aria-label={t(key)}
+                  defaultValue={fontDisplayName("ui", settings[mode].uiFont)}
+                  key={settings[mode].uiFont}
+                  onBlur={(event) => {
+                    const uiFont = fontFromDisplayName("ui", event.currentTarget.value)
+                    update((current) => ({ ...current, [mode]: { ...current[mode], uiFont } }))
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur()
+                  }}
+                />
+              </SettingRow>
+            )
+          })
+        : null}
       {weightFields.map((key) => (
         <SettingRow key={key} title={t(`appearance.${key}`)}>
           <SegmentedControl

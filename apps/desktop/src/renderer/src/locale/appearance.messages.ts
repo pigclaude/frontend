@@ -1,6 +1,8 @@
 // 负责 PigClaude 的 Dock 外观设置文案。
 /** 外观适配层的简体中文文案。 */
 export const appearanceZhCN = {
+  "appearance.lightFont": "浅色主题界面字体",
+  "appearance.darkFont": "深色主题界面字体",
   "appearance.contentFont": "正文字体",
   "appearance.contentFont.same": "与界面相同",
   "appearance.contentFont.serif": "衬线",
@@ -30,6 +32,8 @@ export const appearanceZhCN = {
 
 /** Dock 外观设置的英文文案。 */
 export const appearanceEnUS = {
+  "appearance.lightFont": "Light theme interface font",
+  "appearance.darkFont": "Dark theme interface font",
   "appearance.contentFont": "Content font",
   "appearance.contentFont.same": "Same as interface",
   "appearance.contentFont.serif": "Serif",

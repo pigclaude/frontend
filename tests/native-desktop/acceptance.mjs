@@ -228,18 +228,6 @@ try {
   await expect(screen(page, "general")).toBeVisible()
   await page.getByRole("button", { name: "外观", exact: true }).click()
   await expect(screen(page, "appearance")).toBeVisible()
-  await page
-    .getByRole("radiogroup", { name: "模式", exact: true })
-    .getByRole("radio", { name: "深色", exact: true })
-    .click()
-  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark")
-  await expect
-    .poll(() =>
-      page.evaluate(() => JSON.parse(localStorage.getItem("pigcode-appearance") ?? "{}").mode),
-    )
-    .toBe("dark")
-  pass("appearance change reaches renderer and persisted setting")
-  if (platform !== "darwin") await capture(page, "appearance-dark")
   await page.keyboard.press("Alt+ArrowLeft")
   await expect(screen(page, "general")).toBeVisible()
   await page.keyboard.press("Alt+ArrowRight")
@@ -252,6 +240,35 @@ try {
   await page.keyboard.press(`${mod}+k`)
   await expect(page.getByRole("dialog", { name: "行动" })).toBeVisible()
   await page.keyboard.press("Escape")
+  const settingsPages = [
+    ["profile", "我的账户"],
+    ["accounts", "Claude 账号"],
+    ["browser-profiles", "浏览器指纹"],
+    ["proxies", "代理"],
+    ["switching", "切换规则"],
+    ["usage", "用量"],
+    ["environment", "环境检测"],
+    ["general", "通用"],
+    ["appearance", "外观"],
+    ["session", "会话"],
+    ["menubar", "托盘与菜单栏"],
+    ["network", "中继与网络"],
+    ["data", "数据与隐私"],
+    ["about", "关于"],
+  ]
+  for (const [id, label] of settingsPages) {
+    await page.keyboard.press(`${mod}+k`)
+    const palette = page.getByRole("dialog", { name: "行动" })
+    await palette.getByPlaceholder("搜索或执行命令…").fill(label)
+    await palette.getByRole("option", { name: label, exact: true }).click()
+    await expect(screen(page, id)).toBeVisible()
+  }
+  await page.getByPlaceholder("搜索设置").fill("时区")
+  await expect(page.getByRole("button", { name: "浏览器指纹", exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "代理", exact: true })).toBeHidden()
+  await page.getByRole("button", { name: "返回应用" }).click()
+  await expect(screen(page, "chat")).toBeVisible()
+  pass("14 settings palette destinations, sidebar search and return to workspace")
   await page.keyboard.press(`${mod}+n`)
   await expect(screen(page, "chat-new")).toBeVisible()
   await page.keyboard.press(`${mod}+b`)
@@ -270,6 +287,20 @@ try {
     pass("actual BrowserWindow minimize, restore and maximize IPC")
   }
 
+  await page.getByRole("button", { name: "设置", exact: true }).click()
+  await page.getByRole("button", { name: "外观", exact: true }).click()
+  await page
+    .getByRole("radiogroup", { name: "模式", exact: true })
+    .getByRole("radio", { name: "深色", exact: true })
+    .click()
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark")
+  await expect
+    .poll(() =>
+      page.evaluate(() => JSON.parse(localStorage.getItem("pigcode-appearance") ?? "{}").mode),
+    )
+    .toBe("dark")
+  pass("appearance change reaches renderer and persisted setting")
+  await capture(page, "appearance-dark")
   await closeApplication()
   page = await launch()
   await expect(screen(page, "chat")).toBeVisible()
@@ -295,6 +326,8 @@ try {
     applied: document.documentElement.dataset.theme,
     saved: JSON.parse(localStorage.getItem("pigcode-appearance") ?? "{}").mode,
   }))
+  assert.deepEqual(report.themeAfterRestart, { applied: "dark", saved: "dark" })
+  pass("theme retained after restart")
 } catch (error) {
   report.error = String(error)
   const page = application?.windows()[0]

@@ -13,11 +13,9 @@ export async function systemInput(action, ...values) {
   )
   const [x, y, toX, toY] = args
   if (process.platform === "win32") {
-    await run(
-      "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-File", windows, action, ...args],
-      { timeout: 12_000 },
-    )
+    await run("pwsh.exe", ["-NoProfile", "-NonInteractive", "-File", windows, action, ...args], {
+      timeout: 12_000,
+    })
     return
   }
   if (action === "capture") {

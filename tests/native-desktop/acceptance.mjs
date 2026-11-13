@@ -25,7 +25,10 @@ function pass(check) {
 async function launch() {
   application = await _electron.launch({
     executablePath: electron,
-    args: [desktopPath],
+    args: [
+      desktopPath,
+      ...(process.platform === "linux" ? ["--password-store=gnome-libsecret"] : []),
+    ],
     env: {
       ...process.env,
       PIGCLAUDE_USER_DATA: userData,
@@ -91,6 +94,7 @@ try {
   await expect(page.getByRole("heading", { name: "欢迎使用 PigClaude" })).toBeVisible()
   assert.equal(await page.locator("[data-main-window]").count(), 0)
   assert.equal(report.environment.encryption, true)
+  if (process.platform === "linux") assert.equal(report.environment.keyring, "gnome_libsecret")
   await capture(page, "login")
   pass("signed out remains in welcome, OS safeStorage available")
   const prepared = page.getByRole("button", { name: "复制链接", exact: true })

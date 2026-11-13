@@ -1,5 +1,6 @@
 // 负责指纹字段的 shadcn 控件与无障碍标签：每个字段输出设置页样式的一行，左边名称、提示和错误，右边控件。
 
+import { desktopText } from "../locale/text"
 import { useState, type ReactNode } from "react"
 import type {
   ClaudeFingerprintView,
@@ -63,7 +64,7 @@ export function FingerprintField({
     (keepIndividualArgs ||
       rawArgs.some((arg) => /[\r\n]/.test(arg)) ||
       (rawArgs.length === 1 && rawArgs[0] === ""))
-  const hintText = individualArgs ? "每组是一条启动参数；原有换行类型保留，可单独删除。" : meta.hint
+  const hintText = individualArgs ? desktopText("fingerprint.fingerprint-field.1") : meta.hint
   const describedBy =
     [hintText ? `${id}-hint` : "", error ? `${id}-error` : ""].filter(Boolean).join(" ") ||
     undefined
@@ -144,7 +145,9 @@ export function FingerprintField({
           <SelectContent className="fp-select-menu">
             {(key === "brand" || key === "platform") &&
             !(meta.options ?? []).some((option) => option.value === "") ? (
-              <SelectItem value={defaultChoice}>跟随默认</SelectItem>
+              <SelectItem value={defaultChoice}>
+                {desktopText("fingerprint.fingerprint-field.2")}
+              </SelectItem>
             ) : null}
             {(meta.options ?? []).map((option) => (
               <SelectItem key={option.value || defaultChoice} value={option.value || defaultChoice}>
@@ -163,7 +166,7 @@ export function FingerprintField({
           label={meta.label}
           value={value[key] ?? ""}
           options={fingerprintChoices(key, value)}
-          defaultLabel={meta.defaultLabel ?? "跟随默认"}
+          defaultLabel={meta.defaultLabel ?? desktopText("fingerprint.fingerprint-field.3")}
           placeholder={meta.placeholder}
           numeric={key === "seed" || key === "hardwareConcurrency"}
           mono={meta.mono}
@@ -221,7 +224,9 @@ export function FingerprintField({
             <div className="trail">
               <Switch
                 id={`${id}-${category.value}`}
-                aria-label={`停用 ${category.label} 伪装`}
+                aria-label={desktopText("fingerprint.fingerprint-field.4", {
+                  value1: String(category.label),
+                })}
                 checked={(value.disableSpoofing ?? []).includes(category.value)}
                 onCheckedChange={(checked) => {
                   const current = value.disableSpoofing ?? []

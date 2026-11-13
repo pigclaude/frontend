@@ -1,6 +1,8 @@
 // 负责逐项展示本机中继、Claude Code CLI、账号、代理和出口检测结果；
 // 数据来自 session.status、session.models、claudeAccounts 和 proxies，不显示 token、代理地址或环境变量。
 
+import { desktopText } from "../locale/text"
+import { SettingPage, SettingRow } from "@pigclaude/ui-primitives"
 import { useEffect, useState } from "react"
 import {
   isAccountSelectable,
@@ -79,53 +81,65 @@ export function EnvironmentScreen({
     try {
       setEgress(await onCheckEgress(proxy.id))
     } catch {
-      setEgressError("出口检测失败，请检查代理")
+      setEgressError(desktopText("settings.environment-screen.1"))
     } finally {
       setEgressLoading(false)
     }
   }
 
   return (
-    <div className="page narrow">
-      <header className="page-head">
-        <div>
-          <h1>环境检测</h1>
-          <p className="sub">会话进程环境逐项核对与网络路径</p>
-        </div>
-        <div className="actions">
+    <SettingPage
+      title={desktopText("settings.environment-screen.2")}
+      sub={desktopText("settings.environment-screen.3")}
+      actions={
+        <>
           <Button variant="primary" onClick={onRecheck} disabled={modelsLoading}>
-            {modelsLoading ? "检测中…" : "重新检测"}
+            {modelsLoading
+              ? desktopText("settings.environment-screen.4")
+              : desktopText("settings.environment-screen.5")}
           </Button>
           {modelsLoading ? (
             <Button variant="ghost" onClick={onCancelModels}>
-              取消检测
+              {desktopText("settings.environment-screen.6")}
             </Button>
           ) : null}
-        </div>
-      </header>
+        </>
+      }
+    >
       <section className="section">
         <div className="section-head">
-          <h2>会话进程</h2>
-          <span className="end">{modelsLoading ? "检测中" : cli.label}</span>
+          <h2>{desktopText("settings.environment-screen.7")}</h2>
+          <span className="end">
+            {modelsLoading ? desktopText("settings.environment-screen.8") : cli.label}
+          </span>
         </div>
         <div className="group">
-          <CheckRow label="本机中继" value={daemon.value} status={daemon.status} />
+          <CheckRow
+            label={desktopText("settings.environment-screen.9")}
+            value={daemon.value}
+            status={daemon.status}
+          />
           <CheckRow label="Claude Code" value={cli.value} status={cli.status} />
           <CheckRow
-            label="活动会话"
+            label={desktopText("settings.environment-screen.10")}
             value={
               status?.active === true
-                ? `会话运行中 · ${status.model ?? "默认模型"}`
-                : "没有活动会话"
+                ? desktopText("settings.environment-screen.11", {
+                    value1: String(status.model ?? "—"),
+                  })
+                : desktopText("settings.environment-screen.12")
             }
             status={status?.active === true ? "ok" : "idle"}
           />
           <CheckRow
-            label="Claude 账号"
+            label={desktopText("settings.environment-screen.13")}
             value={
               accounts.length === 0
-                ? "没有可用的 Claude 账号"
-                : `${accounts.length} 个账号 · ${availableAccounts.length} 个可用`
+                ? desktopText("settings.environment-screen.14")
+                : desktopText("settings.environment-screen.15", {
+                    value1: String(accounts.length),
+                    value2: String(availableAccounts.length),
+                  })
             }
             status={availableAccounts.length > 0 ? "ok" : "bad"}
           />
@@ -135,14 +149,17 @@ export function EnvironmentScreen({
             {modelsError}
           </p>
         ) : null}
-        <p className="note">模型探针会启动一次 Claude Code 查询，可能较慢；失败不影响已有会话。</p>
+        <p className="note">{desktopText("settings.environment-screen.16")}</p>
       </section>
       <section className="section">
         <div className="section-head">
-          <h2>网络路径</h2>
+          <h2>{desktopText("settings.environment-screen.17")}</h2>
           {proxies.length > 0 ? (
             <Select value={proxy?.id ?? ""} onValueChange={setProxyId}>
-              <SelectTrigger aria-label="代理" className="select-bare">
+              <SelectTrigger
+                aria-label={desktopText("settings.environment-screen.18")}
+                className="select-bare"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -157,23 +174,23 @@ export function EnvironmentScreen({
         </div>
         <div className="group">
           <CheckRow
-            label="网络出口"
+            label={desktopText("settings.environment-screen.19")}
             value={
               proxy === null
-                ? "系统网络（直连）"
+                ? desktopText("settings.environment-screen.20")
                 : proxy.lastTest?.ok === true
-                  ? `${proxy.name} · ${proxy.lastTest.ip ?? "出口未知"}`
+                  ? `${proxy.name} · ${proxy.lastTest.ip ?? desktopText("settings.environment-screen.21")}`
                   : proxy.lastTest === null
-                    ? `${proxy.name} · 待检测`
-                    : `${proxy.name} · 未通过测试`
+                    ? desktopText("settings.environment-screen.22", { value1: String(proxy.name) })
+                    : desktopText("settings.environment-screen.23", { value1: String(proxy.name) })
             }
             status={proxy?.lastTest?.ok === true ? "ok" : proxy === null ? "ok" : "warn"}
           />
           <CheckRow
-            label="出口检测"
+            label={desktopText("settings.environment-screen.24")}
             value={
               proxy === null
-                ? "未绑定代理，无需检测"
+                ? desktopText("settings.environment-screen.25")
                 : egressValue(egress, egressLoading, egressError)
             }
             status={egress?.ok === true ? "ok" : proxy === null || egress === null ? "idle" : "bad"}
@@ -186,14 +203,14 @@ export function EnvironmentScreen({
             disabled={proxy === null || egressLoading}
             onClick={() => void checkEgress()}
           >
-            {egressLoading ? "检测中…" : "检测出口"}
+            {egressLoading
+              ? desktopText("settings.environment-screen.26")
+              : desktopText("settings.environment-screen.27")}
           </Button>
         </div>
-        <p className="note">
-          已绑定代理的请求不会直连，代理不通时以 503 结束；未绑定代理的账号使用系统网络。
-        </p>
+        <p className="note">{desktopText("settings.environment-screen.28")}</p>
       </section>
-    </div>
+    </SettingPage>
   )
 }
 
@@ -201,13 +218,11 @@ type CheckStatus = "ok" | "warn" | "bad" | "idle"
 
 function CheckRow({ label, value, status }: { label: string; value: string; status: CheckStatus }) {
   return (
-    <div className="item">
-      <div className="main">
-        <div className="ttl">{label}</div>
-        <div className="desc">{value}</div>
-      </div>
-      <span className={statusClass(status)}>{statusText(status)}</span>
-    </div>
+    <SettingRow
+      title={label}
+      description={value}
+      value={<span className={statusClass(status)}>{statusText(status)}</span>}
+    />
   )
 }
 
@@ -219,10 +234,10 @@ function statusClass(status: CheckStatus): string {
 }
 
 function statusText(status: CheckStatus): string {
-  if (status === "ok") return "正常"
-  if (status === "warn") return "待处理"
-  if (status === "bad") return "不可用"
-  return "未检测"
+  if (status === "ok") return desktopText("settings.environment-screen.29")
+  if (status === "warn") return desktopText("settings.environment-screen.30")
+  if (status === "bad") return desktopText("settings.environment-screen.31")
+  return desktopText("settings.environment-screen.32")
 }
 
 function cliState(
@@ -231,12 +246,29 @@ function cliState(
   error: string | null,
 ): { value: string; status: CheckStatus; label: string } {
   if (loading)
-    return { value: "正在通过会话模型探针检查 Claude Code", status: "idle", label: "检测中" }
+    return {
+      value: desktopText("settings.environment-screen.33"),
+      status: "idle",
+      label: desktopText("settings.environment-screen.34"),
+    }
   if (error !== null) {
-    return { value: `没有可用的模型 · ${error}`, status: "bad", label: "不可用" }
+    return {
+      value: desktopText("settings.environment-screen.35", { value1: String(error) }),
+      status: "bad",
+      label: desktopText("settings.environment-screen.36"),
+    }
   }
-  if (models.length === 0) return { value: "没有可用的模型", status: "bad", label: "不可用" }
-  return { value: `可用 · ${models.length} 个模型`, status: "ok", label: "正常" }
+  if (models.length === 0)
+    return {
+      value: desktopText("settings.environment-screen.37"),
+      status: "bad",
+      label: desktopText("settings.environment-screen.38"),
+    }
+  return {
+    value: desktopText("settings.environment-screen.39", { value1: String(models.length) }),
+    status: "ok",
+    label: desktopText("settings.environment-screen.40"),
+  }
 }
 
 function daemonState(
@@ -245,15 +277,19 @@ function daemonState(
   loading: boolean,
   error: string | null,
 ): { value: string; status: CheckStatus } {
-  if (loading) return { value: "检测中", status: "idle" }
-  if (status?.active === true) return { value: "会话运行中", status: "ok" }
-  if (models.length > 0) return { value: "可用", status: "ok" }
-  return { value: error ?? "未检测到可用中继", status: "bad" }
+  if (loading) return { value: desktopText("settings.environment-screen.41"), status: "idle" }
+  if (status?.active === true)
+    return { value: desktopText("settings.environment-screen.42"), status: "ok" }
+  if (models.length > 0)
+    return { value: desktopText("settings.environment-screen.43"), status: "ok" }
+  return { value: error ?? desktopText("settings.environment-screen.44"), status: "bad" }
 }
 
 function egressValue(egress: EgressView | null, loading: boolean, error: string | null): string {
-  if (loading) return "检测中…"
+  if (loading) return desktopText("settings.environment-screen.45")
   if (error !== null) return error
-  if (egress === null) return "尚未检测"
-  return egress.ok ? `出口 IP ${egress.ip}` : egress.message
+  if (egress === null) return desktopText("settings.environment-screen.46")
+  return egress.ok
+    ? desktopText("settings.environment-screen.47", { value1: String(egress.ip) })
+    : egress.message
 }

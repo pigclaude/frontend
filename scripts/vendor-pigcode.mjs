@@ -73,6 +73,10 @@ export function rewriteSource(text, rest = "") {
   if (rest === "src/theme/theme-presets.ts") {
     next = next.replace('name: "pigcode"', 'name: "PigClaude"')
   }
+  if (rest === "src/theme/theme-import.test.ts") {
+    next = next.replaceAll("pigcode + Nord", "PigClaude + Nord")
+    next = next.replaceAll("pigcode-nord.pigcode-theme.json", "pigclaude-nord.pigcode-theme.json")
+  }
   // 两种客户端的主题文件共用同一字段结构，导出仍用 Pigcode 格式。
   if (rest === "src/theme/theme-file.ts") {
     next = next.replace(

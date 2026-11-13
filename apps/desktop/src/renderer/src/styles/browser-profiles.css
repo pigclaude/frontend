@@ -17,3 +17,21 @@
 .browser-profile-fields > .fingerprint-form {
   margin-top: 16px;
 }
+
+.profile-description {
+  display: block;
+}
+
+.pool-account-mark {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: var(--r-md);
+  background: var(--avatar);
+  color: var(--fg-2);
+}
+
+.pool-account-grip {
+  color: var(--muted);
+}

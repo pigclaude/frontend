@@ -1,4 +1,5 @@
 // 负责登录后的全屏新手引导：三步分屏、顶部进度、每步可跳过，随时「稍后再说」进入主界面。
+import { desktopText } from "../locale/text"
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react"
 import { Icon } from "../components/icon"
 import { TrafficLights } from "../components/traffic-lights"
@@ -24,18 +25,18 @@ export type OnboardingScreenProps = {
 const stepCopy: Record<OnboardingStep, { icon: string; title: string; why: string }> = {
   proxy: {
     icon: "globe",
-    title: "添加一个代理（可选）",
-    why: "代理可选：未绑定代理的账号使用系统网络；已绑定代理的请求不会直连，避免账号被风控。",
+    title: desktopText("flows.onboarding-screen.1"),
+    why: desktopText("flows.onboarding-screen.2"),
   },
   account: {
     icon: "user",
-    title: "添加 Claude 账号",
-    why: "在外部浏览器里走 Claude 官方登录。绑定代理时出口和代理一致才会继续；不绑定则使用系统网络。",
+    title: desktopText("flows.onboarding-screen.3"),
+    why: desktopText("flows.onboarding-screen.4"),
   },
   session: {
     icon: "terminal",
-    title: "开始第一个会话",
-    why: "会话在独立目录里运行，不读你的 ~/.claude/settings.json。",
+    title: desktopText("flows.onboarding-screen.5"),
+    why: desktopText("flows.onboarding-screen.6"),
   },
 }
 
@@ -78,7 +79,7 @@ export function OnboardingScreen({
           onClick={onFinish}
           disabled={proxyPending}
         >
-          稍后再说
+          {desktopText("flows.onboarding-screen.7")}
         </Button>
       </div>
       <main className="win-body">
@@ -89,7 +90,11 @@ export function OnboardingScreen({
               <Icon name={copy.icon} />
             </div>
             <p className="onboarding-count">
-              第 {index + 1} 步，共 {onboardingSteps.length} 步
+              {desktopText("flows.onboarding-screen.8")}
+              {index + 1}
+              {desktopText("flows.onboarding-screen.9")}
+              {onboardingSteps.length}
+              {desktopText("flows.onboarding-screen.10")}
             </p>
             <h1 id="onboarding-title" ref={heading} tabIndex={-1}>
               {copy.title}
@@ -106,11 +111,11 @@ export function OnboardingScreen({
               <StepFoot onSkip={() => advance({ type: "skip" })}>
                 {state.step === "account" ? (
                   <Button variant="primary" size="lg" onClick={() => onOpenAuthorize(state)}>
-                    添加账号
+                    {desktopText("flows.onboarding-screen.11")}
                   </Button>
                 ) : (
                   <Button variant="primary" size="lg" onClick={() => advance({ type: "complete" })}>
-                    开始第一个会话
+                    {desktopText("flows.onboarding-screen.12")}
                     <Icon name="arrow" />
                   </Button>
                 )}
@@ -151,7 +156,7 @@ function ProxyStep({
         throw new Error()
       name = parsed.host
     } catch {
-      setError("代理地址无效，请输入 HTTP 或 HTTPS 代理地址。")
+      setError(desktopText("flows.onboarding-screen.13"))
       return
     }
     inFlight.current = true
@@ -169,7 +174,7 @@ function ProxyStep({
         inFlight.current = false
         setPending(false)
         onPendingChange(false)
-        setError("代理验证失败，请检查代理和 Xray 后重试。")
+        setError(desktopText("flows.onboarding-screen.14"))
       },
     )
   }
@@ -178,7 +183,7 @@ function ProxyStep({
     <form className="onboarding-form" onSubmit={submit}>
       <Input
         className="mono"
-        aria-label="代理地址"
+        aria-label={desktopText("flows.onboarding-screen.15")}
         aria-describedby="onboarding-proxy-hint"
         placeholder="http://user:pass@host:8000"
         autoComplete="off"
@@ -188,12 +193,14 @@ function ProxyStep({
         onChange={(event) => setAddress(event.target.value)}
       />
       <p className="onboarding-hint" id="onboarding-proxy-hint">
-        支持 http、https，添加前会先测试一次；也可以跳过，让账号使用系统网络
+        {desktopText("flows.onboarding-screen.16")}
       </p>
       {error !== null && <p role="alert">{error}</p>}
       <StepFoot onSkip={onSkip} disabled={pending}>
         <Button variant="primary" size="lg" type="submit" disabled={!ready}>
-          {pending ? "正在验证…" : "测试并添加"}
+          {pending
+            ? desktopText("flows.onboarding-screen.17")
+            : desktopText("flows.onboarding-screen.18")}
         </Button>
       </StepFoot>
     </form>
@@ -213,7 +220,7 @@ function StepFoot({
   return (
     <div className="onboarding-foot">
       <Button variant="ghost" size="lg" type="button" onClick={onSkip} disabled={disabled}>
-        跳过
+        {desktopText("flows.onboarding-screen.19")}
       </Button>
       {children}
     </div>
@@ -224,7 +231,7 @@ function StepFoot({
 function OnboardingProgress({ state }: { state: OnboardingState }) {
   const current = onboardingSteps.indexOf(state.step)
   return (
-    <ol className="onboarding-progress" aria-label="引导进度">
+    <ol className="onboarding-progress" aria-label={desktopText("flows.onboarding-screen.20")}>
       {onboardingSteps.map((step, index) => {
         const status =
           index === current
@@ -251,8 +258,8 @@ function OnboardingProgress({ state }: { state: OnboardingState }) {
 }
 
 const progressLabel = {
-  current: "当前步骤",
-  todo: "未开始",
-  done: "已完成",
-  skipped: "已跳过",
+  current: desktopText("flows.onboarding-screen.21"),
+  todo: desktopText("flows.onboarding-screen.22"),
+  done: desktopText("flows.onboarding-screen.23"),
+  skipped: desktopText("flows.onboarding-screen.24"),
 } as const

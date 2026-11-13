@@ -16,6 +16,15 @@
   -webkit-app-region: drag;
 }
 
+/* 给 Windows/Linux 原生窗口按钮保留 Electron 提供的标题栏空间。 */
+html[data-platform="win32"] .win-top,
+html[data-platform="linux"] .win-top {
+  padding-inline-start: calc(18px + env(titlebar-area-x, 0px));
+  padding-inline-end: calc(
+    18px + 100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)
+  );
+}
+
 .win-top :is(button, a, input, select, textarea, [role="button"]) {
   -webkit-app-region: no-drag;
 }

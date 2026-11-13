@@ -4,9 +4,11 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
+import { execFile } from "node:child_process"
+import { promisify } from "node:util"
 import { _electron, expect } from "@playwright/test"
 import { startMembershipFixture } from "./membership-fixture.mjs"
-import { closeFromTitleBar, verifySystemControls } from "./window-controls.mjs"
+import { verifySystemControls } from "./window-controls.mjs"
 
 const out = resolve(process.argv[2] ?? "test-results/native-desktop")
 await mkdir(out, { recursive: true })
@@ -16,6 +18,8 @@ const report = { platform: process.platform, arch: process.arch, checks: [] }
 const desktopPath = resolve("apps/desktop")
 const electron = createRequire(join(desktopPath, "package.json"))("electron")
 let application
+let applicationPid
+const run = promisify(execFile)
 
 function pass(check) {
   report.checks.push(check)
@@ -37,37 +41,67 @@ async function launch() {
     },
     timeout: 45_000,
   })
+  applicationPid = await application.evaluate(() => process.pid)
   const page = await application.firstWindow({ timeout: 25_000 })
   page.setDefaultTimeout(10_000)
   await page.waitForFunction(() => !!window.pigclaude?.membership, null, { timeout: 15_000 })
   return page
 }
 
+function processRunning(pid) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    if (error.code === "ESRCH") return false
+    throw error
+  }
+}
+
 async function closeApplication() {
   if (!application) return
   const current = application
-  application = undefined
-  const process = current.process()
-  if (process.exitCode !== null || process.signalCode !== null) return
-  const exited = new Promise((resolve) => process.once("exit", resolve))
-  const timeout = setTimeout(() => process.kill("SIGKILL"), 7000)
-  let deadline
-  try {
-    await Promise.race([
-      current.close().catch(() => exited),
-      exited,
-      new Promise((_, reject) => {
-        deadline = setTimeout(() => reject(new Error("Electron 退出超时")), 10_000)
-      }),
-    ])
-  } finally {
-    clearTimeout(timeout)
-    clearTimeout(deadline)
+  const pid = applicationPid
+  void current.close().catch(() => {})
+  const until = Date.now() + 5000
+  while (processRunning(pid) && Date.now() < until) {
+    await new Promise((resolve) => setTimeout(resolve, 100))
   }
+  if (processRunning(pid)) {
+    if (process.platform === "win32") {
+      await run("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { timeout: 5000 })
+    } else {
+      process.kill(pid, "SIGKILL")
+    }
+    await expect.poll(() => processRunning(pid), { timeout: 5000 }).toBe(false)
+  }
+  application = undefined
 }
 
 async function capture(page, name) {
   await page.screenshot({ path: join(out, `${name}.png`) })
+}
+
+async function checkFlowTop(page, expectedButton) {
+  const geometry = await page.evaluate((expectedButton) => {
+    const bar = document.querySelector(".win-top")
+    const overlay = navigator.windowControlsOverlay?.getTitlebarAreaRect()
+    const button = [...bar.querySelectorAll("button")].find(
+      (element) => element.textContent.trim() === expectedButton,
+    )
+    const rect = button?.getBoundingClientRect()
+    return {
+      drag: getComputedStyle(bar).webkitAppRegion,
+      traffic: !!bar.querySelector(".traffic"),
+      reachable:
+        !expectedButton ||
+        (!!rect &&
+          (!overlay ||
+            !navigator.windowControlsOverlay.visible ||
+            (rect.left >= overlay.left && rect.right <= overlay.right))),
+    }
+  }, expectedButton)
+  assert.deepEqual(geometry, { drag: "drag", traffic: false, reachable: true })
 }
 
 function nativeState() {
@@ -104,6 +138,7 @@ try {
   assert.equal(report.environment.encryption, true)
   if (process.platform === "linux") assert.equal(report.environment.keyring, "gnome_libsecret")
   await expect(page.getByRole("heading", { name: "欢迎使用 PigClaude" })).toBeVisible()
+  await checkFlowTop(page, null)
   assert.equal(await page.locator("[data-main-window]").count(), 0)
   await capture(page, "login")
   pass("signed out remains in welcome, OS safeStorage available")
@@ -112,6 +147,7 @@ try {
   await expect(prepared).toBeEnabled({ timeout: 15_000 })
   await fixture.approve()
   await page.getByRole("button", { name: "稍后再说" }).waitFor()
+  await checkFlowTop(page, "稍后再说")
   await capture(page, "onboarding")
   await page.getByRole("button", { name: "稍后再说" }).click()
   await expect(screen(page, "chat")).toBeVisible()
@@ -186,6 +222,12 @@ try {
   await expect(screen(page, "general")).toBeVisible()
   await page.getByRole("button", { name: "外观", exact: true }).click()
   await expect(screen(page, "appearance")).toBeVisible()
+  await page
+    .getByRole("radiogroup", { name: "模式", exact: true })
+    .getByRole("radio", { name: "深色", exact: true })
+    .click()
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark")
+  if (platform !== "darwin") await capture(page, "appearance-dark")
   await page.keyboard.press("Alt+ArrowLeft")
   await expect(screen(page, "general")).toBeVisible()
   await page.keyboard.press("Alt+ArrowRight")
@@ -216,25 +258,25 @@ try {
     pass("actual BrowserWindow minimize, restore and maximize IPC")
   }
 
-  if (platform !== "darwin") {
-    await closeFromTitleBar(application, page)
-    pass("system window close button")
-  }
   await closeApplication()
   page = await launch()
   await expect(screen(page, "chat")).toBeVisible()
   assert.equal(await page.evaluate(() => localStorage.getItem("pigclaude.sidebarWidth")), "322")
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark")
   pass("full Electron restart retains encrypted login and sidebar width")
   await page.getByRole("button", { name: "设置", exact: true }).click()
   await expect(screen(page, "general")).toBeVisible()
   await page.getByRole("button", { name: "Claude 账号", exact: true }).click()
   await page.getByRole("button", { name: "添加账号", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "给这个账号起个名字" })).toBeVisible()
+  await checkFlowTop(page, "取消")
   await capture(page, "authorize")
   await page.getByRole("button", { name: "取消", exact: true }).click()
   await expect(screen(page, "accounts")).toBeVisible()
   fixture.setMembership("expired")
   await page.evaluate(() => window.pigclaude.membership.inspect())
   await expect(page.getByRole("heading", { name: "会员已到期" })).toBeVisible()
+  await checkFlowTop(page, null)
   await capture(page, "recovery")
   assert.equal(await page.locator("[data-main-window]").count(), 0)
   pass("native authorization cancel and expired membership close the shell")

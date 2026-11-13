@@ -1,6 +1,7 @@
 // 负责指纹表单的默认值、归一化、前端轻量校验、原始参数解析和详情摘要。
 // 字段元数据在 fingerprint-fields.ts，预设画像在 fingerprint-presets.ts，两者统一从这里导出。
 
+import { desktopText } from "../locale/text"
 import {
   defaultClaudeFingerprint,
   normalizeFingerprintSeed,
@@ -86,75 +87,76 @@ export function validateFingerprintForm(value: ClaudeFingerprintView): Fingerpri
   const errors: FingerprintFormErrors = {}
   const seed = value.seed.trim()
   if (normalizeFingerprintSeed(seed) === null) {
-    errors.seed = "指纹种子必须是 0 到 18446744073709551615 的整数"
+    errors.seed = desktopText("fingerprint.fingerprint-form.1")
   }
 
   const brand = value.brand.trim()
   if (brand !== "" && !fingerprintBrandOptions.some((option) => option.value === brand)) {
-    errors.brand = "浏览器品牌仅支持 Chrome、Edge、Opera、Vivaldi"
+    errors.brand = desktopText("fingerprint.fingerprint-form.2")
   }
   const brandVersion = text(value.brandVersion)
   if (brandVersion !== "" && !/^\d+(?:\.\d+){0,4}$/.test(brandVersion)) {
-    errors.brandVersion = "品牌版本必须是数字点分格式，例如 144.0.7559.132"
+    errors.brandVersion = desktopText("fingerprint.fingerprint-form.3")
   }
 
   const platform = normalizePlatform(value.platform)
   if (platform !== "" && !["windows", "linux", "macos"].includes(platform)) {
-    errors.platform = "平台仅支持 windows、linux、macos"
+    errors.platform = desktopText("fingerprint.fingerprint-form.4")
   }
   const platformVersion = text(value.platformVersion)
   if (platformVersion !== "" && !/^[A-Za-z0-9._-]+$/.test(platformVersion)) {
-    errors.platformVersion = "系统版本只能包含字母、数字、点、横线和下划线"
+    errors.platformVersion = desktopText("fingerprint.fingerprint-form.5")
   }
 
   const lang = value.lang.trim()
   if (lang !== "" && !langPattern.test(lang)) {
-    errors.lang = "语言格式不正确，例如 zh-CN 或 en-US"
+    errors.lang = desktopText("fingerprint.fingerprint-form.6")
   }
   const acceptLang = text(value.acceptLang)
   if (acceptLang !== "" && !isValidAcceptLang(acceptLang)) {
-    errors.acceptLang = "Accept-Language 必须是逗号分隔的语言列表，例如 zh-CN,zh"
+    errors.acceptLang = desktopText("fingerprint.fingerprint-form.7")
   }
 
   const timezone = value.timezone.trim()
   if (timezone !== "" && timezone.toLowerCase() !== "system" && !isTimeZone(timezone)) {
-    errors.timezone = "时区不是当前系统可识别的 IANA 名称"
+    errors.timezone = desktopText("fingerprint.fingerprint-form.8")
   }
 
   const resolution = text(value.resolution)
   if (resolution !== "") {
     if (resolution === "custom") {
       if (!isWindowSize(text(value.customResolution))) {
-        errors.customResolution = "自定义分辨率必须是宽,高，宽高都不小于 200"
+        errors.customResolution = desktopText("fingerprint.fingerprint-form.9")
       }
     } else if (!(fingerprintResolutionPresets as readonly string[]).includes(resolution)) {
-      errors.resolution = "分辨率必须是预设值，或选择自定义后填写宽高"
+      errors.resolution = desktopText("fingerprint.fingerprint-form.10")
     }
   }
 
   const hardwareConcurrency = text(value.hardwareConcurrency)
   if (hardwareConcurrency !== "" && !isIntegerInRange(hardwareConcurrency, 1, 128)) {
-    errors.hardwareConcurrency = "CPU 核心数必须是 1 到 128 的整数"
+    errors.hardwareConcurrency = desktopText("fingerprint.fingerprint-form.11")
   }
 
   const webrtcPolicy = value.webrtcPolicy ?? ""
   if (!fingerprintWebrtcOptions.some((option) => option.value === webrtcPolicy)) {
-    errors.webrtcPolicy = "WebRTC 策略仅支持三个固定取值或留空"
+    errors.webrtcPolicy = desktopText("fingerprint.fingerprint-form.12")
   }
 
-  if (!isNoise(value.canvasNoise)) errors.canvasNoise = "Canvas 噪声只能是空、0 或 1"
+  if (!isNoise(value.canvasNoise))
+    errors.canvasNoise = desktopText("fingerprint.fingerprint-form.13")
   if (!isNoise(value.clientRectsNoise)) {
-    errors.clientRectsNoise = "ClientRects 噪声只能是空、0 或 1"
+    errors.clientRectsNoise = desktopText("fingerprint.fingerprint-form.14")
   }
 
   const disabled = value.disableSpoofing
   if (disabled !== undefined && (!Array.isArray(disabled) || !disabled.every(isSpoofingCategory))) {
-    errors.disableSpoofing = "禁用伪装类别必须来自字体、音频、Canvas、ClientRects、GPU"
+    errors.disableSpoofing = desktopText("fingerprint.fingerprint-form.15")
   }
 
   const args = value.unknownArgs
   if (args !== undefined && (!Array.isArray(args) || !args.every(isString))) {
-    errors.unknownArgs = "原始参数必须是字符串数组"
+    errors.unknownArgs = desktopText("fingerprint.fingerprint-form.16")
   }
   return errors
 }
@@ -198,7 +200,7 @@ export function fingerprintHeadline(value: ClaudeFingerprintView): string {
 /** 语言与时区的一行画像，用于授权向导的确认步骤。 */
 export function fingerprintLocaleLine(value: ClaudeFingerprintView): string {
   const normalized = normalizeFingerprintForm(value)
-  return `${normalized.lang || "跟随系统语言"} · ${normalized.timezone || "系统时区"}`
+  return `${normalized.lang || desktopText("fingerprint.fingerprint-form.17")} · ${normalized.timezone || desktopText("fingerprint.fingerprint-form.18")}`
 }
 
 /** 环境摘要里的一个小标签；mono 为 true 时按等宽字体显示。 */
@@ -210,11 +212,14 @@ export function fingerprintEnvironmentChips(
 ): FingerprintEnvironmentChip[] {
   const normalized = normalizeFingerprintForm(value)
   return [
-    { text: normalized.lang || "跟随系统语言", mono: false },
-    { text: normalized.timezone || "系统时区", mono: false },
+    { text: normalized.lang || desktopText("fingerprint.fingerprint-form.19"), mono: false },
+    { text: normalized.timezone || desktopText("fingerprint.fingerprint-form.20"), mono: false },
     normalized.seed === ""
-      ? { text: "种子自动", mono: false }
-      : { text: `种子 ${normalized.seed}`, mono: true },
+      ? { text: desktopText("fingerprint.fingerprint-form.21"), mono: false }
+      : {
+          text: desktopText("fingerprint.fingerprint-form.22", { value1: String(normalized.seed) }),
+          mono: true,
+        },
   ]
 }
 
@@ -230,48 +235,76 @@ export function fingerprintSummaryGroups(
   return [
     {
       id: "identity",
-      title: "身份与定位",
+      title: desktopText("fingerprint.fingerprint-form.23"),
       rows: [
-        { label: "指纹种子", value: value.seed || "按浏览器配置生成" },
         {
-          label: "浏览器",
-          value: `${value.brand || "Chrome"}${suffix(value.brandVersion) || "（跟随默认版本）"}`,
+          label: desktopText("fingerprint.fingerprint-form.24"),
+          value: value.seed || desktopText("fingerprint.fingerprint-form.25"),
         },
         {
-          label: "平台",
+          label: desktopText("fingerprint.fingerprint-form.26"),
+          value: `${value.brand || "Chrome"}${suffix(value.brandVersion) || desktopText("fingerprint.fingerprint-form.27")}`,
+        },
+        {
+          label: desktopText("fingerprint.fingerprint-form.28"),
           value: `${platformLabel(value.platform)}${suffix(value.platformVersion)}`,
         },
-        { label: "语言", value: value.lang || "跟随系统语言" },
-        { label: "Accept-Language", value: value.acceptLang || "按语言推导" },
-        { label: "时区", value: value.timezone || "系统时区" },
+        {
+          label: desktopText("fingerprint.fingerprint-form.29"),
+          value: value.lang || desktopText("fingerprint.fingerprint-form.30"),
+        },
+        {
+          label: "Accept-Language",
+          value: value.acceptLang || desktopText("fingerprint.fingerprint-form.31"),
+        },
+        {
+          label: desktopText("fingerprint.fingerprint-form.32"),
+          value: value.timezone || desktopText("fingerprint.fingerprint-form.33"),
+        },
       ],
     },
     {
       id: "device",
-      title: "设备与网络",
+      title: desktopText("fingerprint.fingerprint-form.34"),
       rows: [
-        { label: "窗口大小", value: resolutionLabel(value) },
-        { label: "CPU 核心数", value: value.hardwareConcurrency || "跟随默认" },
+        { label: desktopText("fingerprint.fingerprint-form.35"), value: resolutionLabel(value) },
+        {
+          label: desktopText("fingerprint.fingerprint-form.36"),
+          value: value.hardwareConcurrency || desktopText("fingerprint.fingerprint-form.37"),
+        },
         { label: "WebRTC", value: webrtcLabel(value.webrtcPolicy ?? "") },
       ],
     },
     {
       id: "compat",
-      title: "隐私与兼容",
+      title: desktopText("fingerprint.fingerprint-form.38"),
       rows: [
-        { label: "Canvas 噪声", value: noiseLabel(value.canvasNoise) },
-        { label: "ClientRects 噪声", value: noiseLabel(value.clientRectsNoise) },
-        { label: "禁用伪装", value: spoofingLabel(value.disableSpoofing) },
+        {
+          label: desktopText("fingerprint.fingerprint-form.39"),
+          value: noiseLabel(value.canvasNoise),
+        },
+        {
+          label: desktopText("fingerprint.fingerprint-form.40"),
+          value: noiseLabel(value.clientRectsNoise),
+        },
+        {
+          label: desktopText("fingerprint.fingerprint-form.41"),
+          value: spoofingLabel(value.disableSpoofing),
+        },
       ],
     },
     {
       id: "advanced",
-      title: "高级设置",
+      title: desktopText("fingerprint.fingerprint-form.42"),
       rows: [
         ...legacyRows,
-        { label: "原始参数", value: value.unknownArgs?.join(" ") || "无", block: true },
+        {
+          label: desktopText("fingerprint.fingerprint-form.43"),
+          value: value.unknownArgs?.join(" ") || desktopText("fingerprint.fingerprint-form.44"),
+          block: true,
+        },
       ],
-      ...(legacyRows.length === 0 ? {} : { note: "兼容字段从旧配置保留，不单独影响浏览器启动。" }),
+      ...(legacyRows.length === 0 ? {} : { note: desktopText("fingerprint.fingerprint-form.45") }),
     },
   ]
 }
@@ -285,24 +318,25 @@ function advancedLegacyRows(value: ClaudeFingerprintView): FingerprintSummaryRow
 }
 
 function resolutionLabel(value: ClaudeFingerprintView): string {
-  if (value.resolution === "custom") return value.customResolution || "自定义（未填写）"
-  return value.resolution || "跟随屏幕"
+  if (value.resolution === "custom")
+    return value.customResolution || desktopText("fingerprint.fingerprint-form.46")
+  return value.resolution || desktopText("fingerprint.fingerprint-form.47")
 }
 
 function noiseLabel(value: FingerprintNoise): string {
-  if (value === "1") return "开启"
-  if (value === "0") return "关闭"
-  return "跟随默认"
+  if (value === "1") return desktopText("fingerprint.fingerprint-form.48")
+  if (value === "0") return desktopText("fingerprint.fingerprint-form.49")
+  return desktopText("fingerprint.fingerprint-form.50")
 }
 
 function webrtcLabel(value: FingerprintWebrtcPolicy): string {
   const option = fingerprintWebrtcOptions.find((item) => item.value === value)
-  return option?.label ?? "跟随默认"
+  return option?.label ?? desktopText("fingerprint.fingerprint-form.51")
 }
 
 function spoofingLabel(value: FingerprintSpoofingCategory[] | undefined): string {
   const categories = normalizeSpoofing(value)
-  if (categories.length === 0) return "不额外禁用"
+  if (categories.length === 0) return desktopText("fingerprint.fingerprint-form.52")
   return categories
     .map((category) => fingerprintSpoofingCategories.find((item) => item.value === category)?.label)
     .filter((label): label is string => label !== undefined)

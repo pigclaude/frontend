@@ -1,4 +1,5 @@
 // 负责按可信事实解释会员、设备授权和临时故障，保持无卡片居中布局。
+import { desktopText } from "../locale/text"
 import { useRef, useState } from "react"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { LoginIntent } from "../models/login-model"
@@ -40,7 +41,7 @@ export function RecoveryScreen({
     try {
       await onCheck()
     } catch {
-      setError("检查未完成，请稍后重试。")
+      setError(desktopText("flows.recovery-screen.checkFailed"))
     } finally {
       pending.current = false
       setChecking(false)
@@ -54,7 +55,7 @@ export function RecoveryScreen({
     try {
       await onOpenWebsite()
     } catch {
-      setError("网站未能打开，请重新检查后再试。")
+      setError(desktopText("flows.recovery-screen.websiteFailed"))
     } finally {
       pending.current = false
       setOpening(false)
@@ -80,7 +81,7 @@ export function RecoveryScreen({
         >
           {accountVisible && (
             <div className="recovery-account">
-              <span className="recovery-label">当前账号</span>
+              <span className="recovery-label">{desktopText("flows.recovery-screen.account")}</span>
               {account?.nickname && <strong>{account.nickname}</strong>}
               {account?.email && <span>{account.email}</span>}
             </div>
@@ -89,17 +90,19 @@ export function RecoveryScreen({
             <div className="recovery-membership">
               {view.tier && (
                 <span>
-                  {activeMembership ? "会员：" : "上次会员："}
+                  {activeMembership
+                    ? desktopText("flows.recovery-screen.currentTier")
+                    : desktopText("flows.recovery-screen.previousTier")}
                   {view.tier.name}
                 </span>
               )}
               {date && (
                 <span>
                   {view.state === "expired"
-                    ? "到期时间："
+                    ? desktopText("flows.recovery-screen.expiredAt")
                     : activeMembership
-                      ? "有效期至："
-                      : "原有效期至："}
+                      ? desktopText("flows.recovery-screen.validUntil")
+                      : desktopText("flows.recovery-screen.previousExpiry")}
                   {date}
                 </span>
               )}
@@ -110,23 +113,29 @@ export function RecoveryScreen({
             <div className="signin-actions">
               {info.website && onOpenWebsite && (
                 <Button
-                  variant={info.website === "查看会员" ? "ghost" : "primary"}
+                  variant={info.website === "view" ? "ghost" : "primary"}
                   size="block"
                   disabled={checking || opening}
                   onClick={() => void openWebsite()}
                 >
-                  {opening ? "正在打开网站…" : info.website}
+                  {opening
+                    ? desktopText("flows.recovery-screen.openingWebsite")
+                    : desktopText(websiteLabel[info.website])}
                 </Button>
               )}
               <Button
                 variant={
-                  info.website && onOpenWebsite && info.website !== "查看会员" ? "ghost" : "primary"
+                  info.website && onOpenWebsite && info.website !== "view" ? "ghost" : "primary"
                 }
                 size="block"
                 disabled={checking || opening}
                 onClick={() => (info.authorize ? onAuthorize("login") : void check())}
               >
-                {checking ? "正在检查…" : info.authorize ? "重新授权" : "重新检查"}
+                {checking
+                  ? desktopText("flows.recovery-screen.checking")
+                  : info.authorize
+                    ? desktopText("flows.recovery-screen.reauthorize")
+                    : desktopText("flows.recovery-screen.recheck")}
               </Button>
               <Button
                 variant="ghost"
@@ -134,7 +143,7 @@ export function RecoveryScreen({
                 disabled={checking || opening}
                 onClick={() => onAuthorize("switch")}
               >
-                切换账号
+                {desktopText("flows.recovery-screen.switchAccount")}
               </Button>
               {info.authorize && (
                 <Button
@@ -143,7 +152,7 @@ export function RecoveryScreen({
                   disabled={checking || opening}
                   onClick={() => void check()}
                 >
-                  重新检查
+                  {desktopText("flows.recovery-screen.recheckAfterAuthorize")}
                 </Button>
               )}
             </div>
@@ -156,7 +165,7 @@ export function RecoveryScreen({
           {info.authorize && (
             <p className="signin-foot">
               <Icon name="external" />
-              将在浏览器中完成设备授权
+              {desktopText("flows.recovery-screen.authorizeInBrowser")}
             </p>
           )}
         </SigninPanel>
@@ -164,38 +173,62 @@ export function RecoveryScreen({
     </div>
   )
 }
+const websiteLabel = {
+  renew: "flows.recovery-screen.renewMembership",
+  open: "flows.recovery-screen.openMembership",
+  view: "flows.recovery-screen.membershipOverview",
+} as const
+
 function presentation(view: MembershipView): {
   title: string
   sub: string
   authorize?: boolean
   busy?: boolean
-  website?: string
+  website?: keyof typeof websiteLabel
 } {
   if (view.state === "connecting")
-    return { title: "正在检查登录状态…", sub: "正在确认当前账号与设备授权", busy: true }
+    return {
+      title: desktopText("flows.recovery-screen.checkingTitle"),
+      sub: desktopText("flows.recovery-screen.checkingDescription"),
+      busy: true,
+    }
   if (view.state === "device_revoked")
-    return { title: "设备授权已撤销", sub: "请在浏览器中重新授权这台设备。", authorize: true }
+    return {
+      title: desktopText("flows.recovery-screen.revokedDeviceTitle"),
+      sub: desktopText("flows.recovery-screen.revokedDeviceDescription"),
+      authorize: true,
+    }
   if (view.errorCode === "ACCOUNT_BANNED")
-    return { title: "账号暂不可用", sub: "当前账号受到限制，暂时无法使用。" }
+    return {
+      title: desktopText("flows.recovery-screen.restrictedTitle"),
+      sub: desktopText("flows.recovery-screen.restrictedDescription"),
+    }
   if (view.state === "error" || view.state === "configuration_error")
-    return { title: "暂时无法验证", sub: "请检查网络或应用配置后重新检查。" }
+    return {
+      title: desktopText("flows.recovery-screen.unavailableTitle"),
+      sub: desktopText("flows.recovery-screen.unavailableDescription"),
+    }
   if (view.state === "expired" || view.recovery?.status === "expired")
     return {
-      title: "会员已到期",
-      sub: "会员到期后暂停使用，办理完成后可重新检查。",
-      website: "续费会员",
+      title: desktopText("flows.recovery-screen.expiredTitle"),
+      sub: desktopText("flows.recovery-screen.expiredDescription"),
+      website: "renew",
     }
   if (view.recovery?.status === "none")
     return {
-      title: "尚未开通会员",
-      sub: "当前账号还没有可用会员，办理完成后可重新检查。",
-      website: "开通会员",
+      title: desktopText("flows.recovery-screen.noMembershipTitle"),
+      sub: desktopText("flows.recovery-screen.noMembershipDescription"),
+      website: "open",
     }
   if (view.recovery?.status === "revoked")
-    return { title: "会员已停用", sub: "当前会员已被停用，暂时无法使用。", website: "查看会员" }
+    return {
+      title: desktopText("flows.recovery-screen.revokedMembershipTitle"),
+      sub: desktopText("flows.recovery-screen.revokedMembershipDescription"),
+      website: "view",
+    }
   return {
-    title: "设备需要重新授权",
-    sub: "当前设备的使用权限需要重新确认，请在浏览器中继续。",
+    title: desktopText("flows.recovery-screen.verificationTitle"),
+    sub: desktopText("flows.recovery-screen.verificationDescription"),
     authorize: true,
   }
 }

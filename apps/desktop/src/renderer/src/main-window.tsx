@@ -219,7 +219,6 @@ export function MainWindow({
         membership={membership}
         appInfo={appInfo}
         defaultWorkspace={workspace}
-        models={session.models}
         page={page}
         appearance={appearance}
         onNavigate={onNavigate}

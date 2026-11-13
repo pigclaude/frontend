@@ -1,5 +1,6 @@
 // 负责按分组展示账号指纹摘要：身份、设备、兼容伪装和高级原始参数。
 
+import { SettingRow, SettingSection } from "@pigclaude/ui-primitives"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { fingerprintSummaryGroups, normalizeFingerprintForm } from "../models/fingerprint-form"
 
@@ -19,22 +20,18 @@ export function FingerprintSummary({ fingerprint, fallbackSeed }: FingerprintSum
   return (
     <>
       {fingerprintSummaryGroups(resolved).map((group) => (
-        <div className="section" key={group.id} aria-label={group.title}>
-          <div className="section-head">
-            <h2>{group.title}</h2>
-          </div>
-          <div className="group">
+        <div key={group.id} aria-label={group.title}>
+          <SettingSection title={group.title}>
             {group.rows.map((row) => (
-              <div className="item" key={row.label}>
-                <div className="main">
-                  <div className="ttl">{row.label}</div>
-                  {row.block ? <div className="desc mono">{row.value}</div> : null}
-                </div>
-                {row.block ? null : <span className="val">{row.value}</span>}
-              </div>
+              <SettingRow
+                key={row.label}
+                title={row.label}
+                description={row.block ? <code>{row.value}</code> : undefined}
+                value={row.block ? undefined : row.value}
+              />
             ))}
-          </div>
-          {group.note === undefined ? null : <p className="note">{group.note}</p>}
+          </SettingSection>
+          {group.note === undefined ? null : <p className="section-note">{group.note}</p>}
         </div>
       ))}
     </>

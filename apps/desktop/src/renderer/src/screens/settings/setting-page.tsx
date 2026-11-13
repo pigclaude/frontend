@@ -1,81 +1,36 @@
-// 负责设置页面的通用外框、标题、分组和行布局。
-import type { ReactNode } from "react"
+// 负责将应用设置页接入 Pigcode 的滚动容器、分组与设置行。
+import type { ComponentProps, ReactNode } from "react"
+import {
+  SettingPage as PigcodeSettingPage,
+  SettingRow as PigcodeSettingRow,
+  SettingSection as PigcodeSettingSection,
+} from "@pigclaude/ui-primitives"
 import { ScrollPanel } from "@pigclaude/ui-shell"
 
-/** 设置页容器：顶栏拖动区加可滚动的居中内容列。 */
-export function SettingPage({
-  title,
-  sub,
-  actions,
-  children,
-}: {
-  title: string
-  sub?: string
-  actions?: ReactNode
-  children: ReactNode
-}) {
+/** 在 Pigcode 设置页外提供内容区的滚动与顶部拖动区。 */
+export function SettingPage(props: ComponentProps<typeof PigcodeSettingPage>) {
   return (
     <ScrollPanel>
-      <div className="page narrow settings-page">
-        <header className="page-head">
-          <div>
-            <h1>{title}</h1>
-            {sub ? <p className="sub">{sub}</p> : null}
-          </div>
-          {actions ? <div className="actions">{actions}</div> : null}
-        </header>
-        {children}
-      </div>
+      <PigcodeSettingPage {...props} />
     </ScrollPanel>
   )
 }
 
-/** 设置页分组；不给标题时作为页面的第一组直接显示。className 追加到 section 上。 */
-export function SettingSection({
-  title,
-  end,
-  className,
-  children,
-}: {
-  title?: string
-  end?: ReactNode
-  className?: string
-  children: ReactNode
-}) {
-  return (
-    <section className={className ? `section ${className}` : "section"}>
-      {title ? (
-        <div className="section-head">
-          <h2>{title}</h2>
-          {end ? <div className="end">{end}</div> : null}
-        </div>
-      ) : null}
-      <div className="group">{children}</div>
-    </section>
-  )
+/** 把应用设置的分组标题与内容交给 Pigcode 设置分组。 */
+export function SettingSection(props: ComponentProps<typeof PigcodeSettingSection>) {
+  return <PigcodeSettingSection {...props} />
 }
 
-/** 设置页单行：左侧标题和说明，右侧是控件或只读值。 */
+/** 使用 Pigcode 设置行，并为文件路径等数据保留等宽显示。 */
 export function SettingRow({
-  title,
-  description,
   mono,
-  value,
-  children,
-}: {
-  title: ReactNode
-  description?: ReactNode
+  description,
+  ...props
+}: ComponentProps<typeof PigcodeSettingRow> & {
   mono?: boolean
-  value?: ReactNode
-  children?: ReactNode
+  description?: ReactNode
 }) {
   return (
-    <div className="item">
-      <div className="main">
-        <div className="ttl">{title}</div>
-        {description ? <div className={mono ? "desc mono" : "desc"}>{description}</div> : null}
-      </div>
-      {children ? <div className="trail">{children}</div> : <span className="val">{value}</span>}
-    </div>
+    <PigcodeSettingRow {...props} description={mono ? <code>{description}</code> : description} />
   )
 }

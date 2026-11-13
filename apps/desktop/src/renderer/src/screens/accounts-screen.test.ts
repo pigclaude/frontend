@@ -150,7 +150,7 @@ async function clickButton(target: HTMLButtonElement | undefined, name: string):
 }
 
 async function openAccount(name: string): Promise<void> {
-  const row = [...container.querySelectorAll("button.item")].find((item) =>
+  const row = [...container.querySelectorAll("button.list-row")].find((item) =>
     item.textContent?.includes(name),
   )
   await clickButton(row as HTMLButtonElement | undefined, name)

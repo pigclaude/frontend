@@ -1,5 +1,6 @@
 // 添加账号只选择共享浏览器配置，语言、时区和网络不在向导内另存副本。
 
+import { desktopText } from "../locale/text"
 import { useEffect, useRef, useState } from "react"
 import type { ClaudeAccountView } from "@pigclaude/contracts/claude-account"
 import type { BrowserProfileView } from "@pigclaude/contracts/browser-profile"
@@ -37,7 +38,9 @@ export function AuthorizeScreen({
   onCancel,
   onOpenProfiles,
 }: AuthorizeScreenProps) {
-  const [name, setName] = useState(state.accountName || account?.displayName || "主力 Max")
+  const [name, setName] = useState(
+    state.accountName || account?.displayName || desktopText("flows.authorize-screen.1"),
+  )
   const [profileId, setProfileId] = useState(
     state.browserProfileId ?? account?.browserProfileId ?? "",
   )
@@ -53,14 +56,14 @@ export function AuthorizeScreen({
   const current = steps.indexOf(selecting ? "proxy" : state.step)
   const title =
     state.step === "name"
-      ? "给这个账号起个名字"
+      ? desktopText("flows.authorize-screen.2")
       : selecting
-        ? "选择浏览器配置"
+        ? desktopText("flows.authorize-screen.3")
         : state.step === "exit"
-          ? "检测本次授权环境"
+          ? desktopText("flows.authorize-screen.4")
           : state.step === "waiting"
-            ? "查看本机自检报告并继续授权"
-            : "已加入号池"
+            ? desktopText("flows.authorize-screen.5")
+            : desktopText("flows.authorize-screen.6")
   function start(): void {
     if (launching.current || !selected || !name.trim()) return
     launching.current = true
@@ -75,23 +78,27 @@ export function AuthorizeScreen({
       <div className="win-top">
         <TrafficLights />
         <Button className="wizard-cancel" variant="ghost" size="sm" onClick={onCancel}>
-          取消
+          {desktopText("flows.authorize-screen.7")}
         </Button>
       </div>
       <main className="win-body">
         <div className="wiz">
           <div className="wizard-progress">
-            <span>{account ? "重新授权 Claude 账号" : "添加 Claude 账号"}</span>
+            <span>
+              {account
+                ? desktopText("flows.authorize-screen.8")
+                : desktopText("flows.authorize-screen.9")}
+            </span>
             <span>
               {selecting
-                ? "浏览器配置"
+                ? desktopText("flows.authorize-screen.10")
                 : state.step === "name"
-                  ? "账号名称"
+                  ? desktopText("flows.authorize-screen.11")
                   : state.step === "exit"
-                    ? "环境自检"
+                    ? desktopText("flows.authorize-screen.12")
                     : state.step === "waiting"
-                      ? "浏览器授权"
-                      : "完成"}
+                      ? desktopText("flows.authorize-screen.13")
+                      : desktopText("flows.authorize-screen.14")}
             </span>
           </div>
           <div className="progress-bars" aria-hidden="true">
@@ -102,11 +109,9 @@ export function AuthorizeScreen({
           <h1>{title}</h1>
           {state.step === "name" ? (
             <>
-              <p className="wiz-desc">
-                名字只在本机显示。账号将使用所选浏览器配置，登录数据独立保存。
-              </p>
+              <p className="wiz-desc">{desktopText("flows.authorize-screen.15")}</p>
               <div className="field">
-                <label htmlFor="authorize-name">账号名称</label>
+                <label htmlFor="authorize-name">{desktopText("flows.authorize-screen.16")}</label>
                 <Input
                   id="authorize-name"
                   value={name}
@@ -122,20 +127,19 @@ export function AuthorizeScreen({
                     onEvent({ type: "advance" })
                   }}
                 >
-                  下一步
+                  {desktopText("flows.authorize-screen.17")}
                 </Button>
               </div>
             </>
           ) : null}
           {selecting ? (
             <>
-              <p className="wiz-desc">
-                选择已配置的指纹、代理、语言和时区；浏览器与 CLI 共用配置，每个账号的
-                Cookie、缓存和登录数据独立。
-              </p>
-              {profilesLoading ? <p className="note">正在读取浏览器配置…</p> : null}
+              <p className="wiz-desc">{desktopText("flows.authorize-screen.18")}</p>
+              {profilesLoading ? (
+                <p className="note">{desktopText("flows.authorize-screen.19")}</p>
+              ) : null}
               {!profilesLoading && !profiles.length ? (
-                <p className="note">还没有浏览器配置，请先在号池中创建。</p>
+                <p className="note">{desktopText("flows.authorize-screen.20")}</p>
               ) : null}
               {profilesError ? (
                 <p className="error-text" role="alert">
@@ -161,21 +165,22 @@ export function AuthorizeScreen({
                       <span className="desc">
                         {profile.proxyId
                           ? (proxies.find((item) => item.id === profile.proxyId)?.name ??
-                            "原代理不存在")
-                          : "系统网络"}{" "}
-                        · {profile.boundAccounts.length} 个账号复用配置
+                            desktopText("flows.authorize-screen.21"))
+                          : desktopText("flows.authorize-screen.22")}{" "}
+                        · {profile.boundAccounts.length}
+                        {desktopText("flows.authorize-screen.23")}
                       </span>
                     </span>
                   </Button>
                 ))}
               {account && !profilesLoading && !selected ? (
                 <p className="error-text" role="alert">
-                  账号关联的浏览器配置不存在，请先恢复或更换配置。
+                  {desktopText("flows.authorize-screen.24")}
                 </p>
               ) : null}
               <div className="wizard-foot">
                 <Button variant="ghost" onClick={onOpenProfiles}>
-                  管理浏览器指纹
+                  {desktopText("flows.authorize-screen.25")}
                 </Button>
                 <Button
                   variant="primary"
@@ -185,27 +190,29 @@ export function AuthorizeScreen({
                       onEvent({ type: "select-browser-profile", browserProfileId: selected.id })
                   }}
                 >
-                  使用此配置
+                  {desktopText("flows.authorize-screen.26")}
                 </Button>
               </div>
             </>
           ) : null}
           {state.step === "exit" ? (
             <>
-              <p className="wiz-desc">
-                由本次 PigBrowser 与原生 CLI 检测所选配置和实际网络；必需项通过后才提供授权入口。
-              </p>
+              <p className="wiz-desc">{desktopText("flows.authorize-screen.27")}</p>
               <div className="group">
                 <div className="item">
-                  <span className="main">浏览器配置</span>
-                  <span>{selected?.name ?? "配置不可用"}</span>
+                  <span className="main">{desktopText("flows.authorize-screen.28")}</span>
+                  <span>{selected?.name ?? desktopText("flows.authorize-screen.29")}</span>
                 </div>
                 <div className="item">
-                  <span className="main">网络出口</span>
-                  <span>{selected?.proxyId ? (proxy?.name ?? "代理不可用") : "系统网络"}</span>
+                  <span className="main">{desktopText("flows.authorize-screen.30")}</span>
+                  <span>
+                    {selected?.proxyId
+                      ? (proxy?.name ?? desktopText("flows.authorize-screen.31"))
+                      : desktopText("flows.authorize-screen.32")}
+                  </span>
                 </div>
                 <div className="item">
-                  <span className="main">浏览器与 CLI</span>
+                  <span className="main">{desktopText("flows.authorize-screen.33")}</span>
                   <span>
                     {selected?.fingerprint.lang} · {selected?.fingerprint.timezone}
                   </span>
@@ -213,36 +220,34 @@ export function AuthorizeScreen({
               </div>
               <div className="wizard-foot">
                 <Button variant="ghost" onClick={() => onEvent({ type: "back" })}>
-                  返回选择配置
+                  {desktopText("flows.authorize-screen.34")}
                 </Button>
                 <Button variant="primary" disabled={!selected} onClick={start}>
-                  检测环境并准备授权
+                  {desktopText("flows.authorize-screen.35")}
                 </Button>
               </div>
             </>
           ) : null}
           {state.step === "waiting" ? (
             <>
-              <p className="wiz-desc">
-                查看刚打开的 PigBrowser 报告。必需项全部通过后，由你继续完成 Claude 登录和授权。
-              </p>
-              <p className="note">等待浏览器确认；本次浏览器与 CLI 使用同一配置。</p>
+              <p className="wiz-desc">{desktopText("flows.authorize-screen.36")}</p>
+              <p className="note">{desktopText("flows.authorize-screen.37")}</p>
               <div className="wizard-foot">
                 <Button variant="secondary" onClick={start}>
-                  重新自检
+                  {desktopText("flows.authorize-screen.38")}
                 </Button>
                 <Button variant="ghost" onClick={onCancel}>
-                  取消
+                  {desktopText("flows.authorize-screen.39")}
                 </Button>
               </div>
             </>
           ) : null}
           {state.step === "completed" ? (
             <>
-              <p className="wiz-desc">账号已绑定所选浏览器配置，凭据只保存在本机。</p>
+              <p className="wiz-desc">{desktopText("flows.authorize-screen.40")}</p>
               <div className="wizard-foot">
                 <Button variant="primary" onClick={onCancel}>
-                  回到账号
+                  {desktopText("flows.authorize-screen.41")}
                 </Button>
               </div>
             </>

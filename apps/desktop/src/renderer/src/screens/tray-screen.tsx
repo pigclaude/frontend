@@ -1,5 +1,6 @@
 // 负责托盘面板：显示真实会员名称、等级和账号摘要；额度窗口未接入前显示「—」，不伪造百分比。
 
+import { desktopText } from "../locale/text"
 import type { ClaudeAccountView } from "@pigclaude/contracts/claude-account"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import { Button } from "../components/ui/button"
@@ -34,13 +35,16 @@ export function TrayScreen({
           <Button variant="plain" className="item" type="button" onClick={onOpenAccounts}>
             <span className="dot warn" />
             <div className="main">
-              <div className="ttl">{attention.length} 个账号需要处理</div>
+              <div className="ttl">
+                {attention.length}
+                {desktopText("settings.tray-screen.1")}
+              </div>
             </div>
             <Icon name="right" small />
           </Button>
         ) : null}
         {accounts.length === 0 ? (
-          <p className="note">还没有 Claude 账号</p>
+          <p className="note">{desktopText("settings.tray-screen.2")}</p>
         ) : (
           <div className="group">
             {accounts.map((account) => (
@@ -57,10 +61,10 @@ export function TrayScreen({
         )}
         <div className="row tray-actions">
           <Button variant="ghost" size="sm" onClick={onOpenSettings}>
-            设置
+            {desktopText("settings.tray-screen.3")}
           </Button>
           <Button variant="ghost" size="sm" onClick={onOpenAccounts}>
-            管理账号
+            {desktopText("settings.tray-screen.4")}
           </Button>
         </div>
       </div>
@@ -70,16 +74,18 @@ export function TrayScreen({
 
 function membershipTitle(view: MembershipView): string {
   if (view.account === null) {
-    return view.state === "signed_out" ? "未登录" : membershipStateText(view.state)
+    return view.state === "signed_out"
+      ? desktopText("settings.tray-screen.5")
+      : membershipStateText(view.state)
   }
   return view.tier === null ? view.account.nickname : `${view.account.nickname} · ${view.tier.name}`
 }
 
 function membershipStateText(state: MembershipView["state"]): string {
-  if (state === "active") return "会员有效"
-  if (state === "offline_grace") return "离线可用"
-  if (state === "connecting") return "正在连接"
-  return "会员不可用"
+  if (state === "active") return desktopText("settings.tray-screen.6")
+  if (state === "offline_grace") return desktopText("settings.tray-screen.7")
+  if (state === "connecting") return desktopText("settings.tray-screen.8")
+  return desktopText("settings.tray-screen.9")
 }
 
 function accountNeedsAttention(account: ClaudeAccountView): boolean {
@@ -90,7 +96,9 @@ function accountNeedsAttention(account: ClaudeAccountView): boolean {
 }
 
 function trayAccountStatus(account: ClaudeAccountView): string {
-  if (account.needsReauth) return "需重新授权"
-  if (!account.enabled) return "已停用"
-  return accountNeedsAttention(account) ? "冷却中" : "可用"
+  if (account.needsReauth) return desktopText("settings.tray-screen.10")
+  if (!account.enabled) return desktopText("settings.tray-screen.11")
+  return accountNeedsAttention(account)
+    ? desktopText("settings.tray-screen.12")
+    : desktopText("settings.tray-screen.13")
 }

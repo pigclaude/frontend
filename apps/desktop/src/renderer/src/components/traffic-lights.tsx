@@ -1,12 +1,12 @@
-// 负责在没有系统原生交通灯的平台上绘制窗口栏占位控件。
+// 负责为浏览器视觉预览绘制窗口栏占位控件。
 import type { ReactElement } from "react"
 
-/** 判断当前平台是否需要 renderer 自绘交通灯。 */
+/** 判断浏览器预览使用自绘交通灯，原生窗口使用系统控件。 */
 export function shouldRenderCustomTraffic(platform: string | undefined): boolean {
-  return platform !== "darwin"
+  return platform === undefined
 }
 
-/** 绘制非 macOS 的交通灯占位，macOS 完全交给 BrowserWindow 原生控件。 */
+/** 在浏览器预览画交通灯占位。 */
 export function TrafficLights(): ReactElement | null {
   if (!shouldRenderCustomTraffic(window.pigclaude?.platform)) return null
   return (

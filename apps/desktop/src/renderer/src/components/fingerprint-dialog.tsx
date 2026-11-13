@@ -1,5 +1,6 @@
 // 负责账号详情里的指纹编辑弹层：完整指纹表单、字段级校验和完整对象回调。
 
+import { desktopText } from "../locale/text"
 import { useEffect, useRef, useState } from "react"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import type { PoolAccount } from "../fixtures/pool-fixtures"
@@ -59,16 +60,22 @@ export function FingerprintDialog({
       <DialogContent className="fingerprint-dialog">
         <div className="dialog-head">
           <div className="fp-dialog-heading">
-            <DialogTitle>编辑「{account?.name ?? "账号"}」的指纹</DialogTitle>
+            <DialogTitle>
+              {desktopText("pool.fingerprint-dialog.1")}
+              {account?.name ?? desktopText("pool.fingerprint-dialog.2")}
+              {desktopText("pool.fingerprint-dialog.3")}
+            </DialogTitle>
             <DialogClose asChild>
-              <Button variant="ghost" size="icon" aria-label="关闭指纹设置">
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={desktopText("pool.fingerprint-dialog.4")}
+              >
                 <Icon name="x" small />
               </Button>
             </DialogClose>
           </div>
-          <DialogDescription>
-            保存后下次重新授权使用同一份指纹，已有的登录不受影响。
-          </DialogDescription>
+          <DialogDescription>{desktopText("pool.fingerprint-dialog.5")}</DialogDescription>
         </div>
         <div className="dialog-body">
           <FingerprintForm
@@ -83,10 +90,10 @@ export function FingerprintDialog({
         </div>
         <div className="dialog-foot">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            取消
+            {desktopText("pool.fingerprint-dialog.6")}
           </Button>
           <Button variant="primary" onClick={confirm}>
-            保存
+            {desktopText("pool.fingerprint-dialog.7")}
           </Button>
         </div>
       </DialogContent>

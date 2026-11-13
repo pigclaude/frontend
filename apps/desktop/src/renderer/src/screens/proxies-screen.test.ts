@@ -88,7 +88,9 @@ async function type(id: string, value: string): Promise<void> {
 }
 
 function row(name: string): Element | undefined {
-  return [...container.querySelectorAll(".item")].find((item) => item.textContent?.includes(name))
+  return [...container.querySelectorAll(".list-row")].find((item) =>
+    item.textContent?.includes(name),
+  )
 }
 
 function dialog(): HTMLElement | null {

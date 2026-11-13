@@ -1,4 +1,5 @@
 // 负责展示 PigClaude 登录/注册入口、等待浏览器授权、确认会员和授权失败四种状态。
+import { desktopText } from "../locale/text"
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { WithdrawAuthorization } from "../components/withdraw-authorization"
 import { Icon } from "../components/icon"
@@ -34,8 +35,8 @@ export function LoginScreen(props: LoginScreenProps) {
           <SigninPanel
             icon="spinner"
             busy
-            title="正在保存授权…"
-            sub="保存完成后将确认会员状态，请稍候。"
+            title={desktopText("flows.login-screen.savingTitle")}
+            sub={desktopText("flows.login-screen.savingDescription")}
           />
         ) : state.view === "confirming" ? (
           <ConfirmingPanel displayName={state.displayName} />
@@ -72,7 +73,11 @@ function IdlePanel({
   const locked = Boolean(signingOut || onRetrySignOut)
   const hasNotices = Boolean(gateMessage || canWithdraw)
   return (
-    <SigninPanel icon="snout" title="欢迎使用 PigClaude" sub="登录后即可使用你的会员">
+    <SigninPanel
+      icon="snout"
+      title={desktopText("flows.login-screen.signOutRetry")}
+      sub={desktopText("flows.login-screen.welcomeTitle")}
+    >
       {hasNotices ? (
         <div className="signin-notices">
           {gateMessage ? (
@@ -81,7 +86,7 @@ function IdlePanel({
               action={
                 onRetrySignOut ? (
                   <Button size="sm" onClick={onRetrySignOut}>
-                    重试退出
+                    {desktopText("flows.login-screen.welcomeDescription")}
                   </Button>
                 ) : null
               }
@@ -103,7 +108,7 @@ function IdlePanel({
           disabled={locked}
           onClick={() => onAuthorize("login")}
         >
-          登录
+          {desktopText("flows.login-screen.login")}
         </Button>
         <Button
           variant="ghost"
@@ -111,12 +116,12 @@ function IdlePanel({
           disabled={locked}
           onClick={() => onAuthorize("register")}
         >
-          注册
+          {desktopText("flows.login-screen.register")}
         </Button>
       </div>
       <p className="signin-foot">
         <Icon name="external" />
-        将在浏览器中打开 PigClaude 网站完成
+        {desktopText("flows.login-screen.opensWebsite")}
       </p>
     </SigninPanel>
   )
@@ -157,24 +162,29 @@ function WaitingPanel({
     }
   }
 
-  const verb = intent === "register" ? "注册" : "登录"
+  const verb =
+    intent === "register"
+      ? desktopText("flows.login-screen.registrationIntent")
+      : desktopText("flows.login-screen.loginIntent")
   return (
     <SigninPanel
       icon="browser"
-      title="请在浏览器中继续"
+      title={desktopText("flows.login-screen.browserTitle")}
       sub={
         intent === "switch"
-          ? "请选择要用于桌面的账号并确认设备授权，完成后会自动回到这里。"
-          : `已为你打开 PigClaude 网站，${verb}并授权这台设备后会自动回到这里。`
+          ? desktopText("flows.login-screen.switchDescription")
+          : desktopText("flows.login-screen.browserDescription", { value1: String(verb) })
       }
     >
       <p className="signin-progress" role="status">
         <span className="signin-pulse" aria-hidden="true" />
-        {starting ? "正在打开浏览器…" : "等待浏览器授权"}
+        {starting
+          ? desktopText("flows.login-screen.openingBrowser")
+          : desktopText("flows.login-screen.waitingApproval")}
       </p>
       <div className="signin-actions">
         <Button variant="primary" size="block" disabled={starting} onClick={onReopen}>
-          重新打开浏览器
+          {desktopText("flows.login-screen.reopenBrowser")}
         </Button>
         <div className="signin-row">
           <Button
@@ -185,10 +195,12 @@ function WaitingPanel({
             onClick={() => void copyLink()}
           >
             <Icon name={copied ? "check" : "copy"} />
-            {copied ? "已复制" : "复制链接"}
+            {copied
+              ? desktopText("flows.login-screen.copiedLink")
+              : desktopText("flows.login-screen.copyLink")}
           </Button>
           <Button variant="ghost" size="lg" onClick={onCancel}>
-            取消
+            {desktopText("flows.login-screen.cancel")}
           </Button>
         </div>
       </div>
@@ -201,8 +213,12 @@ function ConfirmingPanel({ displayName }: { displayName: string | null }) {
     <SigninPanel
       icon="spinner"
       busy
-      title="正在确认会员…"
-      sub={displayName ? `${displayName} 已授权这台设备` : "浏览器授权已完成"}
+      title={desktopText("flows.login-screen.confirmingTitle")}
+      sub={
+        displayName
+          ? desktopText("flows.login-screen.confirmedName", { value1: String(displayName) })
+          : desktopText("flows.login-screen.browserCompleted")
+      }
     />
   )
 }
@@ -220,19 +236,19 @@ function ErrorPanel({
     <SigninPanel
       icon="alert"
       tone="bad"
-      title="浏览器授权未完成"
+      title={desktopText("flows.login-screen.failedTitle")}
       sub={
         error?.startsWith("SAFE_STORAGE_UNAVAILABLE")
-          ? "系统安全存储不可用，授权未保存。请重试或返回原账号。"
-          : (error ?? "请重新打开浏览器授权页面。")
+          ? desktopText("flows.login-screen.failedDescription")
+          : (error ?? desktopText("flows.login-screen.reauthorize"))
       }
     >
       <div className="signin-actions">
         <Button variant="primary" size="block" onClick={onRetry}>
-          重新授权
+          {desktopText("flows.login-screen.back")}
         </Button>
         <Button variant="ghost" size="block" onClick={onBack}>
-          返回
+          {desktopText("flows.login-screen.return")}
         </Button>
       </div>
     </SigninPanel>

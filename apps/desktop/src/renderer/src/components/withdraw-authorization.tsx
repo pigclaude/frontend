@@ -1,4 +1,5 @@
 // 提供共享撤销确认：恢复页从更多操作进入，目标与确认由 main 准备，取消不发撤销请求。
+import { desktopText } from "../locale/text"
 import { useEffect, useRef, useState } from "react"
 import type { DeviceWithdrawalConfirmation } from "@pigclaude/contracts/desktop-membership"
 import { Button } from "./ui/button"
@@ -40,7 +41,7 @@ export function WithdrawAuthorization({
     if (operation.current) return
     const action = window.pigclaude?.membership?.prepareWithdrawal
     if (!contextId || !action) {
-      setError("当前授权尚未核验，请重新检查后再试。")
+      setError(desktopText("flows.withdraw-authorization.1"))
       return
     }
     const id = Symbol()
@@ -52,7 +53,7 @@ export function WithdrawAuthorization({
       if (operation.current === id && latestContext.current === contextId)
         setConfirmation({ contextId, value })
     } catch {
-      if (operation.current === id) setError("无法确认当前授权或缺少撤销权限，请重新检查后再试。")
+      if (operation.current === id) setError(desktopText("flows.withdraw-authorization.2"))
     } finally {
       if (operation.current === id) {
         operation.current = null
@@ -75,7 +76,7 @@ export function WithdrawAuthorization({
     } catch {
       if (operation.current === id) {
         setConfirmation(null)
-        setError("撤销未完成或授权状态已变化，请重新检查后再试。")
+        setError(desktopText("flows.withdraw-authorization.3"))
       }
     } finally {
       if (operation.current === id) {
@@ -95,16 +96,22 @@ export function WithdrawAuthorization({
               disabled={phase !== "idle"}
               aria-busy={phase === "preparing"}
             >
-              {phase === "preparing" ? "正在确认…" : "更多操作"}
+              {phase === "preparing"
+                ? desktopText("flows.withdraw-authorization.4")
+                : desktopText("flows.withdraw-authorization.5")}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent>
-            <DropdownMenuItem onSelect={() => void prepare()}>撤销本机授权</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void prepare()}>
+              {desktopText("flows.withdraw-authorization.6")}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ) : (
         <Button disabled={phase !== "idle"} onClick={() => void prepare()}>
-          {phase === "preparing" ? "正在确认…" : "撤销本机授权"}
+          {phase === "preparing"
+            ? desktopText("flows.withdraw-authorization.7")
+            : desktopText("flows.withdraw-authorization.8")}
         </Button>
       )}
       {error && <p role="alert">{error}</p>}
@@ -116,33 +123,30 @@ export function WithdrawAuthorization({
       >
         <DialogContent className="withdrawal-dialog">
           <div className="dialog-head">
-            <DialogTitle>撤销本机授权？</DialogTitle>
+            <DialogTitle>{desktopText("flows.withdraw-authorization.9")}</DialogTitle>
           </div>
           <div className="dialog-body">
-            <DialogDescription>
-              将撤销当前网站账号在这台设备上的全部相关桌面授权。
-            </DialogDescription>
+            <DialogDescription>{desktopText("flows.withdraw-authorization.10")}</DialogDescription>
             {current && (
               <p>
                 {current.account.nickname && <strong>{current.account.nickname} </strong>}
                 {current.account.email}
               </p>
             )}
-            <p>
-              其他设备、同机其他网站账号、网站登录会话，以及本地 Claude
-              账号、凭据、代理和指纹均保留。
-            </p>
+            <p>{desktopText("flows.withdraw-authorization.11")}</p>
           </div>
           <div className="dialog-foot">
             <Button disabled={phase === "submitting"} onClick={() => setConfirmation(null)}>
-              取消
+              {desktopText("flows.withdraw-authorization.12")}
             </Button>
             <Button
               variant="solidDanger"
               disabled={phase === "submitting"}
               onClick={() => void submit()}
             >
-              {phase === "submitting" ? "正在撤销…" : "确认撤销"}
+              {phase === "submitting"
+                ? desktopText("flows.withdraw-authorization.13")
+                : desktopText("flows.withdraw-authorization.14")}
             </Button>
           </div>
         </DialogContent>

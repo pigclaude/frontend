@@ -2,11 +2,21 @@
 import type { zhCN } from "./messages.zh-CN"
 import { permissionEnUS } from "./permission.messages"
 import { shellEnUS } from "./shell.messages"
+import { fingerprintZhCN } from "./fingerprint.messages"
+import { poolZhCN } from "./pool.messages"
+import { flowsZhCN } from "./flows.messages"
+import { settingsZhCN } from "./settings.messages"
+import { appSettingsZhCN } from "./app-settings.messages"
 import { appearanceEnUS } from "./appearance.messages"
 
 /** 英文主词典。 */
 export const enUS = {
   ...shellEnUS,
   ...permissionEnUS,
+  ...fingerprintZhCN,
+  ...poolZhCN,
+  ...flowsZhCN,
+  ...settingsZhCN,
+  ...appSettingsZhCN,
   ...appearanceEnUS,
 } satisfies Record<keyof typeof zhCN, string>

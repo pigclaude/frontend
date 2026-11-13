@@ -1,6 +1,8 @@
 // 负责展示真实 Claude 账号列表：需要处理（重新授权/停用/冷却）、自动切换顺序和账号详情入口。
 
+import { desktopText } from "../locale/text"
 import { useState } from "react"
+import { ListRow, SettingPage, SettingSection } from "@pigclaude/ui-primitives"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import type { BrowserProfileView } from "@pigclaude/contracts/browser-profile"
 import { BrowserProfileSelect } from "../components/browser-profile-select"
@@ -70,7 +72,10 @@ export function AccountsScreen({
     <>
       <AccountDeleteDialog
         open={deleteId !== null}
-        accountName={accounts.find((account) => account.id === deleteId)?.name ?? "这个账号"}
+        accountName={
+          accounts.find((account) => account.id === deleteId)?.name ??
+          desktopText("pool.accounts-screen.fallbackAccount")
+        }
         onOpenChange={(open) => {
           if (!open) setDeleteId(null)
         }}
@@ -82,7 +87,10 @@ export function AccountsScreen({
       />
       <AccountProxyDialog
         open={proxyId !== null}
-        accountName={accounts.find((account) => account.id === proxyId)?.name ?? "账号"}
+        accountName={
+          accounts.find((account) => account.id === proxyId)?.name ??
+          desktopText("pool.accounts-screen.account")
+        }
         currentProxyId={accounts.find((account) => account.id === proxyId)?.proxyId ?? null}
         proxies={proxies}
         onOpenChange={(open) => {
@@ -132,9 +140,9 @@ export function AccountsScreen({
       >
         <DialogContent>
           <div className="dialog-head">
-            <DialogTitle>更换浏览器配置</DialogTitle>
+            <DialogTitle>{desktopText("pool.accounts-screen.changeBrowserProfile")}</DialogTitle>
             <DialogDescription>
-              账号使用新配置的指纹、代理、语言和时区；该账号原有登录数据保持独立。请先结束该账号的授权或会话。
+              {desktopText("pool.accounts-screen.changeBrowserProfileDescription")}
             </DialogDescription>
           </div>
           <div className="dialog-body">
@@ -147,7 +155,7 @@ export function AccountsScreen({
           </div>
           <div className="dialog-foot">
             <Button variant="ghost" onClick={() => setBindingAccountId(null)}>
-              取消
+              {desktopText("pool.accounts-screen.cancel")}
             </Button>
             <Button
               variant="primary"
@@ -158,7 +166,7 @@ export function AccountsScreen({
                 setBindingAccountId(null)
               }}
             >
-              保存绑定
+              {desktopText("pool.accounts-screen.saveBinding")}
             </Button>
           </div>
         </DialogContent>
@@ -197,29 +205,30 @@ export function AccountsScreen({
     )
   }
   return (
-    <div className="page narrow">
-      <header className="page-head">
-        <div>
-          <h1>Claude 账号</h1>
-          <p className="sub">需要处理的事、自动切换顺序</p>
-        </div>
-        <div className="actions">
+    <SettingPage
+      title={desktopText("pool.accounts-screen.title")}
+      sub={desktopText("pool.accounts-screen.description")}
+      actions={
+        <>
           <Button
             variant="secondary"
             disabled={importing}
             aria-busy={importing}
             onClick={() => setImportOpen(true)}
           >
-            {importing ? "正在导入…" : "从 Claude CLI 导入"}
+            {importing
+              ? desktopText("pool.accounts-screen.importing")
+              : desktopText("pool.accounts-screen.importCli")}
           </Button>
           <Button variant="primary" onClick={onOpenAuthorize}>
-            添加账号
+            {desktopText("pool.accounts-screen.add")}
           </Button>
-        </div>
-      </header>
+        </>
+      }
+    >
       {imported ? (
         <p className="note" role="status">
-          已从 Claude CLI 导入账号
+          {desktopText("pool.accounts-screen.imported")}
         </p>
       ) : null}
       {error ? (
@@ -228,76 +237,64 @@ export function AccountsScreen({
         </p>
       ) : null}
       {accounts.length === 0 ? (
-        <p className="note">还没有 Claude 账号。添加后会在这里显示授权状态和切换顺序。</p>
+        <p className="note">{desktopText("pool.accounts-screen.empty")}</p>
       ) : null}
       {attention.length ? (
-        <section className="section">
-          <div className="section-head">
-            <h2>需要处理</h2>
-          </div>
-          <div className="group">
-            {attention.map((account) => (
-              <Button
-                variant="plain"
-                className="item"
-                type="button"
-                key={account.id}
-                onClick={() => setSelectedId(account.id)}
-              >
-                <span className="avatar">{account.mark}</span>
-                <div className="main">
-                  <div className="ttl">{account.name}</div>
-                  <div className="desc">
-                    {account.status} · {accountNetworkLabel(account)} · 不参与自动切换
-                  </div>
-                </div>
+        <SettingSection title={desktopText("pool.accounts-screen.attention")}>
+          {attention.map((account) => (
+            <ListRow
+              key={account.id}
+              render={<button type="button" />}
+              onClick={() => setSelectedId(account.id)}
+              leading={<span className="pool-account-mark">{account.mark}</span>}
+              title={account.name}
+              description={
+                <>
+                  {account.status} · {accountNetworkLabel(account)}
+                  {desktopText("pool.accounts-screen.excludedFromSwitching")}
+                </>
+              }
+              meta={
                 <span className={statusClass(account.statusKind)}>
                   {statusLabel(account.statusKind)}
                 </span>
-              </Button>
-            ))}
-          </div>
-        </section>
-      ) : null}
-      <section className="section">
-        <div className="section-head">
-          <h2>自动切换顺序</h2>
-          <span className="end">按保存顺序</span>
-        </div>
-        <div className="group">
-          {ordered.map((account) => (
-            <Button
-              variant="plain"
-              className="item"
-              type="button"
-              key={account.id}
-              onClick={() => setSelectedId(account.id)}
-            >
-              <Icon name="grip" className="grip" />
-              <span className="avatar">{account.mark}</span>
-              <div className="main">
-                <div className="ttl">{account.name}</div>
-                <div className="desc">
-                  {account.status} · {accountNetworkLabel(account)}
-                </div>
-                <div className="meter">
-                  <span className={account.usage === 100 ? "bar is-full" : "bar"}>
-                    <i style={{ width: `${account.usage ?? 0}%` }} />
-                  </span>
-                  <span className="num">{account.usage === null ? "—" : `${account.usage}%`}</span>
-                </div>
-              </div>
-              <Icon name="right" small className="chev" />
-            </Button>
+              }
+            />
           ))}
-        </div>
-        {ordered.length === 0 && accounts.length > 0 ? (
-          <p className="note">没有可用账号；处理上面的账号后会自动回到切换顺序。</p>
-        ) : null}
-        <p className="note">响应体开始写出后不再换号；请求体超过 32 MiB 不重放。</p>
-      </section>
+        </SettingSection>
+      ) : null}
+      <SettingSection
+        title={desktopText("pool.accounts-screen.switchOrder")}
+        actions={desktopText("pool.accounts-screen.savedOrder")}
+      >
+        {ordered.map((account) => (
+          <ListRow
+            key={account.id}
+            render={<button type="button" />}
+            onClick={() => setSelectedId(account.id)}
+            leading={
+              <>
+                <Icon name="grip" className="pool-account-grip" />
+                <span className="pool-account-mark">{account.mark}</span>
+              </>
+            }
+            title={account.name}
+            description={
+              <>
+                {account.status} · {accountNetworkLabel(account)}
+              </>
+            }
+            meta={account.usage === null ? "—" : `${account.usage}%`}
+            actions={<Icon name="right" small />}
+          />
+        ))}
+      </SettingSection>
+      {ordered.length === 0 && accounts.length > 0 ? (
+        <p className="section-note">{desktopText("pool.accounts-screen.noEligibleAccounts")}</p>
+      ) : null}
+      <p className="section-note">{desktopText("pool.accounts-screen.switchLimits")}</p>
       {dialogs}
-    </div>
+    </SettingPage>
   )
 }
 
@@ -318,12 +315,9 @@ function ClaudeCliImportDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <div className="dialog-head">
-          <DialogTitle>从 Claude CLI 导入账号？</DialogTitle>
+          <DialogTitle>{desktopText("pool.accounts-screen.importTitle")}</DialogTitle>
           <DialogDescription>
-            将读取并复制 macOS 钥匙串中的 Claude CLI OAuth 凭据到本机账号库。原 CLI
-            凭据不会删除，两个应用共享同一登录会话。两个应用共用同一个 refresh
-            token，任一方刷新都可能让另一方需要重新登录或重新导入。读取时 Keychain 可能弹窗，显示
-            security。导入账号使用所选浏览器配置；命中已有账号时沿用其当前配置，账号登录数据独立。
+            {desktopText("pool.accounts-screen.importDescription")}
           </DialogDescription>
         </div>
         {profiles ? (
@@ -338,14 +332,14 @@ function ClaudeCliImportDialog({
         ) : null}
         <div className="dialog-foot">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            取消
+            {desktopText("pool.accounts-screen.cancelImport")}
           </Button>
           <Button
             variant="primary"
             disabled={profiles !== undefined && !profileId}
             onClick={() => onConfirm(profileId || undefined)}
           >
-            确认导入
+            {desktopText("pool.accounts-screen.confirmImport")}
           </Button>
         </div>
       </DialogContent>
@@ -354,10 +348,10 @@ function ClaudeCliImportDialog({
 }
 
 function statusLabel(kind: PoolAccount["statusKind"]): string {
-  if (kind === "reauth") return "需重新授权"
-  if (kind === "disabled") return "已停用"
-  if (kind === "cooldown") return "冷却中"
-  return "可用"
+  if (kind === "reauth") return desktopText("pool.accounts-screen.needsReauth")
+  if (kind === "disabled") return desktopText("pool.accounts-screen.disabled")
+  if (kind === "cooldown") return desktopText("pool.accounts-screen.cooldown")
+  return desktopText("pool.accounts-screen.ready")
 }
 
 function statusClass(kind: PoolAccount["statusKind"]): string {

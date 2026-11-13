@@ -4,8 +4,9 @@
 import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { SessionSettings } from "./settings-app-pages"
-import { NetworkSettings } from "./settings-system-pages"
+import { MenubarSettings, SessionSettings } from "./settings-app-pages"
+import { AppProviders } from "../../app-providers"
+import { AboutSettings, NetworkSettings } from "./settings-system-pages"
 
 let root: Root
 let container: HTMLDivElement
@@ -25,13 +26,37 @@ afterEach(async () => {
 
 describe("settings proxy copy", () => {
   it("describes proxies as optional and direct accounts as system network", async () => {
-    await act(async () => root.render(createElement(NetworkSettings)))
+    await act(async () =>
+      root.render(createElement(AppProviders, { children: createElement(NetworkSettings) })),
+    )
 
     expect(container.textContent).toContain("代理可选")
     expect(container.textContent).toContain(
       "未绑定代理的账号使用系统网络；已绑定代理的请求不会直连",
     )
     expect(container.textContent).toContain("已绑定代理的请求失败，不会回退到系统网络直连")
+  })
+
+  it("shows a dash for unavailable runtime facts and renders the actual app version", async () => {
+    await act(async () =>
+      root.render(
+        createElement(AppProviders, {
+          children: createElement(AboutSettings, { appVersion: "1.2.3" }),
+        }),
+      ),
+    )
+    expect(container.textContent).toContain("1.2.3")
+    expect(container.textContent).toContain("更新状态—")
+    expect(container.textContent).not.toContain("已是最新版本")
+    await act(async () =>
+      root.render(
+        createElement(AppProviders, {
+          children: createElement(MenubarSettings, { onNavigate: () => undefined }),
+        }),
+      ),
+    )
+    expect(container.textContent).toContain("—")
+    expect(container.textContent).not.toContain("62%")
   })
 
   it("keeps the session time zone and language tied to the account fingerprint", async () => {

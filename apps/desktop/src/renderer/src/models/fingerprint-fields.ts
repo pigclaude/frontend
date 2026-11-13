@@ -1,6 +1,7 @@
 // 负责集中指纹表单的字段分组、控件元数据和下拉选项；不包含校验或业务逻辑。
 // 授权步骤、账号编辑弹层和账号详情都从这里读取同一份标签与顺序。
 
+import { desktopText } from "../locale/text"
 import type {
   ClaudeFingerprintView,
   FingerprintNoise,
@@ -30,15 +31,15 @@ export type FingerprintEditableFieldKey = Exclude<FingerprintFieldKey, Fingerpri
 
 /** 兼容字段标签；摘要里出现时说明这些值只作为旧配置保留。 */
 export const fingerprintLegacyFields: { key: FingerprintLegacyFieldKey; label: string }[] = [
-  { key: "colorDepth", label: "色彩深度" },
-  { key: "deviceMemory", label: "设备内存" },
-  { key: "touchPoints", label: "触摸点数" },
+  { key: "colorDepth", label: desktopText("fingerprint.fingerprint-fields.1") },
+  { key: "deviceMemory", label: desktopText("fingerprint.fingerprint-fields.2") },
+  { key: "touchPoints", label: desktopText("fingerprint.fingerprint-fields.3") },
   { key: "doNotTrack", label: "Do Not Track" },
-  { key: "mediaDevices", label: "媒体设备" },
-  { key: "audioNoise", label: "音频噪声" },
-  { key: "fontList", label: "字体列表" },
-  { key: "webglVendor", label: "WebGL 厂商" },
-  { key: "webglRenderer", label: "WebGL 渲染器" },
+  { key: "mediaDevices", label: desktopText("fingerprint.fingerprint-fields.4") },
+  { key: "audioNoise", label: desktopText("fingerprint.fingerprint-fields.5") },
+  { key: "fontList", label: desktopText("fingerprint.fingerprint-fields.6") },
+  { key: "webglVendor", label: desktopText("fingerprint.fingerprint-fields.7") },
+  { key: "webglRenderer", label: desktopText("fingerprint.fingerprint-fields.8") },
 ]
 
 /** 表单控件的渲染方式。 */
@@ -106,24 +107,30 @@ export const fingerprintResolutionPresets = [
 
 /** 窗口大小下拉选项；空值表示按宿主屏幕自动计算。 */
 export const fingerprintResolutionOptions: FingerprintFieldOption[] = [
-  { value: "", label: "跟随屏幕" },
+  { value: "", label: desktopText("fingerprint.fingerprint-fields.9") },
   ...fingerprintResolutionPresets.map((value) => ({ value, label: value.replace(",", " × ") })),
-  { value: "custom", label: "自定义" },
+  { value: "custom", label: desktopText("fingerprint.fingerprint-fields.10") },
 ]
 
 /** WebRTC 策略下拉选项。 */
 export const fingerprintWebrtcOptions: FingerprintFieldOption[] = [
-  { value: "", label: "跟随默认" },
-  { value: "disable_non_proxied_udp", label: "禁用非代理 UDP" },
-  { value: "default_public_interface_only", label: "仅公网接口" },
-  { value: "default_public_and_private_interfaces", label: "公网与私网接口" },
+  { value: "", label: desktopText("fingerprint.fingerprint-fields.11") },
+  { value: "disable_non_proxied_udp", label: desktopText("fingerprint.fingerprint-fields.12") },
+  {
+    value: "default_public_interface_only",
+    label: desktopText("fingerprint.fingerprint-fields.13"),
+  },
+  {
+    value: "default_public_and_private_interfaces",
+    label: desktopText("fingerprint.fingerprint-fields.14"),
+  },
 ]
 
 /** 噪声三态选项；空字符串表示启动时不输出该 flag。 */
 export const fingerprintNoiseOptions: { value: FingerprintNoise; label: string }[] = [
-  { value: "", label: "默认" },
-  { value: "1", label: "开启" },
-  { value: "0", label: "关闭" },
+  { value: "", label: desktopText("fingerprint.fingerprint-fields.15") },
+  { value: "1", label: desktopText("fingerprint.fingerprint-fields.16") },
+  { value: "0", label: desktopText("fingerprint.fingerprint-fields.17") },
 ]
 
 /** 可单独禁用的伪装类别。 */
@@ -131,8 +138,8 @@ export const fingerprintSpoofingCategories: {
   value: FingerprintSpoofingCategory
   label: string
 }[] = [
-  { value: "font", label: "字体" },
-  { value: "audio", label: "音频" },
+  { value: "font", label: desktopText("fingerprint.fingerprint-fields.18") },
+  { value: "audio", label: desktopText("fingerprint.fingerprint-fields.19") },
   { value: "canvas", label: "Canvas" },
   { value: "clientrects", label: "ClientRects" },
   { value: "gpu", label: "GPU" },
@@ -141,88 +148,100 @@ export const fingerprintSpoofingCategories: {
 /** 全部字段元数据；表单、摘要和测试共用同一份标签。 */
 export const fingerprintFieldMeta: Record<FingerprintEditableFieldKey, FingerprintFieldMeta> = {
   seed: {
-    label: "指纹种子",
-    hint: "自动模式按浏览器配置生成；也可以手动生成或填写一个固定种子。",
+    label: desktopText("fingerprint.fingerprint-fields.20"),
+    hint: desktopText("fingerprint.fingerprint-fields.21"),
     placeholder: "0–18446744073709551615",
-    defaultLabel: "按配置自动生成",
+    defaultLabel: desktopText("fingerprint.fingerprint-fields.22"),
     mono: true,
     control: "choice",
   },
-  brand: { label: "浏览器品牌", control: "select", options: fingerprintBrandOptions },
+  brand: {
+    label: desktopText("fingerprint.fingerprint-fields.23"),
+    control: "select",
+    options: fingerprintBrandOptions,
+  },
   brandVersion: {
-    label: "浏览器版本",
-    placeholder: "例如 156.0.8078.88",
-    defaultLabel: "跟随内核版本",
+    label: desktopText("fingerprint.fingerprint-fields.24"),
+    placeholder: desktopText("fingerprint.fingerprint-fields.25"),
+    defaultLabel: desktopText("fingerprint.fingerprint-fields.26"),
     mono: true,
     control: "choice",
   },
-  platform: { label: "操作系统", control: "select", options: fingerprintPlatformOptions },
+  platform: {
+    label: desktopText("fingerprint.fingerprint-fields.27"),
+    control: "select",
+    options: fingerprintPlatformOptions,
+  },
   platformVersion: {
-    label: "系统版本",
-    placeholder: "例如 15.2.0",
-    defaultLabel: "使用默认版本",
+    label: desktopText("fingerprint.fingerprint-fields.28"),
+    placeholder: desktopText("fingerprint.fingerprint-fields.29"),
+    defaultLabel: desktopText("fingerprint.fingerprint-fields.30"),
     mono: true,
     control: "choice",
   },
   lang: {
-    label: "浏览器语言",
-    placeholder: "例如 zh-CN",
-    defaultLabel: "跟随系统语言",
+    label: desktopText("fingerprint.fingerprint-fields.31"),
+    placeholder: desktopText("fingerprint.fingerprint-fields.32"),
+    defaultLabel: desktopText("fingerprint.fingerprint-fields.33"),
     control: "choice",
   },
   acceptLang: {
-    label: "首选语言列表",
-    placeholder: "例如 zh-CN,zh,en-US,en",
-    defaultLabel: "跟随浏览器语言",
+    label: desktopText("fingerprint.fingerprint-fields.34"),
+    placeholder: desktopText("fingerprint.fingerprint-fields.35"),
+    defaultLabel: desktopText("fingerprint.fingerprint-fields.36"),
     control: "choice",
   },
   timezone: {
-    label: "时区",
-    hint: "可选择常用地区，其他地区可自定义 IANA 时区名称。",
-    placeholder: "例如 Asia/Shanghai",
-    defaultLabel: "跟随系统时区",
+    label: desktopText("fingerprint.fingerprint-fields.37"),
+    hint: desktopText("fingerprint.fingerprint-fields.38"),
+    placeholder: desktopText("fingerprint.fingerprint-fields.39"),
+    defaultLabel: desktopText("fingerprint.fingerprint-fields.40"),
     control: "choice",
   },
   resolution: {
-    label: "窗口大小",
-    hint: "默认根据本机屏幕自动设置。",
+    label: desktopText("fingerprint.fingerprint-fields.41"),
+    hint: desktopText("fingerprint.fingerprint-fields.42"),
     control: "resolution",
     options: fingerprintResolutionOptions,
   },
   customResolution: {
-    label: "自定义窗口大小",
-    hint: "用逗号分隔宽和高，均不小于 200。",
+    label: desktopText("fingerprint.fingerprint-fields.43"),
+    hint: desktopText("fingerprint.fingerprint-fields.44"),
     placeholder: "2560,1440",
     mono: true,
     control: "custom-resolution",
   },
   hardwareConcurrency: {
-    label: "CPU 核心数",
-    hint: "可设置 1–128 核。",
+    label: desktopText("fingerprint.fingerprint-fields.45"),
+    hint: desktopText("fingerprint.fingerprint-fields.46"),
     placeholder: "1–128",
-    defaultLabel: "使用默认核心数",
+    defaultLabel: desktopText("fingerprint.fingerprint-fields.47"),
     mono: true,
     control: "choice",
   },
   webrtcPolicy: {
-    label: "WebRTC 策略",
+    label: desktopText("fingerprint.fingerprint-fields.48"),
     control: "select",
     options: fingerprintWebrtcOptions,
   },
-  canvasNoise: { label: "Canvas 噪声", hint: "为画布图像添加细微差异。", control: "noise" },
+  canvasNoise: {
+    label: desktopText("fingerprint.fingerprint-fields.49"),
+    hint: desktopText("fingerprint.fingerprint-fields.50"),
+    control: "noise",
+  },
   clientRectsNoise: {
-    label: "ClientRects 噪声",
-    hint: "使用指纹种子时，按参考内核规则选择关闭仍可能产生细微偏移。",
+    label: desktopText("fingerprint.fingerprint-fields.51"),
+    hint: desktopText("fingerprint.fingerprint-fields.52"),
     control: "noise",
   },
   disableSpoofing: {
-    label: "停用特征伪装",
-    hint: "打开开关后，对应特征使用原始值，适合排查页面兼容问题。",
+    label: desktopText("fingerprint.fingerprint-fields.53"),
+    hint: desktopText("fingerprint.fingerprint-fields.54"),
     control: "spoofing",
   },
   unknownArgs: {
-    label: "自定义启动参数",
-    hint: "每行填写一个参数，将在启动浏览器时追加。",
+    label: desktopText("fingerprint.fingerprint-fields.55"),
+    hint: desktopText("fingerprint.fingerprint-fields.56"),
     placeholder: "--disable-gpu",
     mono: true,
     control: "args",
@@ -233,8 +252,8 @@ export const fingerprintFieldMeta: Record<FingerprintEditableFieldKey, Fingerpri
 export const fingerprintGroups: FingerprintGroup[] = [
   {
     id: "identity",
-    title: "身份与定位",
-    description: "设置网站读取到的浏览器、系统和地区信息。",
+    title: desktopText("fingerprint.fingerprint-fields.57"),
+    description: desktopText("fingerprint.fingerprint-fields.58"),
     fields: [
       "brand",
       "platform",
@@ -246,32 +265,47 @@ export const fingerprintGroups: FingerprintGroup[] = [
       "seed",
     ],
     sections: [
-      { title: "浏览器", fields: ["brand", "brandVersion"] },
-      { title: "系统", fields: ["platform", "platformVersion"] },
-      { title: "语言与时区", fields: ["lang", "acceptLang", "timezone"] },
-      { title: "种子", fields: ["seed"] },
+      {
+        title: desktopText("fingerprint.fingerprint-fields.59"),
+        fields: ["brand", "brandVersion"],
+      },
+      {
+        title: desktopText("fingerprint.fingerprint-fields.60"),
+        fields: ["platform", "platformVersion"],
+      },
+      {
+        title: desktopText("fingerprint.fingerprint-fields.61"),
+        fields: ["lang", "acceptLang", "timezone"],
+      },
+      { title: desktopText("fingerprint.fingerprint-fields.62"), fields: ["seed"] },
     ],
   },
   {
     id: "device",
-    title: "设备与网络",
-    description: "调整浏览器窗口、硬件配置和网络连接方式。",
+    title: desktopText("fingerprint.fingerprint-fields.63"),
+    description: desktopText("fingerprint.fingerprint-fields.64"),
     fields: ["resolution", "customResolution", "hardwareConcurrency", "webrtcPolicy"],
     sections: [
-      { title: "窗口", fields: ["resolution", "customResolution"] },
-      { title: "硬件", fields: ["hardwareConcurrency"] },
-      { title: "网络", fields: ["webrtcPolicy"] },
+      {
+        title: desktopText("fingerprint.fingerprint-fields.65"),
+        fields: ["resolution", "customResolution"],
+      },
+      { title: desktopText("fingerprint.fingerprint-fields.66"), fields: ["hardwareConcurrency"] },
+      { title: desktopText("fingerprint.fingerprint-fields.67"), fields: ["webrtcPolicy"] },
     ],
   },
   {
     id: "compat",
-    title: "隐私与兼容",
-    description: "管理图像噪声，以及需要保留原始值的特征。",
+    title: desktopText("fingerprint.fingerprint-fields.68"),
+    description: desktopText("fingerprint.fingerprint-fields.69"),
     fields: ["canvasNoise", "clientRectsNoise", "disableSpoofing"],
     sections: [
-      { title: "噪声", fields: ["canvasNoise", "clientRectsNoise"] },
       {
-        title: "停用特征伪装",
+        title: desktopText("fingerprint.fingerprint-fields.70"),
+        fields: ["canvasNoise", "clientRectsNoise"],
+      },
+      {
+        title: desktopText("fingerprint.fingerprint-fields.71"),
         description: fingerprintFieldMeta.disableSpoofing.hint,
         fields: ["disableSpoofing"],
       },
@@ -279,9 +313,11 @@ export const fingerprintGroups: FingerprintGroup[] = [
   },
   {
     id: "advanced",
-    title: "高级设置",
-    description: "添加其他浏览器启动选项。通常保持为空即可。",
+    title: desktopText("fingerprint.fingerprint-fields.72"),
+    description: desktopText("fingerprint.fingerprint-fields.73"),
     fields: ["unknownArgs"],
-    sections: [{ title: "启动参数", fields: ["unknownArgs"] }],
+    sections: [
+      { title: desktopText("fingerprint.fingerprint-fields.74"), fields: ["unknownArgs"] },
+    ],
   },
 ]

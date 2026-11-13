@@ -1,14 +1,16 @@
 // 负责展示 usage.summary 的今天/7 天汇总：请求数、输入输出、缓存、平均耗时和错误数。
 // 没有记录时只显示空态，不伪造数字。
 
+import { desktopText } from "../locale/text"
 import { useState } from "react"
+import { SettingPage, SettingRow, SettingSection } from "@pigclaude/ui-primitives"
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group"
 import type { UsageBridge, UsageRange, UsageSummary } from "../../../main/session/session-types"
 import { useUsageSummary } from "../hooks/use-usage-summary"
 
 const ranges = [
-  ["today", "今天"],
-  ["7d", "7 天"],
+  ["today", desktopText("settings.usage-screen.1")],
+  ["7d", desktopText("settings.usage-screen.2")],
 ] as const
 
 /** 用量页面 props；bridge 可注入给测试。 */
@@ -20,18 +22,13 @@ export function UsageScreen({ bridge }: UsageScreenProps) {
   const { summary, loading, error } = useUsageSummary(range, bridge)
 
   return (
-    <div className="page narrow">
-      <header className="page-head">
-        <div>
-          <div className="h1-row">
-            <h1>用量</h1>
-            <span className="tag">只记元数据</span>
-          </div>
-          <p className="sub">时间、账号、模型、状态码、耗时和 Token 数；不含提示词和回复</p>
-        </div>
+    <SettingPage
+      title={desktopText("settings.usage-screen.3")}
+      sub={desktopText("settings.usage-screen.5")}
+      actions={
         <ToggleGroup
           type="single"
-          aria-label="时间范围"
+          aria-label={desktopText("settings.usage-screen.6")}
           value={range}
           onValueChange={(next) => {
             if (next === "today" || next === "7d") setRange(next)
@@ -43,17 +40,16 @@ export function UsageScreen({ bridge }: UsageScreenProps) {
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
-      </header>
+      }
+    >
       {error ? (
         <p className="error-text" role="alert">
           {error}
         </p>
       ) : null}
-      {loading ? <p className="note">读取中…</p> : null}
+      {loading ? <p className="note">{desktopText("settings.usage-screen.7")}</p> : null}
       {!loading && error === null && summary !== null && summary.requests === 0 ? (
-        <p className="note">
-          还没有用量记录。开始一次会话后，这里只显示请求数、Token 和耗时的汇总。
-        </p>
+        <p className="note">{desktopText("settings.usage-screen.8")}</p>
       ) : null}
       {!loading && error === null && summary !== null && summary.requests > 0 ? (
         <>
@@ -66,28 +62,19 @@ export function UsageScreen({ bridge }: UsageScreenProps) {
               </div>
             ))}
           </div>
-          <section className="section">
-            <div className="section-head">
-              <h2>说明</h2>
-            </div>
-            <div className="group">
-              <div className="item">
-                <div className="main">
-                  <div className="ttl">写入位置</div>
-                  <div className="desc">本机 usage.jsonl，只追加元数据</div>
-                </div>
-              </div>
-              <div className="item">
-                <div className="main">
-                  <div className="ttl">保留</div>
-                  <div className="desc">超过 30 天的记录会自动清理</div>
-                </div>
-              </div>
-            </div>
-          </section>
+          <SettingSection title={desktopText("settings.usage-screen.9")}>
+            <SettingRow
+              title={desktopText("settings.usage-screen.10")}
+              description={desktopText("settings.usage-screen.11")}
+            />
+            <SettingRow
+              title={desktopText("settings.usage-screen.12")}
+              description={desktopText("settings.usage-screen.13")}
+            />
+          </SettingSection>
         </>
       ) : null}
-    </div>
+    </SettingPage>
   )
 }
 
@@ -97,12 +84,42 @@ function summaryStats(
 ): Array<[label: string, value: string, detail: string]> {
   const cache = summary.cacheReadTokens + summary.cacheCreationTokens
   return [
-    ["请求", String(summary.requests), range === "today" ? "今天" : "最近 7 天"],
-    ["输入 Token", formatNumber(summary.inputTokens), "不含缓存"],
-    ["输出 Token", formatNumber(summary.outputTokens), "会话产出"],
-    ["缓存 Token", formatNumber(cache), `读取 ${formatNumber(summary.cacheReadTokens)}`],
-    ["平均耗时", formatDuration(summary.averageDurationMs), "每个请求"],
-    ["错误", String(summary.errors), summary.errors === 0 ? "没有错误" : "检查账号或代理"],
+    [
+      desktopText("settings.usage-screen.14"),
+      String(summary.requests),
+      range === "today"
+        ? desktopText("settings.usage-screen.15")
+        : desktopText("settings.usage-screen.16"),
+    ],
+    [
+      desktopText("settings.usage-screen.17"),
+      formatNumber(summary.inputTokens),
+      desktopText("settings.usage-screen.18"),
+    ],
+    [
+      desktopText("settings.usage-screen.19"),
+      formatNumber(summary.outputTokens),
+      desktopText("settings.usage-screen.20"),
+    ],
+    [
+      desktopText("settings.usage-screen.21"),
+      formatNumber(cache),
+      desktopText("settings.usage-screen.22", {
+        value1: String(formatNumber(summary.cacheReadTokens)),
+      }),
+    ],
+    [
+      desktopText("settings.usage-screen.23"),
+      formatDuration(summary.averageDurationMs),
+      desktopText("settings.usage-screen.24"),
+    ],
+    [
+      desktopText("settings.usage-screen.25"),
+      String(summary.errors),
+      summary.errors === 0
+        ? desktopText("settings.usage-screen.26")
+        : desktopText("settings.usage-screen.27"),
+    ],
   ]
 }
 

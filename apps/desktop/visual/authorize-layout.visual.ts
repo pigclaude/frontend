@@ -50,3 +50,30 @@ for (const theme of ["light", "dark"] as const) {
     })
   }
 }
+
+// 授权原生窗最小 640px，这里的 420px 额外覆盖 renderer 在极窄视口的可达性。
+for (const theme of ["light", "dark"] as const) {
+  test(`authorize compact controls at maximum size ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width: 420, height: 720 })
+    await page.addInitScript(() => {
+      localStorage.setItem("pigclaude-appearance", JSON.stringify({ version: 1, uiSize: 18 }))
+    })
+    await page.goto(`/?screen=authorize&theme=${theme}`)
+    await page.getByRole("button", { name: "下一步", exact: true }).click()
+    await page.getByRole("heading", { name: "选择浏览器配置", exact: true }).waitFor()
+    await page.locator("button.choice").first().click()
+    for (const name of ["取消", "使用此配置"]) {
+      const button = page.getByRole("button", { name, exact: true })
+      await expect(button).toBeEnabled()
+      await expect(button).toBeInViewport()
+    }
+    const width = await page.evaluate(() => ({
+      inner: window.innerWidth,
+      scroll: document.documentElement.scrollWidth,
+      scale: getComputedStyle(document.documentElement).getPropertyValue("--ui-scale"),
+    }))
+    expect(width).toEqual({ inner: 420, scroll: 420, scale: String(18 / 13) })
+    await page.evaluate(() => document.fonts.ready)
+    await expect(page).toHaveScreenshot(`authorize-compact-${theme}.png`, options)
+  })
+}

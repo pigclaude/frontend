@@ -1,6 +1,8 @@
 // 展示号池的可复用浏览器配置，配置 CRUD 与账号登录数据管理分开。
 
+import { desktopText } from "../locale/text"
 import { useEffect, useState } from "react"
+import { ListRow, SettingPage, SettingSection } from "@pigclaude/ui-primitives"
 import type { ProxyView } from "@pigclaude/contracts/claude-account"
 import type { BrowserProfileView } from "@pigclaude/contracts/browser-profile"
 import type { BrowserProfilesController } from "../hooks/use-browser-profiles"
@@ -23,79 +25,88 @@ export function BrowserProfilesScreen({ controller, proxies }: BrowserProfilesSc
   const [deleting, setDeleting] = useState<BrowserProfileView | null>(null)
   const [deletingBusy, setDeletingBusy] = useState(false)
   return (
-    <div className="page">
-      <header className="page-head">
-        <div>
-          <h1>浏览器指纹</h1>
-          <p className="sub">
-            先创建浏览器配置，再给账号选择配置。多个账号可复用设置，登录数据各自独立。
-          </p>
-        </div>
-        <div className="actions">
+    <SettingPage
+      title={desktopText("pool.browser-profiles-screen.title")}
+      sub={desktopText("pool.browser-profiles-screen.description")}
+      actions={
+        <>
           <Button variant="secondary" onClick={() => void controller.refresh()}>
-            刷新
+            {desktopText("pool.browser-profiles-screen.refresh")}
           </Button>
           <Button variant="primary" onClick={() => setEditing("new")}>
-            创建浏览器配置
+            {desktopText("pool.browser-profiles-screen.create")}
           </Button>
-        </div>
-      </header>
+        </>
+      }
+    >
       {controller.error ? (
         <p className="error-text" role="alert">
           {controller.error}
         </p>
       ) : null}
       {controller.loading && !controller.profiles.length ? (
-        <p className="note">正在读取浏览器配置…</p>
+        <p className="note">{desktopText("pool.browser-profiles-screen.loading")}</p>
       ) : null}
       {!controller.loading && !controller.profiles.length ? (
-        <p className="note">还没有浏览器配置。创建后可以绑定代理、设定语言和时区，并供账号选择。</p>
+        <p className="note">{desktopText("pool.browser-profiles-screen.empty")}</p>
       ) : null}
-      <div className="group">
+      <SettingSection>
         {controller.profiles.map((profile) => {
           const proxy = proxies.find((item) => item.id === profile.proxyId)
           return (
-            <div className="item" key={profile.id}>
-              <div className="main">
-                <span className="ttl">{profile.name}</span>
-                <span className="desc">
-                  {profile.fingerprint.lang} · {profile.fingerprint.timezone} ·{" "}
-                  {profile.proxyId ? (proxy?.name ?? "原代理已不存在") : "系统网络"}
-                </span>
-                <span className="desc">
-                  {profile.boundAccounts.length} 个账号使用 · 各账号登录数据独立
-                  {profile.inUse ? " · 正在使用" : ""}
-                </span>
-                {profile.boundAccounts.length ? (
-                  <span className="desc">
-                    {profile.boundAccounts.map((account) => account.name).join("、")}
+            <ListRow
+              key={profile.id}
+              title={profile.name}
+              description={
+                <>
+                  <span className="profile-description">
+                    {profile.fingerprint.lang} · {profile.fingerprint.timezone} ·{" "}
+                    {profile.proxyId
+                      ? (proxy?.name ?? desktopText("pool.browser-profiles-screen.missingProxy"))
+                      : desktopText("pool.browser-profiles-screen.systemNetwork")}
                   </span>
-                ) : null}
-              </div>
-              <span className="trail">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={profile.inUse}
-                  aria-label={`编辑 ${profile.name}`}
-                  onClick={() => setEditing(profile)}
-                >
-                  编辑
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={profile.inUse || profile.boundAccounts.length > 0}
-                  aria-label={`删除 ${profile.name}`}
-                  onClick={() => setDeleting(profile)}
-                >
-                  删除
-                </Button>
-              </span>
-            </div>
+                  <span className="profile-description">
+                    {profile.boundAccounts.length}
+                    {desktopText("pool.browser-profiles-screen.accountCount")}
+                    {profile.inUse ? desktopText("pool.browser-profiles-screen.inUse") : ""}
+                  </span>
+                  {profile.boundAccounts.length ? (
+                    <span className="profile-description">
+                      {profile.boundAccounts.map((account) => account.name).join("、")}
+                    </span>
+                  ) : null}
+                </>
+              }
+              actions={
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={profile.inUse}
+                    aria-label={desktopText("pool.browser-profiles-screen.editNamed", {
+                      value1: String(profile.name),
+                    })}
+                    onClick={() => setEditing(profile)}
+                  >
+                    {desktopText("pool.browser-profiles-screen.edit")}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={profile.inUse || profile.boundAccounts.length > 0}
+                    aria-label={desktopText("pool.browser-profiles-screen.deleteNamed", {
+                      value1: String(profile.name),
+                    })}
+                    onClick={() => setDeleting(profile)}
+                  >
+                    {desktopText("pool.browser-profiles-screen.delete")}
+                  </Button>
+                </>
+              }
+            />
           )
         })}
-      </div>
+      </SettingSection>
       {editing ? (
         <BrowserProfileDialog
           key={editing === "new" ? "new" : editing.id}
@@ -114,14 +125,18 @@ export function BrowserProfilesScreen({ controller, proxies }: BrowserProfilesSc
       >
         <DialogContent>
           <div className="dialog-head">
-            <DialogTitle>删除「{deleting?.name}」的配置？</DialogTitle>
+            <DialogTitle>
+              {desktopText("pool.browser-profiles-screen.deletePrefix")}
+              {deleting?.name}
+              {desktopText("pool.browser-profiles-screen.deleteDescription")}
+            </DialogTitle>
             <DialogDescription>
-              仅删除这份未被账号引用的环境配置。账号凭据与登录数据由各账号单独管理。
+              {desktopText("pool.browser-profiles-screen.cancel")}
             </DialogDescription>
           </div>
           <div className="dialog-foot">
             <Button variant="ghost" disabled={deletingBusy} onClick={() => setDeleting(null)}>
-              取消
+              {desktopText("pool.browser-profiles-screen.confirmDelete")}
             </Button>
             <Button
               variant="solidDanger"
@@ -136,11 +151,11 @@ export function BrowserProfilesScreen({ controller, proxies }: BrowserProfilesSc
                   .finally(() => setDeletingBusy(false))
               }}
             >
-              删除配置
+              {desktopText("pool.browser-profiles-screen.19")}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </SettingPage>
   )
 }

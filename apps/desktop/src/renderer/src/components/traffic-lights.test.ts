@@ -5,8 +5,8 @@ import { shouldRenderCustomTraffic } from "./traffic-lights"
 describe("shouldRenderCustomTraffic", () => {
   it("hides custom traffic lights on macOS and keeps them elsewhere", () => {
     expect(shouldRenderCustomTraffic("darwin")).toBe(false)
-    expect(shouldRenderCustomTraffic("win32")).toBe(true)
-    expect(shouldRenderCustomTraffic("linux")).toBe(true)
+    expect(shouldRenderCustomTraffic("win32")).toBe(false)
+    expect(shouldRenderCustomTraffic("linux")).toBe(false)
     expect(shouldRenderCustomTraffic(undefined)).toBe(true)
   })
 })

@@ -1,5 +1,6 @@
 // 为账号绑定和 CLI 导入选择共享环境配置，不提供共享登录数据的选项。
 
+import { desktopText } from "../locale/text"
 import type { BrowserProfileView } from "@pigclaude/contracts/browser-profile"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select"
 
@@ -16,10 +17,10 @@ export function BrowserProfileSelect({ id, profiles, value, onChange }: BrowserP
   const known = profiles.some((profile) => profile.id === value)
   return (
     <div className="field">
-      <label htmlFor={id}>浏览器配置</label>
+      <label htmlFor={id}>{desktopText("pool.browser-profile-select.1")}</label>
       <Select value={known ? value : ""} onValueChange={onChange}>
         <SelectTrigger id={id}>
-          <SelectValue placeholder="请选择浏览器配置" />
+          <SelectValue placeholder={desktopText("pool.browser-profile-select.2")} />
         </SelectTrigger>
         <SelectContent>
           {profiles.map((profile) => (
@@ -29,7 +30,9 @@ export function BrowserProfileSelect({ id, profiles, value, onChange }: BrowserP
           ))}
         </SelectContent>
       </Select>
-      {!profiles.length ? <p className="note">请先在号池的「浏览器指纹」中创建配置。</p> : null}
+      {!profiles.length ? (
+        <p className="note">{desktopText("pool.browser-profile-select.3")}</p>
+      ) : null}
     </div>
   )
 }

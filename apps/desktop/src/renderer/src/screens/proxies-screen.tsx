@@ -1,6 +1,8 @@
 // 负责代理池列表：真实新增/编辑/删除、单个和全部连通性测试、未测试状态和操作错误。
 
+import { desktopText } from "../locale/text"
 import { useState } from "react"
+import { ListRow, SettingPage, SettingSection } from "@pigclaude/ui-primitives"
 import { Button } from "../components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog"
 import { AddProxyDialog } from "../components/proxy-dialogs"
@@ -53,73 +55,78 @@ export function ProxiesScreen({ proxies, onTest, onSave, onRemove, error }: Prox
   }
 
   return (
-    <div className="page narrow">
-      <header className="page-head">
-        <div>
-          <h1>代理</h1>
-          <p className="sub">代理可选；未绑定代理的账号使用系统网络；已绑定代理的请求不会直连</p>
-        </div>
-        <div className="actions">
+    <SettingPage
+      title={desktopText("pool.proxies-screen.title")}
+      sub={desktopText("pool.proxies-screen.description")}
+      actions={
+        <>
           <Button variant="secondary" onClick={() => void testAll()} disabled={testingAll}>
-            {testingAll ? "测试中…" : "全部测试"}
+            {testingAll
+              ? desktopText("pool.proxies-screen.testingAll")
+              : desktopText("pool.proxies-screen.testAll")}
           </Button>
           <Button variant="primary" onClick={() => setAddOpen(true)}>
-            添加代理
+            {desktopText("pool.proxies-screen.add")}
           </Button>
-        </div>
-      </header>
+        </>
+      }
+    >
       {error ? (
         <p className="error-text" role="alert">
           {error}
         </p>
       ) : null}
       {proxies.length === 0 ? (
-        <p className="note">
-          还没有代理。代理可选；未绑定代理的账号使用系统网络。添加一个出口固定的 HTTP/HTTPS
-          代理，给需要固定出口的账号使用。
-        </p>
+        <p className="note">{desktopText("pool.proxies-screen.empty")}</p>
       ) : null}
-      <div className="group">
+      <SettingSection>
         {proxies.map((proxy) => (
-          <div className="item" key={proxy.id}>
-            <div className="main">
-              <div className="ttl">{proxy.name}</div>
-              <div className="desc">{proxyDescription(proxy)}</div>
-            </div>
-            <span className="trail">
-              <span className={proxyStatusClass(proxy)}>{proxyStatus(proxy).label}</span>
-              <Button
-                size="sm"
-                variant="secondary"
-                aria-label={`测试 ${proxy.name}`}
-                disabled={testingId !== null}
-                onClick={() => void testOne(proxy.id)}
-              >
-                {testingId === proxy.id ? "测试中…" : "测试"}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label={`编辑 ${proxy.name}`}
-                onClick={() => setEditing(proxy)}
-              >
-                编辑
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label={`删除 ${proxy.name}`}
-                onClick={() => setDeleting(proxy)}
-              >
-                删除
-              </Button>
-            </span>
-          </div>
+          <ListRow
+            key={proxy.id}
+            title={proxy.name}
+            description={proxyDescription(proxy)}
+            meta={<span className={proxyStatusClass(proxy)}>{proxyStatus(proxy).label}</span>}
+            actions={
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  aria-label={desktopText("pool.proxies-screen.testNamed", {
+                    value1: String(proxy.name),
+                  })}
+                  disabled={testingId !== null}
+                  onClick={() => void testOne(proxy.id)}
+                >
+                  {testingId === proxy.id
+                    ? desktopText("pool.proxies-screen.testing")
+                    : desktopText("pool.proxies-screen.test")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label={desktopText("pool.proxies-screen.editNamed", {
+                    value1: String(proxy.name),
+                  })}
+                  onClick={() => setEditing(proxy)}
+                >
+                  {desktopText("pool.proxies-screen.edit")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label={desktopText("pool.proxies-screen.deleteNamed", {
+                    value1: String(proxy.name),
+                  })}
+                  onClick={() => setDeleting(proxy)}
+                >
+                  {desktopText("pool.proxies-screen.delete")}
+                </Button>
+              </>
+            }
+          />
         ))}
-      </div>
-      <p className="note">
-        已绑定代理的请求不会直连：代理不可用时以 503 结束，不会回退到本机网络。
-      </p>
+      </SettingSection>
+      <p className="note">{desktopText("pool.proxies-screen.noFallback")}</p>
       <AddProxyDialog
         open={addOpen || editing !== null}
         editing={editing === null ? null : { id: editing.id, name: editing.name }}
@@ -139,14 +146,17 @@ export function ProxiesScreen({ proxies, onTest, onSave, onRemove, error }: Prox
       >
         <DialogContent>
           <div className="dialog-head">
-            <DialogTitle>删除代理「{deleting?.name ?? ""}」？</DialogTitle>
+            <DialogTitle>
+              {desktopText("pool.proxies-screen.deletePrefix")}
+              {deleting?.name ?? ""}」？
+            </DialogTitle>
             <DialogDescription>
-              删除后，绑定它的账号会因找不到代理而不可用，已保存的登录不会自动失效。
+              {desktopText("pool.proxies-screen.deleteDescription")}
             </DialogDescription>
           </div>
           <div className="dialog-foot">
             <Button variant="ghost" onClick={() => setDeleting(null)}>
-              取消
+              {desktopText("pool.proxies-screen.cancel")}
             </Button>
             <Button
               variant="danger"
@@ -155,11 +165,11 @@ export function ProxiesScreen({ proxies, onTest, onSave, onRemove, error }: Prox
                 setDeleting(null)
               }}
             >
-              确认删除
+              {desktopText("pool.proxies-screen.confirmDelete")}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </SettingPage>
   )
 }

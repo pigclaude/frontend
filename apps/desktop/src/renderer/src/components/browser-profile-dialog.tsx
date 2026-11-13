@@ -1,5 +1,6 @@
 // 编辑独立浏览器配置，按实际代理出口初始化语言/时区，避免账号向导保存第二份环境。
 
+import { desktopText } from "../locale/text"
 import { useEffect, useRef, useState } from "react"
 import { defaultClaudeFingerprint, type ProxyView } from "@pigclaude/contracts/claude-account"
 import type {
@@ -77,7 +78,7 @@ export function BrowserProfileDialog({
       return
     }
     if (!name.trim()) {
-      setError("请填写浏览器配置名称")
+      setError(desktopText("pool.browser-profile-dialog.1"))
       return
     }
     setBusy(true)
@@ -105,28 +106,37 @@ export function BrowserProfileDialog({
     >
       <DialogContent className="fingerprint-dialog">
         <div className="dialog-head">
-          <DialogTitle>{profile ? `编辑「${profile.name}」` : "创建浏览器配置"}</DialogTitle>
-          <DialogDescription>
-            多个账号可复用配置，各账号的 Cookie、缓存和登录数据独立。语言和时区同时用于浏览器与
-            CLI。
-          </DialogDescription>
+          <DialogTitle>
+            {profile
+              ? desktopText("pool.browser-profile-dialog.2", { value1: String(profile.name) })
+              : desktopText("pool.browser-profile-dialog.3")}
+          </DialogTitle>
+          <DialogDescription>{desktopText("pool.browser-profile-dialog.4")}</DialogDescription>
         </div>
         <div className="dialog-body">
           {profile?.boundAccounts.length ? (
-            <p className="note">修改将影响 {profile.boundAccounts.length} 个账号的后续启动。</p>
+            <p className="note">
+              {desktopText("pool.browser-profile-dialog.5")}
+              {profile.boundAccounts.length}
+              {desktopText("pool.browser-profile-dialog.6")}
+            </p>
           ) : null}
           <fieldset disabled={busy} className="browser-profile-fields">
             <div className="field">
-              <label htmlFor="browser-profile-name">配置名称</label>
+              <label htmlFor="browser-profile-name">
+                {desktopText("pool.browser-profile-dialog.7")}
+              </label>
               <Input
                 id="browser-profile-name"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                placeholder="例如：美国工作环境"
+                placeholder={desktopText("pool.browser-profile-dialog.8")}
               />
             </div>
             <div className="field">
-              <label htmlFor="browser-profile-proxy">绑定代理</label>
+              <label htmlFor="browser-profile-proxy">
+                {desktopText("pool.browser-profile-dialog.9")}
+              </label>
               <Select
                 disabled={busy}
                 value={proxyId === "" ? systemNetwork : proxyId}
@@ -141,14 +151,20 @@ export function BrowserProfileDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={systemNetwork}>不使用代理（系统网络）</SelectItem>
+                  <SelectItem value={systemNetwork}>
+                    {desktopText("pool.browser-profile-dialog.10")}
+                  </SelectItem>
                   {proxyId && !proxies.some((proxy) => proxy.id === proxyId) ? (
-                    <SelectItem value={proxyId}>原代理已不存在，请重新选择</SelectItem>
+                    <SelectItem value={proxyId}>
+                      {desktopText("pool.browser-profile-dialog.11")}
+                    </SelectItem>
                   ) : null}
                   {proxies.map((proxy) => (
                     <SelectItem key={proxy.id} value={proxy.id}>
                       {proxy.name}
-                      {proxy.lastTest?.ip ? ` · ${proxy.lastTest.ip}` : " · 未确认出口"}
+                      {proxy.lastTest?.ip
+                        ? ` · ${proxy.lastTest.ip}`
+                        : desktopText("pool.browser-profile-dialog.12")}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -156,17 +172,16 @@ export function BrowserProfileDialog({
             </div>
             {proxyId ? (
               <Button variant="secondary" onClick={() => void initialize(proxyId)}>
-                按代理出口初始化语言和时区
+                {desktopText("pool.browser-profile-dialog.13")}
               </Button>
             ) : (
-              <p className="note">
-                未指定语言或时区时，保存会记录当前系统值，供浏览器与 CLI 共同使用。
-              </p>
+              <p className="note">{desktopText("pool.browser-profile-dialog.14")}</p>
             )}
             {region ? (
               <p className="note">
-                出口 {region.ip} · {region.countryCode} · {region.timezone}
-                ；已应用地区语言建议，可手动调整。
+                {desktopText("pool.browser-profile-dialog.15")}
+                {region.ip} · {region.countryCode} · {region.timezone}
+                {desktopText("pool.browser-profile-dialog.16")}
               </p>
             ) : null}
             <FingerprintForm
@@ -179,7 +194,7 @@ export function BrowserProfileDialog({
               }}
             />
           </fieldset>
-          {busy ? <p className="note">正在处理…</p> : null}
+          {busy ? <p className="note">{desktopText("pool.browser-profile-dialog.17")}</p> : null}
           {error ? (
             <p className="error-text" role="alert">
               {error}
@@ -188,10 +203,10 @@ export function BrowserProfileDialog({
         </div>
         <div className="dialog-foot">
           <Button variant="ghost" disabled={busy} onClick={onClose}>
-            取消
+            {desktopText("pool.browser-profile-dialog.18")}
           </Button>
           <Button variant="primary" disabled={busy || !name.trim()} onClick={() => void save()}>
-            保存配置
+            {desktopText("pool.browser-profile-dialog.19")}
           </Button>
         </div>
       </DialogContent>
@@ -205,5 +220,5 @@ const systemNetwork = "__system-network__"
 function errorMessage(caught: unknown): string {
   return caught instanceof Error
     ? caught.message.replace(/^Error invoking remote method '[^']*': (?:\w*Error: )?/, "")
-    : "浏览器配置操作失败"
+    : desktopText("pool.browser-profile-dialog.20")
 }

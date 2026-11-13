@@ -1,4 +1,5 @@
 // 负责账号删除和代理切换弹层；指纹编辑已拆到 fingerprint-dialog。
+import { desktopText } from "../locale/text"
 import { useEffect, useRef, useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog"
 import { Button } from "./ui/button"
@@ -21,18 +22,18 @@ export function AccountDeleteDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <div className="dialog-head">
-          <DialogTitle>删除「{accountName}」？</DialogTitle>
-          <DialogDescription>
-            本机账号凭据和该账号的浏览器登录数据会删除，共享浏览器配置保留。Claude
-            那边的账号不受影响。
-          </DialogDescription>
+          <DialogTitle>
+            {desktopText("pool.account-dialogs.1")}
+            {accountName}」？
+          </DialogTitle>
+          <DialogDescription>{desktopText("pool.account-dialogs.2")}</DialogDescription>
         </div>
         <div className="dialog-foot">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            取消
+            {desktopText("pool.account-dialogs.3")}
           </Button>
           <Button variant="solidDanger" onClick={onConfirm}>
-            删除
+            {desktopText("pool.account-dialogs.4")}
           </Button>
         </div>
       </DialogContent>
@@ -75,10 +76,12 @@ export function AccountProxyDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <div className="dialog-head">
-          <DialogTitle>给「{accountName}」设置网络出口</DialogTitle>
-          <DialogDescription>
-            绑定代理后，登录和对话都会从新的代理出口发出；不使用代理则走系统网络。
-          </DialogDescription>
+          <DialogTitle>
+            {desktopText("pool.account-dialogs.5")}
+            {accountName}
+            {desktopText("pool.account-dialogs.6")}
+          </DialogTitle>
+          <DialogDescription>{desktopText("pool.account-dialogs.7")}</DialogDescription>
         </div>
         <div className="dialog-body">
           <div className="group">
@@ -90,17 +93,17 @@ export function AccountProxyDialog({
             >
               <span className="radio-dot" />
               <div className="grow">
-                <b>不使用代理（系统网络直连）</b>
-                <div className="desc">登录和对话都从本机网络发出</div>
+                <b>{desktopText("pool.account-dialogs.8")}</b>
+                <div className="desc">{desktopText("pool.account-dialogs.9")}</div>
               </div>
             </Button>
             {selected === null ? (
               <p className="error-text" role="alert">
-                原代理已不存在，请重新选择网络出口
+                {desktopText("pool.account-dialogs.10")}
               </p>
             ) : null}
             {proxies.length === 0 ? (
-              <p className="note">还没有代理。可以保存为系统网络直连。</p>
+              <p className="note">{desktopText("pool.account-dialogs.11")}</p>
             ) : null}
             {proxies.map((proxy) => (
               <Button
@@ -122,7 +125,7 @@ export function AccountProxyDialog({
         </div>
         <div className="dialog-foot">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            取消
+            {desktopText("pool.account-dialogs.12")}
           </Button>
           <Button
             variant="primary"
@@ -132,7 +135,7 @@ export function AccountProxyDialog({
               onConfirm(selected === "" ? null : selected)
             }}
           >
-            保存
+            {desktopText("pool.account-dialogs.13")}
           </Button>
         </div>
       </DialogContent>

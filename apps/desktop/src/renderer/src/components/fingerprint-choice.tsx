@@ -1,5 +1,6 @@
 // 负责指纹的「自动、常用选项、自定义」控件，选择状态不写进指纹数据，外部草稿更新仍能正确回显。
 
+import { desktopText } from "../locale/text"
 import { useEffect, useRef, useState } from "react"
 import type { FingerprintFieldOption } from "../models/fingerprint-fields"
 import { generateFingerprintSeed } from "../models/fingerprint-choices"
@@ -95,11 +96,17 @@ export function FingerprintChoice({
             {
               value: "__default__",
               label: defaultLabel,
-              keywords: ["默认", "自动", "default", "auto", "system"],
+              keywords: [
+                desktopText("pool.fingerprint-choice.1"),
+                desktopText("pool.fingerprint-choice.2"),
+                "default",
+                "auto",
+                "system",
+              ],
             },
             ...options,
           ]}
-          customOption={{ value: "__custom__", label: "自定义…" }}
+          customOption={{ value: "__custom__", label: desktopText("pool.fingerprint-choice.3") }}
           invalid={invalid}
           describedBy={describedBy}
           onValueChange={selectValue}
@@ -118,15 +125,19 @@ export function FingerprintChoice({
               </SelectItem>
             ))}
             <SelectSeparator />
-            {generateSeed ? <SelectItem value="__generate__">生成新种子</SelectItem> : null}
-            <SelectItem value="__custom__">自定义…</SelectItem>
+            {generateSeed ? (
+              <SelectItem value="__generate__">
+                {desktopText("pool.fingerprint-choice.4")}
+              </SelectItem>
+            ) : null}
+            <SelectItem value="__custom__">{desktopText("pool.fingerprint-choice.5")}</SelectItem>
           </SelectContent>
         </Select>
       )}
       {custom ? (
         <Input
           id={`${id}-custom`}
-          aria-label={`自定义${label}`}
+          aria-label={desktopText("pool.fingerprint-choice.6", { value1: String(label) })}
           autoFocus={focusCustom.current}
           value={value}
           placeholder={placeholder}

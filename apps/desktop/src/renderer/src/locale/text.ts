@@ -29,3 +29,12 @@ export function useText(): { locale: Locale; t: (key: TextKey) => string } {
   const { locale } = useLocale()
   return useMemo(() => ({ locale, t: (key: TextKey) => text(locale, key) }), [locale])
 }
+
+/** 读取当前随桌面交付的简体中文文案，适用于纯模型、静态配置和独立页面预览。 */
+export function desktopText(
+  key: TextKey,
+  values?: Readonly<Record<string, string | number>>,
+): string {
+  const label = text("zh-CN", key)
+  return values ? fill(label, values) : label
+}

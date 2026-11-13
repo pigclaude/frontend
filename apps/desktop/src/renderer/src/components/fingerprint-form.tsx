@@ -1,6 +1,7 @@
 // 负责指纹设置面板：环境摘要、快捷预设、分组标签、设置页样式的小组卡片和字段校验定位。
 // 授权向导与账号编辑共用此面板，切换分组时由调用方保留完整草稿。
 
+import { desktopText } from "../locale/text"
 import { useEffect, useRef, useState } from "react"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import { cn } from "../lib/cn"
@@ -69,7 +70,7 @@ export function FingerprintForm({ value, errors = {}, idPrefix, onChange }: Fing
       <div className="fp-tabs-bar">
         <RadioGroup
           className="seg fp-tabs"
-          aria-label="指纹设置分组"
+          aria-label={desktopText("pool.fingerprint-form.1")}
           value={active}
           onValueChange={(next) => {
             const selected = fingerprintGroups.find((item) => item.id === next)
@@ -89,7 +90,10 @@ export function FingerprintForm({ value, errors = {}, idPrefix, onChange }: Fing
               >
                 <span>{item.title}</span>
                 {count > 0 ? (
-                  <span className="fp-error-count" aria-label={`${count} 处待修正`}>
+                  <span
+                    className="fp-error-count"
+                    aria-label={desktopText("pool.fingerprint-form.2", { value1: String(count) })}
+                  >
                     {count}
                   </span>
                 ) : null}

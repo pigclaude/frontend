@@ -1,5 +1,6 @@
 // 负责用分组下拉选择指纹预设；根据实际字段识别当前画像，手动修改后自动显示自定义配置。
 
+import { desktopText } from "../locale/text"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import {
   advancedFingerprintProfiles,
@@ -49,17 +50,28 @@ export function FingerprintPresetPicker({
           if (preset) onChange(applyFingerprintPreset(value, preset))
         }}
       >
-        <SelectTrigger id={`${idPrefix}-preset`} aria-label="快捷预设">
-          <SelectValue>{selected?.name ?? "自定义配置"}</SelectValue>
+        <SelectTrigger
+          id={`${idPrefix}-preset`}
+          aria-label={desktopText("fingerprint.fingerprint-preset-picker.1")}
+        >
+          <SelectValue>
+            {selected?.name ?? desktopText("fingerprint.fingerprint-preset-picker.2")}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent className="fp-preset-menu">
           <SelectItem value="custom" disabled>
-            自定义配置
+            {desktopText("fingerprint.fingerprint-preset-picker.3")}
           </SelectItem>
           <SelectSeparator />
           {[
-            { label: "常用环境", items: quickFingerprintPresets },
-            { label: "地区环境", items: advancedFingerprintProfiles },
+            {
+              label: desktopText("fingerprint.fingerprint-preset-picker.4"),
+              items: quickFingerprintPresets,
+            },
+            {
+              label: desktopText("fingerprint.fingerprint-preset-picker.5"),
+              items: advancedFingerprintProfiles,
+            },
           ].map((group) => (
             <SelectGroup key={group.label}>
               <SelectLabel>{group.label}</SelectLabel>

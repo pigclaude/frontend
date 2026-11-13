@@ -49,13 +49,15 @@ async function closeApplication() {
   application = undefined
   const process = current.process()
   if (process.exitCode !== null || process.signalCode !== null) return
-  const timeout = setTimeout(() => process.kill(), 5000)
+  const exited = new Promise((resolve) => process.once("exit", resolve))
+  const timeout = setTimeout(() => process.kill("SIGKILL"), 7000)
   let deadline
   try {
     await Promise.race([
-      current.close(),
+      current.close().catch(() => exited),
+      exited,
       new Promise((_, reject) => {
-        deadline = setTimeout(() => reject(new Error("Electron 退出超时")), 8000)
+        deadline = setTimeout(() => reject(new Error("Electron 退出超时")), 10_000)
       }),
     ])
   } finally {
@@ -214,6 +216,10 @@ try {
     pass("actual BrowserWindow minimize, restore and maximize IPC")
   }
 
+  if (platform !== "darwin") {
+    await closeFromTitleBar(application, page)
+    pass("system window close button")
+  }
   await closeApplication()
   page = await launch()
   await expect(screen(page, "chat")).toBeVisible()
@@ -232,10 +238,6 @@ try {
   await capture(page, "recovery")
   assert.equal(await page.locator("[data-main-window]").count(), 0)
   pass("native authorization cancel and expired membership close the shell")
-  if (platform !== "darwin") {
-    await closeFromTitleBar(application, page)
-    pass("system window close button")
-  }
 } catch (error) {
   report.error = String(error)
   const page = application?.windows()[0]

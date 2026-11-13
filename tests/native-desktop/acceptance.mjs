@@ -173,13 +173,6 @@ try {
   await capture(page, "onboarding")
   await page.getByRole("button", { name: "稍后再说" }).click()
   await expect(screen(page, "chat")).toBeVisible()
-  await verifyWorkbench(
-    page,
-    application,
-    out,
-    Boolean(process.env.PIGCLAUDE_DEV_PROVIDER_BASE_URL),
-  )
-  pass("native workbench")
   const platform = await page.evaluate(() => document.documentElement.dataset.platform)
   assert.equal(platform, process.platform)
   if (platform === "darwin") {
@@ -309,6 +302,13 @@ try {
   await expect(page.getByRole("button", { name: "展开侧栏", exact: true })).toBeVisible()
   await page.keyboard.press(`${mod}+b`)
   pass("native renderer shortcuts and history branch truncation")
+  await verifyWorkbench(
+    page,
+    application,
+    out,
+    Boolean(process.env.PIGCLAUDE_DEV_PROVIDER_BASE_URL),
+  )
+  pass("native workbench")
 
   if (platform !== "darwin") {
     await page.evaluate(() => window.pigclaude.window.control("minimize"))

@@ -80,7 +80,8 @@ async function closeApplication() {
     }
     await expect.poll(() => processRunning(pid), { timeout: 5000 }).toBe(false)
   }
-  await current.close().catch(() => {})
+  // 主进程已退出，Playwright 的传输连接可能要等到测试宿主结束才返回。
+  void current.close().catch(() => {})
   application = undefined
 }
 
@@ -335,8 +336,13 @@ try {
   if (page && !page.isClosed()) await capture(page, "failure").catch(() => {})
   throw error
 } finally {
+  const [stopped, service] = await Promise.allSettled([closeApplication(), fixture.close()])
+  if (stopped.status === "fulfilled") await rm(userData, { recursive: true, force: true })
+  const failed = [stopped, service].find((result) => result.status === "rejected")
+  if (failed) report.cleanupError = String(failed.reason)
   await writeFile(join(out, "report.json"), JSON.stringify(report, null, 2))
-  await closeApplication().catch(() => {})
-  await fixture.close()
-  await rm(userData, { recursive: true, force: true })
+  if (failed && !report.error) throw failed.reason
 }
+
+// 退出前已确认本轮 Electron 和夹具服务关闭，避免残留的调试传输阻塞运行器。
+process.exit(0)

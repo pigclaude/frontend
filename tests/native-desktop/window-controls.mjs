@@ -17,6 +17,7 @@ export async function verifySystemControls(application, page, nativeState, out) 
   const physical = (value) => value * (process.platform === "win32" ? initial.scale : 1)
   const point = (x, y) => [physical(content.x + x), physical(content.y + y)]
   await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].focus())
+  await systemInput("capture", join(out, "native-desktop.png"))
   const drag = point(Math.min(470, overlay.right - 40), 17)
   await systemInput("drag", ...drag, drag[0] + 60, drag[1] + 40)
   await expect

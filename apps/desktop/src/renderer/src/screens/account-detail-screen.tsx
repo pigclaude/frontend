@@ -1,5 +1,5 @@
 // 负责展示单个 Claude 账号的额度、网络出口、指纹和凭据状态。
-import { SettingPage, SettingRow, SettingSection } from "@pigclaude/ui-primitives"
+import { SettingPage, SettingRow, SettingSection, StatusDot } from "@pigclaude/ui-primitives"
 import { desktopText } from "../locale/text"
 import { Button } from "../components/ui/button"
 import { Icon } from "../components/icon"
@@ -94,7 +94,12 @@ export function AccountDetailScreen({
           <SettingRow
             title={desktopText("pool.account-detail-screen.cooldown")}
             description={desktopText("pool.account-detail-screen.cooldownDescription")}
-            value={<span className="status warn">{cooldownText(account.cooldownUntil)}</span>}
+            value={
+              <>
+                <StatusDot tone="warning" />
+                {cooldownText(account.cooldownUntil)}
+              </>
+            }
           />
         ) : null}
       </SettingSection>
@@ -146,13 +151,14 @@ export function AccountDetailScreen({
           title={desktopText("pool.account-detail-screen.storedLocally")}
           description={desktopText("pool.account-detail-screen.credentialUse")}
           value={
-            <span className={account.needsReauth ? "status bad" : "status ok"}>
+            <>
+              <StatusDot tone={account.needsReauth ? "error" : "ready"} />
               {desktopText(
                 account.needsReauth
                   ? "pool.account-detail-screen.needsReauth"
                   : "pool.account-detail-screen.stored",
               )}
-            </span>
+            </>
           }
         />
       </SettingSection>

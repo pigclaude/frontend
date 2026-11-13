@@ -290,7 +290,7 @@ describe("accounts screen", () => {
 
     // 父组件重渲染会传新的 proxies 数组；弹层不能因此重置成账号原来的代理。
     await render([ready], { onUpdate })
-    expect(dialog()?.querySelector("button.choice.is-selected")?.textContent).toContain(
+    expect(dialog()?.querySelector('button[aria-pressed="true"]')?.textContent).toContain(
       "不使用代理",
     )
     await clickButton(button("保存", dialog() ?? document.body), "保存")
@@ -304,7 +304,7 @@ describe("accounts screen", () => {
     await openAccount("圣何塞 Pro")
     await clickButton(button("设置"), "设置")
 
-    expect(dialog()?.querySelector("button.choice.is-selected")?.textContent).toContain("SJC-02")
+    expect(dialog()?.querySelector('button[aria-pressed="true"]')?.textContent).toContain("SJC-02")
     await clickButton(button("保存", dialog() ?? document.body), "保存")
 
     expect(onUpdate).toHaveBeenCalledWith({ accountId: "acc-sjc", proxyId: "sjc-02" })
@@ -317,7 +317,7 @@ describe("accounts screen", () => {
     await clickButton(button("设置"), "设置")
 
     expect(dialog()?.textContent).toContain("原代理已不存在，请重新选择网络出口")
-    expect(dialog()?.querySelector("button.choice.is-selected")).toBeNull()
+    expect(dialog()?.querySelector('button[aria-pressed="true"]')).toBeNull()
     expect(button("保存", dialog() ?? document.body)?.disabled).toBe(true)
 
     await clickButton(dialogChoice("不使用代理（系统网络直连）"), "不使用代理")

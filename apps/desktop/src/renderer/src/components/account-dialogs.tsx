@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog"
 import { Button } from "./ui/button"
 import type { PoolProxy } from "../fixtures/pool-fixtures"
-import { proxyDescription, proxyStatus, proxyStatusClass } from "../models/claude-account-view"
+import { proxyDescription, proxyStatus, proxyStatusTone } from "../models/claude-account-view"
+import { ListRow, SettingSection, StatusDot } from "@pigclaude/ui-primitives"
 
 /** 删除账号确认弹层。 */
 export function AccountDeleteDialog({
@@ -84,44 +85,41 @@ export function AccountProxyDialog({
           <DialogDescription>{desktopText("pool.account-dialogs.7")}</DialogDescription>
         </div>
         <div className="dialog-body">
-          <div className="group">
-            <Button
-              variant="plain"
-              className={selected === "" ? "choice is-selected" : "choice"}
-              type="button"
+          <SettingSection>
+            <ListRow
+              render={<button type="button" />}
+              aria-pressed={selected === ""}
+              selected={selected === ""}
               onClick={() => setSelected("")}
-            >
-              <span className="radio-dot" />
-              <div className="grow">
-                <b>{desktopText("pool.account-dialogs.8")}</b>
-                <div className="desc">{desktopText("pool.account-dialogs.9")}</div>
-              </div>
-            </Button>
+              title={desktopText("pool.account-dialogs.8")}
+              description={desktopText("pool.account-dialogs.9")}
+            />
             {selected === null ? (
               <p className="error-text" role="alert">
                 {desktopText("pool.account-dialogs.10")}
               </p>
             ) : null}
             {proxies.length === 0 ? (
-              <p className="note">{desktopText("pool.account-dialogs.11")}</p>
+              <p className="section-note">{desktopText("pool.account-dialogs.11")}</p>
             ) : null}
             {proxies.map((proxy) => (
-              <Button
-                variant="plain"
+              <ListRow
+                render={<button type="button" />}
                 key={proxy.id}
-                className={selected === proxy.id ? "choice is-selected" : "choice"}
-                type="button"
+                aria-pressed={selected === proxy.id}
+                selected={selected === proxy.id}
                 onClick={() => setSelected(proxy.id)}
-              >
-                <span className="radio-dot" />
-                <div className="grow">
-                  <b>{proxy.name}</b>
-                  <div className="desc">{proxyDescription(proxy)}</div>
-                </div>
-                <span className={proxyStatusClass(proxy)}>{proxyStatus(proxy).label}</span>
-              </Button>
+                title={proxy.name}
+                description={proxyDescription(proxy)}
+                meta={
+                  <>
+                    <StatusDot tone={proxyStatusTone(proxy)} />
+                    {proxyStatus(proxy).label}
+                  </>
+                }
+              />
             ))}
-          </div>
+          </SettingSection>
         </div>
         <div className="dialog-foot">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>

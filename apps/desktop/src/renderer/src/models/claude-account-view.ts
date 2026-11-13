@@ -73,10 +73,10 @@ export function proxyStatus(proxy: PoolProxy): { tone: "ok" | "idle" | "bad"; la
   return { tone: "bad", label: desktopText("pool.claude-account-view.8") }
 }
 
-/** 状态圆点的类名：可用为绿、测试失败为红，未测试保持中性。 */
-export function proxyStatusClass(proxy: PoolProxy): string {
+/** 状态圆点的色调：可用为绿、测试失败为红，未测试保持中性。 */
+export function proxyStatusTone(proxy: PoolProxy): "ready" | "error" | "idle" {
   const { tone } = proxyStatus(proxy)
-  return tone === "idle" ? "status" : `status ${tone}`
+  return tone === "ok" ? "ready" : tone === "bad" ? "error" : "idle"
 }
 
 function accountStatusKind(view: ClaudeAccountView): PoolAccountStatus {

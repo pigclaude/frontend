@@ -10,7 +10,7 @@ import {
   accountNetworkLabel,
   proxyDescription,
   proxyStatus,
-  proxyStatusClass,
+  proxyStatusTone,
   toPoolAccount,
   toPoolProxy,
 } from "./claude-account-view"
@@ -113,8 +113,8 @@ describe("claude account view mapping", () => {
     )
     expect(proxyStatus(failed)).toEqual({ tone: "bad", label: "未通过测试" })
     expect(proxyDescription(failed)).toBe("未取得出口 IP · 已测试")
-    expect(proxyStatusClass(failed)).toBe("status bad")
-    expect(proxyStatusClass(untested)).toBe("status")
+    expect(proxyStatusTone(failed)).toBe("error")
+    expect(proxyStatusTone(untested)).toBe("idle")
 
     const tested = toPoolProxy(proxy, [])
     expect(proxyDescription(tested)).toBe("203.0.113.42 · 已测试")

@@ -2,12 +2,12 @@
 
 import { desktopText } from "../locale/text"
 import { useState } from "react"
-import { ListRow, SettingPage, SettingSection } from "@pigclaude/ui-primitives"
+import { ListRow, SettingPage, SettingSection, StatusDot } from "@pigclaude/ui-primitives"
 import { Button } from "../components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog"
 import { AddProxyDialog } from "../components/proxy-dialogs"
 import type { PoolProxy } from "../fixtures/pool-fixtures"
-import { proxyDescription, proxyStatus, proxyStatusClass } from "../models/claude-account-view"
+import { proxyDescription, proxyStatus, proxyStatusTone } from "../models/claude-account-view"
 
 /** 代理列表页面 props；数据来自 useClaudeAccounts。 */
 export type ProxiesScreenProps = {
@@ -77,7 +77,7 @@ export function ProxiesScreen({ proxies, onTest, onSave, onRemove, error }: Prox
         </p>
       ) : null}
       {proxies.length === 0 ? (
-        <p className="note">{desktopText("pool.proxies-screen.empty")}</p>
+        <p className="section-note">{desktopText("pool.proxies-screen.empty")}</p>
       ) : null}
       <SettingSection>
         {proxies.map((proxy) => (
@@ -85,7 +85,12 @@ export function ProxiesScreen({ proxies, onTest, onSave, onRemove, error }: Prox
             key={proxy.id}
             title={proxy.name}
             description={proxyDescription(proxy)}
-            meta={<span className={proxyStatusClass(proxy)}>{proxyStatus(proxy).label}</span>}
+            meta={
+              <>
+                <StatusDot tone={proxyStatusTone(proxy)} />
+                {proxyStatus(proxy).label}
+              </>
+            }
             actions={
               <>
                 <Button
@@ -126,7 +131,7 @@ export function ProxiesScreen({ proxies, onTest, onSave, onRemove, error }: Prox
           />
         ))}
       </SettingSection>
-      <p className="note">{desktopText("pool.proxies-screen.noFallback")}</p>
+      <p className="section-note">{desktopText("pool.proxies-screen.noFallback")}</p>
       <AddProxyDialog
         open={addOpen || editing !== null}
         editing={editing === null ? null : { id: editing.id, name: editing.name }}

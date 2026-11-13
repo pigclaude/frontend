@@ -2,7 +2,13 @@
 
 import { desktopText } from "../locale/text"
 import { useState } from "react"
-import { ListRow, SettingPage, SettingSection } from "@pigclaude/ui-primitives"
+import {
+  ListRow,
+  SettingPage,
+  SettingSection,
+  StatusDot,
+  type StatusTone,
+} from "@pigclaude/ui-primitives"
 import type { ClaudeFingerprintView } from "@pigclaude/contracts/claude-account"
 import type { BrowserProfileView } from "@pigclaude/contracts/browser-profile"
 import { BrowserProfileSelect } from "../components/browser-profile-select"
@@ -227,7 +233,7 @@ export function AccountsScreen({
       }
     >
       {imported ? (
-        <p className="note" role="status">
+        <p className="section-note" role="status">
           {desktopText("pool.accounts-screen.imported")}
         </p>
       ) : null}
@@ -237,7 +243,7 @@ export function AccountsScreen({
         </p>
       ) : null}
       {accounts.length === 0 ? (
-        <p className="note">{desktopText("pool.accounts-screen.empty")}</p>
+        <p className="section-note">{desktopText("pool.accounts-screen.empty")}</p>
       ) : null}
       {attention.length ? (
         <SettingSection title={desktopText("pool.accounts-screen.attention")}>
@@ -255,9 +261,10 @@ export function AccountsScreen({
                 </>
               }
               meta={
-                <span className={statusClass(account.statusKind)}>
+                <>
+                  <StatusDot tone={accountTone(account.statusKind)} />
                   {statusLabel(account.statusKind)}
-                </span>
+                </>
               }
             />
           ))}
@@ -354,8 +361,7 @@ function statusLabel(kind: PoolAccount["statusKind"]): string {
   return desktopText("pool.accounts-screen.ready")
 }
 
-function statusClass(kind: PoolAccount["statusKind"]): string {
-  if (kind === "cooldown" || kind === "reauth") return "status warn"
-  if (kind === "ready") return "status ok"
-  return "status"
+function accountTone(kind: PoolAccount["statusKind"]): StatusTone {
+  if (kind === "reauth" || kind === "cooldown") return "warning"
+  return kind === "ready" ? "ready" : "idle"
 }

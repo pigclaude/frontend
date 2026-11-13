@@ -148,8 +148,9 @@ export async function startMembershipFixture() {
       if (!(await response.text()).includes("授权完成")) throw new Error("回环授权未完成")
     },
     close: () =>
-      new Promise((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      ),
+      new Promise((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()))
+        server.closeAllConnections()
+      }),
   }
 }

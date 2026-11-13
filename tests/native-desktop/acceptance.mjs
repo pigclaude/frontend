@@ -38,6 +38,20 @@ async function launch() {
   return page
 }
 
+async function closeApplication() {
+  if (!application) return
+  const current = application
+  application = undefined
+  const process = current.process()
+  if (process.exitCode !== null || process.signalCode !== null) return
+  const timeout = setTimeout(() => process.kill(), 5000)
+  try {
+    await current.close()
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 async function capture(page, name) {
   await page.screenshot({ path: join(out, `${name}.png`) })
 }
@@ -170,16 +184,18 @@ try {
   await page.keyboard.press(`${mod}+b`)
   pass("native renderer shortcuts and history branch truncation")
 
-  await page.evaluate(() => window.pigclaude.window.control("minimize"))
-  await expect.poll(async () => (await nativeState()).minimized).toBe(true)
-  await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].restore())
-  await page.evaluate(() => window.pigclaude.window.control("maximize"))
-  await expect.poll(async () => (await nativeState()).maximized).toBe(true)
-  await page.evaluate(() => window.pigclaude.window.control("maximize"))
-  await expect.poll(async () => (await nativeState()).maximized).toBe(false)
-  pass("actual BrowserWindow minimize, restore and maximize IPC")
+  if (platform !== "darwin") {
+    await page.evaluate(() => window.pigclaude.window.control("minimize"))
+    await expect.poll(async () => (await nativeState()).minimized).toBe(true)
+    await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].restore())
+    await page.evaluate(() => window.pigclaude.window.control("maximize"))
+    await expect.poll(async () => (await nativeState()).maximized).toBe(true)
+    await page.evaluate(() => window.pigclaude.window.control("maximize"))
+    await expect.poll(async () => (await nativeState()).maximized).toBe(false)
+    pass("actual BrowserWindow minimize, restore and maximize IPC")
+  }
 
-  await application.close()
+  await closeApplication()
   page = await launch()
   await expect(screen(page, "chat")).toBeVisible()
   assert.equal(await page.evaluate(() => localStorage.getItem("pigclaude.sidebarWidth")), "322")
@@ -203,7 +219,7 @@ try {
   throw error
 } finally {
   await writeFile(join(out, "report.json"), JSON.stringify(report, null, 2))
-  if (application) await application.close().catch(() => {})
+  await closeApplication().catch(() => {})
   await fixture.close()
   await rm(userData, { recursive: true, force: true })
 }

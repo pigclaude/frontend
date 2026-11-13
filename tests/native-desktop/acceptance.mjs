@@ -42,6 +42,17 @@ async function launch() {
       PIGCLAUDE_RUST_BASE_URL: fixture.origin,
     },
     timeout: 45_000,
+    ...(process.env.CI
+      ? {
+          logger: {
+            isEnabled: (name) => name === "browser",
+            log: (_name, _severity, message) => {
+              const marker = String(message).match(/Workbench IPC failed [a-z-]+ [A-Z0-9_]+/)
+              if (marker) console.error(marker[0])
+            },
+          },
+        }
+      : {}),
   })
   applicationPid = await application.evaluate(() => process.pid)
   const page = await application.firstWindow({ timeout: 25_000 })

@@ -13,6 +13,7 @@ const exec = promisify(execFile)
 /** 使用隔离 Git 仓库、网页与显式启用的供应商，不使用现有用户项目。 */
 export async function verifyWorkbench(page, application, output, provider = false) {
   const root = await mkdtemp(join(tmpdir(), "pigclaude-workbench-test-"))
+  let failure
   const site = createServer((request, response) => {
     if (request.url === "/next") {
       response.writeHead(200, { "content-type": "text/html" })
@@ -176,12 +177,29 @@ export async function verifyWorkbench(page, application, output, provider = fals
     await expect(panel.getByRole("combobox", { name: "工作树", exact: true })).toBeVisible()
     await panel.getByRole("button", { name: "切换右侧面板", exact: true }).click()
     await expect(panel).toBeHidden()
+  } catch (error) {
+    failure = error
+    throw error
   } finally {
     await new Promise((resolve) => {
       site.close(resolve)
       site.closeAllConnections()
     })
-    await rm(root, { recursive: true, force: true })
+    try {
+      if (!page.isClosed()) {
+        await page.evaluate(async () => {
+          const bridge = window.pigclaude.workbench
+          const ids = [...document.querySelectorAll("[data-workbench-terminal]")].map((element) =>
+            element.getAttribute("data-workbench-terminal"),
+          )
+          await Promise.all(ids.filter(Boolean).map((id) => bridge.terminalClose(id)))
+        })
+      }
+      await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+    } catch (cleanupError) {
+      if (!failure) throw cleanupError
+      console.error("Workbench fixture cleanup also failed", cleanupError.code ?? cleanupError.name)
+    }
   }
 }
 

@@ -3,6 +3,7 @@ import { constants } from "node:fs"
 import { open, readdir, rename, unlink } from "node:fs/promises"
 import { basename, dirname, extname, join } from "node:path"
 import { randomUUID } from "node:crypto"
+import { setTimeout as delay } from "node:timers/promises"
 import type { WorkbenchListing, WorkbenchSearch, WorkbenchFile } from "../../workbench-contract"
 import { listWorkspaceFiles } from "../runtime/workspace-files"
 import { visibleWorkspaceEntry, workspaceFileInfo, workspacePath } from "./workspace-path"
@@ -140,20 +141,36 @@ async function replaceWorkbenchFile(
   const temporary = join(dirname(absolute), "." + basename(absolute) + "." + randomUUID() + ".tmp")
   const info = await workspaceFileInfo(absolute)
   if (info.mtimeMs !== previous.mtimeMs) throw new Error("WORKBENCH_FILE_CHANGED")
-  const handle = await open(temporary, "wx", info.mode & 0o777)
   try {
+    const handle = await open(temporary, "wx", info.mode & 0o777)
     const contents = previous.eol === "crlf" ? text.replace(/\r?\n/g, "\r\n") : text
-    if (Buffer.byteLength(contents) > maxTextBytes) throw new Error("WORKBENCH_FILE_TOO_LARGE")
-    await handle.writeFile(contents)
-    await handle.close()
-    await workspacePath(root, path)
-    const current = await workspaceFileInfo(absolute)
-    if (current.mtimeMs !== info.mtimeMs || current.ino !== info.ino) {
-      throw new Error("WORKBENCH_FILE_CHANGED")
+    try {
+      if (Buffer.byteLength(contents) > maxTextBytes) throw new Error("WORKBENCH_FILE_TOO_LARGE")
+      await handle.writeFile(contents)
+    } finally {
+      await handle.close()
     }
-    await rename(temporary, absolute)
+    for (let attempt = 0; ; attempt += 1) {
+      await workspacePath(root, path)
+      const current = await workspaceFileInfo(absolute)
+      if (current.mtimeMs !== info.mtimeMs || current.ino !== info.ino) {
+        throw new Error("WORKBENCH_FILE_CHANGED")
+      }
+      try {
+        await rename(temporary, absolute)
+        break
+      } catch (error: unknown) {
+        const code = error && typeof error === "object" && "code" in error ? error.code : null
+        if (
+          process.platform !== "win32" ||
+          attempt >= 6 ||
+          !["EPERM", "EACCES", "EBUSY"].includes(String(code))
+        )
+          throw error
+        await delay(50 * (attempt + 1))
+      }
+    }
   } finally {
-    await handle.close()
     await unlink(temporary).catch(() => undefined)
   }
   return readWorkbenchFile(root, path)

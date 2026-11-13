@@ -77,7 +77,7 @@ export function TerminalPane({ bridge, root, id, active, onNew, onClose }: Props
   }, [active])
 
   return (
-    <div className="terminal-surface">
+    <div className="terminal-surface" data-workbench-terminal={id}>
       <div className="terminal-toolbar">
         <span className="grow truncate" title={root}>
           {root}

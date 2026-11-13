@@ -78,6 +78,10 @@ export class WorkbenchIpc {
           ) {
             throw new Error(message)
           }
+          const code = error && typeof error === "object" && "code" in error ? error.code : null
+          if (process.env.CI && typeof code === "string" && /^[A-Z0-9_]{1,35}$/.test(code)) {
+            console.error("Workbench IPC failed", name, code)
+          }
           throw new Error("WORKBENCH_OPERATION_FAILED")
         }
       })

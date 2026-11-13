@@ -136,7 +136,7 @@ export function AboutSettings({ appVersion }: { appVersion: string | null }) {
   return (
     <SettingPage title="关于">
       <div className="group">
-        <div className="me about-head">
+        <div className="me">
           <span className="about-mark">
             <Icon name="snout" />
           </span>

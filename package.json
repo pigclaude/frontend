@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "pnpm@10.28.2",
   "scripts": {
-    "test": "node --test tests/pigcode-source-guard.node.mjs tests/fake-epay-gateway.node.mjs tests/turnstile-launcher.node.mjs tests/oauth-oidc-launcher.node.mjs tests/oauth-oidc-lifecycle.node.mjs tests/oauth-oidc-browser-owner.node.mjs && pnpm test:browser-probes && pnpm -r --if-present test",
+    "test": "node --test tests/pigcode-source-guard.node.mjs tests/fake-epay-gateway.node.mjs tests/turnstile-launcher.node.mjs tests/oauth-oidc-launcher.node.mjs tests/oauth-oidc-lifecycle.node.mjs tests/oauth-oidc-browser-owner.node.mjs && pnpm classes:verify && pnpm test:browser-probes && pnpm -r --if-present test",
     "test:browser-probes": "node --test tests/browser-probes/*_test.mjs",
     "phase1:launch": "node scripts/phase1-local-launcher.mjs",
     "layout": "node scripts/assert-layout.mjs",
@@ -13,7 +13,8 @@
     "e2e:oauth-oidc": "node scripts/oauth-oidc-e2e.mjs",
     "oauth-oidc:launch": "node scripts/oauth-oidc-local-launcher.mjs",
     "pigcode:verify": "node scripts/assert-pigcode-source.mjs",
-    "pigcode:sync": "node scripts/vendor-pigcode.mjs"
+    "pigcode:sync": "node scripts/vendor-pigcode.mjs",
+    "classes:verify": "node scripts/assert-class-usage.mjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

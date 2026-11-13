@@ -205,7 +205,7 @@ export function FingerprintField({
 
   if (key === "disableSpoofing") {
     return (
-      <div className="fp-spoofing" role="group" aria-label={meta.label} {...a11y}>
+      <div role="group" aria-label={meta.label} {...a11y}>
         {errorText ? (
           <div className="item fp-row">
             <div className="main">{errorText}</div>

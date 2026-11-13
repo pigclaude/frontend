@@ -31,7 +31,7 @@ export function SidebarFooter(props: SidebarFooterProps) {
   return (
     <div className="side-foot">
       <Menu.Root>
-        <Menu.Trigger className="side-account account-trigger" aria-label={t("shell.account.menu")}>
+        <Menu.Trigger className="side-account" aria-label={t("shell.account.menu")}>
           <span className="side-avatar" aria-hidden="true">
             {initial || <Icon name="user" />}
           </span>
@@ -39,7 +39,7 @@ export function SidebarFooter(props: SidebarFooterProps) {
         </Menu.Trigger>
         <Menu.Portal>
           <Menu.Positioner side="top" align="start" sideOffset={6}>
-            <Menu.Popup className="account-menu">
+            <Menu.Popup>
               {props.account ? (
                 <div className="account-menu-user">
                   <span className="account-menu-name truncate">{name}</span>

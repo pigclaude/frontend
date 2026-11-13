@@ -16,31 +16,8 @@ a.item,
 .choice {
   cursor: default;
 }
-.ic-lg {
-  width: 18px;
-  height: 18px;
-}
-.fg2 {
-  color: var(--fg-2);
-}
-.t-ok {
-  color: var(--ok-text);
-}
 .t-warn {
   color: var(--warn-text);
-}
-.t-bad {
-  color: var(--bad-text);
-}
-.row-between {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.col {
-  display: flex;
-  flex-direction: column;
 }
 
 /* ─── 整窗流程的自绘交通灯（登录、恢复、引导、授权向导） ─── */
@@ -143,16 +120,14 @@ a.item,
   gap: 8px;
 }
 a.item,
-button.item,
-.item.is-click {
+button.item {
   width: 100%;
   text-align: left;
   cursor: default;
   transition: background var(--t-fast);
 }
 a.item:hover,
-button.item:hover,
-.item.is-click:hover {
+button.item:hover {
   background: var(--hover);
 }
 .group > .item:first-child {
@@ -233,30 +208,6 @@ button.item:hover,
 }
 
 /* ─── 表单 ─────────────────────────────────────────────── */
-.input-group {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  height: 28px;
-  padding: 0 9px;
-  border-radius: var(--r-md);
-  background: var(--surface);
-  box-shadow: inset 0 0 0 var(--hair) var(--border-strong);
-}
-.input-group:focus-within {
-  box-shadow: inset 0 0 0 1px var(--border-focus);
-}
-.input-group input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  background: none;
-  outline: none;
-  height: 100%;
-}
-.input-group .ic {
-  color: var(--muted);
-}
 /* 旧的 Base UI 开关没有滑块元素，滑块画在 ::after 上；Base UI 开关自带 .switch-thumb，不再叠一个 */
 .switch:not(:has(> .switch-thumb))::after {
   content: "";
@@ -274,37 +225,6 @@ button.item:hover,
   transform: translateX(14px);
 }
 
-.check {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-.check input {
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  margin: 0;
-  border-radius: 4px;
-  background: var(--surface);
-  box-shadow:
-    inset 0 0 0 var(--hair) var(--border-strong),
-    var(--shadow-btn);
-  display: grid;
-  place-items: center;
-  flex: none;
-}
-.check input:checked {
-  background: var(--primary);
-  box-shadow: none;
-}
-.check input:checked::after {
-  content: "";
-  width: 3.5px;
-  height: 7px;
-  border: solid var(--on-primary);
-  border-width: 0 1.6px 1.6px 0;
-  transform: translateY(-1px) rotate(45deg);
-}
 .choice {
   display: flex;
   align-items: center;
@@ -361,10 +281,6 @@ button.item:hover,
   height: 5px;
   border-radius: 50%;
   background: var(--on-primary);
-}
-.choice.is-disabled {
-  opacity: 0.45;
-  pointer-events: none;
 }
 
 /* ─── 状态、标签、头像 ─────────────────────────────────── */
@@ -453,28 +369,6 @@ button.item:hover,
   height: 36px;
   font-size: calc(var(--ui-scale) * 14px);
 }
-.avatar .badge {
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  box-shadow: 0 0 0 1.5px var(--bg);
-  background: var(--faint);
-}
-.avatar .badge.ok {
-  background: var(--ok);
-}
-.avatar .badge.warn {
-  background: var(--warn);
-}
-.avatar .badge.bad {
-  background: var(--bad);
-}
-.avatar .badge.info {
-  background: var(--info);
-}
 
 /* ─── 额度条 ───────────────────────────────────────────── */
 .bar {
@@ -489,9 +383,6 @@ button.item:hover,
   border-radius: inherit;
   background: var(--quota);
   width: var(--p, 0%);
-}
-.bar.is-warn > i {
-  background: var(--warn);
 }
 .bar.is-full > i {
   background: var(--bad);
@@ -511,29 +402,6 @@ button.item:hover,
   text-align: right;
   color: var(--fg-2);
   font-size: var(--fs-sm);
-}
-
-/* ─── 表格 ─────────────────────────────────────────────── */
-.dtable {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--fs-sm);
-}
-.dtable th {
-  text-align: left;
-  font-weight: 500;
-  font-size: var(--fs-xs);
-  color: var(--muted);
-  padding: 9px 12px;
-  white-space: nowrap;
-}
-.dtable td {
-  padding: 9px 12px;
-  box-shadow: inset 0 1px 0 var(--divider);
-  vertical-align: middle;
-}
-.dtable .r {
-  text-align: right;
 }
 
 /* ─── 浮层 ─────────────────────────────────────────────── */
@@ -564,8 +432,7 @@ button.item:hover,
   transform: none;
   pointer-events: auto;
 }
-.menu-item:hover,
-.menu-item.is-focus {
+.menu-item:hover {
   background: var(--hover);
 }
 .menu-item .end {
@@ -640,37 +507,7 @@ button.item:hover,
   bottom: calc(100% + 6px);
 }
 
-.cmdk {
-  width: min(540px, 100%);
-  align-self: start;
-  margin-top: 14vh;
-}
-.cmdk .input-group {
-  height: 42px;
-  border-radius: 0;
-  background: none;
-  box-shadow: inset 0 -0.5px 0 var(--border-strong);
-  padding: 0 14px;
-}
-.cmdk .input-group input {
-  font-size: var(--fs-lg);
-}
-.cmdk-list {
-  padding: 4px;
-  max-height: 360px;
-  overflow: auto;
-}
-
 /* ─── 其他 ─────────────────────────────────────────────── */
-.empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 6px;
-  padding: 36px 24px;
-  color: var(--muted);
-}
 @keyframes pulse {
   0%,
   100% {
@@ -685,162 +522,6 @@ button.item:hover,
     transform: rotate(360deg);
   }
 }
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  font-size: var(--fs-xs);
-  color: var(--muted);
-}
-.legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.legend i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  display: inline-block;
-}
-.code-inline {
-  font-family: var(--font-mono);
-  font-size: var(--fs-code);
-  font-weight: var(--font-weight-code);
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: var(--hover);
-  color: var(--fg-2);
-}
-
-/* ─── 会话组件 ─────────────────────────────────────────── */
-.steps-line {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--muted);
-  font-size: var(--fs-md);
-  padding: 1px 0;
-}
-.steps-line:hover {
-  color: var(--fg);
-}
-.steps-line .chev {
-  transition: transform var(--t-fast);
-}
-.steps-line[aria-expanded="true"] .chev {
-  transform: rotate(90deg);
-}
-.steps-list {
-  display: flex;
-  flex-direction: column;
-  margin: 4px 0 0 6px;
-  padding-left: 12px;
-  box-shadow: inset 1px 0 0 var(--border-strong);
-}
-.steps-list div {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-  font-size: var(--fs-sm);
-  height: 24px;
-}
-.steps-list b {
-  font-weight: 500;
-  color: var(--fg-2);
-}
-.result {
-  border-radius: var(--r-lg);
-  background: var(--surface);
-  box-shadow:
-    inset 0 0 0 var(--hair) var(--border-strong),
-    var(--shadow-btn);
-}
-.result-head {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  min-height: 38px;
-  padding: 0 12px;
-  text-align: left;
-  font-size: var(--fs-md);
-}
-.result-head .chev {
-  transition: transform var(--t-fast);
-}
-.result.is-open .result-head .chev {
-  transform: rotate(90deg);
-}
-.result-body {
-  display: none;
-  box-shadow: inset 0 var(--hair) 0 var(--border-strong);
-}
-.result.is-open .result-body {
-  display: block;
-}
-.diff {
-  font-family: var(--font-mono);
-  font-size: var(--fs-code);
-  font-weight: var(--font-weight-code);
-  line-height: 1.75;
-  overflow-x: auto;
-  padding: 6px 0;
-}
-.diff div {
-  display: grid;
-  grid-template-columns: 38px 14px 1fr;
-  padding-right: 12px;
-  white-space: pre;
-}
-.diff .ln {
-  color: var(--faint);
-  text-align: right;
-  padding-right: 10px;
-  user-select: none;
-}
-.diff .add {
-  background: color-mix(in oklab, var(--ok) 10%, transparent);
-}
-.diff .add .sg {
-  color: var(--ok-text);
-}
-.diff .del {
-  background: color-mix(in oklab, var(--bad) 8%, transparent);
-}
-.diff .del .sg {
-  color: var(--bad-text);
-}
-.diff .hunk {
-  color: var(--muted);
-  font-size: var(--fs-code);
-}
-.term {
-  font-family: var(--font-mono);
-  font-size: var(--fs-code);
-  font-weight: var(--font-weight-code);
-  line-height: 1.7;
-  padding: 9px 12px;
-  white-space: pre-wrap;
-  color: var(--fg-2);
-  max-height: 220px;
-  overflow: auto;
-}
-.term .p {
-  color: var(--ok-text);
-}
-.event-line {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--muted);
-  font-size: var(--fs-sm);
-}
-.event-line .ic {
-  color: var(--faint);
-}
-
 /* 外观设置把减少动态效果设为「关闭」时写 data-motion="full"，此时不跟随系统偏好 */
 
 /* ─── 窄窗口 ───────────────────────────────────────────── */

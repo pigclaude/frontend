@@ -1,4 +1,4 @@
-// 负责验证聊天页：空状态、开始会话、流式文本、工具折叠、权限卡片、换号提示、取消/停止和错误提示，且页面不出现凭据。
+// 负责验证聊天页：空状态、开始会话、流式文本、工具折叠、权限卡片、换号提示、取消/停止、错误提示和会话环境抽屉，且页面不出现凭据。
 
 // @vitest-environment jsdom
 import { act, createElement, useState } from "react"
@@ -425,6 +425,36 @@ describe("chat screen", () => {
       "没有可用的 Claude 账号",
     )
     expect(container.textContent).toContain("Claude Code 不可用")
+  })
+
+  it("shows only agent, workspace and permission in the environment drawer", async () => {
+    await render({
+      fresh: false,
+      session: controller({
+        state: startingState(),
+        status: {
+          active: true,
+          sessionId: "session-1",
+          model: null,
+          permissionMode: "default",
+          accountId: "account-a",
+          pendingPermissions: 0,
+          turnId: "turn-1",
+        },
+      }),
+    })
+
+    const trigger =
+      container.querySelector<HTMLElement>('button[aria-label="会话环境"]') ?? undefined
+    await clickButton(trigger, "打开会话环境")
+
+    const drawer = container.querySelector<HTMLElement>('aside[aria-label="会话环境"]')
+    expect(drawer, "会话环境抽屉").not.toBeNull()
+    const text = drawer!.textContent ?? ""
+    expect(text).toContain("主力 Max")
+    expect(text).toContain("/Users/me/app")
+    expect(text).toContain("工作区可写")
+    expect(text).not.toMatch(/accessToken|refreshToken|sk-ant-|Bearer |ANTHROPIC_|环境变量/)
   })
 
   it("never puts credentials into the page or localStorage", async () => {

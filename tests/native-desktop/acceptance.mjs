@@ -297,7 +297,7 @@ try {
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark")
   await expect
     .poll(() =>
-      page.evaluate(() => JSON.parse(localStorage.getItem("pigcode-appearance") ?? "{}").mode),
+      page.evaluate(() => JSON.parse(localStorage.getItem("pigclaude-appearance-v2") ?? "{}").mode),
     )
     .toBe("dark")
   pass("appearance change reaches renderer and persisted setting")
@@ -325,7 +325,7 @@ try {
   pass("native authorization cancel and expired membership close the shell")
   report.themeAfterRestart = await page.evaluate(() => ({
     applied: document.documentElement.dataset.theme,
-    saved: JSON.parse(localStorage.getItem("pigcode-appearance") ?? "{}").mode,
+    saved: JSON.parse(localStorage.getItem("pigclaude-appearance-v2") ?? "{}").mode,
   }))
   assert.deepEqual(report.themeAfterRestart, { applied: "dark", saved: "dark" })
   pass("theme retained after restart")

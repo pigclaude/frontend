@@ -9,11 +9,11 @@ import {
 import type { ThemeDefinition } from "./theme-presets"
 
 /** 外观设置的存储键。 */
-export const appearanceKey = "pigcode-appearance"
+export const appearanceKey = "pigclaude-appearance-v2"
 /** 「我的主题」的存储键。 */
-export const customThemesKey = "pigcode-themes"
+export const customThemesKey = "pigclaude-themes-v2"
 /** 旧版只存浅色/深色/系统的键，读到后迁移并删除。 */
-export const legacyThemeKey = "pigcode-theme"
+export const legacyThemeKey = "pigclaude-theme"
 
 /** 读写所需的最小存储能力；window.localStorage 满足它。 */
 export type AppearanceStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">

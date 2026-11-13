@@ -73,6 +73,11 @@ export function rewriteSource(text, rest = "") {
   if (rest === "src/theme/theme-presets.ts") {
     next = next.replace('name: "pigcode"', 'name: "PigClaude"')
   }
+  if (rest === "src/theme/appearance-storage.ts") {
+    next = next.replace('"pigcode-appearance"', '"pigclaude-appearance-v2"')
+    next = next.replace('"pigcode-themes"', '"pigclaude-themes-v2"')
+    next = next.replace('"pigcode-theme"', '"pigclaude-theme"')
+  }
   if (rest === "src/theme/theme-import.test.ts") {
     next = next.replaceAll("pigcode + Nord", "PigClaude + Nord")
     next = next.replaceAll("pigcode-nord.pigcode-theme.json", "pigclaude-nord.pigcode-theme.json")

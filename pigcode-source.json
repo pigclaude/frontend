@@ -781,7 +781,7 @@
       "path": "packages/ui-primitives/src/theme/appearance-storage.ts",
       "source": "packages/ui-primitives/src/theme/appearance-storage.ts",
       "sourceSha256": "0a3007027b12bb4d4efd9ddb95cd71725908e1f070295082512e86415485b790",
-      "sha256": "0a3007027b12bb4d4efd9ddb95cd71725908e1f070295082512e86415485b790"
+      "sha256": "c6fee0d9c9bcbd8814acb40a2fc3d63ba343c637a16d22a7ef681b90dc380d32"
     },
     {
       "path": "packages/ui-primitives/src/theme/appearance-tokens.ts",

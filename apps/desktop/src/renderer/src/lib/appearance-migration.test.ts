@@ -58,10 +58,14 @@ describe("旧外观迁移", () => {
       },
     }
     migrateAppearanceStorage(storage)
-    expect(JSON.parse(data.get("pigcode-appearance") ?? "null")).toMatchObject({ mode: "dark" })
-    data.set("pigcode-appearance", JSON.stringify({ version: 1, mode: "light" }))
+    expect(JSON.parse(data.get("pigclaude-appearance-v2") ?? "null")).toMatchObject({
+      mode: "dark",
+    })
+    data.set("pigclaude-appearance-v2", JSON.stringify({ version: 1, mode: "light" }))
     migrateAppearanceStorage(storage)
-    expect(JSON.parse(data.get("pigcode-appearance") ?? "null")).toMatchObject({ mode: "light" })
+    expect(JSON.parse(data.get("pigclaude-appearance-v2") ?? "null")).toMatchObject({
+      mode: "light",
+    })
   })
 
   it.each(["pigclaude-theme/1", "pigcode-theme/1"])("导入 %s，仍导出 Pigcode 文件", (schema) => {

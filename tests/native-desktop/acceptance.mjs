@@ -307,13 +307,23 @@ try {
     .toBe("reduce")
   pass("system reduced-motion preference reaches appearance")
   if (platform === "darwin") {
-    const icon = () => application.evaluate(({ app }) => app.dock.getIcon().toDataURL())
-    const initialIcon = await icon()
+    await application.evaluate(({ app }) => {
+      const dock = app.dock
+      const setIcon = dock.setIcon.bind(dock)
+      Reflect.set(dock, "acceptanceIcons", [])
+      dock.setIcon = (icon) => {
+        Reflect.get(dock, "acceptanceIcons").push(icon.toDataURL())
+        return setIcon(icon)
+      }
+    })
+    const icons = () => application.evaluate(({ app }) => Reflect.get(app.dock, "acceptanceIcons"))
     const picker = page.getByRole("radiogroup", { name: "Dock 图标", exact: true })
     await picker.getByRole("radio", { name: "粉色", exact: true }).click()
-    await expect.poll(icon).not.toBe(initialIcon)
+    await expect.poll(async () => (await icons()).length).toBe(1)
     await picker.getByRole("radio", { name: "经典", exact: true }).click()
-    await expect.poll(icon).not.toBe("")
+    await expect.poll(async () => (await icons()).length).toBe(2)
+    const [pink, classic] = await icons()
+    assert.ok(pink && classic && pink !== classic)
     pass("macOS Dock icon selection updates the native icon")
   }
   await page

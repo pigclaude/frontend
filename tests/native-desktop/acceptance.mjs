@@ -291,6 +291,7 @@ try {
   await page.evaluate(() => document.activeElement?.blur())
   await page.keyboard.press(`${mod}+n`)
   await expect(screen(page, "chat-new")).toBeVisible()
+  await page.evaluate(() => document.activeElement?.blur())
   await page.keyboard.press(`${mod}+b`)
   await expect(page.getByRole("button", { name: "展开侧栏", exact: true })).toBeVisible()
   await page.keyboard.press(`${mod}+b`)

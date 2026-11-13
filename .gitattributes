@@ -6,4 +6,5 @@ packages/ui-contracts/** text=auto eol=lf
 packages/ui-primitives/** text=auto eol=lf
 packages/ui-settings/** text=auto eol=lf
 packages/ui-shell/** text=auto eol=lf
+packages/ui-workbench/** text=auto eol=lf
 .githooks/* text eol=lf

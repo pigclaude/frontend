@@ -1,8 +1,11 @@
 // 负责登录后的主窗口：把工作区、当前会话和账号状态接到 Pigcode 外壳，并按当前位置画内容区页面。
 // 聊天、账号、代理、环境、用量和托盘都接真实会话与本地数据，不再注入 fixture。
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import { ScrollPanel, useToast } from "@pigclaude/ui-shell"
+import { PanelLayoutControls } from "@pigclaude/ui-workbench"
+import { Workbench, type WorkbenchActions } from "./workbench/workbench"
+import { TerminalDrawer } from "./workbench/terminal-drawer"
 import { AccountsScreen } from "./screens/accounts-screen"
 import { ChatScreen } from "./screens/chat-screen"
 import { EnvironmentScreen } from "./screens/environment-screen"
@@ -89,6 +92,11 @@ export function MainWindow({
   const [addingProject, setAddingProject] = useState(false)
   const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null)
   const [sessionWorkspace, setSessionWorkspace] = useState<string | null>(null)
+  const workbench = useRef<WorkbenchActions>(null)
+  const [rightOpen, setRightOpen] = useState(false)
+  const [rightMax, setRightMax] = useState(false)
+  const [terminalOpen, setTerminalOpen] = useState(false)
+  const [terminalMounted, setTerminalMounted] = useState(false)
   const [sessionStartedAt, setSessionStartedAt] = useState(() => new Date().toISOString())
   const [appInfo, setAppInfo] = useState<{
     appVersion: string
@@ -105,6 +113,51 @@ export function MainWindow({
     untitled: t("shell.session.untitled"),
   })
   const page = location.kind === "settings" ? location.page : null
+  const inChat = location.kind === "draft" || location.kind === "session"
+  const bridge = window.pigclaude?.workbench
+  const sessionActive = session.state.started && !session.state.ended
+  const workbenchRoot = sessionActive ? (sessionWorkspace ?? workspace) : workspace
+  const turnRevision = session.state.turns.filter((turn) => turn.result !== null).length
+  const turnActive = sessionActive && session.state.turns.at(-1)?.result === null
+  const toggleRight = () => {
+    setRightOpen((open) => !open)
+    setRightMax(false)
+  }
+  function toggleTerminal() {
+    if (!workbenchRoot) return
+    setTerminalMounted(true)
+    setTerminalOpen((open) => !open)
+  }
+
+  useEffect(() => {
+    if (!bridge || !inChat) return
+    function onKey(event: KeyboardEvent) {
+      if (
+        event.ctrlKey &&
+        event.key === "`" &&
+        !event.altKey &&
+        workbenchRoot &&
+        !event.defaultPrevented &&
+        !document.querySelector("[role='dialog']")
+      ) {
+        event.preventDefault()
+        toggleTerminal()
+        return
+      }
+      if (
+        event.key.toLowerCase() === "j" &&
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        !event.defaultPrevented &&
+        !document.querySelector("[role='dialog']")
+      ) {
+        event.preventDefault()
+        toggleRight()
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [bridge, inChat, workbenchRoot])
 
   useEffect(() => {
     if (location.kind === "draft" || location.kind === "session") setLastWorkspace(location)
@@ -127,11 +180,13 @@ export function MainWindow({
   }
 
   function newSession(projectId?: string): void {
-    setSelectedWorkspace(newSessionWorkspace(projectId, workspaces.paths, selectedWorkspace))
+    if (!selectWorkspace(newSessionWorkspace(projectId, workspaces.paths, selectedWorkspace)))
+      return
     onNavigate({ kind: "draft" })
   }
 
   function addWorkspace(path: string): void {
+    if (!canSelectWorkspace(path)) return
     void workspaces
       .add(path)
       .then(() => {
@@ -139,6 +194,16 @@ export function MainWindow({
         toast(fill(t("shell.project.added"), { name: projectNameFromPath(path) }), "folder")
       })
       .catch((error: unknown) => toast(workspaceErrorMessage(error, t), "info"))
+  }
+
+  function canSelectWorkspace(path: string | null): boolean {
+    return path === workbenchRoot || (workbench.current?.confirmSwitch() ?? true)
+  }
+
+  function selectWorkspace(path: string | null): boolean {
+    if (!canSelectWorkspace(path)) return false
+    setSelectedWorkspace(path)
+    return true
   }
 
   const renderSettingsPage: SettingsPageRenderer = (page) => {
@@ -235,6 +300,36 @@ export function MainWindow({
     <PigclaudeShell
       {...(screen === undefined ? {} : { dataScreen: screen })}
       inSettings={page !== null}
+      {...(bridge
+        ? {
+            workbench: {
+              open: inChat && rightOpen,
+              maximized: rightMax,
+              content: (
+                <Workbench
+                  ref={workbench}
+                  key={workbenchRoot}
+                  bridge={bridge}
+                  root={workbenchRoot}
+                  sessionId={sessionId}
+                  sessionActive={sessionActive}
+                  turnActive={turnActive}
+                  turnRevision={turnRevision}
+                  visible={inChat && rightOpen}
+                  open={rightOpen}
+                  maximized={rightMax}
+                  onToggle={toggleRight}
+                  onShow={() => setRightOpen(true)}
+                  onMaximize={() => setRightMax((value) => !value)}
+                  onSelectWorkspace={async (path) => {
+                    await workspaces.add(path)
+                    setSelectedWorkspace(path)
+                  }}
+                />
+              ),
+            },
+          }
+        : {})}
       locationKey={page ?? location.kind}
       projects={workspaceProjects(workspaces.paths)}
       threads={thread ? [thread] : []}
@@ -286,8 +381,28 @@ export function MainWindow({
     >
       <SettingsRegistry render={renderSettingsPage} onSelect={settings} />
       <AddProjectDialog open={addingProject} onOpenChange={setAddingProject} onAdd={addWorkspace} />
-      {location.kind === "draft" || location.kind === "session" ? (
+      {inChat ? (
         <ChatScreen
+          {...(bridge
+            ? {
+                layoutControls: (
+                  <PanelLayoutControls
+                    rightOpen={rightOpen}
+                    onToggleRight={toggleRight}
+                    terminalOpen={terminalOpen}
+                    {...(workbenchRoot ? { onToggleTerminal: toggleTerminal } : {})}
+                  />
+                ),
+                onOpenFile: (path: string) => {
+                  workbench.current?.openFile(path)
+                  setRightOpen(true)
+                },
+                onViewDiff: (path?: string) => {
+                  workbench.current?.openDiff(path)
+                  setRightOpen(true)
+                },
+              }
+            : {})}
           fresh={location.kind === "draft"}
           session={session}
           workspace={workspace}
@@ -298,11 +413,11 @@ export function MainWindow({
             void workspaces
               .pick()
               .then((path) => {
-                if (path !== null) setSelectedWorkspace(path)
+                if (path !== null) selectWorkspace(path)
               })
               .catch((error: unknown) => toast(workspaceErrorMessage(error, t), "info"))
           }}
-          onSelectWorkspace={setSelectedWorkspace}
+          onSelectWorkspace={selectWorkspace}
           onWorkspaceUsed={(path) => {
             setSelectedWorkspace(path)
             setSessionWorkspace(path)
@@ -310,6 +425,15 @@ export function MainWindow({
           }}
           onOpen={onNavigate}
           smartPunctuation={appearance.settings.smartPunctuation}
+        />
+      ) : null}
+      {bridge && workbenchRoot && terminalMounted ? (
+        <TerminalDrawer
+          key={workbenchRoot}
+          bridge={bridge}
+          root={workbenchRoot}
+          open={inChat && terminalOpen}
+          onClose={() => setTerminalOpen(false)}
         />
       ) : null}
       {location.kind === "tray" ? (

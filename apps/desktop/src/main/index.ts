@@ -14,7 +14,6 @@ import {
 import { join } from "node:path"
 import { readFileSync } from "node:fs"
 import type { MembershipView } from "@pigclaude/contracts/membership"
-import type { ClaudeAccountEvent } from "@pigclaude/contracts/claude-account"
 import { LocalStore } from "@pigclaude/local-store"
 import { checkEgress } from "@pigclaude/login-gate/egress-check"
 import { createCallbackServer } from "./authorization/callback-server"
@@ -47,6 +46,7 @@ import { configureRuntimeProfile } from "./runtime-profile"
 import { registerMembershipIpc } from "./membership/ipc"
 import { readDesktopRuntimeEndpoints } from "./runtime-endpoints"
 import { registerWorkspaceIpc } from "./runtime/workspace-ipc"
+import { WorkbenchIpc } from "./workbench/workbench-ipc"
 import { resolveClaudeBinaryPath } from "./session/claude-binary"
 import { cleanupStaleSessionDirs } from "./session/session-environment"
 import { SessionHost } from "./session/session-host"
@@ -56,7 +56,6 @@ import { devProviderHostOptions } from "./session/dev-provider"
 import { accountSessionProfile } from "./session/account-session-profile"
 import { createQuitCoordinator } from "./shutdown"
 import { shutdownDesktopResources } from "./shutdown-resources"
-import type { SessionHostEvent } from "./session/session-types"
 import { UsageRecorder } from "./session/usage-recorder"
 import { FileSecretVault } from "./secret-vault"
 import { registerFolderPickerIpc } from "./folder-picker"
@@ -80,6 +79,7 @@ const startProxyRuntime = createXrayRuntimeStarter({
   resourcesPath: app.isPackaged ? process.resourcesPath : undefined,
 })
 let mainWindow: BrowserWindow | null = null
+const workbench = new WorkbenchIpc()
 let authorizationService: AuthorizationService | null = null
 let authorizationSetupError: string | undefined
 let desktopComposition: DesktopComposition | null = null
@@ -294,10 +294,14 @@ function registerIpcHandlers(): void {
     getHost: () => sessionHost,
     getUsage: () => usageRecorder,
     isTrusted: isTrustedSender,
+    tools: (event) => workbench.tools(event.sender, hasActiveMembership),
   })
   registerWorkspaceIpc({
     filePath: () => join(app.getPath("userData"), "workspaces.json"),
     isTrusted: isTrustedSender,
+    workbench,
+    membership: () => desktopComposition?.membershipGate.view(),
+    hasActiveTurn: () => Boolean(sessionHost?.status().turnId),
   })
 }
 
@@ -306,6 +310,7 @@ async function shutdownDesktop(): Promise<void> {
   await shutdownDesktopResources({
     accounts: () => claudeAccountService?.dispose() ?? Promise.resolve(),
     sessions: () => sessionHost?.dispose() ?? Promise.resolve(),
+    workbench: () => workbench.dispose(),
     composition: () => desktopComposition?.dispose() ?? Promise.resolve(),
     xray: () => startProxyRuntime.dispose(),
     callback: () => callbackServer?.close() ?? Promise.resolve(),
@@ -385,7 +390,7 @@ async function setupAuthorization(): Promise<void> {
         throw new ClaudeAccountError("MEMBERSHIP_REQUIRED", "会员状态不可用")
       }
     },
-    onEvent: sendClaudeAccountEvent,
+    onEvent: (event) => sendToMainWindow("pigclaude:claude-account-state", event),
   })
   proxyService = new ProxyService({
     store: localStore,
@@ -406,7 +411,7 @@ async function setupAuthorization(): Promise<void> {
       resolveModelAuth: createAccountModelAuth(localStore),
       ...devProviderHostOptions(app.isPackaged, process.env),
     })
-    sessionHost.subscribe(sendSessionEvent)
+    sessionHost.subscribe((event) => sendToMainWindow("pigclaude:session-event", event))
   }
   const checkLive = () => {
     void desktopComposition?.resume()
@@ -440,27 +445,21 @@ function closeStartupEvents(): void {
 }
 
 function sendAuthorizationState(event: AuthorizationStateEvent): void {
-  for (const window of BrowserWindow.getAllWindows()) {
-    window.webContents.send("pigclaude:authorization-state", event)
-  }
+  sendToMainWindow("pigclaude:authorization-state", event)
+}
+
+function hasActiveMembership(): boolean {
+  return desktopComposition?.membershipGate.view().state === "active"
 }
 
 function sendMembershipView(view: MembershipView): void {
-  for (const window of BrowserWindow.getAllWindows()) {
-    window.webContents.send("pigclaude:membership-state", view)
-  }
+  workbench.membershipChanged(view)
+  sendToMainWindow("pigclaude:membership-state", view)
 }
 
-function sendClaudeAccountEvent(event: ClaudeAccountEvent): void {
-  for (const window of BrowserWindow.getAllWindows()) {
-    window.webContents.send("pigclaude:claude-account-state", event)
-  }
-}
-
-function sendSessionEvent(event: SessionHostEvent): void {
-  for (const window of BrowserWindow.getAllWindows()) {
-    window.webContents.send("pigclaude:session-event", event)
-  }
+function sendToMainWindow(channel: string, payload: unknown): void {
+  const contents = mainWindow?.webContents
+  if (contents && !contents.isDestroyed()) contents.send(channel, payload)
 }
 
 function isTrustedSender(event: Electron.IpcMainInvokeEvent): boolean {
@@ -481,6 +480,7 @@ function createWindow(): void {
     }),
   )
   forwardFullScreen(mainWindow)
+  workbench.track(mainWindow)
   const devRendererUrl = developmentRendererUrl(
     app.isPackaged,
     process.env["ELECTRON_RENDERER_URL"],

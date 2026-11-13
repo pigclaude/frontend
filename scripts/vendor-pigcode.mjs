@@ -217,6 +217,9 @@ export function rewriteManifest(text, item) {
   if (item.source === "ui-shell") {
     manifest.exports = { ...manifest.exports, ...shellSubpathExports }
   }
+  if (item.source === "ui-workbench") {
+    manifest.exports = { ...manifest.exports, "./terminal-view": "./src/terminal-view.tsx" }
+  }
   manifest.scripts = {
     typecheck: "tsc --noEmit",
     test: "vitest run --passWithNoTests --config ../../vitest.pigcode.config.ts",

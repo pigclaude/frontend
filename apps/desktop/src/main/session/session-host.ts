@@ -1,8 +1,6 @@
 // 负责管理一个窗口的唯一活动 Claude 会话：启动、发送、取消、权限回答、模式/模型切换、停止和事件广播。
-// 不直接读文件或发 HTTP；会员失效时自行结束会话并拒绝未回答的权限请求。
-
 import { randomUUID } from "node:crypto"
-import { ClaudeAgentAdapter } from "./claude-agent-adapter"
+import { ClaudeAgentAdapter, type ClaudeAgentStartOptions } from "./claude-agent-adapter"
 import { resolveClaudeBinaryPath } from "./claude-binary"
 import { PermissionBroker } from "./permission-broker"
 import type { PermissionAnswer } from "./permission-broker"
@@ -18,6 +16,7 @@ import {
 } from "./session-host-provider"
 import {
   assertStartNotStopped,
+  assertTurnIdle,
   assertWorkspace,
   buildStartOptions,
   buildUsageRecord,
@@ -137,13 +136,16 @@ export class SessionHost {
   }
 
   /** 启动唯一活动会话；会员、工作区、可用账号或 daemon 不满足时不创建任何环境。 */
-  async start(input: SessionStartInput): Promise<{ sessionId: string }> {
+  async start(
+    input: SessionStartInput,
+    tools?: ClaudeAgentStartOptions["mcpServers"],
+  ): Promise<{ sessionId: string }> {
     if (this.#disposed) throw new SessionHostError("SDK_ERROR", "会话宿主已关闭")
     if (this.#session !== null || this.#closing !== null || this.#startPromise !== null) {
       throw new SessionHostError("SESSION_ALREADY_ACTIVE", "已有活动会话")
     }
     this.#stopRequested = false
-    const promise = this.#startSession(input).catch((error: unknown) => {
+    const promise = this.#startSession(input, tools).catch((error: unknown) => {
       throw sanitizeStartError(error, this.#runtime.sessionToken)
     })
     this.#startPromise = promise
@@ -153,8 +155,10 @@ export class SessionHost {
       if (this.#startPromise === promise) this.#startPromise = null
     }
   }
-  // 启动过程中的每个 await 后复查停止请求；窗口关闭或 stop 不能留下半启动会话。
-  async #startSession(input: SessionStartInput): Promise<{ sessionId: string }> {
+  async #startSession(
+    input: SessionStartInput,
+    mcpServers: ClaudeAgentStartOptions["mcpServers"],
+  ): Promise<{ sessionId: string }> {
     await assertMembershipActive(this.#membership)
     assertStartNotStopped(this.#stopRequested, this.#disposed)
     await assertWorkspace(input.workspace)
@@ -203,16 +207,11 @@ export class SessionHost {
     const effectiveInput = pinnedStartInput(this.#provider, input)
     const active = this.#createActiveSession(sessionId, effectiveInput, environment)
     this.#session = active
-    if (this.#stopRequested || this.#disposed) {
-      await this.#release(active)
-      throw new SessionHostError("SESSION_CANCELLED", "会话启动已取消")
-    }
-    if (this.#membership.view().state !== "active") {
-      await this.#release(active)
-      throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
-    }
     try {
-      await active.adapter.start(buildStartOptions(active, effectiveInput))
+      await active.adapter.start({
+        ...buildStartOptions(active, effectiveInput),
+        ...(mcpServers ? { mcpServers } : {}),
+      })
     } catch (error) {
       await this.#release(active)
       if (this.#stopRequested || this.#disposed) {
@@ -233,18 +232,23 @@ export class SessionHost {
     return { sessionId }
   }
 
-  /** 把用户消息写入当前会话；附件只做形状校验，当前适配器只传文本。 */
-  async send(input: SessionSendInput): Promise<void> {
+  /** 写入当前消息；如有工作台回调，在交给适配器之前记录基线。 */
+  async send(input: SessionSendInput, checkpoint?: ActiveSession["checkpoint"]): Promise<void> {
     const active = this.#requireActive()
-    if (active.turnId !== null) {
-      throw new SessionHostError("SESSION_ALREADY_ACTIVE", "当前请求尚未结束")
-    }
+    assertTurnIdle(active)
     active.turnId = this.#newId()
     active.turnCancelled = false
     active.turnErrorCode = null
+    active.checkpoint = checkpoint
     try {
+      await checkpoint?.(active.environment.workspace, "baseline")
+      if (active.stopping || active.released || active.turnCancelled) {
+        active.turnId = null
+        return
+      }
       await active.adapter.send(input.text)
     } catch (error) {
+      active.turnId = null
       const message = errorMessage(error)
       const code = classifyDaemonError(message) ?? "SDK_ERROR"
       throw hostError(code, message, this.#runtime.sessionToken)
@@ -442,6 +446,7 @@ export class SessionHost {
         active.model = event.model
         break
       case "result":
+        if (active.turnId !== null) void active.checkpoint?.(active.environment.workspace, "final")
         this.#recordUsage(active, event)
         break
       case "error":

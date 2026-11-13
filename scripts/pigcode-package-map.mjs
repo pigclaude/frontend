@@ -9,4 +9,5 @@ export const vendoredPackages = [
   { source: "ui-composer", target: "ui-composer", name: "@pigclaude/ui-composer" },
   { source: "ui-chat", target: "ui-chat", name: "@pigclaude/ui-chat" },
   { source: "client-runtime", target: "client-runtime", name: "@pigclaude/client-runtime" },
+  { source: "ui-workbench", target: "ui-workbench", name: "@pigclaude/ui-workbench" },
 ]

@@ -13,6 +13,8 @@ import {
   type UsageRange,
 } from "./session-types"
 import type { UsageRecorder } from "./usage-recorder"
+import { captureSessionCheckpoint } from "../workbench/session-checkpoints"
+import type { ClaudeAgentStartOptions } from "./claude-agent-adapter"
 
 const permissionModes = new Set<SessionPermissionMode>([
   "default",
@@ -30,17 +32,23 @@ export type SessionIpcOptions = {
   getHost: () => SessionHost | null
   getUsage: () => Pick<UsageRecorder, "summary"> | null
   isTrusted: (event: IpcMainInvokeEvent) => boolean
+  tools?: (event: IpcMainInvokeEvent) => ClaudeAgentStartOptions["mcpServers"]
 }
 
 /** 注册会话命令和只读用量汇总。保证写操作只接受主窗口当前 frame。 */
 export function registerSessionIpc(options: SessionIpcOptions): void {
   ipcMain.handle("pigclaude:session-start", async (event, value: unknown) => {
     assertTrusted(options, event)
-    return requireHost(options).start(readSessionStartInput(value))
+    const input = readSessionStartInput(value)
+    return options.tools
+      ? requireHost(options).start(input, options.tools(event))
+      : requireHost(options).start(input)
   })
   ipcMain.handle("pigclaude:session-send", async (event, value: unknown) => {
     assertTrusted(options, event)
-    await requireHost(options).send(readSessionSendInput(value))
+    await requireHost(options).send(readSessionSendInput(value), (workspace, phase) =>
+      captureSessionCheckpoint(event.sender, workspace, phase),
+    )
   })
   ipcMain.handle("pigclaude:session-cancel", async (event) => {
     assertTrusted(options, event)

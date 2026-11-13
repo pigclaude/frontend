@@ -203,6 +203,8 @@ function buildEnvironment(
     }
     env.ANTHROPIC_BASE_URL = input.provider.baseUrl
     env.ANTHROPIC_AUTH_TOKEN = input.provider.authToken
+    env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1"
+    env.ENABLE_TOOL_SEARCH = "false"
     delete env.CLAUDE_CODE_OAUTH_TOKEN
     delete env.ANTHROPIC_CUSTOM_HEADERS
     return env

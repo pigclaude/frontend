@@ -9,6 +9,7 @@ import type {
   ThinkingConfig,
 } from "@anthropic-ai/claude-agent-sdk"
 import { resolveClaudeBinaryPath } from "./claude-binary"
+import { PromptStream } from "./prompt-stream"
 import { mergeClaudeModels } from "./claude-model-catalog"
 import { classifyDaemonError } from "./session-error-mapping"
 import type {
@@ -67,6 +68,8 @@ export type ClaudeAgentStartOptions = {
   effort?: SessionEffort
   /** 模型支持时启用快速模式。 */
   fast?: boolean
+  /** 会话专用的宿主工具，未配置时沿用 SDK 自带工具。 */
+  mcpServers?: Options["mcpServers"]
 }
 
 /** 查询模型列表的参数；env 由调用方提供，避免把宿主进程的凭据带进子进程。 */
@@ -392,6 +395,7 @@ function buildQueryOptions(options: ClaudeAgentStartOptions, binaryPath: string)
     settingSources: [],
     persistSession: false,
     includePartialMessages: true,
+    ...(options.mcpServers ? { mcpServers: options.mcpServers } : {}),
     permissionMode: options.permissionMode,
     canUseTool: options.canUseTool,
     abortController: options.abortController,
@@ -466,35 +470,4 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-// 单消费者的异步 prompt 流；send 写入，stop 结束并把等待者全部释放。
-class PromptStream implements AsyncIterable<SDKUserMessage> {
-  #values: SDKUserMessage[] = []
-  #waiters: ((result: IteratorResult<SDKUserMessage>) => void)[] = []
-  #ended = false
-
-  push(message: SDKUserMessage): void {
-    if (this.#ended) throw new Error("session prompt stream is closed")
-    const waiter = this.#waiters.shift()
-    if (waiter === undefined) this.#values.push(message)
-    else waiter({ done: false, value: message })
-  }
-
-  end(): void {
-    if (this.#ended) return
-    this.#ended = true
-    for (const waiter of this.#waiters.splice(0)) waiter({ done: true, value: undefined })
-  }
-
-  [Symbol.asyncIterator](): AsyncIterator<SDKUserMessage> {
-    return { next: () => this.#next() }
-  }
-
-  #next(): Promise<IteratorResult<SDKUserMessage>> {
-    const value = this.#values.shift()
-    if (value !== undefined) return Promise.resolve({ done: false, value })
-    if (this.#ended) return Promise.resolve({ done: true, value: undefined })
-    return new Promise((resolve) => this.#waiters.push(resolve))
-  }
 }

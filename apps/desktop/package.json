@@ -31,6 +31,7 @@
     "@pigclaude/ui-primitives": "workspace:*",
     "@pigclaude/ui-settings": "workspace:*",
     "@pigclaude/ui-shell": "workspace:*",
+    "@pigclaude/ui-workbench": "workspace:*",
     "@pigclaude/proxy-connection": "workspace:*",
     "@pigclaude/session-env": "workspace:*",
     "@pigclaude/switcher": "workspace:*",
@@ -38,10 +39,12 @@
     "clsx": "2.1.1",
     "cmdk": "1.1.1",
     "lucide-react": "1.0.1",
+    "node-pty": "1.1.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "tailwind-merge": "3.4.0",
-    "undici": "6.21.2"
+    "undici": "6.21.2",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",

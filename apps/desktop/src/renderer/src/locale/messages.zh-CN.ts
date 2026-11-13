@@ -8,6 +8,7 @@ import { flowsZhCN } from "./flows.messages"
 import { settingsZhCN } from "./settings.messages"
 import { appSettingsZhCN } from "./app-settings.messages"
 import { appearanceZhCN } from "./appearance.messages"
+import { workbenchZhCN } from "./workbench.messages"
 
 /** 简体中文主词典；它的键就是 PigClaude 全部的文案键。 */
 export const zhCN = {
@@ -20,4 +21,5 @@ export const zhCN = {
   ...settingsZhCN,
   ...appSettingsZhCN,
   ...appearanceZhCN,
+  ...workbenchZhCN,
 }

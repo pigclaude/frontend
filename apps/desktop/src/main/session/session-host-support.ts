@@ -36,6 +36,7 @@ export type ActiveSession = {
   turnId: string | null
   turnCancelled: boolean
   turnErrorCode: string | null
+  checkpoint?: ((workspace: string, phase: "baseline" | "final") => Promise<void>) | undefined
   stopping: boolean
   ending: Promise<void> | null
   released: boolean
@@ -50,6 +51,13 @@ export type UsageTurnState = {
   switchedFrom: string | null
   turnCancelled: boolean
   turnErrorCode: string | null
+}
+
+/** 当前回合结束后才能接收下一条消息。 */
+export function assertTurnIdle(turn: Pick<ActiveSession, "turnId">): void {
+  if (turn.turnId !== null) {
+    throw new SessionHostError("SESSION_ALREADY_ACTIVE", "当前请求尚未结束")
+  }
 }
 
 /** 校验工作区是存在、可读的绝对目录；否则统一抛 WORKSPACE_UNAVAILABLE。 */

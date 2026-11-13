@@ -1,13 +1,18 @@
 // 注册最近工作区的读写入口，仅允许受信的主窗口访问。
 
 import { ipcMain } from "electron"
+import type { MembershipView } from "@pigclaude/contracts/membership"
 import { listWorkspaceFiles } from "./workspace-files"
 import { WorkspaceStore } from "./workspace-store"
+import type { WorkbenchIpc } from "../workbench/workbench-ipc"
 
 /** 注册工作区入口并按需打开存储；写入只接受当前受信窗口的 frame。 */
 export function registerWorkspaceIpc(input: {
   filePath: () => string
   isTrusted: (event: Electron.IpcMainInvokeEvent) => boolean
+  workbench: WorkbenchIpc
+  membership: () => MembershipView | undefined
+  hasActiveTurn: () => boolean
 }): void {
   let store: WorkspaceStore | null = null
   const getStore = () => (store ??= new WorkspaceStore({ filePath: input.filePath() }))
@@ -28,5 +33,11 @@ export function registerWorkspaceIpc(input: {
       throw new Error("WORKSPACE_UNAVAILABLE: 工作区必须是绝对路径")
     }
     return listWorkspaceFiles(value)
+  })
+  input.workbench.register({
+    isTrusted: input.isTrusted,
+    membership: input.membership,
+    hasActiveTurn: input.hasActiveTurn,
+    roots: () => getStore().list(),
   })
 }

@@ -100,6 +100,19 @@ export const threadSchema = z.object({
   parentThreadId: z.string().nullable().optional(),
 })
 
+/** GitHub PR 状态；gh CLI 只返回这三种大写状态。 */
+export const pullRequestStateSchema = z.enum(["OPEN", "CLOSED", "MERGED"])
+
+/** GitHub PR 摘要，供工作台 PR 面板展示。 */
+export const pullRequestInfoSchema = z.object({
+  number: z.number().int().positive(),
+  url: z.string().min(1),
+  state: pullRequestStateSchema,
+  title: z.string(),
+  headRefName: z.string().min(1),
+  baseRefName: z.string().min(1),
+})
+
 /** 自定义重复「每 N 个单位」里 N 的上限。 */
 export const MAX_SCHEDULE_EVERY = 200
 
@@ -208,6 +221,9 @@ export type Project = z.infer<typeof projectSchema>
 
 /** 线程的类型。 */
 export type Thread = z.infer<typeof threadSchema>
+
+/** GitHub PR 摘要的类型。 */
+export type PullRequestInfo = z.infer<typeof pullRequestInfoSchema>
 
 /** 定时任务运行规则的类型。 */
 export type ScheduleRule = z.infer<typeof scheduleRuleSchema>

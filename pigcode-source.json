@@ -7,7 +7,7 @@
       "path": "packages/ui-contracts/src/index.ts",
       "source": null,
       "sourceSha256": null,
-      "sha256": "06f636f967522977f354dfd6539aae0642ec37b2df362529cb27b088d820d5a8"
+      "sha256": "d707093d8c92d34fb8501382e17b2f17b4fd0943213f61a451ca415d2eceb413"
     },
     {
       "path": "packages/ui-contracts/package.json",
@@ -19,7 +19,7 @@
       "path": "packages/ui-contracts/src/domain.ts",
       "source": "packages/contracts/src/domain.ts",
       "sourceSha256": "da98d5bca7bed181813cf9cdb1bd9228d2bc440126c341e1bb643cf62889a0d6",
-      "sha256": "82e9214378930b538d2303075d22e7eb709bda3c154210d5975da333df55cfab"
+      "sha256": "fbdef6ff26eb6b29825ca595928264b1e22124547d35d9b0621e8733b09d0c0b"
     },
     {
       "path": "packages/ui-contracts/src/events.ts",
@@ -1862,6 +1862,198 @@
       "source": "packages/client-runtime/tsconfig.json",
       "sourceSha256": "3471a454db57dbec879aa68a1def058903c1d2142c7dd864f994c1ecdc0dce61",
       "sha256": "18f0a81153e3027bb9f330e80eda11aebb6cfd6d490089091067427231734e48"
+    },
+    {
+      "path": "packages/ui-workbench/package.json",
+      "source": "packages/ui-workbench/package.json",
+      "sourceSha256": "06273055b048ccf8c63c6197ab5e9d8bae2e2e1669c949a290610a837fcf0963",
+      "sha256": "f207a732e1d5c1de4881198acb1e026f0c06806ae4e80f56573640b20ae8aad8"
+    },
+    {
+      "path": "packages/ui-workbench/src/browser-device-bar.tsx",
+      "source": "packages/ui-workbench/src/browser-device-bar.tsx",
+      "sourceSha256": "790b4e9ba9174e9e06d50d43f0e7e2fba7b5316fda6488bf0204930cf47e6157",
+      "sha256": "10bd3862d06d244fb9c3ead2840d13e70eeb5838ea835f4a60eff2b9342d29f5"
+    },
+    {
+      "path": "packages/ui-workbench/src/browser-states.tsx",
+      "source": "packages/ui-workbench/src/browser-states.tsx",
+      "sourceSha256": "b2138e932eb82c3d23f9d3a4422d396747806a6d6d5de6d1055ab31f5e51dabf",
+      "sha256": "3702054d760ad00f06df9368a1219a13470cda8d6c02614a94d17c8a9d1f537c"
+    },
+    {
+      "path": "packages/ui-workbench/src/browser-toolbar.tsx",
+      "source": "packages/ui-workbench/src/browser-toolbar.tsx",
+      "sourceSha256": "1622272044dcd6cbec3d244ecd643f8ca69d34a6f61361cb231f9496e3a40992",
+      "sha256": "059ba0580e9acf750a6c9ca088a4c3e3c2323f42549c517637ddc29cadc92c30"
+    },
+    {
+      "path": "packages/ui-workbench/src/browser-url.ts",
+      "source": "packages/ui-workbench/src/browser-url.ts",
+      "sourceSha256": "35550fc36305997d5e61d0ca5671050575578a008b55b67c928ef5704a8270d8",
+      "sha256": "35550fc36305997d5e61d0ca5671050575578a008b55b67c928ef5704a8270d8"
+    },
+    {
+      "path": "packages/ui-workbench/src/browser-view.test.tsx",
+      "source": "packages/ui-workbench/src/browser-view.test.tsx",
+      "sourceSha256": "a2a0beda457c54d4b1c9ed42ad41ddc00571e50fa83fc84758a8b0b5a2f738d0",
+      "sha256": "6fe981ae82e807bf44fb8bc1c53f9b6a0c363047b5fed9dd342358ee9ddfa9c4"
+    },
+    {
+      "path": "packages/ui-workbench/src/browser-view.tsx",
+      "source": "packages/ui-workbench/src/browser-view.tsx",
+      "sourceSha256": "431641bfffe2c22de8a91749af1f941a47a1e49941107e614c0c1d29ae4b6bac",
+      "sha256": "cb9735209ff2d7d79fb1c76b4e88389b266e752c8dabf5b50c468c50700e84f3"
+    },
+    {
+      "path": "packages/ui-workbench/src/browser-viewport.ts",
+      "source": "packages/ui-workbench/src/browser-viewport.ts",
+      "sourceSha256": "34853bd232736f3f4ef6747c03700f1af0c21ebadd1762051ad5746598703bf0",
+      "sha256": "34853bd232736f3f4ef6747c03700f1af0c21ebadd1762051ad5746598703bf0"
+    },
+    {
+      "path": "packages/ui-workbench/src/checkpoint-panel.test.tsx",
+      "source": "packages/ui-workbench/src/checkpoint-panel.test.tsx",
+      "sourceSha256": "f4825b34e3b6463b7f4b3e3bcfc2a79dbd93cc9243d6ba34b242c711709f6dd0",
+      "sha256": "5b6b58809e47cb8d3d39ddc2b2afdc6f76ad941edee012a34bf483d8e02e364e"
+    },
+    {
+      "path": "packages/ui-workbench/src/checkpoint-panel.tsx",
+      "source": "packages/ui-workbench/src/checkpoint-panel.tsx",
+      "sourceSha256": "cb4ede96f600be2cc41e584fe5b13827daead3bfb276f48c081580d9a0cd456d",
+      "sha256": "a0332afa1fef90967d86d58835dd60a7f7124ecd1dafd90e54f723035c228baf"
+    },
+    {
+      "path": "packages/ui-workbench/src/code-editor.tsx",
+      "source": "packages/ui-workbench/src/code-editor.tsx",
+      "sourceSha256": "a587aba69f5a42b30b91de8ae34d734b5148237db9ce2033939f85ad89fbc2f1",
+      "sha256": "175c749f7dc7ec0319813444700835b9e9eecae6ad16b7658cb51f3a79fb8241"
+    },
+    {
+      "path": "packages/ui-workbench/src/diff-view.tsx",
+      "source": "packages/ui-workbench/src/diff-view.tsx",
+      "sourceSha256": "382b7f747a25d268d4d077669c5cd54b576854a6c15b05c8e714dcba21dc1495",
+      "sha256": "3fcaf1adecba8accbd6fd221a9d70d204d98c4ac026234b227ea8ed69bdf9f9f"
+    },
+    {
+      "path": "packages/ui-workbench/src/file-explorer-row.tsx",
+      "source": "packages/ui-workbench/src/file-explorer-row.tsx",
+      "sourceSha256": "9e42ee4821317266ebf9b036f5ff06434cee52157ed3bf7775460aaaa69c7c65",
+      "sha256": "77b01bcacddeb1542d763e04dcc6b9c453c1e0736475cfad31743642643689a4"
+    },
+    {
+      "path": "packages/ui-workbench/src/file-explorer.test.tsx",
+      "source": "packages/ui-workbench/src/file-explorer.test.tsx",
+      "sourceSha256": "4f08ee41c0e8d214dc456a218afdc6ae5ad2669b42ac126e458d816364d21536",
+      "sha256": "10417e0fe94fb465c524509f482c64116f8893c66432cb995caaed7f72f4467a"
+    },
+    {
+      "path": "packages/ui-workbench/src/file-explorer.tsx",
+      "source": "packages/ui-workbench/src/file-explorer.tsx",
+      "sourceSha256": "92d9cea9cca005a04d47adb16285e61f3ad30fba634e5eb91237387ca051328e",
+      "sha256": "68fe80c708d6c39c96666f5e8588b88bad44e16701f2ff1e6fd6e25188e07f6c"
+    },
+    {
+      "path": "packages/ui-workbench/src/file-tree-model.test.ts",
+      "source": "packages/ui-workbench/src/file-tree-model.test.ts",
+      "sourceSha256": "49737d1b67204080cdafb4d17c31796cef2b87591ea96cee60f0343b81dc3d47",
+      "sha256": "49737d1b67204080cdafb4d17c31796cef2b87591ea96cee60f0343b81dc3d47"
+    },
+    {
+      "path": "packages/ui-workbench/src/file-tree-model.ts",
+      "source": "packages/ui-workbench/src/file-tree-model.ts",
+      "sourceSha256": "b8c7b0429d35653539c2f87bf938f39b0c5c2eb036db21892e7a08fe3b71aea7",
+      "sha256": "b8c7b0429d35653539c2f87bf938f39b0c5c2eb036db21892e7a08fe3b71aea7"
+    },
+    {
+      "path": "packages/ui-workbench/src/file-viewer.tsx",
+      "source": "packages/ui-workbench/src/file-viewer.tsx",
+      "sourceSha256": "3cfd2140a71e8275c49589ddff363729d37e6c57ceca892a2b31ab6e93866e0a",
+      "sha256": "f3c646cbaf3154f6513f9ff245683f8b5251b790237bfbaacab65bc6baff3018"
+    },
+    {
+      "path": "packages/ui-workbench/src/global.d.ts",
+      "source": "packages/ui-workbench/src/global.d.ts",
+      "sourceSha256": "99f70cd4522353427a0ba4b15fae8d0649a9d93cc2a4e3fa1d7d08a678ca3411",
+      "sha256": "99f70cd4522353427a0ba4b15fae8d0649a9d93cc2a4e3fa1d7d08a678ca3411"
+    },
+    {
+      "path": "packages/ui-workbench/src/index.ts",
+      "source": "packages/ui-workbench/src/index.ts",
+      "sourceSha256": "8da7d9c6a4bf8206ae6f9759d0c3a92ae84a6fa749085d20a979162ff460e181",
+      "sha256": "8da7d9c6a4bf8206ae6f9759d0c3a92ae84a6fa749085d20a979162ff460e181"
+    },
+    {
+      "path": "packages/ui-workbench/src/layout-controls.tsx",
+      "source": "packages/ui-workbench/src/layout-controls.tsx",
+      "sourceSha256": "6246ed5840d2bd8dda1949b917766d0ed5028e800a5eb3fb106b201d26434dc1",
+      "sha256": "bc55e99d734482e1742a2b8ed1ce6401eb129d3b19df67c2f0c6880811800459"
+    },
+    {
+      "path": "packages/ui-workbench/src/pr-panel.test.tsx",
+      "source": "packages/ui-workbench/src/pr-panel.test.tsx",
+      "sourceSha256": "6d9395ee8be3eff938685f59237e2a3d6c916b9a72291879f0d8c08b45636493",
+      "sha256": "a9486089b2dd070cf78a15bbacd6a75788273ae4738c56fe3fe409622572a460"
+    },
+    {
+      "path": "packages/ui-workbench/src/pr-panel.tsx",
+      "source": "packages/ui-workbench/src/pr-panel.tsx",
+      "sourceSha256": "5142fdce1bedb13418299b486f76f7ccb607088f896a5560efafda74777245a7",
+      "sha256": "7ca7f2d47b39f718dc82af99f5b305cff77fa25399acf750fd6473e2a309e0e4"
+    },
+    {
+      "path": "packages/ui-workbench/src/right-panel.test.tsx",
+      "source": "packages/ui-workbench/src/right-panel.test.tsx",
+      "sourceSha256": "990bb9a1ed6e0e425ba9f68f97a4654abbdc395d570101d4d545ba4acf2326ff",
+      "sha256": "8ef62a58e43d207e905b127d4efe206084b8efc3def0f0956dc5bfabd2028585"
+    },
+    {
+      "path": "packages/ui-workbench/src/right-panel.tsx",
+      "source": "packages/ui-workbench/src/right-panel.tsx",
+      "sourceSha256": "b101956871e05260705376e62c161e80e909cfd11e199f9429dfc6e7f8183832",
+      "sha256": "a096ec80bcefec7f4420c5cd5c01c8b2b49d5040a29b816e46a6086303d6f394"
+    },
+    {
+      "path": "packages/ui-workbench/src/surface-state.ts",
+      "source": "packages/ui-workbench/src/surface-state.ts",
+      "sourceSha256": "a8d5763ce301cc8f2e9e4470130180ef4908161f6f6462d3eae1f6786077d03a",
+      "sha256": "a8d5763ce301cc8f2e9e4470130180ef4908161f6f6462d3eae1f6786077d03a"
+    },
+    {
+      "path": "packages/ui-workbench/src/terminal-theme.test.ts",
+      "source": "packages/ui-workbench/src/terminal-theme.test.ts",
+      "sourceSha256": "284946fbc1b59e5d08c36cf18451c1c584310bfba8662f5e6c60ac37ccf8c731",
+      "sha256": "a9d5d5695f1154308a8ce2c741caa5bd0d83bb46e7bf2d675330b8c6f3755b09"
+    },
+    {
+      "path": "packages/ui-workbench/src/terminal-theme.ts",
+      "source": "packages/ui-workbench/src/terminal-theme.ts",
+      "sourceSha256": "f8cf95c61ea0decc8d02b3d39f911d463d600894db192da0ba91fd7002a49b5b",
+      "sha256": "e33a0d64f6063df42aea051a2a4115b74474a8b0e86b04ea04177b60b24496f8"
+    },
+    {
+      "path": "packages/ui-workbench/src/terminal-view.test.tsx",
+      "source": "packages/ui-workbench/src/terminal-view.test.tsx",
+      "sourceSha256": "ca7989ebfca9286d0c5cdf9761943fc472e8ed6bf882288fc040206c6313eca6",
+      "sha256": "e6cac7c25f83573439531fae6420e0a4f10af7a915012301be9c43b27f36b2a0"
+    },
+    {
+      "path": "packages/ui-workbench/src/terminal-view.tsx",
+      "source": "packages/ui-workbench/src/terminal-view.tsx",
+      "sourceSha256": "be793f679dccca07fd047f36a6d4c947f027da4dc23968728ef6373cd703aade",
+      "sha256": "a5509d43c7e35e391caded5ca3c73064fa40db2c301a1344ef3fb72429876682"
+    },
+    {
+      "path": "packages/ui-workbench/src/worktree-picker.tsx",
+      "source": "packages/ui-workbench/src/worktree-picker.tsx",
+      "sourceSha256": "c8a66e69a43305eeefae647f07e78bd5ec0339ce7820001d4c162bb1be6ab7cb",
+      "sha256": "91d782a41ddae7e826c820d36c1959a292f3d5a3178d679697ee8d9f0c81dd64"
+    },
+    {
+      "path": "packages/ui-workbench/tsconfig.json",
+      "source": "packages/ui-workbench/tsconfig.json",
+      "sourceSha256": "6c488d95d23760b5d5a1e518c11e0f35785867d99bf493d39dbebc9d9144365a",
+      "sha256": "52cb9243947646017a3f3fc80d094d8ce477a43b440285559677152e692a0bd2"
     }
   ]
 }

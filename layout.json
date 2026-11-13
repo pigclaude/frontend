@@ -17,6 +17,7 @@
     "ui-settings",
     "ui-composer",
     "ui-chat",
-    "client-runtime"
+    "client-runtime",
+    "ui-workbench"
   ]
 }

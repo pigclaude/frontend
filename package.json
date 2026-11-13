@@ -14,12 +14,14 @@
     "oauth-oidc:launch": "node scripts/oauth-oidc-local-launcher.mjs",
     "pigcode:verify": "node scripts/assert-pigcode-source.mjs",
     "pigcode:sync": "node scripts/vendor-pigcode.mjs",
+    "postinstall": "node scripts/fix-node-pty-helper.mjs",
     "classes:verify": "node scripts/assert-class-usage.mjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "electron",
-      "esbuild"
+      "esbuild",
+      "node-pty"
     ]
   },
   "devDependencies": {

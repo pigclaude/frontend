@@ -4,6 +4,7 @@
 export type DesktopShutdownResources = {
   accounts?: () => Promise<void>
   sessions?: () => Promise<void>
+  workbench?: () => Promise<void>
   composition?: () => Promise<void>
   xray: () => Promise<void>
   callback?: () => Promise<void>
@@ -14,6 +15,7 @@ export async function shutdownDesktopResources(resources: DesktopShutdownResourc
   const initial = await Promise.allSettled([
     Promise.resolve().then(() => resources.accounts?.()),
     Promise.resolve().then(() => resources.sessions?.()),
+    Promise.resolve().then(() => resources.workbench?.()),
   ])
   const failure = initial.find((result) => result.status === "rejected")
   if (failure?.status === "rejected") throw failure.reason

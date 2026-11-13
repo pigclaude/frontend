@@ -6,6 +6,7 @@ export type {
   PermissionMode,
   Project,
   ReasoningEffort,
+  PullRequestInfo,
   ScheduleRule,
   ScheduleRunStatus,
   ScheduleStatus,

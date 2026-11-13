@@ -1,5 +1,5 @@
 // 负责主窗口外壳：用 Pigcode 的窗口按钮、标题栏、工作区侧栏、分隔条与命令面板组合出 PigClaude 的外壳。
-// 布局与类名和 Pigcode 的 Shell 相同；PigClaude 没有的插件、定时任务入口和右栏不出现，
+// 布局与类名和 Pigcode 的 Shell 相同；设置侧栏、工作台与底部账户行由调用方提供，
 // 设置侧栏、侧栏提醒与底部账户行由调用方给出。
 import {
   useEffect,
@@ -24,7 +24,12 @@ import {
   visibleThreads,
   type ThreadStatus,
 } from "@pigclaude/ui-shell"
-import { SidebarResizer, useSidebarWidth } from "@pigclaude/ui-shell/panel-resizer"
+import {
+  PanelResizer,
+  SidebarResizer,
+  useRightWidth,
+  useSidebarWidth,
+} from "@pigclaude/ui-shell/panel-resizer"
 import { titleBarMenus } from "@pigclaude/ui-shell/title-bar-menus"
 import { registerShellCommands } from "./shell-commands"
 import { useShellKeys } from "./use-shell-keys"
@@ -60,6 +65,8 @@ export type PigclaudeShellProps = {
   notice?: ReactNode
   /** 工作区侧栏底部一行。 */
   footer: ReactNode
+  /** 工作区的原生工作台；关闭时只隐藏内容，保留终端和浏览器标签。 */
+  workbench?: { content: ReactNode; open: boolean; maximized: boolean }
   children: ReactNode
 }
 
@@ -68,6 +75,7 @@ export function PigclaudeShell(props: PigclaudeShellProps) {
   const { t } = useLocale()
   const registry = useExtensionRegistry()
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth()
+  const [rightWidth, setRightWidth] = useRightWidth()
   const [open, setOpen] = useState(true)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -152,10 +160,21 @@ export function PigclaudeShell(props: PigclaudeShellProps) {
     )
   }, [registry, t])
 
-  const appClass = ["app", open ? "" : "is-collapsed", narrow && drawerOpen ? "is-drawer-open" : ""]
+  const rightOpen = props.workbench?.open === true && !props.inSettings
+  const rightMax = rightOpen && props.workbench?.maximized === true
+  const appClass = [
+    "app",
+    open ? "" : "is-collapsed",
+    narrow && drawerOpen ? "is-drawer-open" : "",
+    rightOpen ? "has-right" : "",
+    rightMax ? "is-right-max" : "",
+  ]
     .filter(Boolean)
     .join(" ")
-  const appStyle = { "--sidebar-w": `${sidebarWidth}px` } as CSSProperties
+  const appStyle = {
+    "--sidebar-w": `${sidebarWidth}px`,
+    "--right-w": `${rightWidth}px`,
+  } as CSSProperties
   const menus = hasCustomTitleBar(platform)
     ? titleBarMenus({
         t,
@@ -215,6 +234,14 @@ export function PigclaudeShell(props: PigclaudeShellProps) {
       <div className="drawer-scrim" aria-hidden="true" onClick={() => setDrawerOpen(false)} />
       <div className="workspace">
         <main className="panel">{props.children}</main>
+        {props.workbench ? (
+          <div className="right-panel-slot" hidden={!rightOpen}>
+            {rightOpen && !rightMax ? (
+              <PanelResizer width={rightWidth} onChange={setRightWidth} />
+            ) : null}
+            {props.workbench.content}
+          </div>
+        ) : null}
       </div>
       <CommandPalette
         open={paletteOpen}

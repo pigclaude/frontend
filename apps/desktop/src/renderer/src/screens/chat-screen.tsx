@@ -1,7 +1,7 @@
 // 负责聊天页：草稿选工作区、开始会话、时间线、工具/终端/浏览器视图、权限回答、换号提示和错误。
 // 页面只消费 useSession 控制器，界面完全由 Pigcode 的 ui-chat 绘制。
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import {
   isAccountSelectable,
   type ClaudeAccountView,
@@ -70,6 +70,9 @@ export type ChatScreenProps = {
   onWorkspaceUsed: (path: string) => void
   onOpen: (location: NavLocation) => void
   smartPunctuation: boolean
+  layoutControls?: ReactNode
+  onOpenFile?: (path: string) => void
+  onViewDiff?: (path?: string) => void
 }
 
 /** 绘制新会话草稿或进行中的会话。 */
@@ -85,6 +88,9 @@ export function ChatScreen({
   onWorkspaceUsed,
   onOpen,
   smartPunctuation,
+  layoutControls,
+  onOpenFile,
+  onViewDiff,
 }: ChatScreenProps) {
   const toast = useToast()
   const [modelId, setModelId] = useState("")
@@ -294,6 +300,7 @@ export function ChatScreen({
     return (
       <ToolRenderers>
         <NewThreadView
+          layoutControls={layoutControls}
           projects={projects}
           projectId={workspace}
           onSelectProject={chooseWorkspace}
@@ -319,6 +326,9 @@ export function ChatScreen({
     <div className="chat-page" ref={setPage}>
       <ToolRenderers>
         <ChatView
+          layoutControls={layoutControls}
+          {...(onOpenFile ? { onOpenFile } : {})}
+          {...(onViewDiff ? { onViewDiff } : {})}
           thread={view.thread}
           events={view.events}
           {...(workspace === null ? {} : { cwd: workspace })}

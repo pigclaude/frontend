@@ -3,6 +3,8 @@ import { contextBridge, ipcRenderer } from "electron"
 import type { BrowserProfilesBridge } from "@pigclaude/contracts/browser-profile"
 import { browserProfilesBridge } from "./browser-profiles"
 import { windowBridge, type WindowBridge } from "./window-bridge"
+import { workbenchBridge } from "./workbench"
+import type { WorkbenchBridge } from "../workbench-contract"
 import type { AuthorizeClaudeAccountInput } from "../main/claude/account-service-inputs"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import {
@@ -36,6 +38,7 @@ export type PigclaudeBridge = {
   /** 系统版本，例如 Windows 的 10.0.22631；判断有没有可用的磨砂材质。 */
   systemVersion: string
   window: WindowBridge
+  workbench?: WorkbenchBridge
   /** 读取当前发布版本和本机数据目录，设置页只展示真实运行时信息。 */
   appInfo?: () => Promise<{ appVersion: string; userDataPath: string }>
   openExternal: (url: string) => Promise<void>
@@ -109,6 +112,7 @@ const bridge: PigclaudeBridge = {
   systemVersion:
     typeof process.getSystemVersion === "function" ? process.getSystemVersion() : "unknown",
   window: windowBridge(),
+  workbench: workbenchBridge(),
   appInfo: () => ipcRenderer.invoke("pigclaude:app-info"),
   openExternal: (url) => ipcRenderer.invoke("pigclaude:open-external", url),
   setTheme: (source) => ipcRenderer.invoke("pigclaude:set-theme", source),

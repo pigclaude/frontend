@@ -18,7 +18,12 @@ vi.mock("electron", () => ({
   },
   BrowserWindow: Object.assign(
     class {
-      webContents = { send: vi.fn() }
+      webContents = {
+        send: vi.fn(),
+        on: vi.fn(),
+        isDestroyed: () => false,
+        setWindowOpenHandler: vi.fn(),
+      }
       constructor() {
         fixture.windows++
       }

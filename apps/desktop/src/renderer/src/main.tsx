@@ -20,6 +20,7 @@ import "./styles/browser-profiles.css"
 import "./styles/appearance.css"
 import "./styles/shell.css"
 import "./styles/permission-prompt.css"
+import "./styles/workbench-adapter.css"
 
 if (installPigcodeNative() && window.pigclaude) {
   document.documentElement.dataset.shell = "electron"

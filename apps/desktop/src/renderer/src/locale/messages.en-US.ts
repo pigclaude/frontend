@@ -9,6 +9,7 @@ import { flowsZhCN } from "./flows.messages"
 import { settingsZhCN } from "./settings.messages"
 import { appSettingsZhCN } from "./app-settings.messages"
 import { appearanceEnUS } from "./appearance.messages"
+import { workbenchEnUS } from "./workbench.messages"
 
 /** 英文主词典。 */
 export const enUS = {
@@ -21,4 +22,5 @@ export const enUS = {
   ...settingsZhCN,
   ...appSettingsZhCN,
   ...appearanceEnUS,
+  ...workbenchEnUS,
 } satisfies Record<keyof typeof zhCN, string>

@@ -78,6 +78,9 @@ vi.mock("electron", () => ({
     class {
       webContents = {
         mainFrame: {},
+        on: vi.fn(),
+        setWindowOpenHandler: vi.fn(),
+        isDestroyed: () => false,
         send: (channel: string, value: unknown) => fixture.sent.push({ channel, value }),
       }
       constructor() {

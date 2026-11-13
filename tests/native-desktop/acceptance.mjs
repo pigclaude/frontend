@@ -10,6 +10,7 @@ import { _electron, expect } from "@playwright/test"
 import { startMembershipFixture } from "./membership-fixture.mjs"
 import { verifySystemClose, verifySystemControls } from "./window-controls.mjs"
 import { systemInput } from "./system-pointer.mjs"
+import { verifyWorkbench } from "./workbench.mjs"
 
 const out = resolve(process.argv[2] ?? "test-results/native-desktop")
 await mkdir(out, { recursive: true })
@@ -159,6 +160,13 @@ try {
   await capture(page, "onboarding")
   await page.getByRole("button", { name: "稍后再说" }).click()
   await expect(screen(page, "chat")).toBeVisible()
+  await verifyWorkbench(
+    page,
+    application,
+    out,
+    Boolean(process.env.PIGCLAUDE_DEV_PROVIDER_BASE_URL),
+  )
+  pass("native workbench")
   const platform = await page.evaluate(() => document.documentElement.dataset.platform)
   assert.equal(platform, process.platform)
   if (platform === "darwin") {

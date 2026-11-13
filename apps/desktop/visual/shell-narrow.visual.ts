@@ -3,6 +3,9 @@ import { expect, test, type Page } from "@playwright/test"
 
 const options = { threshold: 0.1, maxDiffPixels: 0, animations: "disabled" } as const
 
+/** 新会话页按时段问候；把时钟定在基线时刻，截图不受运行时间影响。 */
+const FIXED_TIME = new Date(2026, 9, 26, 15, 0, 0).getTime()
+
 async function settle(page: Page): Promise<void> {
   await page.evaluate(() => document.fonts.ready)
   await page.addStyleTag({
@@ -13,6 +16,7 @@ async function settle(page: Page): Promise<void> {
 for (const theme of ["light", "dark"] as const) {
   test(`narrow shell drawer ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width: 600, height: 800 })
+    await page.clock.install({ time: FIXED_TIME })
     await page.goto(`/?screen=chat-new&theme=${theme}&glass=0`)
     await settle(page)
 

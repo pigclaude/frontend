@@ -1,7 +1,7 @@
 // 负责把 PigClaude 的最近工作区与当前会话映射成外壳侧栏要的项目、会话与状态点。
 // PigClaude 同一时间只有一个会话，它挂在运行它的工作区下；不引入 Pigcode 的线程模型语义。
-import type { Project, Thread } from "@pigclaude/pigcode-contracts"
-import type { ThreadStatus } from "@pigclaude/pigcode-ui-shell"
+import type { Project, Thread } from "@pigclaude/ui-contracts"
+import type { ThreadStatus } from "@pigclaude/ui-shell"
 import { projectNameFromPath } from "../models/project-model"
 import type { SessionUiState } from "../models/session-model"
 

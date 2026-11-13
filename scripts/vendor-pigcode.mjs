@@ -1,4 +1,4 @@
-// 负责把 Pigcode 的界面包按固定提交拷入 packages/pigcode-*，并生成来源清单；同步新提交时重跑本脚本。
+// 负责把 Pigcode 的界面包按固定提交拷入 packages/，并生成来源清单；同步新提交时重跑本脚本。
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { mkdir, rm, writeFile } from "node:fs/promises"
@@ -10,19 +10,13 @@ const lockFile = join(frontend, "pigcode-source.json")
 
 /** 拷入的包：源包名 → 目标目录与目标包名；路径与导出结构保持不变。 */
 export const vendoredPackages = [
-  { source: "contracts", target: "pigcode-contracts", name: "@pigclaude/pigcode-contracts" },
-  {
-    source: "ui-primitives",
-    target: "pigcode-ui-primitives",
-    name: "@pigclaude/pigcode-ui-primitives",
-  },
-  { source: "ui-shell", target: "pigcode-ui-shell", name: "@pigclaude/pigcode-ui-shell" },
-  { source: "ui-settings", target: "pigcode-ui-settings", name: "@pigclaude/pigcode-ui-settings" },
-  {
-    source: "client-runtime",
-    target: "pigcode-client-runtime",
-    name: "@pigclaude/pigcode-client-runtime",
-  },
+  { source: "contracts", target: "ui-contracts", name: "@pigclaude/ui-contracts" },
+  { source: "ui-primitives", target: "ui-primitives", name: "@pigclaude/ui-primitives" },
+  { source: "ui-shell", target: "ui-shell", name: "@pigclaude/ui-shell" },
+  { source: "ui-settings", target: "ui-settings", name: "@pigclaude/ui-settings" },
+  { source: "ui-composer", target: "ui-composer", name: "@pigclaude/ui-composer" },
+  { source: "ui-chat", target: "ui-chat", name: "@pigclaude/ui-chat" },
+  { source: "client-runtime", target: "client-runtime", name: "@pigclaude/client-runtime" },
 ]
 
 /** client-runtime 只取扩展点注册表；其余是 Host 连接、AppStore 与插件运行时，按规格不拷入。 */
@@ -162,7 +156,7 @@ async function vendor(repo, commit) {
   const lock = {
     repository: "pigcode/pigcode",
     commit: resolved,
-    rule: '@pigcode/<package> → @pigclaude/pigcode-<package>；"pigcode.<key>" 存储键 → "pigclaude.<key>"；productNameFiles 里的 Pigcode → PigClaude；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排',
+    rule: '@pigcode/contracts → @pigclaude/ui-contracts，其余 @pigcode/<package> → @pigclaude/<package>；"pigcode.<key>" 存储键 → "pigclaude.<key>"；productNameFiles 里的 Pigcode → PigClaude；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排',
     files,
   }
   await writeFile(lockFile, `${JSON.stringify(lock, null, 2)}\n`)
@@ -193,7 +187,7 @@ export function rewriteManifest(text, item) {
   if (item.source === "client-runtime") {
     manifest.exports = { ".": "./src/extension-points.tsx" }
     delete manifest.dependencies["@pigcode/plugin-sdk"]
-    delete manifest.dependencies["@pigclaude/pigcode-contracts"]
+    delete manifest.dependencies["@pigclaude/ui-contracts"]
   }
   if (item.source === "ui-shell") {
     manifest.exports = { ...manifest.exports, ...shellSubpathExports }

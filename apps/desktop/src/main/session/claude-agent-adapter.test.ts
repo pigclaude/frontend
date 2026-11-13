@@ -358,14 +358,15 @@ describe("ClaudeAgentAdapter", () => {
       binaryPath: "/models/claude",
     })
 
-    expect(models).toEqual([
-      {
-        id: "claude-sonnet-4",
-        displayName: "Claude Sonnet 4",
-        description: "Balanced model",
-        isDefault: false,
-      },
-    ])
+    expect(models[0]).toEqual({
+      id: "claude-sonnet-4",
+      displayName: "Claude Sonnet 4",
+      description: "Balanced model",
+      isDefault: true,
+      efforts: [],
+    })
+    // SDK 没给出规范模型时，目录会补上当前模型，选择器不会只剩一条。
+    expect(models.some((model) => model.id === "claude-opus-5-5")).toBe(true)
     expect(captured[0]?.options).toMatchObject({
       cwd: "/tmp/workspace",
       pathToClaudeCodeExecutable: "/models/claude",

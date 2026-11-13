@@ -1,0 +1,92 @@
+/**
+ * @ 文件与 / 命令的建议面板：贴在输入框上沿，宽度与输入框一致。
+ * 命令分三种来源，用图标和右侧的小标签区分：Pigcode 自己的命令、Agent 内置命令、skill 与自定义命令。
+ */
+import { useEffect, useRef, useSyncExternalStore } from "react"
+import { FileText, Loader2, Slash, Sparkles, SquareTerminal, type LucideIcon } from "lucide-react"
+import { EmptyState, useLocale } from "@pigclaude/ui-primitives"
+import type { SuggestionItem, SuggestionStore } from "./suggestion-store"
+
+const ICONS: Record<NonNullable<SuggestionItem["source"]>, LucideIcon> = {
+  pigcode: Slash,
+  builtin: SquareTerminal,
+  skill: Sparkles,
+}
+
+function itemIcon(item: SuggestionItem): LucideIcon {
+  return item.kind === "file" ? FileText : ICONS[item.source ?? "pigcode"]
+}
+
+/** 把路径拆成文件名和所在目录，列表里文件名在前、目录淡显。 */
+function splitPath(path: string): { name: string; dir: string } {
+  const slash = path.lastIndexOf("/")
+  return slash < 0
+    ? { name: path, dir: "" }
+    : { name: path.slice(slash + 1), dir: path.slice(0, slash) }
+}
+
+/** 渲染建议列表；没有建议时不占位。 */
+export function SuggestionPanel({ store }: { store: SuggestionStore }) {
+  const { t } = useLocale()
+  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  // 键盘移动高亮时让当前项保持在可见范围内。
+  useEffect(() => {
+    const active = listRef.current?.querySelector<HTMLElement>("[data-highlighted]")
+    active?.scrollIntoView?.({ block: "nearest" })
+  }, [snapshot.index, snapshot.items])
+
+  if (!snapshot.active) return null
+  const title =
+    snapshot.kind === "file" ? t("composer.suggest.files") : t("composer.suggest.commands")
+  return (
+    <div className="popup menu-popup suggest-panel" role="listbox" aria-label={title} ref={listRef}>
+      <div className="menu-label suggest-title">
+        <span>{title}</span>
+        {snapshot.loading ? <Loader2 className="ic ic-sm spin" aria-hidden="true" /> : null}
+      </div>
+      {snapshot.items.length === 0 && !snapshot.loading ? (
+        <EmptyState
+          size="compact"
+          title={
+            snapshot.kind === "file"
+              ? t("composer.suggest.noFiles")
+              : t("composer.suggest.noCommands")
+          }
+        />
+      ) : null}
+      {snapshot.items.map((item, index) => {
+        const active = index === snapshot.index
+        const path = item.kind === "file" ? splitPath(item.label) : null
+        const Icon = itemIcon(item)
+        const tag =
+          item.source === "builtin" || item.source === "skill"
+            ? t(`composer.suggest.source.${item.source}`)
+            : null
+        return (
+          <div
+            key={`${item.kind}-${item.id}`}
+            role="option"
+            aria-selected={active}
+            data-highlighted={active ? "" : undefined}
+            data-source={item.source}
+            className="menu-item"
+            onMouseEnter={() => store.highlight(index)}
+            onMouseDown={(event) => {
+              // 保持编辑器焦点，选择由 suggestion 插件完成。
+              event.preventDefault()
+              store.choose(index)
+            }}
+          >
+            <Icon className="ic ic-sm" aria-hidden="true" />
+            <span className="suggest-label">{path ? path.name : item.label}</span>
+            {item.hint ? <span className="suggest-hint">{item.hint}</span> : null}
+            <span className="suggest-detail truncate">{path ? path.dir : (item.detail ?? "")}</span>
+            {tag ? <span className="suggest-tag">{tag}</span> : null}
+          </div>
+        )
+      })}
+    </div>
+  )
+}

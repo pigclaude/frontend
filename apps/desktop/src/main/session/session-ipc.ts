@@ -5,6 +5,7 @@ import type { SessionHost } from "./session-host"
 import {
   SessionHostError,
   type PermissionAnswer,
+  type SessionEffort,
   type SessionPermissionMode,
   type SessionSendInput,
   type SessionStartInput,
@@ -20,6 +21,7 @@ const permissionModes = new Set<SessionPermissionMode>([
   "bypassPermissions",
 ])
 const thinkingLevels = new Set<SessionThinking>(["off", "low", "medium", "high"])
+const effortLevels = new Set<SessionEffort>(["low", "medium", "high", "xhigh", "max"])
 const maxUpdatedPermissions = 50
 const maxUpdatedPermissionsBytes = 64 * 1024
 
@@ -87,6 +89,12 @@ export function readSessionStartInput(value: unknown): SessionStartInput {
   if (thinking !== undefined && !thinkingLevels.has(thinking as SessionThinking)) {
     throw invalidInput()
   }
+  const effort = value.effort
+  if (effort !== undefined && !effortLevels.has(effort as SessionEffort)) {
+    throw invalidInput()
+  }
+  const fast = value.fast
+  if (fast !== undefined && typeof fast !== "boolean") throw invalidInput()
   if (workspace === null) throw invalidInput()
   return {
     workspace,
@@ -94,6 +102,8 @@ export function readSessionStartInput(value: unknown): SessionStartInput {
     ...(model === undefined ? {} : { model }),
     ...(accountId === undefined ? {} : { accountId }),
     ...(thinking === undefined ? {} : { thinking: thinking as SessionThinking }),
+    ...(effort === undefined ? {} : { effort: effort as SessionEffort }),
+    ...(fast === undefined ? {} : { fast }),
   }
 }
 

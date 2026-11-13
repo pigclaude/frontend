@@ -1,7 +1,7 @@
 // 负责外壳的全局快捷键与鼠标侧键：⌘K 命令面板、⌘N 新会话、⌘B 侧栏、⌘, 设置、历史前进后退与 ⌘1…9 打开会话。
 // 按键规则与 Pigcode 外壳一致：输入框里不拦截编辑用的组合键，对话框打开时不叠命令面板。
 import { useEffect, useRef } from "react"
-import { historyStep, threadShortcutIndex } from "@pigclaude/pigcode-ui-shell"
+import { historyStep, threadShortcutIndex } from "@pigclaude/ui-shell"
 
 /** 快捷键触发的动作。 */
 export type ShellKeyActions = {

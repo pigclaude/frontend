@@ -15,5 +15,5 @@
     "removeComments": true,
     "noEmit": true
   },
-  "include": ["src/renderer/src/**/*", "../../packages/pigcode-ui-shell/src/global.d.ts"]
+  "include": ["src/renderer/src/**/*", "../../packages/ui-shell/src/global.d.ts"]
 }

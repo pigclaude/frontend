@@ -71,7 +71,7 @@ test("同步只替换包名与点分存储键，主题文件格式和主题代�
   assert.equal(
     rewriteSource(source, "src/panel-resizer.tsx"),
     [
-      'import { Button } from "@pigclaude/pigcode-ui-primitives"',
+      'import { Button } from "@pigclaude/ui-primitives"',
       'const KEY = "pigclaude.sidebarWidth"',
       'const SCHEMA = "pigcode-theme/1"',
       'export const themeCodePrefix = "pigcode-theme-v1:"',

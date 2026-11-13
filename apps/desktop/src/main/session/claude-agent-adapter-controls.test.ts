@@ -1,4 +1,4 @@
-// 负责验证适配器把 model/thinking 固定进 query 选项，并把模式/模型切换转发给运行中的 query。
+// 负责验证适配器把 model/thinking/effort/fast 固定进 query 选项，并把模式/模型切换转发给运行中的 query。
 
 import { describe, expect, it } from "vitest"
 import { ClaudeAgentAdapter } from "./claude-agent-adapter"
@@ -41,6 +41,22 @@ describe("ClaudeAgentAdapter controls", () => {
     await adapter.start({ ...startOptions(), thinking: "off" })
 
     expect(captured[0]?.options.thinking).toEqual({ type: "disabled" })
+    await adapter.stop()
+  })
+
+  it("prefers the SDK effort level over a token budget and enables fast mode", async () => {
+    const fake = new FakeQuery()
+    const captured: CapturedQuery[] = []
+    const adapter = new ClaudeAgentAdapter({
+      queryFn: capture(fake, captured),
+      resolveBinaryPath: () => "/resolved/claude",
+    })
+
+    await adapter.start({ ...startOptions(), effort: "xhigh", thinking: "high", fast: true })
+
+    expect(captured[0]?.options.effort).toBe("xhigh")
+    expect(captured[0]?.options.thinking).toBeUndefined()
+    expect(captured[0]?.options.settings).toEqual({ fastMode: true })
     await adapter.stop()
   })
 

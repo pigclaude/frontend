@@ -9,9 +9,9 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react"
-import type { Project, Thread } from "@pigclaude/pigcode-contracts"
-import { useExtensionRegistry } from "@pigclaude/pigcode-client-runtime"
-import { useLocale, useSidebarGrouping } from "@pigclaude/pigcode-ui-primitives"
+import type { Project, Thread } from "@pigclaude/ui-contracts"
+import { useExtensionRegistry } from "@pigclaude/client-runtime"
+import { useLocale, useSidebarGrouping } from "@pigclaude/ui-primitives"
 import {
   CommandPalette,
   TitleBar,
@@ -23,9 +23,9 @@ import {
   useNarrowWindow,
   visibleThreads,
   type ThreadStatus,
-} from "@pigclaude/pigcode-ui-shell"
-import { SidebarResizer, useSidebarWidth } from "@pigclaude/pigcode-ui-shell/panel-resizer"
-import { titleBarMenus } from "@pigclaude/pigcode-ui-shell/title-bar-menus"
+} from "@pigclaude/ui-shell"
+import { SidebarResizer, useSidebarWidth } from "@pigclaude/ui-shell/panel-resizer"
+import { titleBarMenus } from "@pigclaude/ui-shell/title-bar-menus"
 import { registerShellCommands } from "./shell-commands"
 import { useShellKeys } from "./use-shell-keys"
 

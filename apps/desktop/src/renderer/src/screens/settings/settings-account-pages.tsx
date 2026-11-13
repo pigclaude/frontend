@@ -2,7 +2,7 @@
 import { WithdrawAuthorization } from "../../components/withdraw-authorization"
 import { useState } from "react"
 import { Icon } from "../../components/icon"
-import { useToast } from "@pigclaude/pigcode-ui-shell"
+import { useToast } from "@pigclaude/ui-shell"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import { Button } from "../../components/ui/button"
 import { Switch } from "../../components/ui/switch"

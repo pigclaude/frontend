@@ -1,6 +1,6 @@
 // 负责设置页面的通用外框、标题、分组和行布局。
 import type { ReactNode } from "react"
-import { ScrollPanel } from "@pigclaude/pigcode-ui-shell"
+import { ScrollPanel } from "@pigclaude/ui-shell"
 
 /** 设置页容器：顶栏拖动区加可滚动的居中内容列。 */
 export function SettingPage({

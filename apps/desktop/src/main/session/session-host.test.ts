@@ -339,49 +339,6 @@ describe("SessionHost events and usage", () => {
   })
 })
 
-describe("SessionHost models", () => {
-  it("queries models with the active session environment", async () => {
-    const harness = await startedHarness()
-
-    const models = await harness.host.models()
-
-    expect(models).toHaveLength(1)
-    expect(harness.adapters.last.modelCalls[0]).toEqual({
-      workspace: harness.workspace,
-      env: harness.environments.last.env,
-      binaryPath: "/fake/claude",
-    })
-    await harness.host.dispose()
-  })
-
-  it("uses a temporary isolated environment when no session is active", async () => {
-    const harness = createHarness({ workspace: await workspaceDir() })
-
-    await harness.host.models()
-
-    expect(harness.environments.inputs).toHaveLength(1)
-    expect(harness.environments.inputs[0]).toMatchObject({
-      workspace: harness.workspace,
-      binaryPath: "/fake/claude",
-    })
-    expect(harness.adapters.last.modelCalls[0]?.workspace).toBe(harness.workspace)
-    expect(harness.environments.last.cleaned).toBe(1)
-    await harness.host.dispose()
-  })
-
-  it("cleans the temporary environment when the model query fails", async () => {
-    const harness = createHarness({
-      workspace: await workspaceDir(),
-      modelsError: new Error("MODEL_QUERY_TIMEOUT: 模型查询超时"),
-    })
-
-    await expect(harness.host.models()).rejects.toMatchObject({ code: "SDK_ERROR" })
-    expect(harness.environments.inputs).toHaveLength(1)
-    expect(harness.environments.last.cleaned).toBe(1)
-    await harness.host.dispose()
-  })
-})
-
 describe("SessionHost stop", () => {
   it("removes the real session directory and allows a new session afterwards", async () => {
     const userDataPath = await workspaceDir()

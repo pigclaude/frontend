@@ -2,7 +2,7 @@
 // 聊天、账号、代理、环境、用量和托盘都接真实会话与本地数据，不再注入 fixture。
 import { useEffect, useState } from "react"
 import type { MembershipView } from "@pigclaude/contracts/membership"
-import { ScrollPanel, useToast } from "@pigclaude/pigcode-ui-shell"
+import { ScrollPanel, useToast } from "@pigclaude/ui-shell"
 import { AccountsScreen } from "./screens/accounts-screen"
 import { ChatScreen } from "./screens/chat-screen"
 import { EnvironmentScreen } from "./screens/environment-screen"

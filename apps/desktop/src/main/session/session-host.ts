@@ -7,7 +7,15 @@ import { resolveClaudeBinaryPath } from "./claude-binary"
 import { PermissionBroker } from "./permission-broker"
 import type { PermissionAnswer } from "./permission-broker"
 import { classifyDaemonError } from "./session-error-mapping"
-import { SessionEnvironment } from "./session-environment"
+import { SessionEnvironment, type ModelAuth } from "./session-environment"
+import type { DevProviderOverride } from "./dev-provider"
+import {
+  applyModelChange,
+  pinnedCatalog,
+  pinnedStartInput,
+  providerEnvironmentInput,
+  providerSessionProfile,
+} from "./session-host-provider"
 import {
   assertStartNotStopped,
   assertWorkspace,
@@ -21,6 +29,7 @@ import {
   sanitizeSessionEvent,
   sanitizeStartError,
   assertMembershipActive,
+  buildStatusView,
 } from "./session-host-support"
 import type { ActiveSession } from "./session-host-support"
 import { normalizeSessionLocale, normalizeSessionTimezone } from "./session-locale"
@@ -55,6 +64,10 @@ export type SessionHostOptions = {
   createAdapter?: SessionAdapterFactory
   resolveBinaryPath?: () => string
   resolveProfile?: (accountId: string | null) => Promise<SessionProfile | null>
+  /** 模型目录查询用的账号凭据；缺省时退回占位 token。 */
+  resolveModelAuth?: (accountId: string | null) => Promise<ModelAuth | null>
+  /** 开发期自定义供应商；只由主进程在未打包时传入，不影响会员和账号门禁。 */
+  provider?: DevProviderOverride | null
   defaultWorkspace?: () => string
   permissionTimeoutMs?: number
   now?: () => number
@@ -73,6 +86,8 @@ export class SessionHost {
   readonly #createAdapter: SessionAdapterFactory
   readonly #resolveBinaryPath: () => string
   readonly #resolveProfile: (accountId: string | null) => Promise<SessionProfile | null>
+  readonly #resolveModelAuth: (accountId: string | null) => Promise<ModelAuth | null>
+  readonly #provider: DevProviderOverride | null
   readonly #defaultWorkspace: () => string
   readonly #permissionTimeoutMs: number
   readonly #now: () => number
@@ -99,6 +114,8 @@ export class SessionHost {
       options.createAdapter ?? ((onEvent) => new ClaudeAgentAdapter({ onEvent }))
     this.#resolveBinaryPath = options.resolveBinaryPath ?? (() => resolveClaudeBinaryPath())
     this.#resolveProfile = options.resolveProfile ?? (async () => null)
+    this.#resolveModelAuth = options.resolveModelAuth ?? (async () => null)
+    this.#provider = options.provider ?? null
     this.#defaultWorkspace = options.defaultWorkspace ?? (() => process.cwd())
     this.#permissionTimeoutMs = options.permissionTimeoutMs ?? 10 * 60 * 1_000
     this.#now = options.now ?? Date.now
@@ -142,7 +159,8 @@ export class SessionHost {
     assertStartNotStopped(this.#stopRequested, this.#disposed)
     await assertWorkspace(input.workspace)
     assertStartNotStopped(this.#stopRequested, this.#disposed)
-    if (!(await this.#runtime.hasAvailableAccount())) {
+    // 开发期供应商自带模型访问，不再要求本机有可用的 Claude 账号。
+    if (this.#provider === null && !(await this.#runtime.hasAvailableAccount())) {
       throw new SessionHostError("NO_AVAILABLE_ACCOUNT", "没有可用的 Claude 账号")
     }
     assertStartNotStopped(this.#stopRequested, this.#disposed)
@@ -154,7 +172,9 @@ export class SessionHost {
     this.#runtime.beginSession?.()
     this.#runtime.setPreferredAccount?.(input.accountId ?? null)
     const sessionId = this.#newId()
-    const profile = await this.#resolveProfile(input.accountId ?? null)
+    const resolvedProfile = await this.#resolveProfile(input.accountId ?? null)
+    const profile =
+      this.#provider === null ? resolvedProfile : providerSessionProfile(resolvedProfile)
     assertStartNotStopped(this.#stopRequested, this.#disposed)
     const environment = await createEnvironmentOrThrow(
       (environmentInput) =>
@@ -168,6 +188,7 @@ export class SessionHost {
         locale: normalizeSessionLocale(profile?.locale),
         binaryPath,
         userDataPath: this.#userDataPath,
+        ...providerEnvironmentInput(this.#provider),
       },
       this.#runtime.sessionToken,
     )
@@ -179,7 +200,8 @@ export class SessionHost {
       await environment.cleanup().catch(() => undefined)
       throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
     }
-    const active = this.#createActiveSession(sessionId, input, environment)
+    const effectiveInput = pinnedStartInput(this.#provider, input)
+    const active = this.#createActiveSession(sessionId, effectiveInput, environment)
     this.#session = active
     if (this.#stopRequested || this.#disposed) {
       await this.#release(active)
@@ -190,7 +212,7 @@ export class SessionHost {
       throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
     }
     try {
-      await active.adapter.start(buildStartOptions(active, input))
+      await active.adapter.start(buildStartOptions(active, effectiveInput))
     } catch (error) {
       await this.#release(active)
       if (this.#stopRequested || this.#disposed) {
@@ -260,16 +282,10 @@ export class SessionHost {
     }
   }
 
-  /** 切换后续回复使用的模型；不影响已发出的请求。 */
+  /** 切换后续回复使用的模型；不影响已发出的请求。开发期供应商固定模型时不接受其他取值。 */
   async setModel(model: string): Promise<void> {
-    if (model.trim() === "") throw new SessionHostError("SDK_ERROR", "模型不能为空")
     const active = this.#requireActive()
-    try {
-      await active.adapter.setModel(model)
-      active.model = model
-    } catch (error) {
-      throw hostError("SDK_ERROR", errorMessage(error), this.#runtime.sessionToken)
-    }
+    await applyModelChange(active, this.#provider, model, this.#runtime.sessionToken)
   }
 
   /** 停止会话：先拒绝未回答权限，再中断、停止适配器并删除会话目录；可重复调用。 */
@@ -292,15 +308,18 @@ export class SessionHost {
     }
   }
 
-  /** 查询支持模型；有活动会话时复用它的隔离环境，否则创建一次性环境并清理。 */
+  /** 查询支持模型；开发期供应商固定模型时直接返回单项目录，否则用真实账号凭据读完整目录。 */
   async models(): Promise<ClaudeModel[]> {
+    await assertMembershipActive(this.#membership)
+    const pinned = pinnedCatalog(this.#provider)
+    if (pinned !== null) return pinned
     return queryModels({
-      active: this.#session,
       assertMembership: () => assertMembershipActive(this.#membership),
       runtime: this.#runtime,
       createEnvironment: this.#createEnvironment,
       createAdapter: this.#createAdapter,
       resolveProfile: this.#resolveProfile,
+      resolveModelAuth: this.#resolveModelAuth,
       defaultWorkspace: this.#defaultWorkspace,
       readBinaryPath: () => readBinaryPath(this.#resolveBinaryPath, this.#runtime.sessionToken),
       userDataPath: this.#userDataPath,
@@ -311,27 +330,7 @@ export class SessionHost {
 
   /** 返回脱敏会话快照；没有活动会话时所有 id 和模型为 null。 */
   status(): SessionStatusView {
-    const active = this.#session
-    if (active === null) {
-      return {
-        active: false,
-        sessionId: null,
-        model: null,
-        permissionMode: "default",
-        accountId: null,
-        pendingPermissions: 0,
-        turnId: null,
-      }
-    }
-    return {
-      active: true,
-      sessionId: active.sessionId,
-      model: active.model,
-      permissionMode: active.permissionMode,
-      accountId: active.accountId,
-      pendingPermissions: active.broker.pendingCount,
-      turnId: active.turnId,
-    }
+    return buildStatusView(this.#session)
   }
 
   /** 停止会话并释放全部订阅；应用退出时调用。 */

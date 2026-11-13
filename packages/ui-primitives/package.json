@@ -1,0 +1,42 @@
+{
+  "name": "@pigclaude/ui-primitives",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./theme-tokens": "./src/theme/theme-tokens.ts",
+    "./styles/*": "./src/styles/*",
+    "./*": "./src/*.tsx"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests --config ../../vitest.pigcode.config.ts"
+  },
+  "dependencies": {
+    "@base-ui/react": "1.9.0",
+    "@pigclaude/ui-contracts": "workspace:*",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-react": "1.0.1",
+    "shiki": "3.23.0"
+  },
+  "peerDependencies": {
+    "react": "^19",
+    "react-dom": "^19"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "typescript": "5.9.3",
+    "vitest": "4.0.16",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/react": "16.3.0",
+    "@testing-library/user-event": "14.6.1",
+    "@types/node": "24.10.1",
+    "jsdom": "26.1.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  }
+}

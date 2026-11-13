@@ -14,7 +14,7 @@ const bundledDependencies = [
   "@pigclaude/daemon",
   "@pigclaude/local-store",
   "@pigclaude/login-gate",
-  "@pigclaude/pigcode-ui-primitives",
+  "@pigclaude/ui-primitives",
   "@pigclaude/proxy-connection",
   "@pigclaude/session-env",
   "@pigclaude/switcher",

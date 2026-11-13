@@ -133,6 +133,38 @@ describe("session model", () => {
     })
   })
 
+  it("keeps tool blocks that arrive later under the same message id", () => {
+    let state = startedTurn()
+    state = emit(state, {
+      type: "message",
+      messageId: "m1",
+      model: "claude-sonnet",
+      parentToolUseId: null,
+      blocks: [{ type: "thinking", text: "先看一下" }],
+    })
+    state = emit(state, {
+      type: "message",
+      messageId: "m1",
+      model: "claude-sonnet",
+      parentToolUseId: null,
+      blocks: [
+        { type: "thinking", text: "先看一下" },
+        { type: "tool-use", id: "tool-1", name: "Bash", input: { command: "ls" } },
+      ],
+    })
+    state = emit(state, {
+      type: "tool-result",
+      toolUseId: "tool-1",
+      content: "bin",
+      isError: false,
+    })
+
+    const turn = activeTurn(state)
+    expect(turn.tools).toHaveLength(1)
+    expect(turn.tools[0]).toMatchObject({ name: "Bash", status: "done", output: "bin" })
+    expect(turn.blocks.map((block) => block.type)).toEqual(["thinking", "tool"])
+  })
+
   it("keeps one permission card per request and records allow or deny", () => {
     let state = startedTurn()
     state = emit(state, {

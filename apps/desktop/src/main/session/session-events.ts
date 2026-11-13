@@ -8,6 +8,9 @@ export type SessionPermissionMode = "default" | "acceptEdits" | "plan" | "bypass
 /** 应用允许的四档思考深度；off 关闭，其余映射到固定 token 预算。 */
 export type SessionThinking = "off" | "low" | "medium" | "high"
 
+/** SDK 的 effort 档位；xhigh/max 只在模型支持时由输入区提供。 */
+export type SessionEffort = "low" | "medium" | "high" | "xhigh" | "max"
+
 /** 应用事件里的内容块；工具输入保持 unknown，避免把 SDK 内部类型泄漏到界面。 */
 export type SessionContentBlock =
   | { type: "text"; text: string }
@@ -52,10 +55,16 @@ export type SessionEvent =
   | { type: "error"; code: string; message: string }
   | { type: "ended"; reason: "completed" | "stopped" | "error" }
 
-/** 界面用的模型信息；SDK 没有默认标记，isDefault 目前由会话 init 模型另行判断。 */
+/** 界面用的模型信息；第一行是 CLI 的默认选择。 */
 export type ClaudeModel = {
   id: string
+  /** SDK 别名解析到的规范模型 id；旧数据没有。 */
+  resolvedModel?: string
   displayName: string
   description: string
   isDefault: boolean
+  /** 模型支持的思考档位；没有可调档位时为空。 */
+  efforts?: readonly string[]
+  /** 是否支持快速模式。 */
+  fast?: boolean
 }

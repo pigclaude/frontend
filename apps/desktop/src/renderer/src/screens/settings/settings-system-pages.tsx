@@ -1,7 +1,7 @@
 // 负责「中继与网络」「数据与隐私」「关于」三个设置页。
 import { useState } from "react"
 import { Icon } from "../../components/icon"
-import { useToast } from "@pigclaude/pigcode-ui-shell"
+import { useToast } from "@pigclaude/ui-shell"
 import { Button } from "../../components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../components/ui/dialog"
 import { reducePrivacyState } from "../../models/operations-model"

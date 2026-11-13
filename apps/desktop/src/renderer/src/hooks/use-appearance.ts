@@ -9,7 +9,7 @@ import { deriveAppearance } from "../models/appearance-tokens"
 import { parseDevView } from "../models/dev-view"
 import { resolveTheme } from "../models/theme-model"
 import type { ThemeDefinition } from "../models/theme-presets"
-import { parseCssColor } from "@pigclaude/pigcode-ui-primitives/theme-tokens"
+import { parseCssColor } from "@pigclaude/ui-primitives/theme-tokens"
 
 const darkQuery = "(prefers-color-scheme: dark)"
 const motionQuery = "(prefers-reduced-motion: reduce)"

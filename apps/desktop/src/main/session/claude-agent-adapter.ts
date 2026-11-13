@@ -9,10 +9,12 @@ import type {
   ThinkingConfig,
 } from "@anthropic-ai/claude-agent-sdk"
 import { resolveClaudeBinaryPath } from "./claude-binary"
+import { mergeClaudeModels } from "./claude-model-catalog"
 import { classifyDaemonError } from "./session-error-mapping"
 import type {
   ClaudeModel,
   SessionContentBlock,
+  SessionEffort,
   SessionEvent,
   SessionPermissionMode,
   SessionThinking,
@@ -61,6 +63,10 @@ export type ClaudeAgentStartOptions = {
   binaryPath?: string
   model?: string
   thinking?: SessionThinking
+  /** SDK 的 effort 档位；提供时优先于 thinking。 */
+  effort?: SessionEffort
+  /** 模型支持时启用快速模式。 */
+  fast?: boolean
 }
 
 /** 查询模型列表的参数；env 由调用方提供，避免把宿主进程的凭据带进子进程。 */
@@ -207,12 +213,7 @@ export class ClaudeAgentAdapter {
       creation = Promise.resolve(this.#queryFn({ prompt, options: sdkOptions }))
       query = await Promise.race([creation, timeout])
       const models = await Promise.race([query.supportedModels(), timeout])
-      return models.map((model) => ({
-        id: model.value,
-        displayName: model.displayName,
-        description: model.description,
-        isDefault: false,
-      }))
+      return mergeClaudeModels(models)
     } finally {
       if (timer !== null) clearTimeout(timer)
       prompt.end()
@@ -395,7 +396,12 @@ function buildQueryOptions(options: ClaudeAgentStartOptions, binaryPath: string)
     canUseTool: options.canUseTool,
     abortController: options.abortController,
     ...(options.model === undefined ? {} : { model: options.model }),
-    ...(options.thinking === undefined ? {} : { thinking: thinkingConfig(options.thinking) }),
+    ...(options.effort !== undefined
+      ? { effort: options.effort }
+      : options.thinking === undefined
+        ? {}
+        : { thinking: thinkingConfig(options.thinking) }),
+    ...(options.fast ? { settings: { fastMode: true } } : {}),
     ...(options.permissionMode === "bypassPermissions"
       ? { allowDangerouslySkipPermissions: true }
       : {}),

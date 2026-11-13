@@ -5,6 +5,16 @@ import { allScreens } from "../src/renderer/src/models/dev-view"
 const options = { threshold: 0.1, maxDiffPixels: 0, animations: "disabled" } as const
 const skipped = new Set(["login", "onboarding", "authorize"])
 
+/**
+ * 新会话页按时段问候；基线是在固定时刻截的。把浏览器时钟定在那一时刻，
+ * 否则同一份代码在早上和晚上会截出不同文案。
+ */
+const FIXED_TIME = new Date(2026, 9, 26, 15, 0, 0).getTime()
+
+async function freezeClock(page: Page): Promise<void> {
+  await page.clock.install({ time: FIXED_TIME })
+}
+
 async function settle(page: Page): Promise<void> {
   await page.evaluate(() => document.fonts.ready)
   await page.addStyleTag({
@@ -43,6 +53,7 @@ for (const screen of allScreens.filter((name) => !skipped.has(name))) {
   for (const theme of ["light", "dark"] as const) {
     for (const glass of [0, 1] as const) {
       test(`${screen} ${theme} glass=${glass}`, async ({ page }) => {
+        await freezeClock(page)
         await page.goto(`/?screen=${screen}&theme=${theme}&glass=${glass}`)
         await settle(page)
         await expect(page).toHaveScreenshot(`${screen}-${theme}-${glass}.png`, options)

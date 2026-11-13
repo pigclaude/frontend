@@ -6,10 +6,10 @@ import {
   type ContributionOwner,
   type ExtensionRegistry,
   type SettingsPageContribution,
-} from "@pigclaude/pigcode-client-runtime"
-import { EmptyState, useLocale } from "@pigclaude/pigcode-ui-primitives"
-import { PageErrorBoundary } from "@pigclaude/pigcode-ui-shell"
-import { Icon } from "@pigclaude/pigcode-ui-shell"
+} from "@pigclaude/client-runtime"
+import { EmptyState, useLocale } from "@pigclaude/ui-primitives"
+import { PageErrorBoundary } from "@pigclaude/ui-shell"
+import { Icon } from "@pigclaude/ui-shell"
 import type { ReactNode } from "react"
 import { settingsNav, type SettingsPageId } from "../models/settings-nav"
 import type { NavLocation } from "../models/navigation"

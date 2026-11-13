@@ -11,10 +11,12 @@
     "web-ui",
     "api",
     "contracts",
-    "pigcode-contracts",
-    "pigcode-ui-primitives",
-    "pigcode-client-runtime",
-    "pigcode-ui-shell",
-    "pigcode-ui-settings"
+    "ui-contracts",
+    "ui-primitives",
+    "ui-shell",
+    "ui-settings",
+    "ui-composer",
+    "ui-chat",
+    "client-runtime"
   ]
 }

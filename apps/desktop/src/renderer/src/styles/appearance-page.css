@@ -13,6 +13,15 @@
   gap: 12px;
   padding: 4px 0;
 }
+.mode-card {
+  display: flex;
+  align-items: center;
+  width: 92px;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
 .radio-card {
   padding: 0;
   border: 0;
@@ -26,6 +35,12 @@
 .mode-card[data-state="checked"],
 .mode-card[data-checked] {
   color: var(--fg);
+}
+.mode-thumb {
+  display: flex;
+  width: 92px;
+  height: 58px;
+  overflow: hidden;
 }
 .mode-card[data-state="checked"] .mode-thumb,
 .mode-card[data-checked] .mode-thumb,

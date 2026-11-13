@@ -7,6 +7,7 @@ import type { PermissionAnswer, PermissionRequestEvent } from "./permission-brok
 import type { SessionEnvironmentInput } from "./session-environment"
 import type {
   ClaudeModel,
+  SessionEffort,
   SessionEvent,
   SessionPermissionMode,
   SessionThinking,
@@ -19,6 +20,10 @@ export type SessionStartInput = {
   workspace: string
   model?: string
   thinking?: SessionThinking
+  /** 新输入区按模型提供的 effort；和 thinking 二选一，effort 优先。 */
+  effort?: SessionEffort
+  /** 模型支持时启用快速模式；只在会话启动时生效。 */
+  fast?: boolean
   permissionMode: SessionPermissionMode
   accountId?: string
 }
@@ -175,6 +180,7 @@ export type {
   ClaudeModel,
   PermissionAnswer,
   PermissionRequestEvent,
+  SessionEffort,
   SessionEvent,
   SessionPermissionMode,
   SessionThinking,

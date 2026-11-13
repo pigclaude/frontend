@@ -1,6 +1,6 @@
 // 负责「通用」「会话」「托盘与菜单栏」三个应用设置页；「外观」见 appearance/appearance-page.tsx。
 import { useState } from "react"
-import { useToast } from "@pigclaude/pigcode-ui-shell"
+import { useToast } from "@pigclaude/ui-shell"
 import { Button } from "../../components/ui/button"
 import { Kbd } from "../../components/ui/kbd"
 import { Switch } from "../../components/ui/switch"

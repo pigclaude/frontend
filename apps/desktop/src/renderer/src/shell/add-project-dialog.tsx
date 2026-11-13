@@ -1,7 +1,7 @@
 // 负责「添加项目」对话框：填写或用系统选择框选一个文件夹，确认后加入最近工作区。
 // PigClaude 的工作区只记路径，项目名取自文件夹名，所以不像 Pigcode 那样另填名称和设备。
 import { useState } from "react"
-import { Button, Dialog, Field, Input, useLocale } from "@pigclaude/pigcode-ui-primitives"
+import { Button, Dialog, Field, Input, useLocale } from "@pigclaude/ui-primitives"
 import { fill, useText } from "../locale/text"
 import { projectNameFromPath } from "../models/project-model"
 

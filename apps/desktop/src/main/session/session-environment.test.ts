@@ -110,7 +110,93 @@ describe("SessionEnvironment", () => {
     expect(await fileMode(configDir)).toBe(0o700)
     expect(await fileMode(preloadPath)).toBe(0o700)
     expect(await readFile(preloadPath, "utf8")).toContain("America/Los_Angeles")
+    // 普通会话不写账号配置，模型探测才会写。
+    await expect(stat(join(configDir, ".claude.json"))).rejects.toMatchObject({ code: "ENOENT" })
 
+    await environment.cleanup()
+  })
+
+  it("uses the real account token and org config for a model probe", async () => {
+    const userDataPath = await tempDir()
+    const modelAuth = {
+      accessToken: "real-account-token",
+      accountUuid: "account-uuid",
+      email: "model@example.test",
+      organizationUuid: "organization-uuid",
+    }
+    const environment = await SessionEnvironment.create({
+      sessionId: "model-probe",
+      workspace: "/tmp/workspace",
+      daemonBaseUrl: "http://127.0.0.1:47821",
+      sessionToken: "model-probe-token",
+      timezone: "UTC",
+      locale: "en-US",
+      binaryPath: "/opt/claude/bin/claude",
+      userDataPath,
+      modelAuth,
+    })
+
+    expect(environment.env.CLAUDE_CODE_OAUTH_TOKEN).toBe("real-account-token")
+    expect(environment.env.ANTHROPIC_BASE_URL).toBeUndefined()
+    expect(environment.env.ANTHROPIC_CUSTOM_HEADERS).toBeUndefined()
+    const configPath = join(environment.configDir, ".claude.json")
+    expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({
+      oauthAccount: {
+        accountUuid: "account-uuid",
+        emailAddress: "model@example.test",
+        organizationUuid: "organization-uuid",
+      },
+    })
+    expect(await fileMode(configPath)).toBe(0o600)
+
+    await environment.cleanup()
+  })
+
+  it("替换 daemon 地址和占位 token 为开发期供应商", async () => {
+    const userDataPath = await tempDir()
+    const environment = await SessionEnvironment.create({
+      sessionId: "provider-session",
+      workspace: "/tmp/workspace",
+      daemonBaseUrl: "http://127.0.0.1:47821",
+      sessionToken: "session-token-abc",
+      timezone: "UTC",
+      locale: "en-US",
+      binaryPath: "/opt/claude/bin/claude",
+      userDataPath,
+      provider: { baseUrl: "https://provider.example.test", authToken: "provider-token-xyz" },
+    })
+
+    expect(environment.env.ANTHROPIC_BASE_URL).toBe("https://provider.example.test")
+    expect(environment.env.ANTHROPIC_AUTH_TOKEN).toBe("provider-token-xyz")
+    expect(environment.env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined()
+    expect(environment.env.ANTHROPIC_CUSTOM_HEADERS).toBeUndefined()
+    await environment.cleanup()
+  })
+
+  it("供应商覆盖下不写模型查询账号配置", async () => {
+    const userDataPath = await tempDir()
+    const environment = await SessionEnvironment.create({
+      sessionId: "provider-model-probe",
+      workspace: "/tmp/workspace",
+      daemonBaseUrl: "http://127.0.0.1:47821",
+      sessionToken: "provider-model-probe-token",
+      timezone: "UTC",
+      locale: "en-US",
+      binaryPath: "/opt/claude/bin/claude",
+      userDataPath,
+      provider: { baseUrl: "https://provider.example.test", authToken: "provider-token-xyz" },
+      modelAuth: {
+        accessToken: "real-account-token",
+        accountUuid: "account-uuid",
+        email: "model@example.test",
+        organizationUuid: "organization-uuid",
+      },
+    })
+
+    expect(environment.env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined()
+    await expect(stat(join(environment.configDir, ".claude.json"))).rejects.toMatchObject({
+      code: "ENOENT",
+    })
     await environment.cleanup()
   })
 

@@ -1,8 +1,8 @@
 // 负责工作区侧栏底部上方的账号提醒：有 Claude 账号需要重新授权时提示，并说明它已暂停参与自动切换。
 // 提醒只来自真实的账号状态，没有需要处理的账号时不显示；隐藏后同一批账号不再提醒。
 import { useState } from "react"
-import { Button, StatusDot } from "@pigclaude/pigcode-ui-primitives"
-import { Icon } from "@pigclaude/pigcode-ui-shell"
+import { Button, StatusDot } from "@pigclaude/ui-primitives"
+import { Icon } from "@pigclaude/ui-shell"
 import { fill, useText } from "../locale/text"
 
 /** 需要提醒的账号。 */

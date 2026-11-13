@@ -6,7 +6,7 @@ import type {
   IpcMainInvokeEvent,
   NativeTheme,
 } from "electron"
-import { supportsTranslucency } from "@pigclaude/pigcode-ui-primitives/theme-tokens"
+import { supportsTranslucency } from "@pigclaude/ui-primitives/theme-tokens"
 import { popupNativeMenu, readMenuPosition, readNativeMenu, type MenuFactory } from "./native-menu"
 import {
   TITLE_BAR_HEIGHT,

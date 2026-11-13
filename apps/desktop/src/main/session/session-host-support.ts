@@ -16,6 +16,7 @@ import type {
   SessionMembership,
   SessionPermissionMode,
   SessionStartInput,
+  SessionStatusView,
 } from "./session-types"
 import { classifyDaemonError } from "./session-error-mapping"
 import { SessionHostError } from "./session-types"
@@ -141,6 +142,32 @@ export function buildStartOptions(
     binaryPath: active.environment.binaryPath,
     ...(input.model === undefined ? {} : { model: input.model }),
     ...(input.thinking === undefined ? {} : { thinking: input.thinking }),
+    ...(input.effort === undefined ? {} : { effort: input.effort }),
+    ...(input.fast === undefined ? {} : { fast: input.fast }),
+  }
+}
+
+/** 返回脱敏会话快照；没有活动会话时所有 id 和模型为 null。 */
+export function buildStatusView(active: ActiveSession | null): SessionStatusView {
+  if (active === null) {
+    return {
+      active: false,
+      sessionId: null,
+      model: null,
+      permissionMode: "default",
+      accountId: null,
+      pendingPermissions: 0,
+      turnId: null,
+    }
+  }
+  return {
+    active: true,
+    sessionId: active.sessionId,
+    model: active.model,
+    permissionMode: active.permissionMode,
+    accountId: active.accountId,
+    pendingPermissions: active.broker.pendingCount,
+    turnId: active.turnId,
   }
 }
 

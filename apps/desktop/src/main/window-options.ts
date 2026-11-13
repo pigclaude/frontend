@@ -1,14 +1,14 @@
 // 负责主窗口的尺寸、标题栏和预加载路径，以及原生标题栏配色与侧栏透明时的窗口材质。
 // 标题栏与交通灯的尺寸和 Pigcode 外壳一致：窗口按钮全部由系统绘制，页面只画按钮旁边的外壳。
 import type { BrowserWindowConstructorOptions } from "electron"
-import tokensCss from "@pigclaude/pigcode-ui-primitives/styles/tokens.css?raw"
+import tokensCss from "@pigclaude/ui-primitives/styles/tokens.css?raw"
 import {
   clearWindowColor,
   parseCssColor,
   titleBarColors,
   tokenBlock,
   tokenReader,
-} from "@pigclaude/pigcode-ui-primitives/theme-tokens"
+} from "@pigclaude/ui-primitives/theme-tokens"
 
 /** 开发时返回渲染进程地址；打包后不走开发服务器。 */
 export function developmentRendererUrl(

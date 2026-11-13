@@ -3,8 +3,12 @@
 // @vitest-environment jsdom
 import { act, createElement, useState } from "react"
 import { createRoot, type Root } from "react-dom/client"
+import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ClaudeAccountView, ProxyView } from "@pigclaude/contracts/claude-account"
+import { LocaleProvider } from "@pigclaude/ui-primitives"
+import { ToastProvider } from "@pigclaude/ui-shell"
+import { resetComposerMemory } from "@pigclaude/ui-composer"
 import type { SessionController } from "../hooks/use-session"
 import { createSessionState, reduceSession, type SessionUiState } from "../models/session-model"
 import { ChatScreen, type ChatScreenProps } from "./chat-screen"
@@ -48,6 +52,7 @@ let container: HTMLDivElement
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true)
+  resetComposerMemory()
   window.localStorage.clear()
   container = document.createElement("div")
   document.body.append(container)
@@ -104,7 +109,14 @@ async function render(overrides: Partial<ChatScreenProps> = {}): Promise<void> {
     smartPunctuation: false,
     ...overrides,
   }
-  await act(async () => root.render(createElement(ChatScreen, props)))
+  await act(async () =>
+    root.render(
+      createElement(LocaleProvider, {
+        locale: "zh-CN",
+        children: createElement(ToastProvider, { children: createElement(ChatScreen, props) }),
+      }),
+    ),
+  )
 }
 
 function button(name: string, scope: ParentNode = container): HTMLButtonElement | undefined {
@@ -113,19 +125,65 @@ function button(name: string, scope: ParentNode = container): HTMLButtonElement 
   )
 }
 
-async function clickButton(target: HTMLButtonElement | undefined, name: string): Promise<void> {
+function buttonStartingWith(
+  prefix: string,
+  scope: ParentNode = container,
+): HTMLElement | undefined {
+  return [...scope.querySelectorAll<HTMLElement>('button, [role="button"]')].find((candidate) =>
+    candidate.textContent?.trim().startsWith(prefix),
+  )
+}
+
+async function clickButton(target: HTMLElement | undefined, name: string): Promise<void> {
   expect(target, name).toBeDefined()
   await act(async () => target?.click())
+}
+
+/** 在输入区里敲字并回车；第一条消息会先建会话再发送。 */
+async function typeAndSend(text: string): Promise<void> {
+  const editor = container.querySelector<HTMLElement>(".composer .tiptap")
+  expect(editor, "输入区").not.toBeNull()
+  const user = userEvent.setup()
+  await act(async () => {
+    await user.click(editor!)
+    await user.type(editor!, text)
+  })
+  await act(async () => {
+    editor!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+    )
+    await Promise.resolve()
+  })
 }
 
 describe("chat screen", () => {
   it("shows an empty state that asks for a workspace instead of fixture data", async () => {
     await render({ workspace: null, workspaceOptions: [] })
 
-    expect(container.textContent).toContain("选择工作区")
-    expect(container.textContent).toContain("最近工作区")
+    expect(container.textContent).toContain("添加项目")
+    expect(container.textContent).not.toContain("最近工作区")
+    expect(container.textContent).not.toContain("发送第一条消息即开始会话")
     expect(container.textContent).not.toContain("流开始后不再换号")
     expect(container.textContent).not.toContain("继续上次")
+  })
+
+  it("offers Pigcode's start suggestions once a workspace is ready", async () => {
+    await render()
+
+    expect(container.textContent).toContain("解释项目")
+    expect(container.textContent).toContain("修复问题")
+    expect(container.textContent).toContain("补充测试")
+    expect(container.textContent).toContain("审查改动")
+    expect(container.textContent).not.toContain("最近工作区")
+  })
+
+  it("prefills the composer from a start suggestion without sending", async () => {
+    await render()
+
+    await clickButton(button("解释项目"), "解释项目")
+
+    const editor = container.querySelector<HTMLElement>(".composer .tiptap")
+    expect(editor?.textContent).toContain("介绍一下这个项目")
   })
 
   it("starts a session with the selected workspace and session options", async () => {
@@ -133,32 +191,61 @@ describe("chat screen", () => {
     const onOpen = vi.fn()
     await render({ session, workspace: "/Users/me/app", onOpen })
 
-    await clickButton(button("开始会话"), "开始会话")
+    await typeAndSend("开始吧")
 
-    expect(session.start).toHaveBeenCalledWith(
-      expect.objectContaining({
-        workspace: "/Users/me/app",
-        permissionMode: "default",
-        thinking: "medium",
-      }),
-    )
-    expect(session.send).not.toHaveBeenCalled()
+    expect(session.start).toHaveBeenCalledWith({
+      workspace: "/Users/me/app",
+      model: "claude-sonnet",
+      permissionMode: "default",
+    })
+    expect(session.send).toHaveBeenCalledWith("开始吧")
     expect(onOpen).toHaveBeenCalledWith({ kind: "session" })
   })
 
-  it("offers a direct account in the account menu without any proxy", async () => {
+  it("offers a direct account in the model picker without any proxy", async () => {
     await render({ accounts: [directAccount("account-direct", "直连 Max")], proxies: [] })
 
-    const trigger = [...container.querySelectorAll("button")].find((candidate) =>
-      candidate.textContent?.includes("自动选择账号"),
-    )
-    expect(trigger, "账号菜单").toBeDefined()
+    const trigger = container.querySelector<HTMLButtonElement>(".model-chip")
+    expect(trigger, "模型选择器").not.toBeNull()
+    await act(async () => trigger?.click())
+
+    expect(
+      document.querySelector('[role="tab"][aria-label="直连 Max · 系统网络"]'),
+      "账号实例",
+    ).not.toBeNull()
+  })
+
+  it("does not submit while the input method is composing", async () => {
+    const session = controller({
+      state: reduceSession(createSessionState(), { type: "opened", sessionId: "session-1" }),
+    })
+    await render({ fresh: false, session })
+
+    const editor = container.querySelector<HTMLElement>(".composer .tiptap")
+    expect(editor, "输入区").not.toBeNull()
+    const user = userEvent.setup()
     await act(async () => {
-      trigger?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }))
+      await user.click(editor!)
+      await user.type(editor!, "你好")
+    })
+    await act(async () => {
+      editor!.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+          isComposing: true,
+        }),
+      )
     })
 
-    expect(document.body.textContent).toContain("直连 Max · 系统网络")
-    expect(document.body.textContent).not.toContain("没有可用账号")
+    expect(session.send).not.toHaveBeenCalled()
+    await act(async () => {
+      editor!.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      )
+    })
+    expect(session.send).toHaveBeenCalledWith("你好")
   })
 
   it("shows the live thread even when the route is still chat-new", async () => {
@@ -181,36 +268,40 @@ describe("chat screen", () => {
           return true
         },
       })
-      return createElement(ChatScreen, {
-        fresh: true,
-        session,
-        workspace: "/Users/me/app",
-        workspaceOptions: ["/Users/me/app"],
-        accounts: [account("account-a", "主力 Max")],
-        proxies: [proxy],
-        onPickWorkspace: () => undefined,
-        onSelectWorkspace: () => undefined,
-        onWorkspaceUsed: () => undefined,
-        onOpen,
-        smartPunctuation: false,
+      return createElement(LocaleProvider, {
+        locale: "zh-CN",
+        children: createElement(ToastProvider, {
+          children: createElement(ChatScreen, {
+            fresh: true,
+            session,
+            workspace: "/Users/me/app",
+            workspaceOptions: ["/Users/me/app"],
+            accounts: [account("account-a", "主力 Max")],
+            proxies: [proxy],
+            onPickWorkspace: () => undefined,
+            onSelectWorkspace: () => undefined,
+            onWorkspaceUsed: () => undefined,
+            onOpen,
+            smartPunctuation: false,
+          }),
+        }),
       })
     }
 
     await act(async () => root.render(createElement(Harness)))
-    await clickButton(button("开始会话"), "开始会话")
+    await typeAndSend("改一下")
 
     expect(onOpen).toHaveBeenCalledWith({ kind: "session" })
     expect(container.textContent).toContain("先看")
     expect(container.textContent).not.toContain("先选择一个工作区")
   })
 
-  it("offers a new session after the previous one is stopped", async () => {
+  it("starts a new session after the previous one is stopped", async () => {
     const stopped = reduceSession(startingState(), { type: "stopped" })
     const start = vi.fn(async () => true)
     await render({ fresh: false, session: controller({ state: stopped, start }) })
 
-    expect(container.textContent).toContain("开始会话")
-    await clickButton(button("开始会话"), "开始会话")
+    await typeAndSend("再来一次")
     expect(start).toHaveBeenCalledTimes(1)
   })
 
@@ -231,7 +322,8 @@ describe("chat screen", () => {
     expect(container.textContent).toContain("改一下重试逻辑")
   })
 
-  it("folds tool calls until the user expands them", async () => {
+  it("folds terminal commands until the user expands them", async () => {
+    // Pigcode 的时间线把命令显示成一行摘要，点开才看到输出。
     let state = startingState()
     state = reduceSession(state, {
       type: "event",
@@ -240,7 +332,7 @@ describe("chat screen", () => {
         messageId: "m1",
         model: "claude-sonnet",
         parentToolUseId: null,
-        blocks: [{ type: "tool-use", id: "tool-1", name: "Read", input: { file: "a.ts" } }],
+        blocks: [{ type: "tool-use", id: "tool-1", name: "Bash", input: { command: "cat a.ts" } }],
       },
     })
     state = reduceSession(state, {
@@ -250,14 +342,14 @@ describe("chat screen", () => {
 
     await render({ fresh: false, session: controller({ state }) })
 
-    expect(container.textContent).toContain("工具调用 1 次")
+    expect(container.textContent).toContain("终端")
+    expect(container.textContent).toContain("cat a.ts")
     expect(container.textContent).not.toContain("文件内容")
-    await clickButton(button("工具调用 1 次"), "工具调用 1 次")
-    expect(container.textContent).toContain("Read")
+    await clickButton(buttonStartingWith("终端"), "终端")
     expect(container.textContent).toContain("文件内容")
   })
 
-  it("answers permission cards with allow or deny", async () => {
+  it("answers permission cards from the prompt above the composer", async () => {
     const respond = vi.fn(async () => undefined)
     let state = startingState()
     state = reduceSession(state, {
@@ -271,13 +363,24 @@ describe("chat screen", () => {
     })
     await render({ fresh: false, session: controller({ state, respondPermission: respond }) })
 
-    expect(container.textContent).toContain("允许运行 Bash")
-    await clickButton(button("允许一次"), "允许一次")
-    expect(respond).toHaveBeenCalledWith("permission-1", "allow")
+    const prompt = container.querySelector('[role="dialog"][aria-label="需要权限"]')
+    expect(prompt).not.toBeNull()
+    // 卡片挂在输入区容器里，排在输入框前面。
+    expect(prompt?.closest(".composer-wrap")).not.toBeNull()
+    expect(prompt?.closest(".perm-host")?.nextElementSibling?.className).toContain("composer")
+    expect(container.textContent).toContain("Bash")
+    expect(container.textContent).toContain("pnpm test")
+    // 卡片默认选中第一项，点一下就直接回答。
+    const options = [...container.querySelectorAll<HTMLElement>('[role="option"]')]
+    expect(options.length).toBe(2)
+    await act(async () => options[0]?.click())
+    expect(respond).toHaveBeenCalledWith("permission-1", "allow", undefined)
 
     await render({ fresh: false, session: controller({ state, respondPermission: respond }) })
-    await clickButton(button("拒绝"), "拒绝")
-    expect(respond).toHaveBeenCalledWith("permission-1", "deny")
+    const deny = container.querySelectorAll<HTMLElement>('[role="option"]')[1]
+    await act(async () => deny?.click())
+    await clickButton(button("确认"), "确认")
+    expect(respond).toHaveBeenCalledWith("permission-1", "deny", undefined)
   })
 
   it("shows account switch notices with display names", async () => {
@@ -289,23 +392,21 @@ describe("chat screen", () => {
 
     await render({ fresh: false, session: controller({ state }) })
 
-    expect(container.textContent).toContain("主力 Max")
-    expect(container.textContent).toContain("备用 Pro")
-    expect(container.textContent).toContain("额度用尽")
+    // Pigcode 的切换分隔线只显示切换到的目标，不重复来源和原因。
+    expect(container.textContent).toContain("已切换到 备用 Pro")
   })
 
-  it("cancels the current turn or stops the whole session", async () => {
+  it("interrupts the current run from the composer", async () => {
     const cancel = vi.fn(async () => undefined)
-    const stop = vi.fn(async () => undefined)
     await render({
       fresh: false,
-      session: controller({ state: startingState(), cancel, stop }),
+      session: controller({ state: startingState(), cancel }),
     })
 
-    await clickButton(button("取消"), "取消")
+    const stop = container.querySelector<HTMLButtonElement>('[aria-label="中断"]')
+    expect(stop, "中断").not.toBeNull()
+    await act(async () => stop?.click())
     expect(cancel).toHaveBeenCalledTimes(1)
-    await clickButton(button("停止会话"), "停止会话")
-    expect(stop).toHaveBeenCalledTimes(1)
   })
 
   it("shows the mapped Chinese error text and model probe failures", async () => {

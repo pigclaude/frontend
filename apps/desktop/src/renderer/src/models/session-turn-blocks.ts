@@ -21,11 +21,12 @@ export function appendMessage(
   turn: SessionTurn,
   message: Extract<SessionHostEvent, { type: "message" }>,
 ): SessionTurn {
-  if (turn.seenMessageIds.includes(message.messageId)) return turn
-  let next: SessionTurn = {
-    ...turn,
-    seenMessageIds: [...turn.seenMessageIds, message.messageId],
-  }
+  // 同一条 SDK 消息会分多次推送（thinking、tool-use、text 逐步累积），
+  // 所以同 id 也要继续处理：工具块按 id 幂等合并，文本由 mergeFullText 去重。
+  const seen = turn.seenMessageIds.includes(message.messageId)
+  let next: SessionTurn = seen
+    ? turn
+    : { ...turn, seenMessageIds: [...turn.seenMessageIds, message.messageId] }
   for (const block of message.blocks) {
     if (block.type === "tool-use") {
       next = upsertTool(next, block.id, block.name, block.input)

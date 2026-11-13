@@ -1,6 +1,6 @@
 // 验证外壳命令登记到 Command 扩展点：只有新会话、侧栏、设置、添加项目四条，没有 Pigcode 的插件命令，注销后清空。
 import { describe, expect, it, vi } from "vitest"
-import { createExtensionRegistry } from "@pigclaude/pigcode-client-runtime"
+import { createExtensionRegistry } from "@pigclaude/client-runtime"
 import { registerShellCommands } from "./shell-commands"
 
 function actions() {

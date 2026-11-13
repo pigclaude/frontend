@@ -4,8 +4,8 @@ import type {
   CommandContribution,
   ContributionOwner,
   ExtensionRegistry,
-} from "@pigclaude/pigcode-client-runtime"
-import type { MessageKey } from "@pigclaude/pigcode-ui-primitives"
+} from "@pigclaude/client-runtime"
+import type { MessageKey } from "@pigclaude/ui-primitives"
 
 /** 外壳命令需要的动作。 */
 export type ShellCommandActions = {

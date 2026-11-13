@@ -4,10 +4,10 @@ import {
   contributionText,
   useContributions,
   type SettingsPageContribution,
-} from "@pigclaude/pigcode-client-runtime"
-import { EmptyState, ListRow, SearchField, useLocale } from "@pigclaude/pigcode-ui-primitives"
-import { Icon } from "@pigclaude/pigcode-ui-shell"
-import { SideScroll } from "@pigclaude/pigcode-ui-shell/side-scroll"
+} from "@pigclaude/client-runtime"
+import { EmptyState, ListRow, SearchField, useLocale } from "@pigclaude/ui-primitives"
+import { Icon } from "@pigclaude/ui-shell"
+import { SideScroll } from "@pigclaude/ui-shell/side-scroll"
 import { settingsNav } from "../models/settings-nav"
 
 /** 设置侧栏需要的状态与事件；页面 id 来自设置页扩展点。 */

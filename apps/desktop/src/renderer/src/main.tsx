@@ -1,7 +1,7 @@
 // 负责把桌面界面挂到页面上：先接好 Pigcode 组件读取的原生桥，再按 Pigcode 全局样式、PigClaude 页面样式的顺序载入样式。
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
-import "@pigclaude/pigcode-ui-primitives/styles/globals.css"
+import "@pigclaude/ui-primitives/styles/globals.css"
 import { DesktopApp } from "./app"
 import { AuthorizeWeb } from "./authorize-web"
 import { installPigcodeNative } from "./lib/pigcode-native"
@@ -19,6 +19,7 @@ import "./styles/fingerprint.css"
 import "./styles/browser-profiles.css"
 import "./styles/appearance.css"
 import "./styles/shell.css"
+import "./styles/permission-prompt.css"
 
 if (installPigcodeNative() && window.pigclaude) {
   document.documentElement.dataset.shell = "electron"

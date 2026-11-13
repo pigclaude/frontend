@@ -136,6 +136,36 @@ describe("readSessionStartInput", () => {
 
     expect(input).toEqual({ workspace: "/Users/me/app", permissionMode: "default" })
   })
+
+  it("accepts SDK effort and fast mode and rejects invalid values", () => {
+    expect(
+      readSessionStartInput({
+        workspace: "/Users/me/app",
+        permissionMode: "default",
+        effort: "xhigh",
+        fast: true,
+      }),
+    ).toEqual({
+      workspace: "/Users/me/app",
+      permissionMode: "default",
+      effort: "xhigh",
+      fast: true,
+    })
+    expect(() =>
+      readSessionStartInput({
+        workspace: "/Users/me/app",
+        permissionMode: "default",
+        effort: "none",
+      }),
+    ).toThrow("INVALID_SESSION_INPUT")
+    expect(() =>
+      readSessionStartInput({
+        workspace: "/Users/me/app",
+        permissionMode: "default",
+        fast: "yes",
+      }),
+    ).toThrow("INVALID_SESSION_INPUT")
+  })
 })
 
 describe("readSessionSendInput", () => {

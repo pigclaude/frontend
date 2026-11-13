@@ -96,6 +96,8 @@ export type PigclaudeBridge = {
   workspaces: {
     list: () => Promise<string[]>
     add: (path: string) => Promise<string[]>
+    /** 只读列出工作区里的文件，供输入区 @ 引用。 */
+    files: (path: string) => Promise<string[]>
   }
   session: SessionBridge
   usage: UsageBridge
@@ -203,6 +205,12 @@ const bridge: PigclaudeBridge = {
       const value: unknown = await ipcRenderer.invoke("pigclaude:workspaces-add", path)
       return Array.isArray(value) ? value.filter(isWorkspacePath) : []
     },
+    files: async (path) => {
+      const value: unknown = await ipcRenderer.invoke("pigclaude:workspaces-files", path)
+      return Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === "string")
+        : []
+    },
   },
   session: {
     start: async (input) => {
@@ -287,9 +295,13 @@ function isClaudeModel(value: unknown): value is ClaudeModel {
   return (
     isRecord(value) &&
     typeof value.id === "string" &&
+    (value.resolvedModel === undefined || typeof value.resolvedModel === "string") &&
     typeof value.displayName === "string" &&
     typeof value.description === "string" &&
-    typeof value.isDefault === "boolean"
+    typeof value.isDefault === "boolean" &&
+    (value.efforts === undefined ||
+      (Array.isArray(value.efforts) && value.efforts.every((item) => typeof item === "string"))) &&
+    (value.fast === undefined || typeof value.fast === "boolean")
   )
 }
 

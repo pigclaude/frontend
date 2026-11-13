@@ -1,0 +1,233 @@
+/*
+  权限询问卡片：参照 ZCode 的决定卡。卡片浮在输入框上方，标题只说明这是一次权限询问，
+  正文给出这次要跑的命令或要改的文件，下面是带说明的编号选项；当前项高亮，底部是键盘提示与确认。
+  颜色全部走主题 token，浅色和深色都由主题决定。
+*/
+
+/* 会话页面：聊天视图和挂在上方的权限卡片共用一个纵向布局。 */
+.chat-page {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.perm-host {
+  max-width: var(--chat-col);
+  margin: 0 auto;
+  padding-bottom: var(--space-5);
+}
+
+.perm-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-7);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-raised);
+  color: var(--fg);
+}
+
+/* ─── 标题 ─────────────────────────────────────────────── */
+.perm-prompt-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.perm-prompt-title {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--muted);
+}
+.perm-prompt-tool {
+  margin-left: auto;
+  padding: 1px var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  color: var(--fg-2);
+  font-size: var(--fs-2xs);
+  line-height: var(--control-2xs);
+}
+
+/* ─── 正文 ─────────────────────────────────────────────── */
+.perm-prompt-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.perm-prompt-summary {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.5;
+}
+.perm-prompt-target {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-compact);
+  overflow-wrap: anywhere;
+}
+/* 写入类工具的文件改动：路径、增删行数，下面是带 −/+ 前缀的预览。 */
+.perm-change {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+}
+.perm-change-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-compact);
+  overflow-wrap: anywhere;
+}
+.perm-change-path {
+  min-width: 0;
+  flex: 1;
+}
+.perm-change-stat {
+  display: flex;
+  flex: none;
+  gap: var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+.perm-change-add {
+  color: var(--cv-added);
+}
+.perm-change-del {
+  color: var(--cv-removed);
+}
+.perm-change-removed,
+.perm-change-added {
+  margin: 0;
+  max-height: 160px;
+  overflow: auto;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--r-block);
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.perm-change-removed {
+  background: var(--diff-remove-bg);
+  color: var(--diff-remove-fg);
+}
+.perm-change-added {
+  background: var(--diff-add-bg);
+  color: var(--diff-add-fg);
+}
+.perm-prompt-code {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--r-block);
+  background: var(--code-bg);
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.perm-prompt-plan {
+  max-height: 320px;
+  overflow: auto;
+  font-family: var(--font-content);
+  line-height: 1.75;
+}
+.perm-prompt-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+
+/* ─── 编号选项 ─────────────────────────────────────────── */
+.perm-prompt-options {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.perm-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-5);
+  width: 100%;
+  padding: var(--space-4) var(--space-5);
+  border: 0;
+  border-radius: var(--r-lg);
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: default;
+  transition: background var(--t-fast) var(--ease);
+}
+.perm-option:hover {
+  background: var(--hover);
+}
+.perm-option.is-active {
+  background: var(--active);
+}
+/* 选中项靠底色表示，焦点不再画一圈蓝框；键盘移动时底色跟着走。 */
+.perm-option:focus,
+.perm-option:focus-visible {
+  outline: none;
+}
+.perm-option-index {
+  flex: none;
+  min-width: 16px;
+  color: var(--muted);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  text-align: right;
+}
+.perm-option.is-active .perm-option-index {
+  color: var(--fg-2);
+}
+.perm-option-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+.perm-option-label {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  line-height: 1.5;
+}
+.perm-option-desc {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+/* ─── 底部 ─────────────────────────────────────────────── */
+.perm-prompt-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+}
+.perm-prompt-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+@media (max-width: 720px) {
+  .perm-host {
+    padding-bottom: var(--space-4);
+  }
+}

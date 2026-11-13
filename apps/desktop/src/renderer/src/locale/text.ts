@@ -1,6 +1,6 @@
 // 负责读取 PigClaude 的文案：按 Pigcode LocaleProvider 给出的当前语言查词典，并填入 {name} 这类占位。
 import { useMemo } from "react"
-import { useLocale, type Locale } from "@pigclaude/pigcode-ui-primitives"
+import { useLocale, type Locale } from "@pigclaude/ui-primitives"
 import { enUS } from "./messages.en-US"
 import { zhCN } from "./messages.zh-CN"
 

@@ -1,7 +1,7 @@
 // 负责工作区侧栏底部一行：当前网站用户的账户菜单（我的账户、Claude 账号、设置、深浅色、退出登录）与设置按钮。
 // 用户信息来自会员状态，没有用户时显示「未登录」，不显示示例数据。
-import { Button, Menu, formatShortcut, useLocale } from "@pigclaude/pigcode-ui-primitives"
-import { Icon } from "@pigclaude/pigcode-ui-shell"
+import { Button, Menu, formatShortcut, useLocale } from "@pigclaude/ui-primitives"
+import { Icon } from "@pigclaude/ui-shell"
 import { useText } from "../locale/text"
 
 /** 底部账户行需要的用户信息与事件。 */

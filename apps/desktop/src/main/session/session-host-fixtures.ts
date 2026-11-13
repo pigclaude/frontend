@@ -5,7 +5,8 @@ import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
 import type { MembershipState, MembershipView } from "@pigclaude/contracts/membership"
 import type { ClaudeAgentStartOptions, ClaudeModelsOptions } from "./claude-agent-adapter"
 import type { ClaudeModel, SessionEvent, SessionPermissionMode } from "./session-events"
-import type { SessionEnvironmentInput } from "./session-environment"
+import type { DevProviderOverride } from "./dev-provider"
+import type { ModelAuth, SessionEnvironmentInput } from "./session-environment"
 import type {
   SessionAdapterPort,
   SessionEnvironmentFactory,
@@ -317,7 +318,9 @@ export type HarnessOptions = {
   holdAdapterStart?: boolean
   resolveBinaryPath?: () => string
   resolveProfile?: SessionProfile
+  resolveModelAuth?: ModelAuth | null
   modelsError?: Error
+  provider?: DevProviderOverride
 }
 
 export type SessionHarness = {
@@ -359,6 +362,8 @@ export function createHarness(options: HarnessOptions): SessionHarness {
     resolveBinaryPath: options.resolveBinaryPath ?? (() => "/fake/claude"),
     resolveProfile: async () =>
       options.resolveProfile ?? { timezone: "America/Los_Angeles", locale: "en-US" },
+    resolveModelAuth: async () => options.resolveModelAuth ?? null,
+    ...(options.provider === undefined ? {} : { provider: options.provider }),
     defaultWorkspace: () => options.workspace,
     permissionTimeoutMs: options.permissionTimeoutMs ?? 10 * 60 * 1_000,
     now: () => fixedNow,

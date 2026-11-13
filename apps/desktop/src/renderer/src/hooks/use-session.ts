@@ -28,7 +28,12 @@ export type SessionController = {
   send: (text: string) => Promise<boolean>
   cancel: () => Promise<void>
   stop: () => Promise<void>
-  respondPermission: (requestId: string, decision: "allow" | "deny") => Promise<void>
+  /** updatedPermissions 是“始终允许”要写回的 SDK 规则；只允许一次时省略。 */
+  respondPermission: (
+    requestId: string,
+    decision: "allow" | "deny",
+    updatedPermissions?: unknown[],
+  ) => Promise<void>
   setMode: (mode: SessionUiState["permissionMode"]) => Promise<void>
   setModel: (model: string) => Promise<void>
   /** force 为 true 时忽略缓存重新查询；成功一次后默认不重复启动 CLI。 */
@@ -188,10 +193,20 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
   }, [refreshStatus, resolved])
 
   const respondPermission = useCallback(
-    async (requestId: string, decision: "allow" | "deny"): Promise<void> => {
+    async (
+      requestId: string,
+      decision: "allow" | "deny",
+      updatedPermissions?: unknown[],
+    ): Promise<void> => {
       dispatch({ type: "permission-answered", requestId, decision })
       try {
-        await resolved?.respondPermission({ requestId, decision })
+        await resolved?.respondPermission({
+          requestId,
+          decision,
+          ...(updatedPermissions === undefined || updatedPermissions.length === 0
+            ? {}
+            : { updatedPermissions }),
+        })
       } catch (error: unknown) {
         dispatch({ type: "failed", message: sessionErrorFrom(error) })
       }

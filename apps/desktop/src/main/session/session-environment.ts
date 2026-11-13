@@ -13,9 +13,26 @@ export const placeholderOAuthToken = "pigclaude-local"
 /** 本机会话使用的 NO_PROXY 值，保证回环请求不经过账号代理。 */
 export const localNoProxy = "127.0.0.1,localhost"
 
+/** 开发期供应商会话需要从宿主继承的运行变量；不含任何凭据。 */
+const hostEnvNames = ["PATH", "HOME", "SHELL", "TMPDIR", "USER", "LOGNAME"] as const
+
 const sessionDirectoryMode = 0o700
 const sessionIdPattern = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
 const sessionTokenPattern = /^[A-Za-z0-9_-]+$/
+
+/** 模型目录查询使用的账号凭据；只写进一次性配置目录，不进入会话环境。 */
+export type ModelAuth = {
+  accessToken: string
+  accountUuid: string
+  email: string
+  organizationUuid: string
+}
+
+/** 自定义供应商端点；目前只有开发期覆盖会传入，会话直接连供应商而不经过 daemon。 */
+export type SessionProvider = {
+  baseUrl: string
+  authToken: string
+}
 
 /** 创建会话环境的输入。userDataPath 可省略，Electron 环境会读取 app.getPath("userData")。 */
 export type SessionEnvironmentInput = {
@@ -27,6 +44,10 @@ export type SessionEnvironmentInput = {
   locale: string
   binaryPath: string
   userDataPath?: string
+  /** 只在模型目录查询时提供；会话环境不接收真实凭据。 */
+  modelAuth?: ModelAuth
+  /** 开发期自定义供应商；提供时替换 daemon 地址和会话 token，并忽略 modelAuth。 */
+  provider?: SessionProvider
 }
 
 /** 一次会话的环境和目录。timezone 供上层记录和 Task 6 验收；cleanup 删除整个 sessions/<sessionId>，可重复调用。 */
@@ -87,6 +108,22 @@ export class SessionEnvironment {
       created = true
       await mkdir(configDir, { mode: sessionDirectoryMode })
       await writeFile(preloadPath, preloadSource, { mode: sessionDirectoryMode })
+      if (normalized.modelAuth && !normalized.provider) {
+        // CLI 用 oauthAccount 解析模型目录所属的 org；没有它只会返回内置别名。
+        const configPath = join(configDir, ".claude.json")
+        await writeFile(
+          configPath,
+          JSON.stringify({
+            oauthAccount: {
+              accountUuid: normalized.modelAuth.accountUuid,
+              emailAddress: normalized.modelAuth.email,
+              organizationUuid: normalized.modelAuth.organizationUuid,
+            },
+          }),
+          { mode: 0o600 },
+        )
+        await chmod(configPath, 0o600)
+      }
       await chmod(sessionsDir, sessionDirectoryMode)
       await chmod(sessionDir, sessionDirectoryMode)
       await chmod(configDir, sessionDirectoryMode)
@@ -153,11 +190,30 @@ function buildEnvironment(
     locale: input.locale,
     userSettingsEnv: {},
   })
-  env.CLAUDE_CODE_OAUTH_TOKEN = placeholderOAuthToken
   env.CLAUDE_CONFIG_DIR = configDir
   env.NODE_OPTIONS = `--require ${JSON.stringify(preloadPath)}`
   env.NO_PROXY = localNoProxy
   env.no_proxy = localNoProxy
+  if (input.provider) {
+    // 开发期覆盖：会话直连自定义供应商，不再经过 daemon，也不带 daemon 的会话头。
+    // 没有 daemon 帮忙合并宿主环境，这里补上 CLI 运行工具必需的宿主变量。
+    for (const name of hostEnvNames) {
+      const value = process.env[name]
+      if (value !== undefined && value !== "") env[name] = value
+    }
+    env.ANTHROPIC_BASE_URL = input.provider.baseUrl
+    env.ANTHROPIC_AUTH_TOKEN = input.provider.authToken
+    delete env.CLAUDE_CODE_OAUTH_TOKEN
+    delete env.ANTHROPIC_CUSTOM_HEADERS
+    return env
+  }
+  if (input.modelAuth) {
+    // 模型目录查询走真实账号：CLI 需要真实 token 和 org 才能拿到完整目录。
+    env.CLAUDE_CODE_OAUTH_TOKEN = input.modelAuth.accessToken
+    delete env.ANTHROPIC_BASE_URL
+    return env
+  }
+  env.CLAUDE_CODE_OAUTH_TOKEN = placeholderOAuthToken
   env.ANTHROPIC_CUSTOM_HEADERS = `x-pigclaude-session: ${input.sessionToken}`
   return env
 }

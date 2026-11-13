@@ -105,13 +105,32 @@ export async function closeFromTitleBar(application, page) {
     bounds: BrowserWindow.getAllWindows()[0].getContentBounds(),
     scale: screen.getPrimaryDisplay().scaleFactor,
   }))
-  const x = await page.evaluate(() => {
+  const geometry = await page.evaluate(() => {
     const rect = navigator.windowControlsOverlay.getTitlebarAreaRect()
     const right = innerWidth - rect.right
-    return rect.left > right ? rect.left / 6 : innerWidth - right / 6
+    return {
+      x: rect.left > right ? rect.left / 6 : innerWidth - right / 6,
+      y: rect.height / 2,
+      reserved: Math.max(rect.left, right),
+    }
   })
+  assert.ok(geometry.reserved > 0)
   const scale = process.platform === "win32" ? window.scale : 1
-  const closed = page.waitForEvent("close", { timeout: 10_000 })
-  await systemInput("click", (window.bounds.x + x) * scale, (window.bounds.y + 17) * scale)
-  await closed
+  const child = application.process()
+  await systemInput(
+    "click",
+    (window.bounds.x + geometry.x) * scale,
+    (window.bounds.y + geometry.y) * scale,
+  )
+  await expect
+    .poll(
+      async () => {
+        if (page.isClosed() || child.exitCode !== null) return true
+        return application
+          .evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length === 0)
+          .catch(() => page.isClosed() || child.exitCode !== null)
+      },
+      { timeout: 10_000, message: "系统关闭按钮应移除原生窗口" },
+    )
+    .toBe(true)
 }

@@ -132,6 +132,7 @@ describe("workbench Git", { timeout: 20_000 }, () => {
 
   it("restores a checkpoint with a recovery snapshot and does not overwrite staging", async () => {
     await init()
+    await git("config", "core.autocrlf", "true")
     await writeFile(join(root, "tracked.txt"), "checkpoint\n")
     const checkpoint = await captureWorkbenchCheckpoint(root)
     expect((await listWorkbenchCheckpoints(root))[0]).toMatchObject({

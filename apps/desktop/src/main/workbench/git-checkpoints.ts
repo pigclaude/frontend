@@ -77,7 +77,11 @@ export async function captureWorkbenchCheckpoint(
       .then((output) => output.trim())
       .catch(() => "")
     if (parent) await runWorkbenchGit(gitRoot, ["read-tree", parent], env)
-    await runWorkbenchGit(root, ["add", "-A", "--", ...workbenchPathspec()], env)
+    await runWorkbenchGit(
+      root,
+      ["-c", "core.autocrlf=false", "add", "-A", "--", ...workbenchPathspec()],
+      env,
+    )
     const tree = (await runWorkbenchGit(gitRoot, ["write-tree"], env)).trim()
     const sha = (
       await runWorkbenchGit(
@@ -132,7 +136,15 @@ export async function restoreWorkbenchCheckpoint(root: string, id: string): Prom
     if (selected.size > 0 || omitted.length > 0)
       await runWorkbenchGit(
         root,
-        ["restore", "--source=" + commit, "--worktree", "--", ...workbenchPathspec()],
+        [
+          "-c",
+          "core.autocrlf=false",
+          "restore",
+          "--source=" + commit,
+          "--worktree",
+          "--",
+          ...workbenchPathspec(),
+        ],
         env,
       )
     const additions = untracked

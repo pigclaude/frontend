@@ -33,6 +33,7 @@ export async function verifyWorkbench(page, application, output, provider = fals
   const git = (args) => exec("git", args, { cwd: root, windowsHide: true })
   try {
     await git(["init", "-q", "-b", "main"])
+    await git(["config", "core.autocrlf", "false"])
     await writeFile(join(root, "example.txt"), "initial example\n")
     await git(["add", "--", "example.txt"])
     await git([

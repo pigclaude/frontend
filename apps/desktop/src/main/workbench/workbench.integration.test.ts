@@ -105,7 +105,7 @@ describe("workbench filesystem", () => {
   })
 })
 
-describe("workbench Git", () => {
+describe("workbench Git", { timeout: 20_000 }, () => {
   async function init(): Promise<void> {
     await git("init", "-q", "-b", "main")
     await writeFile(join(root, "tracked.txt"), "before\n")

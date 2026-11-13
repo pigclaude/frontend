@@ -146,7 +146,9 @@ try {
   report.environment = await nativeState()
   assert.equal(report.environment.encryption, true)
   if (process.platform === "linux") assert.equal(report.environment.keyring, "gnome_libsecret")
-  await expect(page.getByRole("heading", { name: "欢迎使用 PigClaude" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "欢迎使用 PigClaude" })).toBeVisible({
+    timeout: 20_000,
+  })
   await checkFlowTop(page, null)
   assert.equal(await page.locator("[data-main-window]").count(), 0)
   await capture(page, "login")

@@ -269,6 +269,7 @@ try {
   await page.getByRole("button", { name: "返回应用" }).click()
   await expect(screen(page, "chat")).toBeVisible()
   pass("14 settings palette destinations, sidebar search and return to workspace")
+  await page.evaluate(() => document.activeElement?.blur())
   await page.keyboard.press(`${mod}+n`)
   await expect(screen(page, "chat-new")).toBeVisible()
   await page.keyboard.press(`${mod}+b`)

@@ -34,7 +34,8 @@ export function useShellKeys(actions: ShellKeyActions, enableThreadKeys: boolean
       const current = latest.current
       if (event.key === "Escape") current.onCloseDrawer()
       const editing = isEditing(event.target)
-      const step = historyStep(event)
+      // 保留 Pigcode 的 macOS 快捷键，同时支持产品约定的 Alt+方向键。
+      const step = historyStep(event) ?? historyStep(event, false)
       if (step) {
         if (editing) return
         event.preventDefault()

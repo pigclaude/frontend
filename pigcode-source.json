@@ -421,7 +421,7 @@
       "path": "packages/ui-primitives/src/locale/new-thread.messages.ts",
       "source": "packages/ui-primitives/src/locale/new-thread.messages.ts",
       "sourceSha256": "80bae9ca98f17c3bcb7cfc272b564b49009feb0c97487ef220b3c4b2e751553c",
-      "sha256": "80bae9ca98f17c3bcb7cfc272b564b49009feb0c97487ef220b3c4b2e751553c"
+      "sha256": "bc8c2d845568003a039323f6fc4acd00b6346e87dbfd128c1d03040cbe0aae8b"
     },
     {
       "path": "packages/ui-primitives/src/locale/plugins.messages.ts",

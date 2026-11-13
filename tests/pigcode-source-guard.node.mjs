@@ -120,13 +120,17 @@ test("同步只替换包名与点分存储键，主题文件格式和主题代�
   )
 })
 
-test("产品名只在登记的主语言包里替换", () => {
+test("产品名只在登记的语言包里替换", () => {
   const text = '  "menu.about": "关于 Pigcode",\n  "plugins.creator.guide": "Pigcode 插件创建指南",'
   assert.equal(
     rewriteSource(text, "src/locale/messages.zh-CN.ts"),
     '  "menu.about": "关于 PigClaude",\n  "plugins.creator.guide": "PigClaude 插件创建指南",',
   )
   assert.equal(rewriteSource(text, "src/locale/plugins.messages.ts"), text)
+  assert.equal(
+    rewriteSource('"newThread.noProjectHint": "Pigcode"', "src/locale/new-thread.messages.ts"),
+    '"newThread.noProjectHint": "PigClaude"',
+  )
 })
 
 test("固定提交不是完整 SHA 时失败", async () => {

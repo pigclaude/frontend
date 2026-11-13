@@ -6,7 +6,7 @@ export const newThreadZhCN = {
   "newThread.greeting.afternoon": "下午好",
   "newThread.greeting.evening": "晚上好",
   "newThread.greeting.night": "夜深了",
-  "newThread.noProjectHint": "先添加一个项目，Pigcode 会在项目文件夹里驱动 agent 完成工作。",
+  "newThread.noProjectHint": "先添加一个项目，PigClaude 会在项目文件夹里驱动 agent 完成工作。",
   "newThread.project": "会话所在的项目",
   "newThread.pickProject": "选择项目",
   "newThread.addProject": "添加项目…",
@@ -32,7 +32,7 @@ export const newThreadEnUS: Record<keyof typeof newThreadZhCN, string> = {
   "newThread.greeting.evening": "Good evening",
   "newThread.greeting.night": "Working late",
   "newThread.noProjectHint":
-    "Add a project first. Pigcode drives the agent inside the project folder.",
+    "Add a project first. PigClaude drives the agent inside the project folder.",
   "newThread.project": "Project for this thread",
   "newThread.pickProject": "Choose a project",
   "newThread.addProject": "Add project…",

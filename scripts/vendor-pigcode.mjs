@@ -99,6 +99,13 @@ async function vendor(repo, commit) {
   for (const item of vendoredPackages) {
     const prefix = `packages/${item.source}/`
     const only = partialPackages[item.source]
+    const required = ["package.json", "tsconfig.json", ...(only ?? ["src/index.ts"])]
+    const missing = required.filter((path) => !tree.has(prefix + path))
+    if (missing.length > 0) {
+      throw new Error(
+        `Pigcode ${resolved.slice(0, 7)} 缺少 ${missing.map((path) => prefix + path).join(", ")}`,
+      )
+    }
     const wanted = [...tree].filter((path) => {
       if (!path.startsWith(prefix)) return false
       const rest = path.slice(prefix.length)

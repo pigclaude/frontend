@@ -19,6 +19,11 @@ export type SettingsPageRenderer = (page: SettingsPageId) => ReactNode
 
 const owner: ContributionOwner = { kind: "builtin", id: "pigclaude-settings" }
 
+/** 在页面错误边界的子树中运行扩展点回调。 */
+function SettingsPageContent({ contribution }: { contribution: SettingsPageContribution }) {
+  return contribution.render()
+}
+
 /** 把一个 PigClaude 图标适配成 Pigcode 设置页扩展点需要的组件。 */
 function settingsIcon(name: string) {
   return function SettingsIcon({
@@ -98,7 +103,7 @@ export function SettingsContributionView({ page }: { page: string }) {
       key={current.id}
       fallback={(reason) => <EmptyState title={t("settings.pageError")} description={reason} />}
     >
-      {current.render()}
+      <SettingsPageContent contribution={current} />
     </PageErrorBoundary>
   )
 }

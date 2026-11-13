@@ -1,67 +1,95 @@
-// 负责「外观」设置页：模式、主题分组、高级折叠区，以及导入导出和各个确认对话框。
+// 负责呈现 Pigcode 外观页及 PigClaude 的 macOS 专属 Dock 图标。
+import { AppearancePage as PigcodeAppearancePage } from "@pigclaude/ui-settings"
+import {
+  Button,
+  resetAppearance,
+  SettingRow,
+  SettingSection,
+  Switch,
+} from "@pigclaude/ui-primitives"
 import { useState } from "react"
-import { useToast } from "@pigclaude/ui-shell"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "../../../components/ui/dialog"
+import { ScrollPanel } from "@pigclaude/ui-shell"
 import type { AppearanceController } from "../../../hooks/use-appearance"
-import { editTone, exportTheme, shownColors, type Tone } from "../../../models/theme-editing"
-import { SettingPage, SettingRow, SettingSection } from "../setting-page"
-import { AdvancedSettings } from "./advanced-settings"
-import { ModePicker } from "./mode-picker"
-import { ThemeDialogs, type ThemeDialog } from "./theme-dialogs"
-import { ThemeGroup } from "./theme-group"
+import { useText } from "../../../locale/text"
+import { DockIconPicker } from "./dock-icon-picker"
 
-/** 渲染外观页。所有设置经 appearance.update 同步写入，立即生效并保存。 */
+/** 外观与主题编辑由 Pigcode 提供，Dock 图标沿用 PigClaude 的本机选项。 */
 export function AppearancePage({ appearance }: { appearance: AppearanceController }) {
-  const toast = useToast()
-  const { settings, customThemes, resolved, update } = appearance
-  const [editing, setEditing] = useState<Tone>(resolved)
-  const [dialog, setDialog] = useState<ThemeDialog>(null)
-  const tone = editTone(settings, resolved, editing)
-  const glassAvailable = document.documentElement.dataset.glass === "true"
-  const platform = window.pigclaude?.platform ?? ""
-
-  const copyTheme = () => {
-    const text = exportTheme(settings, customThemes, tone)
-    // 包进 then：剪贴板不可用（navigator.clipboard 为 undefined）时同步抛出的错误也进 catch
-    Promise.resolve()
-      .then(() => navigator.clipboard.writeText(text))
-      .then(() => toast("已复制主题", "copy"))
-      .catch(() => toast("复制失败，请重试", "alert"))
-  }
-
+  const { t } = useText()
+  const [confirmReset, setConfirmReset] = useState(false)
   return (
-    <SettingPage title="外观">
-      <SettingSection title="视觉风格">
-        <SettingRow title="模式">
-          <ModePicker
-            value={settings.mode}
-            light={shownColors(settings, customThemes, "light").colors}
-            dark={shownColors(settings, customThemes, "dark").colors}
-            onChange={(mode) => update((current) => ({ ...current, mode }))}
-          />
-        </SettingRow>
-      </SettingSection>
-      <ThemeGroup
-        appearance={appearance}
-        tone={tone}
-        onEditing={setEditing}
-        onImport={() => setDialog({ kind: "import" })}
-        onCopy={copyTheme}
-        onSaveAs={() => setDialog({ kind: "save" })}
-        onRename={(theme) => setDialog({ kind: "rename", theme })}
-        onRemove={(theme) => setDialog({ kind: "remove", theme })}
-      />
-      <AdvancedSettings
-        appearance={appearance}
-        glassAvailable={glassAvailable}
-        platform={platform}
-        onReset={() => setDialog({ kind: "reset" })}
-      />
-      <ThemeDialogs
-        appearance={appearance}
-        tone={tone}
-        dialog={dialog}
-        onClose={() => setDialog(null)}
-      />
-    </SettingPage>
+    <ScrollPanel>
+      <PigcodeAppearancePage appearance={appearance} />
+      <div className="page narrow settings-page appearance-dock">
+        <SettingSection title={t("appearance.additional")}>
+          <SettingRow title={t("appearance.split")}>
+            <Switch
+              aria-label={t("appearance.split")}
+              checked={appearance.settings.splitModes}
+              onCheckedChange={(splitModes) =>
+                appearance.update((current) => ({ ...current, splitModes }))
+              }
+            />
+          </SettingRow>
+          {window.pigclaude?.platform === "darwin" ? (
+            <>
+              <SettingRow
+                title={t("appearance.dock.title")}
+                description={t("appearance.dock.description")}
+              >
+                <DockIconPicker
+                  value={appearance.settings.dockIcon}
+                  onChange={(dockIcon) =>
+                    appearance.update((current) => ({ ...current, dockIcon }))
+                  }
+                />
+              </SettingRow>
+              <SettingRow title={t("appearance.smoothing")}>
+                <Switch
+                  aria-label={t("appearance.smoothing")}
+                  checked={appearance.settings.fontSmoothing}
+                  onCheckedChange={(fontSmoothing) =>
+                    appearance.update((current) => ({ ...current, fontSmoothing }))
+                  }
+                />
+              </SettingRow>
+            </>
+          ) : null}
+          <SettingRow title={t("appearance.reset")}>
+            <Button size="sm" onClick={() => setConfirmReset(true)}>
+              {t("appearance.reset")}
+            </Button>
+          </SettingRow>
+        </SettingSection>
+      </div>
+      <Dialog open={confirmReset} onOpenChange={setConfirmReset}>
+        <DialogContent>
+          <div className="dialog-head">
+            <DialogTitle>{t("appearance.reset")}</DialogTitle>
+            <DialogDescription>{t("appearance.resetDescription")}</DialogDescription>
+          </div>
+          <div className="dialog-foot">
+            <Button variant="ghost" onClick={() => setConfirmReset(false)}>
+              {t("appearance.cancel")}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                appearance.update(resetAppearance)
+                setConfirmReset(false)
+              }}
+            >
+              {t("appearance.confirm")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </ScrollPanel>
   )
 }

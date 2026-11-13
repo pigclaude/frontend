@@ -24,8 +24,6 @@ import "./styles/permission-prompt.css"
 if (installPigcodeNative() && window.pigclaude) {
   document.documentElement.dataset.shell = "electron"
   document.documentElement.dataset.platform = window.pigclaude.platform
-  const glass = window.pigclaude.platform === "darwin" || window.pigclaude.platform === "win32"
-  if (glass) document.documentElement.dataset.glass = "true"
 }
 
 if (parseDevView(window.location.search, import.meta.env.DEV)?.glass) {

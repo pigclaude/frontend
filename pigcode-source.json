@@ -1,7 +1,7 @@
 {
   "repository": "pigcode/pigcode",
   "commit": "1d01d46d904fd0f5dd3a3a37700d4ed092bdfd33",
-  "rule": "@pigcode/contracts → @pigclaude/ui-contracts，按 scripts/pigcode-ui-contracts.mjs 选取声明；其余 @pigcode/<package> → @pigclaude/<package>；\"pigcode.<key>\" 存储键 → \"pigclaude.<key>\"；productNameFiles 里的 Pigcode → PigClaude；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
+  "rule": "@pigcode/contracts → @pigclaude/ui-contracts，按 scripts/pigcode-ui-contracts.mjs 选取声明；其余 @pigcode/<package> → @pigclaude/<package>；\"pigcode.<key>\" 存储键 → \"pigclaude.<key>\"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
   "files": [
     {
       "path": "packages/ui-contracts/src/index.ts",
@@ -823,7 +823,7 @@
       "path": "packages/ui-primitives/src/theme/theme-file.ts",
       "source": "packages/ui-primitives/src/theme/theme-file.ts",
       "sourceSha256": "0bab8a02c3732c62f222c5e8e701713cf5481e2beff0437c81acf2cbe0c49993",
-      "sha256": "0bab8a02c3732c62f222c5e8e701713cf5481e2beff0437c81acf2cbe0c49993"
+      "sha256": "8ddbb7aed96013c188c59a1664688b8817a2bc35f994bfe2e3c80f3c07c43c21"
     },
     {
       "path": "packages/ui-primitives/src/theme/theme-import.test.ts",
@@ -853,7 +853,7 @@
       "path": "packages/ui-primitives/src/theme/theme-presets.ts",
       "source": "packages/ui-primitives/src/theme/theme-presets.ts",
       "sourceSha256": "70363027d93e1fb3757e74af72b496abec6c59e2e37354cb60af2f34916cb1ad",
-      "sha256": "70363027d93e1fb3757e74af72b496abec6c59e2e37354cb60af2f34916cb1ad"
+      "sha256": "96fc8792e4df3e4e6ab73150b267c66cf510e0d544ccdd3baf0b36e5abd4df5b"
     },
     {
       "path": "packages/ui-primitives/src/theme/theme-preview.ts",

@@ -70,6 +70,16 @@ export function rewriteSource(text, rest = "") {
   }
   next = next.replace(storageKey, '"pigclaude.$1"')
   if (productNameFiles.has(rest)) next = next.replaceAll("Pigcode", "PigClaude")
+  if (rest === "src/theme/theme-presets.ts") {
+    next = next.replace('name: "pigcode"', 'name: "PigClaude"')
+  }
+  // 两种客户端的主题文件共用同一字段结构，导出仍用 Pigcode 格式。
+  if (rest === "src/theme/theme-file.ts") {
+    next = next.replace(
+      "data.schema !== SCHEMA",
+      '(data.schema !== SCHEMA && data.schema !== "pigclaude-theme/1")',
+    )
+  }
   return next
 }
 
@@ -162,7 +172,7 @@ async function vendor(repo, commit) {
   const lock = {
     repository: "pigcode/pigcode",
     commit: resolved,
-    rule: '@pigcode/contracts → @pigclaude/ui-contracts，按 scripts/pigcode-ui-contracts.mjs 选取声明；其余 @pigcode/<package> → @pigclaude/<package>；"pigcode.<key>" 存储键 → "pigclaude.<key>"；productNameFiles 里的 Pigcode → PigClaude；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排',
+    rule: '@pigcode/contracts → @pigclaude/ui-contracts，按 scripts/pigcode-ui-contracts.mjs 选取声明；其余 @pigcode/<package> → @pigclaude/<package>；"pigcode.<key>" 存储键 → "pigclaude.<key>"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排',
     files,
   }
   await writeFile(lockFile, `${JSON.stringify(lock, null, 2)}\n`)

@@ -2,15 +2,12 @@
 import { useEffect, useState } from "react"
 import { RadioGroup, RadioGroupCard } from "../../../components/ui/radio-group"
 import { renderDockIcon } from "../../../lib/dock-icon-image"
-import type { AppearanceSettings } from "../../../models/appearance-settings"
+import type { AppearanceSettings } from "@pigclaude/ui-primitives"
+import { useText } from "../../../locale/text"
 
 type DockIcon = AppearanceSettings["dockIcon"]
 
-const icons: { value: DockIcon; label: string }[] = [
-  { value: "classic", label: "经典" },
-  { value: "pink", label: "粉色" },
-  { value: "night", label: "夜色" },
-]
+const icons: DockIcon[] = ["classic", "pink", "night"]
 
 /** 渲染 Dock 图标单选；缩略图画好之前卡片先空着。 */
 export function DockIconPicker({
@@ -20,13 +17,14 @@ export function DockIconPicker({
   value: DockIcon
   onChange: (value: DockIcon) => void
 }) {
+  const { t } = useText()
   const [images, setImages] = useState<Partial<Record<DockIcon, string>>>({})
   useEffect(() => {
     let cancelled = false
     for (const icon of icons) {
-      void renderDockIcon(icon.value)
+      void renderDockIcon(icon)
         .then((url) => {
-          if (!cancelled) setImages((current) => ({ ...current, [icon.value]: url }))
+          if (!cancelled) setImages((current) => ({ ...current, [icon]: url }))
         })
         .catch(() => undefined)
     }
@@ -38,22 +36,22 @@ export function DockIconPicker({
     <RadioGroup
       className="dock-cards"
       orientation="horizontal"
-      aria-label="Dock 图标"
+      aria-label={t("appearance.dock.title")}
       value={value}
       onValueChange={(next) => {
-        const icon = icons.find((item) => item.value === next)
-        if (icon && icon.value !== value) onChange(icon.value)
+        const icon = icons.find((item) => item === next)
+        if (icon && icon !== value) onChange(icon)
       }}
     >
       {icons.map((icon) => (
         <RadioGroupCard
-          key={icon.value}
-          value={icon.value}
+          key={icon}
+          value={icon}
           className="dock-card"
-          aria-label={icon.label}
-          title={icon.label}
+          aria-label={t(`appearance.dock.${icon}`)}
+          title={t(`appearance.dock.${icon}`)}
         >
-          {images[icon.value] ? <img src={images[icon.value]} alt="" draggable={false} /> : null}
+          {images[icon] ? <img src={images[icon]} alt="" draggable={false} /> : null}
         </RadioGroupCard>
       ))}
     </RadioGroup>

@@ -57,7 +57,7 @@ export function parseThemeFile(text: string, existingNames: readonly string[]): 
   } catch {
     return { ok: false, reason: "settings.appearance.themeFile.invalidJson" }
   }
-  if (!isRecord(data) || data.schema !== SCHEMA) {
+  if (!isRecord(data) || (data.schema !== SCHEMA && data.schema !== "pigclaude-theme/1")) {
     return { ok: false, reason: "settings.appearance.themeFile.wrongSchema" }
   }
   const name = typeof data.name === "string" ? data.name.trim() : ""

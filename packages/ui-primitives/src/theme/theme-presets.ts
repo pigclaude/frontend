@@ -30,7 +30,7 @@ function preset(
 
 /** 内置主题，顺序固定：pigcode、chatgpt、claude、linear、github、dracula、nord、solarized。 */
 export const builtInThemes: readonly [ThemeDefinition, ...ThemeDefinition[]] = [
-  { id: "pigcode", name: "pigcode", builtIn: true, light: null, dark: null },
+  { id: "pigcode", name: "PigClaude", builtIn: true, light: null, dark: null },
   preset(
     "chatgpt",
     "ChatGPT",

@@ -1,5 +1,6 @@
 // 核对系统标题栏、原生菜单和窗口管理器响应，使用系统输入而不是页面事件。
 import assert from "node:assert/strict"
+import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { expect } from "@playwright/test"
 import { systemInput } from "./system-pointer.mjs"
@@ -92,4 +93,36 @@ export async function verifySystemControls(application, page, nativeState, out) 
   await application.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].setAlwaysOnTop(false),
   )
+}
+
+/** 点击系统关闭按钮，由主进程的 closed 事件确认原生窗口已销毁。 */
+export async function verifySystemClose(application, page, out) {
+  const eventFile = join(out, "native-window-closed.txt")
+  const { bounds, scale } = await application.evaluate(({ BrowserWindow, screen }, path) => {
+    const window = BrowserWindow.getAllWindows()[0]
+    window.setAlwaysOnTop(true)
+    window.focus()
+    window.once("closed", () => process.getBuiltinModule("node:fs").writeFileSync(path, "closed"))
+    return { bounds: window.getContentBounds(), scale: screen.getPrimaryDisplay().scaleFactor }
+  }, eventFile)
+  const { x, y, visible } = await page.evaluate(() => {
+    const overlay = navigator.windowControlsOverlay
+    const rect = overlay.getTitlebarAreaRect()
+    const right = innerWidth - rect.right
+    return {
+      x: rect.left > right ? rect.left / 6 : innerWidth - right / 6,
+      y: rect.height / 2,
+      visible: overlay.visible,
+    }
+  })
+  assert.equal(visible, true)
+  await systemInput("capture", join(out, "native-before-close.png"))
+  const factor = process.platform === "win32" ? scale : 1
+  await systemInput("click", (bounds.x + x) * factor, (bounds.y + y) * factor)
+  await expect
+    .poll(async () => readFile(eventFile, "utf8").catch(() => null), {
+      message: "原生关闭按钮应触发 BrowserWindow 的 closed 事件",
+      timeout: 10_000,
+    })
+    .toBe("closed")
 }

@@ -8,7 +8,7 @@ import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { _electron, expect } from "@playwright/test"
 import { startMembershipFixture } from "./membership-fixture.mjs"
-import { verifySystemControls } from "./window-controls.mjs"
+import { verifySystemClose, verifySystemControls } from "./window-controls.mjs"
 import { systemInput } from "./system-pointer.mjs"
 
 const out = resolve(process.argv[2] ?? "test-results/native-desktop")
@@ -231,7 +231,7 @@ try {
   assert.equal((await nativeState()).min[0], 640)
   await expect.poll(() => page.evaluate(() => innerWidth)).toBe(640)
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 640)
-  await setWidth(1200)
+  await setWidth(1000)
   pass("sidebar drag, drawer Escape/overlay, and native 640px minimum")
 
   const mod = platform === "darwin" ? "Meta" : "Control"
@@ -375,6 +375,10 @@ try {
   }))
   assert.deepEqual(report.themeAfterRestart, { applied: "dark", saved: "dark" })
   pass("theme retained after restart")
+  if (platform !== "darwin") {
+    await verifySystemClose(application, page, out)
+    pass("system close button emits native window close")
+  }
 } catch (error) {
   report.error = String(error)
   const page = application?.windows()[0]

@@ -14,7 +14,7 @@ const lock = JSON.parse(await readFile(join(frontend, "pigcode-source.json"), "u
 const packages = [...new Set(lock.files.map((file) => file.path.split("/").slice(0, 2).join("/")))]
 
 /** 在临时目录里复制清单与拷入的包（不含 node_modules），再对它运行守卫。 */
-async function run(mutate) {
+async function run(mutate, { staged = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), "pigcode-source-guard-"))
   try {
     await cp(join(frontend, "pigcode-source.json"), join(root, "pigcode-source.json"))
@@ -24,14 +24,38 @@ async function run(mutate) {
         filter: (source) => !source.includes("node_modules"),
       })
     }
-    await mutate(root)
-    return spawnSync(process.execPath, [guard, "--root", root], { encoding: "utf8" })
+    function git(...args) {
+      const result = spawnSync("git", ["-C", root, ...args], { encoding: "utf8" })
+      assert.equal(result.status, 0, result.stderr)
+    }
+    if (staged) {
+      git("init", "-q")
+      git("config", "core.autocrlf", "false")
+      git("add", ".")
+    }
+    await mutate(root, git)
+    return spawnSync(process.execPath, [guard, "--root", root, ...(staged ? ["--staged"] : [])], {
+      encoding: "utf8",
+    })
   } finally {
     await rm(root, { recursive: true, force: true })
   }
 }
 
 const sample = lock.files.find((file) => file.path.endsWith("/src/styles/tokens.css"))
+
+test("拷入的界面合约没有 Host 命令与 RPC 信封，只向界面暴露类型与错误码", async () => {
+  const paths = lock.files.filter((file) => file.path.startsWith("packages/ui-contracts/src/"))
+  const source = await Promise.all(paths.map((file) => readFile(join(frontend, file.path), "utf8")))
+  assert.equal(
+    source.some((text) => /\b(commandSchemas|parseRpcRequest|PROTOCOL_VERSION)\b/.test(text)),
+    false,
+  )
+  const { HOST_ERROR_CODES, isHostErrorCode } =
+    await import("../packages/ui-contracts/src/error-codes.ts")
+  assert.ok(isHostErrorCode(HOST_ERROR_CODES[0]))
+  assert.equal(isHostErrorCode("UNKNOWN_ERROR"), false)
+})
 
 test("原样拷入的 Pigcode 代码通过", async () => {
   const result = await run(async () => undefined)
@@ -41,6 +65,22 @@ test("原样拷入的 Pigcode 代码通过", async () => {
 test("直接修改拷入文件失败", async () => {
   assert.ok(sample)
   const result = await run((root) => appendFile(join(root, sample.path), "\n/* 本地改动 */\n"))
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /content differs from Pigcode/)
+})
+
+test("提交检查拒绝已暂存的改动，即使工作区已恢复原文", async () => {
+  assert.ok(sample)
+  const result = await run(
+    async (root, git) => {
+      const path = join(root, sample.path)
+      const original = await readFile(path)
+      await appendFile(path, "\n/* 已暂存改动 */\n")
+      git("add", "--", sample.path)
+      await writeFile(path, original)
+    },
+    { staged: true },
+  )
   assert.equal(result.status, 1)
   assert.match(result.stderr, /content differs from Pigcode/)
 })

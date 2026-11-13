@@ -1,0 +1,3 @@
+#!/bin/sh
+# 核对当前暂存区的 Pigcode 来源清单与界面包文件。
+exec node scripts/assert-pigcode-source.mjs --staged

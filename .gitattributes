@@ -1,0 +1,9 @@
+# 来源守卫计算原始字节的摘要，在 Windows 检出时保留 LF。
+packages/client-runtime/** text=auto eol=lf
+packages/ui-chat/** text=auto eol=lf
+packages/ui-composer/** text=auto eol=lf
+packages/ui-contracts/** text=auto eol=lf
+packages/ui-primitives/** text=auto eol=lf
+packages/ui-settings/** text=auto eol=lf
+packages/ui-shell/** text=auto eol=lf
+.githooks/* text eol=lf

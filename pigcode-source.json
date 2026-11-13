@@ -1,8 +1,14 @@
 {
   "repository": "pigcode/pigcode",
   "commit": "1d01d46d904fd0f5dd3a3a37700d4ed092bdfd33",
-  "rule": "@pigcode/contracts → @pigclaude/ui-contracts，其余 @pigcode/<package> → @pigclaude/<package>；\"pigcode.<key>\" 存储键 → \"pigclaude.<key>\"；productNameFiles 里的 Pigcode → PigClaude；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
+  "rule": "@pigcode/contracts → @pigclaude/ui-contracts，按 scripts/pigcode-ui-contracts.mjs 选取声明；其余 @pigcode/<package> → @pigclaude/<package>；\"pigcode.<key>\" 存储键 → \"pigclaude.<key>\"；productNameFiles 里的 Pigcode → PigClaude；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
   "files": [
+    {
+      "path": "packages/ui-contracts/src/index.ts",
+      "source": null,
+      "sourceSha256": null,
+      "sha256": "06f636f967522977f354dfd6539aae0642ec37b2df362529cb27b088d820d5a8"
+    },
     {
       "path": "packages/ui-contracts/package.json",
       "source": "packages/contracts/package.json",
@@ -10,70 +16,22 @@
       "sha256": "474dc656ae471abcf328da6793734e64f570d8869d35aba7682dd7ec2ce8628f"
     },
     {
-      "path": "packages/ui-contracts/src/agents.ts",
-      "source": "packages/contracts/src/agents.ts",
-      "sourceSha256": "548be8abc9951057bbf7cfbe8e1e4f26e574b9f54eded27478724d5c5c33dd0f",
-      "sha256": "548be8abc9951057bbf7cfbe8e1e4f26e574b9f54eded27478724d5c5c33dd0f"
-    },
-    {
-      "path": "packages/ui-contracts/src/commands.ts",
-      "source": "packages/contracts/src/commands.ts",
-      "sourceSha256": "976f601c8f562320316dd28325f4b44fc966abfc7f46ea25edf2f9368085e545",
-      "sha256": "976f601c8f562320316dd28325f4b44fc966abfc7f46ea25edf2f9368085e545"
-    },
-    {
-      "path": "packages/ui-contracts/src/domain.test.ts",
-      "source": "packages/contracts/src/domain.test.ts",
-      "sourceSha256": "f0eb5bf62ff9cb7f88aedbaa50b37d3acea9fcac361e3fb48905567168befc53",
-      "sha256": "f0eb5bf62ff9cb7f88aedbaa50b37d3acea9fcac361e3fb48905567168befc53"
-    },
-    {
       "path": "packages/ui-contracts/src/domain.ts",
       "source": "packages/contracts/src/domain.ts",
       "sourceSha256": "da98d5bca7bed181813cf9cdb1bd9228d2bc440126c341e1bb643cf62889a0d6",
-      "sha256": "da98d5bca7bed181813cf9cdb1bd9228d2bc440126c341e1bb643cf62889a0d6"
+      "sha256": "82e9214378930b538d2303075d22e7eb709bda3c154210d5975da333df55cfab"
     },
     {
       "path": "packages/ui-contracts/src/events.ts",
       "source": "packages/contracts/src/events.ts",
       "sourceSha256": "9198b6f849b6f720dccd12c80adbfa660c7fe5f2dd23e003a3323854fca61b1e",
-      "sha256": "9198b6f849b6f720dccd12c80adbfa660c7fe5f2dd23e003a3323854fca61b1e"
+      "sha256": "9e5c1e8fe17bfeb3ae4721914e7b6b444c93cb65a84918f3b15e75e5efeceb72"
     },
     {
-      "path": "packages/ui-contracts/src/index.ts",
-      "source": "packages/contracts/src/index.ts",
-      "sourceSha256": "33dea93a068c7c0dae3c827b6066b91c3f7a0952b90fe68619c9485c1d116761",
-      "sha256": "33dea93a068c7c0dae3c827b6066b91c3f7a0952b90fe68619c9485c1d116761"
-    },
-    {
-      "path": "packages/ui-contracts/src/protocol.test.ts",
-      "source": "packages/contracts/src/protocol.test.ts",
-      "sourceSha256": "f3f8d4252e43057f2deaab6f9dd3e004a249907c70692cb0360cf3a47674fd9e",
-      "sha256": "f3f8d4252e43057f2deaab6f9dd3e004a249907c70692cb0360cf3a47674fd9e"
-    },
-    {
-      "path": "packages/ui-contracts/src/protocol.ts",
+      "path": "packages/ui-contracts/src/error-codes.ts",
       "source": "packages/contracts/src/protocol.ts",
       "sourceSha256": "790cdca53ff9a200ed4da8093e5225752993efe7f750af728e220e5e22fd6d73",
-      "sha256": "790cdca53ff9a200ed4da8093e5225752993efe7f750af728e220e5e22fd6d73"
-    },
-    {
-      "path": "packages/ui-contracts/src/schedule-rules.test.ts",
-      "source": "packages/contracts/src/schedule-rules.test.ts",
-      "sourceSha256": "caf80cff7c13d4347166310ea8eac50b131d570c723eda9daa55977632dda5ca",
-      "sha256": "caf80cff7c13d4347166310ea8eac50b131d570c723eda9daa55977632dda5ca"
-    },
-    {
-      "path": "packages/ui-contracts/src/schedule-rules.ts",
-      "source": "packages/contracts/src/schedule-rules.ts",
-      "sourceSha256": "5aa2f88a3173e551ed4429c488bdacbab45a75ee44f3796553577d711eabbf6d",
-      "sha256": "5aa2f88a3173e551ed4429c488bdacbab45a75ee44f3796553577d711eabbf6d"
-    },
-    {
-      "path": "packages/ui-contracts/src/smoke.test.ts",
-      "source": "packages/contracts/src/smoke.test.ts",
-      "sourceSha256": "e55ce4bde4a777266d3c042d4ee5ee3f113732b04984de80c0597f9661f25ef9",
-      "sha256": "e55ce4bde4a777266d3c042d4ee5ee3f113732b04984de80c0597f9661f25ef9"
+      "sha256": "c1f632f3cf174ef52a55ec03b0fa1fcf5a1177bef058fdac05796bf3a4393230"
     },
     {
       "path": "packages/ui-contracts/tsconfig.json",

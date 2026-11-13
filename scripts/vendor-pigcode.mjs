@@ -4,23 +4,15 @@ import { createHash } from "node:crypto"
 import { mkdir, rm, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import prettier from "prettier"
+import { contractEntry, contractFiles, projectUiContracts } from "./pigcode-ui-contracts.mjs"
+import { vendoredPackages } from "./pigcode-package-map.mjs"
 
 const frontend = join(import.meta.dirname, "..")
 const lockFile = join(frontend, "pigcode-source.json")
 
-/** 拷入的包：源包名 → 目标目录与目标包名；路径与导出结构保持不变。 */
-export const vendoredPackages = [
-  { source: "contracts", target: "ui-contracts", name: "@pigclaude/ui-contracts" },
-  { source: "ui-primitives", target: "ui-primitives", name: "@pigclaude/ui-primitives" },
-  { source: "ui-shell", target: "ui-shell", name: "@pigclaude/ui-shell" },
-  { source: "ui-settings", target: "ui-settings", name: "@pigclaude/ui-settings" },
-  { source: "ui-composer", target: "ui-composer", name: "@pigclaude/ui-composer" },
-  { source: "ui-chat", target: "ui-chat", name: "@pigclaude/ui-chat" },
-  { source: "client-runtime", target: "client-runtime", name: "@pigclaude/client-runtime" },
-]
-
 /** client-runtime 只取扩展点注册表；其余是 Host 连接、AppStore 与插件运行时，按规格不拷入。 */
 const partialPackages = {
+  contracts: Object.keys(contractFiles),
   "client-runtime": [
     "src/extension-points.tsx",
     "src/extension-points.test.tsx",
@@ -49,6 +41,7 @@ const partialPackages = {
 
 /** 部分拷入的包需要的入口：只导出实际拷入的模块。 */
 const partialEntries = {
+  contracts: contractEntry,
   "ui-settings": `/** 设置页面的公开入口：只含从 Pigcode 拷入的外观页与通用页。 */
 export * from "./appearance-page"
 export * from "./general-page"
@@ -100,13 +93,10 @@ async function vendor(repo, commit) {
   const listed = git(repo, "ls-tree", "-r", "--name-only", resolved, "packages").toString()
   const tree = new Set(listed.split("\n").filter(Boolean))
   const files = []
+  const outputs = new Map()
+  const format = await prettier.resolveConfig(join(frontend, "package.json"))
   for (const item of vendoredPackages) {
     const prefix = `packages/${item.source}/`
-    const targetRoot = join(frontend, "packages", item.target)
-    // 只清掉上次拷入的内容，保留 pnpm 建好的 node_modules 链接。
-    for (const name of ["src", "package.json", "tsconfig.json"]) {
-      await rm(join(targetRoot, name), { recursive: true, force: true })
-    }
     const only = partialPackages[item.source]
     const wanted = [...tree].filter((path) => {
       if (!path.startsWith(prefix)) return false
@@ -117,46 +107,54 @@ async function vendor(repo, commit) {
     })
     const entry = partialEntries[item.source]
     if (entry) {
-      const destination = join(targetRoot, "src/index.ts")
-      await mkdir(dirname(destination), { recursive: true })
-      await writeFile(destination, entry)
+      const destination = `packages/${item.target}/src/index.ts`
+      const output = await prettier.format(entry, { ...format, filepath: "index.ts" })
+      outputs.set(destination, output)
       files.push({
-        path: `packages/${item.target}/src/index.ts`,
+        path: destination,
         source: null,
         sourceSha256: null,
-        sha256: sha256(Buffer.from(entry)),
+        sha256: sha256(output),
       })
     }
     for (const path of wanted.sort()) {
       const rest = path.slice(prefix.length)
       const original = git(repo, "show", `${resolved}:${path}`)
       const isText = /\.(tsx?|css|json|md|svg)$/.test(rest)
-      let output = isText ? Buffer.from(rewriteSource(original.toString("utf8"), rest)) : original
-      if (rest === "package.json")
-        output = Buffer.from(rewriteManifest(output.toString("utf8"), item))
-      if (rest === "tsconfig.json") output = Buffer.from(rewriteTsconfig(output.toString("utf8")))
+      let output = isText ? rewriteSource(original.toString("utf8"), rest) : original
+      const contractPath = item.source === "contracts" ? contractFiles[rest] : undefined
+      if (contractPath) output = projectUiContracts(output, rest)
+      if (rest === "package.json") output = rewriteManifest(output, item)
+      if (rest === "tsconfig.json") output = rewriteTsconfig(output)
       // 改名后部分行超出 100 列：按本仓库 Prettier 配置重排，守卫记录的是重排后的内容。
       if (/\.(tsx?|json|css)$/.test(rest)) {
-        const options = await prettier.resolveConfig(join(frontend, "package.json"))
-        output = Buffer.from(
-          await prettier.format(output.toString("utf8"), { ...options, filepath: rest }),
-        )
+        output = await prettier.format(output, { ...format, filepath: rest })
       }
-      const destination = join(targetRoot, rest)
-      await mkdir(dirname(destination), { recursive: true })
-      await writeFile(destination, output)
+      const destination = `packages/${item.target}/${contractPath ?? rest}`
+      outputs.set(destination, output)
       files.push({
-        path: `packages/${item.target}/${rest}`,
+        path: destination,
         source: path,
         sourceSha256: sha256(original),
         sha256: sha256(output),
       })
     }
   }
+  // 先确认全部源文件可生成，再清掉旧内容。保留工作区依赖链接。
+  for (const { target } of vendoredPackages) {
+    for (const name of ["src", "package.json", "tsconfig.json"]) {
+      await rm(join(frontend, "packages", target, name), { recursive: true, force: true })
+    }
+  }
+  for (const [path, output] of outputs) {
+    const destination = join(frontend, path)
+    await mkdir(dirname(destination), { recursive: true })
+    await writeFile(destination, output)
+  }
   const lock = {
     repository: "pigcode/pigcode",
     commit: resolved,
-    rule: '@pigcode/contracts → @pigclaude/ui-contracts，其余 @pigcode/<package> → @pigclaude/<package>；"pigcode.<key>" 存储键 → "pigclaude.<key>"；productNameFiles 里的 Pigcode → PigClaude；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排',
+    rule: '@pigcode/contracts → @pigclaude/ui-contracts，按 scripts/pigcode-ui-contracts.mjs 选取声明；其余 @pigcode/<package> → @pigclaude/<package>；"pigcode.<key>" 存储键 → "pigclaude.<key>"；productNameFiles 里的 Pigcode → PigClaude；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排',
     files,
   }
   await writeFile(lockFile, `${JSON.stringify(lock, null, 2)}\n`)

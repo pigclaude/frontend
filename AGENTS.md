@@ -41,11 +41,12 @@ Rust 使用 rustfmt：`edition = "2024"`，`max_width = 100`。
 
 ## Pigcode 界面包
 
-`packages/ui-contracts`、`packages/ui-primitives`、`packages/ui-shell`、`packages/ui-settings`、`packages/ui-chat`、`packages/ui-composer` 和 `packages/client-runtime` 是从 pigcode/pigcode 固定提交原样拷入的界面层（规格见根仓库 #37）。固定提交和逐文件 SHA256 记在 `pigcode-source.json`，`pnpm --dir frontend pigcode:verify` 核对，`pnpm --dir frontend test` 也会跑它的守卫测试。
+`packages/ui-contracts`、`packages/ui-primitives`、`packages/ui-shell`、`packages/ui-settings`、`packages/ui-chat`、`packages/ui-composer` 和 `packages/client-runtime` 来自 pigcode/pigcode 固定提交（规格见根仓库 #37）。`ui-contracts` 只保留界面类型及错误码判定，声明范围见 `scripts/pigcode-ui-contracts.mjs`。`pigcode-source.json` 记录上游原文件和生成后文件的 SHA256，`pnpm --dir frontend pigcode:verify` 核对工作区。
 
 - 不直接改这些包。PigClaude 自己的逻辑、产品名、本地存储键和原生桥放在桌面端的适配层。
 - 它们沿用 Pigcode 的写法：`src/index.ts` 入口和原有注释，按哈希核对，不受本仓库「不建 index.ts」「中文文件头」两条约束；行数上限和 `any` 规则照常适用。
-- 同步新提交：`pnpm --dir frontend pigcode:sync <pigcode frontend 仓库路径> <完整提交 SHA>`，再跑 `pnpm install`、`pigcode:verify`、各包的类型检查与测试和桌面端视觉套件。只取推送到 GitHub 的提交。
+- 首次从聚合仓设置提交检查：`git -C frontend config core.hooksPath .githooks`。钩子对暂存区执行 `node scripts/assert-pigcode-source.mjs --staged`，也可从 frontend 根目录手动运行。`pnpm --dir frontend test` 会跑守卫测试。
+- 同步新提交：`pnpm --dir frontend pigcode:sync <含固定提交的 pigcode/pigcode 仓库路径> <完整提交 SHA>`，再跑 `pnpm install`、`pigcode:verify`、各包的类型检查与测试和桌面端视觉套件。只取推送到 GitHub 的提交。
 
 ## Agent skills
 

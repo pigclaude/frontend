@@ -1,21 +1,35 @@
-// 负责审计拷入的 Pigcode 界面包：每个文件都要与 pigcode-source.json 记录的 SHA256 一致，且没有清单外的文件。
-// 拷入的代码只能通过 scripts/vendor-pigcode.mjs 从固定提交重新生成，不能直接修改。
+// 负责核对工作区或暂存区的 Pigcode 界面包，文件集合及 SHA256 必须匹配固定提交清单。
+import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFile, readdir } from "node:fs/promises"
-import { join, relative } from "node:path"
+import { join, relative, sep } from "node:path"
+import { vendoredPackages } from "./pigcode-package-map.mjs"
 
 const rootIndex = process.argv.indexOf("--root")
 const root = rootIndex === -1 ? join(import.meta.dirname, "..") : process.argv[rootIndex + 1]
-const lock = JSON.parse(await readFile(join(root, "pigcode-source.json"), "utf8"))
+const staged = process.argv.includes("--staged")
 
+function git(...args) {
+  return execFileSync("git", ["-C", root, ...args], { maxBuffer: 16 * 1024 * 1024 })
+}
+
+async function readSource(path) {
+  return staged ? git("show", `:${path}`) : readFile(join(root, path))
+}
+
+const lock = JSON.parse((await readSource("pigcode-source.json")).toString("utf8"))
 if (!/^[0-9a-f]{40}$/.test(lock.commit ?? "")) {
   console.error("pigcode-source.json: commit must be a full 40-character SHA")
   process.exit(1)
 }
 
 const expected = new Map(lock.files.map((file) => [file.path, file.sha256]))
-const packages = [...new Set(lock.files.map((file) => file.path.split("/").slice(0, 2).join("/")))]
+const packages = vendoredPackages.map(({ target }) => `packages/${target}`)
 const failures = []
+if (expected.size !== lock.files.length) failures.push("pigcode-source.json: duplicate paths")
+for (const pkg of packages) {
+  if (!expected.has(`${pkg}/package.json`)) failures.push(`${pkg}: missing package manifest entry`)
+}
 
 async function walk(directory) {
   const entries = await readdir(directory, { withFileTypes: true })
@@ -29,22 +43,27 @@ async function walk(directory) {
   return files
 }
 
-const seen = new Set()
-for (const pkg of packages) {
-  for (const absolute of await walk(join(root, pkg))) {
-    const path = relative(root, absolute).split("\\").join("/")
-    seen.add(path)
-    const want = expected.get(path)
-    if (!want) {
-      failures.push(`${path}: not in pigcode-source.json`)
-      continue
-    }
-    const actual = createHash("sha256")
-      .update(await readFile(absolute))
-      .digest("hex")
-    if (actual !== want)
-      failures.push(`${path}: content differs from Pigcode ${lock.commit.slice(0, 7)}`)
+const actualPaths = staged
+  ? git("ls-files", "--cached", "-z", "--", ...packages)
+      .toString("utf8")
+      .split("\0")
+      .filter(Boolean)
+  : (await Promise.all(packages.map((pkg) => walk(join(root, pkg)))))
+      .flat()
+      .map((path) => relative(root, path).split(sep).join("/"))
+
+const seen = new Set(actualPaths)
+for (const path of seen) {
+  const want = expected.get(path)
+  if (!want) {
+    failures.push(`${path}: not in pigcode-source.json`)
+    continue
   }
+  const actual = createHash("sha256")
+    .update(await readSource(path))
+    .digest("hex")
+  if (actual !== want)
+    failures.push(`${path}: content differs from Pigcode ${lock.commit.slice(0, 7)}`)
 }
 for (const path of expected.keys()) {
   if (!seen.has(path)) failures.push(`${path}: listed in pigcode-source.json but missing`)

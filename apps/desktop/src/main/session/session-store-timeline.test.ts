@@ -180,6 +180,41 @@ describe("SessionStore 时间线", () => {
     expect(page.skippedLines).toBe(3)
   })
 
+  it("跳过合法 JSON 中不可回放的已知事件，仍用磁盘的最高序号继续", async () => {
+    const store = await storeWithSession()
+    const events = [
+      { type: "turn-started", turnId: "old" },
+      { type: "message", messageId: "missing-blocks", model: "Sonnet" },
+      { type: "message", messageId: "non-block", model: "Sonnet", blocks: [null] },
+      {
+        type: "message",
+        messageId: "ok",
+        model: "Sonnet",
+        subagent: "broken-owner",
+        blocks: [{ type: "text", text: "仍然可回放" }],
+      },
+      { type: "permission", requestId: "broken", toolName: "Read", input: null },
+      { type: "error", code: "SDK_ERROR", message: 42 },
+      { type: "workflow", workflow: null },
+      { type: "workflow", workflow: { toolCallId: "w1", agents: [null] } },
+      { type: "workflow", workflow: { toolCallId: "w1", name: "旧快照" } },
+      { type: "turn-ended", turnId: "old", status: "completed", errorCode: null },
+      { type: "question", requestId: "missing-questions" },
+    ]
+    const lines = events.map((event, index) => ({ ...turnStarted(index + 1), event }))
+    await appendFile(
+      store.paths("s-1").timelineFile,
+      lines.map((line) => JSON.stringify(line)).join("\n") + "\n",
+    )
+
+    const page = await store.readTimeline("s-1", { afterSeq: 1 })
+    expect(page.envelopes.map(({ seq }) => seq)).toEqual([4, 9, 10])
+    expect(page.envelopes[0]?.event).toMatchObject({ subagent: null })
+    expect(page.skippedLines).toBe(7)
+    expect(page.lastSeq).toBe(11)
+    expect((await store.cursor("s-1")).seq).toBe(11)
+  })
+
   it("末行不完整时跳过它读回其余内容，下次追加前先截掉半行", async () => {
     const store = await storeWithSession()
     await store.appendTimeline("s-1", turnStarted(1))

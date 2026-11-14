@@ -12,6 +12,7 @@ import { useClaudeAccounts } from "./hooks/use-claude-accounts"
 import { useBrowserProfiles } from "./hooks/use-browser-profiles"
 import type { AuthorizeClaudeAccountInput } from "../../main/claude/account-service-inputs"
 import { useMembershipConfirmation } from "./hooks/use-membership-confirmation"
+import { useProjectDrafts } from "./hooks/use-project-draft"
 import { markOnboardingSeen } from "./lib/onboarding-storage"
 import {
   applyClaudeAccountEvent,
@@ -101,6 +102,7 @@ function DesktopGate() {
   const restartingClaude = useRef(false)
   const skipRestartCancellation = useRef(false)
   const browserPreview = devView !== null && !window.pigclaude?.membership
+  const drafts = useProjectDrafts(membership, browserPreview)
   const canUseDesktop =
     (loginState.view === "idle" || loginState.view === "confirming") &&
     !signOutState.pending &&
@@ -372,6 +374,7 @@ function DesktopGate() {
   async function logout(): Promise<void> {
     if (signOutInFlight.current) return
     signOutInFlight.current = true
+    drafts.clear()
     authorizationGeneration.current++
     authorizationSession.current = null
     acceptAuthorizationEvents.current = false
@@ -454,10 +457,18 @@ function DesktopGate() {
   return (
     <MainWindow
       location={shown}
+      lastWorkspace={
+        history.entries
+          .slice(0, history.index + 1)
+          .findLast((entry) => entry.kind === "draft" || entry.kind === "session") ?? {
+          kind: "session",
+        }
+      }
       screen={screenOfLocation(shown)}
       canGoBack={canGoBack(history)}
       canGoForward={canGoForward(history)}
       membership={membership}
+      drafts={drafts}
       claudeAccounts={claudeAccounts}
       browserProfiles={browserProfiles}
       onNavigate={navigate}

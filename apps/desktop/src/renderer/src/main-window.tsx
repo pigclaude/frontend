@@ -15,7 +15,7 @@ import type { AppInfo } from "../../preload/index"
 import { TrayScreen } from "./screens/tray-screen"
 import type { ClaudeAccountsController } from "./hooks/use-claude-accounts"
 import { sessionAccountId, useSession } from "./hooks/use-session"
-import { useProjectDraft } from "./hooks/use-project-draft"
+import type { ProjectDrafts } from "./hooks/use-project-draft"
 import { useSessionNotices } from "./hooks/use-session-notices"
 import { useWorkspaces } from "./hooks/use-workspaces"
 import { useWorkspaceSelection } from "./hooks/use-workspace-selection"
@@ -48,11 +48,14 @@ import {
 /** 主窗口需要的位置状态与事件；账号控制器由 App 持有，避免同一页面出现两份陈旧列表。 */
 export type MainWindowProps = {
   location: NavLocation
+  /** 历史中最近访问的工作区，整窗授权回来时设置页仍能回到它。 */
+  lastWorkspace: NavLocation
   /** 旧测试和开发预览使用的页面名；导航本身以 location 为唯一状态。 */
   screen?: string
   canGoBack: boolean
   canGoForward: boolean
   membership: MembershipView
+  drafts: ProjectDrafts
   claudeAccounts: ClaudeAccountsController
   browserProfiles?: BrowserProfilesController
   onNavigate: (location: NavLocation) => void
@@ -70,10 +73,12 @@ export type MainWindowProps = {
 /** 画外壳与内容区；离开设置时回到离开前的工作区位置。 */
 export function MainWindow({
   location,
+  lastWorkspace,
   screen,
   canGoBack,
   canGoForward,
   membership,
+  drafts,
   claudeAccounts,
   browserProfiles,
   onNavigate,
@@ -95,7 +100,6 @@ export function MainWindow({
   const selection = useWorkspaceSelection(workspaces.add)
   const { selected: selectedWorkspace, projectOf } = selection
   const [sessionWorkspaces, setSessionWorkspaces] = useState<ReadonlyMap<string, string>>(new Map())
-  const [lastWorkspace, setLastWorkspace] = useState<NavLocation>({ kind: "session" })
   const currentLocation = useRef(location)
   currentLocation.current = location
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -137,7 +141,7 @@ export function MainWindow({
   const sessionActive = session.state.started && !session.state.ended
   const chatWorkspace = sessionWorkspace ?? workspace
   const draftProject = projectOf(workspace)
-  const projectDraft = useProjectDraft(draftProject)
+  const projectDraft = drafts.forProject(draftProject)
   const currentDraft = useRef(draftProject)
   currentDraft.current = draftProject
   const activeSummary = session.summaries.find((item) => item.sessionId === sessionId)
@@ -182,10 +186,6 @@ export function MainWindow({
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [bridge, inChat, workbenchRoot])
-
-  useEffect(() => {
-    if (location.kind === "draft" || location.kind === "session") setLastWorkspace(location)
-  }, [location])
 
   useEffect(() => {
     const read = window.pigclaude?.appInfo

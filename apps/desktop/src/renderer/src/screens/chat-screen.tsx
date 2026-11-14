@@ -193,7 +193,8 @@ export function ChatScreen({
     agents,
     session.modelsLoading && session.models.length === 0 ? null : session.models,
   )
-  const draftKey = (fresh ? null : state.sessionId) ?? workspaceProject ?? "new-thread"
+  const draftKey =
+    (fresh ? null : state.sessionId) ?? projectDraft?.key ?? workspaceProject ?? "new-thread"
   const projectName = workspace === null ? "" : projectNameFromPath(workspace)
   const threadId = state.sessionId ?? (workspace === null ? "new-thread" : `draft-${workspace}`)
   // 草稿页只在还没有会话时使用；从草稿发第一条消息后即使导航还没切换，也要显示时间线。
@@ -312,6 +313,7 @@ export function ChatScreen({
     const ok = await (projectDraft
       ? session.start(input, (error) => projectDraft.update({ error }))
       : session.start(input))
+    if (projectDraft && !projectDraft.isCurrent()) return false
     if (ok) {
       if (sessionId === undefined) onWorkspaceUsed(target, project)
       else onWorkspaceUsed(target, project, sessionId)
@@ -343,7 +345,7 @@ export function ChatScreen({
       return false
     }
     const directory = await draft.start(target)
-    if (directory === null) return false
+    if (directory === null || (projectDraft && !projectDraft.isCurrent())) return false
     const project = (workspace === null ? null : workspaceProject) ?? target
     const sessionId = identifySessions ? crypto.randomUUID() : undefined
     const ok = await startSession(directory, project, effort, fast, sessionId)
@@ -352,7 +354,7 @@ export function ChatScreen({
     const sent = await session.send(text, sendOptions, sessionId, (error) =>
       projectDraft?.update({ error }),
     )
-    if (sent) onDraftOpened?.(sessionId, project)
+    if (sent && (projectDraft?.isCurrent() ?? true)) onDraftOpened?.(sessionId, project)
     return sent
   }
 
@@ -364,7 +366,7 @@ export function ChatScreen({
     const key = draftKey
     void submit(text, options)
       .then((ok) => {
-        if (!ok) prefillComposer(key, { text })
+        if (!ok && (projectDraft?.isCurrent() ?? true)) prefillComposer(key, { text })
       })
       .finally(() => {
         submitting.current = false

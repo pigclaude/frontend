@@ -260,6 +260,13 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
   }
 }
 
+/** 会话正在用的账号：先取换号事件记下的账号，再取主进程状态；都不知道时返回 null。 */
+export function sessionAccountId(
+  session: Pick<SessionController, "state" | "status">,
+): string | null {
+  return session.state.accountId ?? session.status?.accountId ?? null
+}
+
 /** 把未知错误转成文本；主进程前缀由 sessionErrorText 统一剥离。 */
 export function sessionErrorFrom(error: unknown): string {
   return error instanceof Error ? error.message : "会话操作失败"

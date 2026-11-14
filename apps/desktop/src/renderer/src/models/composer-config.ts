@@ -1,6 +1,7 @@
 // 负责把 PigClaude 的账号、模型、权限和思考深度映射成 Pigcode 输入区需要的形状。
 // 页面只消费这里的纯函数，输入区本身完全复用拷入的 Pigcode ui-composer。
 
+import type { ClaudeAccountView } from "@pigclaude/contracts/claude-account"
 import { RUNTIME_MODE_OPTIONS, type RuntimeMode } from "@pigclaude/ui-contracts"
 import type {
   ComposerAgent,
@@ -39,25 +40,25 @@ export type ComposerConfig = {
   smartPunctuation: boolean
 }
 
+/** 会话宿主能运行的档位。自动审批不在其中：选它时如实提示并保持原档。 */
+export type RunnableLevel = Exclude<RuntimeMode, "auto">
+
+/** 会话的权限状态在输入框里的样子：一个档位加一个计划开关。 */
+export type PermissionView = { level: RunnableLevel; plan: boolean }
+
 /** 新会话的默认档位：Claude Code 自己的默认档 `default`，即监督审批。 */
-export const DEFAULT_PERMISSION_LEVEL: RuntimeMode = "approval-required"
+export const DEFAULT_PERMISSION_LEVEL: RunnableLevel = "approval-required"
 
 /** Claude 会话支持独立的计划开关；每个账号实例都声明这一点，输入框才显示计划开关。 */
 const CLAUDE_EXECUTION_MODES = { plan: true }
 
-/** 输入框传来的档位 id；不是四档之一时返回 null，调用方忽略这次选择。 */
-export function permissionLevelOf(mode: PermissionMode): RuntimeMode | null {
+/** 输入框选中的档位 id；不是四档之一时返回 null，调用方忽略这次选择。 */
+export function composerLevel(mode: PermissionMode): RuntimeMode | null {
   return RUNTIME_MODE_OPTIONS.some((option) => option.id === mode) ? (mode as RuntimeMode) : null
 }
 
-/**
- * 档位和计划开关对应的 Claude Code 权限模式；计划开关打开时一律是 plan。
- * 会话宿主还不支持 auto，自动审批返回 null，调用方如实提示，不换成别的模式运行。
- */
-export function sessionPermissionMode(
-  level: RuntimeMode,
-  plan: boolean,
-): SessionPermissionMode | null {
+/** 档位和计划开关对应的 Claude Code 权限模式；计划开关打开时一律是 plan。 */
+export function sessionPermissionMode(level: RunnableLevel, plan: boolean): SessionPermissionMode {
   if (plan) return "plan"
   switch (level) {
     case "approval-required":
@@ -66,22 +67,23 @@ export function sessionPermissionMode(
       return "acceptEdits"
     case "full-access":
       return "bypassPermissions"
-    case "auto":
-      return null
   }
 }
 
-/** Claude Code 模式对应的档位；plan 不是档位，返回 null，由调用方沿用打开计划前记住的档位。 */
-export function permissionLevel(mode: SessionPermissionMode): RuntimeMode | null {
+/** 把会话的 Claude Code 模式拆成档位和计划开关；plan 期间档位取打开计划前记住的 remembered。 */
+export function permissionView(
+  mode: SessionPermissionMode,
+  remembered: RunnableLevel,
+): PermissionView {
   switch (mode) {
     case "default":
-      return "approval-required"
+      return { level: "approval-required", plan: false }
     case "acceptEdits":
-      return "auto-accept-edits"
+      return { level: "auto-accept-edits", plan: false }
     case "bypassPermissions":
-      return "full-access"
+      return { level: "full-access", plan: false }
     case "plan":
-      return null
+      return { level: remembered, plan: true }
   }
 }
 
@@ -101,12 +103,11 @@ export function effortForComposer(
   }
 }
 
+/** 输入框用到的账号字段：名字和是否绑定代理。 */
+export type ComposerAccount = Pick<ClaudeAccountView, "id" | "displayName" | "proxyId">
+
 /** 一个账号对应的实例；直连账号在名字后标出系统网络。 */
-export function composerAgent(account: {
-  id: string
-  displayName: string
-  proxyId: string | null
-}): ComposerAgent {
+export function composerAgent(account: ComposerAccount): ComposerAgent {
   return {
     id: account.id,
     agentId: "claude",
@@ -115,10 +116,18 @@ export function composerAgent(account: {
   }
 }
 
+/** 会话正在用、但号池里已经没有的账号；仍是 Claude 实例，计划开关照常显示。 */
+export function currentAccountAgent(accountId: string): ComposerAgent {
+  return {
+    id: accountId,
+    agentId: "claude",
+    label: "当前账号",
+    executionModes: CLAUDE_EXECUTION_MODES,
+  }
+}
+
 /** 账号转成模型选择器的实例；第一个是自动选号。 */
-export function composerAgents(
-  accounts: readonly { id: string; displayName: string; proxyId: string | null }[],
-): ComposerAgent[] {
+export function composerAgents(accounts: readonly ComposerAccount[]): ComposerAgent[] {
   return [
     {
       id: AUTO_ACCOUNT,

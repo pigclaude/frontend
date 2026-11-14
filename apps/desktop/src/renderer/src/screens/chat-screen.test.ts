@@ -2,98 +2,64 @@
 
 // @vitest-environment jsdom
 import { act, createElement, useState } from "react"
-import { createRoot, type Root } from "react-dom/client"
 import userEvent from "@testing-library/user-event"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { resetComposerMemory } from "@pigclaude/ui-composer"
+import { describe, expect, it, vi } from "vitest"
 import { createSessionState, reduceSession } from "../models/session-model"
 import {
+  buttonNamed,
   chatAccount,
   chatScreenElement,
+  chatScreenRoot,
   clickButton,
   sessionController as controller,
   startingState,
-  typeAndSend as typeInto,
+  typeAndSend,
 } from "../test-support/chat-screen-harness"
-import type { ChatScreenProps } from "./chat-screen"
 
-let root: Root
-let container: HTMLDivElement
+const screen = chatScreenRoot()
 
-beforeEach(() => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true)
-  resetComposerMemory()
-  window.localStorage.clear()
-  container = document.createElement("div")
-  document.body.append(container)
-  root = createRoot(container)
-})
-
-afterEach(async () => {
-  await act(async () => root.unmount())
-  container.remove()
-  vi.unstubAllGlobals()
-})
-
-async function render(overrides: Partial<ChatScreenProps> = {}): Promise<void> {
-  await act(async () => root.render(chatScreenElement(overrides)))
-}
-
-function button(name: string, scope: ParentNode = container): HTMLButtonElement | undefined {
-  return [...scope.querySelectorAll("button")].find(
-    (candidate) => candidate.textContent?.trim() === name,
+function buttonStartingWith(prefix: string): HTMLElement | undefined {
+  return [...screen.container.querySelectorAll<HTMLElement>('button, [role="button"]')].find(
+    (candidate) => candidate.textContent?.trim().startsWith(prefix),
   )
-}
-
-function buttonStartingWith(
-  prefix: string,
-  scope: ParentNode = container,
-): HTMLElement | undefined {
-  return [...scope.querySelectorAll<HTMLElement>('button, [role="button"]')].find((candidate) =>
-    candidate.textContent?.trim().startsWith(prefix),
-  )
-}
-
-function typeAndSend(text: string): Promise<void> {
-  return typeInto(container, text)
 }
 
 describe("chat screen", () => {
   it("shows an empty state that asks for a workspace instead of fixture data", async () => {
-    await render({ workspace: null, workspaceOptions: [] })
+    await screen.render({ workspace: null, workspaceOptions: [] })
 
-    expect(container.textContent).toContain("添加项目")
-    expect(container.textContent).not.toContain("最近工作区")
-    expect(container.textContent).not.toContain("发送第一条消息即开始会话")
-    expect(container.textContent).not.toContain("流开始后不再换号")
-    expect(container.textContent).not.toContain("继续上次")
+    expect(screen.container.textContent).toContain("添加项目")
+    expect(screen.container.textContent).not.toContain("最近工作区")
+    expect(screen.container.textContent).not.toContain("发送第一条消息即开始会话")
+    expect(screen.container.textContent).not.toContain("流开始后不再换号")
+    expect(screen.container.textContent).not.toContain("继续上次")
   })
 
   it("offers Pigcode's start suggestions once a workspace is ready", async () => {
-    await render()
+    await screen.render()
 
-    expect(container.textContent).toContain("解释项目")
-    expect(container.textContent).toContain("修复问题")
-    expect(container.textContent).toContain("补充测试")
-    expect(container.textContent).toContain("审查改动")
-    expect(container.textContent).not.toContain("最近工作区")
+    expect(screen.container.textContent).toContain("解释项目")
+    expect(screen.container.textContent).toContain("修复问题")
+    expect(screen.container.textContent).toContain("补充测试")
+    expect(screen.container.textContent).toContain("审查改动")
+    expect(screen.container.textContent).not.toContain("最近工作区")
   })
 
   it("prefills the composer from a start suggestion without sending", async () => {
-    await render()
+    await screen.render()
 
-    await clickButton(button("解释项目"), "解释项目")
+    await clickButton(buttonNamed("解释项目"), "解释项目")
 
-    const editor = container.querySelector<HTMLElement>(".composer .tiptap")
+    const editor = screen.container.querySelector<HTMLElement>(".composer .tiptap")
     expect(editor?.textContent).toContain("介绍一下这个项目")
   })
 
   it("starts a session with the selected workspace and session options", async () => {
     const session = controller()
     const onOpen = vi.fn()
-    await render({ session, workspace: "/Users/me/app", onOpen })
+    await screen.render({ session, workspace: "/Users/me/app", onOpen })
 
-    await typeAndSend("开始吧")
+    await typeAndSend(screen.container, "开始吧")
 
     expect(session.start).toHaveBeenCalledWith({
       workspace: "/Users/me/app",
@@ -105,9 +71,12 @@ describe("chat screen", () => {
   })
 
   it("offers a direct account in the model picker without any proxy", async () => {
-    await render({ accounts: [chatAccount("account-direct", "直连 Max", null)], proxies: [] })
+    await screen.render({
+      accounts: [chatAccount("account-direct", "直连 Max", null)],
+      proxies: [],
+    })
 
-    const trigger = container.querySelector<HTMLButtonElement>(".model-chip")
+    const trigger = screen.container.querySelector<HTMLButtonElement>(".model-chip")
     expect(trigger, "模型选择器").not.toBeNull()
     await act(async () => trigger?.click())
 
@@ -121,9 +90,9 @@ describe("chat screen", () => {
     const session = controller({
       state: reduceSession(createSessionState(), { type: "opened", sessionId: "session-1" }),
     })
-    await render({ fresh: false, session })
+    await screen.render({ fresh: false, session })
 
-    const editor = container.querySelector<HTMLElement>(".composer .tiptap")
+    const editor = screen.container.querySelector<HTMLElement>(".composer .tiptap")
     expect(editor, "输入区").not.toBeNull()
     const user = userEvent.setup()
     await act(async () => {
@@ -177,20 +146,20 @@ describe("chat screen", () => {
       })
     }
 
-    await act(async () => root.render(createElement(Harness)))
-    await typeAndSend("改一下")
+    await screen.renderElement(createElement(Harness))
+    await typeAndSend(screen.container, "改一下")
 
     expect(onOpen).toHaveBeenCalledWith({ kind: "session" })
-    expect(container.textContent).toContain("先看")
-    expect(container.textContent).not.toContain("先选择一个工作区")
+    expect(screen.container.textContent).toContain("先看")
+    expect(screen.container.textContent).not.toContain("先选择一个工作区")
   })
 
   it("starts a new session after the previous one is stopped", async () => {
     const stopped = reduceSession(startingState(), { type: "stopped" })
     const start = vi.fn(async () => true)
-    await render({ fresh: false, session: controller({ state: stopped, start }) })
+    await screen.render({ fresh: false, session: controller({ state: stopped, start }) })
 
-    await typeAndSend("再来一次")
+    await typeAndSend(screen.container, "再来一次")
     expect(start).toHaveBeenCalledTimes(1)
   })
 
@@ -205,10 +174,10 @@ describe("chat screen", () => {
       event: { type: "delta", text: "一下重试条件", thinking: false, blockIndex: 0 },
     })
 
-    await render({ fresh: false, session: controller({ state }) })
+    await screen.render({ fresh: false, session: controller({ state }) })
 
-    expect(container.textContent).toContain("先看一下重试条件")
-    expect(container.textContent).toContain("改一下重试逻辑")
+    expect(screen.container.textContent).toContain("先看一下重试条件")
+    expect(screen.container.textContent).toContain("改一下重试逻辑")
   })
 
   it("folds terminal commands until the user expands them", async () => {
@@ -229,13 +198,13 @@ describe("chat screen", () => {
       event: { type: "tool-result", toolUseId: "tool-1", content: "文件内容", isError: false },
     })
 
-    await render({ fresh: false, session: controller({ state }) })
+    await screen.render({ fresh: false, session: controller({ state }) })
 
-    expect(container.textContent).toContain("终端")
-    expect(container.textContent).toContain("cat a.ts")
-    expect(container.textContent).not.toContain("文件内容")
+    expect(screen.container.textContent).toContain("终端")
+    expect(screen.container.textContent).toContain("cat a.ts")
+    expect(screen.container.textContent).not.toContain("文件内容")
     await clickButton(buttonStartingWith("终端"), "终端")
-    expect(container.textContent).toContain("文件内容")
+    expect(screen.container.textContent).toContain("文件内容")
   })
 
   it("answers permission cards from the prompt above the composer", async () => {
@@ -250,25 +219,31 @@ describe("chat screen", () => {
         input: { command: "pnpm test" },
       },
     })
-    await render({ fresh: false, session: controller({ state, respondPermission: respond }) })
+    await screen.render({
+      fresh: false,
+      session: controller({ state, respondPermission: respond }),
+    })
 
-    const prompt = container.querySelector('[role="dialog"][aria-label="需要权限"]')
+    const prompt = screen.container.querySelector('[role="dialog"][aria-label="需要权限"]')
     expect(prompt).not.toBeNull()
     // 卡片挂在输入区容器里，排在输入框前面。
     expect(prompt?.closest(".composer-wrap")).not.toBeNull()
     expect(prompt?.closest(".perm-host")?.nextElementSibling?.className).toContain("composer")
-    expect(container.textContent).toContain("Bash")
-    expect(container.textContent).toContain("pnpm test")
+    expect(screen.container.textContent).toContain("Bash")
+    expect(screen.container.textContent).toContain("pnpm test")
     // 卡片默认选中第一项，点一下就直接回答。
-    const options = [...container.querySelectorAll<HTMLElement>('[role="option"]')]
+    const options = [...screen.container.querySelectorAll<HTMLElement>('[role="option"]')]
     expect(options.length).toBe(2)
     await act(async () => options[0]?.click())
     expect(respond).toHaveBeenCalledWith("permission-1", "allow", undefined)
 
-    await render({ fresh: false, session: controller({ state, respondPermission: respond }) })
-    const deny = container.querySelectorAll<HTMLElement>('[role="option"]')[1]
+    await screen.render({
+      fresh: false,
+      session: controller({ state, respondPermission: respond }),
+    })
+    const deny = screen.container.querySelectorAll<HTMLElement>('[role="option"]')[1]
     await act(async () => deny?.click())
-    await clickButton(button("确认"), "确认")
+    await clickButton(buttonNamed("确认"), "确认")
     expect(respond).toHaveBeenCalledWith("permission-1", "deny", undefined)
   })
 
@@ -279,20 +254,20 @@ describe("chat screen", () => {
       event: { type: "account-switched", from: "account-a", to: "account-b", reason: "quota" },
     })
 
-    await render({ fresh: false, session: controller({ state }) })
+    await screen.render({ fresh: false, session: controller({ state }) })
 
     // Pigcode 的切换分隔线只显示切换到的目标，不重复来源和原因。
-    expect(container.textContent).toContain("已切换到 备用 Pro")
+    expect(screen.container.textContent).toContain("已切换到 备用 Pro")
   })
 
   it("interrupts the current run from the composer", async () => {
     const cancel = vi.fn(async () => undefined)
-    await render({
+    await screen.render({
       fresh: false,
       session: controller({ state: startingState(), cancel }),
     })
 
-    const stop = container.querySelector<HTMLButtonElement>('[aria-label="中断"]')
+    const stop = screen.container.querySelector<HTMLButtonElement>('[aria-label="中断"]')
     expect(stop, "中断").not.toBeNull()
     await act(async () => stop?.click())
     expect(cancel).toHaveBeenCalledTimes(1)
@@ -308,18 +283,18 @@ describe("chat screen", () => {
       modelsLoading: false,
       modelsError: "Claude Code 不可用，请检查安装",
     })
-    await render({ fresh: false, session })
+    await screen.render({ fresh: false, session })
 
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+    expect(screen.container.querySelector('[role="alert"]')?.textContent).toContain(
       "没有可用的 Claude 账号",
     )
-    expect(container.textContent).toContain("Claude Code 不可用")
+    expect(screen.container.textContent).toContain("Claude Code 不可用")
   })
 
   it("never puts credentials into the page or localStorage", async () => {
-    await render({ fresh: false, session: controller({ state: startingState() }) })
+    await screen.render({ fresh: false, session: controller({ state: startingState() }) })
 
-    const page = `${container.innerHTML}${JSON.stringify({ ...window.localStorage })}`
+    const page = `${screen.container.innerHTML}${JSON.stringify({ ...window.localStorage })}`
     expect(page).not.toMatch(/accessToken|refreshToken|sk-ant-|Bearer /)
   })
 })

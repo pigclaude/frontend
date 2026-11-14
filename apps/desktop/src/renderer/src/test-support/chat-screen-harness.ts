@@ -1,9 +1,12 @@
-// 负责聊天页测试的公共夹具：账号、代理、会话控制器替身，以及带语言和 Toast 的聊天页渲染与输入。
+// 负责聊天页测试的公共夹具：账号、代理、会话控制器替身，每个测试一个挂载点，
+// 以及带语言和 Toast 的聊天页渲染、按钮查找与输入。
 
 import { act, createElement, type ReactElement } from "react"
+import { createRoot, type Root } from "react-dom/client"
 import userEvent from "@testing-library/user-event"
-import { expect, vi } from "vitest"
+import { afterEach, beforeEach, expect, vi } from "vitest"
 import type { ClaudeAccountView, ProxyView } from "@pigclaude/contracts/claude-account"
+import { resetComposerMemory } from "@pigclaude/ui-composer"
 import { LocaleProvider } from "@pigclaude/ui-primitives"
 import { ToastProvider } from "@pigclaude/ui-shell"
 import type { SessionController } from "../hooks/use-session"
@@ -39,8 +42,7 @@ export function chatAccount(
   }
 }
 
-/** 测试账号绑定的代理。 */
-export const chatProxy: ProxyView = {
+const chatProxy: ProxyView = {
   id: "proxy-1",
   name: "代理",
   url: "http://127.0.0.1:8080",
@@ -98,6 +100,59 @@ export function chatScreenElement(overrides: Partial<ChatScreenProps> = {}): Rea
     locale: "zh-CN",
     children: createElement(ToastProvider, { children: createElement(ChatScreen, props) }),
   })
+}
+
+/** 一个测试文件里的聊天页挂载点；container 只在测试运行期间可用。 */
+export type ChatScreenRoot = {
+  readonly container: HTMLDivElement
+  /** 渲染聊天页；未给出的属性取 chatScreenElement 的默认值。 */
+  render: (overrides?: Partial<ChatScreenProps>) => Promise<void>
+  /** 渲染任意元素，供自带状态的测试外壳使用。 */
+  renderElement: (element: ReactElement) => Promise<void>
+}
+
+/** 在调用它的测试文件里，每个测试前挂一个新根节点并清空输入区记忆，测试后卸载。 */
+export function chatScreenRoot(): ChatScreenRoot {
+  let root: Root | null = null
+  let host: HTMLDivElement | null = null
+
+  beforeEach(() => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true)
+    resetComposerMemory()
+    window.localStorage.clear()
+    host = document.createElement("div")
+    document.body.append(host)
+    root = createRoot(host)
+  })
+
+  afterEach(async () => {
+    await act(async () => root?.unmount())
+    host?.remove()
+    vi.unstubAllGlobals()
+  })
+
+  async function renderElement(element: ReactElement): Promise<void> {
+    await act(async () => root?.render(element))
+  }
+
+  return {
+    get container() {
+      if (host === null) throw new Error("聊天页挂载点只在测试运行期间可用")
+      return host
+    },
+    render: (overrides = {}) => renderElement(chatScreenElement(overrides)),
+    renderElement,
+  }
+}
+
+/** 按完整文字找按钮；默认在整个文档里找，弹层和确认框也算。 */
+export function buttonNamed(
+  name: string,
+  scope: ParentNode = document,
+): HTMLButtonElement | undefined {
+  return [...scope.querySelectorAll("button")].find(
+    (candidate) => candidate.textContent?.trim() === name,
+  )
 }
 
 /** 点击一个必须存在的元素。 */

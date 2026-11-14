@@ -9,9 +9,10 @@ import {
   agentIdForAccount,
   composerAgents,
   composerCatalog,
+  composerLevel,
+  currentAccountAgent,
   effortForComposer,
-  permissionLevel,
-  permissionLevelOf,
+  permissionView,
   sessionPermissionMode,
 } from "./composer-config"
 
@@ -29,33 +30,45 @@ describe("composer permission mapping", () => {
     expect(sessionPermissionMode(DEFAULT_PERMISSION_LEVEL, false)).toBe("default")
   })
 
-  it("maps the four composer levels to Claude Code modes", () => {
+  it("maps the levels the session host runs to Claude Code modes", () => {
     expect(sessionPermissionMode("approval-required", false)).toBe("default")
     expect(sessionPermissionMode("auto-accept-edits", false)).toBe("acceptEdits")
     expect(sessionPermissionMode("full-access", false)).toBe("bypassPermissions")
   })
 
-  it("does not pretend auto approval works before the session host supports it", () => {
-    expect(sessionPermissionMode("auto", false)).toBeNull()
-  })
-
   it("runs every level in Claude Code's plan mode while the plan switch is on", () => {
     expect(sessionPermissionMode("approval-required", true)).toBe("plan")
-    expect(sessionPermissionMode("auto", true)).toBe("plan")
+    expect(sessionPermissionMode("auto-accept-edits", true)).toBe("plan")
     expect(sessionPermissionMode("full-access", true)).toBe("plan")
   })
 
-  it("reads Claude Code modes back as levels and leaves plan to the remembered level", () => {
-    expect(permissionLevel("default")).toBe("approval-required")
-    expect(permissionLevel("acceptEdits")).toBe("auto-accept-edits")
-    expect(permissionLevel("bypassPermissions")).toBe("full-access")
-    expect(permissionLevel("plan")).toBeNull()
+  it("splits a Claude Code mode into a level and the plan switch", () => {
+    expect(permissionView("default", "full-access")).toEqual({
+      level: "approval-required",
+      plan: false,
+    })
+    expect(permissionView("acceptEdits", "full-access")).toEqual({
+      level: "auto-accept-edits",
+      plan: false,
+    })
+    expect(permissionView("bypassPermissions", "approval-required")).toEqual({
+      level: "full-access",
+      plan: false,
+    })
+  })
+
+  it("keeps the level remembered before plan mode while plan mode is on", () => {
+    expect(permissionView("plan", "auto-accept-edits")).toEqual({
+      level: "auto-accept-edits",
+      plan: true,
+    })
   })
 
   it("accepts only the four composer level ids", () => {
-    expect(permissionLevelOf("auto-accept-edits")).toBe("auto-accept-edits")
-    expect(permissionLevelOf("workspace-write")).toBeNull()
-    expect(permissionLevelOf("plan")).toBeNull()
+    expect(composerLevel("auto-accept-edits")).toBe("auto-accept-edits")
+    expect(composerLevel("auto")).toBe("auto")
+    expect(composerLevel("workspace-write")).toBeNull()
+    expect(composerLevel("plan")).toBeNull()
   })
 })
 
@@ -93,6 +106,15 @@ describe("composer accounts and models", () => {
         executionModes: { plan: true },
       },
     ])
+  })
+
+  it("keeps the plan switch on the stand-in for an account that left the pool", () => {
+    expect(currentAccountAgent("account-gone")).toEqual({
+      id: "account-gone",
+      agentId: "claude",
+      label: "当前账号",
+      executionModes: { plan: true },
+    })
   })
 
   it("maps account ids to instances and back", () => {

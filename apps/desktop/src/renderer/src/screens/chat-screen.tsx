@@ -7,7 +7,7 @@ import {
   type ClaudeAccountView,
   type ProxyView,
 } from "@pigclaude/contracts/claude-account"
-import type { AgentFeatures, RuntimeMode } from "@pigclaude/ui-contracts"
+import type { AgentFeatures } from "@pigclaude/ui-contracts"
 import { ChatView, NewThreadView } from "@pigclaude/ui-chat"
 import {
   prefillComposer,
@@ -19,7 +19,7 @@ import { useToast } from "@pigclaude/ui-shell"
 import { PermissionDock } from "../components/permission-dock"
 import { PermissionPrompt, type PermissionChoice } from "../components/permission-prompt"
 import { ToolRenderers } from "../components/tool-renderers"
-import type { SessionController } from "../hooks/use-session"
+import { sessionAccountId, type SessionController } from "../hooks/use-session"
 import {
   DEFAULT_PERMISSION_LEVEL,
   accountIdForAgent,
@@ -27,11 +27,14 @@ import {
   composerAgent,
   composerAgents,
   composerCatalog,
+  composerLevel,
+  currentAccountAgent,
   effortForComposer,
-  permissionLevel,
-  permissionLevelOf,
+  permissionView,
   sessionPermissionMode,
   type ComposerConfig,
+  type PermissionView,
+  type RunnableLevel,
 } from "../models/composer-config"
 import { projectNameFromPath } from "../models/project-model"
 import type { NavLocation } from "../models/navigation"
@@ -98,9 +101,8 @@ export function ChatScreen({
   const [modelId, setModelId] = useState("")
   const [accountId, setAccountId] = useState("")
   // 档位和计划开关分开记：计划打开期间档位不变，关掉计划或批准计划后回到这一档。
-  const [level, setLevel] = useState<RuntimeMode>(DEFAULT_PERMISSION_LEVEL)
+  const [level, setLevel] = useState<RunnableLevel>(DEFAULT_PERMISSION_LEVEL)
   const [draftPlan, setDraftPlan] = useState(false)
-  const [localError, setLocalError] = useState<string | null>(null)
   const startedAt = useRef(Date.now())
   const lastModelsError = useRef<string | null>(null)
   const [page, setPage] = useState<HTMLDivElement | null>(null)
@@ -118,9 +120,10 @@ export function ChatScreen({
   }, [state.turns])
   const defaultModel = session.models.find((model) => model.isDefault) ?? session.models[0]
   const selectedModel = state.model ?? (modelId || defaultModel?.id || "")
-  const plan = live ? state.permissionMode === "plan" : draftPlan
-  const shownLevel = (live ? permissionLevel(state.permissionMode) : null) ?? level
-  const activeAccount = live ? (state.accountId ?? session.status?.accountId ?? "") : accountId
+  const shown: PermissionView = live
+    ? permissionView(state.permissionMode, level)
+    : { level, plan: draftPlan }
+  const activeAccount = live ? (sessionAccountId(session) ?? "") : accountId
   const proxyUrls = new Map(proxies.map((proxy) => [proxy.id, proxy.url]))
   const availableAccounts = accounts.filter((account) =>
     isAccountSelectable(
@@ -139,9 +142,7 @@ export function ChatScreen({
   // 会话正在用的账号即使暂时不可选也要留在实例栏里，否则选择器会一直显示加载中。
   if (activeAccount !== "" && !agents.some((agent) => agent.id === activeAccount)) {
     const active = accounts.find((account) => account.id === activeAccount)
-    agents.push(
-      active ? composerAgent(active) : { id: activeAccount, agentId: "claude", label: "当前账号" },
-    )
+    agents.push(active ? composerAgent(active) : currentAccountAgent(activeAccount))
   }
   const catalog = composerCatalog(
     agents,
@@ -156,8 +157,11 @@ export function ChatScreen({
     void session.refreshModels()
   }, [session.models.length, session.modelsLoading, session.modelsError, session.refreshModels])
 
+  // 每个新会话都从监督审批、计划关闭开始；上一个会话里选的档位不带到下一个会话。
   useEffect(() => {
-    if (!live) setLocalError(null)
+    if (live) return
+    setLevel(DEFAULT_PERMISSION_LEVEL)
+    setDraftPlan(false)
   }, [live])
 
   useEffect(() => {
@@ -172,10 +176,10 @@ export function ChatScreen({
     toast(`模型列表不可用：${message}`, "alert")
   }, [session.modelsError, toast])
 
-  useEffect(() => {
-    if (localError === null) return
-    toast(localError, "alert")
-  }, [localError, toast])
+  /** 每次都弹出提示，同一句话连续出现也不合并。 */
+  function notify(message: string): void {
+    toast(message, "alert")
+  }
 
   /** 只读列出当前工作区的文件；浏览器预览没有桌面桥时返回空列表。 */
   function files(): Promise<readonly string[]> {
@@ -185,35 +189,31 @@ export function ChatScreen({
 
   /** 切换档位；完全访问的确认框由输入区自己给出。计划打开期间只记住新档位。 */
   function chooseMode(mode: PermissionMode): void {
-    setLocalError(null)
-    const next = permissionLevelOf(mode)
+    const next = composerLevel(mode)
     if (next === null) return
-    const target = sessionPermissionMode(next, false)
-    if (target === null) {
-      setLocalError("自动审批暂未接通，已保持当前档位")
+    if (next === "auto") {
+      notify("自动审批暂未接通，已保持当前档位")
       return
     }
     setLevel(next)
-    if (live && !plan) void session.setMode(target)
+    if (live && !shown.plan) void session.setMode(sessionPermissionMode(next, false))
   }
 
   /** 开合计划开关；关掉时回到打开前的档位。 */
   function choosePlan(value: boolean): void {
-    setLocalError(null)
     if (!live) {
       setDraftPlan(value)
       return
     }
-    setLevel(shownLevel)
-    void session.setMode(value ? "plan" : (sessionPermissionMode(shownLevel, false) ?? "default"))
+    setLevel(shown.level)
+    void session.setMode(sessionPermissionMode(shown.level, value))
   }
 
   /** 选中模型选择器里的实例和模型；会话开始后换账号仍然不支持。 */
   function chooseModel(choice: ComposerModelChoice): void {
-    setLocalError(null)
     const nextAccount = accountIdForAgent(choice.instanceId)
     if (live && nextAccount !== activeAccount) {
-      setLocalError("会话开始后不支持换号")
+      notify("会话开始后不支持换号")
       return
     }
     if (!live) setAccountId(nextAccount)
@@ -226,9 +226,9 @@ export function ChatScreen({
     agentId: agentIdForAccount(activeAccount),
     modelId: selectedModel,
     catalog,
-    permissionMode: shownLevel,
+    permissionMode: shown.level,
     onPermissionMode: chooseMode,
-    planMode: plan,
+    planMode: shown.plan,
     onPlanMode: choosePlan,
     onSelectModel: chooseModel,
     onLoadModels: () => void session.refreshModels(),
@@ -247,7 +247,7 @@ export function ChatScreen({
       ...(selectedModel === "" ? {} : { model: selectedModel }),
       ...(effort === undefined ? {} : { effort }),
       ...(fast ? { fast: true } : {}),
-      permissionMode: sessionPermissionMode(level, draftPlan) ?? "default",
+      permissionMode: sessionPermissionMode(level, draftPlan),
       ...(accountId === "" ? {} : { accountId }),
     })
     if (ok) {
@@ -261,18 +261,16 @@ export function ChatScreen({
     const effort = effortForComposer(options.effort)
     if (live) {
       if (state.activeTurnId !== null) {
-        setLocalError("当前请求尚未结束")
+        notify("当前请求尚未结束")
         return false
       }
-      setLocalError(null)
       return session.send(text)
     }
     const target = workspace ?? workspaceOptions[0] ?? null
     if (target === null) {
-      setLocalError("先选择一个工作区")
+      notify("先选择一个工作区")
       return false
     }
-    setLocalError(null)
     const ok = await startSession(target, effort, options.fast === true)
     if (!ok) return false
     return session.send(text)
@@ -292,7 +290,6 @@ export function ChatScreen({
   }
 
   function chooseWorkspace(path: string): void {
-    setLocalError(null)
     onSelectWorkspace(path)
   }
 
@@ -305,11 +302,20 @@ export function ChatScreen({
         projectName,
         instanceId: agentIdForAccount(activeAccount),
         modelId: selectedModel,
-        permissionLevel: shownLevel,
-        planMode: plan,
+        permissionLevel: shown.level,
+        planMode: shown.plan,
         startedAt: startedAt.current,
       }),
-    [state, threadId, workspace, projectName, activeAccount, selectedModel, shownLevel, plan],
+    [
+      state,
+      threadId,
+      workspace,
+      projectName,
+      activeAccount,
+      selectedModel,
+      shown.level,
+      shown.plan,
+    ],
   )
 
   // 草稿页只在还没有会话时使用；从草稿发第一条消息后即使导航还没切换，也要显示时间线。

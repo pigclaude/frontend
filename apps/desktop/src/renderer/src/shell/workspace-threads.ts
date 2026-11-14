@@ -2,7 +2,7 @@
 // PigClaude 同一时间只有一个会话，它挂在运行它的工作区下；不引入 Pigcode 的线程模型语义。
 import type { Project, Thread } from "@pigclaude/ui-contracts"
 import type { ThreadStatus } from "@pigclaude/ui-shell"
-import { DEFAULT_PERMISSION_LEVEL, permissionLevel } from "../models/composer-config"
+import { DEFAULT_PERMISSION_LEVEL, permissionView } from "../models/composer-config"
 import { projectNameFromPath } from "../models/project-model"
 import type { SessionUiState } from "../models/session-model"
 
@@ -56,6 +56,7 @@ export function sessionThread({
   untitled: string
 }): Thread | null {
   if (!session.sessionId || !workspace) return null
+  const permission = permissionView(session.permissionMode, DEFAULT_PERMISSION_LEVEL)
   return {
     id: session.sessionId,
     projectId: workspace,
@@ -65,8 +66,8 @@ export function sessionThread({
     lastAgentId: null,
     lastInstanceId: null,
     lastModelId: session.model,
-    permissionMode: permissionLevel(session.permissionMode) ?? DEFAULT_PERMISSION_LEVEL,
-    planMode: session.permissionMode === "plan",
+    permissionMode: permission.level,
+    planMode: permission.plan,
     createdAt: startedAt,
     updatedAt: startedAt,
     archivedAt: null,

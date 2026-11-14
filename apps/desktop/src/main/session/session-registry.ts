@@ -109,9 +109,23 @@ export class SessionRegistry {
     if (this.#entries.get(entry.sessionId) === entry) this.#entries.delete(entry.sessionId)
   }
 
+  /** 删除磁盘会话后移除其已停放的内存记录。 */
+  remove(id: string): void {
+    const entry = this.get(id)
+    if (entry?.phase === "parked") this.delete(entry)
+  }
+
   /** 全部记录，按加入顺序。 */
   all(): SessionEntry[] {
     return [...this.#entries.values()]
+  }
+
+  /** 停止指定会话或全部会话后，等待取消的启动请求清理磁盘。 */
+  async drainLaunches(id: string | undefined, stop: () => Promise<void>): Promise<void> {
+    const entries = id === undefined ? this.all() : [this.get(id)]
+    const drained = Promise.allSettled(entries.map((entry) => entry?.launch))
+    await stop()
+    await drained
   }
 
   /** 记下会话发出的一条事件：更新最近活动时间，回合结束时记下这一轮的结果。 */
@@ -185,12 +199,8 @@ export class SessionRegistry {
   }
 
   /** 全部会话的脱敏摘要，最近活动的在前。 */
-  summaries(stored: readonly SessionIndex[] = []): SessionSummary[] {
-    const summaries = new Map(
-      stored
-        .filter((index) => index.archivedAt === null)
-        .map((index) => [index.id, summarizeSavedSession(index)]),
-    )
+  summaries(stored: readonly SessionIndex[] = [], archived = false): SessionSummary[] {
+    const summaries = new Map(stored.map((index) => [index.id, summarizeSavedSession(index)]))
     for (const entry of this.#entries.values()) {
       const saved = summaries.get(entry.sessionId)
       const current = summarizeSession(entry)
@@ -201,7 +211,9 @@ export class SessionRegistry {
         accountId: current.accountId ?? saved?.accountId ?? null,
       })
     }
-    return [...summaries.values()].sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
+    return [...summaries.values()]
+      .filter((item) => (item.archivedAt != null) === archived)
+      .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
   }
 
   /** 所有会话里退出会中断的工作：进行中的回合和等待回答的权限；正在结束的会话不算。 */

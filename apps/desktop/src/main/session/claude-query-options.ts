@@ -1,6 +1,7 @@
 // 负责把会话启动参数换成 SDK query 选项：固定不读用户设置、不落盘，按档位映射思考预算。
 
 import type { CanUseTool, Options, ThinkingConfig } from "@anthropic-ai/claude-agent-sdk"
+import { maxSessionRetentionDays } from "../../session-history-contract"
 import type { SessionEffort, SessionPermissionMode, SessionThinking } from "./session-events"
 
 /** 开始一次会话的参数；binaryPath 省略时使用 PIGCLAUDE_CLAUDE_BIN 或平台包二进制。 */
@@ -77,7 +78,7 @@ export function buildQueryOptions(
       ? {}
       : {
           settings: {
-            ...(persistence === undefined ? {} : { cleanupPeriodDays: 36_500 }),
+            ...(persistence === undefined ? {} : { cleanupPeriodDays: maxSessionRetentionDays }),
             ...(options.fast ? { fastMode: true } : {}),
           },
         }),

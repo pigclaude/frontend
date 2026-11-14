@@ -19,6 +19,7 @@ import {
 } from "./session-types"
 import type { UsageRecorder } from "./usage-recorder"
 import { isSessionStoreId } from "./session-store-layout"
+import { registerSessionHistoryIpc } from "./session-history-ipc"
 import { captureSessionCheckpoint } from "../workbench/session-checkpoints"
 
 const permissionModes = new Set<SessionPermissionMode>([
@@ -110,11 +111,9 @@ export function registerSessionIpc(options: SessionIpcOptions): void {
     await host.ready()
     return value === undefined ? host.status() : host.status(readSessionTarget(value).sessionId)
   })
-  ipcMain.handle("pigclaude:session-list", async (event) => {
+  registerSessionHistoryIpc(ipcMain, (event) => {
     assertTrusted(options, event)
-    const host = requireHost(options)
-    await host.ready()
-    return host.list()
+    return requireHost(options)
   })
   ipcMain.handle("pigclaude:usage-summary", async (event, value: unknown) => {
     assertTrusted(options, event)

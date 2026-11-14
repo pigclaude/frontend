@@ -20,6 +20,8 @@ export type SessionSummary = {
   projectPath?: string
   /** 由项目第一条消息自动生成或用户指定的标题。 */
   title?: string
+  /** 归档时间，正在使用的会话也可归档。 */
+  archivedAt?: string | null
   /** 本机保存的会话可以用原 id 续接。 */
   restorable?: boolean
   status: SessionListStatus
@@ -42,6 +44,7 @@ export function summarizeSavedSession(index: SessionIndex): SessionSummary {
     workspace: index.workspace ?? index.projectPath,
     projectPath: index.projectPath,
     ...(index.title === "" ? {} : { title: index.title }),
+    archivedAt: index.archivedAt,
     status: index.status === "running" ? "parked" : index.status,
     lastTurn: index.lastTurn?.status ?? null,
     turnId: null,

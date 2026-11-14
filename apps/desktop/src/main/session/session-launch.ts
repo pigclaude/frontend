@@ -2,6 +2,9 @@
 // 被停止或会员失效打断时清理已建的环境并抛对应的错误码，不留半启动状态；会话对象一建好就交给宿主，便于中途停止。
 
 import { ClaudeSession } from "./claude-session"
+import { ClaudeAgentAdapter } from "./claude-agent-adapter"
+import { resolveClaudeBinaryPath } from "./claude-binary"
+import { SessionEnvironment } from "./session-environment"
 import { SessionClaudeExitError } from "./session-claude-launch"
 import type { DevProviderOverride } from "./dev-provider"
 import type { SessionEnvelope } from "./session-envelope"
@@ -44,6 +47,31 @@ export type SessionLaunchDeps = {
   timers: SessionTimers
   now: () => number
   newId: () => string
+}
+
+/** 供应可替换的启动端口，并使用桌面应用的默认实现。 */
+export function createSessionLaunchDeps(
+  options: Pick<SessionLaunchDeps, "membership" | "runtime" | "usage" | "userDataPath"> &
+    Partial<SessionLaunchDeps>,
+  timers: SessionTimers,
+  now: () => number,
+  newId: () => string,
+): SessionLaunchDeps {
+  return {
+    membership: options.membership,
+    runtime: options.runtime,
+    provider: options.provider ?? null,
+    createEnvironment: options.createEnvironment ?? SessionEnvironment.create,
+    createAdapter: options.createAdapter ?? ((onEvent) => new ClaudeAgentAdapter({ onEvent })),
+    resolveBinaryPath: options.resolveBinaryPath ?? (() => resolveClaudeBinaryPath()),
+    resolveProfile: options.resolveProfile ?? (async () => null),
+    userDataPath: options.userDataPath,
+    usage: options.usage,
+    permissionTimeoutMs: options.permissionTimeoutMs ?? 10 * 60_000,
+    timers,
+    now,
+    newId,
+  }
 }
 
 /** 一次启动和宿主之间的回调。 */

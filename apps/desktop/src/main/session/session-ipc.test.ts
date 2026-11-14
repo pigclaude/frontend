@@ -51,6 +51,15 @@ function fakeHost(): SessionHost {
     historyEvents: vi.fn(async () => []),
     models: vi.fn(async () => []),
     status: vi.fn(() => null),
+    ready: vi.fn(async () => undefined),
+    list: vi.fn(() => []),
+    history: {
+      rename: vi.fn(async () => undefined),
+      archive: vi.fn(async () => undefined),
+      delete: vi.fn(async () => undefined),
+      clear: vi.fn(async () => undefined),
+      setRetention: vi.fn(async () => ({ days: null })),
+    },
   } as unknown as SessionHost
 }
 
@@ -72,6 +81,35 @@ function handler(channel: string): (event: IpcMainInvokeEvent, value?: unknown) 
 }
 
 describe("session IPC registration", () => {
+  it("validates history operations and only dispatches authorized requests", async () => {
+    const { host } = register()
+    const sessionId = "session-1"
+    await expect(
+      handler("pigclaude:session-rename")(event(), { sessionId, title: " " }),
+    ).rejects.toThrow("INVALID_SESSION_INPUT")
+    await expect(
+      handler("pigclaude:session-delete")(event(), { sessionId: "../escape" }),
+    ).rejects.toThrow("INVALID_SESSION_INPUT")
+    await expect(handler("pigclaude:session-set-retention")(event(), { days: -1 })).rejects.toThrow(
+      "INVALID_SESSION_INPUT",
+    )
+    await expect(handler("pigclaude:session-list")(event(), { archived: "true" })).rejects.toThrow(
+      "INVALID_SESSION_INPUT",
+    )
+    await expect(handler("pigclaude:session-clear-history")(event(false))).rejects.toThrow()
+    expect(host.history.clear).not.toHaveBeenCalled()
+
+    await handler("pigclaude:session-list")(event(), { archived: true })
+    await handler("pigclaude:session-rename")(event(), { sessionId, title: " 新标题 " })
+    await handler("pigclaude:session-archive")(event(), { sessionId, archived: false })
+    await handler("pigclaude:session-delete")(event(), { sessionId })
+    await handler("pigclaude:session-set-retention")(event(), { days: null })
+    expect(host.list).toHaveBeenCalledWith(true)
+    expect(host.history.rename).toHaveBeenCalledWith(sessionId, "新标题")
+    expect(host.history.archive).toHaveBeenCalledWith(sessionId, false)
+    expect(host.history.delete).toHaveBeenCalledWith(sessionId)
+    expect(host.history.setRetention).toHaveBeenCalledWith(null)
+  })
   it("passes validated input to the host", async () => {
     const { host } = register()
 

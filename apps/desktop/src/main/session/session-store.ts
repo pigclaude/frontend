@@ -198,7 +198,7 @@ export class SessionStore {
   delete(id: string): Promise<void> {
     return this.#enqueue(id, async () => {
       this.#entry(id)
-      await rm(this.paths(id).directory, { recursive: true, force: true })
+      await rm(this.paths(id).directory, { recursive: true, force: true, maxRetries: 3 })
       this.#entries.delete(id)
       this.#repairedTimelines.delete(id)
     })

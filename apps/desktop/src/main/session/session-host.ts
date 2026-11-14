@@ -1,7 +1,5 @@
-// 负责编排一个窗口里的全部 Claude 会话：注册表加并发名额，启动、把命令交给对应的 ClaudeSession、停放、
+// 负责一个窗口内的 Claude 会话启动、并发名额、命令路由、停放和历史管理。
 import { randomUUID } from "node:crypto"
-import { ClaudeAgentAdapter } from "./claude-agent-adapter"
-import { resolveClaudeBinaryPath } from "./claude-binary"
 import type { OrganizationModelReader } from "./claude-bootstrap"
 import type { ClaudeSession } from "./claude-session"
 import type { DevProviderOverride } from "./dev-provider"
@@ -10,10 +8,10 @@ import type { QuestionAnswer } from "./question-broker"
 import { SessionConcurrency, defaultSessionLimits } from "./session-concurrency"
 import { SessionClaudeExitError } from "./session-claude-launch"
 import { hostEnvelope, type SessionEnvelope } from "./session-envelope"
-import { SessionEnvironment } from "./session-environment"
 import type { ActiveSession, SessionTimers } from "./session-host-active"
 import type { SessionPendingWork } from "./session-host-support"
 import {
+  createSessionLaunchDeps,
   launchSession,
   orderedSessionChecks,
   sessionLaunchCancellation,
@@ -27,25 +25,26 @@ import {
   rollbackSavedLaunch,
   SessionPersistence,
 } from "./session-persistence"
+import { SavedSessionLibrary } from "./saved-session-library"
 import type { SessionStore } from "./session-store"
 import { sessionModelReader } from "./session-models"
 import { SessionRegistry, type SessionEntry, type SessionParkReason } from "./session-registry"
 import type { SessionSummary } from "./session-summary"
-import type {
-  SessionAdapterFactory,
-  SessionEnvironmentFactory,
-  SessionHostEvent,
-  SessionMembership,
-  SessionModelCatalog,
-  SessionPermissionMode,
-  SessionRuntime,
-  SessionSendInput,
-  SessionStartInput,
-  SessionStatusView,
-  SessionTools,
-  SessionUsagePort,
+import {
+  SessionHostError,
+  type SessionAdapterFactory,
+  type SessionEnvironmentFactory,
+  type SessionHostEvent,
+  type SessionMembership,
+  type SessionModelCatalog,
+  type SessionPermissionMode,
+  type SessionRuntime,
+  type SessionSendInput,
+  type SessionStartInput,
+  type SessionStatusView,
+  type SessionTools,
+  type SessionUsagePort,
 } from "./session-types"
-import { SessionHostError } from "./session-types"
 
 /** SessionHost 依赖；所有外部端口都可注入，便于不启动真实 CLI 的测试。 */
 export type SessionHostOptions = {
@@ -89,6 +88,8 @@ const parkMessages: Record<SessionParkReason, string> = {
 
 /** 多会话宿主。保证同一个会话 id 只启动一次；运行的进程数不超过上限；停放的会话仍可补拉事件；启动失败不留半启动环境。 */
 export class SessionHost {
+  /** 会话历史和自动保留期，共用此宿主的进程释放顺序。 */
+  readonly history: SavedSessionLibrary
   readonly #membership: SessionMembership
   readonly #now: () => number
   readonly #newId: () => string
@@ -114,21 +115,18 @@ export class SessionHost {
             this.#emitHost({ type: "notice", message: "会话记录写入失败" }),
           )
     const timers = options.timers ?? realTimers
-    this.#launchDeps = {
-      membership: options.membership,
-      runtime: options.runtime,
-      provider: options.provider ?? null,
-      createEnvironment: options.createEnvironment ?? ((input) => SessionEnvironment.create(input)),
-      createAdapter: options.createAdapter ?? ((onEvent) => new ClaudeAgentAdapter({ onEvent })),
-      resolveBinaryPath: options.resolveBinaryPath ?? (() => resolveClaudeBinaryPath()),
-      resolveProfile: options.resolveProfile ?? (async () => null),
+    this.#launchDeps = createSessionLaunchDeps(options, timers, this.#now, this.#newId)
+    this.history = new SavedSessionLibrary({
+      persistence: this.#persistence,
       userDataPath: options.userDataPath,
-      usage: options.usage,
-      permissionTimeoutMs: options.permissionTimeoutMs ?? 10 * 60 * 1_000,
       timers,
       now: this.#now,
-      newId: this.#newId,
-    }
+      authorize: () => this.#assertMembership(),
+      stop: (id) => this.#registry.drainLaunches(id, () => this.stop(id)),
+      active: (id) => (this.#registry.get(id)?.phase ?? "parked") !== "parked",
+      removed: (id) => this.#registry.remove(id),
+      notify: (event) => this.#emitHost(event),
+    })
     this.#models = sessionModelReader(this.#launchDeps, options, (message) =>
       this.#emitHost({ type: "notice", message }),
     )
@@ -181,6 +179,7 @@ export class SessionHost {
       return existing.launch ?? { sessionId: existing.sessionId }
     }
     const sessionId = input.sessionId ?? this.#newId()
+    this.history.assertWritable(sessionId, tools?.close)
     checkFreshSessionId(store, sessionId, tools)
     const entry = this.#registry.add(sessionId, input.workspace, this.#now())
     entry.closeTools = tools?.close ?? null
@@ -258,11 +257,13 @@ export class SessionHost {
   ): Promise<void> {
     if (this.#persistence !== null) this.#assertMembership()
     if (this.#persistence !== null) await this.#ensureResumed(sessionId, tools)
+    this.history.assertWritable(sessionId)
     await this.#requireSession(sessionId).send(input, checkpoint)
   }
 
   async #ensureResumed(sessionId: string, tools?: () => SessionTools | undefined): Promise<void> {
     const store = await this.#persistence?.ready
+    this.history.assertWritable(sessionId)
     const current = this.#registry.get(sessionId)
     if (current?.phase === "running") return
     if (current?.launch) {
@@ -369,9 +370,9 @@ export class SessionHost {
   }
 
   /** 列出会话摘要，最近有活动的会话在前。 */
-  list(): SessionSummary[] {
+  list(archived = false): SessionSummary[] {
     this.#assertMembership()
-    return this.#registry.summaries(this.#persistence?.store?.list())
+    return this.#registry.summaries(this.#persistence?.store?.list(), archived)
   }
 
   /** 和这个工作区重叠的运行中会话里有没有进行中的回合；工作台据此拒绝切分支和恢复检查点。 */
@@ -389,11 +390,11 @@ export class SessionHost {
     if (!this.#disposed) for (const unsubscribe of this.#unsubscribe) unsubscribe()
     this.#disposed = true
     await this.stop()
+    await this.history.dispose()
     this.#concurrency.dispose(new SessionHostError("SESSION_CANCELLED", "会话启动已取消"))
     this.#listeners.clear()
   }
 
-  // 排队的取消，正在启动的等收尾，运行中的停放。
   async #halt(
     entry: SessionEntry,
     code: "SESSION_CANCELLED" | "MEMBERSHIP_REQUIRED",

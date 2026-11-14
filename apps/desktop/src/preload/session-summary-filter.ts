@@ -22,6 +22,9 @@ export function isSessionSummary(value: unknown): value is SessionSummary {
     typeof record.workspace === "string" &&
     (record.projectPath === undefined || typeof record.projectPath === "string") &&
     (record.title === undefined || typeof record.title === "string") &&
+    (record.archivedAt === undefined ||
+      record.archivedAt === null ||
+      typeof record.archivedAt === "string") &&
     (record.restorable === undefined || typeof record.restorable === "boolean") &&
     typeof record.status === "string" &&
     statuses.has(record.status as SessionListStatus) &&

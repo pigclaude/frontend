@@ -1,0 +1,129 @@
+// 验证会话历史的公开行为，使用真实目录和不会启动网络进程的假会话适配器。
+
+import { randomUUID } from "node:crypto"
+import { lstat, mkdir, writeFile } from "node:fs/promises"
+import { join } from "node:path"
+import { afterEach, describe, expect, it } from "vitest"
+import { SessionHost } from "./session-host"
+import { AdapterFactory, FakeMembership, FakeUsage } from "./session-host-fixtures"
+import { FakeRuntime } from "./session-runtime-fixture"
+import { SessionStore } from "./session-store"
+import { newSessionIndex, removeTemporaryDirs, temporaryDir } from "./session-store-fixtures"
+import { ManualClock } from "./session-clock-fixture"
+
+const opened: SessionHost[] = []
+const now = Date.UTC(2026, 10, 15, 0)
+const day = 24 * 60 * 60_000
+
+afterEach(async () => {
+  try {
+    for (const host of opened.splice(0)) await host.dispose()
+  } finally {
+    await removeTemporaryDirs()
+  }
+})
+
+describe("saved session library", () => {
+  it("renames and archives an active session without replacing its timeline", async () => {
+    const fixture = await launchHost()
+    const id = randomUUID()
+    await fixture.host.start({
+      sessionId: id,
+      workspace: fixture.userDataPath,
+      permissionMode: "default",
+    })
+    await fixture.host.history.rename(id, "项目核对")
+    await fixture.host.send(id, { text: "这条消息不得替换用户标题" })
+    await fixture.host.history.archive(id, true)
+
+    expect(fixture.host.list()).toEqual([])
+    expect(fixture.host.list(true)).toMatchObject([{ sessionId: id, title: "项目核对" }])
+    expect((await fixture.host.historyEvents(id, 0)).map((item) => item.event)).toContainEqual(
+      expect.objectContaining({ type: "turn-started", userText: "这条消息不得替换用户标题" }),
+    )
+    expect(fixture.store.get(id)?.titleSource).toBe("user")
+
+    await fixture.host.history.archive(id, false)
+    expect(fixture.host.list()).toMatchObject([{ sessionId: id, title: "项目核对" }])
+    expect(fixture.host.list(true)).toEqual([])
+  })
+
+  it("stops the session before removing both of its histories and reports disk usage", async () => {
+    const fixture = await launchHost()
+    const id = randomUUID()
+    await fixture.host.start({
+      sessionId: id,
+      workspace: fixture.userDataPath,
+      permissionMode: "default",
+    })
+    const paths = fixture.store.paths(id)
+    await writeFile(join(paths.claudeConfigDir, "transcript.jsonl"), "fixture history\n")
+    await writeFile(join(paths.claudeTmpDir, "temporary"), "fixture output\n")
+
+    expect(await fixture.host.history.stats()).toMatchObject({
+      count: 1,
+      bytes: expect.any(Number),
+    })
+    expect((await fixture.host.history.stats()).bytes).toBeGreaterThan(31)
+    await fixture.host.history.delete(id)
+    expect(fixture.adapters.last.stops).toBe(1)
+    await expect(lstat(paths.directory)).rejects.toMatchObject({ code: "ENOENT" })
+    expect(await fixture.host.history.stats()).toEqual({ count: 0, bytes: 0 })
+    await expect(fixture.host.historyEvents(id, 0)).rejects.toMatchObject({
+      code: "SESSION_NOT_FOUND",
+    })
+    expect(fixture.host.list()).toEqual([])
+  })
+
+  it("keeps sessions by default and automatically deletes only stopped sessions older than the chosen days", async () => {
+    const { host, store, userDataPath, clock } = await launchHost()
+    const active = randomUUID()
+    await host.start({ sessionId: active, workspace: userDataPath, permissionMode: "default" })
+    await store.update(active, { lastActivityAt: new Date(now - 12 * day).toISOString() })
+    for (const [id, time] of [
+      ["old", now - 12 * day],
+      ["boundary", now - 7 * day],
+    ] as const) {
+      await store.create(newSessionIndex(id, { lastActivityAt: new Date(time).toISOString() }))
+    }
+    await expect(host.history.retention()).resolves.toEqual({ days: null })
+    await host.history.sweep()
+    expect(store.list()).toHaveLength(3)
+
+    await expect(host.history.setRetention(7)).resolves.toEqual({ days: 7 })
+    expect(store.list().map((item) => item.id)).toEqual([active, "boundary"])
+    clock.advance(day)
+    await host.history.sweep()
+    expect(store.list().map((item) => item.id)).toEqual([active])
+
+    await host.history.setRetention(null)
+    await host.history.clear()
+    expect(store.list()).toEqual([])
+    expect(host.list()).toEqual([])
+    await expect(lstat(store.paths(active).directory)).rejects.toMatchObject({ code: "ENOENT" })
+  })
+})
+
+async function launchHost() {
+  const userDataPath = await temporaryDir()
+  const root = join(userDataPath, "session-store")
+  await mkdir(root)
+  const clock = new ManualClock(now)
+  const store = await SessionStore.open({ root, now: clock.now })
+  const adapters = new AdapterFactory([])
+  const host = new SessionHost({
+    membership: new FakeMembership(),
+    runtime: new FakeRuntime(),
+    usage: new FakeUsage(),
+    userDataPath,
+    resolveBinaryPath: () => join(userDataPath, "fixture-claude"),
+    resolveProfile: async () => ({ timezone: "Asia/Shanghai", locale: "zh-CN" }),
+    createAdapter: adapters.create,
+    sessionStore: Promise.resolve(store),
+    now: clock.now,
+    timers: clock.timers,
+  })
+  opened.push(host)
+  await host.ready()
+  return { userDataPath, host, store, adapters, clock }
+}

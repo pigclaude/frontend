@@ -2,6 +2,7 @@
 // 事件只含脱敏内容，不放 access/refresh token、代理密码或 daemon 会话令牌。
 
 import type { MembershipView } from "@pigclaude/contracts/membership"
+import type { SessionHistoryBridge, SessionListInput } from "../../session-history-contract"
 import type { ClaudeModelsOptions } from "./claude-model-query"
 import type { SessionFlagSettings } from "./claude-query"
 import type { ClaudeAgentStartOptions } from "./claude-query-options"
@@ -254,7 +255,7 @@ export type SessionUsagePort = {
 }
 
 /** preload 暴露给 renderer 的 session 命名空间；会话命令都带会话 id，事件都包在信封里。 */
-export type SessionBridge = {
+export type SessionBridge = Partial<SessionHistoryBridge> & {
   start: (input: SessionStartInput) => Promise<{ sessionId: string }>
   send: (input: SessionTarget & SessionSendInput) => Promise<void>
   cancel: (input: SessionTarget) => Promise<void>
@@ -270,7 +271,7 @@ export type SessionBridge = {
   /** 指定会话的快照；不带会话时给最近启动、还在运行的会话（单会话界面和环境页用）。 */
   status: (input?: SessionTarget) => Promise<SessionStatusView>
   /** 列出宿主里全部会话（排队、运行中和停放）的脱敏摘要，最近活动的在前。 */
-  list: () => Promise<SessionSummary[]>
+  list: (input?: SessionListInput) => Promise<SessionSummary[]>
   subscribe: (listener: (envelope: SessionEnvelope) => void) => () => void
 }
 

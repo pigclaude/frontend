@@ -4,6 +4,7 @@ import type { BrowserProfilesBridge } from "@pigclaude/contracts/browser-profile
 import { browserProfilesBridge } from "./browser-profiles"
 import { isSessionEnvelope } from "./session-event-filter"
 import { isSessionSummary } from "./session-summary-filter"
+import { sessionHistoryBridge } from "./session-history"
 import { sessionDefaultsBridge, type SessionDefaultsBridge } from "./session-defaults"
 import { windowBridge, type WindowBridge } from "./window-bridge"
 import { workbenchBridge } from "./workbench"
@@ -311,13 +312,14 @@ const bridge: PigclaudeBridge = {
       if (!isSessionStatus(value)) throw new Error("INVALID_SESSION_STATUS")
       return value
     },
-    list: async () => {
-      const value: unknown = await ipcRenderer.invoke("pigclaude:session-list")
+    list: async (input) => {
+      const value: unknown = await ipcRenderer.invoke("pigclaude:session-list", input)
       if (!Array.isArray(value) || !value.every(isSessionSummary)) {
         throw new Error("INVALID_SESSION_RESPONSE")
       }
       return value
     },
+    ...sessionHistoryBridge(),
     subscribe: (listener) => subscribeSession(listener),
   },
   sessionDefaults: sessionDefaultsBridge(),

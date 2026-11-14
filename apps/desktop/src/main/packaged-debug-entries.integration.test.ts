@@ -3,7 +3,7 @@
 
 import { FuseV1Options, getCurrentFuseWire } from "@electron/fuses"
 import { spawn, type ChildProcess } from "node:child_process"
-import { existsSync } from "node:fs"
+import { readdirSync } from "node:fs"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { connect, createServer } from "node:net"
@@ -93,9 +93,7 @@ async function probe(entry: DebugEntry, command: string, args: string[]): Promis
   try {
     const ready = await waitUntil(30_000, () => {
       if (child.exitCode !== null || child.signalCode !== null) throw new Error("应用启动后退出")
-      return args.length > 0
-        ? output.includes("CONTROL_READY")
-        : existsSync(join(userData, "Local Storage"))
+      return args.length > 0 ? output.includes("CONTROL_READY") : readdirSync(userData).length > 0
     })
     if (!ready) throw new Error("应用没有在 30 秒内启动")
     if (entry === "调试信号") sendDebugSignal(child)

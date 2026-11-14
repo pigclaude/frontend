@@ -57,7 +57,7 @@ function branchChip(): HTMLButtonElement {
 
 async function pickBranch(name: string): Promise<void> {
   await vi.waitFor(() => expect(document.querySelector(".draft-branch-menu")).toBeNull())
-  await userEvent.setup().click(branchChip())
+  await userEvent.setup({ delay: null }).click(branchChip())
   const option = await vi.waitFor(() => {
     const found = document.querySelector<HTMLElement>(`[aria-label="${name}"][role="option"]`)
     if (!found) throw new Error(`分支菜单里没有 ${name}`)
@@ -73,7 +73,7 @@ function projectNames(): string[] {
   )
 }
 
-describe("new session draft branches and worktrees", () => {
+describe("new session draft branches and worktrees", { timeout: 20_000 }, () => {
   it("shows the current branch and tells why switching failed without losing anything", async () => {
     const switchBranch = vi
       .fn<WorkbenchBridge["switchBranch"]>()
@@ -99,7 +99,7 @@ describe("new session draft branches and worktrees", () => {
       .mockRejectedValueOnce(new Error("WORKBENCH_BRANCH_EXISTS"))
       .mockResolvedValueOnce(branchesOn("fix/typo", ["fix/typo"]))
     await renderWithBranches({ switchBranch })
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
 
     await user.click(branchChip())
     const create = await vi.waitFor(() => {

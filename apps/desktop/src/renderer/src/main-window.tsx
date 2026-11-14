@@ -128,7 +128,6 @@ export function MainWindow({
   const sessionActive = session.state.started && !session.state.ended
   const workbenchRoot = sessionActive ? (sessionWorkspace ?? workspace) : workspace
   const openInPath = location.kind === "session" ? (sessionWorkspace ?? workspace) : workspace
-  const projectRevision = workspaceRevision(session.state.turns)
   const turnActive = sessionActive && session.state.turns.at(-1)?.result === null
   const toggleRight = () => {
     setRightOpen((open) => !open)
@@ -340,7 +339,7 @@ export function MainWindow({
                   sessionId={sessionId}
                   sessionActive={sessionActive}
                   turnActive={turnActive}
-                  workspaceRevision={projectRevision}
+                  workspaceRevision={workspaceRevision(session.state.turns)}
                   visible={inChat && rightOpen}
                   open={rightOpen}
                   maximized={rightMax}

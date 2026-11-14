@@ -434,7 +434,6 @@ export function MainWindow({
                     {...(workbenchRoot ? { onToggleTerminal: toggleTerminal } : {})}
                   />
                 ),
-                ...(openInPath ? { openIn: <OpenInButton path={openInPath} /> } : {}),
                 onOpenFile: (path: string) => {
                   workbench.current?.openFile(path)
                   setRightOpen(true)
@@ -445,6 +444,7 @@ export function MainWindow({
                 },
               }
             : {})}
+          {...(openInPath ? { openIn: <OpenInButton path={openInPath} /> } : {})}
           fresh={location.kind === "draft"}
           session={session}
           workspace={workspace}

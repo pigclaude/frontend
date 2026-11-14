@@ -73,7 +73,7 @@ async function openDraft(page: Page, theme: "light" | "dark"): Promise<void> {
         egress: { check: reject },
         workspaces: {
           list: async () => ["/Users/me/work/api", "/Users/me/work/web"],
-          add: async (path: string) => [path],
+          add: async () => ["/Users/me/work/api", "/Users/me/work/web"],
           files: async () => [],
           names: async () => ({ "/Users/me/work/api": "后端服务" }),
           rename: async () => ({}),
@@ -186,7 +186,10 @@ for (const theme of ["light", "dark"] as const) {
     await editor.press("Enter")
     await expect(page.locator('.proj-sessions .sess[data-status="completed"]')).toBeVisible()
     await expect(page.locator(".proj-sessions .agent-icon-badge")).toBeVisible()
-    await page.mouse.move(0, 0)
-    await expect(page).toHaveScreenshot(`sidebar-session-row-${theme}.png`, options)
+    await page.mouse.move(600, 400)
+    await expect(page.locator("aside.sidebar")).toHaveScreenshot(
+      `sidebar-session-row-${theme}.png`,
+      options,
+    )
   })
 }

@@ -19,7 +19,6 @@ import {
   assertWorkspace,
   buildStartOptions,
   buildUsageRecord,
-  createActiveSession,
   createEnvironmentOrThrow,
   errorMessage,
   hostError,
@@ -31,7 +30,7 @@ import {
   assertMembershipActive,
   buildStatusView,
 } from "./session-host-support"
-import type { ActiveSession } from "./session-host-support"
+import { createActiveSession, type ActiveSession } from "./session-host-active"
 import {
   enterRequestedMode,
   followReportedMode,

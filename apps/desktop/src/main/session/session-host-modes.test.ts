@@ -89,7 +89,9 @@ describe("SessionHost permission modes", () => {
 
     expect(harness.adapters.last.modes).toEqual(["auto"])
     expect(harness.host.status().permissionMode).toBe("acceptEdits")
-    expect(notices(harness)).toEqual(["自动审批不可用：当前账号的套餐不支持。会话按接受编辑运行。"])
+    expect(notices(harness)).toEqual([
+      "自动审批不可用：当前 Claude 账号的订阅不支持。会话按接受编辑运行。",
+    ])
     await harness.host.dispose()
   })
 

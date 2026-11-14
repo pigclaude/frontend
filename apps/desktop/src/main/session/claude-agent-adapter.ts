@@ -408,7 +408,7 @@ function buildQueryOptions(options: ClaudeAgentStartOptions, binaryPath: string)
         ? {}
         : { thinking: thinkingConfig(options.thinking) }),
     ...(options.fast ? { settings: { fastMode: true } } : {}),
-    // CLI 只在带这个开关启动时才接受会话中途切到完全访问；用户的二次确认在界面完成。
+    // CLI 只在带这个开关启动时才接受会话中途切到完全访问。
     allowDangerouslySkipPermissions: true,
   }
 }

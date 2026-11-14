@@ -4,7 +4,7 @@
 import type { SessionEnvironmentInput } from "./session-environment"
 import { providerModelCatalog, type DevProviderOverride } from "./dev-provider"
 import { systemLocale, systemTimezone } from "./session-locale"
-import type { ActiveSession } from "./session-host-support"
+import type { ActiveSession } from "./session-host-active"
 import { errorMessage, hostError } from "./session-host-support"
 import {
   SessionHostError,

@@ -2,7 +2,7 @@
 
 import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk"
 
-/** 应用允许的权限模式：四个档位加计划；与设计第 9.1 节一致。 */
+/** 应用允许的权限模式：四个档位加计划。 */
 export type SessionPermissionMode =
   "default" | "acceptEdits" | "auto" | "plan" | "bypassPermissions"
 

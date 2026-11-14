@@ -10,8 +10,8 @@ export type ModeState = {
   adapter: Pick<SessionAdapterPort, "setPermissionMode">
   /** 当前生效并已广播给界面的模式。 */
   permissionMode: SessionPermissionMode
-  /** 主进程请求过、Claude Code 还没报回的模式，按请求顺序。 */
-  modeEchoes: SessionPermissionMode[]
+  /** 主进程请求过、Claude Code 还没用 status 确认的模式，按请求顺序。 */
+  unconfirmedModes: SessionPermissionMode[]
 }
 
 /** 模式模块广播的事件：生效模式的变化和给用户的提示。 */
@@ -28,7 +28,7 @@ const modeLabels: Record<SessionPermissionMode, string> = {
 }
 
 const autoRefusalReasons: Record<string, string> = {
-  auto_mode_circuit_breaker: "当前账号的套餐不支持",
+  auto_mode_circuit_breaker: "当前 Claude 账号的订阅不支持",
   auto_mode_model: "当前模型不支持",
   auto_mode_fast_mode: "快速模式开启时不能使用",
   auto_mode_settings: "已被设置关闭",
@@ -93,14 +93,14 @@ export function followReportedMode(
   emit: EmitModeEvent,
 ): void {
   if (!isSessionPermissionMode(reported)) return
-  const echo = source === "status" ? state.modeEchoes.indexOf(reported) : -1
-  if (echo >= 0) {
-    state.modeEchoes.splice(0, echo + 1)
+  const confirmed = source === "status" ? state.unconfirmedModes.indexOf(reported) : -1
+  if (confirmed >= 0) {
+    state.unconfirmedModes.splice(0, confirmed + 1)
     return
   }
-  if (state.modeEchoes.length > 0) return
+  if (state.unconfirmedModes.length > 0) return
   const previous = state.permissionMode
-  show(state, reported, emit)
+  applyMode(state, reported, emit)
   if (source === "status" && previous === "auto" && reported === "default") {
     emit({ type: "notice", message: "Claude Code 关闭了自动审批，会话按监督审批运行。" })
   }
@@ -111,19 +111,19 @@ async function requestMode(
   mode: SessionPermissionMode,
   emit: EmitModeEvent,
 ): Promise<void> {
-  const expected = state.modeEchoes.at(-1) ?? state.permissionMode
-  const awaitsEcho = mode !== expected
-  if (awaitsEcho) state.modeEchoes.push(mode)
+  const expected = state.unconfirmedModes.at(-1) ?? state.permissionMode
+  const awaitsConfirmation = mode !== expected
+  if (awaitsConfirmation) state.unconfirmedModes.push(mode)
   try {
     await state.adapter.setPermissionMode(mode)
   } catch (error) {
-    if (awaitsEcho) dropLast(state.modeEchoes, mode)
+    if (awaitsConfirmation) dropLast(state.unconfirmedModes, mode)
     throw error
   }
-  show(state, mode, emit)
+  applyMode(state, mode, emit)
 }
 
-function show(state: ModeState, mode: SessionPermissionMode, emit: EmitModeEvent): void {
+function applyMode(state: ModeState, mode: SessionPermissionMode, emit: EmitModeEvent): void {
   if (state.permissionMode === mode) return
   state.permissionMode = mode
   emit({ type: "mode", permissionMode: mode })

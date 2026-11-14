@@ -28,7 +28,7 @@ import { AddProjectDialog } from "./shell/add-project-dialog"
 import { PigclaudeShell } from "./shell/pigclaude-shell"
 import { SettingsSidebar } from "./shell/settings-sidebar"
 import { SidebarFooter } from "./shell/sidebar-footer"
-import { SidebarNotice } from "./shell/sidebar-notice"
+import { SidebarNotice, sessionNotice } from "./shell/sidebar-notice"
 import {
   SettingsContributionView,
   SettingsRegistry,
@@ -359,6 +359,12 @@ export function MainWindow({
       notice={
         <SidebarNotice
           accounts={accounts.filter((account) => account.needsReauth)}
+          session={sessionNotice({
+            live: session.state.started && !session.state.ended,
+            accountId: session.state.accountId ?? session.status?.accountId ?? null,
+            accounts: pool.accounts,
+            proxies: pool.proxies,
+          })}
           onOpen={() => settings("accounts")}
         />
       }

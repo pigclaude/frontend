@@ -6,7 +6,7 @@ import { join } from "node:path"
 import type { IpcMain, IpcMainInvokeEvent } from "electron"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { registerProjectIpc } from "./project-ipc"
+import { registerProjectIpc, settleOpenPath } from "./project-ipc"
 import { ProjectNameStore } from "./project-names"
 import { WorkspaceStore } from "./workspace-store"
 
@@ -58,6 +58,13 @@ async function setup(options: { trusted?: boolean; membership?: MembershipView["
   }
   return { invoke, workspaces, revealed, state }
 }
+
+describe("settleOpenPath", () => {
+  it("passes the system result through, and treats a hung open as handed to the system", async () => {
+    await expect(settleOpenPath(Promise.resolve("No application"))).resolves.toBe("No application")
+    await expect(settleOpenPath(new Promise<string>(() => undefined), 10)).resolves.toBe("")
+  })
+})
 
 describe("registerProjectIpc", () => {
   it("renames a registered project and lists its display name", async () => {

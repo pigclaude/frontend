@@ -18,6 +18,18 @@ export type ProjectIpcOptions = {
 const knownErrors = /^(PROJECT_NOT_FOUND|PROJECT_NAME_INVALID|PROJECT_OPEN_FAILED)$/
 
 /**
+ * 等 shell.openPath 的结果，最多等 waitMs。Linux 会话总线不可用时文件管理器照样打开，
+ * openPath 却可能一直不返回；超时就当作已经交给了系统。
+ */
+export function settleOpenPath(result: Promise<string>, waitMs = 1500): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<string>((resolve) => {
+    timer = setTimeout(() => resolve(""), waitMs)
+  })
+  return Promise.race([result, timeout]).finally(() => clearTimeout(timer))
+}
+
+/**
  * 注册 `pigclaude:projects-*`。所有入口只接受受信主窗口；改动类入口还要求会员有效。
  * 失败时只抛出登记过的错误码，不把路径或系统错误原文交给页面。
  */

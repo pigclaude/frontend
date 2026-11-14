@@ -3,7 +3,7 @@
 import { dirname, join } from "node:path"
 import { ipcMain, shell } from "electron"
 import type { MembershipView } from "@pigclaude/contracts/membership"
-import { registerProjectIpc } from "./project-ipc"
+import { registerProjectIpc, settleOpenPath } from "./project-ipc"
 import { ProjectNameStore } from "./project-names"
 import { listWorkspaceFiles } from "./workspace-files"
 import { WorkspaceStore } from "./workspace-store"
@@ -47,7 +47,7 @@ export function registerWorkspaceIpc(input: {
     membership: input.membership,
     workspaces: getStore,
     names: getNames,
-    reveal: (path) => shell.openPath(path),
+    reveal: (path) => settleOpenPath(shell.openPath(path)),
   })
   input.workbench.register({
     isTrusted: input.isTrusted,

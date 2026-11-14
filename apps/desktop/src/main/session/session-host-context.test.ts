@@ -139,6 +139,23 @@ describe("SessionHost context usage", () => {
     await harness.host.dispose()
   })
 
+  it("asks nothing for model or account changes before the first init", async () => {
+    const harness = await startReplay(await workspaceDir())
+    harness.query.contextReply = async () => loadContextReply()
+
+    harness.runtime.switchAccount("acc-1", "acc-2", "switch")
+    await harness.host.setModel(harness.sessionId, "claude-opus-4")
+    await settle()
+    expect(harness.query.contextRequests).toEqual([])
+
+    await harness.host.send(harness.sessionId, { text: "hello" })
+    replay(harness.query, loadSdkFixture("context-flags-2.1.310").slice(0, 1))
+    await waitUntil(() => contextEvents(harness).length === 1)
+
+    expect(harness.query.contextRequests).toHaveLength(1)
+    await harness.host.dispose()
+  })
+
   it("does not poll while the session sits idle", async () => {
     const harness = await answeredFirstTurn()
 

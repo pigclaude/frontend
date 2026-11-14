@@ -132,6 +132,7 @@ export class FakeQuery implements AdapterQuery {
   /** 每次上下文占用查询的回复；缺省失败（不发事件），测试可以换成录制的回复或挂起的 Promise。 */
   contextReply: () => Promise<unknown> = () => Promise.reject(new Error("no context reply"))
 
+  /** 记下查询参数，按 contextReply 回复。 */
   getContextUsage(options: { detail: "summary" }): Promise<unknown> {
     this.contextRequests.push(options)
     return this.contextReply()

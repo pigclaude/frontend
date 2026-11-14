@@ -211,7 +211,7 @@ export type SessionAdapterPort = {
   contextUsage(): Promise<unknown>
 }
 
-/** 适配器工厂；onEvent 由 SessionHost 提供，会话事件由它转发，后台任务信号只在主进程内部使用。 */
+/** 适配器工厂；onEvent 由 SessionHost 提供，会话事件由它转发，后台任务和上下文压缩信号只在主进程内部使用。 */
 export type SessionAdapterFactory = (onEvent: (event: AdapterEvent) => void) => SessionAdapterPort
 
 /** 用量记录器端口；真实实现是 UsageRecorder。 */

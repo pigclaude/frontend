@@ -12,8 +12,9 @@ export type ContextUsageQueryOptions = {
 }
 
 /**
- * 一个会话的上下文占用查询。保证同一时间最多一次在途查询：在途期间再来的请求合并成它结束后的一次补查；
- * 查询失败或回复不可用时什么也不发；停止后不再查询，在途查询的结果也丢掉。
+ * 一个会话的上下文占用查询。保证第一次 init 之前不查询；同一时间最多一次在途查询，在途期间再来的请求
+ * 合并成它结束后的一次补查；查询失败、回复不可用或事件出口出错时什么也不发，之后照常查询；
+ * 停止后不再查询，在途查询的结果也丢掉。
  */
 export class ContextUsageQuery {
   readonly #options: ContextUsageQueryOptions
@@ -38,9 +39,9 @@ export class ContextUsageQuery {
     }
   }
 
-  /** 查询一次；已有查询在途时不另查，在它结束后最多再查一次。停止后什么也不做。 */
+  /** 查询一次；已有查询在途时不另查，在它结束后最多再查一次。第一次 init 之前和停止后什么也不做。 */
   request(): void {
-    if (this.#stopped) return
+    if (this.#stopped || !this.#initialized) return
     if (this.#running) {
       this.#again = true
       return
@@ -56,11 +57,20 @@ export class ContextUsageQuery {
   }
 
   async #run(): Promise<void> {
-    do {
-      this.#again = false
-      const event = await this.#options.read().then(contextEventFromReply, () => null)
-      if (event !== null && !this.#stopped) this.#options.emit(event)
-    } while (this.#again)
-    this.#running = false
+    try {
+      do {
+        this.#again = false
+        const event = await Promise.resolve()
+          .then(() => this.#options.read())
+          .then(contextEventFromReply, () => null)
+        try {
+          if (event !== null && !this.#stopped) this.#options.emit(event)
+        } catch {
+          // 事件出口出错只丢掉这一次结果，之后的查询照常进行。
+        }
+      } while (this.#again)
+    } finally {
+      this.#running = false
+    }
   }
 }

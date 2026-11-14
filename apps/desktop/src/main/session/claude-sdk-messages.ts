@@ -11,7 +11,7 @@ import type {
   SubagentRef,
 } from "./session-events"
 
-/** 把一条 SDK 消息换成按发出顺序排列的会话事件和后台任务信号；不认识的消息返回空数组。 */
+/** 把一条 SDK 消息换成按发出顺序排列的会话事件、后台任务信号和上下文压缩信号；不认识的消息返回空数组。 */
 export function normalizeSdkMessage(message: SDKMessage): AdapterEvent[] {
   switch (message.type) {
     case "system": {

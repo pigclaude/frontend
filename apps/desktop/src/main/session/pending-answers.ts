@@ -28,6 +28,8 @@ export type PendingAnswersOptions = {
   timeoutMs: number
   setTimer: (callback: () => void, ms: number) => ReturnType<typeof setTimeout>
   clearTimer: (handle: ReturnType<typeof setTimeout>) => void
+  /** 队列从空变成非空或清空时，通知会话暂停或恢复停滞计时。 */
+  onWaitingChange?: (waiting: boolean) => void
 }
 
 type Entry = PendingAnswer & {
@@ -58,9 +60,11 @@ export class PendingAnswers {
     const abortListener = (): void => {
       this.#settle(requestId, { type: "denied", reason: "aborted" })
     }
+    const wasEmpty = this.#entries.size === 0
     const timer = this.#options.setTimer(() => this.#expire(requestId), this.#options.timeoutMs)
     this.#entries.set(requestId, { ...request, timer, abortListener })
     request.signal.addEventListener("abort", abortListener, { once: true })
+    if (wasEmpty) this.#options.onWaitingChange?.(true)
   }
 
   /** 按用户的回答结算某一种请求；请求未知、已结算或种类不符时返回 false。 */
@@ -94,6 +98,7 @@ export class PendingAnswers {
     this.#entries.delete(requestId)
     this.#options.clearTimer(entry.timer)
     entry.signal.removeEventListener("abort", entry.abortListener)
+    if (this.#entries.size === 0) this.#options.onWaitingChange?.(false)
     entry.settle(outcome)
   }
 }

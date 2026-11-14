@@ -13,7 +13,7 @@ import {
   removeTemporaryDirs,
   temporaryDir,
 } from "./session-store-fixtures"
-import { appRestartedErrorCode, appRestartedNotice } from "./session-store-recovery"
+import { appRestartedErrorCode } from "./session-store-recovery"
 
 const now = Date.parse("2026-11-14T12:00:00.000Z")
 
@@ -77,7 +77,7 @@ describe("SessionStore 启动收敛", () => {
         sessionId: "s-1",
         seq: 5,
         at,
-        event: { type: "notice", message: appRestartedNotice },
+        event: { type: "notice", key: "host.restarted", level: "warning", params: {} },
       },
       {
         version: 1,

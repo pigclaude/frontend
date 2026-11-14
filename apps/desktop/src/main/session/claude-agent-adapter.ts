@@ -204,7 +204,9 @@ export class ClaudeAgentAdapter {
   }
 
   #handleMessage(message: SDKMessage): void {
-    for (const event of normalizeSdkMessage(message)) this.#emit(event)
+    const events = normalizeSdkMessage(message)
+    if (events.length === 0) this.#emit({ type: "sdk-activity" })
+    for (const event of events) this.#emit(event)
   }
 
   #emit(event: AdapterEvent): void {

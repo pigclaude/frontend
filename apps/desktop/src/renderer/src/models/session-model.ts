@@ -6,6 +6,7 @@
 // 每个动作都带 ISO UTC 时间：事件取信封时间，界面操作取操作时的时间。
 
 import type { SessionEnvelope } from "../../../main/session/session-envelope"
+import { timelineNotice } from "../../../main/session/session-notice"
 import type {
   SessionHostEvent,
   SessionPermissionMode,
@@ -196,7 +197,9 @@ function applyEvent(state: SessionUiState, envelope: SessionEnvelope): SessionUi
     case "mode":
       return { ...state, permissionMode: readMode(event.permissionMode, state.permissionMode) }
     case "notice":
-      return { ...state, notice: { message: event.message } }
+      return "message" in event && timelineNotice(event) === null
+        ? { ...state, notice: { message: event.message } }
+        : state
     case "message":
     case "tool-result":
     case "permission":

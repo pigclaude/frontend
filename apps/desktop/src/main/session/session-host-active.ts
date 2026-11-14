@@ -72,6 +72,7 @@ export type ActiveSessionHooks = {
   onTurnClosed: (active: ActiveSession, turn: ClosedTurn) => void
   /** 权限询问或提问 10 分钟没人回答；kind 是超时的那一种。 */
   onAnswerTimeout: (active: ActiveSession, kind: PendingAnswerKind) => void
+  onWaitingChange: (waiting: boolean) => void
   onAdapterEvent: (active: ActiveSession, event: AdapterEvent) => void
 }
 
@@ -90,6 +91,7 @@ export function createActiveSession(
     timeoutMs: hooks.permissionTimeoutMs,
     setTimer: hooks.timers.set,
     clearTimer: hooks.timers.clear,
+    onWaitingChange: hooks.onWaitingChange,
   })
   const subagents = new SubagentTasks()
   const broker = new PermissionBroker({

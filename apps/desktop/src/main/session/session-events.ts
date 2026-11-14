@@ -86,8 +86,12 @@ export type SessionEvent =
 /** 上下文压缩完成的信号；只在主进程内部使用，不发给渲染层。 */
 export type ContextCompactedSignal = { type: "context-compacted" }
 
-/** 适配器交给会话的全部输入：会话事件，以及只在主进程使用的后台任务、任务进度和上下文压缩信号。 */
-export type AdapterEvent = SessionEvent | BackgroundTaskSignal | TaskSignal | ContextCompactedSignal
+/** 未产生界面事件的 SDK 消息仍会刷新会话停滞计时。 */
+export type SdkActivitySignal = { type: "sdk-activity" }
+
+/** 适配器交给会话的输入，包括只用于主进程的任务、压缩和活动信号。 */
+export type AdapterEvent =
+  SessionEvent | BackgroundTaskSignal | TaskSignal | ContextCompactedSignal | SdkActivitySignal
 
 /** 界面用的模型信息；第一行是 CLI 的默认选择。 */
 export type ClaudeModel = {

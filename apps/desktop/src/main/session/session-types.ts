@@ -9,6 +9,7 @@ import type { PermissionAnswer, PermissionRequestEvent } from "./permission-brok
 import type { QuestionAnswer, QuestionRequestEvent, QuestionResolvedEvent } from "./question-broker"
 import type { SessionEnvelope } from "./session-envelope"
 import type { SessionEnvironmentInput } from "./session-environment"
+import type { TimelineNoticeEvent } from "./session-notice"
 import type {
   AdapterEvent,
   ClaudeModel,
@@ -76,7 +77,7 @@ export type SessionAccountSwitchedEvent = {
   reason: SessionAccountSwitchReason
 }
 
-/** 给用户的一次性提示，例如自动审批不可用的原因；界面用通知展示，不进对话记录。 */
+/** 给用户的一次性文字通知，例如自动审批不可用的原因；仍由原来的通知入口展示。 */
 export type SessionNoticeEvent = { type: "notice"; message: string }
 
 /** 一轮的结束方式：正常结束、出错结束，或被停止（含会话结束和会员失效）。 */
@@ -107,6 +108,7 @@ export type SessionHostEvent =
   | QuestionResolvedEvent
   | SessionAccountSwitchedEvent
   | SessionNoticeEvent
+  | TimelineNoticeEvent
   | SessionContextEvent
 
 /** 设计第 12 节的稳定错误码；SESSION_START_FAILED 来自第 13 节的配置目录失败分支。 */

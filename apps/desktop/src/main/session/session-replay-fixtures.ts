@@ -44,11 +44,13 @@ export type ReplayHarness = SessionHarness & {
 export async function startReplay(
   workspace: string,
   permissionMode: SessionPermissionMode = "default",
+  now?: () => number,
 ): Promise<ReplayHarness> {
   const query = new FakeQuery()
   let canUseTool: CanUseTool | undefined
   const harness = createHarness({
     workspace,
+    ...(now === undefined ? {} : { now }),
     createAdapter: (onEvent) =>
       new ClaudeAgentAdapter({
         onEvent,

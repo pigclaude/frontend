@@ -234,7 +234,9 @@ async function startedHarness(permissionMode: SessionPermissionMode): Promise<Se
 }
 
 function notices(harness: SessionHarness): string[] {
-  return harness.events.flatMap((event) => (event.type === "notice" ? [event.message] : []))
+  return harness.events.flatMap((event) =>
+    event.type === "notice" && "message" in event ? [event.message] : [],
+  )
 }
 
 function modes(harness: SessionHarness): string[] {

@@ -45,6 +45,7 @@ import type {
   SessionTurnEvent,
 } from "./session-types"
 import type { UsageRecord } from "./usage-recorder"
+import { TurnStallWatchdog, turnStallMs } from "./turn-stall-watchdog"
 import type { WorkflowEvent } from "./workflow-tasks"
 
 /** 构造一个会话所需的全部依赖；都只属于这一个会话。 */
@@ -74,6 +75,7 @@ export class ClaudeSession {
   readonly #options: ClaudeSessionOptions
   readonly #log: SessionEventLog
   readonly #reply: LiveReply
+  readonly #stall: TurnStallWatchdog
   readonly #context = new ContextUsageQuery({
     read: () => this.state.adapter.contextUsage(),
     emit: (event) => this.#publish(event),
@@ -88,6 +90,14 @@ export class ClaudeSession {
     this.#options = options
     this.#log = new SessionEventLog(options.sessionId, options.now)
     this.#reply = new LiveReply(options.now)
+    this.#stall = new TurnStallWatchdog(options.timers, options.now, () =>
+      this.#publish({
+        type: "notice",
+        key: "run.stalled",
+        level: "warning",
+        params: { seconds: String(turnStallMs / 1_000) },
+      }),
+    )
     this.state = createActiveSession(options.sessionId, options.input, options.environment, {
       createAdapter: options.createAdapter,
       permissionTimeoutMs: options.permissionTimeoutMs,
@@ -98,6 +108,7 @@ export class ClaudeSession {
       emitTurn: (event) => this.#publishTurn(event),
       onTurnClosed: (_active, turn) => this.#handleTurnClosed(turn),
       onAnswerTimeout: (_active, kind) => this.#handleAnswerTimeout(kind),
+      onWaitingChange: (waiting) => this.#stall.setWaiting(waiting),
       onAdapterEvent: (_active, event) => this.#handleAdapterEvent(event),
     })
   }
@@ -149,6 +160,7 @@ export class ClaudeSession {
   /** 停止当前一轮：拒绝未回答的权限和提问，中断并停止在途后台任务，以中断结束这一轮；会话保留供下一次发送。 */
   async cancel(): Promise<void> {
     const active = this.state
+    this.#stall.stop()
     active.pending.rejectAll("用户已取消")
     await active.turns.interrupt("interrupted", "SESSION_CANCELLED")
   }
@@ -185,6 +197,7 @@ export class ClaudeSession {
   end(rejectMessage: string, errorCode: "MEMBERSHIP_REQUIRED" | null): Promise<void> {
     const active = this.state
     if (active.ending !== null) return active.ending
+    this.#stall.stop()
     active.stopping = true
     this.#context.stop()
     active.ending = (async () => {
@@ -207,6 +220,7 @@ export class ClaudeSession {
     const active = this.state
     if (active.released) return
     active.released = true
+    this.#stall.stop()
     this.#context.stop()
     active.pending.rejectAll(cancelledPermissionMessage)
     this.#options.onReleased(this)
@@ -257,8 +271,11 @@ export class ClaudeSession {
   #handleAdapterEvent(event: AdapterEvent): void {
     const active = this.state
     if (active.released) return
+    this.#stall.activity()
     this.#context.observe(event)
     switch (event.type) {
+      case "sdk-activity":
+        return
       case "background-tasks":
       case "background-task-started":
       case "background-task-ended":
@@ -331,6 +348,7 @@ export class ClaudeSession {
   #handleAnswerTimeout(kind: PendingAnswerKind): void {
     const active = this.state
     if (active.released) return
+    this.#stall.stop()
     const [code, message] =
       kind === "question"
         ? (["QUESTION_TIMEOUT", "提问超时"] as const)
@@ -343,6 +361,8 @@ export class ClaudeSession {
 
   // 没有正常结束的一轮里，界面上已经流出、却没落成消息的正文补成一条消息，结束后不会消失。
   #publishTurn(event: SessionTurnEvent): void {
+    if (event.type === "turn-started") this.#stall.start()
+    else this.#stall.stop()
     const unfinished = this.#reply.takeUnfinished()
     if (event.type === "turn-ended" && event.status !== "completed" && unfinished !== null) {
       this.#publish({

@@ -7,6 +7,7 @@
 // 回答的位置，主进程补发的消息落在同一处。纯函数，不读桌面桥。
 
 import type { ThreadEvent } from "@pigclaude/ui-contracts"
+import { timelineNotice } from "../../../main/session/session-notice"
 import type { SessionHostEvent } from "../../../main/session/session-types"
 import { latestSessionContext } from "./session-context-usage"
 import { sessionErrorText } from "./session-errors"
@@ -175,6 +176,14 @@ function projectRun(
       case "workflow":
         push("workflow.updated", event.workflow, at)
         break
+      case "notice": {
+        const notice = timelineNotice(event)
+        if (notice !== null) {
+          const { key, level, params } = notice
+          push("notice", { key, level, params }, at)
+        }
+        break
+      }
       case "permission": {
         const card = cards.get(event.requestId)
         if (card === undefined) break

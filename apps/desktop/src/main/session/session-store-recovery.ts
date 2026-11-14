@@ -10,9 +10,6 @@ import type { SessionHostEvent } from "./session-types"
 /** 应用重启打断的回合在 turn-ended 和索引最后一轮里用的错误码。 */
 export const appRestartedErrorCode = "APP_RESTARTED"
 
-/** 补在被打断的回合里的提示。 */
-export const appRestartedNotice = "应用已重启，这一轮已中断"
-
 /** 一个运行中会话的收敛结果：新状态、要补写的信封（序号和时间已排好）；中断时还有最后一轮的新状态。 */
 export type SessionRecovery =
   | { status: "parked"; envelopes: SessionEnvelope[] }
@@ -44,7 +41,9 @@ export function recoverSession(
     requestId,
     answers: [],
   }))
-  if (openTurns.length > 0) events.push({ type: "notice", message: appRestartedNotice })
+  if (openTurns.length > 0) {
+    events.push({ type: "notice", key: "host.restarted", level: "warning", params: {} })
+  }
   for (const turnId of openTurns)
     events.push({
       type: "turn-ended",

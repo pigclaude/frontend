@@ -64,10 +64,10 @@ const timelineRules: { [K in SessionHostEvent["type"]]: TimelineRule<EventOf<K>>
     ),
   }),
   "account-switched": (event) => event,
-  notice: (event, marks) => ({
-    ...event,
-    message: redactString(event.message, "event.message", marks),
-  }),
+  notice: (event, marks) =>
+    "message" in event
+      ? { ...event, message: redactString(event.message, "event.message", marks) }
+      : { ...event, params: redactUnknown(event.params, "event.params", marks) },
   context: (event) => event,
   result: (event) => event,
   "turn-started": (event) => event,

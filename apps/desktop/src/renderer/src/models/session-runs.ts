@@ -1,9 +1,10 @@
 // 负责把一个会话的信封按回合分段：turn-started 到 turn-ended 之间的事件属于主进程开的那一轮；
 // 主进程还没开轮时，事件属于这个窗口刚发出、还在等主进程认领的那一轮；
 // 一轮结束后迟到的事件归到刚结束的那一轮。
-// 会话级的事件（启动、模式、提示、结束）不属于任何一轮。纯函数。
+// 会话级的事件（启动、模式、文字通知、结束）不属于任何一轮。纯函数。
 
 import type { SessionEnvelope } from "../../../main/session/session-envelope"
+import { timelineNotice } from "../../../main/session/session-notice"
 import type { SessionHostEvent } from "../../../main/session/session-types"
 import type { SessionTurn } from "./session-model"
 
@@ -24,7 +25,7 @@ const inRun: Readonly<Record<SessionHostEvent["type"], boolean>> = {
   question: true,
   "question-resolved": true,
   "account-switched": true,
-  notice: false,
+  notice: true,
   context: false,
   result: true,
   "turn-started": false,
@@ -61,6 +62,7 @@ export function sessionRuns(
       continue
     }
     if (!inRun[event.type]) continue
+    if (event.type === "notice" && timelineNotice(event) === null) continue
     if (cursor.current === null) {
       cursor.next = skipUnclaimed(runs, cursor.next)
       const waiting = runs[cursor.next]

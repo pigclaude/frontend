@@ -145,7 +145,9 @@ describe("new session draft branches and worktrees", { timeout: 20_000 }, () => 
     await flush()
 
     expect(createWorktree).toHaveBeenCalledExactlyOnceWith("/work/api", undefined)
-    expect(start).toHaveBeenCalledWith(expect.objectContaining({ workspace: worktreePath }))
+    expect(start).toHaveBeenCalledWith(
+      expect.objectContaining({ workspace: worktreePath, projectPath: "/work/api" }),
+    )
     expect(add.mock.calls.map(([path]) => path)).toEqual(["/work/api"])
     expect(projectNames()).toEqual(["api", "web"])
     const sessionsByProject = [...app.container.querySelectorAll<HTMLElement>(".proj-block")].map(

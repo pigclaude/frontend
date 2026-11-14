@@ -101,9 +101,7 @@ it("opens saved messages and sends the first new message to the existing session
   expect(bridge.start).not.toHaveBeenCalled()
   expect(send).not.toHaveBeenCalled()
   await typeAndSend(app.container, "继续这段会话")
-  expect(send).toHaveBeenCalledExactlyOnceWith(
-    expect.objectContaining({ sessionId: savedId, text: "继续这段会话" }),
-  )
+  expect(send).toHaveBeenCalledExactlyOnceWith({ sessionId: savedId, text: "继续这段会话" })
   expect(bridge.start).not.toHaveBeenCalled()
 })
 
@@ -114,6 +112,7 @@ it("keeps the original conversation and restores the editor when resume fails", 
   const bridge = await openSaved(send)
   await typeAndSend(app.container, "这段输入要保留")
   await flush()
+  expect(send).toHaveBeenCalledExactlyOnceWith({ sessionId: savedId, text: "这段输入要保留" })
 
   expect(app.container.querySelector(".chat-page")?.textContent).toContain("磁盘上的原回复")
   expect(app.container.querySelector(".composer .tiptap")?.textContent).toBe("这段输入要保留")

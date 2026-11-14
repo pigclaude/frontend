@@ -98,7 +98,7 @@ describe("ClaudeAgentAdapter controls", () => {
     await expect(adapter.contextUsage()).rejects.toThrow(/not active/)
   })
 
-  it("reports the permission mode from status messages and skips those without one", async () => {
+  it("reports the permission mode and counts status messages without a mode as SDK activity", async () => {
     const fake = new FakeQuery()
     const events: AdapterEvent[] = []
     const adapter = new ClaudeAgentAdapter({
@@ -110,9 +110,9 @@ describe("ClaudeAgentAdapter controls", () => {
 
     fake.emit(statusMessage({ status: "compacting" }))
     fake.emit(statusMessage({ status: null, permissionMode: "auto" }))
-    await waitUntil(() => events.length > 0)
+    await waitUntil(() => events.some((event) => event.type === "mode"))
 
-    expect(events).toEqual([{ type: "mode", permissionMode: "auto" }])
+    expect(events).toEqual([{ type: "sdk-activity" }, { type: "mode", permissionMode: "auto" }])
     await adapter.stop()
   })
 })

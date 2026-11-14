@@ -39,7 +39,7 @@ function standaloneSession() {
   const events: SessionHostEvent[] = []
   const usage: UsageRecord[] = []
   const released: ClaudeSession[] = []
-  const timers: (() => void)[] = []
+  const timers = new Map<ReturnType<typeof setTimeout>, () => void>()
   let nextId = 0
   const session = new ClaudeSession({
     sessionId: "s-1",
@@ -53,16 +53,27 @@ function standaloneSession() {
     permissionTimeoutMs: 60_000,
     timers: {
       set: (callback) => {
-        timers.push(callback)
-        return setTimeout(() => undefined, 0)
+        const handle = setTimeout(() => undefined, 0)
+        timers.set(handle, callback)
+        return handle
       },
-      clear: (handle) => clearTimeout(handle),
+      clear: (handle) => {
+        timers.delete(handle)
+        clearTimeout(handle)
+      },
     },
     now: () => fixedNow,
     newId: () => `turn-${(nextId += 1)}`,
     onReleased: (session) => released.push(session),
   })
-  return { session, adapters, environment, events, usage, released, timers }
+  const fireTimers = (): void => {
+    for (const [handle, fire] of [...timers]) {
+      if (!timers.delete(handle)) continue
+      clearTimeout(handle)
+      fire()
+    }
+  }
+  return { session, adapters, environment, events, usage, released, timers, fireTimers }
 }
 
 describe("ClaudeSession", () => {
@@ -80,14 +91,14 @@ describe("ClaudeSession", () => {
   })
 
   it("denies an unanswered permission and ends the turn when its own timer fires", async () => {
-    const { session, adapters, events, timers } = standaloneSession()
+    const { session, adapters, events, fireTimers } = standaloneSession()
     await session.launch(undefined)
     await session.send({ text: "run ls" })
     const canUseTool = adapters.last.canUseTool
     if (canUseTool === null) throw new Error("canUseTool was not passed to the adapter")
 
     const answer = canUseTool("Bash", { command: "ls" }, askOptions())
-    timers.forEach((fire) => fire())
+    fireTimers()
     adapters.last.emit(interruptedResult)
 
     await expect(answer).resolves.toMatchObject({ behavior: "deny" })
@@ -107,13 +118,13 @@ describe("ClaudeSession", () => {
   })
 
   it("gives up waiting for an interrupted reply and keeps its late result out of the next turn", async () => {
-    const { session, adapters, events, timers } = standaloneSession()
+    const { session, adapters, events, timers, fireTimers } = standaloneSession()
     await session.launch(undefined)
     await session.send({ text: "long answer" })
 
     const cancelling = session.cancel()
-    await waitUntil(() => timers.length === 1)
-    timers.forEach((fire) => fire())
+    await waitUntil(() => timers.size === 1)
+    fireTimers()
     await cancelling
     await session.send({ text: "next" })
     adapters.last.emit(interruptedResult)

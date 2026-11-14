@@ -2,10 +2,11 @@
 // 全部账号都失效时返回 auth_expired，正文已开始写出后不再换号。
 
 import { describe, expect, it } from "vitest"
-import { LocalDaemon } from "./daemon.ts"
+import { DaemonSessions, LocalDaemon } from "./daemon.ts"
 import { startRecordingProxy, startScriptedProxy } from "./daemon-proxy-fixture.test.ts"
 
-const sessionToken = "auth-failover-session-token"
+const sessions = new DaemonSessions()
+const sessionToken = sessions.register("auth-failover-session")
 const sessionHeaders = { "x-pigclaude-session": sessionToken }
 
 describe("auth failover", () => {
@@ -23,7 +24,7 @@ describe("auth failover", () => {
       })
       const daemon = new LocalDaemon({
         port: 0,
-        sessionToken,
+        sessions,
         runAuthorized: async (operation) => operation(new AbortController().signal),
         choose: ({ rejectedIds }) => {
           attempts.push([...rejectedIds])
@@ -31,10 +32,10 @@ describe("auth failover", () => {
             ? { id: "b", authorization: "token-b", proxyUrl: proxy.url }
             : { id: "a", authorization: "token-a", proxyUrl: proxy.url }
         },
-        onAccountRejected: (accountId, reason) => {
+        onAccountRejected: (_sessionId, accountId, reason) => {
           rejected.push([accountId, reason])
         },
-        onAccountSelected: (accountId, previousId) => {
+        onAccountSelected: (_sessionId, accountId, previousId) => {
           selected.push([accountId, previousId])
         },
       })
@@ -69,7 +70,7 @@ describe("auth failover", () => {
     const proxy = await startRecordingProxy([], () => ({ status: 401, body: "" }))
     const daemon = new LocalDaemon({
       port: 0,
-      sessionToken,
+      sessions,
       runAuthorized: async (operation) => operation(new AbortController().signal),
       choose: ({ rejectedIds }) => {
         attempts.push([...rejectedIds])
@@ -81,7 +82,7 @@ describe("auth failover", () => {
         }
         return null
       },
-      onAccountRejected: (accountId, reason) => {
+      onAccountRejected: (_sessionId, accountId, reason) => {
         rejected.push([accountId, reason])
       },
     })
@@ -117,10 +118,10 @@ describe("auth failover", () => {
     })
     const daemon = new LocalDaemon({
       port: 0,
-      sessionToken,
+      sessions,
       runAuthorized: async (operation) => operation(new AbortController().signal),
       choose: () => ({ id: "a", authorization: "token-a", proxyUrl: proxy.url }),
-      onAccountSelected: (accountId, previousId) => {
+      onAccountSelected: (_sessionId, accountId, previousId) => {
         selected.push([accountId, previousId])
       },
     })
@@ -152,7 +153,7 @@ describe("auth failover", () => {
   it("returns proxy_unavailable when the chosen account has an empty proxy url", async () => {
     const daemon = new LocalDaemon({
       port: 0,
-      sessionToken,
+      sessions,
       runAuthorized: async (operation) => operation(new AbortController().signal),
       choose: () => ({ id: "a", authorization: "token-a", proxyUrl: "" }),
     })
@@ -178,7 +179,7 @@ describe("auth failover", () => {
     })
     const daemon = new LocalDaemon({
       port: 0,
-      sessionToken,
+      sessions,
       runAuthorized: async (operation) => operation(new AbortController().signal),
       choose: () => ({ id: "a", authorization: "token-a", proxyUrl: proxy.url }),
     })

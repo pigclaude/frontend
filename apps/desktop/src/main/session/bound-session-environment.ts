@@ -1,28 +1,28 @@
-// 把配置使用权与 CLI 临时环境一起管理，环境清理确认前不会放开配置编辑。
+// 把配置使用权、会话的 daemon 令牌与 CLI 临时环境一起管理：环境清理确认前不会放开配置编辑，
+// 清理后吊销这个会话的令牌。
 
 import type { SessionEnvironmentInput } from "./session-environment"
 import type {
   SessionEnvironmentFactory,
   SessionEnvironmentPort,
   SessionProfile,
-  SessionRuntime,
+  SessionRuntimeLease,
 } from "./session-types"
 import { SessionHostError } from "./session-types"
 
-/** 先绑定共享配置，再创建真实环境；创建失败或正常清理均释放对应绑定。 */
+/** 先绑定共享配置，再创建真实环境；创建失败或正常清理均释放对应绑定，清理时无论成败都吊销会话令牌。 */
 export async function boundSessionEnvironment(
-  runtime: SessionRuntime,
+  session: SessionRuntimeLease,
   profile: SessionProfile | null,
   create: SessionEnvironmentFactory,
   input: SessionEnvironmentInput,
 ): Promise<SessionEnvironmentPort> {
   if (!profile) throw new SessionHostError("NO_AVAILABLE_ACCOUNT", "账号没有可用的浏览器配置")
-  const release =
-    (await runtime.bindEnvironment?.({
-      ...profile,
-      timezone: input.timezone,
-      locale: input.locale,
-    })) ?? (() => undefined)
+  const release = await session.bindEnvironment({
+    ...profile,
+    timezone: input.timezone,
+    locale: input.locale,
+  })
   try {
     const environment = await create(input)
     return {
@@ -33,8 +33,12 @@ export async function boundSessionEnvironment(
       binaryPath: environment.binaryPath,
       timezone: environment.timezone,
       cleanup: async () => {
-        await environment.cleanup()
-        release()
+        try {
+          await environment.cleanup()
+          release()
+        } finally {
+          session.close()
+        }
       },
     }
   } catch (error: unknown) {

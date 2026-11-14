@@ -50,7 +50,7 @@ describe("SessionHost models", () => {
     await harness.host.models()
 
     expect(harness.bootstrapReads).toEqual([
-      { baseUrl: "http://127.0.0.1:47821", sessionToken: "runtime-session-token" },
+      { baseUrl: "http://127.0.0.1:47821", sessionToken: "runtime-session-token-id-1" },
     ])
     expect(harness.environments.inputs[0]?.modelCatalog).toEqual({ organizationModels })
     expect(harness.events.filter((event) => event.type === "notice")).toEqual([])
@@ -74,7 +74,7 @@ describe("SessionHost models", () => {
   it("falls back to the built-in catalog and tells the user when Claude Code cannot list models", async () => {
     const harness = createHarness({
       workspace: await workspaceDir(),
-      modelsError: new Error("MODEL_QUERY_TIMEOUT: 超时 runtime-session-token"),
+      modelsError: new Error("MODEL_QUERY_TIMEOUT: 超时 runtime-session-token-id-1"),
     })
 
     const catalog = await harness.host.models()

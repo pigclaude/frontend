@@ -1,10 +1,11 @@
 // 验证 daemon 通过账号代理发起 CONNECT 时保留单字段 Basic 认证。
 
 import { describe, expect, it } from "vitest"
-import { LocalDaemon } from "./daemon.ts"
+import { DaemonSessions, LocalDaemon } from "./daemon.ts"
 import { startRecordingProxy } from "./daemon-proxy-fixture.test.ts"
 
-const sessionToken = "local-proxy-auth-test"
+const sessions = new DaemonSessions()
+const sessionToken = sessions.register("local-proxy-auth-test")
 
 describe("daemon 代理认证", () => {
   it.each([
@@ -22,7 +23,7 @@ describe("daemon 代理认证", () => {
       upstream.password = password
       const daemon = new LocalDaemon({
         port: 0,
-        sessionToken,
+        sessions,
         choose: () => ({
           id: "test-account",
           authorization: "access-token",

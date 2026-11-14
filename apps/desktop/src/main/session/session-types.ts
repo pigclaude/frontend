@@ -141,24 +141,30 @@ export type SessionMembership = {
   subscribe(listener: (view: MembershipView) => void): () => void
 }
 
-/** LocalRuntime 暴露给会话层的换号事件。 */
+/** LocalRuntime 暴露给会话层的换号事件；sessionId 是请求所属的会话。 */
 export type SessionRuntimeEvent = {
   type: "account-switched"
+  sessionId: string
   from: string | null
   to: string
   reason: SessionAccountSwitchReason
 }
 
+/** 一个会话在 runtime 里的路由句柄。保证 token 只认这一个会话；close 吊销令牌、停止为它选号，可重复调用。 */
+export type SessionRuntimeLease = {
+  /** 这个会话的 daemon 令牌，只写进它的 CLI 环境，并用于从错误文本里去掉它。 */
+  readonly token: string
+  /** CLI 启动前固定这个会话的语言和时区，返回清理后使用的释放操作。 */
+  bindEnvironment(profile: SessionProfile): Promise<() => void>
+  close(): void
+}
+
 /** SessionHost 需要的 runtime 端口；不暴露凭据或代理地址。 */
 export type SessionRuntime = {
   readonly daemonBaseUrl: string | null
-  readonly sessionToken: string
   subscribe(listener: (event: SessionRuntimeEvent) => void): () => void
-  setPreferredAccount?(accountId: string | null): void
-  /** 开始新会话前重置上一个会话的账号跟踪，保证首次选号广播 initial。 */
-  beginSession?(): void
-  /** CLI 启动前固定环境，返回清理后使用的释放操作。 */
-  bindEnvironment?: (profile: SessionProfile) => (() => void) | Promise<() => void>
+  /** 为一个会话注册随机 daemon 令牌并建立它自己的选号状态；preferredAccountId 只是偏好。 */
+  openSession(input: { sessionId: string; preferredAccountId: string | null }): SessionRuntimeLease
   /** 不刷新凭据地判断是否有可授权账号；启动前置条件。 */
   hasAvailableAccount(): Promise<boolean>
 }

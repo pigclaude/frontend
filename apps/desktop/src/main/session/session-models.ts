@@ -1,5 +1,5 @@
-// 负责查询模型目录：先经本机 daemon 读当次选中账号的组织模型，再在一次性环境里用占位 token
-// 让 Claude Code 列出模型，查询结束立即删除环境。真实凭据只留在 daemon 里。
+// 负责查询模型目录：为这次查询注册一个临时 daemon 令牌，先经本机 daemon 读当次选中账号的组织模型，
+// 再在一次性环境里用占位 token 让 Claude Code 列出模型，查询结束立即删除环境、吊销令牌。真实凭据只留在 daemon 里。
 // 读不到组织模型时只列内置模型，Claude Code 列不出时改用内置兜底目录；两种情况都提示用户。
 
 import type { OrganizationModel, OrganizationModelReader } from "./claude-bootstrap"
@@ -9,11 +9,17 @@ import { SessionHostError, type ClaudeModel, type SessionModelCatalog } from "./
 import type {
   SessionAdapterFactory,
   SessionEnvironmentFactory,
-  SessionErrorCode,
   SessionProfile,
   SessionRuntime,
+  SessionRuntimeLease,
 } from "./session-types"
-import { assertWorkspace, createEnvironmentOrThrow, errorMessage } from "./session-host-support"
+import {
+  assertWorkspace,
+  createEnvironmentOrThrow,
+  errorMessage,
+  hostError,
+  readBinaryPath,
+} from "./session-host-support"
 import { normalizeSessionLocale, normalizeSessionTimezone } from "./session-locale"
 import { boundSessionEnvironment } from "./bound-session-environment"
 
@@ -32,11 +38,10 @@ export type SessionModelQueryOptions = {
   /** 经 daemon 读当次选中账号的组织模型。 */
   readOrganizationModels: OrganizationModelReader
   defaultWorkspace: () => string
-  readBinaryPath: () => string
+  resolveBinaryPath: () => string
   userDataPath: string
   newId: () => string
   now: () => number
-  hostError: (code: SessionErrorCode, message: string) => SessionHostError
   /** 给用户的一次性提示；界面用全局通知展示。 */
   notify: (message: string) => void
 }
@@ -45,29 +50,42 @@ export type SessionModelQueryOptions = {
 export async function queryModels(options: SessionModelQueryOptions): Promise<SessionModelCatalog> {
   await options.assertMembership()
   const deadline = options.now() + catalogQueryBudgetMs
-  const organizationModels = await readOrganization(options)
+  const query = { sessionId: options.newId(), preferredAccountId: null }
+  const session = options.runtime.openSession(query)
   try {
-    const models = await listCliModels(options, organizationModels, deadline)
-    if (organizationModels === null) options.notify(organizationUnavailableNotice)
-    return { models, cliError: null }
-  } catch (error) {
-    options.notify(catalogUnavailableNotice)
-    return { models: [...CLAUDE_FALLBACK_MODELS], cliError: cliErrorText(error, options.hostError) }
+    const organizationModels = await readOrganization(options, session)
+    try {
+      const models = await listCliModels(
+        options,
+        query.sessionId,
+        session,
+        organizationModels,
+        deadline,
+      )
+      if (organizationModels === null) options.notify(organizationUnavailableNotice)
+      return { models, cliError: null }
+    } catch (error) {
+      options.notify(catalogUnavailableNotice)
+      return { models: [...CLAUDE_FALLBACK_MODELS], cliError: cliErrorText(error, session.token) }
+    }
+  } finally {
+    session.close()
   }
 }
 
 async function readOrganization(
   options: SessionModelQueryOptions,
+  session: SessionRuntimeLease,
 ): Promise<OrganizationModel[] | null> {
   const baseUrl = options.runtime.daemonBaseUrl
   if (baseUrl === null) return null
-  return options
-    .readOrganizationModels({ baseUrl, sessionToken: options.runtime.sessionToken })
-    .catch(() => null)
+  return options.readOrganizationModels({ baseUrl, sessionToken: session.token }).catch(() => null)
 }
 
 async function listCliModels(
   options: SessionModelQueryOptions,
+  sessionId: string,
+  session: SessionRuntimeLease,
   organizationModels: OrganizationModel[] | null,
   deadline: number,
 ): Promise<ClaudeModel[]> {
@@ -79,19 +97,19 @@ async function listCliModels(
   await assertWorkspace(workspace)
   const profile = await options.resolveProfile(null)
   const environment = await createEnvironmentOrThrow(
-    (input) => boundSessionEnvironment(options.runtime, profile, options.createEnvironment, input),
+    (input) => boundSessionEnvironment(session, profile, options.createEnvironment, input),
     {
-      sessionId: options.newId(),
+      sessionId,
       workspace,
       daemonBaseUrl,
-      sessionToken: options.runtime.sessionToken,
+      sessionToken: session.token,
       timezone: normalizeSessionTimezone(profile?.timezone),
       locale: normalizeSessionLocale(profile?.locale),
-      binaryPath: options.readBinaryPath(),
+      binaryPath: readBinaryPath(options.resolveBinaryPath, session.token),
       userDataPath: options.userDataPath,
       modelCatalog: { organizationModels },
     },
-    options.runtime.sessionToken,
+    session.token,
   )
   try {
     return await options
@@ -107,8 +125,8 @@ async function listCliModels(
   }
 }
 
-function cliErrorText(error: unknown, hostError: SessionModelQueryOptions["hostError"]): string {
+function cliErrorText(error: unknown, token: string): string {
   if (error instanceof SessionHostError) return error.message
   const message = errorMessage(error)
-  return hostError(classifyDaemonError(message) ?? "SDK_ERROR", message).message
+  return hostError(classifyDaemonError(message) ?? "SDK_ERROR", message, token).message
 }

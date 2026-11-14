@@ -1,27 +1,10 @@
 // 负责验证本机 runtime 的会员门禁、loopback 监听、退避重启、额度冷却和脱敏事件。
 
-import { mkdtemp, rm } from "node:fs/promises"
 import { connect as netConnect } from "node:net"
-import { networkInterfaces, tmpdir } from "node:os"
-import { join } from "node:path"
+import { networkInterfaces } from "node:os"
 import { describe, expect, it, vi } from "vitest"
-import type { MembershipView } from "@pigclaude/contracts/membership"
-import {
-  LocalStore,
-  type AccountRecord,
-  type ClaudeCredential,
-  type IpProxy,
-} from "@pigclaude/local-store"
-import { membershipView } from "../testing/profile-fixture"
-import { AccountChooser } from "./account-chooser"
-import {
-  LocalRuntime,
-  type LocalDaemonHandle,
-  type LocalDaemonOptions,
-  type LocalRuntimeEvent,
-} from "./local-runtime"
-
-const now = Date.parse("2026-10-26T00:00:00.000Z")
+import type { LocalRuntimeEvent } from "./local-runtime"
+import { account, harness, now, proxy } from "./local-runtime-fixtures"
 
 describe("LocalRuntime", () => {
   it("starts the daemon only after membership becomes active", async () => {
@@ -42,7 +25,8 @@ describe("LocalRuntime", () => {
   it("reports account count and a random session token", async () => {
     const h = await harness({ state: "connecting", accounts: [account("a"), account("b")] })
     expect(await h.runtime.inspect()).toMatchObject({ daemon: "starting", accountCount: 2 })
-    expect(h.runtime.sessionToken).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    const session = h.runtime.openSession({ sessionId: "s-1", preferredAccountId: null })
+    expect(session.token).toMatch(/^[A-Za-z0-9_-]{43}$/)
     await h.cleanup()
   })
 
@@ -160,10 +144,11 @@ describe("LocalRuntime", () => {
     await h.runtime.start()
     const daemon = h.daemons[0]
     if (daemon === undefined) throw new Error("daemon not started")
+    h.runtime.openSession({ sessionId: "s-1", preferredAccountId: null })
 
-    daemon.options.onAccountSelected("a", undefined)
-    daemon.options.onAccountRejected("a", "quota")
-    daemon.options.onAccountSelected("b", "a")
+    daemon.options.onAccountSelected("s-1", "a", undefined)
+    daemon.options.onAccountRejected("s-1", "a", "quota")
+    daemon.options.onAccountSelected("s-1", "b", "a")
     await vi.waitFor(async () => {
       expect((await h.store.getAccount("a"))?.exhaustedUntil).toBe(
         new Date(now + 300_000).toISOString(),
@@ -171,8 +156,8 @@ describe("LocalRuntime", () => {
     })
 
     expect(events).toEqual([
-      { type: "account-switched", from: null, to: "a", reason: "initial" },
-      { type: "account-switched", from: "a", to: "b", reason: "quota" },
+      { type: "account-switched", sessionId: "s-1", from: null, to: "a", reason: "initial" },
+      { type: "account-switched", sessionId: "s-1", from: "a", to: "b", reason: "quota" },
     ])
     const serialized = JSON.stringify(events)
     expect(serialized).not.toContain("token-a")
@@ -188,10 +173,13 @@ describe("LocalRuntime", () => {
     await h.runtime.start()
     const daemon = h.daemons[0]
     if (daemon === undefined) throw new Error("daemon not started")
+    h.runtime.openSession({ sessionId: "s-1", preferredAccountId: null })
 
-    daemon.options.onAccountSelected("a", undefined)
-    daemon.options.onAccountSelected("a", undefined)
-    expect(events).toEqual([{ type: "account-switched", from: null, to: "a", reason: "initial" }])
+    daemon.options.onAccountSelected("s-1", "a", undefined)
+    daemon.options.onAccountSelected("s-1", "a", undefined)
+    expect(events).toEqual([
+      { type: "account-switched", sessionId: "s-1", from: null, to: "a", reason: "initial" },
+    ])
     await h.cleanup()
   })
 
@@ -202,12 +190,13 @@ describe("LocalRuntime", () => {
     await h.runtime.start()
     const daemon = h.daemons[0]
     if (daemon === undefined) throw new Error("daemon not started")
+    h.runtime.openSession({ sessionId: "s-1", preferredAccountId: null })
 
-    daemon.options.onAccountSelected("a", undefined)
-    daemon.options.onAccountSelected("b", undefined)
+    daemon.options.onAccountSelected("s-1", "a", undefined)
+    daemon.options.onAccountSelected("s-1", "b", undefined)
     expect(events).toEqual([
-      { type: "account-switched", from: null, to: "a", reason: "initial" },
-      { type: "account-switched", from: "a", to: "b", reason: "switch" },
+      { type: "account-switched", sessionId: "s-1", from: null, to: "a", reason: "initial" },
+      { type: "account-switched", sessionId: "s-1", from: "a", to: "b", reason: "switch" },
     ])
     await h.cleanup()
   })
@@ -217,16 +206,17 @@ describe("LocalRuntime", () => {
     const events: LocalRuntimeEvent[] = []
     h.runtime.subscribe((event) => events.push(event))
     await h.runtime.start()
-    h.daemons[0]?.options.onAccountSelected("a", undefined)
+    h.runtime.openSession({ sessionId: "s-1", preferredAccountId: null })
+    h.daemons[0]?.options.onAccountSelected("s-1", "a", undefined)
 
     await h.runtime.stop()
     await h.runtime.start()
-    h.runtime.beginSession()
-    h.daemons[1]?.options.onAccountSelected("a", undefined)
+    h.runtime.openSession({ sessionId: "s-2", preferredAccountId: null })
+    h.daemons[1]?.options.onAccountSelected("s-2", "a", undefined)
 
     expect(events).toEqual([
-      { type: "account-switched", from: null, to: "a", reason: "initial" },
-      { type: "account-switched", from: null, to: "a", reason: "initial" },
+      { type: "account-switched", sessionId: "s-1", from: null, to: "a", reason: "initial" },
+      { type: "account-switched", sessionId: "s-2", from: null, to: "a", reason: "initial" },
     ])
     await h.cleanup()
   })
@@ -239,8 +229,9 @@ describe("LocalRuntime", () => {
     await h.runtime.start()
     const daemon = h.daemons[0]
     if (daemon === undefined) throw new Error("daemon not started")
+    h.runtime.openSession({ sessionId: "s-1", preferredAccountId: null })
 
-    daemon.options.onAccountRejected("a", "auth")
+    daemon.options.onAccountRejected("s-1", "a", "auth")
     await vi.waitFor(async () => {
       expect((await h.store.getAccount("a"))?.needsReauth).toBe(true)
     })
@@ -256,173 +247,19 @@ describe("LocalRuntime", () => {
     await h.runtime.start()
     const daemon = h.daemons[0]
     if (daemon === undefined) throw new Error("daemon not started")
+    h.runtime.openSession({ sessionId: "s-1", preferredAccountId: null })
 
-    daemon.options.onAccountSelected("a", undefined)
-    daemon.options.onAccountRejected("a", "quota")
-    daemon.options.onAccountSelected("a", undefined)
-    daemon.options.onAccountSelected("b", undefined)
+    daemon.options.onAccountSelected("s-1", "a", undefined)
+    daemon.options.onAccountRejected("s-1", "a", "quota")
+    daemon.options.onAccountSelected("s-1", "a", undefined)
+    daemon.options.onAccountSelected("s-1", "b", undefined)
     expect(events).toEqual([
-      { type: "account-switched", from: null, to: "a", reason: "initial" },
-      { type: "account-switched", from: "a", to: "b", reason: "switch" },
+      { type: "account-switched", sessionId: "s-1", from: null, to: "a", reason: "initial" },
+      { type: "account-switched", sessionId: "s-1", from: "a", to: "b", reason: "switch" },
     ])
     await h.cleanup()
   })
 })
-
-type FakeDaemon = LocalDaemonHandle & {
-  options: LocalDaemonOptions
-  started: boolean
-  stopped: boolean
-  exit: () => void
-}
-
-type FakeMembership = {
-  view: () => MembershipView
-  subscribe: (listener: (view: MembershipView) => void) => () => void
-  publish: (state: MembershipView["state"]) => void
-}
-
-type Harness = {
-  runtime: LocalRuntime
-  store: LocalStore
-  membership: FakeMembership
-  daemons: FakeDaemon[]
-  sleeps: number[]
-  cleanup: () => Promise<void>
-}
-
-type HarnessOptions = {
-  state?: MembershipView["state"]
-  accounts?: AccountRecord[]
-  proxies?: IpProxy[]
-  now?: () => number
-  startFailures?: number
-  backoffMs?: readonly number[]
-  quotaCooldownMs?: number
-  realDaemon?: boolean
-}
-
-async function harness(options: HarnessOptions = {}): Promise<Harness> {
-  const dir = await mkdtemp(join(tmpdir(), "local-runtime-"))
-  const store = new LocalStore(dir)
-  for (const item of options.proxies ?? []) await store.saveProxy(item)
-  for (const item of options.accounts ?? []) await store.saveAccount(item)
-  const membership = fakeMembership(options.state ?? "active")
-  const chooser = new AccountChooser({
-    store,
-    refresher: { refreshIfNeeded: async (record) => record },
-    now: options.now ?? (() => now),
-  })
-  const daemons: FakeDaemon[] = []
-  const sleeps: number[] = []
-  let startFailures = options.startFailures ?? 0
-  const createDaemon = (daemonOptions: LocalDaemonOptions): LocalDaemonHandle => {
-    const fail = startFailures > 0
-    if (fail) startFailures -= 1
-    const daemon: FakeDaemon = {
-      port: 42000 + daemons.length,
-      options: daemonOptions,
-      started: false,
-      stopped: false,
-      start: async () => {
-        if (fail) throw new Error("listen failed")
-        daemon.started = true
-      },
-      stop: async () => {
-        daemon.stopped = true
-      },
-      exit: () => daemonOptions.onExit(),
-    }
-    daemons.push(daemon)
-    return daemon
-  }
-  const runtime = new LocalRuntime({
-    store,
-    chooser,
-    membership,
-    runAuthorized: async (operation) => operation(new AbortController().signal),
-    sessionToken: undefined,
-    now: options.now ?? (() => now),
-    backoffMs: options.backoffMs,
-    quotaCooldownMs: options.quotaCooldownMs,
-    sleep: async (ms) => {
-      sleeps.push(ms)
-    },
-    ...(options.realDaemon ? {} : { createDaemon }),
-  })
-  return {
-    runtime,
-    store,
-    membership,
-    daemons,
-    sleeps,
-    cleanup: async () => {
-      await runtime.dispose()
-      await rm(dir, { recursive: true, force: true })
-    },
-  }
-}
-
-function fakeMembership(state: MembershipView["state"]): FakeMembership {
-  let current = membershipView(state)
-  const listeners = new Set<(view: MembershipView) => void>()
-  return {
-    view: () => current,
-    subscribe: (listener) => {
-      listeners.add(listener)
-      return () => listeners.delete(listener)
-    },
-    publish: (next) => {
-      current = membershipView(next)
-      for (const listener of [...listeners]) listener(current)
-    },
-  }
-}
-
-function account(id: string, overrides: Partial<AccountRecord> = {}): AccountRecord {
-  return {
-    schemaVersion: 3,
-    id,
-    displayName: id,
-    enabled: true,
-    credential: credentialFor(id),
-    needsReauth: false,
-    proxyId: "p1",
-    fingerprint: {
-      seed: "123456",
-      brand: "Chrome",
-      platform: "macos",
-      lang: "en-US",
-      timezone: "America/Los_Angeles",
-      canvasNoise: "1",
-      clientRectsNoise: "1",
-    },
-    browserProfileDir: `/tmp/browser-profiles/${id}`,
-    exhaustedUntil: null,
-    createdAt: "2026-10-26T00:00:00.000Z",
-    updatedAt: "2026-10-26T00:00:00.000Z",
-    ...overrides,
-  }
-}
-
-function credentialFor(id: string): ClaudeCredential {
-  return {
-    schemaVersion: 1,
-    accessToken: `token-${id}`,
-    refreshToken: `refresh-${id}`,
-    expiresAt: now + 60 * 60 * 1_000,
-    scopes: ["user:inference"],
-    accountUuid: `uuid-${id}`,
-    email: `${id}@example.com`,
-    organizationUuid: "org",
-    subscriptionType: "max",
-    rateLimitTier: null,
-  }
-}
-
-function proxy(id: string): IpProxy {
-  return { schemaVersion: 1, id, name: id, url: `http://${id}.test:8080`, lastTest: null }
-}
 
 function externalIpv4(): string | null {
   for (const entries of Object.values(networkInterfaces())) {

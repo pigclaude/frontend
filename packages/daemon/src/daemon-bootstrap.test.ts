@@ -3,7 +3,7 @@
 // bootstrap 按账号代理或系统网络出网：这里的无 dispatcher 请求就是直连，会被记录。
 
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { LocalDaemon } from "./daemon.ts"
+import { DaemonSessions, LocalDaemon } from "./daemon.ts"
 import { startRecordingProxy } from "./daemon-proxy-fixture.test.ts"
 
 const directUpstream = vi.hoisted(() => ({
@@ -28,7 +28,8 @@ vi.mock("undici", async () => {
   }
 })
 
-const sessionToken = "bootstrap-session-token"
+const sessions = new DaemonSessions()
+const sessionToken = sessions.register("bootstrap-session")
 const sessionHeaders = { "x-pigclaude-session": sessionToken }
 const bootstrapPath = "/api/claude_cli/bootstrap?entrypoint=sdk-ts&model=claude-sonnet-5-5"
 
@@ -37,7 +38,7 @@ type ChooseAccount = ConstructorParameters<typeof LocalDaemon>[0]["choose"]
 function testDaemon(choose: ChooseAccount): LocalDaemon {
   return new LocalDaemon({
     port: 0,
-    sessionToken,
+    sessions,
     runAuthorized: async (operation) => operation(new AbortController().signal),
     choose,
   })
@@ -156,7 +157,7 @@ describe("bootstrap endpoint", () => {
       const proxy = await startRecordingProxy([], () => ({ status, headers, body: "refused" }))
       const daemon = new LocalDaemon({
         port: 0,
-        sessionToken,
+        sessions,
         runAuthorized: async (operation) => operation(new AbortController().signal),
         choose: ({ rejectedIds }) => {
           attempts.push([...rejectedIds])
@@ -164,8 +165,8 @@ describe("bootstrap endpoint", () => {
             ? { id: "b", authorization: "token-b", proxyUrl: proxy.url }
             : { id: "a", authorization: "token-a", proxyUrl: proxy.url }
         },
-        onAccountSelected: (accountId) => selected.push(accountId),
-        onAccountRejected: (accountId) => rejected.push(accountId),
+        onAccountSelected: (_sessionId, accountId) => selected.push(accountId),
+        onAccountRejected: (_sessionId, accountId) => rejected.push(accountId),
       })
       await daemon.start()
       try {

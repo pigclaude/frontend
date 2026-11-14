@@ -15,10 +15,7 @@ import { pinnedCatalog } from "./session-host-provider"
 import {
   assertMembershipActive,
   buildStatusView,
-  hostError,
   mapStartError,
-  readBinaryPath,
-  sanitizeStartError,
   noPendingWork,
   type SessionPendingWork,
 } from "./session-host-support"
@@ -142,9 +139,7 @@ export class SessionHost {
       throw new SessionHostError("SESSION_ALREADY_ACTIVE", "已有活动会话")
     }
     this.#stopRequested = false
-    const promise = this.#startSession(input, tools).catch((error: unknown) => {
-      throw sanitizeStartError(error, this.#runtime.sessionToken)
-    })
+    const promise = this.#startSession(input, tools)
     this.#startPromise = promise
     try {
       return await promise
@@ -175,7 +170,7 @@ export class SessionHost {
       createAdapter: this.#createAdapter,
       emit: (envelope) => this.#emit(envelope),
       recordUsage: (record) => void this.#usage.record(record),
-      sessionToken: () => this.#runtime.sessionToken,
+      sessionToken: () => prepared.sessionToken,
       provider: this.#provider,
       permissionTimeoutMs: this.#permissionTimeoutMs,
       timers: realTimers,
@@ -196,7 +191,7 @@ export class SessionHost {
       if (this.#stopRequested || this.#disposed) {
         throw new SessionHostError("SESSION_CANCELLED", "会话启动已取消")
       }
-      throw mapStartError(error, this.#runtime.sessionToken)
+      throw mapStartError(error, prepared.sessionToken)
     }
     if (this.#stopRequested || this.#disposed) {
       await session.release()
@@ -303,11 +298,10 @@ export class SessionHost {
       resolveProfile: this.#resolveProfile,
       readOrganizationModels: this.#readOrganizationModels,
       defaultWorkspace: this.#defaultWorkspace,
-      readBinaryPath: () => readBinaryPath(this.#resolveBinaryPath, this.#runtime.sessionToken),
+      resolveBinaryPath: this.#resolveBinaryPath,
       userDataPath: this.#userDataPath,
       newId: this.#newId,
       now: this.#now,
-      hostError: (code, message) => hostError(code, message, this.#runtime.sessionToken),
       notify: (message) => this.#emitHost({ type: "notice", message }),
     })
   }
@@ -340,7 +334,7 @@ export class SessionHost {
   }
 
   #handleRuntimeEvent(event: SessionRuntimeEvent): void {
-    this.#session?.applyAccountSwitch(event)
+    this.#sessionFor(event.sessionId)?.applyAccountSwitch(event)
   }
 
   #sessionFor(sessionId: string): ClaudeSession | null {

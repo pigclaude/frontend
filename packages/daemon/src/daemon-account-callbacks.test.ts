@@ -2,10 +2,11 @@
 // 响应正文开始写出之后不再换号，也不再触发选中回调。
 
 import { describe, expect, it } from "vitest"
-import { LocalDaemon } from "./daemon.ts"
+import { DaemonSessions, LocalDaemon } from "./daemon.ts"
 import { startRecordingProxy, startScriptedProxy } from "./daemon-proxy-fixture.test.ts"
 
-const sessionToken = "callbacks-session-token"
+const sessions = new DaemonSessions()
+const sessionToken = sessions.register("callbacks-session")
 
 describe("account callbacks", () => {
   it("reports the quota rejection and both selections before the body is written", async () => {
@@ -20,16 +21,16 @@ describe("account callbacks", () => {
     })
     const daemon = new LocalDaemon({
       port: 0,
-      sessionToken,
+      sessions,
       runAuthorized: async (operation) => operation(new AbortController().signal),
       choose: ({ rejectedIds }) =>
         rejectedIds.includes("a")
           ? { id: "b", authorization: "token-b", proxyUrl: proxy.url }
           : { id: "a", authorization: "token-a", proxyUrl: proxy.url },
-      onAccountRejected: (accountId, reason) => {
+      onAccountRejected: (_sessionId, accountId, reason) => {
         rejected.push([accountId, reason])
       },
-      onAccountSelected: (accountId, previousId) => {
+      onAccountSelected: (_sessionId, accountId, previousId) => {
         selected.push([accountId, previousId])
       },
     })
@@ -62,7 +63,7 @@ describe("account callbacks", () => {
     let settled = false
     const daemon = new LocalDaemon({
       port: 0,
-      sessionToken,
+      sessions,
       runAuthorized: async (operation) => operation(new AbortController().signal),
       choose: async () => {
         await Promise.resolve()
@@ -104,10 +105,10 @@ describe("account callbacks", () => {
     })
     const daemon = new LocalDaemon({
       port: 0,
-      sessionToken,
+      sessions,
       runAuthorized: async (operation) => operation(new AbortController().signal),
       choose: () => ({ id: "a", authorization: "token-a", proxyUrl: proxy.url }),
-      onAccountSelected: (accountId, previousId) => {
+      onAccountSelected: (_sessionId, accountId, previousId) => {
         selected.push([accountId, previousId])
       },
     })

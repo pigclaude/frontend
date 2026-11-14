@@ -2,12 +2,13 @@
 // 第一次就没有代理时仍返回 proxy_unavailable，并且不会回退成直连：这里的无 dispatcher 请求会被记录并拒绝。
 
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { LocalDaemon } from "./daemon.ts"
+import { DaemonSessions, LocalDaemon } from "./daemon.ts"
 import { startRecordingProxy } from "./daemon-proxy-fixture.test.ts"
 
 const directConnections = vi.hoisted(() => [] as string[])
 
-const sessionToken = "quota-proxy-session-token"
+const sessions = new DaemonSessions()
+const sessionToken = sessions.register("quota-proxy-session")
 const sessionHeaders = { "x-pigclaude-session": sessionToken }
 
 vi.mock("undici", async () => {
@@ -44,7 +45,7 @@ describe("quota proxy failover", () => {
     })
     const daemon = new LocalDaemon({
       port: 0,
-      sessionToken,
+      sessions,
       runAuthorized: async (operation) => operation(new AbortController().signal),
       choose: ({ rejectedIds }) => {
         attempts.push([...rejectedIds])
@@ -82,7 +83,7 @@ describe("quota proxy failover", () => {
     const attempts: string[][] = []
     const daemon = new LocalDaemon({
       port: 0,
-      sessionToken,
+      sessions,
       runAuthorized: async (operation) => operation(new AbortController().signal),
       choose: ({ rejectedIds }) => {
         attempts.push([...rejectedIds])

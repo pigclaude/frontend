@@ -1,7 +1,6 @@
 // 分别使用生产 daemon 和刷新器创建的客户端查询固定出口，不调用真实模型或真实 token 刷新。
 
-import { randomUUID } from "node:crypto"
-import { LocalDaemon } from "@pigclaude/daemon"
+import { DaemonSessions, LocalDaemon } from "@pigclaude/daemon"
 import type { AccountRecord } from "@pigclaude/local-store"
 import { fetch as upstreamFetch, type Dispatcher } from "undici"
 import type { NativeEnvironmentInput } from "./native-environment-model"
@@ -19,14 +18,15 @@ export async function probeNativeRoutes(
   target: string,
 ): Promise<NativeRouteObservation> {
   input.signal.throwIfAborted()
-  const sessionToken = randomUUID()
+  const sessions = new DaemonSessions()
+  const sessionToken = sessions.register("native-route-diagnostic")
   const controller = new AbortController()
   const abort = (): void => controller.abort(input.signal.reason)
   input.signal.addEventListener("abort", abort, { once: true })
   const url = new URL(target)
   const options = {
     port: 0,
-    sessionToken,
+    sessions,
     choose: () => ({
       id: "native-route-diagnostic",
       authorization: "unused-diagnostic",

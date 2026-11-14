@@ -75,7 +75,7 @@ it.each([
           const response = await fetch(`${runtime.daemonBaseUrl}/v1/messages`, {
             method: "POST",
             headers: {
-              "x-pigclaude-session": runtime.sessionToken,
+              "x-pigclaude-session": sessionTokenOf(actualEnvironment),
               "content-type": "application/json",
             },
             body: JSON.stringify({ synthetic: true }),
@@ -139,4 +139,9 @@ function account(id: string, lang: string, timezone: string): AccountRecord {
       rateLimitTier: null,
     },
   }
+}
+
+// 和 Claude Code 一样，从会话环境的自定义请求头里取本会话的 daemon 令牌。
+function sessionTokenOf(env: Record<string, string>): string {
+  return (env.ANTHROPIC_CUSTOM_HEADERS ?? "").replace(/^x-pigclaude-session: /, "")
 }

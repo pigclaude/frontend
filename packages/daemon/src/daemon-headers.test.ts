@@ -2,10 +2,11 @@
 
 import { describe, expect, it } from "vitest"
 import { oauthBetaHeader } from "./daemon-headers.ts"
-import { LocalDaemon } from "./daemon.ts"
+import { DaemonSessions, LocalDaemon } from "./daemon.ts"
 import { startRecordingProxy } from "./daemon-proxy-fixture.test.ts"
 
-const sessionToken = "headers-session-token"
+const sessions = new DaemonSessions()
+const sessionToken = sessions.register("headers-session")
 
 describe("oauthBetaHeader", () => {
   it("adds the oauth beta value when no beta header exists", () => {
@@ -35,7 +36,7 @@ describe("message authorization replacement", () => {
     const proxy = await startRecordingProxy(seen)
     const daemon = new LocalDaemon({
       port: 0,
-      sessionToken,
+      sessions,
       choose: () => ({ id: "a", authorization: "pool-token", proxyUrl: proxy.url }),
       runAuthorized: async (operation) => operation(new AbortController().signal),
     })
@@ -73,7 +74,7 @@ describe("message authorization replacement", () => {
     const proxy = await startRecordingProxy(seen)
     const daemon = new LocalDaemon({
       port: 0,
-      sessionToken,
+      sessions,
       choose: () => ({ id: "a", authorization: "pool-token", proxyUrl: proxy.url }),
       runAuthorized: async (operation) => operation(new AbortController().signal),
     })

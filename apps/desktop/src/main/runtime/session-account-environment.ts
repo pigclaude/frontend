@@ -1,4 +1,5 @@
-// 把活动 CLI 环境与 daemon 实际选号关联，兼容换号保持原环境，不兼容时不转发请求。
+// 把一个会话的 CLI 环境与 daemon 为它实际选的号关联，兼容换号保持原环境，不兼容时不转发请求。
+// 每个会话一份；不同会话可以同时绑定不同的语言和时区。
 
 import { randomUUID } from "node:crypto"
 import type { LocalStore } from "@pigclaude/local-store"
@@ -10,11 +11,12 @@ import type { AccountChooser, ChooseAccountInput, ChosenAccount } from "./accoun
 
 type Binding = { token: string; environment: ProfileEnvironment; leases: Map<string, () => void> }
 
-/** 同一 runtime 只保留一个 CLI 环境，所有兼容账号读取同一版本规则。 */
+/** 一个会话只保留一个 CLI 环境，所有兼容账号读取同一版本规则；会话关闭后拒绝新的绑定。 */
 export class SessionAccountEnvironment {
   readonly #store: Pick<LocalStore, "getAccount" | "getProxy">
   readonly #usage: BrowserProfileUsage
   #binding: Binding | null = null
+  #closed = false
 
   /** 接收真实账号读取视图和共享配置使用权。 */
   constructor(store: Pick<LocalStore, "getAccount" | "getProxy">, usage: BrowserProfileUsage) {
@@ -22,8 +24,9 @@ export class SessionAccountEnvironment {
     this.#usage = usage
   }
 
-  /** 在 CLI 启动前固定环境；返回幂等释放，不允许不同会话覆盖在途绑定。 */
+  /** 在 CLI 启动前固定环境；返回幂等释放，不允许同一会话覆盖在途绑定。 */
   async bind(environment: ProfileEnvironment): Promise<() => void> {
+    if (this.#closed) throw new Error("SESSION_START_FAILED: 会话已结束")
     if (this.#binding) throw new Error("SESSION_ALREADY_ACTIVE: 已有 CLI 环境正在使用")
     if (!profileEnvironmentKey(environment))
       throw new Error("SESSION_START_FAILED: 实例语言或时区不可用")
@@ -56,11 +59,17 @@ export class SessionAccountEnvironment {
         )
           throw new Error("SESSION_START_FAILED: 浏览器配置已变化，请重新开始会话")
       }
+      if (this.#closed) throw new Error("SESSION_START_FAILED: 会话已结束")
       return release
     } catch (error: unknown) {
       release()
       throw error
     }
+  }
+
+  /** 之后的 bind 一律失败，进行中的 bind 也失败；已返回的绑定仍由它的释放操作在 CLI 环境清理后放开。 */
+  close(): void {
+    this.#closed = true
   }
 
   /** 选号前过滤环境，实际转发前再核对账号与代理快照，并持有该账号配置直到 CLI 结束。 */

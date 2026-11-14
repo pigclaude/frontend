@@ -1,6 +1,7 @@
-// 本机转发 daemon。只监听 127.0.0.1，先校验本机会话令牌，再把请求经账号代理或系统网络送到 Anthropic，
-// 并且只在消息接口和模型目录读取的 bootstrap 上替换凭据、合并 OAuth beta 头。
-// 额度用尽或消息请求在写出正文前收到 401/403 时，用下一个账号重试同一条消息请求，并把选号和拒绝交给回调。
+// 本机转发 daemon。只监听 127.0.0.1，先按令牌把请求归到会话（未知或已吊销的令牌在会员核验前就拒绝），
+// 再把请求经账号代理或系统网络送到 Anthropic，并且只在消息接口和模型目录读取的 bootstrap 上替换凭据、合并 OAuth beta 头。
+// 额度用尽或消息请求在写出正文前收到 401/403 时，用下一个账号重试同一条消息请求，并把带会话的选号和拒绝交给回调；
+// 换号前会话已被吊销时不再选号。
 // bootstrap 只用当次选中的账号：不换号，不报告选号和拒绝，上游的状态原样返回。
 // 没有可用账号返回 no_available_account，代理为空返回 proxy_unavailable，直连失败返回 upstream_unavailable，认证全部失败返回 auth_expired。
 // 已经保存额度用尽响应后，代理或直连抛错会拒绝这个账号并继续选号；还没有保存的 429 时，代理抛错仍返回 proxy_unavailable。
@@ -12,7 +13,9 @@ import { oauthBetaHeader, requestHeaders, sessionHeaderName } from "./daemon-hea
 import { daemonOrigin, daemonUpstreamUrl } from "./daemon-origin.ts"
 import { endpointKind } from "./daemon-endpoints.ts"
 import { AccountEnvironmentMismatchError } from "./selection-error.ts"
+import type { DaemonSessionLookup } from "./daemon-sessions.ts"
 export { AccountEnvironmentMismatchError } from "./selection-error.ts"
+export { DaemonSessions, type DaemonSessionLookup } from "./daemon-sessions.ts"
 import {
   takeQuotaResponse,
   writeBuffered,
@@ -39,39 +42,43 @@ type UpstreamRequest = {
 }
 
 type ChooseAccount = (attempt: {
+  sessionId: string
   rejectedIds: string[]
 }) => ChosenAccount | null | Promise<ChosenAccount | null>
+
+type RejectAccount = (sessionId: string, accountId: string, reason: string) => void
+type SelectAccount = (sessionId: string, accountId: string, previousId: string | undefined) => void
 
 /** 本机 Anthropic 转发。保证只听 127.0.0.1，先用会话令牌拒绝其他本机进程；只给消息接口和 bootstrap 注入账号凭据；proxyUrl 为 null 时直连上游，否则经账号代理，代理不可用时返回 proxy_unavailable，直连失败返回 upstream_unavailable。消息接口在写出响应体前遇到额度用尽时换下一个账号；此时如果下一个代理或直连抛错，就拒绝该账号并继续选号。 */
 export class LocalDaemon {
   /** 监听端口。start 完成之后保证是 127.0.0.1 上的实际端口。 */
   port: number
 
-  readonly #sessionToken: string
+  readonly #sessions: DaemonSessionLookup
   readonly #runAuthorized: <T>(operation: (signal: AbortSignal) => Promise<T>) => Promise<T>
   readonly #choose: ChooseAccount
-  readonly #onAccountRejected: (accountId: string, reason: string) => void
-  readonly #onAccountSelected: (accountId: string, previousId: string | undefined) => void
+  readonly #onAccountRejected: RejectAccount
+  readonly #onAccountSelected: SelectAccount
   readonly #onExit: () => void
   readonly #server: Server
   readonly #upstreamOrigin: URL
   #stopping = false
 
-  /** 保证用给定端口、会话令牌、选号函数和回调准备服务，此时尚未监听。 */
+  /** 保证用给定端口、会话注册表、选号函数和回调准备服务，此时尚未监听。回调的第一个参数是请求所属的会话 id。 */
   constructor(options: {
     port: number
-    sessionToken: string
+    sessions: DaemonSessionLookup
     choose: ChooseAccount
     runAuthorized: <T>(operation: (signal: AbortSignal) => Promise<T>) => Promise<T>
-    onAccountRejected?: (accountId: string, reason: string) => void
-    onAccountSelected?: (accountId: string, previousId: string | undefined) => void
+    onAccountRejected?: RejectAccount
+    onAccountSelected?: SelectAccount
     onExit?: () => void
     /** 仅可信主进程诊断依赖可固定其他 origin，不从 IPC 或请求头读取。 */
     upstreamOrigin?: URL
   }) {
     this.port = options.port
     this.#upstreamOrigin = daemonOrigin(options.upstreamOrigin)
-    this.#sessionToken = options.sessionToken
+    this.#sessions = options.sessions
     this.#choose = options.choose
     this.#runAuthorized = options.runAuthorized
     this.#onAccountRejected = options.onAccountRejected ?? (() => undefined)
@@ -122,6 +129,14 @@ export class LocalDaemon {
   }
 
   async #handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const token = request.headers[sessionHeaderName]
+    const sessionId = typeof token === "string" ? this.#sessions.resolve(token) : null
+    if (typeof token !== "string" || sessionId === null) {
+      request.resume()
+      writeErrorResponse(response, 403, "invalid_session_token")
+      return
+    }
+    const session = { token, sessionId }
     try {
       await this.#runAuthorized(async (signal) => {
         if (signal.aborted) throw new Error("MEMBERSHIP_REQUIRED")
@@ -129,7 +144,7 @@ export class LocalDaemon {
         signal.addEventListener("abort", stop, { once: true })
         try {
           // 未分类错误的兜底；直连错误在 #forward 内单独分类。
-          await this.#forward(request, response).catch((error: unknown) =>
+          await this.#forward(request, response, session).catch((error: unknown) =>
             writeErrorResponse(
               response,
               503,
@@ -151,12 +166,12 @@ export class LocalDaemon {
     }
   }
 
-  async #forward(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    if (request.headers[sessionHeaderName] !== this.#sessionToken) {
-      request.resume()
-      writeErrorResponse(response, 403, "invalid_session_token")
-      return
-    }
+  async #forward(
+    request: IncomingMessage,
+    response: ServerResponse,
+    session: { token: string; sessionId: string },
+  ): Promise<void> {
+    const { sessionId } = session
     const upstreamUrl = daemonUpstreamUrl(request.url, this.#upstreamOrigin)
     if (upstreamUrl === null) {
       request.resume()
@@ -164,7 +179,7 @@ export class LocalDaemon {
       return
     }
     const method = request.method ?? "GET"
-    const clientHeaders = requestHeaders(request, { sessionToken: this.#sessionToken })
+    const clientHeaders = requestHeaders(request, { sessionToken: session.token })
     const endpoint = endpointKind(method, upstreamUrl.pathname)
     const messagePost = endpoint === "message"
     const rejectedIds: string[] = []
@@ -179,7 +194,12 @@ export class LocalDaemon {
       if (request.aborted || response.destroyed || response.headersSent || response.writableEnded) {
         return
       }
-      const chosen = await this.#choose({ rejectedIds: rejectedIds.slice() })
+      if (this.#sessions.resolve(session.token) !== sessionId) {
+        request.resume()
+        writeErrorResponse(response, 403, "invalid_session_token")
+        return
+      }
+      const chosen = await this.#choose({ sessionId, rejectedIds: rejectedIds.slice() })
       if (request.aborted || response.destroyed || response.headersSent || response.writableEnded) {
         return
       }
@@ -196,7 +216,7 @@ export class LocalDaemon {
         return
       }
       // 模型目录读取不算会话用号，不能让界面出现换号提示。
-      if (endpoint !== "bootstrap") this.#onAccountSelected(chosen.id, previousId)
+      if (endpoint !== "bootstrap") this.#onAccountSelected(sessionId, chosen.id, previousId)
       previousId = chosen.id
       if (body === null) {
         body = await readBody(request)
@@ -247,7 +267,7 @@ export class LocalDaemon {
           // 消息请求在写出正文前收到 401/403：标记账号失效并换下一个，不重放同一账号。
           if (messagePost && isAuthStatus(upstream.status)) {
             await upstream.body?.cancel().catch(() => undefined)
-            this.#onAccountRejected(chosen.id, "auth")
+            this.#onAccountRejected(sessionId, chosen.id, "auth")
             rejectedIds.push(chosen.id)
             authRejected = true
             switchAccount = true
@@ -256,7 +276,7 @@ export class LocalDaemon {
           if (canSwitchBeforeBody(messagePost, body.length, upstream, response)) {
             const switched = await takeQuotaResponse(response, upstream, method)
             if (switched === null) return
-            this.#onAccountRejected(chosen.id, "quota")
+            this.#onAccountRejected(sessionId, chosen.id, "quota")
             rejectedIds.push(chosen.id)
             savedQuota = switched
             switchAccount = true

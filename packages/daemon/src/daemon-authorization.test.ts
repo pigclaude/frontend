@@ -1,8 +1,9 @@
 // 负责验证真实 daemon HTTP 在每个请求前核验会员，拒绝时不选号或访问代理。
 import { expect, it, vi } from "vitest"
-import { LocalDaemon } from "./daemon.ts"
+import { DaemonSessions, LocalDaemon } from "./daemon.ts"
 
-const sessionToken = "authorization-session-token"
+const sessions = new DaemonSessions()
+const sessionToken = sessions.register("authorization-session")
 const sessionHeaders = { "x-pigclaude-session": sessionToken }
 
 it("denies new requests when the required live authorization port rejects", async () => {
@@ -14,7 +15,7 @@ it("denies new requests when the required live authorization port rejects", asyn
   const runAuthorized = vi.fn(async () => {
     throw new Error("MEMBERSHIP_REQUIRED")
   })
-  const daemon = new LocalDaemon({ port: 0, sessionToken, choose, runAuthorized })
+  const daemon = new LocalDaemon({ port: 0, sessions, choose, runAuthorized })
   await daemon.start()
   try {
     for (const path of ["/v1/messages", "/v1/models"]) {
@@ -37,7 +38,7 @@ it("already aborted authorization cannot forward even when a caller invokes the 
   const choose = vi.fn(() => null)
   const daemon = new LocalDaemon({
     port: 0,
-    sessionToken,
+    sessions,
     choose,
     runAuthorized: async (operation) => operation(controller.signal),
   })
@@ -61,7 +62,7 @@ it("abort stops an already entered request while stop remains available without 
   const controller = new AbortController()
   const daemon = new LocalDaemon({
     port: 0,
-    sessionToken,
+    sessions,
     runAuthorized: async (operation) => operation(controller.signal),
     choose: () => {
       entered()

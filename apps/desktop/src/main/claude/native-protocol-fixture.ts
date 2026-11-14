@@ -9,8 +9,7 @@ import {
 } from "node:http"
 import { connect } from "node:net"
 import type { Duplex } from "node:stream"
-import { randomUUID } from "node:crypto"
-import { LocalDaemon } from "@pigclaude/daemon"
+import { DaemonSessions, LocalDaemon } from "@pigclaude/daemon"
 import { NativeDiagnosticCleanupError } from "./native-diagnostic-cleanup"
 
 /** 本机观察端保存的合成消息，只在内存比较，不进入报告或导出。 */
@@ -29,7 +28,8 @@ export type NativeProtocolFixture = {
 export async function createNativeProtocolFixture(): Promise<NativeProtocolFixture> {
   const servers: Server[] = []
   const sockets = new Set<Duplex>()
-  const sessionToken = randomUUID()
+  const sessions = new DaemonSessions()
+  const sessionToken = sessions.register("native-diagnostic")
   let incoming: NativeProtocolRequest | undefined
   let complete: (value: NativeProtocolRequest) => void = () => undefined
   const forwarded = new Promise<NativeProtocolRequest>((resolve) => {
@@ -107,7 +107,7 @@ export async function createNativeProtocolFixture(): Promise<NativeProtocolFixtu
     const proxyPort = await listen(proxy)
     const options = {
       port: 0,
-      sessionToken,
+      sessions,
       choose: () => ({
         id: "native-diagnostic",
         authorization: "pigclaude-diagnostic-upstream",

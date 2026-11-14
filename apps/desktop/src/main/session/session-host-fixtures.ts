@@ -1,4 +1,4 @@
-// 提供 SessionHost 测试共用的假会员、runtime、会话环境、适配器和用量记录器；
+// 提供 SessionHost 测试共用的假会员、会话环境、适配器和用量记录器，并用假 runtime 装配宿主；
 // 不启动真实 Claude CLI、daemon 或网络。
 
 import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
@@ -17,13 +17,12 @@ import type {
   SessionEnvironmentPort,
   SessionHostEvent,
   SessionMembership,
-  SessionRuntime,
   SessionProfile,
-  SessionRuntimeEvent,
   SessionUsagePort,
 } from "./session-types"
 import type { UsageRecord, UsageSummary } from "./usage-recorder"
 import { SessionHost, type SessionHostOptions } from "./session-host"
+import { FakeRuntime } from "./session-runtime-fixture"
 
 export const fixedNow = new Date(2026, 9, 26, 12, 0, 0).getTime()
 
@@ -77,48 +76,6 @@ export class FakeMembership implements SessionMembership {
   setState(state: MembershipState): void {
     this.#state = state
     for (const listener of [...this.#listeners]) listener(this.view())
-  }
-}
-
-/** 可注入换号事件和账号可用性的假 LocalRuntime。 */
-export class FakeRuntime implements SessionRuntime {
-  daemonBaseUrl: string | null
-  readonly sessionToken = "runtime-session-token"
-  preferredAccount: string | null | undefined = undefined
-  availableAccounts = true
-  beginSessionCalls = 0
-  readonly #listeners = new Set<(event: SessionRuntimeEvent) => void>()
-
-  constructor(daemonBaseUrl: string | null = "http://127.0.0.1:47821") {
-    this.daemonBaseUrl = daemonBaseUrl
-  }
-
-  subscribe(listener: (event: SessionRuntimeEvent) => void): () => void {
-    this.#listeners.add(listener)
-    return () => this.#listeners.delete(listener)
-  }
-
-  setPreferredAccount(accountId: string | null): void {
-    this.preferredAccount = accountId
-  }
-
-  beginSession(): void {
-    this.beginSessionCalls += 1
-  }
-
-  async hasAvailableAccount(): Promise<boolean> {
-    return this.availableAccounts
-  }
-
-  /** 模拟 daemon 选号产生的换号事件。 */
-  switchAccount(
-    from: string | null,
-    to: string,
-    reason: SessionRuntimeEvent["reason"] = "switch",
-  ): void {
-    for (const listener of [...this.#listeners]) {
-      listener({ type: "account-switched", from, to, reason })
-    }
   }
 }
 

@@ -2,17 +2,18 @@
 // 匹配时正常转发，并且不把该头交给上游。
 
 import { describe, expect, it, vi } from "vitest"
-import { LocalDaemon } from "./daemon.ts"
+import { DaemonSessions, LocalDaemon } from "./daemon.ts"
 import { startRecordingProxy } from "./daemon-proxy-fixture.test.ts"
 
-const sessionToken = "local-session-token"
+const sessions = new DaemonSessions()
+const sessionToken = sessions.register("local-session")
 
 describe("daemon session token", () => {
   it("rejects a request without the session header before choosing an account", async () => {
     const choose = vi.fn(() => null)
     const daemon = new LocalDaemon({
       port: 0,
-      sessionToken,
+      sessions,
       choose,
       runAuthorized: async (operation) => operation(new AbortController().signal),
     })
@@ -31,7 +32,7 @@ describe("daemon session token", () => {
     const choose = vi.fn(() => null)
     const daemon = new LocalDaemon({
       port: 0,
-      sessionToken,
+      sessions,
       choose,
       runAuthorized: async (operation) => operation(new AbortController().signal),
     })
@@ -59,7 +60,7 @@ describe("daemon session token", () => {
     const proxy = await startRecordingProxy(seen)
     const daemon = new LocalDaemon({
       port: 0,
-      sessionToken,
+      sessions,
       choose: () => ({ id: "a", authorization: "pool-token", proxyUrl: proxy.url }),
       runAuthorized: async (operation) => operation(new AbortController().signal),
     })

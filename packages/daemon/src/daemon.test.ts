@@ -4,7 +4,7 @@
 
 import { request, type IncomingHttpHeaders } from "node:http"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { LocalDaemon } from "./daemon.ts"
+import { DaemonSessions, LocalDaemon } from "./daemon.ts"
 import { startRecordingProxy } from "./daemon-proxy-fixture.test.ts"
 
 const directUpstream = vi.hoisted(() => ({
@@ -36,8 +36,8 @@ vi.mock("undici", async () => {
   }
 })
 
-const sessionToken = "test-session-token"
-const sessionHeaders = { "x-pigclaude-session": sessionToken }
+const sessions = new DaemonSessions()
+const sessionHeaders = { "x-pigclaude-session": sessions.register("test-session") }
 
 type ChooseAccount = ConstructorParameters<typeof LocalDaemon>[0]["choose"]
 
@@ -46,7 +46,7 @@ function testDaemon(choose: ChooseAccount): LocalDaemon {
   return new LocalDaemon({
     runAuthorized: async (operation) => operation(new AbortController().signal),
     port: 0,
-    sessionToken,
+    sessions,
     choose,
   })
 }
@@ -116,7 +116,7 @@ describe("LocalDaemon", () => {
     const seen: Array<{ path: string; authorization: string | undefined }> = []
     const proxy = await startRecordingProxy(seen)
     const daemon = testDaemon((attempt) => {
-      expect(attempt).toEqual({ rejectedIds: [] })
+      expect(attempt).toEqual({ sessionId: "test-session", rejectedIds: [] })
       return { id: "a", authorization: "pool-token", proxyUrl: proxy.url }
     })
     await daemon.start()

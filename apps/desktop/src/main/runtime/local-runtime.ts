@@ -1,14 +1,12 @@
-// 负责按会员状态启动和停止本机 daemon，桥接账号选择、额度冷却和换号事件。
-// 只监听 loopback；会员失效时停止 daemon 并中止正在进行的请求。
+// 负责按会员状态启动和停止本机 daemon，按会话路由选号，并把额度冷却和换号事件桥接出去。
+// 只监听 loopback；会员失效时停止 daemon、吊销全部会话令牌并中止正在进行的请求。
 
-import { randomBytes } from "node:crypto"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { LocalStore } from "@pigclaude/local-store"
-import { LocalDaemon } from "@pigclaude/daemon"
+import { DaemonSessions, LocalDaemon, type DaemonSessionLookup } from "@pigclaude/daemon"
 import type { AccountChooser, ChosenAccount } from "./account-chooser"
 import { BrowserProfileUsage } from "../claude/browser-profile-usage"
-import { SessionAccountEnvironment } from "./session-account-environment"
-import type { ProfileEnvironment } from "../session/profile-environment"
+import { RuntimeSessions, type OpenRuntimeSession, type RuntimeSession } from "./runtime-sessions"
 
 const defaultQuotaCooldownMs = 5 * 60 * 1_000
 const defaultBackoffMs = [1_000, 2_000, 5_000, 10_000] as const
@@ -22,9 +20,10 @@ export type LocalRuntimeInspection = {
   accountCount: number
 }
 
-/** 运行时广播的换号事件。保证只含账号 id 和原因，不含凭据或代理地址。 */
+/** 运行时广播的换号事件。保证带上所属会话，只含会话 id、账号 id 和原因，不含凭据、代理地址或令牌。 */
 export type LocalRuntimeEvent = {
   type: "account-switched"
+  sessionId: string
   from: string | null
   to: string
   reason: "initial" | "switch" | "quota"
@@ -46,13 +45,14 @@ export type LocalDaemonHandle = {
 /** 创建 daemon 的参数，与 LocalDaemon 构造参数保持一致。 */
 export type LocalDaemonOptions = {
   port: number
-  sessionToken: string
+  sessions: DaemonSessionLookup
   choose: (attempt: {
+    sessionId: string
     rejectedIds: string[]
   }) => ChosenAccount | null | Promise<ChosenAccount | null>
   runAuthorized: <T>(operation: (signal: AbortSignal) => Promise<T>) => Promise<T>
-  onAccountRejected: (accountId: string, reason: string) => void
-  onAccountSelected: (accountId: string, previousId: string | undefined) => void
+  onAccountRejected: (sessionId: string, accountId: string, reason: string) => void
+  onAccountSelected: (sessionId: string, accountId: string, previousId: string | undefined) => void
   onExit: () => void
 }
 
@@ -67,7 +67,6 @@ export type LocalRuntimeOptions = {
     Partial<Pick<AccountChooser, "hasIncompatibleAccount">>
   membership: LocalRuntimeMembership
   runAuthorized: <T>(operation: (signal: AbortSignal) => Promise<T>) => Promise<T>
-  sessionToken?: string | undefined
   now?: () => number
   quotaCooldownMs?: number | undefined
   backoffMs?: readonly number[] | undefined
@@ -77,9 +76,8 @@ export type LocalRuntimeOptions = {
 
 type Lifecycle = { abort: AbortController }
 
-/** 本机 daemon 的生命周期和选号事件源。保证只在会员 active 时监听 loopback；启动失败按退避重试；会员失效或 stop 时中止请求并释放端口。 */
+/** 本机 daemon 的生命周期和选号事件源。保证只在会员 active 时监听 loopback；启动失败按退避重试；会员失效或 stop 时中止请求、吊销全部会话令牌并释放端口；daemon 意外重启不影响已打开的会话。 */
 export class LocalRuntime {
-  readonly sessionToken: string
   readonly chooser: LocalRuntimeOptions["chooser"]
 
   readonly #store: LocalRuntimeOptions["store"]
@@ -91,24 +89,22 @@ export class LocalRuntime {
   readonly #sleep: NonNullable<LocalRuntimeOptions["sleep"]>
   readonly #createDaemon: NonNullable<LocalRuntimeOptions["createDaemon"]>
   readonly #listeners = new Set<(event: LocalRuntimeEvent) => void>()
-  readonly #quotaRejections = new Set<string>()
+  readonly #tokens = new DaemonSessions()
+  readonly #sessions: RuntimeSessions
   readonly #unsubscribe: () => void
-  readonly #environment: SessionAccountEnvironment
   #daemon: LocalDaemonHandle | null = null
   #lifecycle: Lifecycle | null = null
   #starting: { promise: Promise<void> } | null = null
   #state: LocalDaemonState = "starting"
-  #preferredId: string | null = null
-  #currentAccountId: string | null = null
   #crashAttempts = 0
   #disposed = false
 
   /** 创建绑定会员、账号库和选号器的 runtime；构造时订阅会员变化但不会立即启动 daemon。 */
   constructor(options: LocalRuntimeOptions) {
-    this.sessionToken = options.sessionToken ?? randomBytes(32).toString("base64url")
     this.chooser = options.chooser
     this.#store = options.store
-    this.#environment = new SessionAccountEnvironment(
+    this.#sessions = new RuntimeSessions(
+      this.#tokens,
       options.store,
       options.profileUsage ?? new BrowserProfileUsage(),
     )
@@ -143,9 +139,9 @@ export class LocalRuntime {
     return promise
   }
 
-  /** 中止正在进行的请求并释放端口。保证之后可以再次 start，且 stop 不会抛出。 */
+  /** 中止正在进行的请求、关闭全部会话（令牌吊销）并释放端口。保证之后可以再次 start，且 stop 不会抛出。 */
   async stop(): Promise<void> {
-    this.#resetSessionTracking()
+    this.#sessions.closeAll()
     const lifecycle = this.#lifecycle
     this.#lifecycle = null
     lifecycle?.abort.abort()
@@ -191,22 +187,12 @@ export class LocalRuntime {
     return () => this.#listeners.delete(listener)
   }
 
-  /** 设置后续选号的偏好账号；只影响顺序，不绕过可用性过滤。 */
-  setPreferredAccount(accountId: string | null): void {
-    this.#preferredId = accountId
-  }
-
   /**
-   * 标记新会话开始：清空上一个会话的当前账号和额度拒绝标记。
-   * 保证新会话第一次选号即使选中同一账号也会广播 initial。
+   * 为一个会话注册随机 daemon 令牌，并建立它自己的偏好账号、当前账号、额度拒绝和环境绑定。
+   * 保证新会话第一次选号即使选中别的会话在用的账号也广播 initial；会话关闭或会员失效后令牌返回 403。
    */
-  beginSession(): void {
-    this.#resetSessionTracking()
-  }
-
-  /** CLI 启动前绑定确定环境，所有实际选号遵守同一语言和时区。 */
-  bindEnvironment(profile: ProfileEnvironment): Promise<() => void> {
-    return this.#environment.bind(profile)
+  openSession(input: OpenRuntimeSession): RuntimeSession {
+    return this.#sessions.open(input)
   }
 
   async #runStart(lifecycle: Lifecycle): Promise<void> {
@@ -243,16 +229,14 @@ export class LocalRuntime {
   #daemonOptions(lifecycle: Lifecycle): LocalDaemonOptions {
     return {
       port: 0,
-      sessionToken: this.sessionToken,
+      sessions: this.#tokens,
       choose: (attempt) =>
-        this.#environment.choose(this.chooser, {
-          rejectedIds: attempt.rejectedIds,
-          ...(this.#preferredId === null ? {} : { preferredId: this.#preferredId }),
-        }),
+        this.#sessions.choose(this.chooser, attempt.sessionId, attempt.rejectedIds),
       runAuthorized: <T>(operation: (signal: AbortSignal) => Promise<T>): Promise<T> =>
         this.#authorized((signal) => operation(AbortSignal.any([signal, lifecycle.abort.signal]))),
-      onAccountRejected: (accountId, reason) => this.#handleRejected(accountId, reason),
-      onAccountSelected: (accountId) => this.#handleSelected(accountId),
+      onAccountRejected: (sessionId, accountId, reason) =>
+        this.#handleRejected(sessionId, accountId, reason),
+      onAccountSelected: (sessionId, accountId) => this.#handleSelected(sessionId, accountId),
       onExit: () => this.#handleDaemonExit(lifecycle),
     }
   }
@@ -273,18 +257,13 @@ export class LocalRuntime {
     )
   }
 
-  #handleRejected(accountId: string, reason: string): void {
+  #handleRejected(sessionId: string, accountId: string, reason: string): void {
     if (reason === "quota") {
-      this.#quotaRejections.add(accountId)
+      this.#sessions.rejectQuota(sessionId, accountId)
       void this.#persistQuota(accountId).catch(() => undefined)
       return
     }
     if (reason === "auth") void this.#persistNeedsReauth(accountId).catch(() => undefined)
-  }
-
-  #resetSessionTracking(): void {
-    this.#currentAccountId = null
-    this.#quotaRejections.clear()
   }
 
   // 只处理当前生命周期的意外退出；主动 stop 时 LocalDaemon 不触发这个回调。
@@ -327,20 +306,9 @@ export class LocalRuntime {
     )
   }
 
-  // 连续两次 choose 返回同一账号时不广播；跨请求换号用上一次实际选中的账号作为 from。
-  #handleSelected(accountId: string): void {
-    const from = this.#currentAccountId
-    const reason =
-      from !== null && this.#quotaRejections.has(from)
-        ? "quota"
-        : from === null
-          ? "initial"
-          : "switch"
-    this.#quotaRejections.delete(accountId)
-    if (from !== null) this.#quotaRejections.delete(from)
-    this.#currentAccountId = accountId
-    if (accountId === from) return
-    this.#emit({ type: "account-switched", from, to: accountId, reason })
+  #handleSelected(sessionId: string, accountId: string): void {
+    const change = this.#sessions.select(sessionId, accountId)
+    if (change !== null) this.#emit({ type: "account-switched", sessionId, ...change })
   }
 
   #emit(event: LocalRuntimeEvent): void {

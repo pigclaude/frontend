@@ -94,7 +94,7 @@ describe("SessionHost start", () => {
     const harness = createHarness({
       workspace: await workspaceDir(),
       resolveBinaryPath: () => {
-        throw new Error("missing binary for runtime-session-token")
+        throw new Error(`missing binary for ${harness.runtime.sessionToken}`)
       },
     })
 
@@ -140,8 +140,9 @@ describe("SessionHost start", () => {
       binaryPath: "/fake/claude",
       env: harness.environments.last.env,
     })
-    expect(harness.runtime.preferredAccount).toBe("account-1")
-    expect(harness.runtime.beginSessionCalls).toBe(1)
+    expect(harness.runtime.sessions).toMatchObject([
+      { sessionId: "id-1", preferredAccountId: "account-1", closed: false },
+    ])
     expect(harness.host.status()).toMatchObject({
       active: true,
       sessionId: "id-1",

@@ -22,22 +22,29 @@ const imageTypes: Record<string, string> = {
   ".bmp": "image/bmp",
 }
 
-/** 读取一层目录，省略链接和特殊文件，保留工作区相对路径。 */
+/** 读取一层目录，省略链接和特殊文件，保留工作区相对路径；目录在前，按名字的自然顺序排列。 */
 export async function listWorkbenchDirectory(
   root: string,
   path: string,
 ): Promise<WorkbenchListing> {
   const absolute = await workspacePath(root, path)
-  const entries = (await readdir(absolute, { withFileTypes: true })).filter(
-    (entry) => visibleWorkspaceEntry(entry.name) && (entry.isDirectory() || entry.isFile()),
-  )
-  return {
-    truncated: entries.length > maxDirectoryEntries,
-    entries: entries.slice(0, maxDirectoryEntries).map((entry) => ({
+  const entries = (await readdir(absolute, { withFileTypes: true }))
+    .filter((entry) => visibleWorkspaceEntry(entry.name) && (entry.isDirectory() || entry.isFile()))
+    .map((entry) => ({
       name: entry.name,
       path: path ? path + "/" + entry.name : entry.name,
-      kind: entry.isDirectory() ? "directory" : "file",
-    })),
+      kind: entry.isDirectory() ? ("directory" as const) : ("file" as const),
+    }))
+    .sort((left, right) =>
+      left.kind === right.kind
+        ? left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: "base" })
+        : left.kind === "directory"
+          ? -1
+          : 1,
+    )
+  return {
+    truncated: entries.length > maxDirectoryEntries,
+    entries: entries.slice(0, maxDirectoryEntries),
   }
 }
 

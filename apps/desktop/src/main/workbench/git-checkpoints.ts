@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { join, relative, sep } from "node:path"
 import type { WorkbenchCheckpoint } from "../../workbench-contract"
 import { assertWorkbenchGit, runWorkbenchGit } from "./git-command"
-import { protectedWorkbenchPath, workbenchPathspec } from "./git-workspace"
+import { protectedWorkbenchPath, workbenchPathspec } from "./hidden-paths"
 
 const prefix = "refs/pigclaude/checkpoints/"
 const checkpointId = /^(manual|baseline|final)-[0-9a-f-]{36}$/

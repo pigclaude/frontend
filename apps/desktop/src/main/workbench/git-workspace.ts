@@ -8,6 +8,7 @@ import type { PullRequestInfo } from "@pigclaude/ui-contracts"
 import type { WorkbenchWorktree } from "../../workbench-contract"
 import { workbenchChildEnv } from "./child-env"
 import { assertWorkbenchGit, gitExitCode, runWorkbenchGit } from "./git-command"
+import { protectedWorkbenchPath, workbenchPathspec } from "./hidden-paths"
 
 const exec = promisify(execFile)
 const noExternalDiff = ["--no-color", "--no-ext-diff", "--no-textconv"]
@@ -52,17 +53,6 @@ export async function workbenchDiff(root: string, path?: string, base?: string):
   let output = boundPatch(patch)
   for (const file of additions) output = boundPatch(output + (await untrackedDiff(root, file)))
   return output
-}
-
-/** 排除应用配置及版本库内部的路径。 */
-export function protectedWorkbenchPath(path: string): boolean {
-  return path.split("/").some((part) => [".git", ".claude"].includes(part.toLowerCase()))
-}
-
-/** Git 路径规则只匹配项目文件；排除各层 Claude Code 的本地配置。 */
-export function workbenchPathspec(path = "."): string[] {
-  if (protectedWorkbenchPath(path)) throw new Error("WORKBENCH_PATH_INVALID")
-  return [path === "." ? "." : ":(literal)" + path, ":(exclude,icase,glob)**/.claude/**"]
 }
 
 function boundPatch(patch: string): string {

@@ -1,6 +1,7 @@
 // 负责解析已登记的项目目录和安全的工作区内相对路径。
 import { lstat, realpath, stat } from "node:fs/promises"
 import { isAbsolute, relative, resolve, sep, win32 } from "node:path"
+import { listedWorkbenchName, privateWorkbenchName } from "./hidden-paths"
 
 /** 校验项目仍然存在，并返回解析符号链接后的绝对目录。 */
 export async function workspaceDirectory(
@@ -51,17 +52,13 @@ export async function workspacePath(root: string, path: unknown): Promise<string
 
 function invalidSegment(name: string): boolean {
   return (
-    name === "" ||
-    name === "." ||
-    name === ".." ||
-    [".git", ".claude"].includes(name.toLowerCase()) ||
-    name.includes(":")
+    name === "" || name === "." || name === ".." || privateWorkbenchName(name) || name.includes(":")
   )
 }
 
-/** 判断资源管理器是否可以列出指定条目；隐藏应用配置目录与版本库内部。 */
+/** 判断资源管理器是否可以列出指定条目；隐藏规则见 hidden-paths。 */
 export function visibleWorkspaceEntry(name: string): boolean {
-  return !invalidSegment(name) && !["node_modules", ".claude", ".superpowers"].includes(name)
+  return !invalidSegment(name) && listedWorkbenchName(name)
 }
 
 /** 确认本地文件当前仍是普通文件，供保存前的版本核对使用。 */

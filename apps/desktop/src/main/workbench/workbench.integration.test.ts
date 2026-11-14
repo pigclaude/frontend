@@ -76,6 +76,26 @@ describe("workbench filesystem", () => {
       await expect(workspacePath(root, "link.txt")).rejects.toThrow("WORKBENCH_PATH_INVALID")
   })
 
+  it("lists directories first in natural name order and hides private and dependency folders", async () => {
+    for (const name of ["src", "Docs", ".git", ".claude", "node_modules", ".superpowers"]) {
+      await mkdir(join(root, name))
+    }
+    for (const name of ["file10.txt", "b.txt", "file2.txt", "A.md"]) {
+      await writeFile(join(root, name), "")
+    }
+
+    const listing = await listWorkbenchDirectory(root, "")
+
+    expect(listing.entries.map((entry) => entry.name)).toEqual([
+      "Docs",
+      "src",
+      "A.md",
+      "b.txt",
+      "file2.txt",
+      "file10.txt",
+    ])
+  })
+
   it("preserves CRLF and asks for explicit overwrite when disk content has changed", async () => {
     const file = join(root, "note.txt")
     await writeFile(file, "initial\r\n")

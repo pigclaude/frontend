@@ -16,7 +16,7 @@ import { SettingsScreen } from "./screens/settings/settings-sections"
 import { TrayScreen } from "./screens/tray-screen"
 import { UsageScreen } from "./screens/usage-screen"
 import type { ClaudeAccountsController } from "./hooks/use-claude-accounts"
-import { useSession } from "./hooks/use-session"
+import { sessionAccountId, useSession } from "./hooks/use-session"
 import { useWorkspaces } from "./hooks/use-workspaces"
 import { fill, useText } from "./locale/text"
 import { projectNameFromPath } from "./models/project-model"
@@ -360,8 +360,8 @@ export function MainWindow({
         <SidebarNotice
           accounts={accounts.filter((account) => account.needsReauth)}
           session={sessionNotice({
-            live: session.state.started && !session.state.ended,
-            accountId: session.state.accountId ?? session.status?.accountId ?? null,
+            live: sessionActive,
+            accountId: sessionAccountId(session),
             accounts: pool.accounts,
             proxies: pool.proxies,
           })}

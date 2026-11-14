@@ -1,9 +1,10 @@
 // 负责工作区侧栏底部上方的提醒：有 Claude 账号需要重新授权时提示，并说明它已暂停参与自动切换；
 // 会话进行时显示本次会话用的 Claude 账号和网络。提醒只来自真实状态，不显示代理地址或凭据。
 import { useState } from "react"
-import { Button, StatusDot } from "@pigclaude/ui-primitives"
+import type { ClaudeAccountView, ProxyView } from "@pigclaude/contracts/claude-account"
+import { Button, StatusDot, type StatusTone } from "@pigclaude/ui-primitives"
 import { Icon } from "@pigclaude/ui-shell"
-import { fill, useText } from "../locale/text"
+import { fill, useText, type TextKey } from "../locale/text"
 
 /** 需要提醒的账号。 */
 export type NoticeAccount = { id: string; name: string }
@@ -30,8 +31,8 @@ export function noticeTitle(
 export function sessionNotice(input: {
   live: boolean
   accountId: string | null
-  accounts: readonly { id: string; displayName: string; proxyId: string | null }[]
-  proxies: readonly { id: string; name: string }[]
+  accounts: readonly Pick<ClaudeAccountView, "id" | "displayName" | "proxyId">[]
+  proxies: readonly Pick<ProxyView, "id" | "name">[]
 }): SessionNotice | null {
   if (!input.live || input.accountId === null) return null
   const account = input.accounts.find((item) => item.id === input.accountId)
@@ -41,6 +42,21 @@ export function sessionNotice(input: {
   return {
     account: account.displayName,
     network: proxy ? { kind: "proxy", name: proxy.name } : { kind: "missing" },
+  }
+}
+
+/** 网络那一行的状态点和文字；绑定的代理已不存在时用错误色。 */
+function networkLine(
+  network: SessionNotice["network"],
+  t: (key: TextKey) => string,
+): { tone: StatusTone; text: string } {
+  switch (network.kind) {
+    case "proxy":
+      return { tone: "ready", text: fill(t("shell.notice.sessionProxy"), { name: network.name }) }
+    case "direct":
+      return { tone: "ready", text: t("shell.notice.sessionDirect") }
+    case "missing":
+      return { tone: "error", text: t("shell.notice.sessionProxyMissing") }
   }
 }
 
@@ -59,6 +75,7 @@ export function SidebarNotice({
   const [dismissed, setDismissed] = useState<string | null>(null)
   const reauth = accounts.length > 0 && dismissed !== key
   if (!reauth && session === null) return null
+  const network = session ? networkLine(session.network, t) : null
   return (
     <>
       {reauth ? (
@@ -87,23 +104,15 @@ export function SidebarNotice({
           </Button>
         </div>
       ) : null}
-      {session ? (
+      {session && network ? (
         <div className="side-notice">
           <button type="button" className="side-notice-main" onClick={onOpen}>
-            <StatusDot tone={session.network.kind === "missing" ? "error" : "ready"} />
+            <StatusDot tone={network.tone} />
             <span className="side-notice-text">
               <span className="side-notice-title truncate">
                 {fill(t("shell.notice.session"), { name: session.account })}
               </span>
-              <span className="side-notice-desc truncate">
-                {session.network.kind === "proxy"
-                  ? fill(t("shell.notice.sessionProxy"), { name: session.network.name })
-                  : t(
-                      session.network.kind === "direct"
-                        ? "shell.notice.sessionDirect"
-                        : "shell.notice.sessionProxyMissing",
-                    )}
-              </span>
+              <span className="side-notice-desc truncate">{network.text}</span>
             </span>
           </button>
         </div>

@@ -3,7 +3,7 @@ name: Desktop native verification
 
 on:
   push:
-    branches: ["codex/pigcode-ui-native-qa", "codex/pigcode-workbench"]
+    branches: ["main", "codex/pigcode-ui-native-qa", "codex/pigcode-workbench"]
   workflow_dispatch:
 
 permissions:

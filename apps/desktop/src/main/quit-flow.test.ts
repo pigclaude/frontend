@@ -1,10 +1,11 @@
 // 验证退出流程的接线：确认通过并清理完成后才执行最后一步，用户取消退出时通知调用方且不清理。
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { installQuitFlow } from "./quit-flow"
+import { UnsavedFiles } from "./workbench/unsaved-files"
 
 const electron = vi.hoisted(() => ({
   handlers: new Map<string, (event: { preventDefault(): void }) => void>(),
-  answer: true,
+  answer: "leave" as "leave" | "stay",
 }))
 
 vi.mock("electron", () => ({
@@ -17,6 +18,7 @@ vi.mock("electron", () => ({
 
 vi.mock("./quit-prompt", () => ({
   askToLeave: async () => electron.answer,
+  askBeforeReload: vi.fn(),
   showQuitFailure: vi.fn(),
 }))
 
@@ -29,6 +31,7 @@ function setup() {
   }
   installQuitFlow({
     pendingWork: () => ({ turns: 1, approvals: 0 }),
+    unsaved: new UnsavedFiles(),
     mainWindow: () => null,
     ...calls,
   })
@@ -41,7 +44,7 @@ describe("退出流程", () => {
   beforeEach(() => electron.handlers.clear())
 
   it("确认离开后先清理，清理完成才执行最后一步", async () => {
-    electron.answer = true
+    electron.answer = "leave"
     const { calls, quit } = setup()
     quit()
     await vi.waitFor(() => expect(calls.finishQuit).toHaveBeenCalledTimes(1))
@@ -53,7 +56,7 @@ describe("退出流程", () => {
   })
 
   it("用户取消退出时通知调用方，不清理也不执行最后一步", async () => {
-    electron.answer = false
+    electron.answer = "stay"
     const { calls, quit } = setup()
     quit()
     await vi.waitFor(() => expect(calls.onCancel).toHaveBeenCalledTimes(1))

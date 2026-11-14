@@ -1,4 +1,5 @@
-// 负责把外壳的内置命令登记到 Command 扩展点：新会话、开合侧栏、设置、添加项目。
+// 负责把外壳的内置命令登记到 Command 扩展点：新会话、开合侧栏、开合右侧面板、设置、添加项目。
+// 命令面板和输入框的 `/` 都从这里读，带 slash 的命令在输入框里就是 `/new`、`/panel`。
 // Pigcode 的内置命令表固定带「插件」，PigClaude 没有插件，所以用同样的写法登记自己的这几条。
 import type {
   CommandContribution,
@@ -13,6 +14,8 @@ export type ShellCommandActions = {
   onToggleSidebar: () => void
   onSettings: () => void
   onAddProject: () => void
+  /** 开合右侧工作台，与 ⌘J 相同；没有工作台时不提供，面板和 `/panel` 都不出现。 */
+  onToggleWorkbench?: () => void
 }
 
 const shell: ContributionOwner = { kind: "builtin", id: "shell" }
@@ -48,6 +51,21 @@ export function registerShellCommands(
       shortcut: "Mod+b",
       run: () => actions.onToggleSidebar(),
     },
+    ...(actions.onToggleWorkbench
+      ? [
+          {
+            id: "toggle-workbench",
+            owner: { kind: "builtin", id: "workbench" },
+            order: -40,
+            title: { key: "palette.toggleWorkbench" },
+            keywords: [t("palette.keywords.toggleWorkbench")],
+            icon: "tray",
+            shortcut: "Mod+j",
+            slash: "panel",
+            run: () => actions.onToggleWorkbench?.(),
+          } satisfies CommandContribution,
+        ]
+      : []),
     {
       id: "settings",
       owner: { kind: "builtin", id: "settings" },

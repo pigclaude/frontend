@@ -1,4 +1,4 @@
-// 验证外壳命令登记到 Command 扩展点：只有新会话、侧栏、设置、添加项目四条，没有 Pigcode 的插件命令，注销后清空。
+// 验证外壳命令登记到 Command 扩展点：新会话、侧栏、右侧面板、设置、添加项目，没有 Pigcode 的插件命令，注销后清空。
 import { describe, expect, it, vi } from "vitest"
 import { createExtensionRegistry } from "@pigclaude/client-runtime"
 import { registerShellCommands } from "./shell-commands"
@@ -33,6 +33,30 @@ describe("registerShellCommands", () => {
     expect(handlers.onToggleSidebar).toHaveBeenCalledTimes(1)
     expect(handlers.onSettings).toHaveBeenCalledTimes(1)
     expect(handlers.onAddProject).toHaveBeenCalledTimes(1)
+  })
+
+  it("有工作台时登记开合右侧面板，输入框里是 /panel，快捷键与 ⌘J 相同", () => {
+    const registry = createExtensionRegistry()
+    const onToggleWorkbench = vi.fn()
+    registerShellCommands(registry, { ...actions(), onToggleWorkbench }, (key) => key)
+
+    const commands = registry.get("command")
+    expect(commands.map((command) => command.id)).toEqual([
+      "new-thread",
+      "toggle-sidebar",
+      "toggle-workbench",
+      "settings",
+      "add-project",
+    ])
+    const panel = commands.find((command) => command.id === "toggle-workbench")
+    expect(panel).toMatchObject({
+      slash: "panel",
+      shortcut: "Mod+j",
+      title: { key: "palette.toggleWorkbench" },
+    })
+    expect(commands.find((command) => command.id === "new-thread")?.slash).toBe("new")
+    void panel?.run()
+    expect(onToggleWorkbench).toHaveBeenCalledTimes(1)
   })
 
   it("注销后命令面板里没有这些命令", () => {

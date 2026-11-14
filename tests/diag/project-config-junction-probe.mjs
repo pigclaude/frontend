@@ -138,7 +138,9 @@ function makeTree(variant) {
   write(join(pkg, ".claude", "commands", "pkg-cmd.md"), "MARK_PKG_CMD $ARGUMENTS\n")
   let linkError = null
   try {
-    if (variant.startsWith("merged-")) {
+    if (variant === "no-config-root") {
+      // 对照：不设项目配置根，命令行直接读仓库的 .claude。
+    } else if (variant.startsWith("merged-")) {
       for (const kind of ["commands", "skills", "agents"]) {
         mkdirSync(join(sroot, ".claude", kind), { recursive: true })
         for (const source of [pkg, repo]) {
@@ -226,7 +228,7 @@ async function runVariant(variant) {
       env,
       model: "claude-sonnet-4-5",
       settingSources: ["project"],
-      projectConfigRoot: tree.sroot,
+      ...(variant === "no-config-root" ? {} : { projectConfigRoot: tree.sroot }),
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       persistSession: false,
@@ -324,8 +326,9 @@ const variants = [
   "child-dir-symlinks",
   "merged-hardlinks",
   "merged-file-symlinks",
+  "no-config-root",
 ]
-for (const variant of variants) {
+for (const variant of process.env.PROBE_VARIANTS?.split(",") ?? variants) {
   results.push(await runVariant(variant))
   console.log(JSON.stringify(results.at(-1), null, 2))
 }

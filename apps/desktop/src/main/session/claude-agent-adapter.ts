@@ -77,6 +77,8 @@ export type ClaudeModelsOptions = {
   workspace?: string
   env?: Record<string, string>
   binaryPath?: string
+  /** 这一次查询的有界等待时间；省略时用适配器的 modelsTimeoutMs。 */
+  timeoutMs?: number
 }
 
 /** 包装 SDK query 的会话适配器。保证同一实例只开始一次会话，停止和并发中断可安全重复调用。 */
@@ -206,11 +208,12 @@ export class ClaudeAgentAdapter {
     let query: AdapterQuery | null = null
     let creation: Promise<AdapterQuery> | null = null
     let timer: ReturnType<typeof setTimeout> | null = null
+    const timeoutMs = options.timeoutMs ?? this.#modelsTimeoutMs
     const timeout = new Promise<never>((_resolve, reject) => {
       timer = setTimeout(() => {
         abortController.abort()
-        reject(new Error(`MODEL_QUERY_TIMEOUT: 模型查询超时（${this.#modelsTimeoutMs} 毫秒）`))
-      }, this.#modelsTimeoutMs)
+        reject(new Error(`MODEL_QUERY_TIMEOUT: 模型查询超时（${timeoutMs} 毫秒）`))
+      }, timeoutMs)
     })
     try {
       creation = Promise.resolve(this.#queryFn({ prompt, options: sdkOptions }))

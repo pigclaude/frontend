@@ -19,6 +19,8 @@ import { boundSessionEnvironment } from "./bound-session-environment"
 
 const organizationUnavailableNotice = "暂时读不到 Claude 账号所在组织的模型，只显示内置模型。"
 const catalogUnavailableNotice = "暂时读不到 Claude Code 的模型列表，先显示内置模型。"
+// 读组织模型和 Claude Code 列模型共用这一个上限，界面最多等 20 秒，要在那之前给出回退目录。
+const catalogQueryBudgetMs = 15_000
 
 /** 模型查询依赖；所有会话状态通过参数传入，避免 SessionHost 主文件继续膨胀。 */
 export type SessionModelQueryOptions = {
@@ -33,6 +35,7 @@ export type SessionModelQueryOptions = {
   readBinaryPath: () => string
   userDataPath: string
   newId: () => string
+  now: () => number
   hostError: (code: SessionErrorCode, message: string) => SessionHostError
   /** 给用户的一次性提示；界面用全局通知展示。 */
   notify: (message: string) => void
@@ -41,9 +44,10 @@ export type SessionModelQueryOptions = {
 /** 查询模型目录。保证会员有效时返回的列表不为空；降级时只提示一次，Claude Code 失败的原因放进 cliError。 */
 export async function queryModels(options: SessionModelQueryOptions): Promise<SessionModelCatalog> {
   await options.assertMembership()
+  const deadline = options.now() + catalogQueryBudgetMs
   const organizationModels = await readOrganization(options)
   try {
-    const models = await listCliModels(options, organizationModels)
+    const models = await listCliModels(options, organizationModels, deadline)
     if (organizationModels === null) options.notify(organizationUnavailableNotice)
     return { models, cliError: null }
   } catch (error) {
@@ -65,6 +69,7 @@ async function readOrganization(
 async function listCliModels(
   options: SessionModelQueryOptions,
   organizationModels: OrganizationModel[] | null,
+  deadline: number,
 ): Promise<ClaudeModel[]> {
   const daemonBaseUrl = options.runtime.daemonBaseUrl
   if (daemonBaseUrl === null) {
@@ -95,6 +100,7 @@ async function listCliModels(
         workspace: environment.workspace,
         env: environment.env,
         binaryPath: environment.binaryPath,
+        timeoutMs: Math.max(1, deadline - options.now()),
       })
   } finally {
     await environment.cleanup().catch(() => undefined)

@@ -349,6 +349,7 @@ export class SessionHost {
       readBinaryPath: () => readBinaryPath(this.#resolveBinaryPath, this.#runtime.sessionToken),
       userDataPath: this.#userDataPath,
       newId: this.#newId,
+      now: this.#now,
       hostError: (code, message) => hostError(code, message, this.#runtime.sessionToken),
       notify: (message) => this.#emit({ type: "notice", message }),
     })

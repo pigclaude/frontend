@@ -313,6 +313,19 @@ describe("ClaudeAgentAdapter", () => {
     expect(fake.closes).toBe(1)
   })
 
+  it("lets a single model query wait less than the adapter default", async () => {
+    const fake = new HangingModelsQuery()
+    const adapter = new ClaudeAgentAdapter({
+      queryFn: capture(fake, []),
+      resolveBinaryPath: () => "/resolved/claude",
+      modelsTimeoutMs: 60_000,
+    })
+
+    await expect(adapter.models({ workspace: "/tmp/workspace", timeoutMs: 10 })).rejects.toThrow(
+      "MODEL_QUERY_TIMEOUT: 模型查询超时（10 毫秒）",
+    )
+  })
+
   it("closes a query that resolves after stop was requested", async () => {
     const fake = new FakeQuery()
     const gateControl = { release: (): void => undefined }

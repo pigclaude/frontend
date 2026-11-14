@@ -29,8 +29,18 @@ describe("SessionHost models", () => {
       workspace: harness.workspace,
       env: harness.environments.last.env,
       binaryPath: "/fake/claude",
+      timeoutMs: 15_000,
     })
     expect(harness.environments.last.cleaned).toBe(1)
+    await harness.host.dispose()
+  })
+
+  it("gives Claude Code only what a slow organization read left of the query budget", async () => {
+    const harness = createHarness({ workspace: await workspaceDir(), bootstrapDelayMs: 4_000 })
+
+    await harness.host.models()
+
+    expect(harness.adapters.last.modelCalls[0]?.timeoutMs).toBe(11_000)
     await harness.host.dispose()
   })
 

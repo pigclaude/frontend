@@ -349,6 +349,8 @@ export type HarnessOptions = {
   resolveProfile?: SessionProfile
   /** 假 daemon 读到的组织模型；null 表示没读到，省略时是空列表。 */
   organizationModels?: OrganizationModel[] | null
+  /** 假 daemon 读组织模型花的时间；读的时候把宿主的时钟往前拨。 */
+  bootstrapDelayMs?: number
   modelsError?: Error
   provider?: DevProviderOverride
 }
@@ -385,6 +387,7 @@ export function createHarness(options: HarnessOptions): SessionHarness {
   const environments = new EnvironmentFactory(trace, userDataPath)
   const events: SessionHostEvent[] = []
   const bootstrapReads: DaemonEndpoint[] = []
+  let clock = fixedNow
   let nextId = 0
   const hostOptions: SessionHostOptions = {
     membership,
@@ -397,12 +400,13 @@ export function createHarness(options: HarnessOptions): SessionHarness {
       options.resolveProfile ?? { timezone: "America/Los_Angeles", locale: "en-US" },
     readOrganizationModels: async (daemon) => {
       bootstrapReads.push(daemon)
+      clock += options.bootstrapDelayMs ?? 0
       return options.organizationModels === undefined ? [] : options.organizationModels
     },
     ...(options.provider === undefined ? {} : { provider: options.provider }),
     defaultWorkspace: () => options.workspace,
     permissionTimeoutMs: options.permissionTimeoutMs ?? 10 * 60 * 1_000,
-    now: () => fixedNow,
+    now: () => clock,
     newId: () => `id-${(nextId += 1)}`,
     ...(options.useRealEnvironment ? {} : { createEnvironment: environments.create }),
   }

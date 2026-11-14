@@ -1,4 +1,4 @@
-// 负责验证安装包的固定身份、私有协议、仅发布构建产物的白名单和打包时关闭的 fuses。
+// 负责验证安装包的固定身份、私有协议、仅发布构建产物的白名单、打包时关闭的 fuses，以及三平台安装包和更新源的配置。
 import { readFileSync, existsSync } from "node:fs"
 import { resolve } from "node:path"
 import { describe, expect, it } from "vitest"
@@ -27,7 +27,10 @@ describe("macOS 安装包配置", () => {
         identity: "-",
         hardenedRuntime: true,
         notarize: false,
-        target: [{ target: "dmg", arch: ["arm64"] }],
+        target: [
+          { target: "dmg", arch: ["arm64"] },
+          { target: "zip", arch: ["arm64"] },
+        ],
       },
     })
     expect(config.files).toEqual([
@@ -62,5 +65,24 @@ describe("macOS 安装包配置", () => {
       enableNodeOptionsEnvironmentVariable: false,
       enableNodeCliInspectArguments: false,
     })
+  })
+})
+
+describe("三平台发布配置", () => {
+  const config = JSON.parse(readFileSync(configPath, "utf8"))
+
+  it("Windows 用 NSIS 按用户安装，不需要管理员权限", () => {
+    expect(config.win.target).toEqual([{ target: "nsis", arch: ["x64"] }])
+    expect(config.nsis).toMatchObject({ oneClick: true, perMachine: false })
+  })
+
+  it("Linux 的 AppImage 文件名不带版本号，更新后协议关联和开机自启仍指向同一路径", () => {
+    expect(config.linux.target).toEqual([{ target: "AppImage", arch: ["x64"] }])
+    expect(config.linux.artifactName).not.toContain("${version}")
+    expect(config.linux.executableName).toBe("pigclaude")
+  })
+
+  it("更新清单指向公开发布仓库", () => {
+    expect(config.publish).toEqual([{ provider: "github", owner: "pigclaude", repo: "release" }])
   })
 })

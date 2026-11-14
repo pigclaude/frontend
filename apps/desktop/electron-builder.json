@@ -68,10 +68,44 @@
       {
         "target": "dmg",
         "arch": ["arm64"]
+      },
+      {
+        "target": "zip",
+        "arch": ["arm64"]
       }
     ]
   },
   "dmg": {
     "sign": false
-  }
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ]
+  },
+  "nsis": {
+    "oneClick": true,
+    "perMachine": false
+  },
+  "linux": {
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": ["x64"]
+      }
+    ],
+    "artifactName": "${productName}-${arch}.${ext}",
+    "executableName": "pigclaude",
+    "category": "Development"
+  },
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "pigclaude",
+      "repo": "release"
+    }
+  ]
 }

@@ -4,6 +4,7 @@ import { spawn, type ChildProcess } from "node:child_process"
 import { lstat, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, normalize } from "node:path"
+import { setTimeout as delay } from "node:timers/promises"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import {
   forgetRetainedClaudeProcess,
@@ -14,6 +15,7 @@ import {
 type TestChild = { child: ChildProcess; pid: number; exited: Promise<void> }
 const children: TestChild[] = []
 const platformTestMs = 60_000
+const childWaitMs = 5_000
 let directory: string
 
 beforeEach(async () => {
@@ -24,24 +26,48 @@ afterEach(async () => {
   for (const child of children.splice(0)) {
     if (child.child.exitCode === null && child.child.signalCode === null)
       child.child.kill("SIGKILL")
-    await child.exited
+    await waitForChild(child.exited, "测试子进程清理失败")
   }
   await rm(directory, { recursive: true, force: true })
 })
 
+async function waitForChild(pending: Promise<void>, reason: string): Promise<void> {
+  const controller = new AbortController()
+  try {
+    await Promise.race([
+      pending,
+      delay(childWaitMs, undefined, { signal: controller.signal }).then(() => {
+        throw new Error(reason)
+      }),
+    ])
+  } finally {
+    controller.abort()
+  }
+}
+
 async function launch(): Promise<TestChild> {
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 10_000)"], {
-    stdio: "ignore",
-    windowsHide: true,
-  })
+  const child = spawn(
+    process.execPath,
+    ["-e", 'setInterval(() => {}, 10_000); process.send ? process.send("ready") : process.exit(1)'],
+    { stdio: ["ignore", "ignore", "ignore", "ipc"], windowsHide: true },
+  )
   const exited = new Promise<void>((resolve) => child.once("close", () => resolve()))
-  await new Promise<void>((resolve, reject) => {
-    child.once("spawn", resolve)
-    child.once("error", reject)
-  })
-  if (child.pid === undefined) throw new Error("没有启动测试子进程")
+  if (child.pid === undefined) {
+    child.on("error", () => undefined)
+    await waitForChild(exited, "测试子进程启动错误未完成")
+    throw new Error("没有启动测试子进程")
+  }
   const started = { child, pid: child.pid, exited }
   children.push(started)
+  const ready = new Promise<void>((resolve, reject) => {
+    child.once("message", (message) => {
+      if (message === "ready") resolve()
+      else reject(new Error("测试子进程没有发出就绪信号"))
+    })
+    child.once("error", reject)
+    child.once("close", () => reject(new Error("测试子进程在就绪前退出")))
+  })
+  await waitForChild(ready, "测试子进程没有及时发出就绪信号")
   return started
 }
 
@@ -67,7 +93,7 @@ describe("retained Claude process", () => {
 
       await reapRetainedClaudeProcess(directory)
 
-      await child.exited
+      await waitForChild(child.exited, "回收后子进程仍在运行")
       await expect(lstat(sidecar())).rejects.toMatchObject({ code: "ENOENT" })
       await expect(reapRetainedClaudeProcess(directory)).resolves.toBeUndefined()
     },
@@ -131,7 +157,7 @@ describe("retained Claude process", () => {
       )
 
       await reapRetainedClaudeProcess(directory)
-      await child.exited
+      await waitForChild(child.exited, "使用大小写变体回收后子进程仍在运行")
     },
     platformTestMs,
   )
@@ -140,19 +166,29 @@ describe("retained Claude process", () => {
     "preserves the next process record when a late exit from the previous launch arrives",
     async () => {
       const first = await launch()
-      const previous = await recordRetainedClaudeProcess(directory, first.pid, process.execPath)
+      const recordPrevious = recordRetainedClaudeProcess(directory, first.pid, process.execPath)
+      await expect(recordPrevious, "记录上一代子进程").resolves.not.toBeNull()
+      const previous = await recordPrevious
       if (previous === null) throw new Error("测试进程已退出")
-      await reapRetainedClaudeProcess(directory)
-      await first.exited
+      await expect(
+        reapRetainedClaudeProcess(directory),
+        "结束上一代子进程",
+      ).resolves.toBeUndefined()
+      await waitForChild(first.exited, "上一代进程回收后仍在运行")
 
       const second = await launch()
-      const current = await recordRetainedClaudeProcess(directory, second.pid, process.execPath)
+      const recordCurrent = recordRetainedClaudeProcess(directory, second.pid, process.execPath)
+      await expect(recordCurrent, "记录下一代子进程").resolves.not.toBeNull()
+      const current = await recordCurrent
       if (current === null) throw new Error("测试进程已退出")
-      await forgetRetainedClaudeProcess(directory, previous)
+      await expect(
+        forgetRetainedClaudeProcess(directory, previous),
+        "处理上一代的迟到退出",
+      ).resolves.toBeUndefined()
       expect(JSON.parse(await readFile(sidecar(), "utf8"))).toEqual(current)
 
       second.child.kill()
-      await second.exited
+      await waitForChild(second.exited, "下一代子进程未能退出")
       await forgetRetainedClaudeProcess(directory, current)
       await expect(lstat(sidecar())).rejects.toMatchObject({ code: "ENOENT" })
     },

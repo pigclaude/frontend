@@ -103,7 +103,17 @@ async function scenario(): Promise<Scenario> {
       child !== null && "pid" in child && typeof child.pid === "number" ? child.pid : undefined,
     stopChild: async () => {
       if (child !== null && !exited()) child.kill("SIGKILL")
-      await childExit
+      const controller = new AbortController()
+      try {
+        await Promise.race([
+          childExit,
+          delay(5_000, undefined, { signal: controller.signal }).then(() => {
+            throw new Error("测试子进程收到终止信号后未及时退出")
+          }),
+        ])
+      } finally {
+        controller.abort()
+      }
     },
     exited,
     endedWhenExited,

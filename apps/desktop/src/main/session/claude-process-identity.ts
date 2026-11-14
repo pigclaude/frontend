@@ -91,10 +91,18 @@ async function signalOwnedProcess(
 
 async function waitUntilGone(identity: RetainedClaudeProcess): Promise<boolean> {
   const deadline = performance.now() + waitMs
+  let failure: { error: unknown } | null = null
   do {
-    if (!isSameProcess(identity, await readClaudeProcess(identity.pid))) return true
+    try {
+      if (!isSameProcess(identity, await readClaudeProcess(identity.pid))) return true
+      failure = null
+    } catch (error) {
+      // 正在退出的进程可能先失去可执行文件视图，退出或复用仍须由下一次系统读取证实。
+      failure = { error }
+    }
     await setTimeout(50)
   } while (performance.now() < deadline)
+  if (failure !== null) throw failure.error
   return false
 }
 

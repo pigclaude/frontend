@@ -85,10 +85,12 @@ export async function verifyWorkbench(page, application, output, provider = fals
     await expect
       .poll(() => readFile(join(root, "example.txt"), "utf8"))
       .toBe("changed in workbench\n")
-    await expect(panel.getByRole("treeitem", { name: /example\.txt/ })).toHaveAttribute(
-      "data-git",
-      "modified",
-    )
+    // 面板窄时打开文件后只显示文件，先切回目录导航再看装饰。
+    const exampleRow = panel.getByRole("treeitem", { name: /example\.txt/ })
+    if ((await exampleRow.count()) === 0) {
+      await panel.getByRole("button", { name: "显示文件导航", exact: true }).click()
+    }
+    await expect(exampleRow).toHaveAttribute("data-git", "modified")
     await page.screenshot({ path: join(output, "workbench-files.png") })
     await writeFile(join(root, "added.txt"), "new untracked file\n")
     await open("Diff")

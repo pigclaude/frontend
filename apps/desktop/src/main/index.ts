@@ -65,6 +65,9 @@ import { electronMenuFactory } from "./native-menu"
 import { errorMessage } from "./error-message"
 import { applyGlassBackground } from "./glass-background"
 import { createMainWindowOptions, developmentRendererUrl, readThemeSource } from "./window-options"
+import { createAppUpdates } from "./updates/app-updates"
+import { registerUpdateIpc } from "./updates/update-ipc"
+import type { UpdateService } from "./updates/update-service"
 
 const bundleMetadata: unknown = app.isPackaged
   ? JSON.parse(readFileSync(join(app.getAppPath(), "package.json"), "utf8"))
@@ -94,6 +97,7 @@ let callbackReceiver: AuthorizationCallbackReceiver | null = null
 let authorizationReady = false
 let shutdownStarted = false
 let cleanupLiveEvents = () => {}
+let appUpdates: UpdateService | null = null
 
 if (!hasSingleInstanceLock) {
   app.quit()
@@ -139,6 +143,7 @@ if (!hasSingleInstanceLock) {
         void desktopComposition?.membershipGate.inspect()
         void reportDeviceInfoOnStartup()
       }
+      startAppUpdates()
       app.on("activate", () => {
         if (!shutdownStarted && BrowserWindow.getAllWindows().length === 0) createWindow()
       })
@@ -157,7 +162,14 @@ const guardMainWindowClose = installQuitFlow({
   shutdown: shutdownDesktop,
   onBeforeShutdown: () => {
     shutdownStarted = true
+    appUpdates?.stop()
     closeStartupEvents()
+  },
+  onCancel: () => appUpdates?.cancelRestart(),
+  finishQuit: () => {
+    if (!appUpdates?.restartRequested()) return app.quit()
+    // 安装器没能启动时也要退出，清理已经做完了。
+    void appUpdates.installAndRestart().finally(() => setTimeout(() => app.quit(), 3_000))
   },
 })
 
@@ -180,6 +192,7 @@ function registerIpcHandlers(): void {
         filePath: join(app.getPath("userData"), "session-defaults.json"),
       })),
   })
+  registerUpdateIpc({ ipcMain, service: () => appUpdates, isTrusted: isTrustedSender })
   registerFolderPickerIpc(ipcMain, (options) =>
     mainWindow ? dialog.showOpenDialog(mainWindow, options) : dialog.showOpenDialog(options),
   )
@@ -265,6 +278,19 @@ async function shutdownDesktop(): Promise<void> {
     xray: () => startProxyRuntime.dispose(),
     callback: () => callbackServer?.close() ?? Promise.resolve(),
   })
+}
+
+/** 窗口打开后开始检查更新；更新服务建不起来只记日志，不影响应用其余部分。 */
+function startAppUpdates(): void {
+  try {
+    appUpdates = createAppUpdates({
+      requestQuit: () => app.quit(),
+      onState: (state) => sendToMainWindow("pigclaude:update-state", state),
+    })
+    appUpdates.start()
+  } catch (error: unknown) {
+    console.error(errorMessage(error))
+  }
 }
 
 /** 启动后已有授权时上报一次设备版本；失败只记日志，不重试也不提示用户。 */

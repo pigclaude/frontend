@@ -6,6 +6,7 @@ import { isSessionEnvelope } from "./session-event-filter"
 import { sessionDefaultsBridge, type SessionDefaultsBridge } from "./session-defaults"
 import { windowBridge, type WindowBridge } from "./window-bridge"
 import { workbenchBridge } from "./workbench"
+import { updatesBridge, type UpdatesBridge } from "./updates"
 import type { WorkbenchBridge } from "../workbench-contract"
 import type { AuthorizeClaudeAccountInput } from "../main/claude/account-service-inputs"
 import type { OpenAppKind } from "../main/workbench/open-apps"
@@ -42,6 +43,7 @@ export type PigclaudeBridge = {
   systemVersion: string
   window: WindowBridge
   workbench?: WorkbenchBridge
+  updates?: UpdatesBridge
   /** 读取当前发布版本、本机数据目录和实际使用的 Claude Code 版本，设置页只展示真实运行时信息。 */
   appInfo?: () => Promise<AppInfo>
   openExternal: (url: string) => Promise<void>
@@ -137,6 +139,7 @@ const bridge: PigclaudeBridge = {
     typeof process.getSystemVersion === "function" ? process.getSystemVersion() : "unknown",
   window: windowBridge(),
   workbench: workbenchBridge(),
+  updates: updatesBridge(),
   appInfo: () => ipcRenderer.invoke("pigclaude:app-info"),
   openExternal: (url) => ipcRenderer.invoke("pigclaude:open-external", url),
   setTheme: (source) => ipcRenderer.invoke("pigclaude:set-theme", source),

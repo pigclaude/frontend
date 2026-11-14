@@ -114,6 +114,7 @@ vi.mock("electron", () => ({
   safeStorage: {},
   shell: { openExternal: async () => undefined },
 }))
+vi.mock("../updates/app-updates", () => import("./inert-app-updates"))
 vi.mock("../login-shell-path", () => ({ applyLoginShellPath: async () => undefined }))
 vi.mock("../runtime-profile", () => ({
   configureRuntimeProfile: () => fixture.hasLock,

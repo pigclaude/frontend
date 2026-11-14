@@ -8,13 +8,18 @@ import { createQuitCoordinator } from "./shutdown"
 import { guardReload } from "./unsaved-guard"
 import type { UnsavedFiles } from "./workbench/unsaved-files"
 
-/** 退出流程的依赖：当前会中断的工作、未保存的文件、主窗口、清理步骤，以及开始清理前要做的事。 */
+/**
+ * 退出流程的依赖：当前会中断的工作、未保存的文件、主窗口、清理步骤、开始清理前要做的事，
+ * 以及清理完成后的最后一步（缺省直接退出）和用户取消退出时要做的事。
+ */
 export type QuitFlowOptions = {
   pendingWork: () => SessionPendingWork
   unsaved: UnsavedFiles
   mainWindow: () => BrowserWindow | null
   shutdown: () => Promise<void>
   onBeforeShutdown: () => void
+  finishQuit?: () => void
+  onCancel?: () => void
 }
 
 /**
@@ -44,9 +49,16 @@ export function installQuitFlow(options: QuitFlowOptions): (window: BrowserWindo
   app.on(
     "before-quit",
     createQuitCoordinator({
-      confirm: () => confirmation.confirm("quit"),
+      confirm: () => {
+        const answer = confirmation.confirm("quit")
+        if (answer === true) return true
+        return answer.then((confirmed) => {
+          if (!confirmed) options.onCancel?.()
+          return confirmed
+        })
+      },
       shutdown: options.shutdown,
-      quit: () => app.quit(),
+      quit: options.finishQuit ?? (() => app.quit()),
       onFailure: (reason) => {
         confirmation.reset()
         showQuitFailure(reason)

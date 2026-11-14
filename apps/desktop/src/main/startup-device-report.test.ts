@@ -42,6 +42,7 @@ vi.mock("electron", () => ({
   safeStorage: {},
   shell: {},
 }))
+vi.mock("./updates/app-updates", () => import("./testing/inert-app-updates"))
 vi.mock("./login-shell-path", () => ({ applyLoginShellPath: async () => undefined }))
 vi.mock("./runtime-profile", () => ({ configureRuntimeProfile: () => true }))
 vi.mock("./runtime-endpoints", () => ({

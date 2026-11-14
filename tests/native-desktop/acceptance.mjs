@@ -42,6 +42,7 @@ async function launch() {
       PIGCLAUDE_USER_DATA: userData,
       PIGCLAUDE_AUTH_ORIGIN: fixture.origin,
       PIGCLAUDE_RUST_BASE_URL: fixture.origin,
+      PIGCLAUDE_UPDATE_CHECK: "0",
     },
     timeout: 45_000,
   })

@@ -3,7 +3,8 @@
 import { randomUUID } from "node:crypto"
 import { lstat, mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { deferred } from "../testing/profile-fixture"
 import { SessionHost } from "./session-host"
 import type { SessionEnvelope } from "./session-envelope"
 import { AdapterFactory, FakeMembership, FakeUsage } from "./session-host-fixtures"
@@ -47,6 +48,25 @@ describe("saved session library", () => {
     await fixture.host.history.archive(id, false)
     expect(fixture.host.list()).toMatchObject([{ sessionId: id, title: "项目核对" }])
     expect(fixture.host.list(true)).toEqual([])
+  })
+
+  it("keeps a user rename queued just before the first message indexes its automatic title", async () => {
+    const { host, store, userDataPath } = await launchHost()
+    const id = randomUUID()
+    await host.start({ sessionId: id, workspace: userDataPath, permissionMode: "default" })
+    await host.historyEvents(id, 0)
+    const update = store.update.bind(store)
+    const indexTurn = vi.spyOn(store, "update").mockImplementationOnce((sessionId, patch) => {
+      const rename = update(sessionId, { title: "自定标题", titleSource: "user" })
+      const turn = update(sessionId, patch)
+      return rename.then(() => turn)
+    })
+
+    await host.send(id, { text: "第一条消息的自动标题" })
+    await host.historyEvents(id, 0)
+
+    expect(indexTurn).toHaveBeenCalled()
+    expect(store.get(id)).toMatchObject({ title: "自定标题", titleSource: "user" })
   })
 
   it("stops the session before removing both of its histories and reports disk usage", async () => {
@@ -142,6 +162,33 @@ describe("saved session library", () => {
     await reopened.host.history.sweep()
     expect(reopened.store.list()).toEqual([])
     await expect(lstat(store.paths("expired").directory)).rejects.toMatchObject({ code: "ENOENT" })
+  })
+
+  it("keeps a session used while an earlier expired session is being deleted", async () => {
+    const { host, store } = await launchHost()
+    const old = new Date(now - 12 * day).toISOString()
+    await store.create(newSessionIndex("first", { lastActivityAt: old }))
+    await store.create(newSessionIndex("second", { lastActivityAt: old }))
+    const entered = deferred<void>()
+    const release = deferred<void>()
+    const remove = store.delete.bind(store)
+    vi.spyOn(store, "delete").mockImplementation(async (id) => {
+      if (id === "first") {
+        entered.resolve()
+        await release.promise
+      }
+      await remove(id)
+    })
+
+    const sweep = host.history.setRetention(7)
+    try {
+      await entered.promise
+      await store.update("second", { lastActivityAt: new Date(now).toISOString() })
+    } finally {
+      release.resolve()
+      await sweep
+    }
+    expect(store.list().map(({ id }) => id)).toEqual(["second"])
   })
 })
 

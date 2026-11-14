@@ -192,10 +192,15 @@ export class SavedSessionLibrary {
     const { days } = await this.#retention.get()
     if (days === null) return
     const cutoff = this.options.now() - days * dayMs
-    for (const index of store.list()) {
+    for (const { id } of store.list()) {
       if (this.#disposed || this.#clearing !== null || revision !== this.#retentionRevision) return
-      if (Date.parse(index.lastActivityAt) < cutoff && !this.options.active(index.id)) {
-        await this.#delete(store, index.id).catch(() => this.#warn())
+      const current = store.get(id)
+      if (
+        current !== null &&
+        Date.parse(current.lastActivityAt) < cutoff &&
+        !this.options.active(id)
+      ) {
+        await this.#delete(store, id).catch(() => this.#warn())
       }
     }
   }

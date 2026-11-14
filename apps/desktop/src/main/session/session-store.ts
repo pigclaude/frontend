@@ -112,13 +112,19 @@ export class SessionStore {
     return structuredClone(index)
   }
 
-  /** 按会话 id 局部更新索引并原子写回；不认识的字段保留。会话不存在时报 SESSION_NOT_FOUND。 */
-  update(id: string, patch: SessionIndexPatch): Promise<SessionIndex> {
+  /** 按会话 id 原子更新索引；函数在写队列中读取最新索引，返回 null 保留原记录。 */
+  update(
+    id: string,
+    patch: SessionIndexPatch | ((index: SessionIndex) => SessionIndexPatch | null),
+  ): Promise<SessionIndex> {
     return this.#enqueue(id, async () => {
+      const current = this.#entry(id).index
+      const changes = typeof patch === "function" ? patch(structuredClone(current)) : patch
+      if (changes === null) return structuredClone(current)
       const index: SessionIndex = {
-        ...this.#entry(id).index,
+        ...current,
         updatedAt: new Date(this.#now()).toISOString(),
-        ...structuredClone(patch),
+        ...structuredClone(changes),
       }
       await this.#write(id, index)
       return structuredClone(index)

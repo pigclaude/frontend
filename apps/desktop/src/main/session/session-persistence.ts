@@ -234,11 +234,8 @@ export class SessionPersistence {
     if (store === null || envelope.seq === null) return
     void this.#save(id, async () => {
       await store.appendTimeline(id, envelope)
-      const index = store.get(id)
-      if (index === null) return
       const { event, at } = envelope
-      const patch = indexPatch(index, event, at)
-      if (patch !== null) await store.update(id, patch)
+      await store.update(id, (index) => indexPatch(index, event, at))
     })
   }
 

@@ -5,6 +5,7 @@ import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import type { DesktopUpdateState } from "@pigclaude/ui-contracts"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import type { UpdateResult } from "../../../main/updates/update-service"
 import { AppProviders } from "../app-providers"
 import { installPigcodeNative } from "../lib/pigcode-native"
 import { AppUpdateCenter } from "./app-update-center"
@@ -45,7 +46,7 @@ function installUpdates(initial: DesktopUpdateState) {
   const updates = {
     state: vi.fn(async () => current),
     perform: vi.fn(async () => current),
-    check: vi.fn(async () => ({ status: "up-to-date" as const })),
+    check: vi.fn(async (): Promise<UpdateResult> => ({ status: "up-to-date" })),
     setAutoCheck: vi.fn(async () => current),
     openReleaseNotes: vi.fn(async () => undefined),
     subscribe: (listener: (state: DesktopUpdateState) => void) => {
@@ -115,5 +116,25 @@ describe("顶栏更新中心", () => {
     await act(async () => document.querySelector<HTMLElement>(".update-center-summary")?.click())
     await click("查看发布说明")
     expect(updates.openReleaseNotes).toHaveBeenCalledTimes(1)
+  })
+
+  it("应用行消失后再检查失败，弹层显示失败而不是全部最新", async () => {
+    const idle = { ...available, phase: "idle", version: null, url: null, action: null } as const
+    const { updates, push } = installUpdates(available)
+    await render()
+    await click("查看更新")
+    updates.check.mockImplementationOnce(async () => {
+      await push(idle)
+      return { status: "up-to-date" }
+    })
+    await click("检查更新")
+    expect(document.querySelectorAll(".update-center-row")).toHaveLength(0)
+
+    updates.check.mockImplementationOnce(async () => {
+      await push({ ...idle, phase: "failed", error: "check", action: "open-release" })
+      return { status: "error" }
+    })
+    await click("检查更新")
+    expect(document.querySelector(".update-center-error")?.textContent).toBe("暂时无法检查更新")
   })
 })

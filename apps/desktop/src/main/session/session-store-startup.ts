@@ -17,7 +17,7 @@ export function startSessionStore(
   options: SessionStoreStartupOptions = {},
 ): Promise<SessionStore | null> {
   const open = options.open ?? ((input: SessionStoreOptions) => SessionStore.open(input))
-  const log = options.log ?? ((message: string) => console.error(message))
+  const log = options.log ?? ((message: string) => console.warn(message))
   return open({ root: sessionStoreRoot(userDataPath), log }).catch((error: unknown) => {
     log(`会话存储打开失败：${errorMessage(error)}`)
     return null

@@ -136,9 +136,14 @@ describe("SessionHost subagents", () => {
         signal,
         toolUseID: "call_00_ckmv3ue7pazeijtlxw6l9ipx",
         agentID: agentId,
+        requestId: "control-1",
       },
     )
-    void harness.canUseTool("Bash", { command: "ls" }, { signal, toolUseID: "main-tool" })
+    void harness.canUseTool(
+      "Bash",
+      { command: "ls" },
+      { signal, toolUseID: "main-tool", requestId: "control-2" },
+    )
     await waitUntil(
       () => harness.events.filter((event) => event.type === "permission").length === 2,
     )

@@ -1,6 +1,12 @@
 // 验证工作区与当前会话映射成侧栏的项目、会话和状态点；折叠项目与从项目新建会话的规则。
 import { describe, expect, it } from "vitest"
-import { createSessionState, type SessionTurn, type SessionUiState } from "../models/session-model"
+import type { SessionHostEvent } from "../../../main/session/session-types"
+import {
+  createSessionState,
+  reduceSession,
+  type SessionTurn,
+  type SessionUiState,
+} from "../models/session-model"
 import { receive } from "../test-support/session-envelopes"
 import {
   newSessionWorkspace,
@@ -157,6 +163,60 @@ describe("sessionStatus", () => {
         }),
       ),
     ).toBe("interrupted")
+  })
+
+  it("后台子代理还在忙时主会话运行中，子代理等许可时等待许可，它结束后这一轮才完成", () => {
+    const opened = reduceSession(createSessionState(), { type: "opened", sessionId: "s-1" })
+    const sent = reduceSession(opened, {
+      type: "user-message",
+      text: "派个后台子代理",
+      turnId: "t1",
+      at: "2026-11-14T01:00:00.000Z",
+    })
+    const busy = [
+      { type: "turn-started", turnId: "main-1" },
+      {
+        type: "message",
+        messageId: "m1",
+        model: "claude-sonnet",
+        parentToolUseId: null,
+        blocks: [{ type: "tool-use", id: "agent-1", name: "Agent", input: {} }],
+      },
+      { type: "tool-result", toolUseId: "agent-1", content: "launched", isError: false },
+      {
+        type: "result",
+        subtype: "success",
+        isError: false,
+        durationMs: 10,
+        numTurns: 2,
+        stopReason: "end_turn",
+        usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
+      },
+    ] satisfies SessionHostEvent[]
+    const working = busy.reduce((state, event) => receive(state, event), sent)
+    const asking = receive(working, {
+      type: "permission",
+      requestId: "r1",
+      toolName: "Bash",
+      input: { command: "ls" },
+      parentToolUseId: "agent-1",
+      agentId: "task-1",
+    })
+    expect(sessionStatus(working)).toBe("running")
+    expect(sessionStatus(asking)).toBe("waiting-approval")
+    const finished = [
+      {
+        type: "subagent-ended",
+        parentToolUseId: "agent-1",
+        agentId: "task-1",
+        status: "completed",
+        summary: "好了",
+      },
+      { type: "turn-ended", turnId: "main-1", status: "completed", errorCode: null },
+    ] satisfies SessionHostEvent[]
+    expect(sessionStatus(finished.reduce((state, event) => receive(state, event), working))).toBe(
+      "completed",
+    )
   })
 })
 

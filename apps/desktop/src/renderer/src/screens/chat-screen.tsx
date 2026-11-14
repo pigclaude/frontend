@@ -1,5 +1,5 @@
 // 负责聊天页：草稿选工作区、分支和 worktree，开始会话、时间线、工具/终端/浏览器视图、权限回答、
-// 时间线里的提问卡、换号提示和错误。
+// 时间线里的提问卡、线程头的子代理标签、换号提示和错误。
 // 页面只消费 useSession 控制器，界面完全由 Pigcode 的 ui-chat 绘制。
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
@@ -38,7 +38,8 @@ import {
 } from "../models/composer-config"
 import { projectNameFromPath } from "../models/project-model"
 import type { NavLocation } from "../models/navigation"
-import { pendingPermission } from "../models/session-permissions"
+import { pendingPermission, waitingSubagents } from "../models/session-permissions"
+import { useSubagentTabs } from "../hooks/use-subagent-tabs"
 import { threadView } from "../models/thread-view"
 import type { SessionEffort } from "../../../main/session/session-types"
 import type { WorkbenchBridge } from "../../../workbench-contract"
@@ -352,6 +353,16 @@ export function ChatScreen({
       shown.plan,
     ],
   )
+  const waiting = useMemo(() => waitingSubagents(state), [state])
+  const subagentTabs = useSubagentTabs({
+    sessionId: state.sessionId,
+    events: view.events,
+    main: {
+      title: view.thread.title,
+      description: projectName === "" ? view.thread.title : `${projectName} / ${view.thread.title}`,
+    },
+    waiting,
+  })
 
   if (showDraft) {
     const projects = workspaceOptions.map((path) => ({
@@ -403,6 +414,7 @@ export function ChatScreen({
           events={view.events}
           streamingText={view.streamingText}
           liveReasoning={view.liveReasoning}
+          {...subagentTabs}
           {...(workspace === null ? {} : { cwd: workspace })}
           {...(projectName === "" ? {} : { projectName })}
           onStart={submitFromComposer}

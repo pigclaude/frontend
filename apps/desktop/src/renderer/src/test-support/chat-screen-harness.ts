@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, expect, vi } from "vitest"
 import type { ClaudeAccountView, ProxyView } from "@pigclaude/contracts/claude-account"
 import { resetComposerMemory } from "@pigclaude/ui-composer"
+import { resetSubagentTabs } from "../hooks/use-subagent-tabs"
 import { LocaleProvider } from "@pigclaude/ui-primitives"
 import { ToastProvider } from "@pigclaude/ui-shell"
 import type { SessionController } from "../hooks/use-session"
@@ -129,6 +130,7 @@ export function chatScreenRoot(): ChatScreenRoot {
   beforeEach(() => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true)
     resetComposerMemory()
+    resetSubagentTabs()
     window.localStorage.clear()
     host = document.createElement("div")
     document.body.append(host)

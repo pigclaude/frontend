@@ -22,6 +22,8 @@ export type SessionPermissionCard = {
   input: Record<string, unknown>
   suggestions: unknown[]
   blockedPath: string | null
+  /** 子代理发起的请求是派生它的 Agent 工具调用 id，主线程为 null。 */
+  parentToolUseId: string | null
   status: SessionPermissionStatus
   requestedAt: string
   resolvedAt: string | null
@@ -40,16 +42,23 @@ export function permissionCards(
   return cards
 }
 
+type PermissionState = Pick<SessionUiState, "events" | "sessionId" | "turns" | "answers">
+
 /** 当前会话最早一张还没回答的权限卡片；没有时返回 null。 */
-export function pendingPermission(
-  state: Pick<SessionUiState, "events" | "sessionId" | "turns" | "answers">,
-): SessionPermissionCard | null {
+export function pendingPermission(state: PermissionState): SessionPermissionCard | null {
+  return pendingCards(state)[0] ?? null
+}
+
+/** 当前会话里正在等权限回答的子代理，按派生它们的 Agent 工具调用 id。 */
+export function waitingSubagents(state: PermissionState): Set<string> {
+  return new Set(pendingCards(state).flatMap((card) => card.parentToolUseId ?? []))
+}
+
+function pendingCards(state: PermissionState): SessionPermissionCard[] {
   const record = sessionRecord(state.events, state.sessionId)
-  for (const run of sessionRuns(record.envelopes, state.turns)) {
-    const pending = permissionCards(run, state.answers).find((card) => card.status === "pending")
-    if (pending !== undefined) return pending
-  }
-  return null
+  return sessionRuns(record.envelopes, state.turns).flatMap((run) =>
+    permissionCards(run, state.answers).filter((card) => card.status === "pending"),
+  )
 }
 
 function cardOf(
@@ -65,6 +74,7 @@ function cardOf(
     input: event.input,
     suggestions: event.suggestions ?? [],
     blockedPath: event.blockedPath ?? null,
+    parentToolUseId: event.parentToolUseId ?? null,
     requestedAt: at,
   }
   const answer = answers[event.requestId]

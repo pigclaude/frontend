@@ -37,7 +37,8 @@ export function sessionTitle(session: Pick<SessionUiState, "turns">, untitled: s
 
 /**
  * 侧栏状态点：等待许可、回复中；回合结束后按最后一轮显示已完成、失败或已中断；
- * 会话出错结束时失败，还没有回合时空闲。PigClaude 没有排队。
+ * 会话出错结束时失败，还没有回合时空闲。PigClaude 没有排队。子代理忙时主进程不结束这一轮，
+ * 所以主会话显示运行中；子代理等权限回答时显示等待许可。
  */
 export function sessionStatus(session: SessionUiState): ThreadStatus {
   if (session.activeTurnId !== null && !session.ended) {

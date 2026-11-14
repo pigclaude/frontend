@@ -32,6 +32,7 @@ function card(overrides: Partial<SessionPermissionCard> = {}): SessionPermission
     input: { command: "pnpm test" },
     suggestions: [],
     blockedPath: null,
+    parentToolUseId: null,
     status: "pending",
     requestedAt: "2026-11-14T01:00:00.000Z",
     resolvedAt: null,

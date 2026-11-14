@@ -1,4 +1,4 @@
-// 将工具事件里的绝对路径映射到当前工作台项目，主进程仍核对真实文件。
+// 负责工作台项目内路径和绝对路径之间的换算，主进程仍核对真实文件。
 /** 只返回项目内的相对路径；支持 macOS 的 /var 别名和 Windows 的路径分隔符。 */
 export function workbenchRelativePath(root: string, input: string): string | null {
   const value = input.replaceAll("\\", "/")
@@ -22,4 +22,10 @@ export function workbenchRelativePath(root: string, input: string): string | nul
     )
     ? path
     : null
+}
+
+/** 拼出用于显示和复制的项目内文件绝对路径，分隔符跟随项目目录。 */
+export function absoluteFilePath(root: string, path: string): string {
+  const separator = root.includes("\\") && !root.includes("/") ? "\\" : "/"
+  return root.replace(/[\\/]+$/, "") + separator + path.split("/").join(separator)
 }

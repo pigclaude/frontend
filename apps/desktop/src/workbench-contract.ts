@@ -84,6 +84,7 @@ export type WorkbenchBridge = {
   search: (root: string, query: string) => Promise<WorkbenchSearch>
   read: (root: string, path: string) => Promise<WorkbenchFile>
   save: (root: string, path: string, text: string, mtimeMs: number | null) => Promise<WorkbenchFile>
+  /** 本机检测到的编辑器，按登记顺序；没有装时为空。 */
   editors: () => Promise<WorkbenchEditor[]>
   /** editor 为 null 时交给系统默认应用。 */
   openFile: (root: string, path: string, editor: string | null) => Promise<void>

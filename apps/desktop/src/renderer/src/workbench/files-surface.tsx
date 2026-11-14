@@ -7,10 +7,11 @@ import { FileExplorer, FileViewer } from "@pigclaude/ui-workbench"
 import type { WorkbenchBridge } from "../../../workbench-contract"
 import { useText } from "../locale/text"
 import { projectNameFromPath } from "../models/project-model"
-import { absoluteFilePath, showFileMenu } from "./file-menus"
+import { showFileMenu } from "./file-menus"
 import { useFileDocument, type FileDraft } from "./use-file-document"
 import { useFileNavigation } from "./use-file-navigation"
 import { workbenchError } from "./workbench-errors"
+import { absoluteFilePath } from "./workbench-path"
 
 const Markdown = lazy(() =>
   import("@pigclaude/ui-chat").then((module) => ({ default: module.Markdown })),

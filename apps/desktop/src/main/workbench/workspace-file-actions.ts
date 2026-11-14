@@ -3,13 +3,49 @@
 import { randomUUID } from "node:crypto"
 import { constants, createWriteStream } from "node:fs"
 import { open, rename, unlink } from "node:fs/promises"
-import { basename, dirname, join } from "node:path"
+import { basename, dirname, extname, join } from "node:path"
 import { pipeline } from "node:stream/promises"
 import { app, dialog, shell, type BrowserWindow } from "electron"
 import { installedEditors, launchEditor } from "./installed-editors"
 import { workspaceFileInfo, workspacePath } from "./workspace-path"
 
-/** 用选中的编辑器打开项目里的文件，editor 为 null 时交给系统默认应用；编辑器不在本机时拒绝。 */
+const shortcutExtensions = [".desktop", ".fileloc", ".inetloc", ".lnk", ".url", ".webloc"]
+const programExtensions: Partial<Record<NodeJS.Platform, string[]>> = {
+  darwin: [".app", ".command", ".terminal", ".tool", ".workflow"],
+  win32: [
+    ".bat",
+    ".cmd",
+    ".com",
+    ".cpl",
+    ".exe",
+    ".hta",
+    ".js",
+    ".jse",
+    ".msc",
+    ".msi",
+    ".pif",
+    ".ps1",
+    ".reg",
+    ".scr",
+    ".vbe",
+    ".vbs",
+    ".wsf",
+    ".wsh",
+  ],
+}
+
+function launchable(file: string): boolean {
+  const extension = extname(file).toLowerCase()
+  return (
+    shortcutExtensions.includes(extension) ||
+    (programExtensions[process.platform] ?? []).includes(extension)
+  )
+}
+
+/**
+ * 用选中的编辑器打开项目里的文件，editor 为 null 时交给系统默认应用；编辑器不在本机时拒绝。
+ * 系统默认应用会运行程序、跟随快捷方式，这类文件只能交给编辑器。
+ */
 export async function openWorkbenchFile(
   root: string,
   path: string,
@@ -23,6 +59,7 @@ export async function openWorkbenchFile(
     await launchEditor(installed, file)
     return
   }
+  if (launchable(file)) throw new Error("WORKBENCH_OPEN_BLOCKED")
   const error = await settleOpenPath(shell.openPath(file))
   if (error) throw new Error("WORKBENCH_OPEN_FAILED")
 }

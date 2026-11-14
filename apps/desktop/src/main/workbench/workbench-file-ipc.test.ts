@@ -101,6 +101,19 @@ describe("workbench file actions", () => {
     expect(electron.openPath).toHaveBeenCalledTimes(1)
   })
 
+  it("does not hand shortcuts or programs to the system default app", async () => {
+    const program = process.platform === "win32" ? "run.bat" : "deploy.command"
+    const programs = process.platform === "linux" ? [] : [program]
+    for (const name of ["Setup.LNK", "app.desktop", "site.url", ...programs]) {
+      await writeFile(join(project, name), "launch\n")
+      await expect(call("open-file", project, name, null)).rejects.toThrow("WORKBENCH_OPEN_BLOCKED")
+    }
+    expect(electron.openPath).not.toHaveBeenCalled()
+
+    await call("open-file", project, "Setup.LNK", "cursor")
+    expect(editors.launch).toHaveBeenCalledExactlyOnceWith(cursor, join(project, "Setup.LNK"))
+  })
+
   it("lists installed editors and opens a project file with the chosen one", async () => {
     await writeFile(join(project, "index.ts"), "export {}\n")
 

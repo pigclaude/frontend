@@ -6,12 +6,6 @@ import type { WorkbenchBridge } from "../../../workbench-contract"
 type Point = { x: number; y: number }
 type Translate = (key: MessageKey) => string
 
-/** 拼出用于显示和复制的项目内文件绝对路径，分隔符跟随项目目录。 */
-export function absoluteFilePath(root: string, path: string): string {
-  const separator = root.includes("\\") && !root.includes("/") ? "\\" : "/"
-  return root.replace(/[\\/]+$/, "") + separator + path.split("/").join(separator)
-}
-
 /** 文件工具栏的「更多」菜单：选一个本机编辑器或系统默认应用打开，或者另存为。 */
 export async function showFileMenu({
   bridge,

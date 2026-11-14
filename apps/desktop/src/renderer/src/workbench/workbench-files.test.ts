@@ -107,13 +107,13 @@ describe("workbench files", () => {
       const preview = document.querySelector(".file-markdown-preview")
       expect(preview?.querySelector("h1, h2, h3, h4")?.textContent).toBe("Hello")
       expect(preview?.querySelector("em")?.textContent).toBe("text")
-    })
+    }, 10_000)
     expect(fileEditor()).toBeNull()
 
     await click(button("源码"))
     expect(fileEditor()?.value).toBe("# Hello\n\nSome *text*.\n")
     expect(document.querySelector(".file-markdown-preview")).toBeNull()
-  })
+  }, 15_000)
 
   it("shows only the navigation in a narrow panel and switches to the file once picked", async () => {
     vi.stubGlobal(

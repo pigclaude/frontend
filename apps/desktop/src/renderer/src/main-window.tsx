@@ -127,7 +127,7 @@ export function MainWindow({
   const sessionActive = session.state.started && !session.state.ended
   const workbenchRoot = sessionActive ? (sessionWorkspace ?? workspace) : workspace
   const openInPath = location.kind === "session" ? (sessionWorkspace ?? workspace) : workspace
-  const turnActive = sessionActive && session.state.turns.at(-1)?.result === null
+  const turnActive = sessionActive && session.state.activeTurnId !== null
   const toggleRight = () => {
     setRightOpen((open) => !open)
     setRightMax(false)

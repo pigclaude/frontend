@@ -6,7 +6,7 @@ export function workspaceRevision(turns: readonly SessionTurn[]): number {
   let revision = 0
   for (const turn of turns) {
     revision += turn.tools.filter((tool) => tool.status !== "running").length
-    if (turn.result !== null) revision += 1
+    if (turn.endedAt !== null) revision += 1
   }
   return revision
 }

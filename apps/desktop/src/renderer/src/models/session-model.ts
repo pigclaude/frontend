@@ -1,5 +1,6 @@
 // 负责把会话桥的流式事件归并成聊天界面状态：增量合并、消息/工具去重、权限卡片、
 // 换号提示、权限模式和会话提示、结果和结束状态，并把主进程错误码映射成中文文案。
+// 一轮由主进程开闭：result 只记用量，turn-ended 才结束这一轮，后台子代理和工作流跑完前一直显示运行中。
 // 每个动作都带 ISO UTC 时间：事件取信封时间，界面操作取操作时的时间；时间线据此显示耗时。
 
 import type {
@@ -213,26 +214,26 @@ function applyEvent(state: SessionUiState, event: SessionHostEvent, at: string):
       return updateActiveTurn(state, at, (turn) => addPermission(turn, event, at))
     case "account-switched":
       return applyAccountSwitch(state, { from: event.from, to: event.to, reason: event.reason, at })
+    case "turn-started":
+      if (state.activeTurnId !== null) return state
+      return appendTurn(state, event.turnId, null, at)
     case "result":
-      return {
-        ...updateActiveTurn(state, at, (turn) => ({
-          ...turn,
-          status: event.isError ? "error" : "done",
-          endedAt: turn.endedAt ?? at,
-          result: {
-            subtype: event.subtype,
-            isError: event.isError,
-            durationMs: event.durationMs,
-            numTurns: event.numTurns,
-            stopReason: event.stopReason,
-            inputTokens: event.usage.inputTokens,
-            outputTokens: event.usage.outputTokens,
-            cacheReadTokens: event.usage.cacheReadTokens,
-            cacheCreationTokens: event.usage.cacheCreationTokens,
-          },
-        })),
-        activeTurnId: null,
-      }
+      return updateCurrentTurn(state, (turn) => ({
+        ...turn,
+        result: {
+          subtype: event.subtype,
+          isError: event.isError,
+          durationMs: event.durationMs,
+          numTurns: event.numTurns,
+          stopReason: event.stopReason,
+          inputTokens: event.usage.inputTokens,
+          outputTokens: event.usage.outputTokens,
+          cacheReadTokens: event.usage.cacheReadTokens,
+          cacheCreationTokens: event.usage.cacheCreationTokens,
+        },
+      }))
+    case "turn-ended":
+      return applyTurnEnded(state, event.status, event.errorCode, at)
     case "error":
       return applyError(state, event.code, event.message, at)
     case "ended":
@@ -262,7 +263,7 @@ function newTurn(id: string, userText: string | null, at: string): SessionTurn {
 function appendTurn(
   state: SessionUiState,
   turnId: string,
-  userText: string,
+  userText: string | null,
   at: string,
 ): SessionUiState {
   return { ...state, turns: [...state.turns, newTurn(turnId, userText, at)], activeTurnId: turnId }
@@ -300,7 +301,35 @@ function endTurn(
   }
 }
 
-// 迟到事件优先落到最后一轮，避免在 result 之后凭空多出一轮没有提问的对话。
+// 进行中的一轮优先；没有时落到最后一轮，不凭空多出一轮没有提问的对话。
+function updateCurrentTurn(
+  state: SessionUiState,
+  update: (turn: SessionTurn) => SessionTurn,
+): SessionUiState {
+  const active = state.activeTurnId
+  if (active === null || !state.turns.some((turn) => turn.id === active)) {
+    return updateLatestTurn(state, update)
+  }
+  return { ...state, turns: state.turns.map((turn) => (turn.id === active ? update(turn) : turn)) }
+}
+
+// 主进程结束这一轮：已经在界面上取消或出错的一轮保留原来的状态和结束时间。
+function applyTurnEnded(
+  state: SessionUiState,
+  status: "completed" | "error" | "interrupted",
+  errorCode: string | null,
+  at: string,
+): SessionUiState {
+  if (state.activeTurnId === null) return state
+  const next = updateActiveTurn(state, at, (turn) => {
+    if (turn.status !== "streaming" && turn.status !== "waiting") return turn
+    const ended = status === "completed" ? "done" : status === "error" ? "error" : "cancelled"
+    return endTurn(turn, ended, errorCode === "PERMISSION_TIMEOUT" ? "timeout" : "denied", at)
+  })
+  return { ...next, activeTurnId: null }
+}
+
+// 迟到事件优先落到最后一轮，避免在一轮结束之后凭空多出一轮没有提问的对话。
 function updateLatestTurn(
   state: SessionUiState,
   update: (turn: SessionTurn) => SessionTurn,

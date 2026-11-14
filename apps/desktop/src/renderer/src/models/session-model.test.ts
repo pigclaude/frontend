@@ -13,6 +13,12 @@ import {
 } from "./session-model"
 
 const sessionTime = "2026-11-14T01:00:00.000Z"
+const turnEnded: SessionHostEvent = {
+  type: "turn-ended",
+  turnId: "main-turn-1",
+  status: "completed",
+  errorCode: null,
+}
 
 function apply(state: SessionUiState, action: SessionAction): SessionUiState {
   return reduceSession(state, action)
@@ -265,7 +271,7 @@ describe("session model", () => {
     expect(apply(second, { type: "starting" }).notice).toBeNull()
   })
 
-  it("stores result usage and ends the session", () => {
+  it("stores result usage, ends the turn when the main process does and then ends the session", () => {
     let state = startedTurn()
     state = emit(state, {
       type: "result",
@@ -281,6 +287,7 @@ describe("session model", () => {
         cacheCreationTokens: 5,
       },
     })
+    state = emit(state, turnEnded)
 
     expect(activeTurn(state).status).toBe("done")
     expect(activeTurn(state).result).toMatchObject({ durationMs: 1_200, outputTokens: 20 })
@@ -356,6 +363,7 @@ describe("session model", () => {
         cacheCreationTokens: 0,
       },
     })
+    state = emit(state, turnEnded)
     state = emit(state, {
       type: "account-switched",
       from: "account-a",

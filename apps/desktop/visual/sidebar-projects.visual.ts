@@ -112,6 +112,7 @@ async function openDraft(page: Page, theme: "light" | "dark"): Promise<void> {
           send: async () => {
             setTimeout(() => {
               emit({ type: "account-switched", from: null, to: "acc-work", reason: "initial" })
+              emit({ type: "turn-started", turnId: "turn-1" })
               emit({
                 type: "message",
                 messageId: "m-1",
@@ -133,6 +134,7 @@ async function openDraft(page: Page, theme: "light" | "dark"): Promise<void> {
                   cacheCreationTokens: 0,
                 },
               })
+              emit({ type: "turn-ended", turnId: "turn-1", status: "completed", errorCode: null })
             })
           },
           cancel: async () => undefined,

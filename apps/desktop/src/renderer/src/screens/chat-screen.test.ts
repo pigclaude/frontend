@@ -286,6 +286,33 @@ describe("chat screen", () => {
     expect(cancel).toHaveBeenCalledTimes(1)
   })
 
+  it("stays running after a result while a background task works and keeps new messages out", async () => {
+    const send = vi.fn(async () => true)
+    let state = reduceSession(startingState(), {
+      type: "event",
+      at: sessionTime,
+      event: { type: "turn-started", turnId: "main-turn-1" },
+    })
+    state = reduceSession(state, {
+      type: "event",
+      at: sessionTime,
+      event: {
+        type: "result",
+        subtype: "success",
+        isError: false,
+        durationMs: 9_882,
+        numTurns: 2,
+        stopReason: "end_turn",
+        usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
+      },
+    })
+    await screen.render({ fresh: false, session: controller({ state, send }) })
+
+    expect(screen.container.querySelector('[aria-label="中断"]'), "中断").not.toBeNull()
+    await typeAndSend(screen.container, "下一步")
+    expect(send).not.toHaveBeenCalled()
+  })
+
   it("shows the mapped Chinese error text and model probe failures", async () => {
     const session = controller({
       state: reduceSession(startingState(), {

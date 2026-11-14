@@ -27,7 +27,7 @@ export type SessionController = {
   /** Claude Code 没有列出模型的原因；这时 models 是主进程给的内置目录。 */
   modelsCliError: string | null
   start: (input: SessionStartInput) => Promise<boolean>
-  /** 返回 false 表示消息没有被接受（当前 turn 未结束或桥不可用），界面保留草稿。 */
+  /** 返回 false 表示消息没有被接受（当前一轮含后台任务还没结束，或桥不可用），界面保留草稿。 */
   send: (text: string) => Promise<boolean>
   cancel: () => Promise<void>
   stop: () => Promise<void>
@@ -136,7 +136,7 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
       fetch: (sessionId, afterSeq) => resolved.events({ sessionId, afterSeq }),
       apply: ({ sessionId, event, at }) => {
         if (targetRef.current === null && sessionId !== null) targetRef.current = sessionId
-        if (event.type === "result" || event.type === "ended") activeTurnRef.current = null
+        if (event.type === "turn-ended" || event.type === "ended") activeTurnRef.current = null
         dispatch({ type: "event", event, at })
       },
     })

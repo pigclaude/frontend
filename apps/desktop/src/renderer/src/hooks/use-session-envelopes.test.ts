@@ -141,7 +141,7 @@ describe("useSession envelopes", () => {
     expect(controller?.state.turns[0]?.blocks).toEqual([
       { type: "text", text: "答", at: "2026-11-14T01:00:02.500Z" },
     ])
-    expect(controller?.state.turns[0]?.status).toBe("done")
+    expect(controller?.state.turns[0]?.result).toMatchObject({ subtype: "success", numTurns: 1 })
   })
 
   it("still applies what it has when the fill fails", async () => {

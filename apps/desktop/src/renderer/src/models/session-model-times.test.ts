@@ -73,6 +73,11 @@ describe("session model times", () => {
         stopReason: "end_turn",
         usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
       },
+      "2026-11-14T01:01:20.000Z",
+    )
+    state = emit(
+      state,
+      { type: "turn-ended", turnId: "main-turn-1", status: "completed", errorCode: null },
       "2026-11-14T01:01:30.000Z",
     )
 

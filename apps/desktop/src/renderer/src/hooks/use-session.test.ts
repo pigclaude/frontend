@@ -154,7 +154,7 @@ describe("useSession", () => {
     expect(controller?.state.ended).toBe(true)
   })
 
-  it("does not create a second turn while the first turn is still active", async () => {
+  it("does not take a new message until the main process ends the turn, even after a result", async () => {
     const send = vi.fn(async () => undefined)
     const { bridge, emit } = fakeBridge({ send })
     await render(bridge)
@@ -173,13 +173,15 @@ describe("useSession", () => {
     expect(controller?.state.turns).toHaveLength(1)
     expect(controller?.state.turns[0]?.userText).toBe("first")
 
+    let whileBackground: boolean | undefined = undefined
     await act(async () => {
+      emit({ type: "turn-started", turnId: "main-turn-1" })
       emit({
         type: "result",
         subtype: "success",
         isError: false,
         durationMs: 10,
-        numTurns: 1,
+        numTurns: 2,
         stopReason: "end_turn",
         usage: {
           inputTokens: 1,
@@ -188,6 +190,17 @@ describe("useSession", () => {
           cacheCreationTokens: 0,
         },
       })
+    })
+    await act(async () => {
+      whileBackground = await controller?.send("third")
+    })
+
+    expect(whileBackground).toBe(false)
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(controller?.state.turns[0]?.status).toBe("streaming")
+
+    await act(async () => {
+      emit({ type: "turn-ended", turnId: "main-turn-1", status: "completed", errorCode: null })
     })
     await act(async () => {
       await controller?.send("third")

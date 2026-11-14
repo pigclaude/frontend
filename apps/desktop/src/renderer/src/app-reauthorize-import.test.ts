@@ -195,7 +195,15 @@ function installBridge(): {
       },
     },
     egress: { check: async () => ({ ok: true, ip: "203.0.113.42" }) },
-    workspaces: { list: async () => [], add: async (path) => [path], files: async () => [] },
+    workspaces: {
+      list: async () => [],
+      add: async (path) => [path],
+      files: async () => [],
+      names: async () => ({}),
+      rename: async () => ({}),
+      remove: async () => [],
+      reveal: async () => undefined,
+    },
   }
   return { authorized, accounts: () => accounts }
 }

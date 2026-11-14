@@ -62,6 +62,19 @@ describe("workspace store", () => {
     expect((await stat(filePath)).mode & 0o777).toBe(0o600)
   })
 
+  it("removes a project from the list without touching its folder", async () => {
+    const store = new WorkspaceStore({ filePath })
+    const alpha = await makeDirectory("alpha")
+    const beta = await makeDirectory("beta")
+    await store.add(alpha)
+    await store.add(beta)
+
+    await expect(store.remove(alpha)).resolves.toEqual([beta])
+    await expect(store.remove(join(directory, "never-added"))).resolves.toEqual([beta])
+    await expect(store.list()).resolves.toEqual([beta])
+    expect((await stat(alpha)).isDirectory()).toBe(true)
+  })
+
   it("rejects relative paths instead of storing them", async () => {
     const store = new WorkspaceStore({ filePath })
 

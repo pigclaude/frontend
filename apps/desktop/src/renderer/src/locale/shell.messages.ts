@@ -21,6 +21,8 @@ export const shellZhCN = {
   "shell.session.untitled": "新会话",
   "shell.project.added": "已添加工作区 {name}",
   "shell.project.unavailable": "工作区不可用",
+  "shell.project.renameFailed": "项目改名失败，请重试",
+  "shell.project.removeFailed": "从侧栏移除项目失败，请重试",
   "shell.project.title": "添加项目",
   "shell.project.description": "会话在这个文件夹里运行，项目名取自文件夹名。",
   "shell.project.folder": "文件夹",
@@ -53,6 +55,8 @@ export const shellEnUS = {
   "shell.session.untitled": "New session",
   "shell.project.added": "Added workspace {name}",
   "shell.project.unavailable": "Workspace unavailable",
+  "shell.project.renameFailed": "Couldn't rename the project. Try again.",
+  "shell.project.removeFailed": "Couldn't remove the project from the sidebar. Try again.",
   "shell.project.title": "Add project",
   "shell.project.description":
     "Sessions run in this folder. The project is named after the folder.",

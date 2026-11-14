@@ -339,7 +339,7 @@ export function MainWindow({
           }
         : {})}
       locationKey={page ?? location.kind}
-      projects={workspaceProjects(workspaces.paths)}
+      projects={workspaceProjects(workspaces.paths, workspaces.names)}
       threads={thread ? [thread] : []}
       activeThreadId={location.kind === "session" ? (thread?.id ?? null) : null}
       threadStatus={thread ? { [thread.id]: sessionStatus(session.state) } : {}}
@@ -355,6 +355,19 @@ export function MainWindow({
       onNewSession={newSession}
       onOpenThread={() => onNavigate({ kind: "session" })}
       onAddProject={() => setAddingProject(true)}
+      onRenameProject={(path, name) => {
+        void workspaces
+          .rename(path, name)
+          .catch(() => toast(t("shell.project.renameFailed"), "alert"))
+      }}
+      onRemoveProject={(path) => {
+        void workspaces
+          .remove(path)
+          .then(() => {
+            if (selectedWorkspace === path) setSelectedWorkspace(null)
+          })
+          .catch(() => toast(t("shell.project.removeFailed"), "alert"))
+      }}
       onOpenSettings={() => settings("general")}
       onAbout={() => settings("about")}
       settingsSidebar={

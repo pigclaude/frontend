@@ -38,6 +38,14 @@ describe("workspaceProjects", () => {
       { id: "/work/web/", rootPath: "/work/web/", name: "web", createdAt: expect.any(String) },
     ])
   })
+
+  it("改过名的项目用侧栏显示名，其余仍取文件夹名", () => {
+    expect(
+      workspaceProjects(["/work/api", "/work/web"], { "/work/api": "后端" }).map(
+        (project) => project.name,
+      ),
+    ).toEqual(["后端", "web"])
+  })
 })
 
 describe("sessionThread", () => {

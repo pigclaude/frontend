@@ -12,12 +12,15 @@ const UNDATED = "1970-01-01T00:00:00.000Z"
 /** 会话标题最多取首条消息的这么多个字符。 */
 const TITLE_LIMIT = 40
 
-/** 最近工作区 → 侧栏项目；顺序不变，路径就是项目 id。 */
-export function workspaceProjects(paths: readonly string[]): Project[] {
+/** 最近工作区 → 侧栏项目；顺序不变，路径就是项目 id，改过名的项目用侧栏显示名。 */
+export function workspaceProjects(
+  paths: readonly string[],
+  names: Readonly<Record<string, string>> = {},
+): Project[] {
   return paths.map((path) => ({
     id: path,
     rootPath: path,
-    name: projectNameFromPath(path) || path,
+    name: names[path] || projectNameFromPath(path) || path,
     createdAt: UNDATED,
   }))
 }

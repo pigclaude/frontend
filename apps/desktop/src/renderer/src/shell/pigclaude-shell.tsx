@@ -57,6 +57,9 @@ export type PigclaudeShellProps = {
   onOpenThread: (threadId: string) => void
   /** 打开「添加项目」对话框。 */
   onAddProject: () => void
+  /** 项目右键菜单：只改侧栏显示名；从侧栏移除，不删文件。 */
+  onRenameProject: (projectId: string, name: string) => void
+  onRemoveProject: (projectId: string) => void
   onOpenSettings: () => void
   /** Windows/Linux 标题栏「帮助 → 关于」。 */
   onAbout: () => void
@@ -215,6 +218,8 @@ export function PigclaudeShell(props: PigclaudeShellProps) {
             agentNames={props.agentNames}
             expandedProjects={props.expandedProjects}
             onAddProject={props.onAddProject}
+            onRenameProject={props.onRenameProject}
+            onRemoveProject={props.onRemoveProject}
             onToggleProject={props.onToggleProject}
             onOpenThread={(threadId) => {
               setDrawerOpen(false)

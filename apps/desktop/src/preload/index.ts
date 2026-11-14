@@ -102,6 +102,14 @@ export type PigclaudeBridge = {
     add: (path: string) => Promise<string[]>
     /** 只读列出工作区里的文件，供输入区 @ 引用。 */
     files: (path: string) => Promise<string[]>
+    /** 侧栏项目的显示名，按工作区路径；没改过名的项目不出现。 */
+    names: () => Promise<Record<string, string>>
+    /** 只改侧栏显示名，返回全部显示名。 */
+    rename: (path: string, name: string) => Promise<Record<string, string>>
+    /** 从侧栏移除项目，不删除文件；返回移除后的工作区列表。 */
+    remove: (path: string) => Promise<string[]>
+    /** 在系统文件管理器里显示项目文件夹。 */
+    reveal: (path: string) => Promise<void>
   }
   session: SessionBridge
   usage: UsageBridge
@@ -216,6 +224,16 @@ const bridge: PigclaudeBridge = {
         ? value.filter((item): item is string => typeof item === "string")
         : []
     },
+    names: async () => projectNames(await ipcRenderer.invoke("pigclaude:projects-names")),
+    rename: async (path, name) =>
+      projectNames(await ipcRenderer.invoke("pigclaude:projects-rename", path, name)),
+    remove: async (path) => {
+      const value: unknown = await ipcRenderer.invoke("pigclaude:projects-remove", path)
+      return Array.isArray(value) ? value.filter(isWorkspacePath) : []
+    },
+    reveal: async (path) => {
+      await ipcRenderer.invoke("pigclaude:projects-reveal", path)
+    },
   },
   session: {
     start: async (input) => {
@@ -317,6 +335,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isWorkspacePath(value: unknown): value is string {
   return typeof value === "string" && value.length > 0
+}
+
+function projectNames(value: unknown): Record<string, string> {
+  if (!isRecord(value)) return {}
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  )
 }
 
 contextBridge.exposeInMainWorld("pigclaude", bridge)

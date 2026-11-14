@@ -55,6 +55,16 @@ export class WorkspaceStore {
     return next
   }
 
+  /** 从列表里去掉 path，不碰文件夹本身；不在列表里时不写文件。返回去掉后的完整列表。 */
+  async remove(value: string): Promise<string[]> {
+    const path = normalizeWorkspacePath(value)
+    const current = await this.list()
+    if (path === null || !current.includes(path)) return current
+    const next = current.filter((item) => item !== path)
+    await this.#write(next)
+    return next
+  }
+
   // 先写同目录临时文件再改名，避免应用退出时留下半截 JSON。
   async #write(paths: string[]): Promise<void> {
     await mkdir(dirname(this.#filePath), { recursive: true, mode: 0o700 })

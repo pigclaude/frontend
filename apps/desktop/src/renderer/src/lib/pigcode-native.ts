@@ -1,5 +1,6 @@
 // 负责把 PigClaude 的桌面桥接成拷入的 Pigcode 组件读取的 window.pigcodeNative：
-// 平台、主题来源、窗口按钮、全屏、标题栏菜单与配色、侧栏透明、选文件夹和本机编辑器列表都走 pigclaude:* 通道。
+// 平台、主题来源、窗口按钮、全屏、标题栏菜单与配色、侧栏透明、选文件夹、打开项目文件夹
+// 和本机编辑器列表都走 pigclaude:* 通道。
 // 没有桌面桥（浏览器预览、视觉回归）时不安装，Pigcode 组件按浏览器环境处理。
 
 type PigcodeNative = NonNullable<Window["pigcodeNative"]>
@@ -42,6 +43,9 @@ export function pigcodeNativeFrom(bridge: PigclaudeBridge): PigcodeNative {
           pickFolder: (labels?: { title?: string; buttonLabel?: string }) =>
             bridge.pickFolder?.(labels) ?? Promise.resolve(null),
         }
+      : {}),
+    ...(bridge.workspaces
+      ? { openFolder: (path: string) => bridge.workspaces?.reveal(path) ?? Promise.resolve() }
       : {}),
     previewOpen: () => Promise.reject(new Error("PREVIEW_UNAVAILABLE")),
     previewClose: () => undefined,

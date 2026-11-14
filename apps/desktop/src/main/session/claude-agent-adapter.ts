@@ -13,6 +13,7 @@ import {
 import { buildQueryOptions, type ClaudeAgentStartOptions } from "./claude-query-options"
 import { normalizeSdkMessage } from "./claude-sdk-messages"
 import { PromptStream } from "./prompt-stream"
+import { SessionClaudeLaunch } from "./session-claude-launch"
 import { classifyDaemonError } from "./session-error-mapping"
 import type { AdapterEvent, ClaudeModel, SessionPermissionMode } from "./session-events"
 
@@ -50,6 +51,7 @@ export class ClaudeAgentAdapter {
   #pumpPromise: Promise<void> | null = null
   #stopPromise: Promise<void> | null = null
   #interruptPromise: Promise<void> | null = null
+  #process: SessionClaudeLaunch | null = null
 
   constructor(options: ClaudeAgentAdapterOptions = {}) {
     this.#queryFn = options.queryFn ?? defaultQueryFn
@@ -77,17 +79,26 @@ export class ClaudeAgentAdapter {
   async #startQuery(options: ClaudeAgentStartOptions, prompt: PromptStream): Promise<void> {
     let query: AdapterQuery
     try {
-      const sdkOptions = buildQueryOptions(options, options.binaryPath ?? this.#resolveBinaryPath())
+      this.#process = options.persistence
+        ? new SessionClaudeLaunch(options.persistence.directory)
+        : null
+      const sdkOptions = buildQueryOptions(
+        options,
+        options.binaryPath ?? this.#resolveBinaryPath(),
+        this.#process?.spawn,
+      )
       query = await this.#queryFn({ prompt, options: sdkOptions })
+      this.#query = query
+      if (this.#process !== null) await this.#process.ready()
     } catch (error) {
-      if (this.#stopped) throw error
-      this.#emitError(error)
-      this.#finish("error")
+      if (!this.#stopped) {
+        this.#emitError(error)
+        await this.#finish("error")
+      }
       throw error
     }
-    this.#query = query
     if (this.#stopped) {
-      this.#finish("stopped")
+      await this.#finish("stopped")
       return
     }
     this.#pumpPromise = this.#pump(query)
@@ -137,16 +148,20 @@ export class ClaudeAgentAdapter {
   stop(): Promise<void> {
     if (!this.#started) return Promise.resolve()
     if (this.#stopPromise !== null) return this.#stopPromise
-    this.#stopPromise = this.#stopAndWait()
+    this.#stopPromise = this.#stopAndWait().catch((error: unknown) => {
+      this.#stopPromise = null
+      throw error
+    })
     return this.#stopPromise
   }
 
   async #stopAndWait(): Promise<void> {
-    this.#finish("stopped")
+    this.#closeQuery()
     const start = this.#startPromise
     if (start !== null) await start.catch(() => undefined)
     const pump = this.#pumpPromise
     if (pump !== null) await pump.catch(() => undefined)
+    await this.#finish("stopped")
   }
 
   /**
@@ -192,7 +207,7 @@ export class ClaudeAgentAdapter {
   }
 
   // 所有结束路径共用：清空目标、关闭查询并只广播一次 ended。
-  #finish(reason: "completed" | "stopped" | "error"): void {
+  #closeQuery(): void {
     this.#stopped = true
     const prompt = this.#prompt
     this.#prompt = null
@@ -200,18 +215,24 @@ export class ClaudeAgentAdapter {
     const query = this.#query
     this.#query = null
     if (query !== null) closeQuietly(query)
+  }
+
+  async #finish(reason: "completed" | "stopped" | "error"): Promise<void> {
+    this.#closeQuery()
+    if (this.#process !== null) await this.#process.waitForExit()
     this.#emitEnded(reason)
   }
 
   async #pump(query: AdapterQuery): Promise<void> {
     try {
       for await (const message of query) this.#handleMessage(message)
-      if (!this.#stopped) this.#finish("completed")
     } catch (error) {
       if (this.#stopped) return
       this.#emitError(error)
-      this.#finish("error")
+      await this.#finish("error").catch(() => undefined)
+      return
     }
+    if (!this.#stopped) await this.#finish("completed").catch(() => undefined)
   }
 
   #handleMessage(message: SDKMessage): void {

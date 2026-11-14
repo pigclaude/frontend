@@ -11,6 +11,7 @@ import type { SessionEnvelope } from "./session-envelope"
 import { classifyDaemonError } from "./session-error-mapping"
 import { LiveReply } from "./live-reply"
 import { SessionEventLog } from "./session-event-log"
+import { SessionClaudeExitError } from "./session-claude-launch"
 import { SessionTurnFlags, type FastModeNoticeKey } from "./session-flags"
 import { createActiveSession, type ActiveSession, type SessionTimers } from "./session-host-active"
 import {
@@ -31,7 +32,8 @@ import {
   sanitizeSessionEvent,
   type SessionPendingWork,
 } from "./session-host-support"
-import type { ClaudeAgentStartOptions } from "./claude-query-options"
+import type { ClaudeAgentStartOptions, ClaudePersistenceOptions } from "./claude-query-options"
+import type { SessionEventCursor } from "./session-event-log"
 import type { AdapterEvent } from "./session-events"
 import type { ClosedTurn } from "./session-turns"
 import type {
@@ -67,7 +69,18 @@ export type ClaudeSessionOptions = {
   now: () => number
   newId: () => string
   /** 会话释放后调用一次，宿主据此放下对它的引用。 */
-  onReleased: (session: ClaudeSession) => void
+  onReleased: (session: ClaudeSession) => unknown
+  /** 保存会话用的 SDK 选项和磁盘时间线起点。 */
+  persistence?: ClaudePersistenceOptions & { cursor: SessionEventCursor }
+  /** 已确认的模型或回合设置改变时保存索引。 */
+  saveSettings?: (settings: SessionSavedSettings) => void
+}
+
+/** 会话实际生效的模型与 SDK 已确认的设置。 */
+export type SessionSavedSettings = {
+  model: string | null
+  effort: NonNullable<SessionStartInput["effort"]> | null
+  fast: boolean
 }
 
 /** 一个 Claude 会话。保证结束路径只走一次；释放后忽略迟到的适配器事件和权限超时；发出的事件时间不倒退、序号连续。 */
@@ -92,7 +105,7 @@ export class ClaudeSession {
   /** 组装会话状态、事件日志、待答队列、权限和提问代理以及适配器；不启动 Claude Code。 */
   constructor(options: ClaudeSessionOptions) {
     this.#options = options
-    this.#log = new SessionEventLog(options.sessionId, options.now)
+    this.#log = new SessionEventLog(options.sessionId, options.now, options.persistence?.cursor)
     this.#reply = new LiveReply(options.now)
     this.#stall = new TurnStallWatchdog(options.timers, options.now, () =>
       this.#publish({
@@ -128,6 +141,9 @@ export class ClaudeSession {
     await this.state.adapter.start({
       ...buildStartOptions(this.state, this.#options.input),
       ...(mcpServers ? { mcpServers } : {}),
+      ...(this.#options.persistence === undefined
+        ? {}
+        : { persistence: this.#options.persistence }),
     })
     await enterRequestedMode(this.state, this.#options.input.permissionMode, this.#emitModeEvent)
   }
@@ -153,6 +169,7 @@ export class ClaudeSession {
         active.turns.release(turnId)
         return
       }
+      this.#options.saveSettings?.(this.savedSettings())
       this.#flags.expectInit(turnId)
       await active.adapter.send(input.text)
     } catch (error) {
@@ -168,7 +185,7 @@ export class ClaudeSession {
       this.#flags.ended(turnId)
       return
     }
-    active.turns.open(turnId)
+    active.turns.open(turnId, this.#options.persistence ? this.#redact(input.text) : undefined)
     this.#publishFastNotice(this.#flags.opened(turnId))
   }
 
@@ -205,6 +222,12 @@ export class ClaudeSession {
   async setModel(model: string): Promise<void> {
     await applyModelChange(this.state, this.#options.provider, model, this.#options.sessionToken())
     this.#context.request()
+    this.#options.saveSettings?.(this.savedSettings())
+  }
+
+  /** 可在下一次启动续接时使用的最新模型与控制设置。 */
+  savedSettings(): SessionSavedSettings {
+    return { model: this.state.model, ...this.#flags.settings }
   }
 
   /**
@@ -227,9 +250,14 @@ export class ClaudeSession {
       } else {
         await active.turns.shutdown()
       }
-      await active.adapter.stop().catch(() => undefined)
+      await active.adapter.stop().catch((error: unknown) => {
+        if (error instanceof SessionClaudeExitError) throw error
+      })
       await this.release()
-    })()
+    })().catch((error: unknown) => {
+      active.ending = null
+      throw error
+    })
     return active.ending
   }
 
@@ -248,7 +276,7 @@ export class ClaudeSession {
     const active = this.state
     active.pending.rejectAll(cancelledPermissionMessage)
     await active.environment.cleanup().catch(() => undefined)
-    this.#options.onReleased(this)
+    await this.#options.onReleased(this)
   }
 
   /**

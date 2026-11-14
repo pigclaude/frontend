@@ -2,8 +2,13 @@
 // 被停止或会员失效打断时清理已建的环境并抛对应的错误码，不留半启动状态；会话对象一建好就交给宿主，便于中途停止。
 
 import { ClaudeSession } from "./claude-session"
+import { SessionClaudeExitError } from "./session-claude-launch"
 import type { DevProviderOverride } from "./dev-provider"
 import type { SessionEnvelope } from "./session-envelope"
+import { prepareSavedSession, type PersistedSessionLaunch } from "./session-persistence"
+import type { SessionIndex } from "./session-index"
+import type { SessionStore } from "./session-store"
+import type { SessionSavedSettings } from "./claude-session"
 import type { SessionTimers } from "./session-host-active"
 import { mapStartError } from "./session-host-support"
 import type { SessionCancelCode } from "./session-registry"
@@ -11,13 +16,13 @@ import {
   checkSessionStart,
   prepareSessionStart,
   type PreparedSessionStart,
+  type SessionStartDeps,
 } from "./session-start-checks"
 import {
   SessionHostError,
   type SessionAdapterFactory,
   type SessionEnvironmentFactory,
   type SessionMembership,
-  type SessionProfile,
   type SessionRuntime,
   type SessionStartInput,
   type SessionTools,
@@ -32,7 +37,7 @@ export type SessionLaunchDeps = {
   createEnvironment: SessionEnvironmentFactory
   createAdapter: SessionAdapterFactory
   resolveBinaryPath: () => string
-  resolveProfile: (accountId: string | null) => Promise<SessionProfile | null>
+  resolveProfile: SessionStartDeps["resolveProfile"]
   userDataPath: string
   usage: SessionUsagePort
   permissionTimeoutMs: number
@@ -55,7 +60,32 @@ export type SessionLaunchHooks = {
   /** Claude Code 报告的在途后台任务数（含回合不等的后台 shell）变了。 */
   backgroundTasks: (count: number) => void
   /** 会话释放时调用一次。 */
-  released: () => void
+  released: () => void | Promise<void>
+  /** 适配器确认修改模型或发送设置后更新会话索引。 */
+  saveSettings?: (settings: SessionSavedSettings) => void
+}
+
+/** 启动需要的本机存储以及已有索引，第一次启动没有旧索引。 */
+export type SessionLaunchStorage = { store: SessionStore; index: SessionIndex | null }
+
+/** 依次执行初次启动检查，保留请求入队顺序。 */
+export function orderedSessionChecks(): SessionLaunchHooks["checkBeforeQueue"] {
+  let tail = Promise.resolve()
+  return (check) => {
+    const result = tail.then(check)
+    tail = result.then(
+      () => undefined,
+      () => undefined,
+    )
+    return result
+  }
+}
+
+/** 生成停止或会员失效打断启动时的错误。 */
+export function sessionLaunchCancellation(code: SessionCancelCode): SessionHostError {
+  return code === "MEMBERSHIP_REQUIRED"
+    ? new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
+    : new SessionHostError("SESSION_CANCELLED", "会话启动已取消")
 }
 
 /**
@@ -68,17 +98,21 @@ export async function launchSession(
   sessionId: string,
   hooks: SessionLaunchHooks,
   servers?: SessionTools["servers"],
+  storage?: SessionLaunchStorage,
 ): Promise<ClaudeSession> {
   const interrupted = (): SessionHostError | null => {
     const code = hooks.cancelled()
     if (code === null) return null
-    return code === "MEMBERSHIP_REQUIRED"
-      ? new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
-      : new SessionHostError("SESSION_CANCELLED", "会话启动已取消")
+    return sessionLaunchCancellation(code)
   }
-  const startDeps = { ...deps, cancelled: () => hooks.cancelled() !== null }
+  const startDeps: SessionStartDeps = {
+    ...deps,
+    cancelled: () => hooks.cancelled() !== null,
+    ...(storage?.index == null ? {} : { requiredProfile: storage.index.environment }),
+  }
   let canonicalWorkspace: string
   let prepared: PreparedSessionStart
+  let persistence: PersistedSessionLaunch | undefined
   try {
     const queued = await hooks.checkBeforeQueue(async () => ({
       workspace: await checkSessionStart(startDeps, input),
@@ -87,12 +121,31 @@ export async function launchSession(
     canonicalWorkspace = (await queued.slot)
       ? await checkSessionStart(startDeps, input)
       : queued.workspace
-    prepared = await prepareSessionStart(startDeps, input, sessionId)
+    prepared = await prepareSessionStart(
+      startDeps,
+      input,
+      sessionId,
+      storage === undefined
+        ? undefined
+        : async (profile) => {
+            persistence = await prepareSavedSession(
+              storage.store,
+              sessionId,
+              input,
+              profile,
+              storage.index,
+              deps.now(),
+            )
+            return persistence.paths
+          },
+    )
   } catch (error) {
     throw interrupted() ?? error
   }
   const session = new ClaudeSession({
     ...prepared,
+    ...(persistence === undefined ? {} : { persistence }),
+    ...(hooks.saveSettings === undefined ? {} : { saveSettings: hooks.saveSettings }),
     createAdapter: (onEvent) =>
       deps.createAdapter((event) => {
         if (event.type === "background-tasks") {
@@ -114,16 +167,17 @@ export async function launchSession(
   try {
     await session.launch(servers)
   } catch (error) {
-    await session.release()
+    if (error instanceof SessionClaudeExitError) throw error
+    await session.end("会话启动失败", null)
     throw interrupted() ?? mapStartError(error, prepared.sessionToken)
   }
   const stopped = interrupted()
   if (stopped !== null) {
-    await session.release()
+    await session.end("会话启动已取消", null)
     throw stopped
   }
   if (session.closing) {
-    await session.release()
+    await session.end("会话启动期间结束", null)
     if (deps.membership.view().state !== "active") {
       throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
     }

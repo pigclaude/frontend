@@ -2,11 +2,13 @@
 // NODE_OPTIONS 的 --require 只在 Node 运行时生效；SDK 0.3.310 启动原生/Bun CLI 时会删除该变量，
 // 因此原生 CLI 的实际时区来源是 TZ，intl-preload.cjs 只是为 Node 运行时保留的兜底。
 
+import { createHash } from "node:crypto"
 import { chmod, mkdir, readdir, rm, writeFile } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
 import { buildSessionEnv } from "@pigclaude/session-env"
 import { cliModelCache, type OrganizationModel } from "./claude-bootstrap"
 import { normalizeSessionLocale, normalizeSessionTimezone } from "./session-locale"
+import type { SessionStorePaths } from "./session-store-layout"
 
 /** 会话环境里的非秘密占位 token；真实 access token 只留在 daemon 内。 */
 export const placeholderOAuthToken = "pigclaude-local"
@@ -40,13 +42,15 @@ export type SessionEnvironmentInput = {
   locale: string
   binaryPath: string
   userDataPath?: string
+  /** 已由会话索引建立的目录，停放时保留 Claude 会话记录。 */
+  retainedPaths?: SessionStorePaths
   /** 只在模型目录查询时提供：关闭非必要流量，并把组织模型写进 CLI 的模型缓存。 */
   modelCatalog?: ModelCatalogInput
   /** 开发期自定义供应商；提供时替换 daemon 地址和会话 token，并忽略 modelCatalog。 */
   provider?: SessionProvider
 }
 
-/** 一次会话的环境和目录。timezone 供上层记录和 Task 6 验收；cleanup 删除整个 sessions/<sessionId>，可重复调用。 */
+/** 一次会话的隔离环境。一次性目录在清理时删除，已保存会话的目录由存储管理。 */
 export class SessionEnvironment {
   readonly env: Record<string, string>
   readonly configDir: string
@@ -55,6 +59,7 @@ export class SessionEnvironment {
   readonly binaryPath: string
   /** 账号/代理出口时区；原生 CLI 靠 env.TZ 生效，预加载只在 Node 运行时生效。 */
   readonly timezone: string
+  readonly #retained: boolean
   #cleaned = false
 
   private constructor(input: {
@@ -64,6 +69,7 @@ export class SessionEnvironment {
     workspace: string
     binaryPath: string
     timezone: string
+    retained: boolean
   }) {
     this.env = input.env
     this.configDir = input.configDir
@@ -71,17 +77,19 @@ export class SessionEnvironment {
     this.workspace = input.workspace
     this.binaryPath = input.binaryPath
     this.timezone = input.timezone
+    this.#retained = input.retained
   }
 
-  /** 创建 0700 的会话目录、配置目录和 Intl 预加载，并返回本次会话的环境和时间；失败时删除已创建的目录。 */
+  /** 创建隔离环境，使用 0700 的会话目录；已保存会话复用其目录。 */
   static async create(input: SessionEnvironmentInput): Promise<SessionEnvironment> {
     assertSessionId(input.sessionId)
     assertSessionToken(input.sessionToken)
     if (!isAbsolute(input.workspace)) throw new Error("workspace must be an absolute path")
+    const retained = input.retainedPaths
     const userDataPath = input.userDataPath ?? (await defaultUserDataPath())
     const sessionsDir = join(userDataPath, "sessions")
-    const sessionDir = join(sessionsDir, input.sessionId)
-    const configDir = join(sessionDir, "claude")
+    const sessionDir = retained?.directory ?? join(sessionsDir, input.sessionId)
+    const configDir = retained?.claudeConfigDir ?? join(sessionDir, "claude")
     const preloadPath = join(sessionDir, "intl-preload.cjs")
     // 这里是环境的最后一道关口：空语言和 system 时区不能进入 TZ、LANG 或 Intl 预加载。
     const normalized: SessionEnvironmentInput = {
@@ -90,6 +98,15 @@ export class SessionEnvironment {
       locale: normalizeSessionLocale(input.locale),
     }
     const env = buildEnvironment(normalized, configDir, preloadPath)
+    if (retained) {
+      env.CLAUDE_CODE_PROJECT_DIR_NAME = retainedClaudeProject(input.sessionId)
+      env.CLAUDE_CODE_TMPDIR = retained.claudeTmpDir
+      env.TMPDIR = retained.claudeTmpDir
+      if (process.platform === "win32") {
+        env.TEMP = retained.claudeTmpDir
+        env.TMP = retained.claudeTmpDir
+      }
+    }
     const preloadSource = buildSessionEnv({
       daemonBaseUrl: normalized.daemonBaseUrl,
       timezone: normalized.timezone,
@@ -99,10 +116,16 @@ export class SessionEnvironment {
 
     let created = false
     try {
-      await mkdir(sessionsDir, { recursive: true, mode: sessionDirectoryMode })
-      await mkdir(sessionDir, { mode: sessionDirectoryMode })
-      created = true
-      await mkdir(configDir, { mode: sessionDirectoryMode })
+      if (retained) {
+        await mkdir(retained.claudeTmpDir, { recursive: true, mode: sessionDirectoryMode })
+        await chmod(retained.claudeTmpDir, sessionDirectoryMode)
+      } else {
+        await mkdir(sessionsDir, { recursive: true, mode: sessionDirectoryMode })
+        await mkdir(sessionDir, { mode: sessionDirectoryMode })
+        created = true
+        await chmod(sessionsDir, sessionDirectoryMode)
+      }
+      await mkdir(configDir, { recursive: retained !== undefined, mode: sessionDirectoryMode })
       await writeFile(preloadPath, preloadSource, { mode: sessionDirectoryMode })
       const organizationModels = normalized.provider
         ? null
@@ -115,7 +138,6 @@ export class SessionEnvironment {
         })
         await chmod(configPath, 0o600)
       }
-      await chmod(sessionsDir, sessionDirectoryMode)
       await chmod(sessionDir, sessionDirectoryMode)
       await chmod(configDir, sessionDirectoryMode)
       await chmod(preloadPath, sessionDirectoryMode)
@@ -131,15 +153,22 @@ export class SessionEnvironment {
       workspace: input.workspace,
       binaryPath: input.binaryPath,
       timezone: normalized.timezone,
+      retained: retained !== undefined,
     })
   }
 
-  /** 删除整个会话目录。保证重复调用安全，且不会删除 sessions 父目录。 */
+  /** 清理一次性目录，停放的会话仍可通过原配置和记录续接。 */
   async cleanup(): Promise<void> {
     if (this.#cleaned) return
-    await rm(this.sessionDir, { recursive: true, force: true })
+    if (!this.#retained) await rm(this.sessionDir, { recursive: true, force: true })
     this.#cleaned = true
   }
+}
+
+/** 已保存会话的稳定 Claude 项目子目录，符合各平台 CLI 允许的格式。 */
+export function retainedClaudeProject(sessionId: string): string {
+  const key = createHash("sha256").update(sessionId).digest("hex").slice(0, 32)
+  return `pc-${key}`
 }
 
 /**

@@ -98,7 +98,7 @@ export class SessionTurns {
   }
 
   /** 发送已被接受：开一轮并发出 turn-started。 */
-  open(turnId: string): void {
+  open(turnId: string, userText?: string): void {
     this.#reserved = null
     this.#open = {
       id: turnId,
@@ -109,7 +109,11 @@ export class SessionTurns {
       awaitingResult: true,
       stopping: false,
     }
-    this.#options.publish({ type: "turn-started", turnId })
+    this.#options.publish({
+      type: "turn-started",
+      turnId,
+      ...(userText === undefined ? {} : { userText }),
+    })
   }
 
   /** 看一条适配器事件：跟踪后台任务和累计用量，result 到达且没有在途后台任务时结束这一轮。 */

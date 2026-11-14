@@ -33,6 +33,11 @@ export class SessionTurnFlags {
     this.#fast = input.fast ?? false
   }
 
+  /** SDK 最后一次确认的会话设置，续接时原样使用。 */
+  get settings(): { effort: SessionEffort | null; fast: boolean } {
+    return { effort: this.#effort, fast: this.#fast }
+  }
+
   /** 比较当前设置并等待 SDK 确认；消息已经取消时跳过，失败时保持原先已确认的值。 */
   apply(input: SessionSendOptions, canSend: () => boolean): Promise<void> {
     const applying = this.#applying.then(async () => {

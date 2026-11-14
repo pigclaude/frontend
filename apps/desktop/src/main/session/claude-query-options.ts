@@ -17,8 +17,17 @@ export type ClaudeAgentStartOptions = {
   effort?: SessionEffort
   /** 模型支持时启用快速模式。 */
   fast?: boolean
+  /** 已保存会话绑定的 id、配置目录和本次是续接还是新建。 */
+  persistence?: ClaudePersistenceOptions
   /** 会话专用的宿主工具，未配置时沿用 SDK 自带工具。 */
   mcpServers?: Options["mcpServers"]
+}
+
+/** 隔离目录中的 Claude 会话记录设置。 */
+export type ClaudePersistenceOptions = {
+  sessionId: string
+  directory: string
+  resume: boolean
 }
 
 /** 所有 query 共用的隔离选项。保证不读用户设置、不保存 transcript，环境只用调用方给的 env。 */
@@ -38,7 +47,12 @@ export function isolatedQueryOptions(
 }
 
 /** 会话 query 的 SDK 选项：在隔离选项上加权限、工具、模型和思考档位。 */
-export function buildQueryOptions(options: ClaudeAgentStartOptions, binaryPath: string): Options {
+export function buildQueryOptions(
+  options: ClaudeAgentStartOptions,
+  binaryPath: string,
+  spawnClaudeCodeProcess?: Options["spawnClaudeCodeProcess"],
+): Options {
+  const { persistence } = options
   return {
     ...isolatedQueryOptions(options.workspace, binaryPath, options.env),
     ...(options.mcpServers ? { mcpServers: options.mcpServers } : {}),
@@ -51,7 +65,23 @@ export function buildQueryOptions(options: ClaudeAgentStartOptions, binaryPath: 
       : options.thinking === undefined
         ? {}
         : { thinking: thinkingConfig(options.thinking) }),
-    ...(options.fast ? { settings: { fastMode: true } } : {}),
+    ...(persistence === undefined
+      ? {}
+      : {
+          persistSession: true,
+          ...(persistence.resume
+            ? { resume: persistence.sessionId }
+            : { sessionId: persistence.sessionId }),
+        }),
+    ...(persistence === undefined && !options.fast
+      ? {}
+      : {
+          settings: {
+            ...(persistence === undefined ? {} : { cleanupPeriodDays: 36_500 }),
+            ...(options.fast ? { fastMode: true } : {}),
+          },
+        }),
+    ...(spawnClaudeCodeProcess === undefined ? {} : { spawnClaudeCodeProcess }),
     // 子代理的正文和思考也转发，只读过程视图才看得到它说了什么；不开进度摘要，省号池额度。
     forwardSubagentText: true,
     // CLI 只在带这个开关启动时才接受会话中途切到完全访问。

@@ -5,8 +5,9 @@
 import { isAbsolute, relative, resolve, sep } from "node:path"
 import type { ClaudeSession } from "./claude-session"
 import type { SessionEnvelope } from "./session-envelope"
+import type { SessionIndex } from "./session-index"
 import { buildStatusView, noPendingWork, type SessionPendingWork } from "./session-host-support"
-import { summarizeSession, type SessionSummary } from "./session-summary"
+import { summarizeSavedSession, summarizeSession, type SessionSummary } from "./session-summary"
 import type { SessionErrorCode, SessionStatusView, SessionTurnEndStatus } from "./session-types"
 
 /** 一个会话在宿主里的阶段：检查启动条件、等名额、正在启动、运行中或已停放。 */
@@ -74,6 +75,19 @@ export class SessionRegistry {
     return entry
   }
 
+  /** 让同一个会话重新排队，清理上一代进程的状态。 */
+  prepareResume(index: SessionIndex, now: number): SessionEntry {
+    const entry =
+      this.get(index.id) ?? this.add(index.id, index.workspace ?? index.projectPath, now)
+    entry.phase = "checking"
+    entry.parkReason = null
+    entry.parkedMidTurn = false
+    entry.cancelled = null
+    entry.backgroundTasks = 0
+    entry.lastTurn = index.lastTurn?.status ?? null
+    return entry
+  }
+
   /** 移除一条记录（启动失败或被取消的会话）。 */
   delete(entry: SessionEntry): void {
     if (this.#entries.get(entry.sessionId) === entry) this.#entries.delete(entry.sessionId)
@@ -122,13 +136,23 @@ export class SessionRegistry {
    * 指定会话的脱敏快照；排队和停放的会话 active 为 false、没有回合和待答，会话不存在时返回 null。
    * 不带 id 时给最近启动、还在运行的会话，没有时所有 id 和模型为 null。
    */
-  status(sessionId?: string): SessionStatusView | null {
+  status(sessionId?: string, saved?: SessionIndex | null): SessionStatusView | null {
     if (sessionId === undefined) {
       const latest = this.all().findLast((entry) => this.live(entry.sessionId) !== null)
       return latest?.session?.status() ?? buildStatusView(null)
     }
     const entry = this.get(sessionId)
-    if (entry === null) return null
+    if (entry === null) {
+      return saved == null
+        ? null
+        : {
+            ...buildStatusView(null),
+            sessionId,
+            model: saved.model,
+            permissionMode: saved.permissionMode,
+            accountId: saved.activeAccountId,
+          }
+    }
     const live = this.live(sessionId)
     if (live !== null) return live.status()
     return {
@@ -142,10 +166,23 @@ export class SessionRegistry {
   }
 
   /** 全部会话的脱敏摘要，最近活动的在前。 */
-  summaries(): SessionSummary[] {
-    return this.all()
-      .sort((a, b) => b.lastActivityAt - a.lastActivityAt)
-      .map(summarizeSession)
+  summaries(stored: readonly SessionIndex[] = []): SessionSummary[] {
+    const summaries = new Map(
+      stored
+        .filter((index) => index.archivedAt === null)
+        .map((index) => [index.id, summarizeSavedSession(index)]),
+    )
+    for (const entry of this.#entries.values()) {
+      const saved = summaries.get(entry.sessionId)
+      const current = summarizeSession(entry)
+      summaries.set(entry.sessionId, {
+        ...saved,
+        ...current,
+        model: current.model ?? saved?.model ?? null,
+        accountId: current.accountId ?? saved?.accountId ?? null,
+      })
+    }
+    return [...summaries.values()].sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
   }
 
   /** 所有会话里退出会中断的工作：进行中的回合和等待回答的权限；正在结束的会话不算。 */

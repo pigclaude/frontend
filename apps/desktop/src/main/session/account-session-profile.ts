@@ -2,27 +2,36 @@
 
 import { isAccountSelectable } from "@pigclaude/contracts/claude-account"
 import type { LocalStore } from "@pigclaude/local-store"
+import { sameProfileEnvironment, type ProfileEnvironment } from "./profile-environment"
 
 /** 保留指定账号与自动选号的配置选择规则，返回实际会话需要的时区和语言。 */
 export async function accountSessionProfile(
   store: Pick<LocalStore, "listAccounts" | "listProxies">,
   accountId: string | null,
   systemLocale: () => string,
+  required?: Pick<ProfileEnvironment, "locale" | "timezone">,
 ): Promise<import("./session-types").SessionProfile | null> {
   const accounts = await store.listAccounts()
   const proxies = new Map((await store.listProxies()).map((proxy) => [proxy.id, proxy.url]))
-  const available = accounts.filter((item) =>
-    isAccountSelectable(
-      {
-        enabled: item.enabled,
-        needsReauth: item.needsReauth,
-        hasCredential: item.credential !== null,
-        exhaustedUntil: item.exhaustedUntil,
-        proxyUrl: item.proxyId === null ? null : proxies.get(item.proxyId),
-      },
-      Date.now(),
-    ),
-  )
+  const available = accounts.filter((item) => {
+    const environment = {
+      locale: item.fingerprint.lang || systemLocale(),
+      timezone: item.fingerprint.timezone,
+    }
+    return (
+      (required === undefined || sameProfileEnvironment(environment, required)) &&
+      isAccountSelectable(
+        {
+          enabled: item.enabled,
+          needsReauth: item.needsReauth,
+          hasCredential: item.credential !== null,
+          exhaustedUntil: item.exhaustedUntil,
+          proxyUrl: item.proxyId === null ? null : proxies.get(item.proxyId),
+        },
+        Date.now(),
+      )
+    )
+  })
   const account =
     accountId === null
       ? available[0]

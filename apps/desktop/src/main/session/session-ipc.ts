@@ -1,6 +1,7 @@
 // 负责注册 session.* 和只读 usage.summary 的 IPC；所有 renderer 输入在 main 侧校验后再交给 SessionHost。
 
 import { ipcMain, type IpcMainInvokeEvent } from "electron"
+import { isAbsolute } from "node:path"
 import type { SessionHost } from "./session-host"
 import {
   SessionHostError,
@@ -57,11 +58,13 @@ export function registerSessionIpc(options: SessionIpcOptions): void {
   ipcMain.handle("pigclaude:session-send", async (event, value: unknown) => {
     assertTrusted(options, event)
     const { sessionId } = readSessionTarget(value)
+    const workbench = options.tools
     await requireHost(options).send(
       sessionId,
       readSessionSendInput(value),
       (workspace, phase, turnId) =>
         captureSessionCheckpoint(event.sender, workspace, phase, { sessionId, turnId }),
+      ...(workbench === undefined ? [] : [() => workbench(event)]),
     )
   })
   ipcMain.handle("pigclaude:session-cancel", async (event, value: unknown) => {
@@ -95,7 +98,7 @@ export function registerSessionIpc(options: SessionIpcOptions): void {
   ipcMain.handle("pigclaude:session-events", async (event, value: unknown) => {
     assertTrusted(options, event)
     const input = readSessionEventsInput(value)
-    return requireHost(options).events(input.sessionId, input.afterSeq)
+    return requireHost(options).historyEvents(input.sessionId, input.afterSeq)
   })
   ipcMain.handle("pigclaude:session-models", async (event) => {
     assertTrusted(options, event)
@@ -104,11 +107,14 @@ export function registerSessionIpc(options: SessionIpcOptions): void {
   ipcMain.handle("pigclaude:session-status", async (event, value: unknown) => {
     assertTrusted(options, event)
     const host = requireHost(options)
+    await host.ready()
     return value === undefined ? host.status() : host.status(readSessionTarget(value).sessionId)
   })
   ipcMain.handle("pigclaude:session-list", async (event) => {
     assertTrusted(options, event)
-    return requireHost(options).list()
+    const host = requireHost(options)
+    await host.ready()
+    return host.list()
   })
   ipcMain.handle("pigclaude:usage-summary", async (event, value: unknown) => {
     assertTrusted(options, event)
@@ -126,6 +132,8 @@ export function readSessionStartInput(value: unknown): SessionStartInput {
     throw invalidInput()
   }
   const workspace = readString(value.workspace)
+  const projectPath = readOptionalString(value.projectPath)
+  if (projectPath !== undefined && !isAbsolute(projectPath)) throw invalidInput()
   const permissionMode = readPermissionMode(value.permissionMode)
   const model = readOptionalString(value.model)
   const accountId = readOptionalString(value.accountId)
@@ -139,6 +147,7 @@ export function readSessionStartInput(value: unknown): SessionStartInput {
   return {
     ...(sessionId === undefined ? {} : { sessionId }),
     workspace,
+    ...(projectPath === undefined ? {} : { projectPath }),
     permissionMode,
     ...(model === undefined ? {} : { model }),
     ...(accountId === undefined ? {} : { accountId }),

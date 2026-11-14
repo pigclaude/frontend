@@ -1,21 +1,29 @@
 // 负责编排一个窗口里的全部 Claude 会话：注册表加并发名额，启动、把命令交给对应的 ClaudeSession、停放、
-// 会员失效、模型目录和事件广播。每个会话的运行在 ClaudeSession，排队和空闲停放在 SessionConcurrency。
 import { randomUUID } from "node:crypto"
 import { ClaudeAgentAdapter } from "./claude-agent-adapter"
 import { resolveClaudeBinaryPath } from "./claude-binary"
-import { readOrganizationModels, type OrganizationModelReader } from "./claude-bootstrap"
+import type { OrganizationModelReader } from "./claude-bootstrap"
 import type { ClaudeSession } from "./claude-session"
 import type { DevProviderOverride } from "./dev-provider"
 import type { PermissionAnswer } from "./permission-broker"
 import type { QuestionAnswer } from "./question-broker"
 import { SessionConcurrency, defaultSessionLimits } from "./session-concurrency"
+import { SessionClaudeExitError } from "./session-claude-launch"
 import { hostEnvelope, type SessionEnvelope } from "./session-envelope"
 import { SessionEnvironment } from "./session-environment"
 import type { ActiveSession, SessionTimers } from "./session-host-active"
-import { pinnedCatalog } from "./session-host-provider"
-import { assertMembershipActive, type SessionPendingWork } from "./session-host-support"
-import { launchSession, type SessionLaunchDeps, type SessionLaunchHooks } from "./session-launch"
-import { queryModels } from "./session-models"
+import type { SessionPendingWork } from "./session-host-support"
+import {
+  launchSession,
+  orderedSessionChecks,
+  sessionLaunchCancellation,
+  type SessionLaunchDeps,
+  type SessionLaunchHooks,
+  type SessionLaunchStorage,
+} from "./session-launch"
+import { resumeSavedSession, rollbackSavedLaunch, SessionPersistence } from "./session-persistence"
+import type { SessionStore } from "./session-store"
+import { sessionModelReader } from "./session-models"
 import { SessionRegistry, type SessionEntry, type SessionParkReason } from "./session-registry"
 import type { SessionSummary } from "./session-summary"
 import type {
@@ -25,7 +33,6 @@ import type {
   SessionMembership,
   SessionModelCatalog,
   SessionPermissionMode,
-  SessionProfile,
   SessionRuntime,
   SessionSendInput,
   SessionStartInput,
@@ -44,7 +51,9 @@ export type SessionHostOptions = {
   createEnvironment?: SessionEnvironmentFactory
   createAdapter?: SessionAdapterFactory
   resolveBinaryPath?: () => string
-  resolveProfile?: (accountId: string | null) => Promise<SessionProfile | null>
+  resolveProfile?: SessionLaunchDeps["resolveProfile"]
+  /** 桌面启动时打开的会话存储；省略时用于不落盘的宿主测试。 */
+  sessionStore?: Promise<SessionStore | null>
   /** 经 daemon 读当次选中账号的组织模型；缺省时用随包 CLI 的 bootstrap 请求。 */
   readOrganizationModels?: OrganizationModelReader
   /** 开发期自定义供应商；只由主进程在未打包时传入，不影响会员和账号门禁。 */
@@ -76,25 +85,29 @@ const parkMessages: Record<SessionParkReason, string> = {
 /** 多会话宿主。保证同一个会话 id 只启动一次；运行的进程数不超过上限；停放的会话仍可补拉事件；启动失败不留半启动环境。 */
 export class SessionHost {
   readonly #membership: SessionMembership
-  readonly #readOrganizationModels: OrganizationModelReader
-  readonly #defaultWorkspace: () => string
   readonly #now: () => number
   readonly #newId: () => string
   readonly #launchDeps: SessionLaunchDeps
   readonly #registry = new SessionRegistry()
   readonly #concurrency: SessionConcurrency
+  readonly #persistence: SessionPersistence | null
+  readonly #models: () => Promise<SessionModelCatalog>
   readonly #listeners = new Set<(envelope: SessionEnvelope) => void>()
   readonly #unsubscribe: (() => void)[]
-  #checkingStart = Promise.resolve()
+  readonly #checkBeforeQueue = orderedSessionChecks()
   #disposed = false
 
   /** 创建会话宿主并订阅会员、换号和用量写入失败事件。 */
   constructor(options: SessionHostOptions) {
     this.#membership = options.membership
-    this.#readOrganizationModels = options.readOrganizationModels ?? readOrganizationModels
-    this.#defaultWorkspace = options.defaultWorkspace ?? (() => process.cwd())
     this.#now = options.now ?? Date.now
     this.#newId = options.newId ?? (() => randomUUID())
+    this.#persistence =
+      options.sessionStore === undefined
+        ? null
+        : new SessionPersistence(options.sessionStore, () =>
+            this.#emitHost({ type: "notice", message: "会话记录写入失败" }),
+          )
     const timers = options.timers ?? realTimers
     this.#launchDeps = {
       membership: options.membership,
@@ -111,6 +124,9 @@ export class SessionHost {
       now: this.#now,
       newId: this.#newId,
     }
+    this.#models = sessionModelReader(this.#launchDeps, options, (message) =>
+      this.#emitHost({ type: "notice", message }),
+    )
     this.#concurrency = new SessionConcurrency({
       maxRunning: options.maxRunningSessions ?? defaultSessionLimits.maxRunning,
       maxQueued: options.maxQueuedSessions ?? defaultSessionLimits.maxQueued,
@@ -122,7 +138,7 @@ export class SessionHost {
       lastActivityAt: (sessionId) => this.#registry.get(sessionId)?.lastActivityAt ?? 0,
       park: (sessionId) => {
         const entry = this.#registry.get(sessionId)
-        if (entry !== null) void this.#park(entry, "idle")
+        if (entry !== null) void this.#park(entry, "idle").catch(() => this.#notifyExitPending())
       },
     })
     this.#unsubscribe = [
@@ -130,7 +146,8 @@ export class SessionHost {
         this.#emitHost({ type: "error", code: "usage_write_failed", message: usageWriteFailed })
       }),
       options.membership.subscribe((view) => {
-        if (view.state !== "active") void this.#handleMembershipLost()
+        if (view.state !== "active")
+          void this.#handleMembershipLost().catch(() => this.#notifyExitPending())
       }),
       options.runtime.subscribe((event) =>
         this.#registry.live(event.sessionId)?.applyAccountSwitch(event),
@@ -144,22 +161,33 @@ export class SessionHost {
     return () => this.#listeners.delete(listener)
   }
 
-  /**
-   * 启动一个会话，Claude Code 启动完成后返回它的 id。进程名额已满时先停放最久没用的空闲会话，还不够就排队，
-   * 排队期间会话在列表里显示为排队；排满时抛 SESSION_LIMIT_REACHED。input.sessionId 指向正在排队、启动或运行的
-   * 会话时返回同一个 id，指向停放的会话时抛 SESSION_RESUME_FAILED。会员、工作区、可用账号或 daemon 不满足时不创建任何环境。
-   */
+  /** 按名额启动并保存新会话；同一活动会话复用启动结果，已停放的会话通过发送续接。 */
   async start(input: SessionStartInput, tools?: SessionTools): Promise<{ sessionId: string }> {
     if (this.#disposed) throw new SessionHostError("SDK_ERROR", "会话宿主已关闭")
+    const store = this.#persistence === null ? undefined : await this.#persistence.ready
+    if (store === null) {
+      tools?.close()
+      throw new SessionHostError("SESSION_START_FAILED", "会话存储不可用")
+    }
     const existing = input.sessionId === undefined ? null : this.#registry.get(input.sessionId)
     if (existing !== null) {
       tools?.close()
       if (existing.phase === "parked") throw resumeFailed()
       return existing.launch ?? { sessionId: existing.sessionId }
     }
-    const entry = this.#registry.add(input.sessionId ?? this.#newId(), input.workspace, this.#now())
+    const sessionId = input.sessionId ?? this.#newId()
+    if (store?.get(sessionId)) {
+      tools?.close()
+      throw resumeFailed()
+    }
+    const entry = this.#registry.add(sessionId, input.workspace, this.#now())
     entry.closeTools = tools?.close ?? null
-    const launch = this.#launch(entry, input, tools?.servers)
+    const launch = this.#launch(
+      entry,
+      input,
+      tools?.servers,
+      store ? { store, index: null } : undefined,
+    )
     entry.launch = launch
     try {
       return await launch
@@ -172,6 +200,7 @@ export class SessionHost {
     entry: SessionEntry,
     input: SessionStartInput,
     servers: SessionTools["servers"],
+    storage?: SessionLaunchStorage,
   ): Promise<{ sessionId: string }> {
     try {
       const hooks: SessionLaunchHooks = {
@@ -186,14 +215,7 @@ export class SessionHost {
             return waited
           })
         },
-        checkBeforeQueue: (check) => {
-          const checked = this.#checkingStart.then(check)
-          this.#checkingStart = checked.then(
-            () => undefined,
-            () => undefined,
-          )
-          return checked
-        },
+        checkBeforeQueue: this.#checkBeforeQueue,
         opened: (session, canonicalWorkspace) => {
           entry.session = session
           entry.canonicalWorkspace = canonicalWorkspace
@@ -204,9 +226,18 @@ export class SessionHost {
           this.#concurrency.touch(entry.sessionId)
         },
         released: () => this.#released(entry),
+        ...(this.#persistence === null
+          ? {}
+          : { saveSettings: (settings) => this.#persistence?.settings(entry.sessionId, settings) }),
       }
-      await launchSession(this.#launchDeps, input, entry.sessionId, hooks, servers)
+      await launchSession(this.#launchDeps, input, entry.sessionId, hooks, servers, storage)
     } catch (error) {
+      await this.#persistence?.flush(entry.sessionId)
+      if (error instanceof SessionClaudeExitError) {
+        entry.phase = "running"
+        throw new SessionHostError("SESSION_START_FAILED", error.message)
+      }
+      if (storage) await rollbackSavedLaunch(storage, entry.sessionId).catch(() => undefined)
       this.#forget(entry)
       throw error
     }
@@ -221,8 +252,42 @@ export class SessionHost {
     sessionId: string,
     input: SessionSendInput,
     checkpoint?: ActiveSession["checkpoint"],
+    tools?: () => SessionTools | undefined,
   ): Promise<void> {
+    if (this.#persistence !== null) this.#assertMembership()
+    if (this.#persistence !== null) await this.#ensureResumed(sessionId, tools)
     await this.#requireSession(sessionId).send(input, checkpoint)
+  }
+
+  async #ensureResumed(sessionId: string, tools?: () => SessionTools | undefined): Promise<void> {
+    const store = await this.#persistence?.ready
+    const current = this.#registry.get(sessionId)
+    if (current?.phase === "running") return
+    if (current?.launch) {
+      await current.launch
+      return
+    }
+    const index = store?.get(sessionId)
+    if (!store || !index) return
+    this.#assertMembership()
+    if (this.#disposed) throw resumeFailed()
+    const entry = this.#registry.prepareResume(index, this.#now())
+    const launch = resumeSavedSession(
+      index,
+      () => this.models(),
+      tools,
+      (input, scoped) => {
+        entry.closeTools = scoped?.close ?? null
+        return this.#launch(entry, input, scoped?.servers, { store, index })
+      },
+      () => this.#emitHost({ type: "notice", message: "原模型当前不可用，已使用默认模型续接" }),
+    )
+    entry.launch = launch
+    try {
+      await launch
+    } finally {
+      entry.launch = null
+    }
   }
 
   /** 取消指定会话的当前 turn：立即拒绝未回答权限并中断，但保留会话供下一次发送。不是运行中的会话时什么也不做。 */
@@ -235,29 +300,23 @@ export class SessionHost {
     this.#registry.live(sessionId)?.respondPermission(answer)
   }
 
-  /**
-   * 写回指定会话的一次提问回答；未知会话或未知 requestId 都忽略。会员无效时抛 MEMBERSHIP_REQUIRED，
-   * 答案条数和问题数不一致时抛 INVALID_SESSION_INPUT。
-   */
+  /** 写回指定会话的提问回答，会员过期时拒绝。 */
   answerQuestion(sessionId: string, answer: QuestionAnswer): void {
     this.#assertMembership()
     this.#registry.live(sessionId)?.answerQuestion(answer)
   }
 
-  /** 切换后续工具调用的权限模式；等待中的权限请求保持原模式。自动审批被拒时不抛错，改发提示。 */
+  /** 切换指定会话后续工具调用的权限模式。 */
   async setMode(sessionId: string, mode: SessionPermissionMode): Promise<void> {
     await this.#requireSession(sessionId).setMode(mode)
   }
 
-  /** 切换后续回复使用的模型；不影响已发出的请求。开发期供应商固定模型时不接受其他取值。 */
+  /** 切换指定会话后续回复使用的模型。 */
   async setModel(sessionId: string, model: string): Promise<void> {
     await this.#requireSession(sessionId).setModel(model)
   }
 
-  /**
-   * 按序号补拉指定会话要保存的事件，按序号排列，一次有上限；停放的会话仍可读。
-   * 会员无效时抛 MEMBERSHIP_REQUIRED，会话不存在或还在排队时抛 SESSION_NOT_FOUND。
-   */
+  /** 从宿主内存按序号补拉会话事件。 */
   events(sessionId: string, afterSeq: number): SessionEnvelope[] {
     this.#assertMembership()
     const session = this.#registry.get(sessionId)?.session ?? null
@@ -265,10 +324,24 @@ export class SessionHost {
     return session.events(afterSeq)
   }
 
-  /**
-   * 停放会话：先拒绝未回答权限，再中断、停止适配器、吊销令牌并释放环境，会话留在列表里；可重复调用。
-   * 排队或正在启动的会话被取消，它的 start 抛 SESSION_CANCELLED。不带会话 id 时停放全部会话。
-   */
+  /** 等待磁盘索引可查询，应用窗口仍可在此之前打开。 */
+  async ready(): Promise<void> {
+    await this.#persistence?.ready
+  }
+
+  /** 读已保存历史的下一页，活动会话的补拉同时兼容尚未落盘的事件。 */
+  async historyEvents(sessionId: string, afterSeq: number): Promise<SessionEnvelope[]> {
+    this.#assertMembership()
+    return (
+      this.#persistence?.history(
+        sessionId,
+        afterSeq,
+        (since) => this.#registry.get(sessionId)?.session?.events(since) ?? null,
+      ) ?? this.events(sessionId, afterSeq)
+    )
+  }
+
+  /** 停放指定会话并等待清理；不带 id 时停放所有会话，历史保留。 */
   async stop(sessionId?: string): Promise<void> {
     const entries = sessionId === undefined ? this.#registry.all() : [this.#registry.get(sessionId)]
     await Promise.all(
@@ -276,42 +349,23 @@ export class SessionHost {
     )
   }
 
-  /** 查询模型目录；开发期供应商固定模型时直接返回单项目录。会员有效时列表不为空，降级时发一次提示。 */
+  /** 查询会员可用的模型目录，失败时使用已有降级逻辑。 */
   async models(): Promise<SessionModelCatalog> {
-    await assertMembershipActive(this.#membership)
-    const deps = this.#launchDeps
-    const pinned = pinnedCatalog(deps.provider)
-    if (pinned !== null) return { models: pinned, cliError: null }
-    return queryModels({
-      assertMembership: () => assertMembershipActive(this.#membership),
-      runtime: deps.runtime,
-      createEnvironment: deps.createEnvironment,
-      createAdapter: deps.createAdapter,
-      resolveProfile: deps.resolveProfile,
-      readOrganizationModels: this.#readOrganizationModels,
-      defaultWorkspace: this.#defaultWorkspace,
-      resolveBinaryPath: deps.resolveBinaryPath,
-      userDataPath: deps.userDataPath,
-      newId: this.#newId,
-      now: this.#now,
-      notify: (message) => this.#emitHost({ type: "notice", message }),
-    })
+    return this.#models()
   }
 
-  /**
-   * 返回指定会话的脱敏快照；停放、排队的会话 active 为 false，会话不存在时抛 SESSION_NOT_FOUND。
-   * 不带 id 时给最近启动、还在运行的会话，没有时所有 id 和模型为 null。
-   */
+  /** 返回会话快照；不带 id 时返回最近的活动会话。 */
   status(sessionId?: string): SessionStatusView {
-    const view = this.#registry.status(sessionId)
+    const saved = sessionId === undefined ? null : this.#persistence?.store?.get(sessionId)
+    const view = this.#registry.status(sessionId, saved)
     if (view === null) throw new SessionHostError("SESSION_NOT_FOUND", "会话不存在")
     return view
   }
 
-  /** 列出全部会话（排队、运行中和停放）的脱敏摘要，最近活动的在前。会员无效时抛 MEMBERSHIP_REQUIRED。 */
+  /** 列出会话摘要，最近有活动的会话在前。 */
   list(): SessionSummary[] {
     this.#assertMembership()
-    return this.#registry.summaries()
+    return this.#registry.summaries(this.#persistence?.store?.list())
   }
 
   /** 和这个工作区重叠的运行中会话里有没有进行中的回合；工作台据此拒绝切分支和恢复检查点。 */
@@ -334,14 +388,14 @@ export class SessionHost {
     this.#listeners.clear()
   }
 
-  // 排队的取消；正在启动的打断（已有会话对象时结束它）并等启动收尾；运行中的停放。
+  // 排队的取消，正在启动的等收尾，运行中的停放。
   async #halt(
     entry: SessionEntry,
     code: "SESSION_CANCELLED" | "MEMBERSHIP_REQUIRED",
   ): Promise<void> {
     if (entry.phase === "checking" || entry.phase === "queued") {
       entry.cancelled = code
-      this.#concurrency.cancel(entry.sessionId, cancelError(code))
+      this.#concurrency.cancel(entry.sessionId, sessionLaunchCancellation(code))
       return
     }
     const reason: SessionParkReason = code === "MEMBERSHIP_REQUIRED" ? "membership" : "stop"
@@ -369,8 +423,21 @@ export class SessionHost {
     await Promise.all(this.#registry.all().map((entry) => this.#halt(entry, "MEMBERSHIP_REQUIRED")))
   }
 
+  #notifyExitPending(): void {
+    this.#emitHost({ type: "notice", message: "Claude Code 尚未停止，可重试停放会话" })
+  }
+
   // 会话释放：交还名额、关掉会话专用的工具；运行中的会话转为停放，启动中的由启动流程收尾。
-  #released(entry: SessionEntry): void {
+  async #released(entry: SessionEntry): Promise<void> {
+    if (this.#persistence !== null && entry.phase === "running") {
+      const status =
+        entry.parkReason === null
+          ? "failed"
+          : entry.parkedMidTurn || entry.parkReason === "membership"
+            ? "interrupted"
+            : "parked"
+      await this.#persistence.park(entry.sessionId, status)
+    }
     this.#closeTools(entry)
     if (entry.phase === "running") entry.phase = "parked"
     this.#concurrency.release(entry.sessionId)
@@ -392,6 +459,7 @@ export class SessionHost {
 
   #observe(entry: SessionEntry, envelope: SessionEnvelope): void {
     this.#registry.observe(entry, envelope, this.#now())
+    this.#persistence?.observe(entry.sessionId, envelope)
     this.#concurrency.touch(entry.sessionId)
     this.#emit(envelope)
   }
@@ -429,10 +497,4 @@ export class SessionHost {
 
 function resumeFailed(): SessionHostError {
   return new SessionHostError("SESSION_RESUME_FAILED", "会话已停放，暂时不能接着使用")
-}
-
-function cancelError(code: "SESSION_CANCELLED" | "MEMBERSHIP_REQUIRED"): SessionHostError {
-  return code === "MEMBERSHIP_REQUIRED"
-    ? new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
-    : new SessionHostError("SESSION_CANCELLED", "会话启动已取消")
 }

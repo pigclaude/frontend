@@ -48,7 +48,7 @@ function fakeHost(): SessionHost {
     setMode: vi.fn(async () => undefined),
     setModel: vi.fn(async () => undefined),
     stop: vi.fn(async () => undefined),
-    events: vi.fn(() => []),
+    historyEvents: vi.fn(async () => []),
     models: vi.fn(async () => []),
     status: vi.fn(() => null),
   } as unknown as SessionHost
@@ -126,7 +126,7 @@ describe("session IPC registration", () => {
     expect(host.setMode).toHaveBeenCalledWith("session-1", "plan")
     expect(host.setModel).toHaveBeenCalledWith("session-1", "claude-opus")
     expect(host.stop).toHaveBeenCalledWith("session-1")
-    expect(host.events).toHaveBeenCalledWith("session-1", 3)
+    expect(host.historyEvents).toHaveBeenCalledWith("session-1", 3)
   })
 
   it("rejects session commands without a usable session id", async () => {
@@ -156,7 +156,7 @@ describe("session IPC registration", () => {
         "INVALID_SESSION_INPUT",
       )
     }
-    expect(host.events).not.toHaveBeenCalled()
+    expect(host.historyEvents).not.toHaveBeenCalled()
   })
 
   it("checks the sender and the answers before answering a question", async () => {

@@ -30,6 +30,8 @@ export type SessionStartInput = {
   /** 调用方给新会话定的 id；同一个 id 再次启动时返回原来的会话，省略时由主进程生成。 */
   sessionId?: string
   workspace: string
+  /** 运行目录是 worktree 时，它所属项目的根目录。 */
+  projectPath?: string
   model?: string
   thinking?: SessionThinking
   /** 新输入区按模型提供的 effort；和 thinking 二选一，effort 优先。 */
@@ -98,7 +100,7 @@ export type SessionTurnEndStatus = "completed" | "error" | "interrupted"
  * 或者这一轮被停止、出错结束时，发出 turn-ended。每个 turn-started 都恰好有一个对应的 turn-ended。
  */
 export type SessionTurnEvent =
-  | { type: "turn-started"; turnId: string }
+  | { type: "turn-started"; turnId: string; userText?: string }
   | {
       type: "turn-ended"
       turnId: string

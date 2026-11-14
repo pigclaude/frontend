@@ -1,6 +1,7 @@
 // 定义会话列表里每个会话的脱敏摘要和状态集合，并从注册表记录生成摘要；preload 和渲染层也引用这里的类型。
 
 import type { SessionEntry } from "./session-registry"
+import type { SessionIndex } from "./session-index"
 import type { SessionStatusView, SessionTurnEndStatus } from "./session-types"
 
 /**
@@ -15,6 +16,12 @@ export type SessionListStatus =
 export type SessionSummary = {
   sessionId: string
   workspace: string
+  /** 项目根目录，与会话运行的 worktree 路径可以不同。 */
+  projectPath?: string
+  /** 由项目第一条消息自动生成或用户指定的标题。 */
+  title?: string
+  /** 本机保存的会话可以用原 id 续接。 */
+  restorable?: boolean
   status: SessionListStatus
   /** 最后一轮怎么结束的；还没有结束过的回合时为 null。 */
   lastTurn: SessionTurnEndStatus | null
@@ -26,6 +33,25 @@ export type SessionSummary = {
   model: string | null
   /** 最近一次活动的时间，ISO UTC。 */
   lastActivityAt: string
+}
+
+/** 无需启动 Claude Code 即可列出保存的会话状态。 */
+export function summarizeSavedSession(index: SessionIndex): SessionSummary {
+  return {
+    sessionId: index.id,
+    workspace: index.workspace ?? index.projectPath,
+    projectPath: index.projectPath,
+    ...(index.title === "" ? {} : { title: index.title }),
+    status: index.status === "running" ? "parked" : index.status,
+    lastTurn: index.lastTurn?.status ?? null,
+    turnId: null,
+    pendingPermissions: 0,
+    pendingQuestions: 0,
+    accountId: index.activeAccountId,
+    model: index.model,
+    lastActivityAt: index.lastActivityAt,
+    restorable: true,
+  }
 }
 
 /** 从注册表记录生成摘要；停放的会话没有回合和待答数。 */

@@ -20,6 +20,9 @@ export function isSessionSummary(value: unknown): value is SessionSummary {
   return (
     typeof record.sessionId === "string" &&
     typeof record.workspace === "string" &&
+    (record.projectPath === undefined || typeof record.projectPath === "string") &&
+    (record.title === undefined || typeof record.title === "string") &&
+    (record.restorable === undefined || typeof record.restorable === "boolean") &&
     typeof record.status === "string" &&
     statuses.has(record.status as SessionListStatus) &&
     (record.lastTurn === null ||

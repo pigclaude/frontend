@@ -2,7 +2,11 @@
 // 再在一次性环境里用占位 token 让 Claude Code 列出模型，查询结束立即删除环境、吊销令牌。真实凭据只留在 daemon 里。
 // 读不到组织模型时只列内置模型，Claude Code 列不出时改用内置兜底目录；两种情况都提示用户。
 
-import type { OrganizationModel, OrganizationModelReader } from "./claude-bootstrap"
+import {
+  readOrganizationModels,
+  type OrganizationModel,
+  type OrganizationModelReader,
+} from "./claude-bootstrap"
 import { CLAUDE_FALLBACK_MODELS } from "./claude-model-catalog"
 import { classifyDaemonError } from "./session-error-mapping"
 import { SessionHostError, type ClaudeModel, type SessionModelCatalog } from "./session-types"
@@ -22,6 +26,9 @@ import {
 } from "./session-host-support"
 import { normalizeSessionLocale, normalizeSessionTimezone } from "./session-locale"
 import { boundSessionEnvironment } from "./bound-session-environment"
+import { pinnedCatalog } from "./session-host-provider"
+import type { SessionLaunchDeps } from "./session-launch"
+import { assertMembershipActive } from "./session-host-support"
 
 const organizationUnavailableNotice = "暂时读不到 Claude 账号所在组织的模型，只显示内置模型。"
 const catalogUnavailableNotice = "暂时读不到 Claude Code 的模型列表，先显示内置模型。"
@@ -44,6 +51,27 @@ export type SessionModelQueryOptions = {
   now: () => number
   /** 给用户的一次性提示；界面用全局通知展示。 */
   notify: (message: string) => void
+}
+
+/** 构造宿主的模型目录入口，会员核验和开发供应商覆盖与会话启动一致。 */
+export function sessionModelReader(
+  deps: SessionLaunchDeps,
+  options: Partial<Pick<SessionModelQueryOptions, "readOrganizationModels" | "defaultWorkspace">>,
+  notify: SessionModelQueryOptions["notify"],
+): () => Promise<SessionModelCatalog> {
+  const assertMembership = () => assertMembershipActive(deps.membership)
+  return async () => {
+    await assertMembership()
+    const pinned = pinnedCatalog(deps.provider)
+    if (pinned !== null) return { models: pinned, cliError: null }
+    return queryModels({
+      ...deps,
+      assertMembership,
+      readOrganizationModels: options.readOrganizationModels ?? readOrganizationModels,
+      defaultWorkspace: options.defaultWorkspace ?? process.cwd,
+      notify,
+    })
+  }
 }
 
 /** 查询模型目录。保证会员有效时返回的列表不为空；降级时只提示一次，Claude Code 失败的原因放进 cliError。 */

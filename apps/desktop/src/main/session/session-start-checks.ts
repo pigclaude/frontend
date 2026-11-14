@@ -4,6 +4,8 @@
 
 import { boundSessionEnvironment } from "./bound-session-environment"
 import type { DevProviderOverride } from "./dev-provider"
+import { sameProfileEnvironment } from "./profile-environment"
+import type { SessionStorePaths } from "./session-store-layout"
 import {
   pinnedStartInput,
   providerEnvironmentInput,
@@ -36,10 +38,15 @@ export type SessionStartDeps = {
   provider: DevProviderOverride | null
   createEnvironment: SessionEnvironmentFactory
   resolveBinaryPath: () => string
-  resolveProfile: (accountId: string | null) => Promise<SessionProfile | null>
+  resolveProfile: (
+    accountId: string | null,
+    required?: Pick<SessionProfile, "locale" | "timezone">,
+  ) => Promise<SessionProfile | null>
   userDataPath: string
   /** 启动已被停止或宿主已关闭。 */
   cancelled: () => boolean
+  /** 续接时只能在保存的语言时区使用一个当前可用账号。 */
+  requiredProfile?: Pick<SessionProfile, "locale" | "timezone">
 }
 
 /** 通过检查、可以交给 ClaudeSession 的启动材料。 */
@@ -50,6 +57,8 @@ export type PreparedSessionStart = {
   /** 已按开发期供应商固定过模型的启动输入。 */
   input: SessionStartInput
   environment: SessionEnvironmentPort
+  /** 进程实际绑定的环境，供保存索引用。 */
+  profile: SessionProfile
 }
 
 /**
@@ -60,6 +69,7 @@ export async function prepareSessionStart(
   deps: SessionStartDeps,
   input: SessionStartInput,
   sessionId: string,
+  prepareRetained?: (profile: SessionProfile) => Promise<SessionStorePaths>,
 ): Promise<PreparedSessionStart> {
   assertStartNotStopped(deps.cancelled(), false)
   if (deps.membership.view().state !== "active") {
@@ -71,7 +81,7 @@ export async function prepareSessionStart(
     preferredAccountId: input.accountId ?? null,
   })
   try {
-    return await prepareEnvironment(deps, input, session, daemonBaseUrl)
+    return await prepareEnvironment(deps, input, session, daemonBaseUrl, prepareRetained)
   } catch (error) {
     session.close()
     throw sanitizeStartError(error, session.token)
@@ -93,6 +103,7 @@ export async function checkSessionStart(
   if (deps.provider === null && !(await deps.runtime.hasAvailableAccount())) {
     throw new SessionHostError("NO_AVAILABLE_ACCOUNT", "没有可用的 Claude 账号")
   }
+  if (deps.requiredProfile !== undefined) await resolveSessionProfile(deps, input)
   assertNotCancelled()
   daemonAddress(deps.runtime)
   return workspace
@@ -111,11 +122,13 @@ async function prepareEnvironment(
   input: SessionStartInput,
   session: SessionRuntimeLease,
   daemonBaseUrl: string,
+  prepareRetained?: (profile: SessionProfile) => Promise<SessionStorePaths>,
 ): Promise<PreparedSessionStart> {
   const { sessionId, token } = session
   const binaryPath = readBinaryPath(deps.resolveBinaryPath, token)
-  const resolvedProfile = await deps.resolveProfile(input.accountId ?? null)
-  const profile = deps.provider === null ? resolvedProfile : providerSessionProfile(resolvedProfile)
+  const profile = await resolveSessionProfile(deps, input)
+  assertStartNotStopped(deps.cancelled(), false)
+  const retainedPaths = await prepareRetained?.(profile)
   assertStartNotStopped(deps.cancelled(), false)
   const environment = await createEnvironmentOrThrow(
     (environmentInput) =>
@@ -129,6 +142,7 @@ async function prepareEnvironment(
       locale: normalizeSessionLocale(profile?.locale),
       binaryPath,
       userDataPath: deps.userDataPath,
+      ...(retainedPaths === undefined ? {} : { retainedPaths }),
       ...providerEnvironmentInput(deps.provider),
     },
     token,
@@ -146,5 +160,24 @@ async function prepareEnvironment(
     sessionToken: token,
     input: pinnedStartInput(deps.provider, input),
     environment,
+    profile,
   }
+}
+
+async function resolveSessionProfile(
+  deps: SessionStartDeps,
+  input: SessionStartInput,
+): Promise<SessionProfile> {
+  const required = deps.requiredProfile
+  const resolved = await deps.resolveProfile(input.accountId ?? null, required)
+  const profile = deps.provider === null ? resolved : providerSessionProfile(required ?? resolved)
+  if (required !== undefined && (profile === null || !sameProfileEnvironment(profile, required))) {
+    throw new SessionHostError("ACCOUNT_ENVIRONMENT_MISMATCH", "没有原语言和时区的可用 Claude 账号")
+  }
+  if (profile === null) {
+    throw new SessionHostError("NO_AVAILABLE_ACCOUNT", "账号没有可用的浏览器配置")
+  }
+  return required === undefined
+    ? profile
+    : { ...profile, locale: required.locale, timezone: required.timezone }
 }

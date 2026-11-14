@@ -312,7 +312,7 @@ async function reportDeviceInfoOnStartup(): Promise<void> {
 async function setupAuthorization(): Promise<void> {
   // 启动前清掉上次崩溃遗留的会话目录；此时还没有当前会话，调用后创建的目录不受影响。
   await cleanupStaleSessionDirs(app.getPath("userData")).catch(() => undefined)
-  void startSessionStore(app.getPath("userData"))
+  const sessionStore = startSessionStore(app.getPath("userData"))
   const vault = new FileSecretVault(
     join(app.getPath("userData"), "authorization-secrets.json"),
     safeStorage,
@@ -376,6 +376,7 @@ async function setupAuthorization(): Promise<void> {
     startProxyRuntime,
   })
   const sessions = assembleSessionServices({
+    sessionStore,
     userDataPath: app.getPath("userData"),
     homePath: app.getPath("home"),
     membership: composition.membershipGate,

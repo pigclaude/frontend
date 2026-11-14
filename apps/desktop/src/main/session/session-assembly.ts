@@ -8,6 +8,7 @@ import { devProviderHostOptions } from "./dev-provider"
 import { SessionHost } from "./session-host"
 import type { SessionEnvelope } from "./session-envelope"
 import type { SessionMembership, SessionRuntime } from "./session-types"
+import type { SessionStore } from "./session-store"
 import { UsageRecorder } from "./usage-recorder"
 
 /** 装配会话服务所需的应用环境。 */
@@ -24,6 +25,8 @@ export type SessionAssemblyInput = {
   env: Record<string, string | undefined>
   /** 会话事件出口；事件都已脱敏并包在信封里。 */
   onEvent: (envelope: SessionEnvelope) => void
+  /** 此窗口启动时打开的会话存储；不阻塞登录和窗口创建。 */
+  sessionStore?: Promise<SessionStore | null>
 }
 
 /** 主进程持有的会话服务。 */
@@ -43,8 +46,9 @@ export function assembleSessionServices(input: SessionAssemblyInput): SessionSer
     userDataPath: input.userDataPath,
     resolveBinaryPath: () => resolveClaudeBinaryPath(),
     defaultWorkspace: () => input.homePath,
-    resolveProfile: (accountId) =>
-      accountSessionProfile(input.store, accountId, input.systemLocale),
+    resolveProfile: (accountId, required) =>
+      accountSessionProfile(input.store, accountId, input.systemLocale, required),
+    ...(input.sessionStore === undefined ? {} : { sessionStore: input.sessionStore }),
     ...devProviderHostOptions(input.isPackaged, input.env),
   })
   host.subscribe(input.onEvent)

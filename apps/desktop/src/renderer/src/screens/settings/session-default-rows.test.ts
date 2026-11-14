@@ -104,6 +104,9 @@ describe("new session defaults in settings", () => {
     await render(createElement(SessionSettings, { models }))
 
     expect(trigger("默认模型").textContent).toBe("claude-retired")
+
+    await render(createElement(SessionSettings, { models: [] }))
+    expect(container.textContent).toContain("默认模型claude-retired")
   })
 
   it("saves a permission level and asks before making full access the default", async () => {

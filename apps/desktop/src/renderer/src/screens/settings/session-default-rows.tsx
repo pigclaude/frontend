@@ -34,15 +34,16 @@ function useSave(): (patch: SessionDefaultsPatch) => void {
 }
 
 /**
- * 默认模型：从 Claude Code 的模型目录里选。选中目录标为默认的那一项时存为跟随 Claude Code；
- * 目录还没读到时显示「—」。存过的模型已不在目录里时仍列出它，新会话会改用 Claude Code 的默认。
+ * 默认模型：从 Claude Code 的模型目录里选。选中目录标为默认的那一项时存为跟随 Claude Code，
+ * 之后 Claude Code 换了默认模型，新会话也跟着换。目录还没读到时只显示存过的模型或「—」。
+ * 存过的模型已不在目录里时仍列出它，新会话会改用 Claude Code 的默认。
  */
 export function DefaultModelRow({ models }: { models: readonly ClaudeModel[] }) {
   const { defaults } = useSessionDefaults()
   const save = useSave()
   const title = desktopText("settings.settings-app-pages.20")
   const fallback = models.find((model) => model.isDefault) ?? models[0]
-  if (fallback === undefined) return <SettingRow title={title} value="—" />
+  if (fallback === undefined) return <SettingRow title={title} value={defaults.model ?? "—"} />
   const options = models.map((model) => ({ value: model.id, label: model.displayName }))
   if (defaults.model !== null && !models.some((model) => model.id === defaults.model)) {
     options.push({ value: defaults.model, label: defaults.model })

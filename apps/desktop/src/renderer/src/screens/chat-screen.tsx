@@ -103,19 +103,20 @@ export function ChatScreen({
 }: ChatScreenProps) {
   const toast = useToast()
   const commands = useSlashCommands()
+  const { state } = session
+  const live = state.started && !state.ended
   const { defaults } = useSessionDefaults()
   const defaultLevel = permissionView(defaults.permissionMode, DEFAULT_PERMISSION_LEVEL).level
   const [modelId, setModelId] = useState(defaults.model ?? "")
   const [accountId, setAccountId] = useState(defaults.accountId ?? "")
   // 档位和计划开关分开记：计划打开期间档位不变，关掉计划或批准计划后回到这一档。
-  const [level, setLevel] = useState<RuntimeMode>(defaultLevel)
+  // 回到进行中的会话时从监督审批记起：设置里的默认档位只给新会话，不能借计划结束进入完全访问。
+  const [level, setLevel] = useState<RuntimeMode>(live ? DEFAULT_PERMISSION_LEVEL : defaultLevel)
   const [draftPlan, setDraftPlan] = useState(false)
   const startedAt = useRef(Date.now())
   const lastModelsError = useRef<string | null>(null)
   const [page, setPage] = useState<HTMLDivElement | null>(null)
 
-  const { state } = session
-  const live = state.started && !state.ended
   // 同一时间只回答一张卡片；答完后下一张会顶上来。
   const pending = useMemo(() => {
     for (const turn of state.turns) {

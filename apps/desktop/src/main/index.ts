@@ -341,7 +341,8 @@ async function setupAuthorization(): Promise<void> {
     safeStorage,
   )
   const deviceIdentity = new DeviceIdentityService()
-  await deviceIdentity.read()
+  // 不等读取：Windows 首次启动 PowerShell 要几秒；登录时授权服务等同一次读取，失败会重读。
+  void deviceIdentity.read().catch((error: unknown) => console.error(errorMessage(error)))
   callbackServer = await createCallbackServer(handleCallbackUrl)
   const systemLocale = () => app.getSystemLocale()
   const profileUsage = new BrowserProfileUsage()

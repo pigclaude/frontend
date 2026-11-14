@@ -22,6 +22,7 @@ import {
 import { workbenchStatus } from "./git-status"
 import { installedEditors } from "./installed-editors"
 import { WorkbenchTerminals } from "./terminal-service"
+import { UnsavedFiles } from "./unsaved-files"
 import {
   openWorkbenchFile,
   revealWorkbenchPath,
@@ -56,6 +57,8 @@ export class WorkbenchIpc {
   readonly #browsers = new WorkbenchBrowsers()
   readonly #terminals = new WorkbenchTerminals()
   readonly #windows = new Map<BrowserWindow, Electron.WebContents>()
+  /** 页面报告的未保存文件；退出、关窗和刷新前由这里请页面保存或放弃。 */
+  readonly unsaved = new UnsavedFiles()
 
   /** 为当前会话创建独立的本机网页预览工具。 */
   tools(owner: Electron.WebContents, canUse: () => boolean) {
@@ -132,6 +135,17 @@ export class WorkbenchIpc {
       revealWorkbenchPath(await project(root), string(path, 4096)),
     )
     handle("status", async (_window, _event, [root]) => workbenchStatus(await project(root)))
+    handle(
+      "unsaved",
+      (_window, event, [count]) => this.unsaved.report(event.sender, number(count, 0, 10_000)),
+      false,
+    )
+    handle(
+      "unsaved-done",
+      (_window, event, [id, done]) =>
+        this.unsaved.answer(event.sender, resourceId(id), boolean(done)),
+      false,
+    )
     handle("diff", async (_window, _event, [root, path, checkpoint]) => {
       const directory = await project(root)
       const checkpoints = await listWorkbenchCheckpoints(directory).catch(() => [])
@@ -247,6 +261,7 @@ export class WorkbenchIpc {
     })
     this.#windows.set(window, contents)
     const close = () => {
+      this.unsaved.forget(contents)
       this.#browsers.closeWindow(window)
       void this.#terminals.closeWindow(contents).catch(() => undefined)
     }
@@ -286,6 +301,11 @@ function number(value: unknown, min: number, max: number, integer = true): numbe
     value > max
   )
     throw new Error("WORKBENCH_INPUT_INVALID")
+  return value
+}
+
+function boolean(value: unknown): boolean {
+  if (typeof value !== "boolean") throw new Error("WORKBENCH_INPUT_INVALID")
   return value
 }
 

@@ -96,6 +96,8 @@ export function createPreviewWorkbench(): PreviewWorkbench {
         { path: "docs/guide.md", status: "??" },
       ],
       reveal: unavailable,
+      reportUnsaved: async () => undefined,
+      unsavedDone: async () => undefined,
       editors: async () => [],
       openFile: unavailable,
       saveAs: unavailable,

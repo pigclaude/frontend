@@ -149,6 +149,7 @@ if (!hasSingleInstanceLock) {
 
 const guardMainWindowClose = installQuitFlow({
   pendingWork: () => sessionHost?.pendingWork() ?? noPendingWork,
+  unsaved: workbench.unsaved,
   mainWindow: () => mainWindow,
   shutdown: shutdownDesktop,
   onBeforeShutdown: () => {

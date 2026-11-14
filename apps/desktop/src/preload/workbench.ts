@@ -13,6 +13,8 @@ export function workbenchBridge(): WorkbenchBridge {
     save: (root, path, text, mtime) => invoke("save", root, path, text, mtime),
     status: (root) => invoke("status", root),
     reveal: (root, path) => invoke("reveal", root, path),
+    reportUnsaved: (count) => invoke("unsaved", count),
+    unsavedDone: (id, done) => invoke("unsaved-done", id, done),
     editors: () => invoke("editors"),
     openFile: (root, path, editor) => invoke("open-file", root, path, editor),
     saveAs: (root, path) => invoke("save-as", root, path),

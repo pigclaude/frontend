@@ -11,6 +11,7 @@ import {
 import { FileDiff, Files, GitPullRequest, Globe, History, SquareTerminal } from "lucide-react"
 import { useExtensionRegistry, type SurfaceContribution } from "@pigclaude/client-runtime"
 import { EmptyState, useLocale } from "@pigclaude/ui-primitives"
+import { useToast } from "@pigclaude/ui-shell"
 import {
   EMPTY_SURFACE_STATE,
   FILE_SURFACE_KIND,
@@ -30,6 +31,7 @@ import { FilesSurface } from "./files-surface"
 import { CheckpointsPane, DiffPane, PullRequestPane, Worktrees } from "./git-panes"
 import { TerminalPane } from "./terminal-pane"
 import type { FileDraft } from "./use-file-document"
+import { useUnsavedFiles } from "./use-unsaved-files"
 import { workbenchRelativePath } from "./workbench-path"
 
 const owner = { kind: "builtin", id: "workbench" } as const
@@ -81,6 +83,7 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
     const [drafts, setDrafts] = useState<ReadonlyMap<string, FileDraft>>(() => new Map())
     const [revision, setRevision] = useState(0)
     const { bridge, root } = props
+    const toast = useToast()
     const hasDraft = (path: string) => drafts.has(path)
 
     useEffect(() => {
@@ -171,6 +174,20 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
         return next
       })
     }
+
+    useUnsavedFiles({
+      bridge,
+      root,
+      drafts,
+      setDraft,
+      clearDrafts: () => setDrafts(new Map()),
+      onSaved: () => setRevision((value) => value + 1),
+      onSaveFailed: (paths) => {
+        toast(fill(text("workbench.unsavedSaveFailed"), { files: paths.join("、") }), "alert")
+        const [first] = paths
+        if (first) setState((current) => openFileSurface(current, first, crypto.randomUUID()))
+      },
+    })
 
     /** 关闭一组标签；其中有未保存的文件时先问一次，取消就什么都不关。 */
     function close(ids: readonly string[]): void {

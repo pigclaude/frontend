@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, vi } from "vitest"
 import type {
   WorkbenchBridge,
   WorkbenchChange,
+  WorkbenchEvent,
   WorkbenchFile,
   WorkbenchListing,
 } from "../../../workbench-contract"
@@ -15,12 +16,16 @@ import { Workbench, type WorkbenchProps } from "../workbench/workbench"
 /** 工作台测试里的项目目录。 */
 export const projectRoot = "/Users/me/app"
 
-/** 内存项目和记录调用的工作台桥；change 模拟别处改了磁盘上的文件，changes 是 Git 状态。 */
+/**
+ * 内存项目和记录调用的工作台桥；change 模拟别处改了磁盘上的文件，changes 是 Git 状态，
+ * emit 模拟主进程发来的工作台事件。
+ */
 export type FakeWorkbench = {
   bridge: WorkbenchBridge
   disk: Map<string, { text: string; mtimeMs: number }>
   change: (path: string, text: string) => void
   changes: WorkbenchChange[] | null
+  emit: (event: WorkbenchEvent) => Promise<void>
 }
 
 function childrenOf(paths: readonly string[], directory: string): WorkbenchListing["entries"] {
@@ -40,6 +45,7 @@ function childrenOf(paths: readonly string[], directory: string): WorkbenchListi
 
 /** 用给定的文件建一个内存项目；没列出的桥方法被调用时让测试失败。 */
 export function fakeWorkbench(files: Record<string, string>): FakeWorkbench {
+  const listeners = new Set<(event: WorkbenchEvent) => void>()
   const disk = new Map(Object.entries(files).map(([path, text]) => [path, { text, mtimeMs: 1 }]))
   const read = (path: string): WorkbenchFile => {
     const entry = disk.get(path)
@@ -75,11 +81,16 @@ export function fakeWorkbench(files: Record<string, string>): FakeWorkbench {
     }),
     status: vi.fn(async () => fake.changes),
     reveal: vi.fn(async () => undefined),
+    reportUnsaved: vi.fn(async () => undefined),
+    unsavedDone: vi.fn(async () => undefined),
     editors: vi.fn(async () => [{ id: "cursor", name: "Cursor" }]),
     openFile: vi.fn(async () => undefined),
     saveAs: vi.fn(async () => true),
     worktrees: vi.fn(async () => []),
-    subscribe: vi.fn(() => () => undefined),
+    subscribe: vi.fn((listener: (event: WorkbenchEvent) => void) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    }),
   }
   const bridge = new Proxy(used, {
     get(target, name: string) {
@@ -98,6 +109,10 @@ export function fakeWorkbench(files: Record<string, string>): FakeWorkbench {
       disk.set(path, { text, mtimeMs: (entry?.mtimeMs ?? 0) + 1 })
     },
     changes: null,
+    async emit(event) {
+      await act(async () => listeners.forEach((listener) => listener(event)))
+      await settle()
+    },
   }
   return fake
 }

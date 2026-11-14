@@ -1,14 +1,40 @@
-// 负责验证退出和关闭主窗口前的确认：没有要中断的工作直接放行，有工作时先问，取消就保持原样。
+// 负责验证退出和关闭主窗口前的确认：没有要中断的工作或未保存的文件直接放行，否则先问一次；
+// 选保存就先保存，保存失败留下；选不保存就先放弃修改再离开；取消就保持原样。
 import { describe, expect, it, vi } from "vitest"
-import { createQuitConfirmation, type GuardedWindow } from "./quit-confirmation"
-import type { SessionPendingWork } from "./session/session-host-support"
+import {
+  createQuitConfirmation,
+  type GuardedWindow,
+  type LeaveAnswer,
+  type LeaveWork,
+  type QuitConfirmationOptions,
+} from "./quit-confirmation"
 
-const nothingPending: SessionPendingWork = { turns: 0, approvals: 0 }
+const nothingPending: LeaveWork = { turns: 0, approvals: 0, unsavedFiles: 0 }
+
+function confirmationWith(
+  work: LeaveWork,
+  ask: QuitConfirmationOptions["ask"],
+  saved = true,
+): {
+  confirmation: ReturnType<typeof createQuitConfirmation>
+  saveFiles: ReturnType<typeof vi.fn<() => Promise<boolean>>>
+  discardFiles: ReturnType<typeof vi.fn<() => Promise<void>>>
+} {
+  const saveFiles = vi.fn(async () => saved)
+  const discardFiles = vi.fn(async () => undefined)
+  const confirmation = createQuitConfirmation({
+    pendingWork: () => work,
+    ask,
+    saveFiles,
+    discardFiles,
+  })
+  return { confirmation, saveFiles, discardFiles }
+}
 
 describe("createQuitConfirmation", () => {
   it("lets the quit and the window close go ahead at once when nothing is pending", () => {
-    const ask = vi.fn(async () => false)
-    const confirmation = createQuitConfirmation({ pendingWork: () => nothingPending, ask })
+    const ask = vi.fn(async (): Promise<LeaveAnswer> => "stay")
+    const { confirmation } = confirmationWith(nothingPending, ask)
     const window = fakeWindow()
     confirmation.guardClose(window)
 
@@ -18,9 +44,9 @@ describe("createQuitConfirmation", () => {
   })
 
   it("keeps the window open when the user cancels closing it during a turn", async () => {
-    const work: SessionPendingWork = { turns: 1, approvals: 1 }
-    const ask = vi.fn(async () => false)
-    const confirmation = createQuitConfirmation({ pendingWork: () => work, ask })
+    const work: LeaveWork = { turns: 1, approvals: 1, unsavedFiles: 0 }
+    const ask = vi.fn(async (): Promise<LeaveAnswer> => "stay")
+    const { confirmation } = confirmationWith(work, ask)
     const window = fakeWindow()
     confirmation.guardClose(window)
 
@@ -32,11 +58,8 @@ describe("createQuitConfirmation", () => {
   })
 
   it("closes the window once the user confirms, without asking twice", async () => {
-    const ask = vi.fn(async () => true)
-    const confirmation = createQuitConfirmation({
-      pendingWork: () => ({ turns: 1, approvals: 0 }),
-      ask,
-    })
+    const ask = vi.fn(async (): Promise<LeaveAnswer> => "leave")
+    const { confirmation } = confirmationWith({ turns: 1, approvals: 0, unsavedFiles: 0 }, ask)
     const window = fakeWindow()
     confirmation.guardClose(window)
 
@@ -48,23 +71,20 @@ describe("createQuitConfirmation", () => {
   })
 
   it("asks once when the quit and the window close come together", async () => {
-    const answer: { give: (leave: boolean) => void } = { give: () => undefined }
+    const answer: { give: (leave: LeaveAnswer) => void } = { give: () => undefined }
     const ask = vi.fn(
       () =>
-        new Promise<boolean>((resolve) => {
+        new Promise<LeaveAnswer>((resolve) => {
           answer.give = resolve
         }),
     )
-    const confirmation = createQuitConfirmation({
-      pendingWork: () => ({ turns: 0, approvals: 2 }),
-      ask,
-    })
+    const { confirmation } = confirmationWith({ turns: 0, approvals: 2, unsavedFiles: 0 }, ask)
     const window = fakeWindow()
     confirmation.guardClose(window)
 
     expect(window.requestClose()).toBe("kept")
     const quit = confirmation.confirm("quit")
-    answer.give(false)
+    answer.give("stay")
 
     await expect(quit).resolves.toBe(false)
     expect(ask).toHaveBeenCalledTimes(1)
@@ -72,14 +92,48 @@ describe("createQuitConfirmation", () => {
   })
 
   it("lets the user leave when the question itself fails", async () => {
-    const confirmation = createQuitConfirmation({
-      pendingWork: () => ({ turns: 1, approvals: 0 }),
-      ask: async () => {
+    const { confirmation, discardFiles } = confirmationWith(
+      { turns: 1, approvals: 0, unsavedFiles: 1 },
+      async () => {
         throw new Error("dialog unavailable")
       },
-    })
+    )
 
     await expect(confirmation.confirm("quit")).resolves.toBe(true)
+    expect(discardFiles).not.toHaveBeenCalled()
+  })
+
+  it("asks about unsaved files together with the running turn and saves them before leaving", async () => {
+    const work: LeaveWork = { turns: 1, approvals: 0, unsavedFiles: 2 }
+    const ask = vi.fn(async (): Promise<LeaveAnswer> => "save")
+    const { confirmation, saveFiles, discardFiles } = confirmationWith(work, ask)
+
+    await expect(confirmation.confirm("quit")).resolves.toBe(true)
+
+    expect(ask).toHaveBeenCalledExactlyOnceWith(work, "quit")
+    expect(saveFiles).toHaveBeenCalledOnce()
+    expect(discardFiles).not.toHaveBeenCalled()
+  })
+
+  it("stays when saving fails, discards before leaving without saving, and touches nothing on cancel", async () => {
+    const work: LeaveWork = { turns: 0, approvals: 0, unsavedFiles: 1 }
+    const failed = confirmationWith(work, async () => "save", false)
+    const window = fakeWindow()
+    failed.confirmation.guardClose(window)
+    expect(window.requestClose()).toBe("kept")
+    await vi.waitFor(() => expect(failed.saveFiles).toHaveBeenCalledOnce())
+    await Promise.resolve()
+    expect(window.isDestroyed()).toBe(false)
+
+    const discarded = confirmationWith(work, async () => "leave")
+    await expect(discarded.confirmation.confirm("close")).resolves.toBe(true)
+    expect(discarded.discardFiles).toHaveBeenCalledOnce()
+    expect(discarded.saveFiles).not.toHaveBeenCalled()
+
+    const cancelled = confirmationWith(work, async () => "stay")
+    await expect(cancelled.confirmation.confirm("quit")).resolves.toBe(false)
+    expect(cancelled.saveFiles).not.toHaveBeenCalled()
+    expect(cancelled.discardFiles).not.toHaveBeenCalled()
   })
 })
 

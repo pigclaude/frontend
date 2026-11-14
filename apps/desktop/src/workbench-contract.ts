@@ -80,6 +80,7 @@ export type WorkbenchEvent =
   | { type: "browser-page"; id: string; page: WorkbenchBrowserPage }
   | { type: "browser-open"; id: string; url: string }
   | { type: "browser-context"; id: string; element: WorkbenchBrowserElement }
+  | { type: "unsaved-files"; id: string; action: "save" | "discard" }
 
 /** 渲染进程可使用的工作区能力，文件路径均相对已添加的项目目录。 */
 export type WorkbenchBridge = {
@@ -91,6 +92,10 @@ export type WorkbenchBridge = {
   status: (root: string) => Promise<WorkbenchChange[] | null>
   /** 在文件管理器中显示项目里的文件或目录；path 为空时打开项目目录。 */
   reveal: (root: string, path: string) => Promise<void>
+  /** 告诉主进程工作台有几个文件没保存；退出、关窗和刷新前据此确认。 */
+  reportUnsaved: (count: number) => Promise<void>
+  /** 回答主进程的 unsaved-files 请求：全部保存或放弃成功时 done 为 true。 */
+  unsavedDone: (id: string, done: boolean) => Promise<void>
   /** 本机检测到的编辑器，按登记顺序；没有装时为空。 */
   editors: () => Promise<WorkbenchEditor[]>
   /** editor 为 null 时交给系统默认应用。 */

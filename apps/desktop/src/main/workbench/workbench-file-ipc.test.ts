@@ -8,6 +8,7 @@ import { promisify } from "node:util"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { IpcMainInvokeEvent } from "electron"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import type { UnsavedOwner } from "./unsaved-files"
 import { WorkbenchIpc } from "./workbench-ipc"
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
@@ -55,7 +56,13 @@ vi.mock("./installed-editors", () => ({
 vi.mock("./browser-surface", () => ({ WorkbenchBrowsers: class {} }))
 vi.mock("./terminal-service", () => ({ WorkbenchTerminals: class {} }))
 
-const trustedSender = { id: "trusted" }
+const sent: Array<{ id: string }> = []
+const trustedSender = {
+  id: "trusted",
+  isDestroyed: () => false,
+  send: (_channel: string, event: { id: string }) => sent.push(event),
+}
+let ipc: WorkbenchIpc
 let directory: string
 let project: string
 let downloads: string
@@ -79,7 +86,9 @@ beforeEach(async () => {
   await mkdir(project)
   await mkdir(downloads)
   state = "active"
-  new WorkbenchIpc().register({
+  sent.length = 0
+  ipc = new WorkbenchIpc()
+  ipc.register({
     isTrusted: (event) => (event.sender as unknown) === trustedSender,
     membership: () => ({ state }) as MembershipView,
     roots: async () => [project],
@@ -99,6 +108,28 @@ describe("workbench file actions", () => {
     await promisify(execFile)("git", ["init", "-q"], { cwd: project })
 
     await expect(call("status", project)).resolves.toEqual([{ path: "notes.md", status: "??" }])
+  })
+
+  it("keeps the unsaved file count the page reports, even without membership", async () => {
+    const sender: UnsavedOwner = trustedSender
+    state = "expired"
+    await call("unsaved", 2)
+    expect(ipc.unsaved.count(sender)).toBe(2)
+
+    const saving = ipc.unsaved.save(sender)
+    const [request] = sent
+    await call("unsaved-done", request?.id, true)
+    await expect(saving).resolves.toBe(true)
+
+    await call("unsaved", 0)
+    expect(ipc.unsaved.count()).toBe(0)
+    for (const args of [[-1], [1.5], ["2"], [10_001]]) {
+      await expect(call("unsaved", ...args)).rejects.toThrow("WORKBENCH_INPUT_INVALID")
+    }
+    await expect(call("unsaved-done", "not-an-id", true)).rejects.toThrow("WORKBENCH_INPUT_INVALID")
+    await expect(call("unsaved-done", request?.id, "yes")).rejects.toThrow(
+      "WORKBENCH_INPUT_INVALID",
+    )
   })
 
   it("reveals project entries in the file manager and opens the project folder itself", async () => {
@@ -185,7 +216,7 @@ describe("workbench file actions", () => {
     if (links.length > 0) await symlink(join(directory, "outside.md"), join(project, "link.md"))
     const stranger = { sender: { id: "stranger" } } as unknown as IpcMainInvokeEvent
 
-    for (const name of ["status", "reveal", "editors", "open-file", "save-as"]) {
+    for (const name of ["status", "reveal", "editors", "open-file", "save-as", "unsaved"]) {
       const handler = handlers.get("pigclaude:workbench-" + name)
       await expect(handler?.(stranger, project, "notes.md", null)).rejects.toThrow(
         "UNTRUSTED_WORKSPACE_REQUEST",

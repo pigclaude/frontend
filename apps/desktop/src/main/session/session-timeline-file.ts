@@ -5,7 +5,7 @@ import { appendFile, chmod, open, readFile, stat, truncate } from "node:fs/promi
 import { sessionEnvelopeVersion } from "./session-envelope"
 import { fileErrorCode, isPlainRecord } from "./session-store-guards"
 import { sessionStoreFileMode } from "./session-store-layout"
-import type { TimelineEnvelope } from "./session-timeline-redaction"
+import type { TimelineEnvelope, TimelineTruncation } from "./session-timeline-redaction"
 
 /** 读回的时间线：按文件顺序的信封、跳过的中间行数，以及末行是否不完整。 */
 export type TimelineFileRead = {
@@ -91,5 +91,17 @@ function parseLine(line: string): TimelineEnvelope | null {
     typeof value.event.type !== "string"
   )
     return null
-  return value as TimelineEnvelope
+  const { truncated, ...envelope } = value
+  const marks = Array.isArray(truncated) ? truncated.filter(isTimelineTruncation) : []
+  return { ...envelope, ...(marks.length === 0 ? {} : { truncated: marks }) } as TimelineEnvelope
+}
+
+function isTimelineTruncation(value: unknown): value is TimelineTruncation {
+  return (
+    isPlainRecord(value) &&
+    typeof value.path === "string" &&
+    typeof value.bytes === "number" &&
+    Number.isSafeInteger(value.bytes) &&
+    value.bytes > 0
+  )
 }

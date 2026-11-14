@@ -1,18 +1,28 @@
 // 负责一个会话的引用授权。只有主进程接受过的用户发送会扩大本会话的直接读取范围。
 
+import {
+  sameSessionInstance,
+  sessionInstance,
+  type SessionIndex,
+  type SessionInstance,
+} from "./session-index"
 import type { SessionStore } from "./session-store"
 import { composeSessionReferencePrompt, selectSessionReferences } from "./session-reference-prompt"
 import type { SessionReference, SessionSendInput } from "./session-types"
 import { threadItems, type ReadableThread } from "./thread-read"
 
 /** 给 SDK 的扩展正文与留在 PigClaude 时间线里的结构化引用。 */
-export type PreparedSessionReferences = { prompt: string; references: SessionReference[] }
+export type PreparedSessionReferences = {
+  prompt: string
+  references: SessionReference[]
+  instances: SessionInstance[]
+}
 
 /** 根据适配器是否接收本次发送，提交或放弃此次引用授权。 */
 export type FinishReferenceDelivery = (accepted: boolean) => Promise<void>
 
 type Grant = {
-  ids: Set<string>
+  instances: readonly SessionInstance[]
   committing: boolean
   finished: Promise<void>
   release: () => void
@@ -25,7 +35,7 @@ export class SessionReferenceAccess {
   /** 将读取固定在 owner 会话，提供同一份存储给参考摘要和 MCP。 */
   constructor(
     private readonly store: SessionStore,
-    private readonly owner: string,
+    private readonly owner: SessionInstance,
   ) {}
 
   /** 读出明确选中的会话，准备参考说明；这里不产生持久授权。 */
@@ -33,19 +43,26 @@ export class SessionReferenceAccess {
     input: SessionSendInput,
     redactTitle: (title: string) => string,
   ): Promise<PreparedSessionReferences> {
-    const selected = selectSessionReferences(this.owner, input.text, input.references ?? [], (id) =>
-      this.store.get(id),
+    const selected = selectSessionReferences(
+      this.owner.id,
+      input.text,
+      input.references ?? [],
+      (id) => this.store.get(id),
     )
     const sources = await Promise.all(
       selected.map(async ({ reference, index }) => ({
         reference,
         index,
+        instance: sessionInstance(index),
         items: await this.#items(index.id).catch(() => []),
       })),
     )
-    const available = sources.filter(({ index }) => this.store.get(index.id) !== null)
+    const available = sources.filter(({ instance }) =>
+      sameSessionInstance(this.store.get(instance.id), instance),
+    )
     return {
       prompt: composeSessionReferencePrompt(input.text, available),
+      instances: available.map(({ instance }) => instance),
       references: available.map(({ reference }) => ({
         ...reference,
         title: redactTitle(reference.title),
@@ -54,21 +71,20 @@ export class SessionReferenceAccess {
   }
 
   /** 登记生效前的授权，防止 SDK 在收到消息后立即读到尚未确认的请求。 */
-  beforeDelivery(references: readonly SessionReference[]): FinishReferenceDelivery | undefined {
-    if (references.length === 0) return undefined
-    const ids = new Set(references.map(({ threadId }) => threadId))
+  beforeDelivery(instances: readonly SessionInstance[]): FinishReferenceDelivery | undefined {
+    if (instances.length === 0) return undefined
     let signalFinished!: () => void
     const finished = new Promise<void>((resolve) => {
       signalFinished = resolve
     })
-    const grant: Grant = { ids, finished, release: signalFinished, committing: false }
+    const grant: Grant = { instances, finished, release: signalFinished, committing: false }
     this.#deliveries.add(grant)
     return async (accepted) => {
       if (!this.#deliveries.has(grant)) return
       try {
         if (accepted) {
           grant.committing = true
-          await this.store.recordReferences(this.owner, ids)
+          await this.store.recordReferences(this.owner, instances)
         }
       } finally {
         this.#finish(grant)
@@ -86,15 +102,22 @@ export class SessionReferenceAccess {
   /** 首先验证调用方范围，再从独立的 PigClaude 时间线读出内容。拒绝时不泄露目标是否存在。 */
   async read(id: string | undefined, active: () => boolean): Promise<ReadableThread | null> {
     if (!active()) return null
-    const target = id ?? this.owner
-    if (!this.#allows(target)) {
-      const pending = [...this.#deliveries].find(({ ids }) => ids.has(target))
-      if (pending !== undefined) await pending.finished
+    const target = id ?? this.owner.id
+    let selected = this.#authorizedIndex(target)
+    if (selected === null) {
+      const pending = [...this.#deliveries].find(({ instances }) =>
+        instances.some(({ id }) => id === target),
+      )
+      if (pending !== undefined) {
+        await pending.finished
+        selected = this.#authorizedIndex(target)
+      }
     }
-    if (!active() || !this.#allows(target) || this.store.get(target) === null) return null
+    if (!active() || selected === null) return null
     const items = await this.#items(target)
-    const index = this.store.get(target)
-    if (!active() || !this.#allows(target) || index === null) return null
+    const index = this.#authorizedIndex(target)
+    if (!active() || index === null || !sameSessionInstance(index, sessionInstance(selected)))
+      return null
     return { index, items }
   }
 
@@ -103,9 +126,14 @@ export class SessionReferenceAccess {
     grant.release()
   }
 
-  #allows(target: string): boolean {
-    const owner = this.store.get(this.owner)
-    return owner !== null && (target === this.owner || owner.referencedSessionIds.includes(target))
+  #authorizedIndex(target: string): SessionIndex | null {
+    const owner = this.store.get(this.owner.id)
+    if (owner === null || !sameSessionInstance(owner, this.owner)) return null
+    if (target === owner.id) return owner
+    const selected = owner.referencedSessionInstances?.find(({ id }) => id === target)
+    if (selected === undefined) return null
+    const current = this.store.get(target)
+    return sameSessionInstance(current, selected) ? current : null
   }
 
   async #items(id: string): Promise<ReadableThread["items"]> {

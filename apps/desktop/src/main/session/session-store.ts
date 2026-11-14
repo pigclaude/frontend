@@ -1,13 +1,19 @@
 // 负责会话存储的对外接口：打开时扫描根目录建内存索引，新建会话目录，读写索引。
 // 同一会话的写入排队串行；不调用 SDK 的会话函数，也不读 ~/.claude。
 
+import { randomUUID } from "node:crypto"
 import { chmod, mkdir, readdir, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { errorMessage } from "../error-message"
 import { readSessionIndexFile, writeSessionIndexFile } from "./session-index-file"
 import { removeIndexTemporaryFiles, removeOrphanDirectory } from "./session-store-cleanup"
 import { recoverSession } from "./session-store-recovery"
-import { sessionIndexRecord, type SessionIndex } from "./session-index"
+import {
+  sameSessionInstance,
+  sessionIndexRecord,
+  type SessionIndex,
+  type SessionInstance,
+} from "./session-index"
 import {
   isSessionStoreId,
   sessionStoreDirMode,
@@ -27,11 +33,24 @@ import {
 } from "./session-timeline-file"
 import { timelineEnvelope, type TimelineEnvelope } from "./session-timeline-redaction"
 
-/** 新建会话时由调用方给出的索引；时间线游标由存储从 0 开始维护。 */
-export type NewSessionIndex = Omit<SessionIndex, "timelineCursor">
+/** 新会话的索引输入；实例身份和起始游标由存储设置。 */
+export type NewSessionIndex = Omit<
+  SessionIndex,
+  "instanceId" | "timelineCursor" | "referencedSessionInstances"
+>
 
-/** 索引的局部修改；id、创建时间和时间线游标不能改。没给 updatedAt 时存储用当前时间。 */
-export type SessionIndexPatch = Partial<Omit<SessionIndex, "id" | "createdAt" | "timelineCursor">>
+/** 索引的局部修改；会话身份、游标和引用只能由存储自己的操作更新。 */
+export type SessionIndexPatch = Partial<
+  Omit<
+    SessionIndex,
+    | "id"
+    | "createdAt"
+    | "instanceId"
+    | "timelineCursor"
+    | "referencedSessionIds"
+    | "referencedSessionInstances"
+  >
+>
 
 /** 打开存储的输入。now 是注入的时钟，log 记录跳过的目录和清理失败，不含会话内容。 */
 export type SessionStoreOptions = {
@@ -103,7 +122,11 @@ export class SessionStore {
   /** 新建 0700 的会话目录并写第一份索引；目录已存在时抛错，不覆盖。 */
   async create(input: NewSessionIndex): Promise<SessionIndex> {
     const paths = this.paths(input.id)
-    const index: SessionIndex = { ...structuredClone(input), timelineCursor: 0 }
+    const index: SessionIndex = {
+      ...structuredClone(input),
+      instanceId: randomUUID(),
+      timelineCursor: 0,
+    }
     await mkdir(paths.directory, { mode: sessionStoreDirMode })
     await chmod(paths.directory, sessionStoreDirMode)
     const raw = sessionIndexRecord({}, index)
@@ -131,20 +154,31 @@ export class SessionStore {
     })
   }
 
-  /** 将收到的有效直接引用并入索引；与同一会话的其他索引更改串行写回。 */
-  recordReferences(id: string, references: ReadonlySet<string>): Promise<void> {
-    return this.#enqueue(id, async () => {
-      const { index } = this.#entry(id)
-      const added = [...references].filter(
-        (target) =>
-          target !== id &&
-          this.#entries.has(target) &&
-          !index.referencedSessionIds.includes(target),
+  /** 只保存仍对应原实例的直接引用，和同一会话的其他索引更新串行。 */
+  recordReferences(owner: SessionInstance, references: readonly SessionInstance[]): Promise<void> {
+    return this.#enqueue(owner.id, async () => {
+      const index = this.#entries.get(owner.id)?.index ?? null
+      if (index === null || !sameSessionInstance(index, owner)) return
+      const instances = new Map(
+        index.referencedSessionInstances?.map((target) => [target.id, target]),
       )
-      if (added.length === 0) return
-      await this.#write(id, {
+      let changed = false
+      for (const target of references) {
+        if (
+          target.id === owner.id ||
+          instances.get(target.id)?.instanceId === target.instanceId ||
+          !sameSessionInstance(this.#entries.get(target.id)?.index ?? null, target)
+        ) {
+          continue
+        }
+        instances.set(target.id, target)
+        changed = true
+      }
+      if (!changed) return
+      await this.#write(owner.id, {
         ...index,
-        referencedSessionIds: [...index.referencedSessionIds, ...added],
+        referencedSessionIds: [...new Set([...index.referencedSessionIds, ...instances.keys()])],
+        referencedSessionInstances: [...instances.values()],
       })
     })
   }

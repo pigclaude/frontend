@@ -32,9 +32,14 @@ export type SessionEnvironmentSnapshot = {
   locale: string
 }
 
+/** 指向一份会话记录；对同一会话 id 删除后新建时，实例身份随之变化。 */
+export type SessionInstance = { id: string; instanceId: string }
+
 /** 一个会话的索引。时间都是 ISO UTC 字符串。 */
 export type SessionIndex = {
   id: string
+  /** 由存储生成，随索引保留；没有此字段的旧索引用其创建时间区分。 */
+  instanceId?: string
   title: string
   titleSource: SessionTitleSource
   projectPath: string
@@ -58,6 +63,8 @@ export type SessionIndex = {
   origin: SessionOrigin
   claudeCodeVersion: string | null
   referencedSessionIds: string[]
+  /** 只有绑到具体实例的引用才能供工具读取。 */
+  referencedSessionInstances?: SessionInstance[]
   /** 时间线里已写入的最大序号；还没有事件时为 0。 */
   timelineCursor: number
 }
@@ -92,6 +99,8 @@ export function parseSessionIndex(value: unknown): ParsedSessionIndex {
   const lastTurn = parseLastTurn(value.lastTurn)
   const referenced = value.referencedSessionIds
   const workspace = value.workspace
+  const instanceId = value.instanceId
+  const instances = value.referencedSessionInstances
   if (
     typeof value.id !== "string" ||
     typeof value.title !== "string" ||
@@ -125,6 +134,7 @@ export function parseSessionIndex(value: unknown): ParsedSessionIndex {
     raw: value,
     index: {
       id: value.id,
+      ...(typeof instanceId === "string" && instanceId !== "" ? { instanceId } : {}),
       title: value.title,
       titleSource: value.titleSource,
       projectPath: value.projectPath,
@@ -147,6 +157,9 @@ export function parseSessionIndex(value: unknown): ParsedSessionIndex {
       origin: value.origin,
       claudeCodeVersion: value.claudeCodeVersion,
       referencedSessionIds: [...referenced],
+      ...(Array.isArray(instances)
+        ? { referencedSessionInstances: instances.filter(isInstance) }
+        : {}),
       timelineCursor: value.timelineCursor,
     },
   }
@@ -158,6 +171,33 @@ export function sessionIndexRecord(
   index: SessionIndex,
 ): Record<string, unknown> {
   return { ...raw, ...index, version: sessionIndexVersion }
+}
+
+/** 取得索引的实例身份；旧索引不需要先改写就可以被新引用。 */
+export function sessionInstance(index: SessionIndex): SessionInstance {
+  return { id: index.id, instanceId: index.instanceId ?? `legacy:${index.createdAt}` }
+}
+
+/** 比较现存索引和引用选择时的实例。 */
+export function sameSessionInstance(
+  index: SessionIndex | null,
+  expected: SessionInstance,
+): boolean {
+  return (
+    index !== null &&
+    index.id === expected.id &&
+    (index.instanceId ?? `legacy:${index.createdAt}`) === expected.instanceId
+  )
+}
+
+function isInstance(value: unknown): value is SessionInstance {
+  return (
+    isPlainRecord(value) &&
+    typeof value.id === "string" &&
+    value.id !== "" &&
+    typeof value.instanceId === "string" &&
+    value.instanceId !== ""
+  )
 }
 
 function parseEnvironment(value: unknown): SessionEnvironmentSnapshot | null {

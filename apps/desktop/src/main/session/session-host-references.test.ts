@@ -2,7 +2,7 @@
 
 import type { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk"
 import { randomUUID } from "node:crypto"
-import { mkdir, writeFile } from "node:fs/promises"
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
 import { retainedClaudeProject } from "./session-environment"
@@ -47,7 +47,11 @@ afterEach(async () => {
 })
 
 it("只把选中会话交给 Claude，并在原会话停放和续接后保留直接授权", async () => {
-  const { ownerId, root, store, workspace } = await fixture()
+  const { ownerId, root, store: initialStore, workspace } = await fixture()
+  const originalIndex = initialStore.paths(sourceId).indexFile
+  const raw = JSON.parse(await readFile(originalIndex, "utf8")) as Record<string, unknown>
+  await writeFile(originalIndex, JSON.stringify({ ...raw, instanceId: undefined }))
+  const store = await SessionStore.open({ root })
   const first = hostFixture(workspace, store)
   const workbench = { type: "stdio", command: "fake-workbench" } as const
   await first.host.start(
@@ -116,6 +120,74 @@ it("只把选中会话交给 Claude，并在原会话停放和续接后保留直
   await expect(call(latestReader(), { threadId: neighborId })).resolves.toMatchObject({
     isError: true,
   })
+})
+
+it("忽略坏的截断元数据，仍能摘录和读取正常正文", async () => {
+  const { ownerId, store, workspace } = await fixture()
+  const lines = [
+    {
+      ...envelopeOf(sourceId, 4, {
+        type: "turn-started",
+        turnId: "turn-4",
+        userText: "未截断正文",
+      }),
+      truncated: { invalid: true },
+    },
+    {
+      ...envelopeOf(sourceId, 5, {
+        type: "turn-started",
+        turnId: "turn-5",
+        userText: "已截断正文",
+      }),
+      truncated: [null, { path: "event.userText", bytes: 70_000 }, { path: [], bytes: 80_000 }],
+    },
+  ]
+  await appendFile(
+    store.paths(sourceId).timelineFile,
+    lines.map((line) => JSON.stringify(line)).join("\n") + "\n",
+  )
+  const { host, getAdapter } = hostFixture(workspace, store)
+  await host.start({ sessionId: ownerId, workspace, permissionMode: "default" })
+  await host.send(ownerId, { text: "翻阅", references: [sourceReference] })
+
+  expect(getAdapter().sent[0]).toContain("未截断正文")
+  expect(getAdapter().sent[0]).toContain("已截断正文")
+  const page = await readPage(latestReader(), { threadId: sourceId })
+  expect(page.items).toMatchObject([
+    { position: 1, text: "来源会话的可见正文", truncated: false },
+    { position: 4, text: "未截断正文", truncated: false },
+    { position: 5, text: "已截断正文", truncated: true, nextTextOffset: null },
+  ])
+})
+
+it("删除后以同一 id 新建会话，原引用既不会立即授权也不会在重启后授权", async () => {
+  const { ownerId, root, store, workspace } = await fixture()
+  const target = randomUUID()
+  const request = { threadId: target }
+  const { host } = hostFixture(workspace, store)
+  await host.start({ sessionId: target, workspace, permissionMode: "default" })
+  await host.send(target, { text: "被引用的旧正文" })
+  await host.stop(target)
+  await host.start({ sessionId: ownerId, workspace, permissionMode: "default" })
+  const reader = latestReader()
+  await host.send(ownerId, {
+    text: "参考",
+    references: [{ kind: "thread", ...request, title: "原会话" }],
+  })
+  expect((await readPage(reader, request)).items[0]?.text).toBe("被引用的旧正文")
+
+  await host.history.delete(target)
+  await host.start({ sessionId: target, workspace, permissionMode: "default" })
+  await host.send(target, { text: "同一 id 的新正文" })
+  await host.stop(target)
+  await expect(call(reader, request)).resolves.toMatchObject({ isError: true })
+
+  await writeTranscript(store, ownerId)
+  await host.dispose()
+  const reopened = await SessionStore.open({ root })
+  const { host: resumed } = hostFixture(workspace, reopened)
+  await resumed.send(ownerId, { text: "继续" })
+  await expect(call(latestReader(), request)).resolves.toMatchObject({ isError: true })
 })
 
 it("按位置分页，返回可继续读取长条目的字符偏移并遵守 50 条上限", async () => {
@@ -248,6 +320,32 @@ it("取消适配器尚未接收的发送时，不开放暂存引用或并发提�
   }
   expect(store.get(ownerId)?.referencedSessionIds).toEqual([])
   await expect(call(read, { threadId: neighborId })).resolves.toMatchObject({ isError: true })
+})
+
+it("调用适配器后才更换目标时，迟到的发送确认也不会授权新的实例", async () => {
+  const { ownerId, store, workspace } = await fixture()
+  const { host, getAdapter } = hostFixture(workspace, store)
+  await host.start({ sessionId: ownerId, workspace, permissionMode: "default" })
+  const entered = gate()
+  const delivery = gate()
+  vi.spyOn(getAdapter(), "send").mockImplementationOnce(async () => {
+    entered.release()
+    await delivery.ready
+  })
+
+  const sending = host.send(ownerId, { text: "参考", references: [sourceReference] })
+  await entered.ready
+  try {
+    await store.delete(sourceId)
+    await store.create(newSessionIndex(sourceId))
+  } finally {
+    delivery.release()
+    await sending
+  }
+  await expect(call(latestReader(), { threadId: sourceId })).resolves.toMatchObject({
+    isError: true,
+  })
+  expect(store.get(ownerId)?.referencedSessionIds).toEqual([])
 })
 
 async function fixture() {

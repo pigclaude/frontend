@@ -188,7 +188,7 @@ export class ClaudeSession {
       }
       this.#options.saveSettings?.(this.savedSettings())
       this.#flags.expectInit(turnId)
-      finishDelivery = prepared && access?.beforeDelivery(prepared.references)
+      finishDelivery = prepared && access?.beforeDelivery(prepared.instances)
       await active.adapter.send(prepared?.prompt ?? input.text)
     } catch (error) {
       if (finishDelivery !== undefined) await finishDelivery(false)

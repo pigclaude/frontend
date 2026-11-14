@@ -1,7 +1,7 @@
 // 负责聊天页线程头的子代理标签：从标签状态存储读出当前会话的标签状态，组装成对话组件要的标签栏、
-// 只读过程视图和打开、返回、关闭的回调；会话结束时回收它的标签状态。
+// 只读过程视图和打开、返回、关闭的回调。
 
-import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react"
+import { createContext, useContext, useMemo, useSyncExternalStore } from "react"
 import type { ThreadEvent } from "@pigclaude/ui-contracts"
 import { collectSubagents, type ChatViewProps } from "@pigclaude/ui-chat"
 import type { WaitingSubagents } from "../models/session-permissions"
@@ -26,26 +26,21 @@ export type SubagentTabProps = Pick<
 
 /**
  * 一个会话的子代理标签。sessionId 为 null（还没有会话）时不提供标签。main 是主会话标签的标题和说明；
- * waiting 是正在等权限回答的子代理；ended 为真时回收这个会话的标签状态。
+ * waiting 是正在等权限回答的子代理。
  */
 export function useSubagentTabs(input: {
   sessionId: string | null
-  ended: boolean
   events: ThreadEvent[]
   main: { title: string; description: string }
   waiting: WaitingSubagents
 }): SubagentTabProps {
-  const { sessionId, ended, events, main, waiting } = input
+  const { sessionId, events, main, waiting } = input
   const store = useContext(SubagentTabStoreContext)
   useSyncExternalStore(
     (listener) => store.subscribe(listener),
     () => store.version(),
   )
   const subagents = useMemo(() => collectSubagents(events), [events])
-
-  useEffect(() => {
-    if (ended && sessionId !== null) store.forget(sessionId)
-  }, [ended, sessionId, store])
 
   if (sessionId === null) return {}
   const bar = subagentTabBar({ main, subagents, state: store.read(sessionId), waiting })

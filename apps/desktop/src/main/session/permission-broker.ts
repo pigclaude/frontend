@@ -12,7 +12,6 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk"
 import type { PendingAnswers, PendingOutcome } from "./pending-answers"
 import type { SubagentRef } from "./session-events"
-import { subagentRef } from "./subagent-tasks"
 
 /** 权限请求被取消时给 SDK 的说明；会话释放时整体拒绝也用它。 */
 export const cancelledPermissionMessage = "权限请求已取消"
@@ -47,8 +46,8 @@ export type PermissionBrokerOptions = {
   emit: (request: PermissionRequestEvent) => void
   onTimeout?: (request: PermissionRequestEvent) => void
   newRequestId?: () => string
-  /** 按 SDK 给的 agent id 找回子代理归属；不提供时只记 agent id。 */
-  subagentOf?: (agentId: string | undefined) => SubagentRef | null
+  /** 按 SDK 给的 agent id 找回子代理归属；没有 agent id 时是主线程。 */
+  subagentOf: (agentId: string | undefined) => SubagentRef | null
 }
 
 /** canUseTool 中权限代理用到的选项；SDK 多给的字段会被忽略。 */
@@ -74,7 +73,7 @@ export class PermissionBroker {
     this.#emit = options.emit
     this.#onTimeout = options.onTimeout
     this.#newRequestId = options.newRequestId ?? (() => randomUUID())
-    this.#subagentOf = options.subagentOf ?? ((agentId) => subagentRef(null, agentId))
+    this.#subagentOf = options.subagentOf
     this.#queue = options.queue
   }
 

@@ -45,6 +45,7 @@ async function openChat(page: Page, theme: "light" | "dark"): Promise<void> {
         content: "Async agent launched successfully.",
         isError: false,
         subagent: null,
+        backgroundLaunch: true,
       })
       emit(assistant("m-2", [{ type: "text", text: "已派一个子代理在后台排查测试。" }]))
       emit(assistant("s-1", [{ type: "thinking", text: "先跑一遍测试看看哪些失败。" }], owned))

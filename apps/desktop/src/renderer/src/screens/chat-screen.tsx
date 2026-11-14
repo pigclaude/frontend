@@ -356,7 +356,6 @@ export function ChatScreen({
   const waiting = useMemo(() => waitingSubagents(state), [state])
   const subagentTabs = useSubagentTabs({
     sessionId: state.sessionId,
-    ended: state.ended,
     events: view.events,
     main: {
       title: view.thread.title,

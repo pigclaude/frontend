@@ -1,5 +1,5 @@
-// 负责按会话 id 保存子代理标签的状态：只在渲染层内存里，不写本地存储也不经主进程；会话结束时
-// 由使用方回收。可订阅，供 React 的外部存储钩子读取。
+// 负责按会话 id 保存子代理标签的状态：只在渲染层内存里，不写本地存储也不经主进程，会话结束后
+// 也保留。可订阅，供 React 的外部存储钩子读取。
 
 import { initialSubagentTabs, type SubagentTabState } from "./subagent-tabs"
 
@@ -18,11 +18,6 @@ export class SubagentTabStore {
   update(sessionId: string, next: (state: SubagentTabState) => SubagentTabState): void {
     this.#states.set(sessionId, next(this.read(sessionId)))
     this.#changed()
-  }
-
-  /** 丢掉一个会话的标签状态；之后读到的是初始状态。 */
-  forget(sessionId: string): void {
-    if (this.#states.delete(sessionId)) this.#changed()
   }
 
   /** 订阅改动；返回取消订阅。 */

@@ -1,7 +1,8 @@
 // 负责投影里一轮的子代理：主线程的 Task/Agent 工具调用成为子代理卡；子代理自己的思考、正文和工具
 // 调用带上父工具调用 id，只进它的卡，不进主时间线。卡片在子代理结束事件到达时完成，交回的结果取
 // 任务通知里的摘要；后台子代理的工具结果只说明已在后台启动，不算完成；工具结果报错时子代理没有
-// 起来，按失败结束。一轮结束时还没等到结束事件的卡没有结果，按中断收尾。
+// 起来，按失败结束。一轮结束时还没等到结束事件的卡：前台子代理按交回的工具结果完成，后台子代理
+// 没有结果、按中断收尾。
 
 import type { ThreadEvent } from "@pigclaude/ui-contracts"
 import type { SessionHostEvent } from "../../../main/session/session-types"
@@ -21,6 +22,7 @@ export class SubagentCards {
   readonly #push: PushDraft
   readonly #all = new Set<string>()
   readonly #running = new Set<string>()
+  readonly #handBacks = new Map<string, string>()
   readonly #blocks = new Set<string>()
   readonly #tools = new Set<string>()
   readonly #finished = new Set<string>()
@@ -49,10 +51,14 @@ export class SubagentCards {
     return true
   }
 
-  /** 主线程的工具结果：属于子代理卡时处理掉并返回 true（报错时按失败完成），否则返回 false。 */
+  /**
+   * 主线程的工具结果：属于子代理卡时处理掉并返回 true，否则返回 false。报错时按失败完成；前台子代理
+   * 交回的结果先记下，等结束事件或这一轮结束。
+   */
   toolResult(event: ToolResultEvent, at: string): boolean {
     if (!this.#all.has(event.toolUseId)) return false
     if (event.isError) this.#complete(event.toolUseId, event.content, "failed", at)
+    else if (event.backgroundLaunch !== true) this.#handBacks.set(event.toolUseId, event.content)
     return true
   }
 
@@ -94,9 +100,13 @@ export class SubagentCards {
     }
   }
 
-  /** 一轮结束：还没等到结束事件的卡没有结果，按中断收尾。 */
+  /** 一轮结束：还没等到结束事件的卡，有交回的结果时按完成，否则没有结果、按中断收尾。 */
   settle(at: string): void {
-    for (const id of [...this.#running]) this.#complete(id, "", "interrupted", at)
+    for (const id of [...this.#running]) {
+      const handBack = this.#handBacks.get(id)
+      if (handBack === undefined) this.#complete(id, "", "interrupted", at)
+      else this.#complete(id, handBack, "completed", at)
+    }
   }
 
   #complete(id: string, output: string, status: CardStatus, at: string): void {

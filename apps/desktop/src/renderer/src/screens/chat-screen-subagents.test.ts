@@ -1,7 +1,7 @@
 // 负责验证聊天页的子代理：子代理的消息和工具调用不进主时间线，子代理卡显示任务、运行中最近一次工具
 // 调用和交回的结果；点开卡片后线程头出现子代理标签，显示它的只读过程；子代理等待权限回答时标签显示
 // 等待（认不出是哪个子代理时所有运行中的子代理都显示）；标签的选中和关闭只记在渲染层内存里，
-// 会话结束时回收。
+// 会话结束后不变。
 
 // @vitest-environment jsdom
 import { createElement } from "react"
@@ -52,6 +52,7 @@ const working: SessionHostEvent[] = [
     content: "Async agent launched successfully.",
     isError: false,
     subagent: null,
+    backgroundLaunch: true,
   },
   message("m-2", [{ type: "text", text: "子代理已在后台启动" }]),
   message("s-1", [{ type: "text", text: "我先跑一下命令" }], call),
@@ -167,18 +168,26 @@ describe("chat screen subagents", () => {
     expect(waitingOn()).toBe(false)
   })
 
-  it("forgets the tabs of a session once it ends", async () => {
-    const state = feed(startingState(), ...working)
+  it("keeps the chosen and closed tabs after the session ends", async () => {
+    const other = message("m-9", [
+      {
+        type: "tool-use",
+        id: "call-other",
+        name: "Agent",
+        input: { subagent_type: "general-purpose", description: "另一个" },
+      },
+    ])
+    const state = feed(startingState(), ...working, other)
     await screen.render({ fresh: false, session: controller({ state }) })
     await openCard()
-    await clickButton(labelled("关闭 跑命令"), "关闭")
-    expect(tabNames()).toHaveLength(1)
+    await clickButton(labelled("关闭 另一个"), "关闭")
+    expect(tabNames()).toHaveLength(2)
 
     const ended = feed(state, { type: "ended", reason: "stopped" })
     await screen.render({ fresh: false, session: controller({ state: ended }) })
 
     expect(tabNames()).toHaveLength(2)
-    expect(screen.container.querySelector(".subagent-view")).toBeNull()
+    expect(screen.container.querySelector(".subagent-view")).not.toBeNull()
   })
 
   it("keeps a closed tab closed and the chosen tab across remounts", async () => {

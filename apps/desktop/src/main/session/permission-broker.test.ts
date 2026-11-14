@@ -197,6 +197,7 @@ function createBroker(overrides: Partial<PermissionBrokerOptions> = {}): Permiss
     queue: sharedQueue(),
     emit: () => undefined,
     newRequestId: () => `permission-${(next += 1)}`,
+    subagentOf: () => null,
     ...overrides,
   })
 }

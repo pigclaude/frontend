@@ -47,6 +47,26 @@ describe("SessionHost subagents", () => {
     await harness.host.dispose()
   })
 
+  it("marks the background launch result of an Agent call but not a foreground hand-back", async () => {
+    const background = await startReplay(await workspaceDir())
+    await background.host.send(background.sessionId, { text: "start a background subagent" })
+    replay(background.query, loadSdkFixture("background-agent-2.1.310"))
+    await waitUntil(() => background.events.some((event) => event.type === "turn-ended"))
+    const foreground = await startReplay(await workspaceDir())
+    await foreground.host.send(foreground.sessionId, { text: "start a foreground subagent" })
+    replay(foreground.query, loadSdkFixture("subagent-text-2.1.310"))
+    await waitUntil(() => foreground.events.some((event) => event.type === "turn-ended"))
+
+    const resultOf = (events: typeof background.events, toolUseId: string) =>
+      events.find((event) => event.type === "tool-result" && event.toolUseId === toolUseId)
+    expect(resultOf(background.events, agentCall)).toMatchObject({ backgroundLaunch: true })
+    expect(resultOf(foreground.events, "call_00_1nv3faluwu5pzpajs390n5xi")).not.toHaveProperty(
+      "backgroundLaunch",
+    )
+    await background.host.dispose()
+    await foreground.host.dispose()
+  })
+
   it("ends a background subagent on its task notification, not on the launch result", async () => {
     const harness = await startReplay(await workspaceDir())
 

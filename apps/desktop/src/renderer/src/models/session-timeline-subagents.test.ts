@@ -1,6 +1,6 @@
 // 负责验证投影里的子代理：子代理的消息、思考和工具调用带上父工具调用 id，只进它的子代理卡；
-// 卡片在子代理结束事件到达时才完成，后台启动的工具结果不算完成；一轮结束时还没等到结束事件的卡
-// 没有结果，按中断收尾。
+// 卡片在子代理结束事件到达时才完成，后台启动的工具结果不算完成；一轮结束时还没等到结束事件的卡，
+// 前台子代理按交回的结果完成，后台子代理没有结果、按中断收尾。
 
 import { collectSubagents } from "@pigclaude/ui-chat"
 import { describe, expect, it } from "vitest"
@@ -65,6 +65,16 @@ const launched: SessionHostEvent = {
   content: "Async agent launched successfully.",
   isError: false,
   subagent: null,
+  backgroundLaunch: true,
+}
+
+function ending(status: "completed" | "interrupted"): SessionHostEvent {
+  return {
+    type: "turn-ended",
+    turnId: "main-1",
+    status,
+    errorCode: status === "completed" ? null : "SESSION_CANCELLED",
+  }
 }
 const subagentWork: SessionHostEvent[] = [
   message("s1", [{ type: "thinking", text: "先跑命令" }], call),
@@ -136,13 +146,7 @@ describe("projectTimeline subagents", () => {
     expect(collectSubagents(failed.events).get(call)?.status).toBe("failed")
   })
 
-  it("leaves a subagent with no end event by the end of its turn without a result, as interrupted", () => {
-    const ending = (status: "completed" | "interrupted"): SessionHostEvent => ({
-      type: "turn-ended",
-      turnId: "main-1",
-      status,
-      errorCode: status === "completed" ? null : "SESSION_CANCELLED",
-    })
+  it("leaves a background subagent with no end event by the end of its turn without a result, as interrupted", () => {
     const finished = feed(sent(), started, spawn, launched, ...subagentWork, ending("completed"))
     const stopped = feed(sent(), started, spawn, launched, ending("interrupted"))
 
@@ -151,6 +155,22 @@ describe("projectTimeline subagents", () => {
       expect(card?.status).toBe("interrupted")
       expect(card?.output).toBeUndefined()
     }
+  })
+
+  it("completes a foreground subagent with no end event with its hand-back result", () => {
+    const handBack: SessionHostEvent = {
+      type: "tool-result",
+      toolUseId: call,
+      content: "交回的结果",
+      isError: false,
+      subagent: null,
+    }
+    const finished = feed(sent(), started, spawn, ...subagentWork, handBack, ending("completed"))
+
+    expect(collectSubagents(project(finished).events).get(call)).toMatchObject({
+      status: "completed",
+      output: "交回的结果",
+    })
   })
 
   it("keeps the main answer in the streaming place while the subagent works", () => {

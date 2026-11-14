@@ -65,6 +65,8 @@ export type SessionEvent =
       isError: boolean
       /** 子代理归属；主线程为 null。 */
       subagent: SubagentRef | null
+      /** 工具只是在后台启动了任务（例如后台子代理）；这时的结果不是任务交回的结果。 */
+      backgroundLaunch?: true
     }
   | {
       type: "result"

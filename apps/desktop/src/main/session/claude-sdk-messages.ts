@@ -62,6 +62,7 @@ export function normalizeSdkMessage(message: SDKMessage): AdapterEvent[] {
           message.parent_tool_use_id,
           "agent_id" in message ? message.agent_id : undefined,
         ),
+        "tool_use_result" in message && isBackgroundLaunch(message.tool_use_result),
       )
     case "result": {
       const totalUsage = sumModelUsage(message.modelUsage)
@@ -125,7 +126,11 @@ function streamDelta(event: unknown): SessionEvent[] {
   return []
 }
 
-function toolResults(content: unknown, subagent: SubagentRef | null): SessionEvent[] {
+function toolResults(
+  content: unknown,
+  subagent: SubagentRef | null,
+  backgroundLaunch: boolean,
+): SessionEvent[] {
   if (!Array.isArray(content)) return []
   const events: SessionEvent[] = []
   for (const block of content) {
@@ -137,9 +142,15 @@ function toolResults(content: unknown, subagent: SubagentRef | null): SessionEve
       content: toolResultText(block.content),
       isError: block.is_error === true,
       subagent,
+      ...(backgroundLaunch ? { backgroundLaunch } : {}),
     })
   }
   return events
+}
+
+// CLI 在消息的工具结果元数据里用 status 标出只在后台启动了任务的结果。
+function isBackgroundLaunch(result: unknown): boolean {
+  return isRecord(result) && result.status === "async_launched"
 }
 
 function mapContentBlocks(content: unknown): SessionContentBlock[] {

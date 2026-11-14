@@ -70,7 +70,7 @@ export function registerProjectIpc(ipc: Pick<IpcMain, "handle">, options: Projec
   handle("names", async () => options.names().names(await options.workspaces().list()), false)
   handle("rename", async ([path, name]) => {
     const project = await registered(path)
-    if (typeof name !== "string") throw new Error("PROJECT_NAME_INVALID")
+    if (typeof name !== "string" || name.length > 1024) throw new Error("PROJECT_NAME_INVALID")
     return options.names().rename(project.path, name, project.projects)
   })
   handle("remove", async ([path]) => {
@@ -86,6 +86,7 @@ export function registerProjectIpc(ipc: Pick<IpcMain, "handle">, options: Projec
   handle("apps", async () => options.apps().map(({ id, name, kind }) => ({ id, name, kind })))
   handle("open-with", async ([path, appId]) => {
     const project = await registered(path)
+    if (typeof appId !== "string" || appId.length > 64) throw new Error("PROJECT_APP_NOT_FOUND")
     const app = options.apps().find((item) => item.id === appId)
     if (!app) throw new Error("PROJECT_APP_NOT_FOUND")
     await options.openWith(app, project.path).catch(() => {

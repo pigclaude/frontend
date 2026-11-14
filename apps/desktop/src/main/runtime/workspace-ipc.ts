@@ -34,7 +34,11 @@ export function registerWorkspaceIpc(input: {
     if (typeof value !== "string" || value.trim() === "") {
       throw new Error("WORKSPACE_UNAVAILABLE: 工作区必须是绝对路径")
     }
-    return getStore().add(value)
+    const before = await getStore().list()
+    const next = await getStore().add(value)
+    const added = next[0]
+    if (added !== undefined && !before.includes(added)) await getNames().forget(added)
+    return next
   })
   ipcMain.handle("pigclaude:workspaces-files", async (event, value: unknown) => {
     if (!input.isTrusted(event)) throw new Error("UNTRUSTED_WORKSPACE_REQUEST")
@@ -53,7 +57,8 @@ export function registerWorkspaceIpc(input: {
     openWith: async (app, folder) => {
       const launch = folderLaunch(app, folder)
       if (launch) return launchInFolder(launch.command, launch.args, folder)
-      if ((await settleOpenPath(shell.openPath(folder))) !== "") throw new Error("OPEN_FAILED")
+      if ((await settleOpenPath(shell.openPath(folder))) !== "")
+        throw new Error("PROJECT_OPEN_FAILED")
     },
   })
   input.workbench.register({

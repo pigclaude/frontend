@@ -32,7 +32,7 @@ export class ProjectNameStore {
 
   /**
    * 把 path 的显示名改成去掉首尾空白后的 name，返回 projects 的全部显示名；
-   * 同时丢掉已不在 projects 里的旧名字。名字为空或过长时拒绝。
+   * 同时丢掉已不在 projects 里的旧名字。名字为空、超过 120 个字符或含控制字符时拒绝。
    */
   async rename(
     path: string,
@@ -48,7 +48,7 @@ export class ProjectNameStore {
     return this.names(projects)
   }
 
-  /** 去掉 path 的显示名；项目从侧栏移除时调用。 */
+  /** 去掉 path 的显示名，之后它显示文件夹名；没有显示名时不写文件。 */
   async forget(path: string): Promise<void> {
     const stored = await this.#read()
     if (!(path in stored)) return

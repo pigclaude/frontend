@@ -7,7 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import { DesktopApp } from "./app"
 import { installPigcodeNative } from "./lib/pigcode-native"
+import { chatAccount, typeAndSend } from "./test-support/chat-screen-harness"
 import { fakeWorkbench, projectRoot, treeRow } from "./test-support/workbench-harness"
+import type { SessionHostEvent } from "../../main/session/session-types"
 import { initialMembershipView } from "./models/membership-view"
 
 vi.mock("./hooks/use-appearance", () => ({
@@ -69,6 +71,8 @@ function installBridge(initial: string[] = ["/work/api", "/work/web"]) {
   let paths = initial
   let names: Record<string, string> = {}
   const calls: string[] = []
+  let listener: ((event: SessionHostEvent) => void) | null = null
+  const emit = (event: SessionHostEvent) => listener?.(event)
   window.pigclaude = {
     platform: "darwin",
     membership: {
@@ -78,7 +82,7 @@ function installBridge(initial: string[] = ["/work/api", "/work/web"]) {
       signOut: async () => activeMembership(),
     },
     claudeAccounts: {
-      list: async () => [],
+      list: async () => [chatAccount("acc-work", "工作号", null)],
       authorize: async () => {
         throw new Error("not used")
       },
@@ -127,6 +131,58 @@ function installBridge(initial: string[] = ["/work/api", "/work/web"]) {
       },
     },
     workbench: fakeWorkbench({ "README.md": "# demo\n" }).bridge,
+    session: {
+      start: async () => {
+        setTimeout(() =>
+          emit({
+            type: "started",
+            sessionId: "s-1",
+            model: "claude-sonnet",
+            tools: [],
+            permissionMode: "default",
+          }),
+        )
+        return { sessionId: "s-1" }
+      },
+      send: async () => {
+        setTimeout(() => {
+          emit({ type: "account-switched", from: null, to: "acc-work", reason: "initial" })
+          emit({
+            type: "result",
+            subtype: "success",
+            isError: false,
+            durationMs: 10,
+            numTurns: 1,
+            stopReason: "end_turn",
+            usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
+          })
+        })
+      },
+      cancel: async () => undefined,
+      respondPermission: async () => undefined,
+      setMode: async () => undefined,
+      setModel: async () => undefined,
+      stop: async () => undefined,
+      models: async () => ({
+        models: [{ id: "claude-sonnet", displayName: "Sonnet", description: "", isDefault: true }],
+        cliError: null,
+      }),
+      status: async () => ({
+        active: false,
+        sessionId: null,
+        model: null,
+        permissionMode: "default",
+        accountId: null,
+        pendingPermissions: 0,
+        turnId: null,
+      }),
+      subscribe: (next) => {
+        listener = next
+        return () => {
+          listener = null
+        }
+      },
+    },
   }
   installPigcodeNative(window)
   return { calls }
@@ -205,5 +261,20 @@ describe("sidebar project actions", () => {
     await act(async () => button("在 Ghostty 中打开").click())
     await flush()
     expect(calls).toEqual([`open ${projectRoot} ghostty`])
+  })
+
+  it("marks the finished session row completed with the badge of the account it ran on", async () => {
+    installBridge()
+    await act(async () => root.render(createElement(DesktopApp)))
+    await flush()
+
+    await typeAndSend(container, "检查依赖")
+    await flush()
+    await flush()
+
+    const row = container.querySelector<HTMLElement>(".proj-sessions .sess")
+    expect(row?.dataset.status).toBe("completed")
+    expect(row?.querySelector(".agent-icon-badge")).not.toBeNull()
+    expect(row?.querySelector(".sess-agent")?.getAttribute("title")).toBe("工作号")
   })
 })

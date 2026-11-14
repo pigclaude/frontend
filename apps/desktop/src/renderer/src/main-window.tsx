@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import { OpenInButton, ScrollPanel, useToast } from "@pigclaude/ui-shell"
 import { PanelLayoutControls } from "@pigclaude/ui-workbench"
-import { Workbench, type WorkbenchActions } from "./workbench/workbench"
+import { Workbench, type FilesRequest, type WorkbenchActions } from "./workbench/workbench"
 import { TerminalDrawer } from "./workbench/terminal-drawer"
 import type { PreviewWorkbench } from "./fixtures/preview-workbench"
 import { AccountsScreen } from "./screens/accounts-screen"
@@ -102,7 +102,7 @@ export function MainWindow({
   const workbench = useRef<WorkbenchActions>(null)
   const [rightOpen, setRightOpen] = useState(false)
   const [rightMax, setRightMax] = useState(false)
-  const [filesRequest, setFilesRequest] = useState<{ root: string; id: number } | null>(null)
+  const [filesRequest, setFilesRequest] = useState<FilesRequest | null>(null)
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [terminalMounted, setTerminalMounted] = useState(false)
   const [sessionStartedAt, setSessionStartedAt] = useState(() => new Date().toISOString())

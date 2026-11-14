@@ -49,6 +49,9 @@ export type WorkbenchActions = {
   confirmSwitch: () => boolean
 }
 
+/** 侧栏「查看文件」的请求：root 与当前项目相同时打开文件标签，同一个 id 只处理一次。 */
+export type FilesRequest = { root: string; id: number }
+
 /** 工作台绑定会话的实际目录，尚未开始会话时使用当前项目。 */
 export type WorkbenchProps = {
   bridge?: WorkbenchBridge | undefined
@@ -64,8 +67,7 @@ export type WorkbenchProps = {
   onShow: () => void
   onMaximize: () => void
   onSelectWorkspace: (path: string) => Promise<void>
-  /** 侧栏「查看文件」的请求；root 与当前项目相同时打开文件标签，同一个 id 只处理一次。 */
-  filesRequest?: { root: string; id: number } | null
+  filesRequest?: FilesRequest | null
 }
 
 /** 工作区与聊天共用右栏；子组件在切换普通标签时保留运行状态，文件标签共用一个文件面板。 */

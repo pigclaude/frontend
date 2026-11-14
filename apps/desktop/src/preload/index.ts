@@ -7,6 +7,7 @@ import { windowBridge, type WindowBridge } from "./window-bridge"
 import { workbenchBridge } from "./workbench"
 import type { WorkbenchBridge } from "../workbench-contract"
 import type { AuthorizeClaudeAccountInput } from "../main/claude/account-service-inputs"
+import type { OpenAppKind } from "../main/workbench/open-apps"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import {
   isClaudeAccountEvent,
@@ -349,7 +350,7 @@ function isWorkspacePath(value: unknown): value is string {
 }
 
 /** 页面看到的本机应用：不含安装位置。 */
-export type OpenAppView = { id: string; name: string; kind: "file-manager" | "editor" | "terminal" }
+export type OpenAppView = { id: string; name: string; kind: OpenAppKind }
 
 function isOpenAppView(value: unknown): value is OpenAppView {
   return (

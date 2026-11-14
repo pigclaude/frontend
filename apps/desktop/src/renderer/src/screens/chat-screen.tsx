@@ -75,6 +75,8 @@ export type ChatScreenProps = {
   onOpen: (location: NavLocation) => void
   smartPunctuation: boolean
   layoutControls?: ReactNode
+  /** 线程头的「在应用中打开」按钮；有项目时由调用方给出。 */
+  openIn?: ReactNode
   onOpenFile?: (path: string) => void
   onViewDiff?: (path?: string) => void
 }
@@ -93,6 +95,7 @@ export function ChatScreen({
   onOpen,
   smartPunctuation,
   layoutControls,
+  openIn,
   onOpenFile,
   onViewDiff,
 }: ChatScreenProps) {
@@ -333,6 +336,7 @@ export function ChatScreen({
       <ToolRenderers>
         <NewThreadView
           layoutControls={layoutControls}
+          openIn={openIn}
           projects={projects}
           projectId={workspace}
           onSelectProject={chooseWorkspace}
@@ -360,6 +364,7 @@ export function ChatScreen({
       <ToolRenderers>
         <ChatView
           layoutControls={layoutControls}
+          openIn={openIn}
           {...(onOpenFile ? { onOpenFile } : {})}
           {...(onViewDiff ? { onViewDiff } : {})}
           thread={view.thread}

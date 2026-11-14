@@ -2,7 +2,7 @@
 // 聊天、账号、代理、环境、用量和托盘都接真实会话与本地数据；只有浏览器预览会传入演示工作台。
 import { useEffect, useRef, useState } from "react"
 import type { MembershipView } from "@pigclaude/contracts/membership"
-import { ScrollPanel, useToast } from "@pigclaude/ui-shell"
+import { OpenInButton, ScrollPanel, useToast } from "@pigclaude/ui-shell"
 import { PanelLayoutControls } from "@pigclaude/ui-workbench"
 import { Workbench, type WorkbenchActions } from "./workbench/workbench"
 import { TerminalDrawer } from "./workbench/terminal-drawer"
@@ -28,6 +28,7 @@ import type { AppearanceController } from "./hooks/use-appearance"
 import type { ResolvedTheme } from "./models/theme-model"
 import { AddProjectDialog } from "./shell/add-project-dialog"
 import { PigclaudeShell } from "./shell/pigclaude-shell"
+import { projectActions } from "./shell/project-actions"
 import { SettingsSidebar } from "./shell/settings-sidebar"
 import { SidebarFooter } from "./shell/sidebar-footer"
 import { SidebarNotice, sessionNotice } from "./shell/sidebar-notice"
@@ -101,6 +102,7 @@ export function MainWindow({
   const workbench = useRef<WorkbenchActions>(null)
   const [rightOpen, setRightOpen] = useState(false)
   const [rightMax, setRightMax] = useState(false)
+  const [filesRequest, setFilesRequest] = useState<{ root: string; id: number } | null>(null)
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [terminalMounted, setTerminalMounted] = useState(false)
   const [sessionStartedAt, setSessionStartedAt] = useState(() => new Date().toISOString())
@@ -124,6 +126,7 @@ export function MainWindow({
   const bridge = window.pigclaude?.workbench ?? previewWorkbench?.bridge
   const sessionActive = session.state.started && !session.state.ended
   const workbenchRoot = sessionActive ? (sessionWorkspace ?? workspace) : workspace
+  const openInPath = location.kind === "session" ? (sessionWorkspace ?? workspace) : workspace
   const turnRevision = session.state.turns.filter((turn) => turn.result !== null).length
   const turnActive = sessionActive && session.state.turns.at(-1)?.result === null
   const toggleRight = () => {
@@ -190,6 +193,20 @@ export function MainWindow({
     if (!selectWorkspace(newSessionWorkspace(projectId, workspaces.paths, selectedWorkspace)))
       return
     onNavigate({ kind: "draft" })
+  }
+
+  /** 侧栏「查看文件」：切到这个项目的新会话页并打开工作台的文件面板；会话在别的项目里运行时只提示。 */
+  function browseFiles(projectId: string): void {
+    if (sessionActive && sessionWorkspace !== null && sessionWorkspace !== projectId) {
+      toast(t("shell.project.filesBusy"), "info")
+      return
+    }
+    if (!selectWorkspace(newSessionWorkspace(projectId, workspaces.paths, selectedWorkspace)))
+      return
+    onNavigate({ kind: "draft" })
+    setFilesRequest({ root: projectId, id: Date.now() })
+    setRightOpen(true)
+    setRightMax(false)
   }
 
   function addWorkspace(path: string): void {
@@ -329,6 +346,7 @@ export function MainWindow({
                   onToggle={toggleRight}
                   onShow={() => setRightOpen(true)}
                   onMaximize={() => setRightMax((value) => !value)}
+                  filesRequest={filesRequest}
                   onSelectWorkspace={async (path) => {
                     await workspaces.add(path)
                     setSelectedWorkspace(path)
@@ -353,21 +371,17 @@ export function MainWindow({
         setExpanded((current) => toggleExpanded(current, projectId, open))
       }
       onNewSession={newSession}
+      {...(bridge ? { onBrowseFiles: browseFiles } : {})}
       onOpenThread={() => onNavigate({ kind: "session" })}
       onAddProject={() => setAddingProject(true)}
-      onRenameProject={(path, name) => {
-        void workspaces
-          .rename(path, name)
-          .catch(() => toast(t("shell.project.renameFailed"), "alert"))
-      }}
-      onRemoveProject={(path) => {
-        void workspaces
-          .remove(path)
-          .then(() => {
-            if (selectedWorkspace === path) setSelectedWorkspace(null)
-          })
-          .catch(() => toast(t("shell.project.removeFailed"), "alert"))
-      }}
+      {...projectActions({
+        workspaces,
+        t,
+        toast,
+        onRemoved: (path) => {
+          if (selectedWorkspace === path) setSelectedWorkspace(null)
+        },
+      })}
       onOpenSettings={() => settings("general")}
       onAbout={() => settings("about")}
       settingsSidebar={
@@ -420,6 +434,7 @@ export function MainWindow({
                     {...(workbenchRoot ? { onToggleTerminal: toggleTerminal } : {})}
                   />
                 ),
+                ...(openInPath ? { openIn: <OpenInButton path={openInPath} /> } : {}),
                 onOpenFile: (path: string) => {
                   workbench.current?.openFile(path)
                   setRightOpen(true)

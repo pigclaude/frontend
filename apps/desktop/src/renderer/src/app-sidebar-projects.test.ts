@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import { DesktopApp } from "./app"
 import { installPigcodeNative } from "./lib/pigcode-native"
+import { fakeWorkbench, projectRoot, treeRow } from "./test-support/workbench-harness"
 import { initialMembershipView } from "./models/membership-view"
 
 vi.mock("./hooks/use-appearance", () => ({
@@ -63,9 +64,9 @@ async function flush(): Promise<void> {
   })
 }
 
-/** 装一个最小桌面桥：两个最近工作区，项目操作记在 calls 里。 */
-function installBridge() {
-  let paths = ["/work/api", "/work/web"]
+/** 装一个最小桌面桥：最近工作区和内存里的工作台，项目操作记在 calls 里。 */
+function installBridge(initial: string[] = ["/work/api", "/work/web"]) {
+  let paths = initial
   let names: Record<string, string> = {}
   const calls: string[] = []
   window.pigclaude = {
@@ -120,10 +121,23 @@ function installBridge() {
       reveal: async (path) => {
         calls.push(`reveal ${path}`)
       },
+      apps: async () => [{ id: "ghostty", name: "Ghostty", kind: "terminal" }],
+      openWith: async (path, appId) => {
+        calls.push(`open ${path} ${appId}`)
+      },
     },
+    workbench: fakeWorkbench({ "README.md": "# demo\n" }).bridge,
   }
   installPigcodeNative(window)
   return { calls }
+}
+
+function button(label: string): HTMLButtonElement {
+  const found = [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+    (candidate) => candidate.getAttribute("aria-label") === label,
+  )
+  if (!found) throw new Error(`没有按钮 ${label}`)
+  return found
 }
 
 function projectRow(name: string): HTMLElement {
@@ -167,5 +181,29 @@ describe("sidebar project actions", () => {
 
     expect(calls).toEqual(["rename /work/api 后端", "reveal /work/api", "remove /work/web"])
     expect(() => projectRow("web")).toThrow()
+  })
+
+  it("shows the project's files in the workbench and opens the project in an installed app", async () => {
+    const { calls } = installBridge(["/work/api", projectRoot])
+    await act(async () => root.render(createElement(DesktopApp)))
+    await flush()
+
+    const files = projectRow("app")
+      .closest(".proj-row")
+      ?.querySelector<HTMLButtonElement>('button[aria-label="查看文件"]')
+    if (!files) throw new Error("项目行没有查看文件")
+    await act(async () => files.click())
+    await flush()
+    await flush()
+
+    expect(container.querySelector(".right-panel-slot")?.hasAttribute("hidden")).toBe(false)
+    expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain(
+      "文件",
+    )
+    expect(treeRow("README.md")).toBeDefined()
+
+    await act(async () => button("在 Ghostty 中打开").click())
+    await flush()
+    expect(calls).toEqual([`open ${projectRoot} ghostty`])
   })
 })

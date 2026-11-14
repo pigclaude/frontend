@@ -203,6 +203,8 @@ function installBridge(): {
       rename: async () => ({}),
       remove: async () => [],
       reveal: async () => undefined,
+      apps: async () => [],
+      openWith: async () => undefined,
     },
   }
   return { authorized, accounts: () => accounts }

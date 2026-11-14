@@ -3,6 +3,7 @@
 import { dirname, join } from "node:path"
 import { ipcMain, shell } from "electron"
 import type { MembershipView } from "@pigclaude/contracts/membership"
+import { folderLaunch, installedOpenApps, launchInFolder } from "../workbench/open-apps"
 import { registerProjectIpc, settleOpenPath } from "./project-ipc"
 import { ProjectNameStore } from "./project-names"
 import { listWorkspaceFiles } from "./workspace-files"
@@ -48,6 +49,12 @@ export function registerWorkspaceIpc(input: {
     workspaces: getStore,
     names: getNames,
     reveal: (path) => settleOpenPath(shell.openPath(path)),
+    apps: () => installedOpenApps(),
+    openWith: async (app, folder) => {
+      const launch = folderLaunch(app, folder)
+      if (launch) return launchInFolder(launch.command, launch.args, folder)
+      if ((await settleOpenPath(shell.openPath(folder))) !== "") throw new Error("OPEN_FAILED")
+    },
   })
   input.workbench.register({
     isTrusted: input.isTrusted,

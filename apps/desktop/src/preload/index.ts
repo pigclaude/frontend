@@ -110,6 +110,10 @@ export type PigclaudeBridge = {
     remove: (path: string) => Promise<string[]>
     /** 在系统文件管理器里显示项目文件夹。 */
     reveal: (path: string) => Promise<void>
+    /** 本机装了的文件管理器、编辑器和终端。 */
+    apps: () => Promise<OpenAppView[]>
+    /** 用本机应用打开项目文件夹。 */
+    openWith: (path: string, appId: string) => Promise<void>
   }
   session: SessionBridge
   usage: UsageBridge
@@ -234,6 +238,13 @@ const bridge: PigclaudeBridge = {
     reveal: async (path) => {
       await ipcRenderer.invoke("pigclaude:projects-reveal", path)
     },
+    apps: async () => {
+      const value: unknown = await ipcRenderer.invoke("pigclaude:projects-apps")
+      return Array.isArray(value) ? value.filter(isOpenAppView) : []
+    },
+    openWith: async (path, appId) => {
+      await ipcRenderer.invoke("pigclaude:projects-open-with", path, appId)
+    },
   },
   session: {
     start: async (input) => {
@@ -335,6 +346,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isWorkspacePath(value: unknown): value is string {
   return typeof value === "string" && value.length > 0
+}
+
+/** 页面看到的本机应用：不含安装位置。 */
+export type OpenAppView = { id: string; name: string; kind: "file-manager" | "editor" | "terminal" }
+
+function isOpenAppView(value: unknown): value is OpenAppView {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    (value.kind === "file-manager" || value.kind === "editor" || value.kind === "terminal")
+  )
 }
 
 function projectNames(value: unknown): Record<string, string> {

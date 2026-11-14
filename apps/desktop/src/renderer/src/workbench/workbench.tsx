@@ -3,6 +3,7 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useRef,
   useState,
   type MouseEvent,
   type ReactNode,
@@ -63,6 +64,8 @@ export type WorkbenchProps = {
   onShow: () => void
   onMaximize: () => void
   onSelectWorkspace: (path: string) => Promise<void>
+  /** 侧栏「查看文件」的请求；root 与当前项目相同时打开文件标签，同一个 id 只处理一次。 */
+  filesRequest?: { root: string; id: number } | null
 }
 
 /** 工作区与聊天共用右栏；子组件在切换普通标签时保留运行状态，文件标签共用一个文件面板。 */
@@ -125,6 +128,17 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
         }),
       [bridge, root, props.onShow, t],
     )
+
+    const handledFiles = useRef<number | null>(null)
+    const filesRequest = props.filesRequest ?? null
+    useEffect(() => {
+      if (!filesRequest || filesRequest.root !== root || handledFiles.current === filesRequest.id)
+        return
+      handledFiles.current = filesRequest.id
+      setState((current) =>
+        addSurface(current, "files", crypto.randomUUID(), () => t("workbench.files")),
+      )
+    }, [filesRequest, root, t])
 
     function add(kind: string): void {
       const surface = surfaces.find(([id]) => id === kind)

@@ -35,7 +35,8 @@ async function setup(options: { trusted?: boolean; membership?: MembershipView["
   await workspaces.add(other)
   await workspaces.add(project)
   const revealed: string[] = []
-  const state = { reveal: "" }
+  const opened: string[] = []
+  const state = { reveal: "", launch: true }
   registerProjectIpc(
     {
       handle: (channel: string, handler: Handler) => handlers.set(channel, handler),
@@ -49,6 +50,14 @@ async function setup(options: { trusted?: boolean; membership?: MembershipView["
         revealed.push(path)
         return state.reveal
       },
+      apps: () => [
+        { id: "finder", name: "Finder", kind: "file-manager", location: "/Finder.app" },
+        { id: "cursor", name: "Cursor", kind: "editor", location: "/Applications/Cursor.app" },
+      ],
+      openWith: async (app, folder) => {
+        if (!state.launch) throw new Error("spawn /Applications/Cursor.app ENOENT")
+        opened.push(`${app.id} ${folder}`)
+      },
     },
   )
   const invoke = (channel: string, ...args: unknown[]) => {
@@ -56,7 +65,7 @@ async function setup(options: { trusted?: boolean; membership?: MembershipView["
     if (!handler) throw new Error(`missing ${channel}`)
     return handler({} as IpcMainInvokeEvent, ...args)
   }
-  return { invoke, workspaces, revealed, state }
+  return { invoke, workspaces, revealed, opened, state }
 }
 
 describe("settleOpenPath", () => {
@@ -95,16 +104,33 @@ describe("registerProjectIpc", () => {
     await expect(invoke("reveal", project)).rejects.toThrow(/^PROJECT_OPEN_FAILED$/)
   })
 
+  it("lists installed apps without their locations and opens a registered project with one", async () => {
+    const { invoke, opened, state } = await setup()
+
+    await expect(invoke("apps")).resolves.toEqual([
+      { id: "finder", name: "Finder", kind: "file-manager" },
+      { id: "cursor", name: "Cursor", kind: "editor" },
+    ])
+    await expect(invoke("open-with", project, "cursor")).resolves.toBeUndefined()
+    expect(opened).toEqual([`cursor ${project}`])
+    await expect(invoke("open-with", project, "vim")).rejects.toThrow(/^PROJECT_APP_NOT_FOUND$/)
+    await expect(invoke("open-with", join(directory, "elsewhere"), "cursor")).rejects.toThrow(
+      /^PROJECT_NOT_FOUND$/,
+    )
+    state.launch = false
+    await expect(invoke("open-with", project, "cursor")).rejects.toThrow(/^PROJECT_OPEN_FAILED$/)
+  })
+
   it("rejects untrusted senders, missing membership and bad arguments", async () => {
     const untrusted = await setup({ trusted: false })
-    for (const channel of ["names", "rename", "remove", "reveal"]) {
+    for (const channel of ["names", "rename", "remove", "reveal", "apps", "open-with"]) {
       await expect(untrusted.invoke(channel, project, "x")).rejects.toThrow(
         /^UNTRUSTED_WORKSPACE_REQUEST$/,
       )
     }
 
     const lapsed = await setup({ membership: "expired" })
-    for (const channel of ["rename", "remove", "reveal"]) {
+    for (const channel of ["rename", "remove", "reveal", "apps", "open-with"]) {
       await expect(lapsed.invoke(channel, project, "x")).rejects.toThrow(/^MEMBERSHIP_REQUIRED$/)
     }
     await expect(lapsed.invoke("names")).resolves.toEqual({})

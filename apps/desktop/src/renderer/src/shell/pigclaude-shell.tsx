@@ -60,6 +60,8 @@ export type PigclaudeShellProps = {
   /** 项目右键菜单：只改侧栏显示名；从侧栏移除，不删文件。 */
   onRenameProject: (projectId: string, name: string) => void
   onRemoveProject: (projectId: string) => void
+  /** 项目行的「查看文件」：在工作台里打开这个项目的文件面板。 */
+  onBrowseFiles?: (projectId: string) => void
   onOpenSettings: () => void
   /** Windows/Linux 标题栏「帮助 → 关于」。 */
   onAbout: () => void
@@ -220,6 +222,14 @@ export function PigclaudeShell(props: PigclaudeShellProps) {
             onAddProject={props.onAddProject}
             onRenameProject={props.onRenameProject}
             onRemoveProject={props.onRemoveProject}
+            onBrowseFiles={
+              props.onBrowseFiles
+                ? (projectId) => {
+                    setDrawerOpen(false)
+                    props.onBrowseFiles?.(projectId)
+                  }
+                : undefined
+            }
             onToggleProject={props.onToggleProject}
             onOpenThread={(threadId) => {
               setDrawerOpen(false)

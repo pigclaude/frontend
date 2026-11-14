@@ -46,15 +46,27 @@ describe("pigcodeNativeFrom", () => {
     expect(source.pickFolder).toHaveBeenCalledWith({ title: "选文件夹" })
   })
 
-  it("外部应用列表是工作台桥检测到的本机编辑器；没有工作台时不提供", async () => {
-    const source = {
-      ...bridge(),
-      workbench: { editors: vi.fn(async () => [{ id: "cursor", name: "Cursor" }]) },
-    } as unknown as PigclaudeBridge
+  it("外部应用是本机的文件管理器、编辑器和终端，打开项目和文件夹都转给项目入口", async () => {
+    const workspaces = {
+      apps: vi.fn(async () => [
+        { id: "finder", name: "Finder", kind: "file-manager" },
+        { id: "cursor", name: "Cursor", kind: "editor" },
+        { id: "ghostty", name: "Ghostty", kind: "terminal" },
+      ]),
+      openWith: vi.fn(async () => undefined),
+      reveal: vi.fn(async () => undefined),
+    }
+    const native = pigcodeNativeFrom({ ...bridge(), workspaces } as unknown as PigclaudeBridge)
 
-    await expect(pigcodeNativeFrom(source).listOpenApps?.()).resolves.toEqual([
+    await expect(native.listOpenApps?.()).resolves.toEqual([
+      { id: "finder", name: "Finder", kind: "file-manager", icon: null },
       { id: "cursor", name: "Cursor", kind: "editor", icon: null },
+      { id: "ghostty", name: "Ghostty", kind: "terminal", icon: null },
     ])
+    await native.openWithApp?.("ghostty", "/work/api")
+    await native.openFolder?.("/work/api")
+    expect(workspaces.openWith).toHaveBeenCalledWith("/work/api", "ghostty")
+    expect(workspaces.reveal).toHaveBeenCalledWith("/work/api")
     expect(pigcodeNativeFrom(bridge()).listOpenApps).toBeUndefined()
   })
 

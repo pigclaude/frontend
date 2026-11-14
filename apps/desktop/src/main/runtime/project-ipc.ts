@@ -1,8 +1,9 @@
-// 负责侧栏项目操作的 IPC：显示名、重命名、从侧栏移除、在文件管理器中显示。
+// 负责侧栏项目操作的 IPC：显示名、重命名、从侧栏移除、在文件管理器中显示、在外部应用中打开。
 // 只操作最近工作区里登记过的项目；移除只改列表，不删除任何文件。
 
 import type { IpcMain, IpcMainInvokeEvent } from "electron"
 import type { MembershipView } from "@pigclaude/contracts/membership"
+import type { InstalledOpenApp } from "../workbench/open-apps"
 import type { ProjectNameStore } from "./project-names"
 import type { WorkspaceStore } from "./workspace-store"
 
@@ -13,9 +14,14 @@ export type ProjectIpcOptions = {
   workspaces: () => Pick<WorkspaceStore, "list" | "remove">
   names: () => Pick<ProjectNameStore, "names" | "rename" | "forget">
   reveal: (path: string) => Promise<string>
+  /** 本机装了的文件管理器、编辑器和终端；每次调用重新检测。 */
+  apps: () => InstalledOpenApp[]
+  /** 用应用打开项目文件夹；启动失败时抛错。 */
+  openWith: (app: InstalledOpenApp, folder: string) => Promise<void>
 }
 
-const knownErrors = /^(PROJECT_NOT_FOUND|PROJECT_NAME_INVALID|PROJECT_OPEN_FAILED)$/
+const knownErrors =
+  /^(PROJECT_NOT_FOUND|PROJECT_NAME_INVALID|PROJECT_OPEN_FAILED|PROJECT_APP_NOT_FOUND)$/
 
 /**
  * 等 shell.openPath 的结果，最多等 waitMs。Linux 会话总线不可用时文件管理器照样打开，
@@ -76,5 +82,14 @@ export function registerProjectIpc(ipc: Pick<IpcMain, "handle">, options: Projec
   handle("reveal", async ([path]) => {
     const project = await registered(path)
     if ((await options.reveal(project.path)) !== "") throw new Error("PROJECT_OPEN_FAILED")
+  })
+  handle("apps", async () => options.apps().map(({ id, name, kind }) => ({ id, name, kind })))
+  handle("open-with", async ([path, appId]) => {
+    const project = await registered(path)
+    const app = options.apps().find((item) => item.id === appId)
+    if (!app) throw new Error("PROJECT_APP_NOT_FOUND")
+    await options.openWith(app, project.path).catch(() => {
+      throw new Error("PROJECT_OPEN_FAILED")
+    })
   })
 }

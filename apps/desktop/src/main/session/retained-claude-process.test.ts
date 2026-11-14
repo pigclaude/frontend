@@ -6,6 +6,7 @@ import { tmpdir } from "node:os"
 import { join, normalize } from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { windowsClaudeProcessTimeoutMs } from "./claude-process-identity"
 import {
   forgetRetainedClaudeProcess,
   reapRetainedClaudeProcess,
@@ -16,13 +17,12 @@ type TestChild = { child: ChildProcess; pid: number; exited: Promise<void> }
 const children: TestChild[] = []
 const platformTestMs = 60_000
 const childWaitMs = 5_000
-const windowsProbeBudgetMs = 45_000
 let directory: string
 
 // Windows 的每个身份读取/核验各起一次 PowerShell，同一用例可能需要多次探测。
 function testBudget(probes: number): number {
   if (process.platform !== "win32") return platformTestMs
-  return probes * windowsProbeBudgetMs + 4 * childWaitMs
+  return probes * windowsClaudeProcessTimeoutMs + 4 * childWaitMs
 }
 
 beforeEach(async () => {
@@ -147,7 +147,7 @@ describe("retained Claude process", () => {
 
       await expect(
         recordRetainedClaudeProcess(directory, child.pid, wrongExecutable),
-      ).rejects.toThrow(/无法安全核对/)
+      ).rejects.toThrow(/核对可执行文件失败/)
 
       expect(child.child.exitCode).toBeNull()
       expect(child.child.signalCode).toBeNull()
@@ -212,7 +212,7 @@ describe("retained Claude process", () => {
   it("keeps a malformed process record for diagnosis and declines recovery", async () => {
     await writeFile(sidecar(), '{"pid":')
 
-    await expect(reapRetainedClaudeProcess(directory)).rejects.toThrow(/无法安全核对/)
+    await expect(reapRetainedClaudeProcess(directory)).rejects.toThrow(/读取进程记录失败/)
     expect(await readFile(sidecar(), "utf8")).toBe('{"pid":')
   })
 })

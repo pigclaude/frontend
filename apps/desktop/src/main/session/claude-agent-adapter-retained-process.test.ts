@@ -9,11 +9,14 @@ import type { SpawnedProcess } from "@anthropic-ai/claude-agent-sdk"
 import { afterEach, describe, expect, it } from "vitest"
 import { ClaudeAgentAdapter, type AdapterEvent } from "./claude-agent-adapter"
 import { FakeQuery, startOptions } from "./claude-agent-adapter-fixtures"
+import { windowsClaudeProcessTimeoutMs } from "./claude-process-identity"
 import type { ClaudeAgentStartOptions } from "./claude-query-options"
 import { isPlainRecord } from "./session-store-guards"
 
-// 一次 Windows 身份读取有 45 秒期限，额外留给 SDK 关闭和实际子进程退出。
-const spawnTestMs = process.platform === "win32" ? 75_000 : 60_000
+// 除 Windows 身份读取期限外，给 SDK 关闭和实际子进程退出留出时间。
+const spawnTestMs = process.platform === "win32" ? windowsClaudeProcessTimeoutMs + 30_000 : 60_000
+const startFailureWaitMs =
+  process.platform === "win32" ? windowsClaudeProcessTimeoutMs + 5_000 : 50_000
 
 async function waitFor(predicate: () => boolean, timeoutMs: number): Promise<void> {
   const deadline = performance.now() + timeoutMs
@@ -162,7 +165,7 @@ describe("ClaudeAgentAdapter retained process lifecycle", () => {
           settled = true
         })
         .catch(() => undefined)
-      await waitFor(() => fixture.query.closes > 0 || settled, 50_000)
+      await waitFor(() => fixture.query.closes > 0 || settled, startFailureWaitMs)
       expect(fixture.query.closes).toBe(1)
       if (!fixture.exited()) {
         expect(fixture.endedWhenExited).toEqual([])

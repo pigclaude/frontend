@@ -13,9 +13,30 @@ export type RetainedClaudeProcess = { pid: number; executable: string; startedAt
 const run = promisify(execFile)
 const waitMs = 3_000
 const probeTimeoutMs = 10_000
-const windowsTimeoutMs = 45_000
+/** Windows PowerShell 冷启动可能超过 45 秒，超时仍按身份未确认处理。 */
+export const windowsClaudeProcessTimeoutMs = 75_000
 const pidLimit = 2_147_483_647
 const systemEnv = { PATH: "/usr/bin:/bin:/usr/sbin", LC_ALL: "C", LANG: "C", TZ: "UTC" }
+
+/** 可以安全报告的进程身份及记录操作阶段。 */
+export type ClaudeProcessPhase =
+  | "读取进程身份"
+  | "核对进程身份"
+  | "核对可执行文件"
+  | "核对并停止进程"
+  | "停止进程"
+  | "读取进程记录"
+  | "保存进程记录"
+  | "移除进程记录"
+
+/** 内部错误只标记操作阶段，系统命令、输出及进程路径都不进入错误文本。 */
+export class ClaudeProcessPhaseError extends Error {
+  /** 标记失败是在读取、核对还是关闭进程时。 */
+  constructor(phase: ClaudeProcessPhase, timedOut = false) {
+    super(`无法安全核对或回收会话的 Claude Code 进程（${phase}${timedOut ? "超时" : "失败"}）`)
+    this.name = "ClaudeProcessPhaseError"
+  }
+}
 
 /** 只接受系统进程 ID 的范围，排除 PID 0、进程组和桌面主进程。 */
 export function isClaudeProcessPid(pid: unknown): pid is number {
@@ -62,47 +83,52 @@ export async function readClaudeProcess(pid: number): Promise<RetainedClaudeProc
 
 /** 证实仍是这一代进程后结束并等待退出；已退出或已换代不发信号。 */
 export async function stopClaudeProcess(identity: RetainedClaudeProcess): Promise<void> {
-  if (!isClaudeProcessPid(identity.pid)) throw new Error("Claude Code 进程号无效")
+  if (!isClaudeProcessPid(identity.pid)) throw new ClaudeProcessPhaseError("核对进程身份")
   if (process.platform === "win32") {
     const result = await runWindowsProcess(identity.pid, identity)
-    if (result !== "released") throw new Error("未确认 Claude Code 进程已退出")
+    if (result === "verify-failed") throw new ClaudeProcessPhaseError("核对进程身份")
+    if (result === "stop-timeout") throw new ClaudeProcessPhaseError("停止进程", true)
+    if (result === "stop-failed") throw new ClaudeProcessPhaseError("停止进程")
+    if (result !== "released") throw new ClaudeProcessPhaseError("核对并停止进程")
     return
   }
   if (!(await signalOwnedProcess(identity, "SIGTERM"))) return
   if (await waitUntilGone(identity)) return
   if (!(await signalOwnedProcess(identity, "SIGKILL"))) return
-  if (!(await waitUntilGone(identity))) throw new Error("未确认 Claude Code 进程已退出")
+  if (!(await waitUntilGone(identity))) throw new ClaudeProcessPhaseError("停止进程", true)
 }
 
 async function signalOwnedProcess(
   identity: RetainedClaudeProcess,
   signal: "SIGTERM" | "SIGKILL",
 ): Promise<boolean> {
-  const current = await readClaudeProcess(identity.pid)
+  const current = await readClaudeProcess(identity.pid).catch(() => {
+    throw new ClaudeProcessPhaseError("核对进程身份")
+  })
   if (!isSameProcess(identity, current)) return false
   try {
     process.kill(identity.pid, signal)
     return true
   } catch (error) {
     if (fileErrorCode(error) === "ESRCH") return false
-    throw error
+    throw new ClaudeProcessPhaseError("停止进程")
   }
 }
 
 async function waitUntilGone(identity: RetainedClaudeProcess): Promise<boolean> {
   const deadline = performance.now() + waitMs
-  let failure: { error: unknown } | null = null
+  let unableToVerify = false
   do {
     try {
       if (!isSameProcess(identity, await readClaudeProcess(identity.pid))) return true
-      failure = null
-    } catch (error) {
+      unableToVerify = false
+    } catch {
       // 正在退出的进程可能先失去可执行文件视图，退出或复用仍须由下一次系统读取证实。
-      failure = { error }
+      unableToVerify = true
     }
     await setTimeout(50)
   } while (performance.now() < deadline)
-  if (failure !== null) throw failure.error
+  if (unableToVerify) throw new ClaudeProcessPhaseError("核对进程身份")
   return false
 }
 
@@ -267,20 +293,23 @@ const windowsProcessScript = [
   "    @{ executable = $path; startedAt = $time } | ConvertTo-Json -Compress",
   "    exit 0",
   "  }",
-  "  if ([String]::Equals($path, $env:PIGCLAUDE_PROCESS_PATH, [StringComparison]::OrdinalIgnoreCase)) {",
+  "  if (-not ([String]::Equals($path, $env:PIGCLAUDE_PROCESS_PATH, [StringComparison]::OrdinalIgnoreCase))) { 'released'; exit 0 }",
+  "  try {",
   "    $target.Kill()",
-  "    if (!$target.WaitForExit(5000)) { throw 'Claude Code process still running' }",
+  "    if ($target.WaitForExit(5000)) { 'released' } else { 'stop-timeout' }",
+  "  } catch {",
+  "    if ($target.HasExited) { 'released' } else { 'stop-failed' }",
   "  }",
-  "  'released'",
   "} catch {",
   "  if ($target.HasExited) { 'released'; exit 0 }",
-  "  throw",
+  "  if ($env:PIGCLAUDE_PROCESS_STOP -eq '1') { 'verify-failed' } else { 'read-failed' }",
   "} finally { $target.Dispose() }",
 ].join("\n")
 
 async function runWindowsProcess(pid: number, stop?: RetainedClaudeProcess): Promise<string> {
+  const phase = stop ? "核对并停止进程" : "读取进程身份"
   const root = process.env.SystemRoot
-  if (!root || !win32.isAbsolute(root)) throw new Error("Windows 系统目录不可用")
+  if (!root || !win32.isAbsolute(root)) throw new ClaudeProcessPhaseError(phase)
   const env = {
     SystemRoot: root,
     TEMP: process.env.TEMP,
@@ -290,23 +319,29 @@ async function runWindowsProcess(pid: number, stop?: RetainedClaudeProcess): Pro
     PIGCLAUDE_PROCESS_STARTED: stop?.startedAt ?? "",
     PIGCLAUDE_PROCESS_PATH: stop?.executable ?? "",
   }
-  const { stdout } = await run(
-    win32.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-    ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", windowsProcessScript],
-    {
-      encoding: "utf8",
-      timeout: windowsTimeoutMs,
-      maxBuffer: 64 * 1024,
-      windowsHide: true,
-      env,
-    },
-  )
-  return stdout.trim()
+  try {
+    const { stdout } = await run(
+      win32.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", windowsProcessScript],
+      {
+        encoding: "utf8",
+        timeout: windowsClaudeProcessTimeoutMs,
+        maxBuffer: 64 * 1024,
+        windowsHide: true,
+        env,
+      },
+    )
+    return stdout.trim()
+  } catch (error) {
+    // execFile 超时会标记 killed，底层异常还可能包含脚本和本机路径。
+    throw new ClaudeProcessPhaseError(phase, isPlainRecord(error) && error.killed === true)
+  }
 }
 
 async function readWindowsProcess(pid: number): Promise<RetainedClaudeProcess | null> {
   const result = await runWindowsProcess(pid)
   if (result === "released") return null
+  if (result === "read-failed") throw new ClaudeProcessPhaseError("读取进程身份")
   const value: unknown = JSON.parse(result)
   if (
     !isPlainRecord(value) ||

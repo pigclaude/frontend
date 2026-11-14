@@ -4,11 +4,13 @@ import { randomUUID } from "node:crypto"
 import { lstat, readFile, realpath, rename, rm, writeFile } from "node:fs/promises"
 import { isAbsolute, join, resolve } from "node:path"
 import {
+  ClaudeProcessPhaseError,
   isClaudeProcessBirth,
   isClaudeProcessPid,
   readClaudeProcess,
   sameExecutable,
   stopClaudeProcess,
+  type ClaudeProcessPhase,
   type RetainedClaudeProcess,
 } from "./claude-process-identity"
 import { fileErrorCode, isPlainRecord } from "./session-store-guards"
@@ -27,16 +29,18 @@ export function recordRetainedClaudeProcess(
   pid: number,
   executable: string,
 ): Promise<RetainedClaudeProcess | null> {
-  return enqueue(directory, async (path) => {
-    if (!isAbsolute(executable)) throw new Error("Claude Code 执行路径必须为绝对路径")
-    const identity = await readClaudeProcess(pid)
+  return enqueue(directory, "保存进程记录", async (path) => {
+    if (!isAbsolute(executable)) throw new ClaudeProcessPhaseError("核对可执行文件")
+    const identity = await inPhase("读取进程身份", () => readClaudeProcess(pid))
     if (identity === null) return null
-    const expected = await realpath(executable)
-    const actual =
-      process.platform === "win32" ? await realpath(identity.executable) : identity.executable
-    if (!sameExecutable(actual, expected))
-      throw new Error("Claude Code 进程与启动的可执行文件不一致")
-    if ((await readRecord(path)) !== null) throw new Error("会话仍保留上一代进程记录")
+    await inPhase("核对可执行文件", async () => {
+      const expected = await realpath(executable)
+      const actual =
+        process.platform === "win32" ? await realpath(identity.executable) : identity.executable
+      if (!sameExecutable(actual, expected)) throw new ClaudeProcessPhaseError("核对可执行文件")
+    })
+    if ((await inPhase("读取进程记录", () => readRecord(path))) !== null)
+      throw new ClaudeProcessPhaseError("保存进程记录")
     const temporary = `${path}.${randomUUID()}.tmp`
     try {
       await writeFile(temporary, JSON.stringify(identity) + "\n", {
@@ -54,10 +58,10 @@ export function recordRetainedClaudeProcess(
 
 /** 续接前验证并回收上一代；无法确认身份或退出时保留记录并拒绝续接。 */
 export function reapRetainedClaudeProcess(directory: string): Promise<void> {
-  return enqueue(directory, async (path) => {
-    const identity = await readRecord(path)
+  return enqueue(directory, "移除进程记录", async (path) => {
+    const identity = await inPhase("读取进程记录", () => readRecord(path))
     if (identity === null) return
-    await stopClaudeProcess(identity)
+    await inPhase("核对并停止进程", () => stopClaudeProcess(identity))
     await rm(path, { force: true })
   })
 }
@@ -67,8 +71,8 @@ export function forgetRetainedClaudeProcess(
   directory: string,
   identity: RetainedClaudeProcess,
 ): Promise<void> {
-  return enqueue(directory, async (path) => {
-    const stored = await readRecord(path)
+  return enqueue(directory, "移除进程记录", async (path) => {
+    const stored = await inPhase("读取进程记录", () => readRecord(path))
     if (
       stored?.pid === identity.pid &&
       stored.startedAt === identity.startedAt &&
@@ -78,17 +82,26 @@ export function forgetRetainedClaudeProcess(
   })
 }
 
-function enqueue<T>(directory: string, action: (path: string) => Promise<T>): Promise<T> {
+async function inPhase<T>(phase: ClaudeProcessPhase, action: () => Promise<T>): Promise<T> {
+  try {
+    return await action()
+  } catch (error) {
+    // 系统命令异常含命令行及输出，只向会话层交固定错误。
+    if (error instanceof ClaudeProcessPhaseError) throw error
+    throw new ClaudeProcessPhaseError(phase)
+  }
+}
+
+function enqueue<T>(
+  directory: string,
+  phase: ClaudeProcessPhase,
+  action: (path: string) => Promise<T>,
+): Promise<T> {
   const path = join(resolve(directory), sidecarName)
   const key = process.platform === "win32" ? path.toLowerCase() : path
-  const result = (pending.get(key) ?? Promise.resolve()).then(async () => {
-    try {
-      return await action(path)
-    } catch {
-      // 系统命令异常含命令行及输出，只向会话层交固定错误。
-      throw new Error("无法安全核对或回收会话的 Claude Code 进程")
-    }
-  })
+  const result = (pending.get(key) ?? Promise.resolve()).then(() =>
+    inPhase(phase, () => action(path)),
+  )
   const next = result.then(
     () => undefined,
     () => undefined,

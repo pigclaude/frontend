@@ -14,6 +14,8 @@ async function openFiles(page: Page, theme: "light" | "dark"): Promise<Locator> 
   await page.addStyleTag({
     content: "*, *::before, *::after { caret-color: transparent !important }",
   })
+  // 浏览器预览没有会话服务，启动时的提示 2.4 秒后自动消失；等它消失，截图才不随时机变化。
+  await expect(page.locator(".toast")).toHaveCount(0, { timeout: 10_000 })
   await page.getByRole("button", { name: "切换右侧面板", exact: true }).click()
   const panel = page.locator(".right-panel-slot")
   await panel.getByRole("button", { name: "文件", exact: true }).click()

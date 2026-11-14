@@ -2,17 +2,12 @@
 // 时间线里的提问卡、线程头的子代理标签、换号提示和错误。
 // 页面只消费 useSession 控制器，界面完全由 Pigcode 的 ui-chat 绘制。
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import {
-  isAccountSelectable,
-  type ClaudeAccountView,
-  type ProxyView,
-} from "@pigclaude/contracts/claude-account"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { isAccountSelectable } from "@pigclaude/contracts/claude-account"
 import type { AgentFeatures, RuntimeMode } from "@pigclaude/ui-contracts"
 import { ChatView } from "@pigclaude/ui-chat"
 import {
   captureComposerDraft,
-  prefillComposer,
   type ComposerModelChoice,
   type ComposerSubmitOptions,
   type PermissionMode,
@@ -21,7 +16,8 @@ import { useToast } from "@pigclaude/ui-shell"
 import { PermissionDock } from "../components/permission-dock"
 import { PermissionPrompt, type PermissionChoice } from "../components/permission-prompt"
 import { ToolRenderers } from "../components/tool-renderers"
-import { sessionAccountId, type SessionController } from "../hooks/use-session"
+import { sessionAccountId } from "../hooks/use-session"
+import { useComposerReference } from "../hooks/use-composer-reference"
 import {
   DEFAULT_PERMISSION_LEVEL,
   accountIdForAgent,
@@ -38,20 +34,21 @@ import {
   type PermissionView,
 } from "../models/composer-config"
 import { projectNameFromPath } from "../models/project-model"
-import type { NavLocation } from "../models/navigation"
 import { pendingPermission, waitingSubagents } from "../models/session-permissions"
 import { useSubagentTabs } from "../hooks/use-subagent-tabs"
 import { threadView } from "../models/thread-view"
 import type { SessionEffort } from "../../../main/session/session-types"
-import type { WorkbenchBridge } from "../../../workbench-contract"
 import { useSlashCommands } from "../shell/registry-slash-commands"
 import { useSessionDefaults } from "../hooks/use-session-defaults"
-import type { ProjectDraftEditor } from "../hooks/use-project-draft"
-import { needsSessionResume, type SavedSessionSummary } from "../models/saved-session"
+import { needsSessionResume } from "../models/saved-session"
 import { SessionResumeError } from "./session-resume-error"
 import { useText } from "../locale/text"
 import { ChatDraft } from "./chat-draft"
+import type { ChatScreenProps } from "./chat-screen-props"
 import { useDraftWorkspace } from "./draft-workspace"
+
+/** 保留聊天页的公开属性类型。 */
+export type { ChatScreenProps } from "./chat-screen-props"
 
 /** Claude 会话支持的 Agent 功能；界面据此显示计划、中断和审批等控件。 */
 const CLAUDE_FEATURES: AgentFeatures = {
@@ -74,41 +71,6 @@ const CLAUDE_FEATURES: AgentFeatures = {
 /** 聊天视图用的功能集：审批卡片由页面挂在输入框上方（参照 ZCode），时间线不再画一遍。 */
 const CHAT_FEATURES: AgentFeatures = { ...CLAUDE_FEATURES, approvals: false }
 
-/** 会话页面 props。 */
-export type ChatScreenProps = {
-  fresh: boolean
-  session: SessionController
-  workspace: string | null
-  /** workspace 所属的项目；workspace 是 worktree 时是它的项目，否则就是 workspace 本身。 */
-  workspaceProject?: string | null
-  workspaceOptions: string[]
-  accounts: ClaudeAccountView[]
-  proxies: ProxyView[]
-  onPickWorkspace: () => void
-  onSelectWorkspace: (path: string) => void
-  /** 会话在 path 里开始了；project 是 path 所属的项目。 */
-  onWorkspaceUsed: (path: string, project: string, sessionId?: string) => void
-  /** 主窗口为新会话分配 id，使草稿启动和发送能跨导航保持原会话归属。 */
-  identifySessions?: boolean
-  /** 当前项目的草稿，离开聊天页也保留。 */
-  projectDraft?: ProjectDraftEditor
-  /** 当前选中的会话摘要；只有已保存会话有续接能力。 */
-  summary?: SavedSessionSummary
-  /** 续接失败时在原项目打开新草稿。 */
-  onNewSession?: (projectId?: string) => void
-  /** 当前草稿启动完成后，由窗口只有仍在这个草稿时切换。 */
-  onDraftOpened?: (sessionId: string, project: string) => void
-  onOpen: (location: NavLocation) => void
-  smartPunctuation: boolean
-  layoutControls?: ReactNode
-  /** 线程头的「在应用中打开」按钮；有项目时由调用方给出。 */
-  openIn?: ReactNode
-  onOpenFile?: (path: string) => void
-  onViewDiff?: (path?: string) => void
-  /** 草稿读写分支、新建 worktree 用的工作台桥；没有时草稿不显示分支控件。 */
-  workbench?: WorkbenchBridge
-}
-
 /** 绘制新会话草稿或进行中的会话。 */
 export function ChatScreen({
   fresh,
@@ -126,6 +88,7 @@ export function ChatScreen({
   summary,
   onNewSession,
   onDraftOpened,
+  referenceRequest,
   onOpen,
   smartPunctuation,
   layoutControls,
@@ -200,12 +163,11 @@ export function ChatScreen({
     agents,
     session.modelsLoading && session.models.length === 0 ? null : session.models,
   )
-  const draftKey =
-    (fresh ? null : state.sessionId) ?? projectDraft?.key ?? workspaceProject ?? "new-thread"
   const projectName = workspace === null ? "" : projectNameFromPath(workspace)
   const threadId = state.sessionId ?? (workspace === null ? "new-thread" : `draft-${workspace}`)
   // 草稿页只在还没有会话时使用；从草稿发第一条消息后即使导航还没切换，也要显示时间线。
   const showDraft = fresh && !live && state.sessionId === null
+  const draftKey = showDraft ? (projectDraft?.key ?? workspaceProject ?? "new-thread") : threadId
   const draft = useDraftWorkspace(
     workbench,
     showDraft ? (workspace ?? workspaceOptions[0] ?? null) : null,
@@ -333,7 +295,9 @@ export function ChatScreen({
   async function submit(text: string, options: ComposerSubmitOptions): Promise<boolean> {
     const effort = effortForComposer(options.effort)
     const fast = options.fast === true
-    const sendOptions = { effort: effort ?? null, fast }
+    const references = text.startsWith("/") ? undefined : options.references
+    const referenceOptions = references?.length ? { references } : undefined
+    const sendOptions = { effort: effort ?? null, fast, ...referenceOptions }
     if (live) {
       if (state.activeTurnId !== null) {
         notify("当前请求尚未结束")
@@ -342,7 +306,8 @@ export function ChatScreen({
       return session.send(text, sendOptions)
     }
     if (identifySessions && state.sessionId !== null) {
-      if (parked) return session.send(text, undefined, summary ?? state.sessionId, setResumeError)
+      if (parked)
+        return session.send(text, referenceOptions, summary ?? state.sessionId, setResumeError)
       if (summary?.status === "queued" || summary?.status === "running") return false
       notify(t("shell.session.parked"))
       return false
@@ -366,17 +331,16 @@ export function ChatScreen({
     return sent
   }
 
-  /** 输入区发送后立即清空；提交失败时把文字放回草稿，避免用户重写。 */
+  /** 输入区发送后立即清空；提交失败时恢复原来的文档与附件。 */
   function submitFromComposer(text: string, options: ComposerSubmitOptions): void {
     if (submitting.current) return
     submitting.current = true
     setResumeError(null)
     if (fresh) projectDraft?.update({ pending: true, error: null })
-    const key = draftKey
-    const restoreDraft = parked ? captureComposerDraft(key) : () => prefillComposer(key, { text })
+    const restoreDraft = captureComposerDraft(draftKey)
     void submit(text, options)
       .then((ok) => {
-        if (!ok && (projectDraft?.isCurrent() ?? true)) restoreDraft(key)
+        if (!ok && (projectDraft?.isCurrent() ?? true)) restoreDraft(draftKey)
       })
       .finally(() => {
         submitting.current = false
@@ -430,6 +394,16 @@ export function ChatScreen({
     },
     waiting,
   })
+  const draftReady =
+    workspaceProject !== null &&
+    workspaceOptions.includes(workspaceProject) &&
+    !draft.busy &&
+    !projectDraft?.draft.pending
+  useComposerReference(
+    referenceRequest,
+    !showDraft || draftReady,
+    subagentTabs.subagent ? subagentTabs.onBackToMain : undefined,
+  )
 
   if (showDraft) {
     return (

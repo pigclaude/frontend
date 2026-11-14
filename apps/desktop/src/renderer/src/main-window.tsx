@@ -18,6 +18,7 @@ import { sessionAccountId, useSession } from "./hooks/use-session"
 import { useSessionHistory } from "./hooks/use-session-history"
 import { SessionDeleteDialog } from "./components/session-delete-dialog"
 import type { ProjectDrafts } from "./hooks/use-project-draft"
+import { useComposerReferenceQueue } from "./hooks/use-composer-reference"
 import { useSessionNotices } from "./hooks/use-session-notices"
 import { useWorkspaces } from "./hooks/use-workspaces"
 import { useWorkspaceSelection } from "./hooks/use-workspace-selection"
@@ -166,6 +167,9 @@ export function MainWindow({
   const chatWorkspace = sessionWorkspace ?? workspace
   const draftProject = projectOf(workspace)
   const projectDraft = drafts.forProject(draftProject)
+  const composerReferences = useComposerReferenceQueue(sessionId, projectDraft.key, (path) =>
+    location.kind === "draft" && draftProject ? projectDraft.key : openDraft(draftProject ?? path),
+  )
   const currentDraft = useRef(draftProject)
   currentDraft.current = draftProject
   const workbenchRoot = chatWorkspace
@@ -231,11 +235,11 @@ export function MainWindow({
     openDraft(path)
   }
 
-  function openDraft(path: string | null): boolean {
+  function openDraft(path: string | null): string | null {
     const projectId = projectOf(path)
-    if (!selectWorkspace(projectId === null ? null : selection.workspaceOf(projectId))) return false
+    if (!selectWorkspace(projectId === null ? null : selection.workspaceOf(projectId))) return null
     onNavigate({ kind: "draft", ...(projectId === null ? {} : { projectId }) })
-    return true
+    return drafts.forProject(projectId).key
   }
 
   /** 侧栏「查看文件」打开目标项目草稿的工作台。 */
@@ -344,6 +348,7 @@ export function MainWindow({
         if (path && !canSelectWorkspace(path)) return
         onNavigate({ kind: "session", sessionId: id })
       }}
+      onReferenceThread={composerReferences.reference}
       onAddProject={() => setAddingProject(true)}
       {...(history.enabled
         ? {
@@ -430,6 +435,7 @@ export function MainWindow({
             : {})}
           {...(chatWorkspace ? { openIn: <OpenInButton path={chatWorkspace} /> } : {})}
           fresh={location.kind === "draft"}
+          referenceRequest={composerReferences.request}
           key={sessionId ?? draftProject}
           session={session}
           workspace={chatWorkspace}

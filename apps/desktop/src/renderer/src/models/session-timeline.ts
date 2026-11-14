@@ -110,11 +110,23 @@ function projectRun(
   )
   let lastSwitch: string | null = null
   let lastAnswer: LastAnswer | null = null
+  const referenced = turn.userText !== null && run.references.length > 0
   push(
     "run.started",
-    { agentId: "claude", ...(turn.userText === null ? {} : { text: turn.userText }) },
+    {
+      agentId: "claude",
+      ...(turn.userText === null || referenced ? {} : { text: turn.userText }),
+    },
     turn.startedAt,
   )
+  if (referenced) {
+    // Pigcode 从完整的用户消息事件读取会话标签。
+    push(
+      "message.completed",
+      { role: "user", text: turn.userText, references: run.references },
+      turn.startedAt,
+    )
+  }
   for (const envelope of run.envelopes) {
     const { event, at } = envelope
     switch (event.type) {

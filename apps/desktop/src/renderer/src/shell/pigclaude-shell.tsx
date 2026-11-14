@@ -59,6 +59,8 @@ export type PigclaudeShellProps = {
   onToggleProject: (projectId: string, expanded: boolean) => void
   onNewSession: (projectId?: string) => void
   onOpenThread: (threadId: string) => void
+  /** 将侧栏会话引用交给当前聊天输入区。 */
+  onReferenceThread?: (thread: Thread) => void
   /** 打开「添加项目」对话框。 */
   onAddProject: () => void
   /** 会话历史操作沿用工作区侧栏的右键菜单。 */
@@ -253,6 +255,14 @@ export function PigclaudeShell(props: PigclaudeShellProps) {
               setDrawerOpen(false)
               props.onOpenThread(threadId)
             }}
+            onReferenceThread={
+              props.onReferenceThread
+                ? (thread) => {
+                    setDrawerOpen(false)
+                    props.onReferenceThread?.(thread)
+                  }
+                : undefined
+            }
             onNewThread={(projectId) => {
               setDrawerOpen(false)
               props.onNewSession(projectId)

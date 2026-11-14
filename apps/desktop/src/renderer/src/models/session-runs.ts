@@ -5,14 +5,20 @@
 
 import type { SessionEnvelope } from "../../../main/session/session-envelope"
 import { timelineNotice } from "../../../main/session/session-notice"
-import type { SessionHostEvent } from "../../../main/session/session-types"
+import type { SessionHostEvent, SessionReference } from "../../../main/session/session-types"
 import type { SessionTurn } from "./session-model"
 
 /**
  * 界面上的一轮和属于它的信封，信封按序号排列。closed 表示主进程已经发来这一轮的 turn-ended；
  * 界面先行结束（例如点了停止）的一轮在那之前仍是 false。
  */
-export type SessionRun = { turn: SessionTurn; envelopes: SessionEnvelope[]; closed: boolean }
+export type SessionRun = {
+  turn: SessionTurn
+  envelopes: SessionEnvelope[]
+  /** 主进程接受并记录在开轮信封上的引用。 */
+  references: readonly SessionReference[]
+  closed: boolean
+}
 
 /** 每种事件是否属于某一轮；新增的事件类型不在这里归类就过不了类型检查。 */
 const inRun: Readonly<Record<SessionHostEvent["type"], boolean>> = {
@@ -45,13 +51,22 @@ export function sessionRuns(
   envelopes: readonly SessionEnvelope[],
   turns: readonly SessionTurn[],
 ): SessionRun[] {
-  const runs: SessionRun[] = turns.map((turn) => ({ turn, envelopes: [], closed: false }))
+  const runs: SessionRun[] = turns.map((turn) => ({
+    turn,
+    envelopes: [],
+    references: [],
+    closed: false,
+  }))
   const cursor: Cursor = { current: null, last: null, next: 0 }
   for (const envelope of envelopes) {
     const { event } = envelope
     if (event.type === "turn-started") {
       const index = runs.findIndex((run) => run.turn.mainTurnId === event.turnId)
-      if (index >= 0) open(cursor, runs, index)
+      const run = runs[index]
+      if (run !== undefined) {
+        run.references = event.references ?? []
+        open(cursor, runs, index)
+      }
       continue
     }
     if (event.type === "turn-ended") {

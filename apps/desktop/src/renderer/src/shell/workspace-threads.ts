@@ -31,40 +31,54 @@ export function sessionTitle(session: Pick<SessionUiState, "turns">, untitled: s
   return chars.length > TITLE_LIMIT ? `${chars.slice(0, TITLE_LIMIT).join("")}…` : line
 }
 
-/** 侧栏状态点：等待许可、回复中、出错结束，其余为空闲。 */
+/**
+ * 侧栏状态点：等待许可、回复中；回合结束后按最后一轮显示已完成、失败或已中断；
+ * 会话出错结束时失败，还没有回合时空闲。PigClaude 没有排队。
+ */
 export function sessionStatus(session: SessionUiState): ThreadStatus {
   const active = session.turns.find((turn) => turn.id === session.activeTurnId)
   if (active?.permissions.some((card) => card.status === "pending")) return "waiting-approval"
   if (session.activeTurnId !== null && !session.ended) return "running"
   if (session.ended && session.endedReason === "error") return "failed"
+  const last = session.turns.at(-1)?.status
+  if (last === "done") return "completed"
+  if (last === "error") return "failed"
+  if (last === "cancelled") return "interrupted"
   return "idle"
 }
+
+/** 会话行账号角标用到的账号字段；只有显示名，不含凭据和代理。 */
+export type BadgeAccount = { id: string; displayName: string }
 
 /**
  * 当前会话 → 侧栏里的一个会话。还没有开始、或者不知道运行在哪个工作区时返回 null；
  * startedAt 是这个会话第一次出现的时间，侧栏据此显示相对时间。
+ * 实例 id 是会话实际在用的账号，换号后跟着变；账号不在号池里时不带角标。
  */
 export function sessionThread({
   session,
   workspace,
   startedAt,
   untitled,
+  accounts,
 }: {
   session: SessionUiState
   workspace: string | null
   startedAt: string
   untitled: string
+  accounts: readonly BadgeAccount[]
 }): Thread | null {
   if (!session.sessionId || !workspace) return null
   const permission = permissionView(session.permissionMode, DEFAULT_PERMISSION_LEVEL)
+  const account = accounts.find((item) => item.id === session.accountId)
   return {
     id: session.sessionId,
     projectId: workspace,
     title: sessionTitle(session, untitled),
     defaultAgentId: "claude",
     defaultInstanceId: null,
-    lastAgentId: null,
-    lastInstanceId: null,
+    lastAgentId: "claude",
+    lastInstanceId: account?.id ?? null,
     lastModelId: session.model,
     permissionMode: permission.level,
     planMode: permission.plan,
@@ -75,8 +89,13 @@ export function sessionThread({
   }
 }
 
-/** 侧栏会话行的 Agent 显示名。 */
-export const agentNames: Readonly<Record<string, string>> = { claude: "Claude Code" }
+/** 侧栏会话行的 Agent 与账号显示名，按 id；账号角标由显示名得出。 */
+export function sessionAgentNames(accounts: readonly BadgeAccount[]): Record<string, string> {
+  return {
+    claude: "Claude Code",
+    ...Object.fromEntries(accounts.map((account) => [account.id, account.displayName])),
+  }
+}
 
 /** 折叠或展开一个项目：只改这一个项目的展开状态。 */
 export function toggleExpanded(

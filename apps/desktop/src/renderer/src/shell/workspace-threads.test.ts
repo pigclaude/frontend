@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import { createSessionState, type SessionTurn, type SessionUiState } from "../models/session-model"
 import {
   newSessionWorkspace,
+  sessionAgentNames,
   sessionStatus,
   sessionThread,
   sessionTitle,
@@ -46,6 +47,7 @@ describe("sessionThread", () => {
       workspace: "/work/api",
       startedAt: "2026-11-11T08:00:00.000Z",
       untitled: "新会话",
+      accounts: [],
     })
     expect(thread).toMatchObject({
       id: "s-1",
@@ -58,7 +60,12 @@ describe("sessionThread", () => {
   })
 
   it("会话的 Claude Code 模式映射成输入框的档位和独立的计划开关", () => {
-    const base = { workspace: "/work/api", startedAt: "2026-11-11T08:00:00.000Z", untitled: "" }
+    const base = {
+      workspace: "/work/api",
+      startedAt: "2026-11-11T08:00:00.000Z",
+      untitled: "",
+      accounts: [],
+    }
     expect(
       sessionThread({ ...base, session: session({ permissionMode: "acceptEdits" }) }),
     ).toMatchObject({ permissionMode: "auto-accept-edits", planMode: false })
@@ -67,8 +74,37 @@ describe("sessionThread", () => {
     })
   })
 
+  it("账号角标跟随会话实际在用的账号，只用账号的显示名", () => {
+    const accounts = [
+      { id: "acc-work", displayName: "工作号" },
+      { id: "acc-home", displayName: "家用号" },
+    ]
+    const base = {
+      workspace: "/work/api",
+      startedAt: "2026-11-11T08:00:00.000Z",
+      untitled: "",
+      accounts,
+    }
+    expect(sessionThread({ ...base, session: session({ accountId: "acc-work" }) })).toMatchObject({
+      lastAgentId: "claude",
+      lastInstanceId: "acc-work",
+    })
+    expect(sessionThread({ ...base, session: session({ accountId: "acc-home" }) })).toMatchObject({
+      lastInstanceId: "acc-home",
+    })
+    expect(sessionThread({ ...base, session: session({ accountId: "acc-gone" }) })).toMatchObject({
+      lastInstanceId: null,
+    })
+    expect(sessionThread({ ...base, session: session() })).toMatchObject({ lastInstanceId: null })
+    expect(sessionAgentNames(accounts)).toEqual({
+      claude: "Claude Code",
+      "acc-work": "工作号",
+      "acc-home": "家用号",
+    })
+  })
+
   it("还没开始或不知道工作区时侧栏没有会话", () => {
-    const base = { startedAt: "2026-11-11T08:00:00.000Z", untitled: "新会话" }
+    const base = { startedAt: "2026-11-11T08:00:00.000Z", untitled: "新会话", accounts: [] }
     expect(sessionThread({ ...base, session: createSessionState(), workspace: "/w" })).toBeNull()
     expect(sessionThread({ ...base, session: session(), workspace: null })).toBeNull()
   })
@@ -102,10 +138,25 @@ describe("sessionStatus", () => {
     expect(sessionStatus(session({ activeTurnId: "t1", turns: [turn()] }))).toBe("running")
   })
 
-  it("出错结束时失败，其余为空闲", () => {
+  it("出错结束时失败，还没有回合时空闲", () => {
     expect(sessionStatus(session({ ended: true, endedReason: "error" }))).toBe("failed")
     expect(sessionStatus(session({ ended: true, endedReason: "completed" }))).toBe("idle")
     expect(sessionStatus(session())).toBe("idle")
+  })
+
+  it("回合结束后按最后一轮的结果显示已完成、失败或已中断", () => {
+    expect(sessionStatus(session({ turns: [turn({ status: "done" })] }))).toBe("completed")
+    expect(sessionStatus(session({ turns: [turn({ status: "error" })] }))).toBe("failed")
+    expect(sessionStatus(session({ turns: [turn({ status: "cancelled" })] }))).toBe("interrupted")
+    expect(
+      sessionStatus(
+        session({
+          ended: true,
+          endedReason: "stopped",
+          turns: [turn({ id: "t1", status: "done" }), turn({ id: "t2", status: "cancelled" })],
+        }),
+      ),
+    ).toBe("interrupted")
   })
 })
 

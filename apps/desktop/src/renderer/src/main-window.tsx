@@ -38,8 +38,8 @@ import {
   type SettingsPageRenderer,
 } from "./shell/settings-registry"
 import {
-  agentNames,
   newSessionWorkspace,
+  sessionAgentNames,
   sessionStatus,
   sessionThread,
   toggleExpanded,
@@ -117,6 +117,7 @@ export function MainWindow({
     workspace: sessionWorkspace,
     startedAt: sessionStartedAt,
     untitled: t("shell.session.untitled"),
+    accounts: pool.accounts,
   })
   const page = location.kind === "settings" ? location.page : null
   const inChat = location.kind === "draft" || location.kind === "session"
@@ -342,7 +343,7 @@ export function MainWindow({
       threads={thread ? [thread] : []}
       activeThreadId={location.kind === "session" ? (thread?.id ?? null) : null}
       threadStatus={thread ? { [thread.id]: sessionStatus(session.state) } : {}}
-      agentNames={agentNames}
+      agentNames={sessionAgentNames(pool.accounts)}
       expandedProjects={expanded}
       canGoBack={canGoBack}
       canGoForward={canGoForward}

@@ -2,8 +2,8 @@
 
 /**
  * 主界面的 Content-Security-Policy。脚本只能是安装包里的文件，不允许 eval、内联脚本和远程代码；
- * 页面不发网络请求，也不嵌入框架。style-src 留 'unsafe-inline'：编辑器在运行时插入样式表。
- * img-src 放开 http(s)：聊天 Markdown 的图片和内置浏览器的网站图标沿用上游的做法。
+ * 页面只能向应用自身发请求，也不嵌入框架。style-src 留 'unsafe-inline'：编辑器在运行时插入样式表。
+ * img-src 放开 http(s)：聊天 Markdown 的远程图片和内置浏览器的网站图标要直接显示。
  */
 export function rendererContentSecurityPolicy(): string {
   return [

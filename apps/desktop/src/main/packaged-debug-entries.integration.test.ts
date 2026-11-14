@@ -12,6 +12,7 @@ import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
 const packaged = process.env["PIGCLAUDE_TEST_PACKAGED_APP"]
+const defaultInspectorPort = 9229
 const entries = ["调试信号", "--inspect 参数", "NODE_OPTIONS"] as const
 type DebugEntry = (typeof entries)[number]
 
@@ -75,6 +76,7 @@ function fuseEnabled(state: number | undefined): boolean | null {
 async function probe(entry: DebugEntry, command: string, args: string[]): Promise<boolean> {
   const userData = await mkdtemp(join(tmpdir(), "pigclaude-debug-entry-"))
   const port = await freePort()
+  const defaultPortTaken = await portOpen(defaultInspectorPort)
   const inspect = `--inspect=127.0.0.1:${port}`
   const child = spawn(command, [...(entry === "--inspect 参数" ? [inspect] : []), ...args], {
     detached: process.platform !== "win32",
@@ -89,33 +91,31 @@ async function probe(entry: DebugEntry, command: string, args: string[]): Promis
   child.stdout?.on("data", (chunk: Buffer) => (output += chunk.toString("utf8")))
   child.stderr?.on("data", (chunk: Buffer) => (output += chunk.toString("utf8")))
   try {
-    await started(child, () =>
-      args.length > 0
+    const ready = await waitUntil(30_000, () => {
+      if (child.exitCode !== null || child.signalCode !== null) throw new Error("应用启动后退出")
+      return args.length > 0
         ? output.includes("CONTROL_READY")
-        : existsSync(join(userData, "Local Storage")),
-    )
+        : existsSync(join(userData, "Local Storage"))
+    })
+    if (!ready) throw new Error("应用没有在 30 秒内启动")
     if (entry === "调试信号") sendDebugSignal(child)
-    const deadline = Date.now() + 4_000
-    while (Date.now() < deadline) {
-      if (output.includes("Debugger listening")) return true
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    }
-    return (await portOpen(port)) || (await portOpen(9229))
+    if (await waitUntil(4_000, () => output.includes("Debugger listening"))) return true
+    if (await portOpen(port)) return true
+    return !defaultPortTaken && (await portOpen(defaultInspectorPort))
   } finally {
     await stop(child)
     await rm(userData, { recursive: true, force: true })
   }
 }
 
-/** 等到主进程启动完毕：开发版对照打印就绪标记，安装包的页面写出 localStorage。 */
-async function started(child: ChildProcess, ready: () => boolean): Promise<void> {
-  const deadline = Date.now() + 30_000
+/** 每 100ms 检查一次条件，直到成立或超时；返回条件是否成立。 */
+async function waitUntil(timeoutMs: number, condition: () => boolean): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    if (child.exitCode !== null || child.signalCode !== null) throw new Error("应用启动后退出")
-    if (ready()) return
+    if (condition()) return true
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
-  throw new Error("应用没有在 30 秒内启动")
+  return condition()
 }
 
 /** macOS 和 Linux 发 SIGUSR1；Windows 没有信号，用 Node 的远程调试请求，目标没注册调试处理时会报错。 */
@@ -136,7 +136,10 @@ function sendDebugSignal(child: ChildProcess): void {
 
 async function stop(child: ChildProcess): Promise<void> {
   if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return
-  const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()))
+  const exited = new Promise<void>((resolve) => {
+    child.once("exit", () => resolve())
+    setTimeout(resolve, 10_000).unref()
+  })
   if (process.platform === "win32") {
     spawn("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" })
   } else {

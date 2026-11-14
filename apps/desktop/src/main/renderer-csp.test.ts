@@ -27,7 +27,7 @@ describe("主界面 CSP", () => {
     expect(policy.get("form-action")).toEqual(["'none'"])
   })
 
-  it("页面不发网络请求", () => {
+  it("页面只能向应用自身发请求", () => {
     expect(policy.get("connect-src")).toEqual(["'self'"])
   })
 

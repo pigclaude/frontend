@@ -1,11 +1,12 @@
-// 负责把 PigClaude 的最近工作区与当前会话映射成外壳侧栏要的项目、会话与状态点。
-// PigClaude 同一时间只有一个会话，它挂在运行它的工作区下；不引入 Pigcode 的线程模型语义。
+// 负责把最近工作区、会话摘要和本机收到的会话事件映射成外壳侧栏要的项目、会话和状态点。
 import type { Project, Thread } from "@pigclaude/ui-contracts"
 import type { ThreadStatus } from "@pigclaude/ui-shell"
 import { DEFAULT_PERMISSION_LEVEL, permissionView } from "../models/composer-config"
 import { projectNameFromPath } from "../models/project-model"
 import type { SessionUiState } from "../models/session-model"
+import { sessionState, type SessionCollection } from "../models/session-collection"
 import { pendingPermission } from "../models/session-permissions"
+import type { SessionSummary } from "../../../main/session/session-summary"
 
 /** 侧栏不显示项目的创建时间，项目统一用这个占位时间。 */
 const UNDATED = "1970-01-01T00:00:00.000Z"
@@ -37,7 +38,7 @@ export function sessionTitle(session: Pick<SessionUiState, "turns">, untitled: s
 
 /**
  * 侧栏状态点：等待许可、回复中；回合结束后按最后一轮显示已完成、失败或已中断；
- * 会话出错结束时失败，还没有回合时空闲。PigClaude 没有排队。子代理忙时主进程不结束这一轮，
+ * 会话出错结束时失败，还没有回合时空闲。子代理忙时主进程不结束这一轮，
  * 所以主会话显示运行中；主线程和子代理的权限询问都算等待许可。
  */
 export function sessionStatus(session: SessionUiState): ThreadStatus {
@@ -54,6 +55,60 @@ export function sessionStatus(session: SessionUiState): ThreadStatus {
 
 /** 会话行账号角标用到的账号字段；只有显示名，不含凭据和代理。 */
 export type BadgeAccount = { id: string; displayName: string }
+
+/** 工作区侧栏要展示的会话与即时状态，摘要负责补齐还没收到信封的会话。 */
+export function workspaceThreads(input: {
+  summaries: readonly SessionSummary[]
+  states: SessionCollection
+  workspaces: ReadonlyMap<string, string>
+  projectOf: (workspace: string) => string | null
+  untitled: string
+  accounts: readonly BadgeAccount[]
+}): { threads: Thread[]; statuses: Record<string, ThreadStatus> } {
+  const summaries = new Map(input.summaries.map((item) => [item.sessionId, item]))
+  const ids = new Set([...summaries.keys(), ...input.workspaces.keys()])
+  const threads: Thread[] = []
+  const statuses: Record<string, ThreadStatus> = {}
+  for (const id of ids) {
+    const summary = summaries.get(id)
+    const workspace = summary?.workspace ?? input.workspaces.get(id)
+    if (workspace === undefined) continue
+    const state = sessionState(input.states, id)
+    const record = state.events[id]
+    const at =
+      summary?.lastActivityAt ?? record?.envelopes.at(-1)?.at ?? state.turns.at(-1)?.startedAt
+    const thread = sessionThread({
+      session: {
+        ...state,
+        sessionId: id,
+        accountId: state.accountId ?? summary?.accountId ?? null,
+        model: state.model ?? summary?.model ?? null,
+      },
+      workspace: input.projectOf(workspace),
+      startedAt: at ?? UNDATED,
+      untitled: input.untitled,
+      accounts: input.accounts,
+    })
+    if (thread === null) continue
+    threads.push(thread)
+    statuses[id] = summaryStatus(summary, state)
+  }
+  threads.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  return { threads, statuses }
+}
+
+function summaryStatus(summary: SessionSummary | undefined, state: SessionUiState): ThreadStatus {
+  if (summary?.status === "failed" || summary?.status === "interrupted") return summary.status
+  const live = sessionStatus(state)
+  if (state.activeTurnId !== null || state.ended) return live
+  if (summary !== undefined) {
+    if (summary.status !== "idle" && summary.status !== "parked") return summary.status
+    if (summary.lastTurn === "completed") return "completed"
+    if (summary.lastTurn === "error") return "failed"
+    if (summary.lastTurn === "interrupted") return "interrupted"
+  }
+  return live
+}
 
 /**
  * 当前会话 → 侧栏里的一个会话。还没有开始、或者不知道运行在哪个工作区时返回 null；

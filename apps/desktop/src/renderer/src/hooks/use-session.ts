@@ -9,27 +9,36 @@ import type {
   SessionStartInput,
   SessionStatusView,
 } from "../../../main/session/session-types"
-import { SessionEnvelopeIntake } from "../models/session-envelope-intake"
+import type { SessionSummary } from "../../../main/session/session-summary"
+import { timelineNotice } from "../../../main/session/session-notice"
 import {
-  createSessionState,
-  reduceSession,
-  sessionErrorText,
-  type SessionUiState,
-} from "../models/session-model"
+  reduceSessionCollection,
+  refreshesSessionList,
+  sessionState,
+  type SessionCollection,
+} from "../models/session-collection"
+import { SessionEnvelopeIntake } from "../models/session-envelope-intake"
+import { sessionErrorText, type SessionAction, type SessionUiState } from "../models/session-model"
 import type { SessionPermissionStatus } from "../models/session-permissions"
 
 /** 聊天页和环境页共用的会话控制器。 */
 export type SessionController = {
   state: SessionUiState
+  /** 各会话的状态按 id 保存，切换选择时保留后台会话的回合。 */
+  states: SessionCollection
+  /** 主进程的活动会话和停放会话摘要。 */
+  summaries: readonly SessionSummary[]
+  /** 这次窗口收到的最新提示，包括后台会话和宿主的文字通知。 */
+  notice: SessionUiState["notice"]
   status: SessionStatusView | null
   models: ClaudeModel[]
   modelsLoading: boolean
   modelsError: string | null
   /** Claude Code 没有列出模型的原因；这时 models 是主进程给的内置目录。 */
   modelsCliError: string | null
-  start: (input: SessionStartInput) => Promise<boolean>
+  start: (input: SessionStartInput, onError?: (message: string) => void) => Promise<boolean>
   /** 用选定的设置发送；消息未被接受时返回 false，界面保留草稿。 */
-  send: (text: string, options?: SessionSendOptions) => Promise<boolean>
+  send: (text: string, options?: SessionSendOptions, sessionId?: string) => Promise<boolean>
   cancel: () => Promise<void>
   stop: () => Promise<void>
   /** updatedPermissions 是“始终允许”要写回的 SDK 规则；只允许一次时省略。 */
@@ -58,30 +67,87 @@ function now(): string {
   return new Date().toISOString()
 }
 
-/** 订阅会话事件。传入 null 表示桌面桥不可用，所有命令都会给出可读错误。 */
-export function useSession(bridge?: SessionBridge | null): SessionController {
+/**
+ * 订阅全部会话事件。selection 指定当前会话，null 表示草稿，省略时可从信封发现当前会话。
+ * 传入 null 桌面桥时，所有命令都会给出可读错误。
+ */
+export function useSession(
+  bridge?: SessionBridge | null,
+  selection?: string | null,
+): SessionController {
   const resolved = bridge === undefined ? window.pigclaude?.session : bridge
-  const [state, dispatch] = useReducer(reduceSession, undefined, createSessionState)
+  const [states, dispatch] = useReducer(reduceSessionCollection, new Map())
+  const [summaries, setSummaries] = useState<readonly SessionSummary[]>([])
+  const [notice, setNotice] = useState<SessionUiState["notice"]>(null)
   const [status, setStatus] = useState<SessionStatusView | null>(null)
   const [models, setModels] = useState<ClaudeModel[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [modelsCliError, setModelsCliError] = useState<string | null>(null)
   const turnSeq = useRef(0)
-  const activeTurnRef = useRef<string | null>(null)
+  const activeTurns = useRef(new Map<string, string>())
+  const [discovered, setDiscovered] = useState<string | null>(null)
   const targetRef = useRef<string | null>(null)
+  const route = useRef(selection)
+  const intakeRef = useRef<SessionEnvelopeIntake | null>(null)
   const startingRef = useRef<Promise<string | null> | null>(null)
+  const listRevision = useRef(0)
+  const statusRevision = useRef(0)
   const modelsLoaded = useRef(false)
   const modelsLoadingRef = useRef(false)
   const modelsRequest = useRef(0)
 
+  route.current = selection
+  if (selection !== undefined) targetRef.current = selection
+  const selected = selection === undefined ? discovered : selection
+  const historySelection = selection === undefined ? summaries[0]?.sessionId : selection
+  const current = sessionState(states, selected)
+  const state =
+    current.started || current.ended || selected === null || status?.sessionId !== selected
+      ? current
+      : {
+          ...current,
+          started: status.active,
+          model: current.model ?? status.model,
+          accountId: current.accountId ?? status.accountId,
+          permissionMode: status.permissionMode,
+        }
+  const commandTarget = useCallback(
+    () => (selection === undefined ? targetRef.current : selection),
+    [selection],
+  )
+  const apply = useCallback((sessionId: string | null, action: SessionAction): void => {
+    dispatch({ sessionId, action })
+  }, [])
+
+  const refreshSummaries = useCallback(async () => {
+    if (!resolved?.list) return
+    const revision = ++listRevision.current
+    try {
+      const result = await resolved.list()
+      if (listRevision.current !== revision) return
+      setSummaries(result)
+      if (route.current === undefined && targetRef.current === null) {
+        const id = result[0]?.sessionId
+        if (id !== undefined) {
+          targetRef.current = id
+          setDiscovered(id)
+        }
+      }
+    } catch {
+      // 会员关停和宿主替换期间保留最后收到的摘要。
+    }
+  }, [resolved])
+
   const refreshStatus = useCallback(async () => {
     if (resolved === null || resolved === undefined) return
     const sessionId = targetRef.current
+    const revision = ++statusRevision.current
     try {
-      setStatus(await (sessionId === null ? resolved.status() : resolved.status({ sessionId })))
+      const next = await (sessionId === null ? resolved.status() : resolved.status({ sessionId }))
+      if (statusRevision.current === revision) setStatus(next)
     } catch {
-      setStatus(null)
+      if (statusRevision.current === revision) setStatus(null)
     }
   }, [resolved])
 
@@ -140,101 +206,144 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
       fetch: (sessionId, afterSeq) => resolved.events({ sessionId, afterSeq }),
       apply: (envelope) => {
         const { sessionId, event } = envelope
-        if (targetRef.current === null && sessionId !== null) targetRef.current = sessionId
-        if (event.type === "turn-ended" || event.type === "ended") activeTurnRef.current = null
-        dispatch({ type: "envelope", envelope })
+        if (event.type === "notice" && "message" in event && timelineNotice(event) === null) {
+          setNotice({ message: event.message })
+        }
+        if (targetRef.current === null && sessionId !== null && route.current === undefined) {
+          targetRef.current = sessionId
+          setDiscovered(sessionId)
+        }
+        if (sessionId !== null && (event.type === "turn-ended" || event.type === "ended")) {
+          activeTurns.current.delete(sessionId)
+        }
+        if (event.type !== "sessions-changed") {
+          apply(sessionId ?? targetRef.current, { type: "envelope", envelope })
+        }
+        if (refreshesSessionList(envelope)) void refreshSummaries()
       },
     })
+    intakeRef.current = intake
     const unsubscribe = resolved.subscribe((envelope) => intake.receive(envelope))
-    void refreshStatus()
+    void refreshSummaries()
     return () => {
       intake.close()
+      intakeRef.current = null
       unsubscribe()
+      listRevision.current += 1
     }
-  }, [refreshStatus, resolved])
+  }, [apply, refreshSummaries, resolved])
+
+  useEffect(() => {
+    void refreshStatus()
+  }, [selection, refreshStatus])
+
+  useEffect(() => {
+    if (historySelection && resolved?.events) intakeRef.current?.catchUp(historySelection)
+  }, [resolved, historySelection])
 
   const start = useCallback(
-    async (input: SessionStartInput): Promise<boolean> => {
-      if (resolved === null || resolved === undefined) {
-        dispatch({ type: "failed", message: "桌面会话服务不可用", at: now() })
+    async (input: SessionStartInput, onError?: (message: string) => void): Promise<boolean> => {
+      const pendingId = input.sessionId ?? null
+      const automatic = route.current === undefined
+      if (!automatic && pendingId === null) {
+        onError?.(sessionErrorText(notStarted))
         return false
       }
-      dispatch({ type: "starting" })
-      activeTurnRef.current = null
-      targetRef.current = null
+      if (resolved === null || resolved === undefined) {
+        const message = "桌面会话服务不可用"
+        apply(pendingId, { type: "failed", message, at: now() })
+        onError?.(message)
+        return false
+      }
+      apply(pendingId, { type: "starting" })
+      if (automatic) {
+        targetRef.current = pendingId
+        setDiscovered(pendingId)
+      }
       const pending = resolved.start(input)
-      startingRef.current = pending.then(
-        (result) => result.sessionId,
-        () => null,
-      )
+      if (automatic) {
+        startingRef.current = pending.then(
+          (result) => result.sessionId,
+          () => null,
+        )
+      }
       try {
         const result = await pending
-        targetRef.current = result.sessionId
-        dispatch({ type: "opened", sessionId: result.sessionId })
-        void refreshStatus()
+        if (automatic) {
+          targetRef.current = result.sessionId
+          setDiscovered(result.sessionId)
+          void refreshStatus()
+        }
+        apply(result.sessionId, { type: "opened", sessionId: result.sessionId })
+        void refreshSummaries()
         return true
       } catch (error: unknown) {
-        dispatch({ type: "failed", message: sessionErrorFrom(error), at: now() })
+        const message = sessionErrorFrom(error)
+        apply(pendingId, { type: "failed", message, at: now() })
+        onError?.(sessionErrorText(message))
+        void refreshSummaries()
         return false
       }
     },
-    [refreshStatus, resolved],
+    [apply, refreshStatus, refreshSummaries, resolved],
   )
 
   const send = useCallback(
-    async (text: string, options?: SessionSendOptions): Promise<boolean> => {
+    async (text: string, options?: SessionSendOptions, target?: string): Promise<boolean> => {
+      const sessionId = target ?? commandTarget()
       if (resolved === null || resolved === undefined) {
-        dispatch({ type: "failed", message: "桌面会话服务不可用", at: now() })
+        apply(sessionId, { type: "failed", message: "桌面会话服务不可用", at: now() })
         return false
       }
       // 当前 turn 未结束时拒绝第二次发送，避免为一个 turn 建两条用户消息。
-      if (activeTurnRef.current !== null) return false
-      const sessionId = targetRef.current
       if (sessionId === null) {
-        dispatch({ type: "failed", message: notStarted, at: now() })
+        apply(null, { type: "failed", message: notStarted, at: now() })
         return false
       }
+      if (activeTurns.current.has(sessionId)) return false
       turnSeq.current += 1
       const turnId = `turn-${turnSeq.current}`
-      activeTurnRef.current = turnId
-      dispatch({ type: "user-message", text, turnId, at: now() })
+      activeTurns.current.set(sessionId, turnId)
+      apply(sessionId, { type: "user-message", text, turnId, at: now() })
       try {
         await resolved.send({ ...options, sessionId, text })
         return true
       } catch (error: unknown) {
-        if (activeTurnRef.current === turnId) {
-          activeTurnRef.current = null
-          dispatch({ type: "failed", message: sessionErrorFrom(error), at: now() })
+        if (activeTurns.current.get(sessionId) === turnId) {
+          activeTurns.current.delete(sessionId)
+          apply(sessionId, { type: "failed", message: sessionErrorFrom(error), at: now() })
         }
         return false
       }
     },
-    [resolved],
+    [apply, commandTarget, resolved],
   )
 
   const cancel = useCallback(async (): Promise<void> => {
-    dispatch({ type: "cancel-requested", at: now() })
-    const sessionId = targetRef.current
+    const sessionId = commandTarget()
+    apply(sessionId, { type: "cancel-requested", at: now() })
     if (sessionId === null) return
     try {
       await resolved?.cancel({ sessionId })
     } catch (error: unknown) {
-      dispatch({ type: "failed", message: sessionErrorFrom(error), at: now() })
+      apply(sessionId, { type: "failed", message: sessionErrorFrom(error), at: now() })
     }
-  }, [resolved])
+  }, [apply, commandTarget, resolved])
 
   const stop = useCallback(async (): Promise<void> => {
-    const sessionId = targetRef.current ?? (await startingRef.current)
+    const sessionId =
+      commandTarget() ?? (selection === undefined ? await startingRef.current : null)
     try {
       if (sessionId !== null) await resolved?.stop({ sessionId })
     } catch (error: unknown) {
-      dispatch({ type: "failed", message: sessionErrorFrom(error), at: now() })
+      apply(sessionId, { type: "failed", message: sessionErrorFrom(error), at: now() })
       return
     }
-    activeTurnRef.current = null
-    dispatch({ type: "stopped", at: now() })
+    if (sessionId !== null) activeTurns.current.delete(sessionId)
+    apply(sessionId, { type: "stopped", at: now() })
     void refreshStatus()
-  }, [refreshStatus, resolved])
+    void refreshSummaries()
+  }, [apply, commandTarget, refreshStatus, refreshSummaries, resolved, selection])
 
   const respondPermission = useCallback(
     async (
@@ -242,9 +351,9 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
       decision: "allow" | "deny",
       updatedPermissions?: unknown[],
     ): Promise<void> => {
-      dispatch({ type: "permission-answered", requestId, decision, at: now() })
-      const sessionId = targetRef.current
+      const sessionId = commandTarget()
       if (sessionId === null) return
+      apply(sessionId, { type: "permission-answered", requestId, decision, at: now() })
       try {
         await resolved?.respondPermission({
           sessionId,
@@ -255,57 +364,68 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
             : { updatedPermissions }),
         })
       } catch (error: unknown) {
-        dispatch({ type: "failed", message: sessionErrorFrom(error), at: now() })
+        apply(sessionId, { type: "failed", message: sessionErrorFrom(error), at: now() })
+      } finally {
+        void refreshSummaries()
       }
     },
-    [resolved],
+    [apply, commandTarget, refreshSummaries, resolved],
   )
 
   const answerQuestion = useCallback(
     async (requestId: string, answers: string[]): Promise<void> => {
-      const sessionId = targetRef.current
+      const sessionId = commandTarget()
       if (sessionId === null) return
       try {
         await resolved?.answerQuestion({ sessionId, requestId, answers })
       } catch (error: unknown) {
-        dispatch({ type: "failed", message: sessionErrorFrom(error), at: now() })
+        apply(sessionId, { type: "failed", message: sessionErrorFrom(error), at: now() })
       }
     },
-    [resolved],
+    [apply, commandTarget, resolved],
   )
 
   const setMode = useCallback(
     async (mode: SessionUiState["permissionMode"]): Promise<void> => {
-      const sessionId = targetRef.current
+      const sessionId = commandTarget()
       if (sessionId === null) return
       try {
         await resolved?.setMode({ sessionId, mode })
       } catch (error: unknown) {
-        dispatch({ type: "failed", message: sessionErrorFrom(error), at: now() })
+        apply(sessionId, { type: "failed", message: sessionErrorFrom(error), at: now() })
       }
     },
-    [resolved],
+    [apply, commandTarget, resolved],
   )
 
   const setModel = useCallback(
     async (model: string): Promise<void> => {
-      dispatch({ type: "model-changed", model })
-      const sessionId = targetRef.current
+      const sessionId = commandTarget()
+      apply(sessionId, { type: "model-changed", model })
       if (sessionId === null) return
       try {
         await resolved?.setModel({ sessionId, model })
       } catch (error: unknown) {
-        dispatch({ type: "failed", message: sessionErrorFrom(error), at: now() })
+        apply(sessionId, { type: "failed", message: sessionErrorFrom(error), at: now() })
       }
     },
-    [resolved],
+    [apply, commandTarget, resolved],
   )
 
-  const clearError = useCallback(() => dispatch({ type: "clear-error" }), [])
+  const clearError = useCallback(
+    () => apply(commandTarget(), { type: "clear-error" }),
+    [apply, commandTarget],
+  )
 
   return {
     state,
-    status,
+    states,
+    summaries,
+    notice,
+    status:
+      selection === undefined || selected === null || status?.sessionId === selected
+        ? status
+        : null,
     models,
     modelsLoading,
     modelsError,

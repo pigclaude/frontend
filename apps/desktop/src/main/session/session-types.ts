@@ -117,6 +117,8 @@ export type SessionHostEvent =
   | QuestionRequestEvent
   | QuestionResolvedEvent
   | SessionAccountSwitchedEvent
+  /** 进程名额、启动或停放状态更新，可以重读会话列表。 */
+  | { type: "sessions-changed" }
   | SessionNoticeEvent
   | TimelineNoticeEvent
   | SessionContextEvent

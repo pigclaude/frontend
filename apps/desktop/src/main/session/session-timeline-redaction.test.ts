@@ -14,6 +14,7 @@ import type { SessionHostEvent } from "./session-types"
 type EventSamples = { [K in SessionHostEvent["type"]]: Extract<SessionHostEvent, { type: K }> }
 
 const samples: EventSamples = {
+  "sessions-changed": { type: "sessions-changed" },
   started: {
     type: "started",
     sessionId: "s-1",

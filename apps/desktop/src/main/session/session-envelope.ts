@@ -21,6 +21,7 @@ export const sessionEventKinds: Readonly<Record<SessionHostEvent["type"], Sessio
   "question-resolved": "persisted",
   "account-switched": "persisted",
   notice: "persisted",
+  "sessions-changed": "live",
   context: "persisted",
   result: "persisted",
   "turn-started": "persisted",

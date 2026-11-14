@@ -2,30 +2,26 @@
 // 聊天、账号、代理、环境、用量和托盘都接真实会话与本地数据；只有浏览器预览会传入演示工作台。
 import { useEffect, useRef, useState } from "react"
 import type { MembershipView } from "@pigclaude/contracts/membership"
-import { OpenInButton, ScrollPanel, useToast } from "@pigclaude/ui-shell"
+import { OpenInButton, useToast } from "@pigclaude/ui-shell"
 import { PanelLayoutControls } from "@pigclaude/ui-workbench"
 import { Workbench, type FilesRequest, type WorkbenchActions } from "./workbench/workbench"
 import { TerminalDrawer } from "./workbench/terminal-drawer"
 import type { PreviewWorkbench } from "./fixtures/preview-workbench"
 import { workspaceRevision } from "./models/workspace-revision"
-import { AccountsScreen } from "./screens/accounts-screen"
 import { ChatScreen } from "./screens/chat-screen"
-import { EnvironmentScreen } from "./screens/environment-screen"
-import { ProxiesScreen } from "./screens/proxies-screen"
-import { BrowserProfilesScreen } from "./screens/browser-profiles-screen"
+import { MainWindowSettings } from "./screens/main-window-settings"
 import type { BrowserProfilesController } from "./hooks/use-browser-profiles"
-import { SettingsScreen } from "./screens/settings/settings-sections"
 import type { AppInfo } from "../../preload/index"
 import { TrayScreen } from "./screens/tray-screen"
-import { UsageScreen } from "./screens/usage-screen"
 import type { ClaudeAccountsController } from "./hooks/use-claude-accounts"
 import { sessionAccountId, useSession } from "./hooks/use-session"
+import { useProjectDraft } from "./hooks/use-project-draft"
 import { useSessionNotices } from "./hooks/use-session-notices"
 import { useWorkspaces } from "./hooks/use-workspaces"
 import { useWorkspaceSelection } from "./hooks/use-workspace-selection"
 import { fill, useText } from "./locale/text"
 import { projectNameFromPath } from "./models/project-model"
-import { toPoolAccount, toPoolProxy } from "./models/claude-account-view"
+import { toPoolAccount } from "./models/claude-account-view"
 import type { NavLocation } from "./models/navigation"
 import type { AppearanceController } from "./hooks/use-appearance"
 import type { ResolvedTheme } from "./models/theme-model"
@@ -39,15 +35,13 @@ import {
   SettingsContributionView,
   SettingsRegistry,
   settingsLocation,
-  type SettingsPageRenderer,
 } from "./shell/settings-registry"
 import {
   newSessionWorkspace,
   sessionAgentNames,
-  sessionStatus,
-  sessionThread,
   toggleExpanded,
   workspaceProjects,
+  workspaceThreads,
 } from "./shell/workspace-threads"
 
 /** 主窗口需要的位置状态与事件；账号控制器由 App 持有，避免同一页面出现两份陈旧列表。 */
@@ -94,12 +88,15 @@ export function MainWindow({
   const { t } = useText()
   const toast = useToast()
   const pool = claudeAccounts
-  const session = useSession()
-  useSessionNotices(session.state.notice)
+  const session = useSession(undefined, location.kind === "session" ? location.sessionId : null)
+  useSessionNotices(session.notice)
   const workspaces = useWorkspaces()
   const selection = useWorkspaceSelection(workspaces.add)
-  const { selected: selectedWorkspace, session: sessionWorkspace, projectOf } = selection
+  const { selected: selectedWorkspace, projectOf } = selection
+  const [sessionWorkspaces, setSessionWorkspaces] = useState<ReadonlyMap<string, string>>(new Map())
   const [lastWorkspace, setLastWorkspace] = useState<NavLocation>({ kind: "session" })
+  const currentLocation = useRef(location)
+  currentLocation.current = location
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [addingProject, setAddingProject] = useState(false)
   const workbench = useRef<WorkbenchActions>(null)
@@ -108,16 +105,27 @@ export function MainWindow({
   const [filesRequest, setFilesRequest] = useState<FilesRequest | null>(null)
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [terminalMounted, setTerminalMounted] = useState(false)
-  const [sessionStartedAt, setSessionStartedAt] = useState(() => new Date().toISOString())
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
   const accounts = pool.accounts.map((account) => toPoolAccount(account, pool.proxies))
-  const proxies = pool.proxies.map((proxy) => toPoolProxy(proxy, pool.accounts))
-  const workspace = selectedWorkspace ?? workspaces.paths[0] ?? previewWorkbench?.root ?? null
-  const sessionId = session.state.sessionId
-  const thread = sessionThread({
-    session: session.state,
-    workspace: projectOf(sessionWorkspace),
-    startedAt: sessionStartedAt,
+  const selectedProject = projectOf(selectedWorkspace)
+  const routedProject = location.kind === "draft" ? location.projectId : undefined
+  const workspace =
+    routedProject !== undefined &&
+    routedProject !== selectedProject &&
+    workspaces.paths.includes(routedProject)
+      ? routedProject
+      : (selectedWorkspace ?? workspaces.paths[0] ?? previewWorkbench?.root ?? null)
+  const sessionId =
+    location.kind === "session" ? (location.sessionId ?? session.state.sessionId) : null
+  const sessionWorkspace =
+    session.summaries.find((item) => item.sessionId === sessionId)?.workspace ??
+    (sessionId === null ? null : sessionWorkspaces.get(sessionId)) ??
+    null
+  const sidebar = workspaceThreads({
+    summaries: session.summaries,
+    states: session.states,
+    workspaces: sessionWorkspaces,
+    projectOf,
     untitled: t("shell.session.untitled"),
     accounts: pool.accounts,
   })
@@ -125,8 +133,13 @@ export function MainWindow({
   const inChat = location.kind === "draft" || location.kind === "session"
   const bridge = window.pigclaude?.workbench ?? previewWorkbench?.bridge
   const sessionActive = session.state.started && !session.state.ended
-  const workbenchRoot = sessionActive ? (sessionWorkspace ?? workspace) : workspace
-  const openInPath = location.kind === "session" ? (sessionWorkspace ?? workspace) : workspace
+  const chatWorkspace = sessionWorkspace ?? workspace
+  const draftProject = projectOf(workspace)
+  const projectDraft = useProjectDraft(draftProject)
+  const currentDraft = useRef(draftProject)
+  currentDraft.current = draftProject
+  const activeSummary = session.summaries.find((item) => item.sessionId === sessionId)
+  const workbenchRoot = chatWorkspace
   const turnActive = sessionActive && session.state.activeTurnId !== null
   const toggleRight = () => {
     setRightOpen((open) => !open)
@@ -173,10 +186,6 @@ export function MainWindow({
   }, [location])
 
   useEffect(() => {
-    if (sessionId) setSessionStartedAt(new Date().toISOString())
-  }, [sessionId])
-
-  useEffect(() => {
     const read = window.pigclaude?.appInfo
     if (!read) return
     void read()
@@ -189,20 +198,24 @@ export function MainWindow({
   }
 
   function newSession(projectId?: string): void {
-    if (!selectWorkspace(newSessionWorkspace(projectId, workspaces.paths, selectedWorkspace)))
-      return
-    onNavigate({ kind: "draft" })
+    const path = newSessionWorkspace(
+      projectId,
+      workspaces.paths,
+      projectOf(sessionWorkspace) ?? workspace,
+    )
+    openDraft(path)
   }
 
-  /** 侧栏「查看文件」：切到这个项目的新会话页并打开工作台的文件面板；会话在别的项目里运行时只提示。 */
+  function openDraft(path: string | null): boolean {
+    if (!selectWorkspace(path)) return false
+    const projectId = projectOf(path)
+    onNavigate({ kind: "draft", ...(projectId === null ? {} : { projectId }) })
+    return true
+  }
+
+  /** 侧栏「查看文件」打开目标项目草稿的工作台。 */
   function browseFiles(projectId: string): void {
-    if (sessionActive && sessionWorkspace !== null && sessionWorkspace !== projectId) {
-      toast(t("shell.project.filesBusy"), "info")
-      return
-    }
-    if (!selectWorkspace(newSessionWorkspace(projectId, workspaces.paths, selectedWorkspace)))
-      return
-    onNavigate({ kind: "draft" })
+    if (!openDraft(projectId)) return
     setFilesRequest({ root: projectId, id: Date.now() })
     setRightOpen(true)
     setRightMax(false)
@@ -213,7 +226,7 @@ export function MainWindow({
     void workspaces
       .add(path)
       .then(() => {
-        selection.select(path)
+        openDraft(path)
         toast(fill(t("shell.project.added"), { name: projectNameFromPath(path) }), "folder")
       })
       .catch((error: unknown) => toast(workspaceErrorMessage(error, t), "info"))
@@ -229,94 +242,23 @@ export function MainWindow({
     return true
   }
 
-  const renderSettingsPage: SettingsPageRenderer = (page) => {
-    if (page === "accounts") {
-      return (
-        <ScrollPanel>
-          <AccountsScreen
-            accounts={accounts}
-            proxies={proxies}
-            browserProfiles={browserProfiles?.profiles}
-            onOpenBrowserProfiles={() => settings("browser-profiles")}
-            error={pool.error}
-            onOpenAuthorize={onOpenAuthorize}
-            onReauthorize={(accountId) => {
-              if (onReauthorizeAccount) onReauthorizeAccount(accountId)
-              else onOpenAuthorize()
-            }}
-            onRemove={(accountId) => void pool.remove(accountId)}
-            onUpdate={(input) => void pool.update(input)}
-            onImportFromClaudeCli={(browserProfileId) =>
-              pool.importFromClaudeCli({ confirmCopy: true, browserProfileId })
-            }
-          />
-        </ScrollPanel>
-      )
-    }
-    if (page === "proxies") {
-      return (
-        <ScrollPanel>
-          <ProxiesScreen
-            proxies={proxies}
-            error={pool.error}
-            onTest={(proxyId) => pool.testProxy(proxyId)}
-            onSave={(input) => pool.saveProxy(input)}
-            onRemove={(proxyId) => void pool.removeProxy(proxyId)}
-          />
-        </ScrollPanel>
-      )
-    }
-    if (page === "browser-profiles" && browserProfiles) {
-      return (
-        <ScrollPanel>
-          <BrowserProfilesScreen controller={browserProfiles} proxies={pool.proxies} />
-        </ScrollPanel>
-      )
-    }
-    if (page === "usage")
-      return (
-        <ScrollPanel>
-          <UsageScreen />
-        </ScrollPanel>
-      )
-    if (page === "environment") {
-      return (
-        <ScrollPanel>
-          <EnvironmentScreen
-            accounts={pool.accounts}
-            proxies={pool.proxies}
-            status={session.status}
-            models={session.models}
-            modelsLoading={session.modelsLoading}
-            modelsError={session.modelsError}
-            modelsCliError={session.modelsCliError}
-            onLoadModels={() => void session.refreshModels()}
-            onCancelModels={session.cancelModels}
-            onRecheck={() => {
-              void session.refreshStatus()
-              void session.refreshModels(true)
-              void pool.refresh()
-            }}
-            onCheckEgress={(proxyId) => pool.checkEgress(proxyId)}
-          />
-        </ScrollPanel>
-      )
-    }
-    return (
-      <SettingsScreen
-        withdrawContextId={membership.actionContextId}
-        membership={membership}
-        appInfo={appInfo}
-        defaultWorkspace={workspace}
-        models={session.models}
-        accounts={pool.accounts}
-        page={page}
-        appearance={appearance}
-        onNavigate={onNavigate}
-        onLogout={onLogout}
-      />
-    )
-  }
+  const renderSettingsPage = (page: string) => (
+    <MainWindowSettings
+      page={page}
+      membership={membership}
+      pool={pool}
+      browserProfiles={browserProfiles}
+      session={session}
+      workspace={workspace}
+      appInfo={appInfo}
+      appearance={appearance}
+      onOpenAuthorize={onOpenAuthorize}
+      onReauthorizeAccount={onReauthorizeAccount}
+      onOpenSettings={settings}
+      onNavigate={onNavigate}
+      onLogout={onLogout}
+    />
+  )
 
   return (
     <PigclaudeShell
@@ -350,11 +292,11 @@ export function MainWindow({
             },
           }
         : {})}
-      locationKey={page ?? location.kind}
+      locationKey={page ?? sessionId ?? routedProject ?? location.kind}
       projects={workspaceProjects(workspaces.paths, workspaces.names)}
-      threads={thread ? [thread] : []}
-      activeThreadId={location.kind === "session" ? (thread?.id ?? null) : null}
-      threadStatus={thread ? { [thread.id]: sessionStatus(session.state) } : {}}
+      threads={sidebar.threads}
+      activeThreadId={sessionId}
+      threadStatus={sidebar.statuses}
       agentNames={sessionAgentNames(pool.accounts)}
       expandedProjects={expanded}
       canGoBack={canGoBack}
@@ -368,7 +310,13 @@ export function MainWindow({
       {...(bridge
         ? { onBrowseFiles: browseFiles, onToggleWorkbench: toggleRight, canToggleWorkbench: inChat }
         : {})}
-      onOpenThread={() => onNavigate({ kind: "session" })}
+      onOpenThread={(id) => {
+        const path =
+          session.summaries.find((item) => item.sessionId === id)?.workspace ??
+          sessionWorkspaces.get(id)
+        if (path && !canSelectWorkspace(path)) return
+        onNavigate({ kind: "session", sessionId: id })
+      }}
       onAddProject={() => setAddingProject(true)}
       {...projectActions({
         workspaces,
@@ -441,11 +389,12 @@ export function MainWindow({
                 workbench: bridge,
               }
             : {})}
-          {...(openInPath ? { openIn: <OpenInButton path={openInPath} /> } : {})}
+          {...(chatWorkspace ? { openIn: <OpenInButton path={chatWorkspace} /> } : {})}
           fresh={location.kind === "draft"}
+          key={sessionId ?? draftProject}
           session={session}
-          workspace={workspace}
-          workspaceProject={projectOf(workspace)}
+          workspace={chatWorkspace}
+          workspaceProject={projectOf(chatWorkspace)}
           workspaceOptions={workspaces.paths}
           accounts={pool.accounts}
           proxies={pool.proxies}
@@ -453,12 +402,24 @@ export function MainWindow({
             void workspaces
               .pick()
               .then((path) => {
-                if (path !== null) selectWorkspace(path)
+                if (path !== null) openDraft(path)
               })
               .catch((error: unknown) => toast(workspaceErrorMessage(error, t), "info"))
           }}
-          onSelectWorkspace={selectWorkspace}
-          onWorkspaceUsed={selection.used}
+          onSelectWorkspace={openDraft}
+          onWorkspaceUsed={(path, project, id) => {
+            if (id) setSessionWorkspaces((current) => new Map(current).set(id, path))
+            selection.used(path, project, false)
+          }}
+          onDraftOpened={(id, project) => {
+            const location = currentLocation.current
+            if (location.kind !== "draft" && location.kind !== "session") return
+            if (location.kind === "session" && location.sessionId !== undefined) return
+            if (currentDraft.current === project) onNavigate({ kind: "session", sessionId: id })
+          }}
+          {...(activeSummary === undefined ? {} : { listStatus: activeSummary.status })}
+          projectDraft={projectDraft}
+          identifySessions
           onOpen={onNavigate}
           smartPunctuation={appearance.settings.smartPunctuation}
         />

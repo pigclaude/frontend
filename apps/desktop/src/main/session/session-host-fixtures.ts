@@ -407,7 +407,7 @@ export function createHarness(options: HarnessOptions): SessionHarness {
   const host = new SessionHost(hostOptions)
   host.subscribe((envelope) => {
     envelopes.push(envelope)
-    events.push(envelope.event)
+    if (envelope.event.type !== "sessions-changed") events.push(envelope.event)
   })
   return {
     host,

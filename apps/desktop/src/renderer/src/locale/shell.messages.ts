@@ -19,6 +19,7 @@ export const shellZhCN = {
   "shell.notice.sessionDirect": "系统网络",
   "shell.notice.sessionProxyMissing": "绑定的代理已不存在",
   "shell.session.untitled": "新会话",
+  "shell.session.parked": "此会话已停放。可以在此查看记录，或新建会话。",
   "shell.project.added": "已添加工作区 {name}",
   "shell.project.unavailable": "工作区不可用",
   "shell.project.renameFailed": "项目改名失败，请重试",
@@ -54,6 +55,8 @@ export const shellEnUS = {
   "shell.notice.sessionDirect": "System network",
   "shell.notice.sessionProxyMissing": "The bound proxy no longer exists",
   "shell.session.untitled": "New session",
+  "shell.session.parked":
+    "This session is parked. View its conversation here, or start a new session.",
   "shell.project.added": "Added workspace {name}",
   "shell.project.unavailable": "Workspace unavailable",
   "shell.project.renameFailed": "Couldn't rename the project. Try again.",

@@ -9,7 +9,7 @@ import {
   type ProxyView,
 } from "@pigclaude/contracts/claude-account"
 import type { AgentFeatures, RuntimeMode } from "@pigclaude/ui-contracts"
-import { ChatView, NewThreadView } from "@pigclaude/ui-chat"
+import { ChatView } from "@pigclaude/ui-chat"
 import {
   prefillComposer,
   type ComposerModelChoice,
@@ -45,6 +45,10 @@ import type { SessionEffort } from "../../../main/session/session-types"
 import type { WorkbenchBridge } from "../../../workbench-contract"
 import { useSlashCommands } from "../shell/registry-slash-commands"
 import { useSessionDefaults } from "../hooks/use-session-defaults"
+import type { ProjectDraftEditor } from "../hooks/use-project-draft"
+import type { SessionListStatus } from "../../../main/session/session-summary"
+import { useText } from "../locale/text"
+import { ChatDraft } from "./chat-draft"
 import { useDraftWorkspace } from "./draft-workspace"
 
 /** Claude 会话支持的 Agent 功能；界面据此显示计划、中断和审批等控件。 */
@@ -81,7 +85,15 @@ export type ChatScreenProps = {
   onPickWorkspace: () => void
   onSelectWorkspace: (path: string) => void
   /** 会话在 path 里开始了；project 是 path 所属的项目。 */
-  onWorkspaceUsed: (path: string, project: string) => void
+  onWorkspaceUsed: (path: string, project: string, sessionId?: string) => void
+  /** 主窗口为新会话分配 id，使草稿启动和发送能跨导航保持原会话归属。 */
+  identifySessions?: boolean
+  /** 当前项目的草稿，离开聊天页也保留。 */
+  projectDraft?: ProjectDraftEditor
+  /** 排队中的会话需要等主进程启动后才能发下一条。 */
+  listStatus?: SessionListStatus
+  /** 当前草稿启动完成后，由窗口只有仍在这个草稿时切换。 */
+  onDraftOpened?: (sessionId: string, project: string) => void
   onOpen: (location: NavLocation) => void
   smartPunctuation: boolean
   layoutControls?: ReactNode
@@ -105,6 +117,10 @@ export function ChatScreen({
   onPickWorkspace,
   onSelectWorkspace,
   onWorkspaceUsed,
+  identifySessions = false,
+  projectDraft,
+  listStatus,
+  onDraftOpened,
   onOpen,
   smartPunctuation,
   layoutControls,
@@ -114,6 +130,7 @@ export function ChatScreen({
   workbench,
 }: ChatScreenProps) {
   const toast = useToast()
+  const { t } = useText()
   const commands = useSlashCommands()
   const { state } = session
   const live = state.started && !state.ended
@@ -128,21 +145,29 @@ export function ChatScreen({
   const startedAt = useRef(Date.now())
   const lastModelsError = useRef<string | null>(null)
   const [page, setPage] = useState<HTMLDivElement | null>(null)
+  const submitting = useRef(false)
 
   // 同一时间只回答一张卡片；答完后下一张会顶上来。
   const pending = useMemo(() => pendingPermission(state), [state])
   const defaultModel = session.models.find((model) => model.isDefault) ?? session.models[0]
   // 默认模型已不在目录里时用 Claude Code 的默认；目录还没读到时先照用。
+  const chosenModelId = projectDraft
+    ? (projectDraft.draft.modelId ?? defaults.model ?? "")
+    : modelId
   const draftModel =
-    session.models.length === 0 || session.models.some((model) => model.id === modelId)
-      ? modelId
+    session.models.length === 0 || session.models.some((model) => model.id === chosenModelId)
+      ? chosenModelId
       : ""
   const selectedModel = state.model ?? (draftModel || defaultModel?.id || "")
+  const draftLevel = projectDraft?.draft.level ?? (projectDraft ? defaultLevel : level)
+  const plan = projectDraft?.draft.plan ?? draftPlan
   const shown: PermissionView = live
     ? permissionView(state.permissionMode, level)
-    : { level, plan: draftPlan }
+    : { level: draftLevel, plan }
   // 偏好的账号已从号池删除时按自动选择处理。
-  const draftAccount = accounts.some((account) => account.id === accountId) ? accountId : ""
+  const pickedAccount =
+    projectDraft?.draft.accountId ?? (projectDraft ? (defaults.accountId ?? "") : accountId)
+  const draftAccount = accounts.some((account) => account.id === pickedAccount) ? pickedAccount : ""
   const activeAccount = live ? (sessionAccountId(session) ?? "") : draftAccount
   const proxyUrls = new Map(proxies.map((proxy) => [proxy.id, proxy.url]))
   const availableAccounts = accounts.filter((account) =>
@@ -168,7 +193,7 @@ export function ChatScreen({
     agents,
     session.modelsLoading && session.models.length === 0 ? null : session.models,
   )
-  const draftKey = live ? (state.sessionId ?? "session") : (workspace ?? "new-thread")
+  const draftKey = (fresh ? null : state.sessionId) ?? workspaceProject ?? "new-thread"
   const projectName = workspace === null ? "" : projectNameFromPath(workspace)
   const threadId = state.sessionId ?? (workspace === null ? "new-thread" : `draft-${workspace}`)
   // 草稿页只在还没有会话时使用；从草稿发第一条消息后即使导航还没切换，也要显示时间线。
@@ -225,12 +250,14 @@ export function ChatScreen({
     const next = composerLevel(mode)
     if (next === null) return
     if (live && !shown.plan) void session.setMode(sessionPermissionMode(next, false))
+    else if (!live && projectDraft) projectDraft.update({ level: next })
     else setLevel(next)
   }
 
   /** 开合计划开关；关掉时回到打开前的档位。 */
   function choosePlan(value: boolean): void {
     if (live) void session.setMode(sessionPermissionMode(level, value))
+    else if (projectDraft) projectDraft.update({ plan: value })
     else setDraftPlan(value)
   }
 
@@ -241,8 +268,12 @@ export function ChatScreen({
       notify("会话开始后不支持换号")
       return
     }
-    if (!live) setAccountId(nextAccount)
-    setModelId(choice.modelId)
+    if (!live && projectDraft)
+      projectDraft.update({ accountId: nextAccount, modelId: choice.modelId })
+    else {
+      if (!live) setAccountId(nextAccount)
+      setModelId(choice.modelId)
+    }
     if (live) void session.setModel(choice.modelId)
   }
 
@@ -267,18 +298,26 @@ export function ChatScreen({
     project: string,
     effort?: SessionEffort,
     fast?: boolean,
+    sessionId?: string,
   ): Promise<boolean> {
-    const ok = await session.start({
+    const input = {
+      ...(sessionId === undefined ? {} : { sessionId }),
       workspace: target,
       ...(selectedModel === "" ? {} : { model: selectedModel }),
       ...(effort === undefined ? {} : { effort }),
       ...(fast ? { fast: true } : {}),
-      permissionMode: sessionPermissionMode(level, draftPlan),
+      permissionMode: sessionPermissionMode(draftLevel, plan),
       ...(draftAccount === "" ? {} : { accountId: draftAccount }),
-    })
+    }
+    const ok = await (projectDraft
+      ? session.start(input, (error) => projectDraft.update({ error }))
+      : session.start(input))
     if (ok) {
-      onWorkspaceUsed(target, project)
-      if (fresh) onOpen({ kind: "session" })
+      if (sessionId === undefined) onWorkspaceUsed(target, project)
+      else onWorkspaceUsed(target, project, sessionId)
+      if (sessionId !== undefined && onDraftOpened) onDraftOpened(sessionId, project)
+      else if (fresh || sessionId !== undefined)
+        onOpen({ kind: "session", ...(sessionId === undefined ? {} : { sessionId }) })
     }
     return ok
   }
@@ -294,6 +333,11 @@ export function ChatScreen({
       }
       return session.send(text, sendOptions)
     }
+    if (identifySessions && state.sessionId !== null) {
+      if (listStatus === "queued" || listStatus === "running") return false
+      notify(t("shell.session.parked"))
+      return false
+    }
     const target = workspace ?? workspaceOptions[0] ?? null
     if (target === null) {
       notify("先选择一个工作区")
@@ -302,17 +346,28 @@ export function ChatScreen({
     const directory = await draft.start(target)
     if (directory === null) return false
     const project = (workspace === null ? null : workspaceProject) ?? target
-    const ok = await startSession(directory, project, effort, fast)
+    const sessionId = identifySessions ? crypto.randomUUID() : undefined
+    const ok = await startSession(directory, project, effort, fast, sessionId)
     if (!ok) return false
-    return session.send(text, sendOptions)
+    return sessionId === undefined
+      ? session.send(text, sendOptions)
+      : session.send(text, sendOptions, sessionId)
   }
 
   /** 输入区发送后立即清空；提交失败时把文字放回草稿，避免用户重写。 */
   function submitFromComposer(text: string, options: ComposerSubmitOptions): void {
+    if (submitting.current) return
+    submitting.current = true
+    if (fresh) projectDraft?.update({ pending: true, error: null })
     const key = draftKey
-    void submit(text, options).then((ok) => {
-      if (!ok) prefillComposer(key, { text })
-    })
+    void submit(text, options)
+      .then((ok) => {
+        if (!ok) prefillComposer(key, { text })
+      })
+      .finally(() => {
+        submitting.current = false
+        if (fresh) projectDraft?.update({ pending: false })
+      })
   }
 
   /** 回答一次权限请求；“始终允许”把 SDK 建议的规则一起写回。批准计划时先回到打开计划前的档位。 */
@@ -325,10 +380,6 @@ export function ChatScreen({
     // 顺序不能换：先切档位，回到自动审批时才会经过 Claude Code 核实。
     if (approvesPlan) await session.setMode(sessionPermissionMode(level, false))
     await session.respondPermission(requestId, choice.decision, choice.suggestions)
-  }
-
-  function chooseWorkspace(path: string): void {
-    onSelectWorkspace(path)
   }
 
   const view = useMemo(
@@ -367,39 +418,20 @@ export function ChatScreen({
   })
 
   if (showDraft) {
-    const projects = workspaceOptions.map((path) => ({
-      id: path,
-      name: projectNameFromPath(path),
-      rootPath: path,
-    }))
     return (
-      <ToolRenderers>
-        <NewThreadView
-          layoutControls={layoutControls}
-          openIn={openIn}
-          commands={commands}
-          projects={projects}
-          projectId={workspaceProject}
-          workspaceControls={draft.controls}
-          workspaceStatus={draft.status}
-          pending={draft.busy}
-          onSelectProject={chooseWorkspace}
-          onAddProject={onPickWorkspace}
-          draftKey={draftKey}
-          agents={composer.agents}
-          catalog={composer.catalog}
-          onLoadModels={composer.onLoadModels}
-          agentId={composer.agentId}
-          modelId={composer.modelId}
-          onSelectModel={composer.onSelectModel}
-          permissionMode={composer.permissionMode}
-          onPermissionMode={composer.onPermissionMode}
-          planMode={composer.planMode}
-          onPlanMode={composer.onPlanMode}
-          files={composer.files}
-          onSubmit={submitFromComposer}
-        />
-      </ToolRenderers>
+      <ChatDraft
+        composer={composer}
+        workspace={draft}
+        projectDraft={projectDraft}
+        projects={workspaceOptions}
+        projectId={workspaceProject}
+        commands={commands}
+        openIn={openIn}
+        layoutControls={layoutControls}
+        onSelectProject={onSelectWorkspace}
+        onAddProject={onPickWorkspace}
+        onSubmit={submitFromComposer}
+      />
     )
   }
 

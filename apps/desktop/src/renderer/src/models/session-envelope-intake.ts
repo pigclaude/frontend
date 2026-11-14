@@ -39,6 +39,13 @@ export class SessionEnvelopeIntake {
     else this.#route(sessionId, envelope)
   }
 
+  /** 没接到这个会话的事件时补拉现有历史；读完后再接着处理实时信封。 */
+  catchUp(sessionId: string): void {
+    if (this.#closed || this.#lastSeq.has(sessionId) || this.#waiting.has(sessionId)) return
+    this.#waiting.set(sessionId, [])
+    void this.#fill(sessionId, null)
+  }
+
   /** 停止接收；之后到达的信封和补拉结果都丢弃。 */
   close(): void {
     this.#closed = true
@@ -68,17 +75,17 @@ export class SessionEnvelopeIntake {
     void this.#fill(sessionId, seq)
   }
 
-  // 只补到断号之前；断号处及之后的事件都在缓存里，按到达顺序和夹在中间的实时事件一起交出。
-  async #fill(sessionId: string, targetSeq: number): Promise<void> {
+  // 补到断号之前或当前历史末尾，再按到达顺序交出缓存。
+  async #fill(sessionId: string, targetSeq: number | null): Promise<void> {
     const last = (): number => this.#lastSeq.get(sessionId) ?? 0
     try {
-      while (last() < targetSeq - 1) {
+      while (targetSeq === null || last() < targetSeq - 1) {
         const before = last()
         const page = await this.#options.fetch(sessionId, before)
         if (this.#closed) return
         for (const envelope of page) {
           if (envelope.sessionId !== sessionId || envelope.seq !== last() + 1) continue
-          if (envelope.seq >= targetSeq) break
+          if (targetSeq !== null && envelope.seq >= targetSeq) break
           this.#lastSeq.set(sessionId, envelope.seq)
           this.#options.apply(envelope)
         }
@@ -88,7 +95,7 @@ export class SessionEnvelopeIntake {
       // 补拉失败时这段断号补不回来，缓存的信封照常交出。
     }
     if (this.#closed) return
-    this.#lastSeq.set(sessionId, Math.max(last(), targetSeq - 1))
+    if (targetSeq !== null) this.#lastSeq.set(sessionId, Math.max(last(), targetSeq - 1))
     const waiting = this.#waiting.get(sessionId) ?? []
     this.#waiting.delete(sessionId)
     for (const envelope of waiting) this.#route(sessionId, envelope)

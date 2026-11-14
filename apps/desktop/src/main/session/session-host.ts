@@ -178,8 +178,11 @@ export class SessionHost {
         cancelled: () => entry.cancelled ?? (this.#disposed ? "SESSION_CANCELLED" : null),
         acquire: () => {
           entry.phase = "queued"
-          return this.#concurrency.acquire(entry.sessionId).then((waited) => {
+          const slot = this.#concurrency.acquire(entry.sessionId)
+          this.#emitHost({ type: "sessions-changed" })
+          return slot.then((waited) => {
             entry.phase = "starting"
+            this.#emitHost({ type: "sessions-changed" })
             return waited
           })
         },
@@ -209,6 +212,7 @@ export class SessionHost {
     }
     entry.phase = "running"
     this.#concurrency.touch(entry.sessionId)
+    this.#emitHost({ type: "sessions-changed" })
     return { sessionId: entry.sessionId }
   }
 
@@ -370,12 +374,14 @@ export class SessionHost {
     this.#closeTools(entry)
     if (entry.phase === "running") entry.phase = "parked"
     this.#concurrency.release(entry.sessionId)
+    this.#emitHost({ type: "sessions-changed" })
   }
 
   #forget(entry: SessionEntry): void {
     this.#concurrency.release(entry.sessionId)
     this.#closeTools(entry)
     this.#registry.delete(entry)
+    this.#emitHost({ type: "sessions-changed" })
   }
 
   #closeTools(entry: SessionEntry): void {

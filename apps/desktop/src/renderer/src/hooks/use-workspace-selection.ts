@@ -14,8 +14,8 @@ export type WorkspaceSelection = {
   select: (path: string | null) => void
   /** 选用 from 所在项目的一个 worktree（或回到项目本身）作为下一次会话的目录。 */
   selectWorktree: (path: string, from: string | null) => void
-  /** 会话在 path 里开始了：记下目录，把它所属的 project 放到最近项目最前。 */
-  used: (path: string, project: string) => void
+  /** 记下会话的工作区和项目，可选择是否更新当前选中的草稿目录。 */
+  used: (path: string, project: string, select?: boolean) => void
 }
 
 /** addProject 把项目放到最近项目最前；失败时不影响已经开始的会话。 */
@@ -45,9 +45,9 @@ export function useWorkspaceSelection(
       if (project !== null) remember(path, project)
       setSelected(path)
     },
-    used(path, project) {
+    used(path, project, select = true) {
       remember(path, project)
-      setSelected(path)
+      if (select) setSelected(path)
       setSession(path)
       void addProject(project).catch(() => undefined)
     },

@@ -90,11 +90,12 @@ export function installFakeDesktopBridge(
   const calls: string[] = []
   const starts: SessionStartInput[] = []
   let listener: ((envelope: SessionEnvelope) => void) | null = null
+  let sessionId = "s-1"
   let seq = 0
   const emit = (event: SessionHostEvent) =>
     listener?.({
       version: 1,
-      sessionId: "s-1",
+      sessionId,
       seq: (seq += 1),
       at: new Date().toISOString(),
       event,
@@ -164,16 +165,17 @@ export function installFakeDesktopBridge(
     session: {
       start: async (input) => {
         starts.push(input)
+        sessionId = input.sessionId ?? "s-1"
         setTimeout(() =>
           emit({
             type: "started",
-            sessionId: "s-1",
+            sessionId,
             model: "claude-sonnet",
             tools: [],
             permissionMode: "default",
           }),
         )
-        return { sessionId: "s-1" }
+        return { sessionId }
       },
       send: async () => {
         setTimeout(() => {

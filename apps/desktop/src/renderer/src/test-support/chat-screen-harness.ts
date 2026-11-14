@@ -71,6 +71,9 @@ export function startingState(): SessionUiState {
 export function sessionController(overrides: Partial<SessionController> = {}): SessionController {
   return {
     state: createSessionState(),
+    states: new Map(),
+    summaries: [],
+    notice: null,
     status: null,
     models: [{ id: "claude-sonnet", displayName: "Sonnet", description: "", isDefault: true }],
     modelsLoading: false,

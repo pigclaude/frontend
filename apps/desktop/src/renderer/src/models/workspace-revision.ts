@@ -1,12 +1,17 @@
 // 负责决定工作台什么时候重读项目：Claude 的工具调用结束或一轮结束后，文件树、Git 状态、Diff 和打开的文件都重读。
-import type { SessionTurn } from "./session-model"
+import { sessionRecord } from "./session-event-store"
+import type { SessionUiState } from "./session-model"
 
-/** 可能改动过项目的事件数：结束的工具调用加上结束的轮次。只增不减，可以直接作为工作台的版本号。 */
-export function workspaceRevision(turns: readonly SessionTurn[]): number {
-  let revision = 0
-  for (const turn of turns) {
-    revision += turn.tools.filter((tool) => tool.status !== "running").length
-    if (turn.endedAt !== null) revision += 1
+/**
+ * 可能改动过项目的事件数：当前会话里结束的工具调用（同一调用只算一次）加上结束的轮次。
+ * 同一会话里只增不减，可以直接作为工作台的版本号。
+ */
+export function workspaceRevision(
+  state: Pick<SessionUiState, "events" | "sessionId" | "turns">,
+): number {
+  const finished = new Set<string>()
+  for (const { event } of sessionRecord(state.events, state.sessionId).envelopes) {
+    if (event.type === "tool-result") finished.add(event.toolUseId)
   }
-  return revision
+  return finished.size + state.turns.filter((turn) => turn.endedAt !== null).length
 }

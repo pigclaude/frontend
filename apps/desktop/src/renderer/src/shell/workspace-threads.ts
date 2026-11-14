@@ -5,6 +5,7 @@ import type { ThreadStatus } from "@pigclaude/ui-shell"
 import { DEFAULT_PERMISSION_LEVEL, permissionView } from "../models/composer-config"
 import { projectNameFromPath } from "../models/project-model"
 import type { SessionUiState } from "../models/session-model"
+import { pendingPermission } from "../models/session-permissions"
 
 /** 侧栏不显示项目的创建时间，项目统一用这个占位时间。 */
 const UNDATED = "1970-01-01T00:00:00.000Z"
@@ -39,9 +40,9 @@ export function sessionTitle(session: Pick<SessionUiState, "turns">, untitled: s
  * 会话出错结束时失败，还没有回合时空闲。PigClaude 没有排队。
  */
 export function sessionStatus(session: SessionUiState): ThreadStatus {
-  const active = session.turns.find((turn) => turn.id === session.activeTurnId)
-  if (active?.permissions.some((card) => card.status === "pending")) return "waiting-approval"
-  if (session.activeTurnId !== null && !session.ended) return "running"
+  if (session.activeTurnId !== null && !session.ended) {
+    return pendingPermission(session) === null ? "running" : "waiting-approval"
+  }
   if (session.ended && session.endedReason === "error") return "failed"
   const last = session.turns.at(-1)?.status
   if (last === "done") return "completed"

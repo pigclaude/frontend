@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest"
 import type { SessionHostEvent } from "../../../main/session/session-types"
+import { receive } from "../test-support/session-envelopes"
 import { createSessionState, reduceSession, type SessionUiState } from "./session-model"
 import { threadView } from "./thread-view"
 
@@ -20,7 +21,7 @@ const firstResult: SessionHostEvent = {
 }
 
 function emit(state: SessionUiState, event: SessionHostEvent, time = at): SessionUiState {
-  return reduceSession(state, { type: "event", event, at: time })
+  return receive(state, event, time)
 }
 
 function sentTurn(): SessionUiState {
@@ -34,7 +35,7 @@ function sentTurn(): SessionUiState {
   return emit(state, { type: "turn-started", turnId: "main-turn-1" })
 }
 
-function runEvents(state: SessionUiState): string[] {
+function view(state: SessionUiState) {
   return threadView({
     state,
     threadId: "session-1",
@@ -46,6 +47,10 @@ function runEvents(state: SessionUiState): string[] {
     planMode: false,
     startedAt: Date.parse(at),
   })
+}
+
+function runEvents(state: SessionUiState): string[] {
+  return view(state)
     .events.map((event) => event.type)
     .filter((type) => type.startsWith("run."))
 }
@@ -89,9 +94,11 @@ describe("session model turns", () => {
 
     expect(state.turns).toHaveLength(1)
     expect(state.turns[0]?.userText).toBe("后台跑一个子代理")
-    expect(state.turns[0]?.blocks).toMatchObject([
-      { type: "text", text: "子代理已经跑完：SUB_DONE" },
-    ])
+    expect(
+      view(state)
+        .events.filter((event) => event.type === "message.completed")
+        .map((event) => event.payload),
+    ).toEqual([{ text: "子代理已经跑完：SUB_DONE" }])
   })
 
   it("opens a turn for a turn the main process started without a message from this window", () => {

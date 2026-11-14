@@ -336,7 +336,7 @@ export function MainWindow({
                   sessionId={sessionId}
                   sessionActive={sessionActive}
                   turnActive={turnActive}
-                  workspaceRevision={workspaceRevision(session.state.turns)}
+                  workspaceRevision={workspaceRevision(session.state)}
                   visible={inChat && rightOpen}
                   open={rightOpen}
                   maximized={rightMax}

@@ -1,87 +1,47 @@
-// 负责把会话桥的流式事件归并成聊天界面状态：增量合并、消息/工具去重、权限卡片、
-// 换号提示、权限模式和会话提示、结果和结束状态，并把主进程错误码映射成中文文案。
-// 一轮由主进程开闭：result 只记用量，turn-ended 才结束这一轮，后台子代理和工作流跑完前一直显示运行中。
-// 每个动作都带 ISO UTC 时间：事件取信封时间，界面操作取操作时的时间；时间线据此显示耗时。
+// 负责聊天界面的会话状态：会话是否在运行、权限模式、模型和账号、哪一轮开着、用户发过的消息和
+// 对权限卡片的回答、界面先行结束的一轮、错误和提示，并把主进程错误码映射成中文文案。
+// 收到的信封交给按会话 id 组织的事件存储；时间线的内容（文字、思考、工具、权限、换号）不在这里归并，
+// 由 session-timeline 从信封投影。一轮由主进程开闭：turn-ended 才结束这一轮，result 只留在信封里。
+// 每个动作都带 ISO UTC 时间：事件取信封时间，界面操作取操作时的时间。
 
+import type { SessionEnvelope } from "../../../main/session/session-envelope"
 import type {
-  SessionAccountSwitchReason,
   SessionHostEvent,
   SessionPermissionMode,
   SessionTurnEndStatus,
 } from "../../../main/session/session-types"
 import { sessionErrorView, type SessionErrorView } from "./session-errors"
 import {
-  addPermission,
-  answerPermission,
-  hasPermission,
-  settlePendingPermissions,
-  type SessionPermissionCard,
-} from "./session-permissions"
-import { appendDelta, appendMessage } from "./session-turn-blocks"
+  lastSeq,
+  sessionRecord,
+  storeEnvelope,
+  type SessionEventStore,
+} from "./session-event-store"
+import type { SessionPermissionAnswer } from "./session-permissions"
 
 export { sessionErrorText, sessionErrorView } from "./session-errors"
-
-/** 界面里的工具调用状态。 */
-export type SessionToolStatus = "running" | "done" | "error"
-
-/** 界面里的一次工具调用；input 只保留在内存里。开始和结束时间用来显示工具耗时。 */
-export type SessionToolCall = {
-  id: string
-  name: string
-  input: unknown
-  status: SessionToolStatus
-  output: string | null
-  startedAt: string
-  endedAt: string | null
-}
-
-/** 助手消息里的内容块顺序；工具块通过 id 指向 tools。文字块的 at 是它最后一次更新的时间。 */
-export type SessionBlock =
-  | { type: "text"; text: string; at: string }
-  | { type: "thinking"; text: string; at: string }
-  | { type: "tool"; id: string }
-
-/** 一次换号事件；initial 只更新当前账号，不显示为换号。 */
-export type SessionAccountSwitch = {
-  from: string | null
-  to: string
-  reason: SessionAccountSwitchReason
-  at: string
-}
 
 /** 界面展示的错误；warning 表示不终止会话的提示。 */
 export type { SessionErrorView } from "./session-errors"
 
-/** 一次 result 事件的用量元数据。 */
-export type SessionResult = {
-  subtype: string
-  isError: boolean
-  durationMs: number
-  numTurns: number
-  stopReason: string | null
-  inputTokens: number
-  outputTokens: number
-  cacheReadTokens: number
-  cacheCreationTokens: number
-}
+/** 一轮对话的展示状态；等待审批由时间线按没回答的权限卡片判断。 */
+export type SessionTurnStatus = "streaming" | "done" | "error" | "cancelled"
 
-/** 一轮对话的展示状态。 */
-export type SessionTurnStatus = "streaming" | "waiting" | "done" | "error" | "cancelled"
-
-/** 一轮对话：用户输入、助手块、工具、权限、换号、错误和结果；结束前 endedAt 为 null。 */
+/**
+ * 界面上的一轮：用户发出的一条消息，或主进程自己开的一轮。mainTurnId 是主进程的回合 id，
+ * turn-started 到达后才有；afterSeq 是这一轮开始时已经收到的最大序号，只有更晚的事件才可能属于它。
+ * 结束前 endedAt 为 null；endCode 是结束这一轮的错误码。
+ */
 export type SessionTurn = {
   id: string
+  mainTurnId: string | null
+  afterSeq: number
+  userText: string | null
   startedAt: string
   endedAt: string | null
-  userText: string | null
-  blocks: SessionBlock[]
-  tools: SessionToolCall[]
-  permissions: SessionPermissionCard[]
-  switches: SessionAccountSwitch[]
-  errors: SessionErrorView[]
-  result: SessionResult | null
   status: SessionTurnStatus
-  seenMessageIds: string[]
+  endCode: string | null
+  errors: SessionErrorView[]
 }
 
 /** 一条会话提示；每条都是新对象，同样的话再次出现也能和上一条区分。 */
@@ -99,16 +59,20 @@ export type SessionUiState = {
   accountId: string | null
   activeTurnId: string | null
   turns: SessionTurn[]
+  /** 用户对权限卡片的回答，按请求 id；界面立即按回答显示，不等主进程。 */
+  answers: Readonly<Record<string, SessionPermissionAnswer>>
+  /** 收到的信封，按会话 id。 */
+  events: SessionEventStore
   error: SessionErrorView | null
   notice: SessionNotice | null
 }
 
-/** 会话状态机动作；事件统一包在 event 里，at 取信封时间。界面操作使用其余类型，at 取操作时间。 */
+/** 会话状态机动作；信封整条交进来，界面操作的 at 取操作时间。 */
 export type SessionAction =
   | { type: "starting" }
   | { type: "opened"; sessionId: string }
   | { type: "user-message"; text: string; turnId: string; at: string }
-  | { type: "event"; event: SessionHostEvent; at: string }
+  | { type: "envelope"; envelope: SessionEnvelope }
   | { type: "permission-answered"; requestId: string; decision: "allow" | "deny"; at: string }
   | { type: "cancel-requested"; at: string }
   | { type: "stopped"; at: string }
@@ -128,12 +92,14 @@ export function createSessionState(): SessionUiState {
     accountId: null,
     activeTurnId: null,
     turns: [],
+    answers: {},
+    events: {},
     error: null,
     notice: null,
   }
 }
 
-/** 归并一个动作；保证重复消息、工具结果和权限请求不会产生重复条目。 */
+/** 归并一个动作；保证同一序号的信封只生效一次，同一张权限卡片只记第一次回答。 */
 export function reduceSession(state: SessionUiState, action: SessionAction): SessionUiState {
   switch (action.type) {
     case "starting":
@@ -148,19 +114,23 @@ export function reduceSession(state: SessionUiState, action: SessionAction): Ses
         error: null,
       }
     case "user-message":
-      return appendTurn(state, action.turnId, action.text, action.at)
-    case "event":
-      return applyEvent(state, action.event, action.at)
+      return appendTurn(state, action.turnId, action.text, action.at, currentSeq(state))
+    case "envelope":
+      return applyEnvelope(state, action.envelope)
     case "permission-answered":
+      if (state.answers[action.requestId] !== undefined) return state
       return {
         ...state,
-        turns: answerPermission(state.turns, action.requestId, action.decision, action.at),
+        answers: {
+          ...state.answers,
+          [action.requestId]: { decision: action.decision, at: action.at },
+        },
       }
     case "cancel-requested":
       // 没有活动 turn 时取消只是空操作，不能凭空造一条已取消的对话。
       if (state.activeTurnId === null) return { ...state, error: null }
       return updateActiveTurn({ ...state, error: null }, action.at, (turn) =>
-        endTurn(turn, "cancelled", "denied", action.at),
+        endTurn(turn, "cancelled", null, action.at),
       )
     case "stopped":
       return {
@@ -171,9 +141,7 @@ export function reduceSession(state: SessionUiState, action: SessionAction): Ses
         activeTurnId: null,
         error: null,
         turns: state.turns.map((turn) =>
-          turn.status === "streaming" || turn.status === "waiting"
-            ? endTurn(turn, "cancelled", "denied", action.at)
-            : turn,
+          turn.status === "streaming" ? endTurn(turn, "cancelled", null, action.at) : turn,
         ),
       }
     case "failed":
@@ -187,12 +155,24 @@ export function reduceSession(state: SessionUiState, action: SessionAction): Ses
   }
 }
 
-function applyEvent(state: SessionUiState, event: SessionHostEvent, at: string): SessionUiState {
+function currentSeq(state: SessionUiState): number {
+  return lastSeq(sessionRecord(state.events, state.sessionId))
+}
+
+function applyEnvelope(state: SessionUiState, envelope: SessionEnvelope): SessionUiState {
+  const events = storeEnvelope(state.events, envelope)
+  const duplicate = events === state.events && envelope.sessionId !== null && envelope.seq !== null
+  if (duplicate) return state
+  return applyEvent({ ...state, events }, envelope)
+}
+
+function applyEvent(state: SessionUiState, envelope: SessionEnvelope): SessionUiState {
+  const { event, at } = envelope
   switch (event.type) {
     case "started":
       return {
         ...state,
-        sessionId: event.sessionId,
+        sessionId: envelope.sessionId ?? state.sessionId ?? event.sessionId,
         started: true,
         ended: false,
         endedReason: null,
@@ -202,41 +182,20 @@ function applyEvent(state: SessionUiState, event: SessionHostEvent, at: string):
       return { ...state, permissionMode: readMode(event.permissionMode, state.permissionMode) }
     case "notice":
       return { ...state, notice: { message: event.message } }
-    case "delta":
-      return updateActiveTurn(state, at, (turn) =>
-        appendDelta(turn, event.text, event.thinking, at),
-      )
     case "message":
-      return updateActiveTurn(state, at, (turn) => appendMessage(turn, event, at))
     case "tool-result":
-      return applyToolResult(state, event, at)
     case "permission":
-      if (hasPermission(state.turns, event.requestId)) return state
-      return updateActiveTurn(state, at, (turn) => addPermission(turn, event, at))
+      // 时间线的内容由投影处理；还没有任何一轮时，事件自己开一轮，不让内容无处可放。
+      if (state.turns.length > 0) return state
+      return appendTurn(state, `turn-implicit-1`, null, at, (envelope.seq ?? 1) - 1)
     case "account-switched":
-      return applyAccountSwitch(state, { from: event.from, to: event.to, reason: event.reason, at })
+      return { ...state, accountId: event.to }
     case "turn-started":
-      if (state.activeTurnId !== null) return state
-      return appendTurn(state, event.turnId, null, at)
-    case "result":
-      return updateCurrentTurn(state, (turn) => ({
-        ...turn,
-        result: {
-          subtype: event.subtype,
-          isError: event.isError,
-          durationMs: event.durationMs,
-          numTurns: event.numTurns,
-          stopReason: event.stopReason,
-          inputTokens: event.usage.inputTokens,
-          outputTokens: event.usage.outputTokens,
-          cacheReadTokens: event.usage.cacheReadTokens,
-          cacheCreationTokens: event.usage.cacheCreationTokens,
-        },
-      }))
+      return applyTurnStarted(state, event.turnId, at, (envelope.seq ?? 1) - 1)
     case "turn-ended":
       return applyTurnEnded(state, event.status, event.errorCode, at)
     case "error":
-      return applyError(state, event.code, event.message, at)
+      return applyError(state, event, at)
     case "ended":
       return applyEnded(state, event.reason, at)
     default:
@@ -244,20 +203,17 @@ function applyEvent(state: SessionUiState, event: SessionHostEvent, at: string):
   }
 }
 
-function newTurn(id: string, userText: string | null, at: string): SessionTurn {
+function newTurn(id: string, userText: string | null, at: string, afterSeq: number): SessionTurn {
   return {
     id,
+    mainTurnId: null,
+    afterSeq,
+    userText,
     startedAt: at,
     endedAt: null,
-    userText,
-    blocks: [],
-    tools: [],
-    permissions: [],
-    switches: [],
-    errors: [],
-    result: null,
     status: "streaming",
-    seenMessageIds: [],
+    endCode: null,
+    errors: [],
   }
 }
 
@@ -266,8 +222,30 @@ function appendTurn(
   turnId: string,
   userText: string | null,
   at: string,
+  afterSeq: number,
 ): SessionUiState {
-  return { ...state, turns: [...state.turns, newTurn(turnId, userText, at)], activeTurnId: turnId }
+  return {
+    ...state,
+    turns: [...state.turns, newTurn(turnId, userText, at, afterSeq)],
+    activeTurnId: turnId,
+  }
+}
+
+// 主进程开了一轮：交给这个窗口刚发出、还没认领的那一轮；没有时（例如刷新后补拉到）另开一轮。
+function applyTurnStarted(
+  state: SessionUiState,
+  mainTurnId: string,
+  at: string,
+  afterSeq: number,
+): SessionUiState {
+  if (state.turns.some((turn) => turn.mainTurnId === mainTurnId)) return state
+  const active = state.turns.find((turn) => turn.id === state.activeTurnId)
+  if (active === undefined) {
+    const next = appendTurn(state, mainTurnId, null, at, afterSeq)
+    return updateActiveTurn(next, at, (turn) => ({ ...turn, mainTurnId }))
+  }
+  if (active.mainTurnId !== null) return state
+  return updateActiveTurn(state, at, (turn) => ({ ...turn, mainTurnId }))
 }
 
 // 没有活动轮时，事件自己开一轮，开始时间取这条事件的时间。
@@ -284,34 +262,18 @@ function updateActiveTurn(
     }
   }
   const implicitId = `turn-implicit-${state.turns.length + 1}`
-  const turn = update(newTurn(implicitId, null, at))
+  const afterSeq = currentSeq(state)
+  const turn = update(newTurn(implicitId, null, at, afterSeq))
   return { ...state, turns: [...state.turns, turn], activeTurnId: implicitId }
 }
 
 function endTurn(
   turn: SessionTurn,
   status: "done" | "error" | "cancelled",
-  pending: "denied" | "timeout",
+  code: string | null,
   at: string,
 ): SessionTurn {
-  return {
-    ...turn,
-    status,
-    endedAt: turn.endedAt ?? at,
-    permissions: settlePendingPermissions(turn.permissions, pending, at),
-  }
-}
-
-// 进行中的一轮优先；没有时落到最后一轮，不凭空多出一轮没有提问的对话。
-function updateCurrentTurn(
-  state: SessionUiState,
-  update: (turn: SessionTurn) => SessionTurn,
-): SessionUiState {
-  const active = state.activeTurnId
-  if (active === null || !state.turns.some((turn) => turn.id === active)) {
-    return updateLatestTurn(state, update)
-  }
-  return { ...state, turns: state.turns.map((turn) => (turn.id === active ? update(turn) : turn)) }
+  return { ...turn, status, endedAt: turn.endedAt ?? at, endCode: turn.endCode ?? code }
 }
 
 // 主进程结束这一轮：已经在界面上取消或出错的一轮保留原来的状态和结束时间。
@@ -323,9 +285,9 @@ function applyTurnEnded(
 ): SessionUiState {
   if (state.activeTurnId === null) return state
   const next = updateActiveTurn(state, at, (turn) => {
-    if (turn.status !== "streaming" && turn.status !== "waiting") return turn
+    if (turn.status !== "streaming") return turn
     const ended = status === "completed" ? "done" : status === "error" ? "error" : "cancelled"
-    return endTurn(turn, ended, errorCode === "PERMISSION_TIMEOUT" ? "timeout" : "denied", at)
+    return endTurn(turn, ended, errorCode, at)
   })
   return { ...next, activeTurnId: null }
 }
@@ -343,73 +305,21 @@ function updateLatestTurn(
   }
 }
 
-function applyToolResult(
-  state: SessionUiState,
-  event: Extract<SessionHostEvent, { type: "tool-result" }>,
-  at: string,
-): SessionUiState {
-  const finish = (tool: SessionToolCall): SessionToolCall => ({
-    ...tool,
-    status: event.isError ? "error" : "done",
-    output: event.content,
-    endedAt: at,
-  })
-  let found = false
-  const turns = state.turns.map((turn) => {
-    if (!turn.tools.some((tool) => tool.id === event.toolUseId)) return turn
-    found = true
-    return {
-      ...turn,
-      tools: turn.tools.map((tool) => (tool.id === event.toolUseId ? finish(tool) : tool)),
-    }
-  })
-  if (found) return { ...state, turns }
-  return updateActiveTurn(state, at, (turn) => ({
-    ...turn,
-    tools: [
-      ...turn.tools,
-      finish({
-        id: event.toolUseId,
-        name: "工具结果",
-        input: null,
-        status: "running",
-        output: null,
-        startedAt: at,
-        endedAt: null,
-      }),
-    ],
-    blocks: [...turn.blocks, { type: "tool", id: event.toolUseId }],
-  }))
-}
-
-function applyAccountSwitch(state: SessionUiState, item: SessionAccountSwitch): SessionUiState {
-  const next = { ...state, accountId: item.to }
-  if (item.reason === "initial") return next
-  // 两次 turn 之间换号只更新会话级账号，不创建没有提问的 ghost turn。
-  if (state.activeTurnId === null) return next
-  return updateActiveTurn(next, item.at, (turn) => {
-    const last = turn.switches[turn.switches.length - 1]
-    if (last?.from === item.from && last.to === item.to && last.reason === item.reason) return turn
-    return { ...turn, switches: [...turn.switches, item] }
-  })
-}
-
 function applyError(
   state: SessionUiState,
-  code: string,
-  message: string,
+  event: Extract<SessionHostEvent, { type: "error" }>,
   at: string,
 ): SessionUiState {
+  const { code, message } = event
   const error = sessionErrorView(message.startsWith(code) ? message : `${code}: ${message}`)
   if (error.warning) {
     return updateLatestTurn(state, (turn) => ({ ...turn, errors: [...turn.errors, error] }))
   }
   const isCancelled = code === "SESSION_CANCELLED" || error.code === "SESSION_CANCELLED"
-  const isTimeout = code === "PERMISSION_TIMEOUT" || error.code === "PERMISSION_TIMEOUT"
   // 没有活动 turn 的取消错误不生成 ghost turn，只保留会话级提示。
   if (isCancelled && state.activeTurnId === null) return { ...state, error: null }
   const next = updateActiveTurn(state, at, (turn) => ({
-    ...endTurn(turn, isCancelled ? "cancelled" : "error", isTimeout ? "timeout" : "denied", at),
+    ...endTurn(turn, isCancelled ? "cancelled" : "error", error.code, at),
     errors: [...turn.errors, error],
   }))
   return {
@@ -431,9 +341,7 @@ function applyEnded(
     endedReason: reason,
     activeTurnId: null,
     turns: state.turns.map((turn) =>
-      turn.status === "streaming" || turn.status === "waiting"
-        ? endTurn(turn, status, "denied", at)
-        : turn,
+      turn.status === "streaming" ? endTurn(turn, status, null, at) : turn,
     ),
   }
 }
@@ -446,7 +354,7 @@ function applyFailure(
 ): SessionUiState {
   const error = sessionErrorView(code === undefined ? message : `${code}: ${message}`)
   const next = updateActiveTurn(state, at, (turn) => ({
-    ...endTurn(turn, "error", "denied", at),
+    ...endTurn(turn, "error", error.code, at),
     errors: [...turn.errors, error],
   }))
   return { ...next, error }

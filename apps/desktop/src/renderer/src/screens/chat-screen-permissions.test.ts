@@ -5,6 +5,7 @@
 import { act } from "react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi, type Mock } from "vitest"
+import { receive } from "../test-support/session-envelopes"
 import { reduceSession, type SessionUiState } from "../models/session-model"
 import {
   buttonNamed,
@@ -45,11 +46,7 @@ async function chooseLevel(label: string): Promise<void> {
 }
 
 function liveIn(mode: SessionUiState["permissionMode"]): SessionUiState {
-  return reduceSession(startingState(), {
-    type: "event",
-    at: sessionTime,
-    event: { type: "mode", permissionMode: mode },
-  })
+  return receive(startingState(), { type: "mode", permissionMode: mode }, sessionTime)
 }
 
 function endedIn(mode: SessionUiState["permissionMode"]): SessionUiState {
@@ -58,16 +55,16 @@ function endedIn(mode: SessionUiState["permissionMode"]): SessionUiState {
 
 /** 计划模式下 Claude Code 交出计划、等待批准的会话。 */
 function planWaitingForApproval(): SessionUiState {
-  return reduceSession(liveIn("plan"), {
-    type: "event",
-    at: sessionTime,
-    event: {
+  return receive(
+    liveIn("plan"),
+    {
       type: "permission",
       requestId: "plan-1",
       toolName: "ExitPlanMode",
       input: { plan: "先改测试再实现" },
     },
-  })
+    sessionTime,
+  )
 }
 
 function composerEditor(): HTMLElement {
@@ -323,11 +320,11 @@ describe("chat screen permission controls", () => {
   })
 
   it("keeps the plan switch when the session's account has left the pool", async () => {
-    const state = reduceSession(liveIn("default"), {
-      type: "event",
-      at: sessionTime,
-      event: { type: "account-switched", from: "account-a", to: "account-gone", reason: "quota" },
-    })
+    const state = receive(
+      liveIn("default"),
+      { type: "account-switched", from: "account-a", to: "account-gone", reason: "quota" },
+      sessionTime,
+    )
     await screen.render({ fresh: false, session: sessionController({ state }) })
 
     await openPicker()

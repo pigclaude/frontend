@@ -14,6 +14,7 @@ import {
   fakeModels as models,
   fakeSessionBridge as fakeBridge,
 } from "../test-support/session-bridge-fake"
+import { sessionRecord } from "../models/session-event-store"
 import { useSession, type SessionController } from "./use-session"
 
 let root: Root
@@ -73,9 +74,11 @@ describe("useSession", () => {
     expect(bridge.models).toHaveBeenCalledTimes(1)
     expect(controller?.status).toMatchObject({ active: false })
     expect(controller?.models).toEqual(models)
-    expect(controller?.state.turns[0]?.blocks).toEqual([
-      { type: "text", text: "先看", at: "2026-11-14T01:00:00.000Z" },
-    ])
+    const state = controller?.state
+    expect(state === undefined ? null : sessionRecord(state.events, state.sessionId).live).toEqual({
+      text: "先看",
+      reasoning: "",
+    })
   })
 
   it("forwards start, then sends every command to the started session", async () => {

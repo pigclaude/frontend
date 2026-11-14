@@ -1,6 +1,7 @@
 // 验证工作区与当前会话映射成侧栏的项目、会话和状态点；折叠项目与从项目新建会话的规则。
 import { describe, expect, it } from "vitest"
 import { createSessionState, type SessionTurn, type SessionUiState } from "../models/session-model"
+import { receive } from "../test-support/session-envelopes"
 import {
   newSessionWorkspace,
   sessionAgentNames,
@@ -16,15 +17,12 @@ function turn(patch: Partial<SessionTurn> = {}): SessionTurn {
     id: "t1",
     startedAt: "2026-11-14T01:00:00.000Z",
     endedAt: null,
+    mainTurnId: null,
+    afterSeq: 0,
     userText: "帮我看看 README",
-    blocks: [],
-    tools: [],
-    permissions: [],
-    switches: [],
     errors: [],
-    result: null,
     status: "streaming",
-    seenMessageIds: [],
+    endCode: null,
     ...patch,
   }
 }
@@ -130,23 +128,13 @@ describe("sessionThread", () => {
 
 describe("sessionStatus", () => {
   it("有待回答的许可时等待许可，回复中时运行中", () => {
-    const pending = turn({
-      permissions: [
-        {
-          requestId: "r1",
-          toolName: "Bash",
-          input: {},
-          suggestions: [],
-          blockedPath: null,
-          status: "pending",
-          requestedAt: "2026-11-14T01:00:00.000Z",
-          resolvedAt: null,
-        },
-      ],
+    const pending = receive(session({ activeTurnId: "t1", turns: [turn()] }), {
+      type: "permission",
+      requestId: "r1",
+      toolName: "Bash",
+      input: {},
     })
-    expect(sessionStatus(session({ activeTurnId: "t1", turns: [pending] }))).toBe(
-      "waiting-approval",
-    )
+    expect(sessionStatus(pending)).toBe("waiting-approval")
     expect(sessionStatus(session({ activeTurnId: "t1", turns: [turn()] }))).toBe("running")
   })
 

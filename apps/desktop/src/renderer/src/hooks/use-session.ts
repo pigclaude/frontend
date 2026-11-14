@@ -134,10 +134,11 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
     if (resolved === null || resolved === undefined) return
     const intake = new SessionEnvelopeIntake({
       fetch: (sessionId, afterSeq) => resolved.events({ sessionId, afterSeq }),
-      apply: ({ sessionId, event, at }) => {
+      apply: (envelope) => {
+        const { sessionId, event } = envelope
         if (targetRef.current === null && sessionId !== null) targetRef.current = sessionId
         if (event.type === "turn-ended" || event.type === "ended") activeTurnRef.current = null
-        dispatch({ type: "event", event, at })
+        dispatch({ type: "envelope", envelope })
       },
     })
     const unsubscribe = resolved.subscribe((envelope) => intake.receive(envelope))

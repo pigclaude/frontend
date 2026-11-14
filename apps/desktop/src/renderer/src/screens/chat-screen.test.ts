@@ -4,6 +4,7 @@
 import { act, createElement, useState } from "react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
+import { receive } from "../test-support/session-envelopes"
 import { createSessionState, reduceSession } from "../models/session-model"
 import {
   buttonNamed,
@@ -137,11 +138,11 @@ describe("chat screen", () => {
               turnId: "turn-1",
               at: sessionTime,
             })
-            return reduceSession(next, {
-              type: "event",
-              at: sessionTime,
-              event: { type: "delta", text: "先看", thinking: false, blockIndex: 0 },
-            })
+            return receive(
+              next,
+              { type: "delta", text: "先看", thinking: false, blockIndex: 0 },
+              sessionTime,
+            )
           })
           return true
         },
@@ -172,16 +173,16 @@ describe("chat screen", () => {
 
   it("renders streamed assistant text", async () => {
     let state = startingState()
-    state = reduceSession(state, {
-      type: "event",
-      at: sessionTime,
-      event: { type: "delta", text: "先看", thinking: false, blockIndex: 0 },
-    })
-    state = reduceSession(state, {
-      type: "event",
-      at: sessionTime,
-      event: { type: "delta", text: "一下重试条件", thinking: false, blockIndex: 0 },
-    })
+    state = receive(
+      state,
+      { type: "delta", text: "先看", thinking: false, blockIndex: 0 },
+      sessionTime,
+    )
+    state = receive(
+      state,
+      { type: "delta", text: "一下重试条件", thinking: false, blockIndex: 0 },
+      sessionTime,
+    )
 
     await screen.render({ fresh: false, session: controller({ state }) })
 
@@ -192,22 +193,22 @@ describe("chat screen", () => {
   it("folds terminal commands until the user expands them", async () => {
     // Pigcode 的时间线把命令显示成一行摘要，点开才看到输出。
     let state = startingState()
-    state = reduceSession(state, {
-      type: "event",
-      at: sessionTime,
-      event: {
+    state = receive(
+      state,
+      {
         type: "message",
         messageId: "m1",
         model: "claude-sonnet",
         parentToolUseId: null,
         blocks: [{ type: "tool-use", id: "tool-1", name: "Bash", input: { command: "cat a.ts" } }],
       },
-    })
-    state = reduceSession(state, {
-      type: "event",
-      at: sessionTime,
-      event: { type: "tool-result", toolUseId: "tool-1", content: "文件内容", isError: false },
-    })
+      sessionTime,
+    )
+    state = receive(
+      state,
+      { type: "tool-result", toolUseId: "tool-1", content: "文件内容", isError: false },
+      sessionTime,
+    )
 
     await screen.render({ fresh: false, session: controller({ state }) })
 
@@ -221,16 +222,16 @@ describe("chat screen", () => {
   it("answers permission cards from the prompt above the composer", async () => {
     const respond = vi.fn(async () => undefined)
     let state = startingState()
-    state = reduceSession(state, {
-      type: "event",
-      at: sessionTime,
-      event: {
+    state = receive(
+      state,
+      {
         type: "permission",
         requestId: "permission-1",
         toolName: "Bash",
         input: { command: "pnpm test" },
       },
-    })
+      sessionTime,
+    )
     await screen.render({
       fresh: false,
       session: controller({ state, respondPermission: respond }),
@@ -261,11 +262,11 @@ describe("chat screen", () => {
 
   it("shows account switch notices with display names", async () => {
     let state = startingState()
-    state = reduceSession(state, {
-      type: "event",
-      at: sessionTime,
-      event: { type: "account-switched", from: "account-a", to: "account-b", reason: "quota" },
-    })
+    state = receive(
+      state,
+      { type: "account-switched", from: "account-a", to: "account-b", reason: "quota" },
+      sessionTime,
+    )
 
     await screen.render({ fresh: false, session: controller({ state }) })
 
@@ -288,15 +289,14 @@ describe("chat screen", () => {
 
   it("stays running after a result while a background task works and keeps new messages out", async () => {
     const send = vi.fn(async () => true)
-    let state = reduceSession(startingState(), {
-      type: "event",
-      at: sessionTime,
-      event: { type: "turn-started", turnId: "main-turn-1" },
-    })
-    state = reduceSession(state, {
-      type: "event",
-      at: sessionTime,
-      event: {
+    let state = receive(
+      startingState(),
+      { type: "turn-started", turnId: "main-turn-1" },
+      sessionTime,
+    )
+    state = receive(
+      state,
+      {
         type: "result",
         subtype: "success",
         isError: false,
@@ -305,7 +305,8 @@ describe("chat screen", () => {
         stopReason: "end_turn",
         usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
       },
-    })
+      sessionTime,
+    )
     await screen.render({ fresh: false, session: controller({ state, send }) })
 
     expect(screen.container.querySelector('[aria-label="中断"]'), "中断").not.toBeNull()

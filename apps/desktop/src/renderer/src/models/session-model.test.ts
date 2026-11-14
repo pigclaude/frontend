@@ -1,16 +1,24 @@
-// 负责验证会话事件归并：流式增量合并、消息和工具去重、权限卡片、换号事件、结果/结束和错误码中文文案。
+// 负责验证会话模型：信封交给按会话组织的存储后，流式增量、消息和工具去重、权限卡片、换号在时间线上的结果，
+// 一轮的开闭、结果和结束和界面操作。错误码文案和超时见 session-model-errors.test.ts。
 
 import { describe, expect, it } from "vitest"
 import type { SessionHostEvent } from "../../../main/session/session-types"
+import { receive } from "../test-support/session-envelopes"
+import { sessionRecord } from "./session-event-store"
 import {
   createSessionState,
   reduceSession,
-  sessionErrorText,
-  sessionErrorView,
   type SessionAction,
   type SessionTurn,
   type SessionUiState,
 } from "./session-model"
+import {
+  pendingPermission,
+  permissionCards,
+  type SessionPermissionCard,
+} from "./session-permissions"
+import { sessionRuns } from "./session-runs"
+import { projectTimeline, type SessionTimeline } from "./session-timeline"
 
 const sessionTime = "2026-11-14T01:00:00.000Z"
 const turnEnded: SessionHostEvent = {
@@ -25,7 +33,33 @@ function apply(state: SessionUiState, action: SessionAction): SessionUiState {
 }
 
 function emit(state: SessionUiState, event: SessionHostEvent, at = sessionTime): SessionUiState {
-  return apply(state, { type: "event", event, at })
+  return receive(state, event, at)
+}
+
+function timeline(state: SessionUiState): SessionTimeline {
+  return projectTimeline({
+    threadId: "thread-1",
+    record: sessionRecord(state.events, state.sessionId),
+    turns: state.turns,
+    answers: state.answers,
+  })
+}
+
+function payloads(state: SessionUiState, type: string): unknown[] {
+  return timeline(state)
+    .events.filter((event) => event.type === type)
+    .map((event) => event.payload)
+}
+
+function cards(state: SessionUiState): SessionPermissionCard[] {
+  const record = sessionRecord(state.events, state.sessionId)
+  return sessionRuns(record.envelopes, state.turns).flatMap((run) =>
+    permissionCards(run, state.answers),
+  )
+}
+
+function ended(state: SessionUiState): SessionUiState {
+  return emit(state, turnEnded)
 }
 
 function activeTurn(state: SessionUiState): SessionTurn {
@@ -64,10 +98,11 @@ describe("session model", () => {
     state = emit(state, { type: "delta", text: "判断", thinking: true, blockIndex: 1 })
     state = emit(state, { type: "delta", text: "条件", thinking: true, blockIndex: 1 })
 
-    expect(activeTurn(state).blocks).toEqual([
-      { type: "text", text: "先看一下", at: sessionTime },
-      { type: "thinking", text: "判断条件", at: sessionTime },
-    ])
+    expect(sessionRecord(state.events, "session-1").live).toEqual({
+      text: "先看一下",
+      reasoning: "判断条件",
+    })
+    expect(timeline(state)).toMatchObject({ streamingText: "先看一下", liveReasoning: "判断条件" })
   })
 
   it("does not duplicate text already streamed when the full message arrives", () => {
@@ -81,8 +116,8 @@ describe("session model", () => {
       blocks: [{ type: "text", text: "先看一下" }],
     })
 
-    expect(activeTurn(state).blocks).toEqual([{ type: "text", text: "先看一下", at: sessionTime }])
-    expect(activeTurn(state).seenMessageIds).toEqual(["m1"])
+    expect(timeline(state).streamingText).toBe("先看一下")
+    expect(payloads(ended(state), "message.completed")).toEqual([{ text: "先看一下" }])
   })
 
   it("appends later text after a tool call instead of merging into earlier text", () => {
@@ -105,11 +140,16 @@ describe("session model", () => {
       blocks: [{ type: "text", text: "读完了" }],
     })
 
-    expect(activeTurn(state).blocks).toEqual([
-      { type: "text", text: "先读文件", at: sessionTime },
-      { type: "tool", id: "tool-1" },
-      { type: "text", text: "读完了", at: sessionTime },
+    const events = timeline(ended(state)).events
+    expect(events.map((event) => [event.type, event.createdAt])).toEqual([
+      ["run.started", sessionTime],
+      ["message.completed", sessionTime],
+      ["tool.started", sessionTime],
+      ["message.completed", sessionTime],
+      ["run.completed", sessionTime],
     ])
+    expect(events[1]?.payload).toEqual({ text: "先读文件" })
+    expect(events[3]?.payload).toEqual({ text: "读完了" })
   })
 
   it("deduplicates assistant messages and tool calls by id", () => {
@@ -136,14 +176,12 @@ describe("session model", () => {
       isError: false,
     })
 
-    const turn = activeTurn(state)
-    expect(turn.tools).toHaveLength(1)
-    expect(turn.tools[0]).toMatchObject({
-      id: "tool-1",
-      name: "Read",
-      status: "done",
-      output: "done",
-    })
+    expect(payloads(state, "tool.started")).toEqual([
+      { toolCallId: "tool-1", name: "Read", input: { file: "a.ts" } },
+    ])
+    expect(payloads(state, "tool.completed")).toEqual([
+      { toolCallId: "tool-1", name: "Read", output: "done", isError: false },
+    ])
   })
 
   it("keeps tool blocks that arrive later under the same message id", () => {
@@ -172,10 +210,15 @@ describe("session model", () => {
       isError: false,
     })
 
-    const turn = activeTurn(state)
-    expect(turn.tools).toHaveLength(1)
-    expect(turn.tools[0]).toMatchObject({ name: "Bash", status: "done", output: "bin" })
-    expect(turn.blocks.map((block) => block.type)).toEqual(["thinking", "tool"])
+    expect(payloads(state, "tool.completed")).toEqual([
+      { toolCallId: "tool-1", name: "Bash", output: "bin", isError: false },
+    ])
+    expect(timeline(state).events.map((event) => event.type)).toEqual([
+      "run.started",
+      "reasoning.completed",
+      "tool.started",
+      "tool.completed",
+    ])
   })
 
   it("keeps one permission card per request and records allow or deny", () => {
@@ -193,9 +236,9 @@ describe("session model", () => {
       input: { command: "pnpm test" },
     })
 
-    expect(activeTurn(state).permissions).toHaveLength(1)
-    expect(activeTurn(state).permissions[0]?.status).toBe("pending")
-    expect(activeTurn(state).status).toBe("waiting")
+    expect(cards(state)).toHaveLength(1)
+    expect(cards(state)[0]?.status).toBe("pending")
+    expect(pendingPermission(state)?.requestId).toBe("permission-1")
 
     state = apply(state, {
       type: "permission-answered",
@@ -203,7 +246,8 @@ describe("session model", () => {
       decision: "allow",
       at: sessionTime,
     })
-    expect(activeTurn(state).permissions[0]?.status).toBe("allowed")
+    expect(cards(state)[0]?.status).toBe("allowed")
+    expect(pendingPermission(state)).toBeNull()
     expect(activeTurn(state).status).toBe("streaming")
 
     state = emit(state, {
@@ -218,7 +262,7 @@ describe("session model", () => {
       decision: "deny",
       at: sessionTime,
     })
-    expect(activeTurn(state).permissions[1]?.status).toBe("denied")
+    expect(cards(state)[1]?.status).toBe("denied")
   })
 
   it("records account switches and ignores the initial account selection notice", () => {
@@ -230,7 +274,7 @@ describe("session model", () => {
       reason: "initial",
     })
     expect(state.accountId).toBe("account-a")
-    expect(activeTurn(state).switches).toEqual([])
+    expect(payloads(state, "thread.updated")).toEqual([])
 
     state = emit(state, {
       type: "account-switched",
@@ -239,8 +283,12 @@ describe("session model", () => {
       reason: "quota",
     })
     expect(state.accountId).toBe("account-b")
-    expect(activeTurn(state).switches).toEqual([
-      { from: "account-a", to: "account-b", reason: "quota", at: sessionTime },
+    expect(timeline(state).events.filter((event) => event.type === "thread.updated")).toEqual([
+      expect.objectContaining({
+        runId: null,
+        payload: { agentId: "account-b" },
+        createdAt: sessionTime,
+      }),
     ])
   })
 
@@ -290,7 +338,11 @@ describe("session model", () => {
     state = emit(state, turnEnded)
 
     expect(activeTurn(state).status).toBe("done")
-    expect(activeTurn(state).result).toMatchObject({ durationMs: 1_200, outputTokens: 20 })
+    const kept = sessionRecord(state.events, "session-1").envelopes.map(({ event }) => event)
+    expect(kept.find((event) => event.type === "result")).toMatchObject({
+      durationMs: 1_200,
+      usage: { outputTokens: 20 },
+    })
     expect(state.activeTurnId).toBeNull()
 
     state = emit(state, { type: "ended", reason: "completed" })
@@ -328,7 +380,7 @@ describe("session model", () => {
     state = apply(state, { type: "cancel-requested", at: sessionTime })
 
     expect(activeTurn(state).status).toBe("cancelled")
-    expect(activeTurn(state).permissions[0]?.status).toBe("denied")
+    expect(cards(state)[0]?.status).toBe("denied")
 
     state = apply(state, { type: "stopped", at: sessionTime })
     expect(state.ended).toBe(true)
@@ -373,86 +425,7 @@ describe("session model", () => {
 
     expect(state.accountId).toBe("account-b")
     expect(state.turns).toHaveLength(1)
-    expect(state.turns[0]?.switches).toEqual([])
+    expect(payloads(state, "thread.updated")).toEqual([])
     expect(state.activeTurnId).toBeNull()
-  })
-})
-
-describe("session error text", () => {
-  it("maps known IPC error codes to Chinese text", () => {
-    expect(sessionErrorText("WORKSPACE_UNAVAILABLE: 路径不存在")).toBe("工作区不存在或不可读")
-    expect(sessionErrorText("NO_AVAILABLE_ACCOUNT: 没有可用的 Claude 账号")).toBe(
-      "没有可用的 Claude 账号，请添加或重新授权",
-    )
-    expect(sessionErrorText("PERMISSION_TIMEOUT: 权限询问超时")).toBe("权限询问超时，已拒绝")
-    expect(sessionErrorText("SESSION_CANCELLED: 当前请求已取消")).toBe("已取消当前请求")
-  })
-
-  it("accepts lowercase usage_write_failed and strips the Electron prefix", () => {
-    expect(sessionErrorText("usage_write_failed: 写入失败")).toBe("用量记录写入失败，不影响会话")
-    expect(
-      sessionErrorText(
-        "Error invoking remote method 'pigclaude:session-start': Error: MEMBERSHIP_REQUIRED: 会员状态不可用",
-      ),
-    ).toBe("会员状态不可用，请重新登录")
-  })
-
-  it("keeps the detail for unknown codes and exposes warning state", () => {
-    expect(sessionErrorText("NEW_CODE: 原始描述")).toBe("原始描述")
-
-    const warning = sessionErrorView("usage_write_failed: 写入失败")
-    expect(warning).toMatchObject({ warning: true })
-    const fatal = sessionErrorView("PROXY_UNAVAILABLE: 代理不可用")
-    expect(fatal).toMatchObject({ code: "PROXY_UNAVAILABLE", warning: false })
-    expect(fatal.message).toBe("账号代理不可用，请检查代理")
-  })
-
-  it("marks pending permissions as timed out and records a fatal error", () => {
-    let state = startedTurn()
-    state = emit(state, {
-      type: "permission",
-      requestId: "permission-1",
-      toolName: "Bash",
-      input: { command: "pnpm test" },
-    })
-    state = emit(state, {
-      type: "error",
-      code: "PERMISSION_TIMEOUT",
-      message: "权限询问超时",
-    })
-
-    expect(activeTurn(state).permissions[0]?.status).toBe("timeout")
-    expect(activeTurn(state).status).toBe("error")
-    expect(state.error?.message).toBe("权限询问超时，已拒绝")
-  })
-
-  it("does not turn a usage write warning into a fatal session error", () => {
-    let state = startedTurn()
-    state = emit(state, { type: "error", code: "usage_write_failed", message: "用量记录写入失败" })
-
-    expect(state.error).toBeNull()
-    expect(activeTurn(state).errors.at(-1)).toMatchObject({ warning: true })
-  })
-
-  it("attaches a late usage warning to the finished turn instead of adding a ghost turn", () => {
-    let state = startedTurn()
-    state = emit(state, {
-      type: "result",
-      subtype: "success",
-      isError: false,
-      durationMs: 500,
-      numTurns: 1,
-      stopReason: "end_turn",
-      usage: {
-        inputTokens: 1,
-        outputTokens: 1,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
-      },
-    })
-    state = emit(state, { type: "error", code: "usage_write_failed", message: "用量记录写入失败" })
-
-    expect(state.turns).toHaveLength(1)
-    expect(state.turns[0]?.errors.at(-1)).toMatchObject({ warning: true })
   })
 })

@@ -1,47 +1,20 @@
-// 负责验证会话状态到 Pigcode 线程模型的纯函数映射：线程元数据、事件顺序与真实时间、
-// 工具/权限/换号事件和各结束状态。
+// 负责验证会话状态到 Pigcode 线程模型的纯函数映射：线程元数据、时间线事件和流式文字取自信封的投影，
+// 线程的创建和更新时间、最后一轮的 run id。事件内容的逐条映射见 session-timeline 的测试。
 
 import { describe, expect, it } from "vitest"
-import type { SessionTurn, SessionUiState } from "./session-model"
+import type { SessionHostEvent } from "../../../main/session/session-types"
+import { receive } from "../test-support/session-envelopes"
+import { sessionRecord } from "./session-event-store"
+import { createSessionState, reduceSession, type SessionUiState } from "./session-model"
+import { projectTimeline } from "./session-timeline"
 import { threadView, type ThreadViewInput } from "./thread-view"
 
 const t0 = "2026-11-14T01:00:00.000Z"
 
-/** 构造一轮会话；默认是一轮还在进行、没有内容的对话。 */
-function turn(overrides: Partial<SessionTurn> = {}): SessionTurn {
-  return {
-    id: "turn-1",
-    startedAt: t0,
-    endedAt: null,
-    userText: null,
-    blocks: [],
-    tools: [],
-    permissions: [],
-    switches: [],
-    errors: [],
-    result: null,
-    status: "streaming",
-    seenMessageIds: [],
-    ...overrides,
-  }
-}
-
-/** 构造会话状态；默认没有轮次。 */
-function state(overrides: Partial<SessionUiState> = {}): SessionUiState {
-  return {
-    sessionId: "session-1",
-    started: true,
-    ended: false,
-    endedReason: null,
-    model: "sonnet",
-    permissionMode: "default",
-    accountId: "account-1",
-    activeTurnId: null,
-    turns: [],
-    error: null,
-    notice: null,
-    ...overrides,
-  }
+/** 构造会话状态：会话已打开，账号和模型已知，还没有轮次。 */
+function state(): SessionUiState {
+  const opened = reduceSession(createSessionState(), { type: "opened", sessionId: "session-1" })
+  return { ...opened, model: "sonnet", accountId: "account-1" }
 }
 
 /** 构造映射输入；测试只覆盖关心的字段。 */
@@ -60,10 +33,15 @@ function input(overrides: Partial<ThreadViewInput> = {}): ThreadViewInput {
   }
 }
 
+function feed(from: SessionUiState, ...items: Array<[SessionHostEvent, string]>): SessionUiState {
+  return items.reduce((current, [event, at]) => receive(current, event, at), from)
+}
+
 describe("threadView", () => {
   it("空会话只产出线程元数据，没有事件", () => {
     const view = threadView(input())
     expect(view.events).toEqual([])
+    expect(view).toMatchObject({ streamingText: "", liveReasoning: "" })
     expect(view.thread).toMatchObject({
       id: "thread-1",
       projectId: "/work/demo",
@@ -81,277 +59,68 @@ describe("threadView", () => {
     expect(view.thread.updatedAt).toBe(view.thread.createdAt)
   })
 
-  it("按块顺序映射一轮对话并递增序号", () => {
-    const view = threadView(
-      input({
-        state: state({
-          turns: [
-            turn({
-              userText: "你好",
-              blocks: [
-                { type: "thinking", text: "想一想", at: "2026-11-14T01:00:04.000Z" },
-                { type: "text", text: "答", at: "2026-11-14T01:00:09.000Z" },
-                { type: "tool", id: "tool-1" },
-              ],
-              tools: [
-                {
-                  id: "tool-1",
-                  name: "Bash",
-                  input: { command: "ls" },
-                  status: "done",
-                  output: "ok",
-                  startedAt: "2026-11-14T01:00:09.000Z",
-                  endedAt: "2026-11-14T01:00:41.500Z",
-                },
-              ],
-              status: "done",
-              endedAt: "2026-11-14T01:01:02.000Z",
-            }),
-          ],
-        }),
-      }),
+  it("时间线取信封投影，线程时间取第一轮的开始和最后一条事件", () => {
+    const sent = reduceSession(state(), {
+      type: "user-message",
+      text: "你好",
+      turnId: "turn-1",
+      at: t0,
+    })
+    const session = feed(
+      sent,
+      [{ type: "turn-started", turnId: "main-1" }, "2026-11-14T01:00:00.200Z"],
+      [
+        {
+          type: "message",
+          messageId: "m1",
+          model: "claude-sonnet",
+          parentToolUseId: null,
+          blocks: [{ type: "text", text: "答" }],
+        },
+        "2026-11-14T01:00:09.000Z",
+      ],
+      [
+        { type: "turn-ended", turnId: "main-1", status: "completed", errorCode: null },
+        "2026-11-14T01:01:02.000Z",
+      ],
     )
+    const view = threadView(input({ state: session }))
 
+    expect(view.events).toEqual(
+      projectTimeline({
+        threadId: "thread-1",
+        record: sessionRecord(session.events, "session-1"),
+        turns: session.turns,
+        answers: session.answers,
+      }).events,
+    )
     expect(view.events.map((event) => event.type)).toEqual([
       "run.started",
-      "reasoning.completed",
       "message.completed",
-      "tool.started",
-      "tool.completed",
       "run.completed",
-    ])
-    expect(view.events.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6])
-    expect(view.events.every((event) => event.threadId === "thread-1")).toBe(true)
-    expect(view.events[0]?.runId).toBe("run-1")
-    expect(view.events[0]?.payload).toMatchObject({ agentId: "claude", text: "你好" })
-    expect(view.events[3]?.payload).toMatchObject({
-      toolCallId: "tool-1",
-      name: "Bash",
-      input: { command: "ls" },
-    })
-    expect(view.events[4]?.payload).toMatchObject({
-      toolCallId: "tool-1",
-      output: "ok",
-      isError: false,
-    })
-    expect(view.events.map((event) => event.createdAt)).toEqual([
-      "2026-11-14T01:00:00.000Z",
-      "2026-11-14T01:00:04.000Z",
-      "2026-11-14T01:00:09.000Z",
-      "2026-11-14T01:00:09.000Z",
-      "2026-11-14T01:00:41.500Z",
-      "2026-11-14T01:01:02.000Z",
     ])
     expect(view.thread.lastRunId).toBe("run-1")
     expect(view.thread.createdAt).toBe(t0)
     expect(view.thread.updatedAt).toBe("2026-11-14T01:01:02.000Z")
   })
 
-  it("跳过空文本块，不产出空消息", () => {
-    const view = threadView(
-      input({
-        state: state({
-          turns: [
-            turn({
-              blocks: [
-                { type: "text", text: "", at: t0 },
-                { type: "thinking", text: "", at: t0 },
-              ],
-            }),
-          ],
-        }),
-      }),
+  it("进行中的一轮把正在输出的正文和思考交给聊天视图", () => {
+    const sent = reduceSession(state(), {
+      type: "user-message",
+      text: "你好",
+      turnId: "turn-1",
+      at: t0,
+    })
+    const session = feed(
+      sent,
+      [{ type: "turn-started", turnId: "main-1" }, t0],
+      [{ type: "delta", text: "想", thinking: true, blockIndex: 0 }, t0],
+      [{ type: "delta", text: "答到一半", thinking: false, blockIndex: 1 }, t0],
     )
+    const view = threadView(input({ state: session }))
+
+    expect(view).toMatchObject({ streamingText: "答到一半", liveReasoning: "想" })
     expect(view.events.map((event) => event.type)).toEqual(["run.started"])
-  })
-
-  it("进行中的一轮不补结束事件", () => {
-    const view = threadView(input({ state: state({ turns: [turn({ status: "waiting" })] }) }))
-    expect(view.events.map((event) => event.type)).toEqual(["run.started"])
-  })
-
-  it("取消的一轮以 run.interrupted 结束，时间取这一轮的结束时间", () => {
-    const endedAt = "2026-11-14T01:00:12.000Z"
-    const view = threadView(
-      input({ state: state({ turns: [turn({ status: "cancelled", endedAt })] }) }),
-    )
-    expect(view.events.map((event) => event.type)).toEqual(["run.started", "run.interrupted"])
-    expect(view.events[1]?.createdAt).toBe(endedAt)
-  })
-
-  it("出错的一轮只发一条 run.failed，并带上最后一条错误文案", () => {
-    const view = threadView(
-      input({
-        state: state({
-          turns: [
-            turn({
-              status: "error",
-              errors: [
-                { code: "A", message: "先出现的错误", warning: false },
-                { code: "B", message: "最后的错误", warning: false },
-              ],
-            }),
-          ],
-        }),
-      }),
-    )
-    expect(view.events.map((event) => event.type)).toEqual(["run.started", "run.failed"])
-    expect(view.events[1]?.payload).toMatchObject({ message: "最后的错误" })
-  })
-
-  it("权限卡片映射请求与处理结果", () => {
-    const view = threadView(
-      input({
-        state: state({
-          turns: [
-            turn({
-              permissions: [
-                {
-                  requestId: "req-1",
-                  toolName: "Bash",
-                  input: { command: "rm -rf build" },
-                  suggestions: [],
-                  blockedPath: "/work/demo/build",
-                  status: "allowed",
-                  requestedAt: "2026-11-14T01:00:05.000Z",
-                  resolvedAt: "2026-11-14T01:00:30.000Z",
-                },
-                {
-                  requestId: "req-2",
-                  toolName: "Write",
-                  input: { file_path: "/work/demo/a.ts" },
-                  suggestions: [],
-                  blockedPath: null,
-                  status: "denied",
-                  requestedAt: t0,
-                  resolvedAt: t0,
-                },
-                {
-                  requestId: "req-3",
-                  toolName: "Read",
-                  input: { file_path: "/work/demo/b.ts" },
-                  suggestions: [],
-                  blockedPath: null,
-                  status: "pending",
-                  requestedAt: t0,
-                  resolvedAt: null,
-                },
-              ],
-            }),
-          ],
-        }),
-      }),
-    )
-
-    const approvals = view.events.filter((event) => event.type.startsWith("approval."))
-    expect(approvals.map((event) => event.type)).toEqual([
-      "approval.requested",
-      "approval.resolved",
-      "approval.requested",
-      "approval.resolved",
-      "approval.requested",
-    ])
-    expect(approvals[0]?.payload).toMatchObject({
-      id: "req-1",
-      toolName: "Bash",
-      title: "Bash",
-      command: "rm -rf build",
-      description: "/work/demo/build",
-    })
-    expect(approvals[1]?.payload).toMatchObject({ id: "req-1", decision: "allow-once" })
-    expect(approvals.slice(0, 2).map((event) => event.createdAt)).toEqual([
-      "2026-11-14T01:00:05.000Z",
-      "2026-11-14T01:00:30.000Z",
-    ])
-    expect(approvals[3]?.payload).toMatchObject({ id: "req-2", decision: "deny" })
-    expect(approvals[4]?.payload).not.toHaveProperty("decision")
-  })
-
-  it("Task 与 Agent 工具映射成子代理事件", () => {
-    const view = threadView(
-      input({
-        state: state({
-          turns: [
-            turn({
-              blocks: [
-                { type: "tool", id: "task-1" },
-                { type: "tool", id: "task-2" },
-              ],
-              tools: [
-                {
-                  id: "task-1",
-                  name: "Task",
-                  input: { subagent_type: "explore", description: "找文件", prompt: "搜索" },
-                  status: "running",
-                  output: null,
-                  startedAt: t0,
-                  endedAt: null,
-                },
-                {
-                  id: "task-2",
-                  name: "Agent",
-                  input: {},
-                  status: "error",
-                  output: "失败",
-                  startedAt: t0,
-                  endedAt: t0,
-                },
-              ],
-            }),
-          ],
-        }),
-      }),
-    )
-
-    expect(view.events.map((event) => event.type)).toEqual([
-      "run.started",
-      "subagent.started",
-      "subagent.started",
-      "subagent.completed",
-    ])
-    expect(view.events[1]?.payload).toMatchObject({
-      toolCallId: "task-1",
-      name: "explore",
-      description: "找文件",
-      prompt: "搜索",
-    })
-    expect(view.events[2]?.payload).toMatchObject({ toolCallId: "task-2", name: "子代理" })
-    expect(view.events[3]?.payload).toMatchObject({
-      toolCallId: "task-2",
-      output: "失败",
-      isError: true,
-      status: "failed",
-    })
-  })
-
-  it("换号事件不带 runId，账号目标写在 payload 里", () => {
-    const view = threadView(
-      input({
-        state: state({
-          turns: [
-            turn({
-              switches: [{ from: "a", to: "b", reason: "switch", at: t0 }],
-            }),
-          ],
-        }),
-      }),
-    )
-    const updated = view.events.find((event) => event.type === "thread.updated")
-    expect(updated?.runId).toBeNull()
-    expect(updated?.payload).toMatchObject({ agentId: "b" })
-  })
-
-  it("多轮的 runId 递增，最后一条 run 写到线程上", () => {
-    const view = threadView(
-      input({
-        state: state({
-          turns: [turn({ status: "done" }), turn({ id: "turn-2", status: "done" })],
-        }),
-      }),
-    )
-    const runIds = [...new Set(view.events.map((event) => event.runId))].filter((id) => id !== null)
-    expect(runIds).toEqual(["run-1", "run-2"])
-    expect(view.thread.lastRunId).toBe("run-2")
   })
 
   it("没有工作区、项目名或模型时使用稳定回退值", () => {

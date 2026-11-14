@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { SessionEnvelope } from "../../../main/session/session-envelope"
 import type { SessionBridge, SessionHostEvent } from "../../../main/session/session-types"
 import { fakeSessionBridge } from "../test-support/session-bridge-fake"
+import { sessionRecord } from "../models/session-event-store"
 import { useSession, type SessionController } from "./use-session"
 
 let root: Root
@@ -138,10 +139,10 @@ describe("useSession envelopes", () => {
     )
 
     expect(controller?.state.turns).toHaveLength(1)
-    expect(controller?.state.turns[0]?.blocks).toEqual([
-      { type: "text", text: "答", at: "2026-11-14T01:00:02.500Z" },
-    ])
-    expect(controller?.state.turns[0]?.result).toMatchObject({ subtype: "success", numTurns: 1 })
+    const record = sessionRecord(controller?.state.events ?? {}, "session-1")
+    expect(record.live).toEqual({ text: "答", reasoning: "" })
+    expect(record.envelopes.map((envelope) => envelope.seq)).toEqual([1, 2, 3])
+    expect(record.envelopes.at(-1)?.event).toMatchObject({ subtype: "success", numTurns: 1 })
   })
 
   it("still applies what it has when the fill fails", async () => {

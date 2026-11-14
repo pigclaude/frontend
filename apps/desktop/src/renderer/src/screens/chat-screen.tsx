@@ -38,6 +38,7 @@ import {
 } from "../models/composer-config"
 import { projectNameFromPath } from "../models/project-model"
 import type { NavLocation } from "../models/navigation"
+import { pendingPermission } from "../models/session-permissions"
 import { threadView } from "../models/thread-view"
 import type { SessionEffort } from "../../../main/session/session-types"
 import type { WorkbenchBridge } from "../../../workbench-contract"
@@ -128,14 +129,7 @@ export function ChatScreen({
   const [page, setPage] = useState<HTMLDivElement | null>(null)
 
   // 同一时间只回答一张卡片；答完后下一张会顶上来。
-  const pending = useMemo(() => {
-    for (const turn of state.turns) {
-      for (const card of turn.permissions) {
-        if (card.status === "pending") return card
-      }
-    }
-    return null
-  }, [state.turns])
+  const pending = useMemo(() => pendingPermission(state), [state])
   const defaultModel = session.models.find((model) => model.isDefault) ?? session.models[0]
   // 默认模型已不在目录里时用 Claude Code 的默认；目录还没读到时先照用。
   const draftModel =
@@ -407,6 +401,8 @@ export function ChatScreen({
           {...(onViewDiff ? { onViewDiff } : {})}
           thread={view.thread}
           events={view.events}
+          streamingText={view.streamingText}
+          liveReasoning={view.liveReasoning}
           {...(workspace === null ? {} : { cwd: workspace })}
           {...(projectName === "" ? {} : { projectName })}
           onStart={submitFromComposer}

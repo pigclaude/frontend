@@ -6,6 +6,7 @@ import { act, createElement } from "react"
 import { afterEach, describe, expect, it } from "vitest"
 import { resetSessionDefaultsForTest } from "../hooks/use-session-defaults"
 import { initialMembershipView } from "../models/membership-view"
+import { receive } from "../test-support/session-envelopes"
 import { reduceSession, type SessionUiState } from "../models/session-model"
 import {
   chatScreenRoot,
@@ -47,11 +48,7 @@ async function settle(): Promise<void> {
 }
 
 function liveIn(mode: SessionUiState["permissionMode"]): SessionUiState {
-  return reduceSession(startingState(), {
-    type: "event",
-    at: sessionTime,
-    event: { type: "mode", permissionMode: mode },
-  })
+  return receive(startingState(), { type: "mode", permissionMode: mode }, sessionTime)
 }
 
 const models = [

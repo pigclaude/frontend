@@ -1,16 +1,20 @@
-// 负责验证会话模型记下的真实时间：一轮的开始和结束、文字块、工具和权限卡片都取动作带来的时间。
+// 负责验证会话里的真实时间：一轮的开始和结束取动作带来的时间，时间线上的文字、工具和权限卡片取信封时间
+// 和回答时的时间。
 
 import { describe, expect, it } from "vitest"
 import type { SessionHostEvent } from "../../../main/session/session-types"
+import { receive } from "../test-support/session-envelopes"
+import { sessionRecord } from "./session-event-store"
 import {
   createSessionState,
   reduceSession,
   type SessionTurn,
   type SessionUiState,
 } from "./session-model"
+import { projectTimeline } from "./session-timeline"
 
 function emit(state: SessionUiState, event: SessionHostEvent, at: string): SessionUiState {
-  return reduceSession(state, { type: "event", event, at })
+  return receive(state, event, at)
 }
 
 function activeTurn(state: SessionUiState): SessionTurn {
@@ -21,7 +25,8 @@ function activeTurn(state: SessionUiState): SessionTurn {
 
 describe("session model times", () => {
   it("keeps the envelope times of a turn, its text, tools and permission cards", () => {
-    let state = reduceSession(createSessionState(), {
+    const opened = reduceSession(createSessionState(), { type: "opened", sessionId: "session-1" })
+    let state = reduceSession(opened, {
       type: "user-message",
       text: "跑一下测试",
       turnId: "turn-1",
@@ -86,18 +91,24 @@ describe("session model times", () => {
       "2026-11-14T01:00:00.000Z",
       "2026-11-14T01:01:30.000Z",
     ])
-    expect(turn.blocks[0]).toEqual({
-      type: "text",
-      text: "先跑测试",
-      at: "2026-11-14T01:00:04.000Z",
+    const { events } = projectTimeline({
+      threadId: "thread-1",
+      record: sessionRecord(state.events, state.sessionId),
+      turns: state.turns,
+      answers: state.answers,
     })
-    expect(turn.tools[0]).toMatchObject({
-      startedAt: "2026-11-14T01:00:04.000Z",
-      endedAt: "2026-11-14T01:01:10.000Z",
+    const timeOf = (type: string) => events.find((event) => event.type === type)?.createdAt
+    expect(events.find((event) => event.type === "message.completed")).toMatchObject({
+      payload: { text: "先跑测试" },
+      createdAt: "2026-11-14T01:00:04.000Z",
     })
-    expect(turn.permissions[0]).toMatchObject({
-      requestedAt: "2026-11-14T01:00:05.000Z",
-      resolvedAt: "2026-11-14T01:00:20.000Z",
-    })
+    expect([timeOf("tool.started"), timeOf("tool.completed")]).toEqual([
+      "2026-11-14T01:00:04.000Z",
+      "2026-11-14T01:01:10.000Z",
+    ])
+    expect([timeOf("approval.requested"), timeOf("approval.resolved")]).toEqual([
+      "2026-11-14T01:00:05.000Z",
+      "2026-11-14T01:00:20.000Z",
+    ])
   })
 })

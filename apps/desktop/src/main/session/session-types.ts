@@ -150,8 +150,15 @@ export type SessionRuntimeEvent = {
   reason: SessionAccountSwitchReason
 }
 
+/** 打开会话路由的参数；preferredAccountId 只是偏好，不可用时按切换规则选其他账号。 */
+export type SessionRuntimeLeaseInput = {
+  sessionId: string
+  preferredAccountId: string | null
+}
+
 /** 一个会话在 runtime 里的路由句柄。保证 token 只认这一个会话；close 吊销令牌、停止为它选号，可重复调用。 */
 export type SessionRuntimeLease = {
+  readonly sessionId: string
   /** 这个会话的 daemon 令牌，只写进它的 CLI 环境，并用于从错误文本里去掉它。 */
   readonly token: string
   /** CLI 启动前固定这个会话的语言和时区，返回清理后使用的释放操作。 */
@@ -163,8 +170,8 @@ export type SessionRuntimeLease = {
 export type SessionRuntime = {
   readonly daemonBaseUrl: string | null
   subscribe(listener: (event: SessionRuntimeEvent) => void): () => void
-  /** 为一个会话注册随机 daemon 令牌并建立它自己的选号状态；preferredAccountId 只是偏好。 */
-  openSession(input: { sessionId: string; preferredAccountId: string | null }): SessionRuntimeLease
+  /** 为一个会话注册随机 daemon 令牌并建立它自己的选号状态。 */
+  openSession(input: SessionRuntimeLeaseInput): SessionRuntimeLease
   /** 不刷新凭据地判断是否有可授权账号；启动前置条件。 */
   hasAvailableAccount(): Promise<boolean>
 }

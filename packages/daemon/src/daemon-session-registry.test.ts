@@ -139,6 +139,48 @@ describe("daemon session registry", () => {
     }
   })
 
+  it("does not forward when the session is revoked while an account is being chosen", async () => {
+    const seen: Array<{ path: string; authorization: string | undefined }> = []
+    const proxy = await startRecordingProxy(seen)
+    const sessions = new DaemonSessions()
+    const token = sessions.register("session-a")
+    let entered: () => void = () => undefined
+    const choosing = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    let release: () => void = () => undefined
+    const released = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const daemon = new LocalDaemon({
+      port: 0,
+      sessions,
+      runAuthorized: async (operation) => operation(new AbortController().signal),
+      choose: async () => {
+        entered()
+        await released
+        return { id: "a", authorization: "token-a", proxyUrl: proxy.url }
+      },
+    })
+    await daemon.start()
+    try {
+      const pending = post(daemon, token)
+      await choosing
+      sessions.revoke(token)
+      release()
+      const response = await pending
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ error: "invalid_session_token" })
+      expect(seen).toEqual([])
+    } finally {
+      try {
+        await daemon.stop()
+      } finally {
+        await proxy.stop()
+      }
+    }
+  })
+
   it("issues distinct url-safe random tokens", () => {
     const sessions = new DaemonSessions()
     const first = sessions.register("session-a")

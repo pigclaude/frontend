@@ -16,6 +16,7 @@ import { membershipView } from "../testing/profile-fixture"
 import { AccountChooser } from "./account-chooser"
 import { LocalRuntime, type LocalDaemonHandle, type LocalDaemonOptions } from "./local-runtime"
 
+/** 运行时测试的固定当前时间；凭据有效期和冷却时间都按它计算。 */
 export const now = Date.parse("2026-10-26T00:00:00.000Z")
 
 /** 记下构造参数、可模拟意外退出的假 daemon。 */

@@ -6,7 +6,8 @@ import type { LocalStore } from "@pigclaude/local-store"
 import { DaemonSessions, LocalDaemon, type DaemonSessionLookup } from "@pigclaude/daemon"
 import type { AccountChooser, ChosenAccount } from "./account-chooser"
 import { BrowserProfileUsage } from "../claude/browser-profile-usage"
-import { RuntimeSessions, type OpenRuntimeSession, type RuntimeSession } from "./runtime-sessions"
+import { RuntimeSessions } from "./runtime-sessions"
+import type { SessionRuntimeLease, SessionRuntimeLeaseInput } from "../session/session-types"
 
 const defaultQuotaCooldownMs = 5 * 60 * 1_000
 const defaultBackoffMs = [1_000, 2_000, 5_000, 10_000] as const
@@ -191,7 +192,7 @@ export class LocalRuntime {
    * 为一个会话注册随机 daemon 令牌，并建立它自己的偏好账号、当前账号、额度拒绝和环境绑定。
    * 保证新会话第一次选号即使选中别的会话在用的账号也广播 initial；会话关闭或会员失效后令牌返回 403。
    */
-  openSession(input: OpenRuntimeSession): RuntimeSession {
+  openSession(input: SessionRuntimeLeaseInput): SessionRuntimeLease {
     return this.#sessions.open(input)
   }
 

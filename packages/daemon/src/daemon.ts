@@ -1,7 +1,7 @@
 // 本机转发 daemon。只监听 127.0.0.1，先按令牌把请求归到会话（未知或已吊销的令牌在会员核验前就拒绝），
 // 再把请求经账号代理或系统网络送到 Anthropic，并且只在消息接口和模型目录读取的 bootstrap 上替换凭据、合并 OAuth beta 头。
 // 额度用尽或消息请求在写出正文前收到 401/403 时，用下一个账号重试同一条消息请求，并把带会话的选号和拒绝交给回调；
-// 换号前会话已被吊销时不再选号。
+// 选号前后都再核对一次令牌，会话已被吊销时不再选号，也不转发。
 // bootstrap 只用当次选中的账号：不换号，不报告选号和拒绝，上游的状态原样返回。
 // 没有可用账号返回 no_available_account，代理为空返回 proxy_unavailable，直连失败返回 upstream_unavailable，认证全部失败返回 auth_expired。
 // 已经保存额度用尽响应后，代理或直连抛错会拒绝这个账号并继续选号；还没有保存的 429 时，代理抛错仍返回 proxy_unavailable。
@@ -45,6 +45,9 @@ type ChooseAccount = (attempt: {
   sessionId: string
   rejectedIds: string[]
 }) => ChosenAccount | null | Promise<ChosenAccount | null>
+
+// 按令牌归到的会话；token 是请求头里的原值，转发前要从请求头里删掉。
+type RoutedSession = { token: string; sessionId: string }
 
 type RejectAccount = (sessionId: string, accountId: string, reason: string) => void
 type SelectAccount = (sessionId: string, accountId: string, previousId: string | undefined) => void
@@ -132,11 +135,10 @@ export class LocalDaemon {
     const token = request.headers[sessionHeaderName]
     const sessionId = typeof token === "string" ? this.#sessions.resolve(token) : null
     if (typeof token !== "string" || sessionId === null) {
-      request.resume()
-      writeErrorResponse(response, 403, "invalid_session_token")
+      rejectSessionToken(request, response)
       return
     }
-    const session = { token, sessionId }
+    const session: RoutedSession = { token, sessionId }
     try {
       await this.#runAuthorized(async (signal) => {
         if (signal.aborted) throw new Error("MEMBERSHIP_REQUIRED")
@@ -166,10 +168,14 @@ export class LocalDaemon {
     }
   }
 
+  #revoked(session: RoutedSession): boolean {
+    return this.#sessions.resolve(session.token) !== session.sessionId
+  }
+
   async #forward(
     request: IncomingMessage,
     response: ServerResponse,
-    session: { token: string; sessionId: string },
+    session: RoutedSession,
   ): Promise<void> {
     const { sessionId } = session
     const upstreamUrl = daemonUpstreamUrl(request.url, this.#upstreamOrigin)
@@ -194,13 +200,16 @@ export class LocalDaemon {
       if (request.aborted || response.destroyed || response.headersSent || response.writableEnded) {
         return
       }
-      if (this.#sessions.resolve(session.token) !== sessionId) {
-        request.resume()
-        writeErrorResponse(response, 403, "invalid_session_token")
+      if (this.#revoked(session)) {
+        rejectSessionToken(request, response)
         return
       }
       const chosen = await this.#choose({ sessionId, rejectedIds: rejectedIds.slice() })
       if (request.aborted || response.destroyed || response.headersSent || response.writableEnded) {
+        return
+      }
+      if (this.#revoked(session)) {
+        rejectSessionToken(request, response)
         return
       }
       if (chosen === null || rejectedIds.includes(chosen.id)) {
@@ -295,6 +304,11 @@ export class LocalDaemon {
       if (continueWithNext) continue
     }
   }
+}
+
+function rejectSessionToken(request: IncomingMessage, response: ServerResponse): void {
+  request.resume()
+  writeErrorResponse(response, 403, "invalid_session_token")
 }
 
 // 已经记下额度用尽响应、并且调用方还在等时，这次代理或直连抛错才换下一个账号。

@@ -4,24 +4,9 @@
 import type { DaemonSessions } from "@pigclaude/daemon"
 import type { LocalStore } from "@pigclaude/local-store"
 import type { BrowserProfileUsage } from "../claude/browser-profile-usage"
-import type { ProfileEnvironment } from "../session/profile-environment"
+import type { SessionRuntimeLease, SessionRuntimeLeaseInput } from "../session/session-types"
 import type { AccountChooser, ChosenAccount } from "./account-chooser"
 import { SessionAccountEnvironment } from "./session-account-environment"
-
-/** 会话宿主拿到的一个会话的路由句柄。保证 token 只认这一个会话；close 吊销令牌、停止为它选号，可重复调用。 */
-export type RuntimeSession = {
-  readonly sessionId: string
-  readonly token: string
-  /** CLI 启动前固定这个会话的语言和时区，之后它只换入同环境的账号；返回的释放操作在 CLI 环境清理后调用。 */
-  bindEnvironment(profile: ProfileEnvironment): Promise<() => void>
-  close(): void
-}
-
-/** 打开会话的参数；preferredAccountId 只是偏好，不可用时按切换规则选其他账号。 */
-export type OpenRuntimeSession = {
-  sessionId: string
-  preferredAccountId: string | null
-}
 
 /** 一次选中带来的账号变化；同一个账号连续选中时没有变化。 */
 export type RuntimeAccountChange = {
@@ -30,7 +15,8 @@ export type RuntimeAccountChange = {
   reason: "initial" | "switch" | "quota"
 }
 
-type Tracked = {
+// 一个会话自己的选号状态；environment 固定它的语言和时区。
+type SessionSelection = {
   token: string
   preferredId: string | null
   currentAccountId: string | null
@@ -43,7 +29,7 @@ export class RuntimeSessions {
   readonly #tokens: DaemonSessions
   readonly #store: Pick<LocalStore, "getAccount" | "getProxy">
   readonly #usage: BrowserProfileUsage
-  readonly #sessions = new Map<string, Tracked>()
+  readonly #sessions = new Map<string, SessionSelection>()
 
   /** 绑定 daemon 的令牌注册表、账号读取视图和共享配置使用权。 */
   constructor(
@@ -57,21 +43,21 @@ export class RuntimeSessions {
   }
 
   /** 为会话注册新令牌并建立空的选号状态；同一 id 已打开时抛错，不覆盖在用的会话。 */
-  open(input: OpenRuntimeSession): RuntimeSession {
+  open(input: SessionRuntimeLeaseInput): SessionRuntimeLease {
     if (this.#sessions.has(input.sessionId)) throw new Error("SESSION_ALREADY_ACTIVE: 会话已打开")
-    const tracked: Tracked = {
+    const selection: SessionSelection = {
       token: this.#tokens.register(input.sessionId),
       preferredId: input.preferredAccountId,
       currentAccountId: null,
       quotaRejections: new Set(),
       environment: new SessionAccountEnvironment(this.#store, this.#usage),
     }
-    this.#sessions.set(input.sessionId, tracked)
+    this.#sessions.set(input.sessionId, selection)
     return {
       sessionId: input.sessionId,
-      token: tracked.token,
-      bindEnvironment: (profile) => tracked.environment.bind(profile),
-      close: () => this.#close(input.sessionId, tracked),
+      token: selection.token,
+      bindEnvironment: (profile) => selection.environment.bind(profile),
+      close: () => this.#close(input.sessionId, selection),
     }
   }
 
@@ -82,28 +68,28 @@ export class RuntimeSessions {
     sessionId: string,
     rejectedIds: readonly string[],
   ): Promise<ChosenAccount | null> {
-    const tracked = this.#sessions.get(sessionId)
-    if (tracked === undefined) return null
-    return tracked.environment.choose(chooser, {
+    const selection = this.#sessions.get(sessionId)
+    if (selection === undefined) return null
+    return selection.environment.choose(chooser, {
       rejectedIds,
-      ...(tracked.preferredId === null ? {} : { preferredId: tracked.preferredId }),
+      ...(selection.preferredId === null ? {} : { preferredId: selection.preferredId }),
     })
   }
 
   /** 记下会话的一次选中，返回相对上一次实际选中的变化；跨请求换号也以上一次选中的账号为 from。 */
   select(sessionId: string, accountId: string): RuntimeAccountChange | null {
-    const tracked = this.#sessions.get(sessionId)
-    if (tracked === undefined) return null
-    const from = tracked.currentAccountId
+    const selection = this.#sessions.get(sessionId)
+    if (selection === undefined) return null
+    const from = selection.currentAccountId
     const reason =
-      from !== null && tracked.quotaRejections.has(from)
+      from !== null && selection.quotaRejections.has(from)
         ? "quota"
         : from === null
           ? "initial"
           : "switch"
-    tracked.quotaRejections.delete(accountId)
-    if (from !== null) tracked.quotaRejections.delete(from)
-    tracked.currentAccountId = accountId
+    selection.quotaRejections.delete(accountId)
+    if (from !== null) selection.quotaRejections.delete(from)
+    selection.currentAccountId = accountId
     return accountId === from ? null : { from, to: accountId, reason }
   }
 
@@ -115,13 +101,13 @@ export class RuntimeSessions {
   /** 关闭全部会话：吊销所有令牌，之后不再为它们选号或绑定环境。 */
   closeAll(): void {
     this.#tokens.revokeAll()
-    for (const tracked of this.#sessions.values()) tracked.environment.close()
+    for (const selection of this.#sessions.values()) selection.environment.close()
     this.#sessions.clear()
   }
 
-  #close(sessionId: string, tracked: Tracked): void {
-    this.#tokens.revoke(tracked.token)
-    tracked.environment.close()
-    if (this.#sessions.get(sessionId) === tracked) this.#sessions.delete(sessionId)
+  #close(sessionId: string, selection: SessionSelection): void {
+    this.#tokens.revoke(selection.token)
+    selection.environment.close()
+    if (this.#sessions.get(sessionId) === selection) this.#sessions.delete(sessionId)
   }
 }

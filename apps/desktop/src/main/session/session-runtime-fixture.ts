@@ -6,6 +6,7 @@ import type {
   SessionRuntime,
   SessionRuntimeEvent,
   SessionRuntimeLease,
+  SessionRuntimeLeaseInput,
 } from "./session-types"
 
 /** 假运行时里一个会话的记录；令牌按会话 id 生成，便于断言。 */
@@ -34,15 +35,14 @@ export class FakeRuntime implements SessionRuntime {
     return this.sessions.at(-1)?.token ?? ""
   }
 
+  /** 订阅 switchAccount 广播的换号事件，返回取消订阅函数。 */
   subscribe(listener: (event: SessionRuntimeEvent) => void): () => void {
     this.#listeners.add(listener)
     return () => this.#listeners.delete(listener)
   }
 
-  openSession(input: {
-    sessionId: string
-    preferredAccountId: string | null
-  }): SessionRuntimeLease {
+  /** 记下打开的会话并返回句柄：令牌是 runtime-session-token-<会话 id>，绑定的环境记进 bound，close 记为已关闭。 */
+  openSession(input: SessionRuntimeLeaseInput): SessionRuntimeLease {
     const session: FakeRuntimeSession = {
       ...input,
       token: `runtime-session-token-${input.sessionId}`,
@@ -51,6 +51,7 @@ export class FakeRuntime implements SessionRuntime {
     }
     this.sessions.push(session)
     return {
+      sessionId: session.sessionId,
       token: session.token,
       bindEnvironment: async (profile) => {
         session.bound.push(profile)
@@ -62,6 +63,7 @@ export class FakeRuntime implements SessionRuntime {
     }
   }
 
+  /** 返回 availableAccounts 的当前值。 */
   async hasAvailableAccount(): Promise<boolean> {
     return this.availableAccounts
   }

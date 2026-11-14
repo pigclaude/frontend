@@ -34,6 +34,85 @@ describe("SessionHost daemon tokens", () => {
     await harness.host.dispose()
   })
 
+  it("binds the session's own locale and timezone through its token's runtime session", async () => {
+    const harness = createHarness({
+      workspace: await workspaceDir(),
+      resolveProfile: { timezone: "Asia/Tokyo", locale: "ja-JP" },
+    })
+
+    await harness.host.start(startInput(harness))
+
+    expect(harness.runtime.sessions[0]?.bound).toEqual([
+      { timezone: "Asia/Tokyo", locale: "ja-JP" },
+    ])
+    expect(harness.environments.inputs[0]).toMatchObject({
+      timezone: "Asia/Tokyo",
+      locale: "ja-JP",
+      sessionToken: harness.runtime.sessions[0]?.token,
+    })
+    await harness.host.dispose()
+  })
+
+  it("revokes the token when Claude Code exits on its own", async () => {
+    const harness = createHarness({ workspace: await workspaceDir() })
+    await harness.host.start(startInput(harness))
+
+    harness.adapters.last.emit({ type: "ended", reason: "error" })
+
+    await waitUntil(() => harness.runtime.sessions[0]?.closed === true)
+    expect(harness.host.status().active).toBe(false)
+    await harness.host.dispose()
+  })
+
+  it("revokes the token when a start is cancelled after the token was registered", async () => {
+    const harness = createHarness({
+      workspace: await workspaceDir(),
+      resolveBinaryPath: () => {
+        void harness.host.stop()
+        return "/fake/claude"
+      },
+    })
+
+    await expect(harness.host.start(startInput(harness))).rejects.toMatchObject({
+      code: "SESSION_CANCELLED",
+    })
+    expect(harness.environments.inputs).toHaveLength(0)
+    expect(harness.runtime.sessions).toMatchObject([{ sessionId: "id-1", closed: true }])
+    await harness.host.dispose()
+  })
+
+  it("revokes the token when a start is cancelled while Claude Code is starting", async () => {
+    const harness = createHarness({ workspace: await workspaceDir(), holdAdapterStart: true })
+
+    const starting = harness.host.start(startInput(harness))
+    await waitUntil(() => harness.adapters.instances.length === 1)
+    const stopping = harness.host.stop()
+    harness.adapters.last.releaseStart()
+
+    await expect(starting).rejects.toMatchObject({ code: "SESSION_CANCELLED" })
+    await stopping
+    expect(harness.runtime.sessions).toMatchObject([{ sessionId: "id-1", closed: true }])
+    await harness.host.dispose()
+  })
+
+  it("records usage on the account its own session used, ignoring another session's switch", async () => {
+    const harness = createHarness({ workspace: await workspaceDir() })
+    await harness.host.start({ ...startInput(harness), accountId: "account-a" })
+    await harness.host.stop(currentSessionId(harness.host))
+    await harness.host.start({ ...startInput(harness), accountId: "account-b" })
+    const sessionId = currentSessionId(harness.host)
+
+    await harness.host.send(sessionId, { text: "hello" })
+    harness.runtime.switchAccount("account-a", "account-c", "quota", "id-1")
+    harness.adapters.last.emit(resultEvent())
+    await waitUntil(() => harness.usage.records.length === 1)
+
+    expect(harness.usage.records).toMatchObject([
+      { sessionId, accountId: "account-b", switchedFrom: null },
+    ])
+    await harness.host.dispose()
+  })
+
   it("revokes the token when membership ends the session", async () => {
     const harness = createHarness({ workspace: await workspaceDir() })
     await harness.host.start(startInput(harness))
@@ -108,6 +187,18 @@ describe("SessionHost daemon tokens", () => {
     await harness.host.dispose()
   })
 })
+
+function resultEvent() {
+  return {
+    type: "result" as const,
+    subtype: "success",
+    isError: false,
+    durationMs: 1_200,
+    numTurns: 1,
+    stopReason: "end_turn",
+    usage: { inputTokens: 10, outputTokens: 20, cacheReadTokens: 0, cacheCreationTokens: 0 },
+  }
+}
 
 function startInput(harness: SessionHarness) {
   return { workspace: harness.workspace, permissionMode: "default" as const }

@@ -50,18 +50,14 @@ export type SessionModelQueryOptions = {
 export async function queryModels(options: SessionModelQueryOptions): Promise<SessionModelCatalog> {
   await options.assertMembership()
   const deadline = options.now() + catalogQueryBudgetMs
-  const query = { sessionId: options.newId(), preferredAccountId: null }
-  const session = options.runtime.openSession(query)
+  const session = options.runtime.openSession({
+    sessionId: options.newId(),
+    preferredAccountId: null,
+  })
   try {
     const organizationModels = await readOrganization(options, session)
     try {
-      const models = await listCliModels(
-        options,
-        query.sessionId,
-        session,
-        organizationModels,
-        deadline,
-      )
+      const models = await listCliModels(options, session, organizationModels, deadline)
       if (organizationModels === null) options.notify(organizationUnavailableNotice)
       return { models, cliError: null }
     } catch (error) {
@@ -84,7 +80,6 @@ async function readOrganization(
 
 async function listCliModels(
   options: SessionModelQueryOptions,
-  sessionId: string,
   session: SessionRuntimeLease,
   organizationModels: OrganizationModel[] | null,
   deadline: number,
@@ -99,7 +94,7 @@ async function listCliModels(
   const environment = await createEnvironmentOrThrow(
     (input) => boundSessionEnvironment(session, profile, options.createEnvironment, input),
     {
-      sessionId,
+      sessionId: session.sessionId,
       workspace,
       daemonBaseUrl,
       sessionToken: session.token,

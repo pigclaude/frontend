@@ -68,7 +68,7 @@ export async function prepareSessionStart(
     preferredAccountId: input.accountId ?? null,
   })
   try {
-    return await prepareEnvironment(deps, input, { sessionId, session, daemonBaseUrl })
+    return await prepareEnvironment(deps, input, session, daemonBaseUrl)
   } catch (error) {
     session.close()
     throw sanitizeStartError(error, session.token)
@@ -97,10 +97,10 @@ async function assertCanStart(deps: SessionStartDeps, input: SessionStartInput):
 async function prepareEnvironment(
   deps: SessionStartDeps,
   input: SessionStartInput,
-  started: { sessionId: string; session: SessionRuntimeLease; daemonBaseUrl: string },
+  session: SessionRuntimeLease,
+  daemonBaseUrl: string,
 ): Promise<PreparedSessionStart> {
-  const { sessionId, session, daemonBaseUrl } = started
-  const token = session.token
+  const { sessionId, token } = session
   const binaryPath = readBinaryPath(deps.resolveBinaryPath, token)
   const resolvedProfile = await deps.resolveProfile(input.accountId ?? null)
   const profile = deps.provider === null ? resolvedProfile : providerSessionProfile(resolvedProfile)

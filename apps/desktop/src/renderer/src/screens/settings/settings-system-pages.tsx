@@ -1,7 +1,9 @@
 // 负责中继、隐私与版本页，仅显示主进程已提供的运行时事实。
 import { SettingPage, SettingRow, SettingSection } from "@pigclaude/ui-primitives"
 import { ScrollPanel } from "@pigclaude/ui-shell"
+import { useAppUpdates } from "../../hooks/use-app-updates"
 import { useText } from "../../locale/text"
+import { updateStatusText } from "./update-settings"
 
 /** 展示中继与代理策略；暂无运行信息的字段显示占位符。 */
 export function NetworkSettings() {
@@ -70,7 +72,7 @@ export function DataSettings({ userDataPath }: { userDataPath: string | null }) 
   )
 }
 
-/** 显示本机版本和随包 Claude Code 的版本；更新服务和读不到的版本显示占位符。 */
+/** 显示本机版本、随包 Claude Code 的版本和更新状态；读不到的显示占位符。 */
 export function AboutSettings({
   appVersion,
   claudeCodeVersion = null,
@@ -79,13 +81,14 @@ export function AboutSettings({
   claudeCodeVersion?: string | null
 }) {
   const { t } = useText()
+  const updateStatus = updateStatusText(useAppUpdates().state)
   return (
     <ScrollPanel>
       <SettingPage title={t("appSettings.about")} sub={t("appSettings.aboutDescription")}>
         <SettingSection title={t("appSettings.versions")}>
           <SettingRow title="PigClaude" value={appVersion ?? "—"} />
           <SettingRow title={t("appSettings.claudeCode")} value={claudeCodeVersion ?? "—"} />
-          <SettingRow title={t("appSettings.updateStatus")} value="—" />
+          <SettingRow title={t("appSettings.updateStatus")} value={updateStatus ?? "—"} />
         </SettingSection>
       </SettingPage>
     </ScrollPanel>

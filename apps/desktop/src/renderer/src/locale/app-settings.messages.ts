@@ -30,4 +30,12 @@ export const appSettingsZhCN = {
   "appSettings.versions": "版本",
   "appSettings.claudeCode": "内置 Claude Code",
   "appSettings.updateStatus": "更新状态",
+  "appSettings.checkUpdates": "检查更新",
+  "appSettings.updateChecking": "正在检查",
+  "appSettings.updateCurrent": "已是最新版本",
+  "appSettings.updateAvailable": "可以更新到 {version}",
+  "appSettings.updateDownloading": "正在下载 {progress}%",
+  "appSettings.updateReady": "{version} 已下载，等待安装",
+  "appSettings.updateFailed": "更新失败，可以重试",
+  "appSettings.updateCheckFailed": "暂时无法检查更新",
 } as const

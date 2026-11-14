@@ -1,4 +1,5 @@
-// 负责主窗口外壳：用 Pigcode 的窗口按钮、标题栏、工作区侧栏、分隔条与命令面板组合出 PigClaude 的外壳。
+// 负责主窗口外壳：用 Pigcode 的窗口按钮、更新入口、标题栏、工作区侧栏、分隔条与命令面板组合出
+// PigClaude 的外壳。
 // 布局与类名和 Pigcode 的 Shell 相同；设置侧栏、工作台与底部账户行由调用方提供，
 // 设置侧栏、侧栏提醒与底部账户行由调用方给出。
 import {
@@ -31,6 +32,7 @@ import {
   useSidebarWidth,
 } from "@pigclaude/ui-shell/panel-resizer"
 import { titleBarMenus } from "@pigclaude/ui-shell/title-bar-menus"
+import { AppUpdateCenter } from "./app-update-center"
 import { registerShellCommands } from "./shell-commands"
 import { useShellKeys } from "./use-shell-keys"
 
@@ -209,6 +211,7 @@ export function PigclaudeShell(props: PigclaudeShellProps) {
         onSearch={() => setPaletteOpen(true)}
         onBack={props.onBack}
         onForward={props.onForward}
+        updates={<AppUpdateCenter />}
       />
       <aside
         className={shortcutHints ? "sidebar show-shortcuts" : "sidebar"}

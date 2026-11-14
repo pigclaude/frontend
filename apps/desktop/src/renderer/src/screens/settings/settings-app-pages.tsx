@@ -7,6 +7,7 @@ import type { ClaudeModel } from "../../../../main/session/session-types"
 import { LockedValue, Segmented } from "./setting-controls"
 import { SettingPage, SettingRow, SettingSection } from "./setting-page"
 import { DefaultModelRow, DefaultPermissionRow } from "./session-default-rows"
+import { UpdateSettingsSection } from "./update-settings"
 
 /** 通用：启动、Dock、快捷键、更新和侧栏会话分组。 */
 export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
@@ -20,15 +21,7 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
       <SettingSection title={desktopText("settings.settings-app-pages.5")}>
         <SettingRow title={desktopText("settings.settings-app-pages.6")} value="—" />
       </SettingSection>
-      <SettingSection title={desktopText("settings.settings-app-pages.7")}>
-        <SettingRow
-          title={desktopText("settings.settings-app-pages.8")}
-          description={desktopText("settings.settings-app-pages.9", {
-            value1: String(appVersion ?? "—"),
-          })}
-          value="—"
-        />
-      </SettingSection>
+      <UpdateSettingsSection appVersion={appVersion} />
       <SettingSection title={desktopText("settings.settings-app-pages.10")}>
         <SettingRow title={desktopText("settings.settings-app-pages.11")}>
           <Segmented

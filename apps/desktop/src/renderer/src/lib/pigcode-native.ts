@@ -1,6 +1,6 @@
 // 负责把 PigClaude 的桌面桥接成拷入的 Pigcode 组件读取的 window.pigcodeNative：
 // 平台、主题来源、窗口按钮、全屏、标题栏菜单与配色、侧栏透明、选文件夹，
-// 以及在文件管理器或本机应用里打开项目都走 pigclaude:* 通道。
+// 以及在文件管理器或本机应用里打开项目都走 pigclaude:* 通道；外链只放行更新中心的发布说明。
 // 没有桌面桥（浏览器预览、视觉回归）时不安装，Pigcode 组件按浏览器环境处理。
 
 type PigcodeNative = NonNullable<Window["pigcodeNative"]>
@@ -36,6 +36,9 @@ export function pigcodeNativeFrom(bridge: PigclaudeBridge): PigcodeNative {
           openFolder: (path: string) => workspaces.reveal(path),
         }
       : {}),
+    ...(bridge.updates
+      ? { openExternal: (url: string) => openReleaseNotes(bridge.updates, url) }
+      : {}),
     ...(bridge.pickFolder
       ? {
           pickFolder: (labels?: { title?: string; buttonLabel?: string }) =>
@@ -45,6 +48,13 @@ export function pigcodeNativeFrom(bridge: PigclaudeBridge): PigcodeNative {
     previewOpen: () => Promise.reject(new Error("PREVIEW_UNAVAILABLE")),
     previewClose: () => undefined,
   }
+}
+
+/** 页面只能打开主进程当前持有的发布页；地址对不上时拒绝，不交给系统浏览器。 */
+async function openReleaseNotes(updates: PigclaudeBridge["updates"], url: string): Promise<void> {
+  const state = await updates?.state()
+  if (!updates || !state?.url || state.url !== url) throw new Error("EXTERNAL_LINK_BLOCKED")
+  await updates.openReleaseNotes()
 }
 
 /** 有桌面桥时安装 window.pigcodeNative；返回是否安装。 */

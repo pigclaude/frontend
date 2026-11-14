@@ -73,6 +73,30 @@ describe("pigcodeNativeFrom", () => {
   it("PigClaude 没有的预览窗口在调用时拒绝", async () => {
     await expect(pigcodeNativeFrom(bridge()).previewOpen("https://example.com")).rejects.toThrow()
   })
+  it("更新中心的发布说明只能打开主进程持有的发布页，别的地址一律拒绝", async () => {
+    const url = "https://github.com/pigclaude/release/releases/tag/v1.1.0"
+    const updates = {
+      state: vi.fn(async () => ({
+        autoCheck: true,
+        phase: "available" as const,
+        currentVersion: "1.0.0",
+        version: "1.1.0",
+        url,
+        action: "download" as const,
+        progress: null,
+        error: null,
+      })),
+      openReleaseNotes: vi.fn(async () => undefined),
+    }
+    const native = pigcodeNativeFrom({ ...bridge(), updates } as unknown as PigclaudeBridge)
+    await native.openExternal?.(url)
+    expect(updates.openReleaseNotes).toHaveBeenCalledTimes(1)
+    await expect(native.openExternal?.("https://example.com/")).rejects.toThrow(
+      "EXTERNAL_LINK_BLOCKED",
+    )
+    expect(updates.openReleaseNotes).toHaveBeenCalledTimes(1)
+    expect(pigcodeNativeFrom(bridge()).openExternal).toBeUndefined()
+  })
 })
 
 describe("installPigcodeNative", () => {

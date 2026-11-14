@@ -111,6 +111,14 @@ function visible(snapshot: WorkflowSnapshot): string {
     snapshot.description,
     snapshot.summary,
     snapshot.phases,
-    snapshot.agents.map((agent) => [agent.state, agent.phase, agent.activity, agent.result]),
+    snapshot.agents.map(({ index, label, phase, state, prompt, activity, result }) => [
+      index,
+      label,
+      phase,
+      state,
+      prompt,
+      activity,
+      result,
+    ]),
   ])
 }

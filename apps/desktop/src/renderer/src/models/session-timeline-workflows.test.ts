@@ -33,7 +33,10 @@ function project(state: SessionUiState): SessionTimeline {
   })
 }
 
-function snapshot(status: WorkflowSnapshot["status"], states: string[]): SessionHostEvent {
+function snapshot(
+  status: WorkflowSnapshot["status"],
+  states: WorkflowSnapshot["agents"][number]["state"][],
+): SessionHostEvent {
   return {
     type: "workflow",
     workflow: {
@@ -45,7 +48,7 @@ function snapshot(status: WorkflowSnapshot["status"], states: string[]): Session
         index: index + 1,
         label: `review:${index + 1}`,
         phase: "Review",
-        state: state as WorkflowSnapshot["agents"][number]["state"],
+        state,
       })),
     },
   }
@@ -105,5 +108,20 @@ describe("projectTimeline workflows", () => {
       (event) => event.type === "tool.started" || event.type === "tool.completed",
     )
     expect(tools).toEqual([])
+  })
+
+  it("keeps the original tool call and result when the timeline has no workflow snapshot", () => {
+    const timeline = project(feed(sent(), ...working.filter((event) => event.type !== "workflow")))
+
+    const tools = timeline.events.filter(
+      (event) => event.type === "tool.started" || event.type === "tool.completed",
+    )
+    expect(tools.map(({ type, payload }) => ({ type, payload }))).toMatchObject([
+      { type: "tool.started", payload: { toolCallId: call, name: "Workflow" } },
+      {
+        type: "tool.completed",
+        payload: { toolCallId: call, output: "Workflow launched in background" },
+      },
+    ])
   })
 })

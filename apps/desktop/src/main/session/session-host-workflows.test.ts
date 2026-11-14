@@ -119,6 +119,53 @@ describe("SessionHost workflows", () => {
     await harness.host.dispose()
   })
 
+  it("publishes a corrected agent label and task even when its status stays the same", async () => {
+    const messages = loadSdkFixture("workflow-2.1.310")
+    const firstProgress = messages.findIndex(
+      (message) =>
+        message.type === "system" &&
+        message.subtype === "task_progress" &&
+        "workflow_progress" in message &&
+        Array.isArray(message.workflow_progress) &&
+        message.workflow_progress.some((item) => item.type === "workflow_agent"),
+    )
+    const progress = messages[firstProgress]
+    if (
+      progress?.type !== "system" ||
+      progress.subtype !== "task_progress" ||
+      !("workflow_progress" in progress) ||
+      !Array.isArray(progress.workflow_progress)
+    ) {
+      throw new Error("fixture changed")
+    }
+    const updatedItems: { index: number; type: string; label?: string; promptPreview?: string }[] =
+      progress.workflow_progress
+    const corrected = {
+      ...progress,
+      workflow_progress: updatedItems.map((item) =>
+        item.type === "workflow_agent" && item.index === 1
+          ? { ...item, label: "count-notes", promptPreview: "Count the lines in notes.txt." }
+          : item,
+      ),
+    }
+    const harness = await replayed([
+      ...messages.slice(0, firstProgress + 1),
+      corrected,
+      ...messages.slice(firstProgress + 1),
+    ])
+    try {
+      await waitUntil(() => harness.events.some((event) => event.type === "turn-ended"))
+      const all = snapshots(harness.events)
+      expect(all[3]?.agents[0]).toMatchObject({
+        label: "count-notes",
+        prompt: "Count the lines in notes.txt.",
+        state: "running",
+      })
+    } finally {
+      await harness.host.dispose()
+    }
+  })
+
   it("fails the workflow with the tool's message when the Workflow tool errors", async () => {
     const messages = loadSdkFixture("workflow-2.1.310")
     const call = messages.findIndex((message) => isWorkflowCall(message))

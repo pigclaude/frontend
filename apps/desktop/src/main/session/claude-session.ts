@@ -11,6 +11,7 @@ import type { SessionEnvelope } from "./session-envelope"
 import { classifyDaemonError } from "./session-error-mapping"
 import { LiveReply } from "./live-reply"
 import { SessionEventLog } from "./session-event-log"
+import { SessionTurnFlags, type FastModeNoticeKey } from "./session-flags"
 import { createActiveSession, type ActiveSession, type SessionTimers } from "./session-host-active"
 import {
   enterRequestedMode,
@@ -76,6 +77,8 @@ export class ClaudeSession {
   readonly #log: SessionEventLog
   readonly #reply: LiveReply
   readonly #stall: TurnStallWatchdog
+  readonly #flags: SessionTurnFlags
+  #started = false
   readonly #context = new ContextUsageQuery({
     read: () => this.state.adapter.contextUsage(),
     emit: (event) => this.#publish(event),
@@ -112,6 +115,7 @@ export class ClaudeSession {
       onWaitingChange: (waiting) => this.#stall.setWaiting(waiting),
       onAdapterEvent: (_active, event) => this.#handleAdapterEvent(event),
     })
+    this.#flags = new SessionTurnFlags(this.state.adapter, options.input)
   }
 
   /** 会话已释放或正在结束。 */
@@ -134,34 +138,46 @@ export class ClaudeSession {
   }
 
   /**
-   * 写入一条消息，被接受后开一轮；如有工作台回调，在交给适配器之前记录基线。
+   * 更新本轮设置后写入消息，被接受后开一轮；如有工作台回调，在交给适配器之前记录基线。
    * 上一轮（含它的后台子代理和工作流）没结束时抛 TURN_ACTIVE。
    */
   async send(input: SessionSendInput, checkpoint?: ActiveSession["checkpoint"]): Promise<void> {
     const active = this.state
     const turnId = active.turns.reserve(this.#options.newId)
+    const canSend = () => active.turns.holds(turnId) && !this.closing
     active.checkpoint = checkpoint
     try {
       await checkpoint?.(active.environment.workspace, "baseline", turnId)
-      if (!active.turns.holds(turnId)) return
-      if (active.stopping || active.released) {
+      await this.#flags.apply(input, canSend)
+      if (!canSend()) {
         active.turns.release(turnId)
         return
       }
+      this.#flags.expectInit(turnId)
       await active.adapter.send(input.text)
     } catch (error) {
+      this.#flags.ended(turnId)
+      if (!active.turns.holds(turnId)) return
       active.turns.release(turnId)
       const message = errorMessage(error)
       const code = classifyDaemonError(message) ?? "SDK_ERROR"
       throw hostError(code, message, this.#options.sessionToken())
     }
+    if (!canSend()) {
+      active.turns.release(turnId)
+      this.#flags.ended(turnId)
+      return
+    }
     active.turns.open(turnId)
+    this.#publishFastNotice(this.#flags.opened(turnId))
   }
 
   /** 停止当前一轮：拒绝未回答的权限和提问，中断并停止在途后台任务，以中断结束这一轮；会话保留供下一次发送。 */
   async cancel(): Promise<void> {
     const active = this.state
     this.#stall.stop()
+    const turnId = active.turns.turnId
+    if (turnId !== null) this.#flags.ended(turnId)
     active.pending.rejectAll("用户已取消")
     await active.turns.interrupt("interrupted", "SESSION_CANCELLED")
   }
@@ -304,11 +320,23 @@ export class ClaudeSession {
       }
       case "context-compacted":
         return
-      case "started":
+      case "started": {
         active.model = event.model
         active.turns.observe(event)
         followReportedMode(active, event.permissionMode, "init", this.#emitModeEvent)
-        break
+        if (!this.#started) {
+          this.#started = true
+          this.#publish({
+            type: "started",
+            sessionId: event.sessionId,
+            model: event.model,
+            tools: event.tools,
+            permissionMode: event.permissionMode,
+          })
+        }
+        if (!active.stopping) this.#publishFastNotice(this.#flags.observeInit(event.fastMode))
+        return
+      }
       case "mode":
         followReportedMode(active, event.permissionMode, "status", this.#emitModeEvent)
         return
@@ -372,6 +400,7 @@ export class ClaudeSession {
     if (event.type === "turn-started") this.#stall.start()
     else this.#stall.stop()
     const unfinished = this.#reply.takeUnfinished()
+    if (event.type === "turn-ended") this.#flags.ended(event.turnId)
     if (event.type === "turn-ended" && event.status !== "completed" && unfinished !== null) {
       this.#publish({
         type: "message",
@@ -390,6 +419,10 @@ export class ClaudeSession {
 
   #publishWorkflow(event: WorkflowEvent | null): void {
     if (event !== null) this.#publish(event)
+  }
+
+  #publishFastNotice(key: FastModeNoticeKey | null): void {
+    if (key !== null) this.#publish({ type: "notice", key, level: "warning", params: {} })
   }
 
   #redact(message: string): string {

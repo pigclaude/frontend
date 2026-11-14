@@ -285,12 +285,14 @@ export function ChatScreen({
 
   async function submit(text: string, options: ComposerSubmitOptions): Promise<boolean> {
     const effort = effortForComposer(options.effort)
+    const fast = options.fast === true
+    const sendOptions = { effort: effort ?? null, fast }
     if (live) {
       if (state.activeTurnId !== null) {
         notify("当前请求尚未结束")
         return false
       }
-      return session.send(text)
+      return session.send(text, sendOptions)
     }
     const target = workspace ?? workspaceOptions[0] ?? null
     if (target === null) {
@@ -300,9 +302,9 @@ export function ChatScreen({
     const directory = await draft.start(target)
     if (directory === null) return false
     const project = (workspace === null ? null : workspaceProject) ?? target
-    const ok = await startSession(directory, project, effort, options.fast === true)
+    const ok = await startSession(directory, project, effort, fast)
     if (!ok) return false
-    return session.send(text)
+    return session.send(text, sendOptions)
   }
 
   /** 输入区发送后立即清空；提交失败时把文字放回草稿，避免用户重写。 */

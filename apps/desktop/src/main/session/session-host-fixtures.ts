@@ -239,6 +239,9 @@ export class FakeAdapter implements SessionAdapterPort {
     this.modelsSet.push(model)
   }
 
+  /** 假适配器直接确认设置；实际 SDK 调用顺序由回放测试验证。 */
+  async applyFlagSettings(): Promise<void> {}
+
   /** 缺省按查询失败处理，不发 context 事件。 */
   async contextUsage(): Promise<unknown> {
     throw new Error("no context reply")

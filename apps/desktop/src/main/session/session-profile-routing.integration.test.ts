@@ -89,6 +89,7 @@ it.each([
         models: async () => [],
         setModel: async () => undefined,
         setPermissionMode: async () => undefined,
+        applyFlagSettings: async () => undefined,
         contextUsage: async () => ({}),
       }),
     })

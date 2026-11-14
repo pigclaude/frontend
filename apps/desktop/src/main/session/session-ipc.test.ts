@@ -254,6 +254,25 @@ describe("readSessionStartInput", () => {
 })
 
 describe("readSessionSendInput", () => {
+  it("preserves explicit settings, including standard speed and model default effort", () => {
+    expect(readSessionSendInput({ text: "hello", effort: "max", fast: true })).toEqual({
+      text: "hello",
+      effort: "max",
+      fast: true,
+    })
+    expect(readSessionSendInput({ text: "hello", effort: null, fast: false })).toEqual({
+      text: "hello",
+      effort: null,
+      fast: false,
+    })
+    expect(() => readSessionSendInput({ text: "hello", effort: "none" })).toThrow(
+      "INVALID_SESSION_INPUT",
+    )
+    expect(() => readSessionSendInput({ text: "hello", fast: "yes" })).toThrow(
+      "INVALID_SESSION_INPUT",
+    )
+  })
+
   it("accepts text with and without attachments and rejects invalid shapes", () => {
     expect(readSessionSendInput({ text: "hello" })).toEqual({ text: "hello" })
     expect(readSessionSendInput({ text: "hello", attachments: ["a.ts"] })).toEqual({

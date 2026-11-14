@@ -1,6 +1,10 @@
 // 定义会话适配器向上层广播的事件类型；只含脱敏内容，不带 token、代理地址或完整环境变量。
 
-import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk"
+import type {
+  FastModeDisabledReason,
+  FastModeState,
+  PermissionMode,
+} from "@anthropic-ai/claude-agent-sdk"
 import type { BackgroundTaskSignal } from "./background-tasks"
 import type { TaskSignal } from "./task-signals"
 
@@ -89,9 +93,22 @@ export type ContextCompactedSignal = { type: "context-compacted" }
 /** 未产生界面事件的 SDK 消息仍会刷新会话停滞计时。 */
 export type SdkActivitySignal = { type: "sdk-activity" }
 
+/** SDK 在本轮开始时报告的快速模式状态；没有报告时不推断生效与否。 */
+export type ReportedFastMode = { state: FastModeState; reason?: FastModeDisabledReason }
+
+/** 只在主进程处理 init 的快速模式状态，渲染层只收到已确定的提示。 */
+type AdapterStartedEvent = Extract<SessionEvent, { type: "started" }> & {
+  fastMode?: ReportedFastMode
+}
+
 /** 适配器交给会话的输入，包括只用于主进程的任务、压缩和活动信号。 */
 export type AdapterEvent =
-  SessionEvent | BackgroundTaskSignal | TaskSignal | ContextCompactedSignal | SdkActivitySignal
+  | Exclude<SessionEvent, { type: "started" }>
+  | AdapterStartedEvent
+  | BackgroundTaskSignal
+  | TaskSignal
+  | ContextCompactedSignal
+  | SdkActivitySignal
 
 /** 界面用的模型信息；第一行是 CLI 的默认选择。 */
 export type ClaudeModel = {

@@ -133,12 +133,8 @@ export function readSessionStartInput(value: unknown): SessionStartInput {
   if (thinking !== undefined && !thinkingLevels.has(thinking as SessionThinking)) {
     throw invalidInput()
   }
-  const effort = value.effort
-  if (effort !== undefined && !effortLevels.has(effort as SessionEffort)) {
-    throw invalidInput()
-  }
-  const fast = value.fast
-  if (fast !== undefined && typeof fast !== "boolean") throw invalidInput()
+  const effort = readOptionalEffort(value.effort)
+  const fast = readOptionalFast(value.fast)
   if (workspace === null) throw invalidInput()
   return {
     ...(sessionId === undefined ? {} : { sessionId }),
@@ -147,7 +143,7 @@ export function readSessionStartInput(value: unknown): SessionStartInput {
     ...(model === undefined ? {} : { model }),
     ...(accountId === undefined ? {} : { accountId }),
     ...(thinking === undefined ? {} : { thinking: thinking as SessionThinking }),
-    ...(effort === undefined ? {} : { effort: effort as SessionEffort }),
+    ...(effort === undefined ? {} : { effort }),
     ...(fast === undefined ? {} : { fast }),
   }
 }
@@ -169,7 +165,7 @@ export function readSessionEventsInput(value: unknown): SessionEventsInput {
   return { sessionId, afterSeq }
 }
 
-/** 解析 session.send 输入；附件只接受非空字符串数组。 */
+/** 解析 session.send 输入；始终保留显式关闭快速模式与恢复默认思考深度的设置。 */
 export function readSessionSendInput(value: unknown): SessionSendInput {
   if (!isRecord(value)) throw invalidInput()
   const text = readString(value.text)
@@ -180,10 +176,25 @@ export function readSessionSendInput(value: unknown): SessionSendInput {
       throw invalidInput()
     }
   }
+  const effort = value.effort === null ? null : readOptionalEffort(value.effort)
+  const fast = readOptionalFast(value.fast)
   return {
     text,
     ...(attachments === undefined ? {} : { attachments: [...attachments] as string[] }),
+    ...(effort === undefined ? {} : { effort }),
+    ...(fast === undefined ? {} : { fast }),
   }
+}
+
+function readOptionalEffort(value: unknown): SessionEffort | undefined {
+  if (value === undefined) return undefined
+  if (!effortLevels.has(value as SessionEffort)) throw invalidInput()
+  return value as SessionEffort
+}
+
+function readOptionalFast(value: unknown): boolean | undefined {
+  if (value === undefined || typeof value === "boolean") return value
+  throw invalidInput()
 }
 
 /** 解析 session.respondPermission 输入；updatedPermissions 的形状由 PermissionBroker 校验。 */

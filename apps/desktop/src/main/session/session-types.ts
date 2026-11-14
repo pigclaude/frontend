@@ -3,6 +3,7 @@
 
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { ClaudeModelsOptions } from "./claude-model-query"
+import type { SessionFlagSettings } from "./claude-query"
 import type { ClaudeAgentStartOptions } from "./claude-query-options"
 import type { SessionContextEvent } from "./context-usage"
 import type { PermissionAnswer, PermissionRequestEvent } from "./permission-broker"
@@ -33,14 +34,20 @@ export type SessionStartInput = {
   thinking?: SessionThinking
   /** 新输入区按模型提供的 effort；和 thinking 二选一，effort 优先。 */
   effort?: SessionEffort
-  /** 模型支持时启用快速模式；只在会话启动时生效。 */
+  /** 模型支持时以快速模式启动会话。 */
   fast?: boolean
   permissionMode: SessionPermissionMode
   accountId?: string
 }
 
+/** 这一条消息使用的设置；省略沿用当前值，effort 为 null 时使用模型默认档位。 */
+export type SessionSendOptions = {
+  effort?: SessionEffort | null
+  fast?: boolean
+}
+
 /** session.send 的输入；附件当前只做形状校验，不由适配器传递。 */
-export type SessionSendInput = {
+export type SessionSendInput = SessionSendOptions & {
   text: string
   attachments?: string[]
 }
@@ -220,6 +227,8 @@ export type SessionAdapterPort = {
   models(options?: ClaudeModelsOptions): Promise<ClaudeModel[]>
   setPermissionMode(mode: SessionPermissionMode): Promise<void>
   setModel(model: string): Promise<void>
+  /** 等 SDK 确认更新当前会话的 flag。 */
+  applyFlagSettings(settings: SessionFlagSettings): Promise<void>
   /** 查询当前上下文占用（summary 模式），返回 SDK 的原始回复；会话未启动或已停止时抛错。 */
   contextUsage(): Promise<unknown>
 }

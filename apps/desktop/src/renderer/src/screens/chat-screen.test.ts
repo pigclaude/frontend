@@ -68,7 +68,7 @@ describe("chat screen", () => {
       model: "claude-sonnet",
       permissionMode: "default",
     })
-    expect(session.send).toHaveBeenCalledWith("开始吧")
+    expect(session.send).toHaveBeenCalledWith("开始吧", { effort: null, fast: false })
     expect(onOpen).toHaveBeenCalledWith({ kind: "session" })
   })
 
@@ -118,7 +118,7 @@ describe("chat screen", () => {
         new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
       )
     })
-    expect(session.send).toHaveBeenCalledWith("你好")
+    expect(session.send).toHaveBeenCalledWith("你好", { effort: null, fast: false })
   })
 
   it("shows the live thread even when the route is still chat-new", async () => {

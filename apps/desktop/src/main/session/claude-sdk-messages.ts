@@ -20,6 +20,8 @@ export function normalizeSdkMessage(message: SDKMessage): AdapterEvent[] {
       const read = signals.filter((signal) => signal !== null)
       if (read.length > 0) return read
       if (message.subtype === "init") {
+        const state = message.fast_mode_state
+        const reason = message.fast_mode_disabled_reason
         return [
           {
             type: "started",
@@ -27,6 +29,9 @@ export function normalizeSdkMessage(message: SDKMessage): AdapterEvent[] {
             model: message.model,
             tools: [...message.tools],
             permissionMode: message.permissionMode,
+            ...(state === undefined
+              ? {}
+              : { fastMode: { state, ...(reason === undefined ? {} : { reason }) } }),
           },
         ]
       }

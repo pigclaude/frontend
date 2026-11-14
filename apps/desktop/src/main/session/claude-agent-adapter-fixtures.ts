@@ -127,6 +127,9 @@ export class FakeQuery implements AdapterQuery {
     this.modelChanges.push(model)
   }
 
+  /** 缺省接受会话级 flag；需要记录或挂起响应的测试可覆盖。 */
+  async applyFlagSettings(): Promise<void> {}
+
   /** 上下文占用查询收到的参数，按调用顺序。 */
   readonly contextRequests: unknown[] = []
   /** 每次上下文占用查询的回复；缺省失败（不发事件），测试可以换成录制的回复或挂起的 Promise。 */

@@ -3,7 +3,13 @@
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { resolveClaudeBinaryPath } from "./claude-binary"
 import { queryClaudeModels, type ClaudeModelsOptions } from "./claude-model-query"
-import { closeQuietly, defaultQueryFn, type AdapterQuery, type QueryFn } from "./claude-query"
+import {
+  closeQuietly,
+  defaultQueryFn,
+  type AdapterQuery,
+  type QueryFn,
+  type SessionFlagSettings,
+} from "./claude-query"
 import { buildQueryOptions, type ClaudeAgentStartOptions } from "./claude-query-options"
 import { normalizeSdkMessage } from "./claude-sdk-messages"
 import { PromptStream } from "./prompt-stream"
@@ -166,6 +172,11 @@ export class ClaudeAgentAdapter {
   async setModel(model: string): Promise<void> {
     const query = this.#requireQuery()
     await query.setModel(model)
+  }
+
+  /** 等 CLI 确认更新当前会话的思考深度与快速模式；query 不可用时抛错。 */
+  async applyFlagSettings(settings: SessionFlagSettings): Promise<void> {
+    await this.#requireQuery().applyFlagSettings(settings)
   }
 
   /** 用 summary 模式查询当前上下文占用，原样返回 SDK 的回复；会话未启动或已停止时抛错。 */

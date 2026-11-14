@@ -5,6 +5,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react"
 import type {
   ClaudeModel,
   SessionBridge,
+  SessionSendOptions,
   SessionStartInput,
   SessionStatusView,
 } from "../../../main/session/session-types"
@@ -27,8 +28,8 @@ export type SessionController = {
   /** Claude Code 没有列出模型的原因；这时 models 是主进程给的内置目录。 */
   modelsCliError: string | null
   start: (input: SessionStartInput) => Promise<boolean>
-  /** 返回 false 表示消息没有被接受（当前一轮含后台任务还没结束，或桥不可用），界面保留草稿。 */
-  send: (text: string) => Promise<boolean>
+  /** 用选定的设置发送；消息未被接受时返回 false，界面保留草稿。 */
+  send: (text: string, options?: SessionSendOptions) => Promise<boolean>
   cancel: () => Promise<void>
   stop: () => Promise<void>
   /** updatedPermissions 是“始终允许”要写回的 SDK 规则；只允许一次时省略。 */
@@ -181,7 +182,7 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
   )
 
   const send = useCallback(
-    async (text: string): Promise<boolean> => {
+    async (text: string, options?: SessionSendOptions): Promise<boolean> => {
       if (resolved === null || resolved === undefined) {
         dispatch({ type: "failed", message: "桌面会话服务不可用", at: now() })
         return false
@@ -198,11 +199,13 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
       activeTurnRef.current = turnId
       dispatch({ type: "user-message", text, turnId, at: now() })
       try {
-        await resolved.send({ sessionId, text })
+        await resolved.send({ ...options, sessionId, text })
         return true
       } catch (error: unknown) {
-        activeTurnRef.current = null
-        dispatch({ type: "failed", message: sessionErrorFrom(error), at: now() })
+        if (activeTurnRef.current === turnId) {
+          activeTurnRef.current = null
+          dispatch({ type: "failed", message: sessionErrorFrom(error), at: now() })
+        }
         return false
       }
     },

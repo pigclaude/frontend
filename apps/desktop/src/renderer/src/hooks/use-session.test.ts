@@ -95,7 +95,7 @@ describe("useSession", () => {
     expect(controller?.state.started).toBe(true)
 
     await act(async () => {
-      await controller?.send("改一下重试逻辑")
+      await controller?.send("改一下重试逻辑", { effort: "xhigh", fast: false })
     })
     await act(async () => {
       await controller?.respondPermission("permission-1", "allow")
@@ -122,7 +122,12 @@ describe("useSession", () => {
       thinking: "medium",
     })
     const target = { sessionId: "session-1" }
-    expect(bridge.send).toHaveBeenCalledWith({ ...target, text: "改一下重试逻辑" })
+    expect(bridge.send).toHaveBeenCalledWith({
+      ...target,
+      text: "改一下重试逻辑",
+      effort: "xhigh",
+      fast: false,
+    })
     expect(bridge.respondPermission).toHaveBeenCalledWith({
       ...target,
       requestId: "permission-1",
@@ -140,6 +145,39 @@ describe("useSession", () => {
     expect(bridge.status).toHaveBeenNthCalledWith(1)
     expect(bridge.status).toHaveBeenLastCalledWith(target)
     expect(controller?.state.turns[0]?.userText).toBe("改一下重试逻辑")
+  })
+
+  it("does not end the replacement turn when a cancelled send rejects late", async () => {
+    let rejectFirst: (error: Error) => void = () => undefined
+    const first = new Promise<void>((_resolve, reject) => {
+      rejectFirst = reject
+    })
+    const send = vi.fn(async () => undefined as void).mockImplementationOnce(() => first)
+    const { bridge, emit } = fakeBridge({ send })
+    await render(bridge)
+    await act(async () => {
+      await controller?.start({ workspace: "/Users/me/app", permissionMode: "default" })
+    })
+    let cancelled: Promise<boolean> | undefined
+    await act(async () => {
+      cancelled = controller?.send("first", { fast: true })
+      await controller?.cancel()
+      emit({ type: "turn-started", turnId: "first-main" })
+      emit({
+        type: "turn-ended",
+        turnId: "first-main",
+        status: "interrupted",
+        errorCode: "SESSION_CANCELLED",
+      })
+    })
+    await act(async () => {
+      await controller?.send("second", { fast: false })
+      rejectFirst(new Error("SDK_ERROR: settings rejected"))
+      await cancelled
+    })
+
+    expect(controller?.state.activeTurnId).toBe("turn-2")
+    expect(controller?.state.error).toBeNull()
   })
 
   it("stops a session that is still starting once its id is known", async () => {

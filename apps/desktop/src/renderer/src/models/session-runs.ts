@@ -9,14 +9,22 @@ import type { SessionTurn } from "./session-model"
 /** 界面上的一轮和属于它的信封，信封按序号排列。 */
 export type SessionRun = { turn: SessionTurn; envelopes: SessionEnvelope[] }
 
-const runEvents: ReadonlySet<SessionHostEvent["type"]> = new Set([
-  "message",
-  "tool-result",
-  "permission",
-  "account-switched",
-  "result",
-  "error",
-])
+/** 每种事件是否属于某一轮；新增的事件类型不在这里归类就过不了类型检查。 */
+const inRun: Readonly<Record<SessionHostEvent["type"], boolean>> = {
+  started: false,
+  mode: false,
+  delta: false,
+  message: true,
+  "tool-result": true,
+  permission: true,
+  "account-switched": true,
+  notice: false,
+  result: true,
+  "turn-started": false,
+  "turn-ended": false,
+  error: true,
+  ended: false,
+}
 
 /** 分段时的位置：正在收事件的一轮、刚结束的一轮，以及下一个可以认领的轮次下标。 */
 type Cursor = { current: SessionRun | null; last: SessionRun | null; next: number }
@@ -40,7 +48,7 @@ export function sessionRuns(
       cursor.current = null
       continue
     }
-    if (!runEvents.has(event.type)) continue
+    if (!inRun[event.type]) continue
     if (cursor.current === null) {
       cursor.next = skipUnclaimed(runs, cursor.next)
       const waiting = runs[cursor.next]

@@ -2,8 +2,8 @@
 // 读回时跳过它，追加前把它截掉。中间解析不了的行跳过并计数。
 
 import { appendFile, chmod, open, readFile, stat, truncate } from "node:fs/promises"
-import { errorCode } from "./session-index-file"
 import { sessionEnvelopeVersion } from "./session-envelope"
+import { fileErrorCode, isPlainRecord } from "./session-store-guards"
 import { sessionStoreFileMode } from "./session-store-layout"
 import type { TimelineEnvelope } from "./session-timeline-redaction"
 
@@ -20,7 +20,7 @@ export async function readTimelineFile(path: string): Promise<TimelineFileRead> 
   try {
     text = await readFile(path, "utf8")
   } catch (error: unknown) {
-    if (errorCode(error) === "ENOENT")
+    if (fileErrorCode(error) === "ENOENT")
       return { envelopes: [], skippedLines: 0, incompleteTail: false }
     throw error
   }
@@ -42,7 +42,7 @@ export async function repairTimelineTail(path: string): Promise<void> {
   try {
     size = (await stat(path)).size
   } catch (error: unknown) {
-    if (errorCode(error) === "ENOENT") return
+    if (fileErrorCode(error) === "ENOENT") return
     throw error
   }
   if (size === 0 || (await lastByte(path, size)) === 0x0a) return
@@ -80,20 +80,16 @@ function parseLine(line: string): TimelineEnvelope | null {
     return null
   }
   if (
-    !isRecord(value) ||
+    !isPlainRecord(value) ||
     value.version !== sessionEnvelopeVersion ||
     typeof value.sessionId !== "string" ||
     typeof value.seq !== "number" ||
     !Number.isSafeInteger(value.seq) ||
     value.seq < 1 ||
     typeof value.at !== "string" ||
-    !isRecord(value.event) ||
+    !isPlainRecord(value.event) ||
     typeof value.event.type !== "string"
   )
     return null
   return value as TimelineEnvelope
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
 }

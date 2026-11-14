@@ -1,6 +1,7 @@
 // 负责启动收敛的规则：应用上次退出时还在运行的会话，按时间线里有没有没结束的回合改为中断或停放；
 // 中断的回合补一条「应用已重启」提示并用 turn-ended 闭合，没回答的提问补 question-resolved（空答案）。
 // 权限请求没有单独的结算事件，随所在回合的 turn-ended（APP_RESTARTED）一起结算为已失效。
+// 时间线已经以补写的 turn-ended（APP_RESTARTED）结尾时按中断处理，不再补写。
 
 import { sessionEnvelopeVersion, type SessionEnvelope } from "./session-envelope"
 import type { SessionLastTurn } from "./session-index"
@@ -59,12 +60,18 @@ export function recoverSession(
     at,
     event,
   }))
-  if (openTurns.length === 0) return { status: "parked", envelopes }
+  if (openTurns.length === 0 && !endsWithRestart(timeline)) return { status: "parked", envelopes }
   return {
     status: "interrupted",
     envelopes,
     lastTurn: { status: "interrupted", errorCode: appRestartedErrorCode },
   }
+}
+
+/** 时间线停在一次收敛补写的回合闭合上：上次收敛写完时间线、但索引没写成。 */
+function endsWithRestart(timeline: readonly SessionEnvelope[]): boolean {
+  const last = timeline.at(-1)?.event
+  return last?.type === "turn-ended" && last.errorCode === appRestartedErrorCode
 }
 
 function remove(items: string[], item: string): void {

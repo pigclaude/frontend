@@ -119,7 +119,8 @@ export class SessionStore {
   appendTimeline(id: string, envelope: SessionEnvelope): Promise<boolean> {
     return this.#enqueue(id, async () => {
       const entry = this.#entry(id)
-      if (envelope.sessionId !== id) throw new Error("envelope belongs to another session")
+      if (envelope.sessionId !== id)
+        throw new SessionHostError("SESSION_NOT_FOUND", "信封不属于这个会话")
       const line = timelineEnvelope(envelope)
       if (line === null || line.seq === null) return false
       await this.#appendLines(id, [line])
@@ -213,7 +214,12 @@ export class SessionStore {
       await repairTimelineTail(file)
       this.#repairedTimelines.add(id)
     }
-    await appendTimelineFile(file, lines)
+    try {
+      await appendTimelineFile(file, lines)
+    } catch (error: unknown) {
+      this.#repairedTimelines.delete(id)
+      throw error
+    }
   }
 
   #entry(id: string): Entry {

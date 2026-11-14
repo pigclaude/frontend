@@ -2,6 +2,7 @@
 // 写回只覆盖认识的字段，不认识的字段原样保留。索引里没有代理地址、令牌或密码字段。
 
 import type { SessionEffort, SessionPermissionMode, SessionThinking } from "./session-events"
+import { isPlainRecord } from "./session-store-guards"
 import type { SessionTurnEndStatus } from "./session-types"
 
 /** 本版本写出的索引格式版本；读到更新的版本时不解析、不改写。 */
@@ -80,7 +81,7 @@ const levels: readonly SessionPermissionLevel[] = [
 
 /** 解析磁盘上的索引对象；任何认识的字段类型不对都判为格式不对，不猜默认值。 */
 export function parseSessionIndex(value: unknown): ParsedSessionIndex {
-  if (!isRecord(value)) return { kind: "invalid", reason: "not an object" }
+  if (!isPlainRecord(value)) return { kind: "invalid", reason: "not an object" }
   const version = value.version
   if (typeof version !== "number" || !Number.isSafeInteger(version) || version < 1)
     return { kind: "invalid", reason: "missing version" }
@@ -155,7 +156,7 @@ export function sessionIndexRecord(
 }
 
 function parseEnvironment(value: unknown): SessionEnvironmentSnapshot | null {
-  if (!isRecord(value)) return null
+  if (!isPlainRecord(value)) return null
   const revision = value.browserProfileRevision
   if (
     !isNullableString(value.browserProfileId) ||
@@ -174,7 +175,11 @@ function parseEnvironment(value: unknown): SessionEnvironmentSnapshot | null {
 
 function parseLastTurn(value: unknown): SessionLastTurn | null | undefined {
   if (value === null) return null
-  if (!isRecord(value) || !oneOf(value.status, turnStatuses) || !isNullableString(value.errorCode))
+  if (
+    !isPlainRecord(value) ||
+    !oneOf(value.status, turnStatuses) ||
+    !isNullableString(value.errorCode)
+  )
     return undefined
   return { status: value.status, errorCode: value.errorCode }
 }
@@ -193,8 +198,4 @@ function isNullableString(value: unknown): value is string | null {
 
 function isCount(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
 }

@@ -163,6 +163,23 @@ describe("timelineEnvelope 截图", () => {
     expect(content).toMatchObject({ content: `截图：${screenshotPlaceholder} 完成` })
     expect(JSON.stringify([input, content])).not.toContain("iVBORw0KGgo")
   })
+
+  it("工具结果里不带 data URL 前缀的 base64 截图同样只留占位", () => {
+    const whole: SessionHostEvent = { ...samples["tool-result"], content: pngBase64 }
+    const embedded: SessionHostEvent = {
+      ...samples["tool-result"],
+      content: `截图如下 ${pngBase64} 完成`,
+    }
+
+    const results = [whole, embedded].map(
+      (event) => timelineEnvelope(envelopeOf("s-1", 13, event))?.event,
+    )
+
+    expect(results).toMatchObject([
+      { content: screenshotPlaceholder },
+      { content: `截图如下 ${screenshotPlaceholder} 完成` },
+    ])
+  })
 })
 
 describe("timelineEnvelope 密码打码", () => {

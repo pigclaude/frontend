@@ -1,6 +1,8 @@
-// 负责给浏览器输入工具的参数里写进密码框的内容打码，形状参照 Pigcode 的 browser_type
-// （ref、selector、text）和 Playwright 的 browser_fill_form（fields 里的 name、type、value）。
-// 只认参数里能看出来的密码标记；只有元素 ref、没有任何密码标记的输入看不出是不是密码框。
+// 负责给浏览器输入工具的参数里写进密码框的内容打码：单个输入（ref、selector、text）和
+// 表单填写（fields 里的 name、type、value）。只认参数里能看出来的密码标记；
+// 只有元素 ref、没有任何密码标记的输入看不出是不是密码框。
+
+import { isPlainRecord } from "./session-store-guards"
 
 /** 密码打码后的固定占位，不保留原文长度。 */
 export const maskedSecret = "[已打码]"
@@ -24,7 +26,7 @@ export function maskBrowserSecrets<T>(toolName: string, input: T): T {
 
 function maskValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(maskValue)
-  if (!isRecord(value)) return value
+  if (!isPlainRecord(value)) return value
   const target = isPasswordTarget(value)
   return Object.fromEntries(
     Object.entries(value).map(([key, item]) => {
@@ -49,8 +51,4 @@ function isPasswordTarget(value: Record<string, unknown>): boolean {
       return typeof target === "string" && targetPattern.test(target)
     })
   )
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
 }

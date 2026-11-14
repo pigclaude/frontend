@@ -1,7 +1,7 @@
 // 验证打开会话存储时的启动收敛：运行中的会话按有没有进行中的回合改为中断或停放，
 // 中断的回合补「应用已重启」提示并闭合，没回答的提问记为已失效，其他状态的会话不动。
 
-import { appendFile, mkdir, readFile } from "node:fs/promises"
+import { appendFile, chmod, mkdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 import type { SessionEnvelope } from "./session-envelope"
@@ -155,6 +155,32 @@ describe("SessionStore 启动收敛", () => {
     expect(await readFile(indexFile, "utf8")).toBe(before)
     expect(logs).toEqual([expect.stringContaining("s-1")])
   })
+
+  it.skipIf(process.platform === "win32")(
+    "上次收敛补写了时间线但索引没写成，重开时按中断处理且不重复补写",
+    async () => {
+      const root = await seed("running", openTurn)
+      const directory = join(root, "s-1")
+      await chmod(directory, 0o500)
+      try {
+        const failed = await SessionStore.open({ root, now: () => now, log: () => undefined })
+        expect(failed.list()).toEqual([])
+      } finally {
+        await chmod(directory, 0o700)
+      }
+
+      const store = await SessionStore.open({ root, now: () => now + 60_000 })
+
+      expect(store.list()[0]).toMatchObject({
+        status: "interrupted",
+        lastTurn: { status: "interrupted", errorCode: appRestartedErrorCode },
+        timelineCursor: 6,
+      })
+      expect((await store.readTimeline("s-1")).envelopes.map((e) => e.seq)).toEqual([
+        1, 2, 3, 4, 5, 6,
+      ])
+    },
+  )
 
   it("补写的信封时间不早于时间线最后一条", async () => {
     const root = await seed("running", openTurn)

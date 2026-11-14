@@ -4,6 +4,7 @@
 import { maskBrowserSecrets } from "./session-browser-secrets"
 import { sessionEventKinds, type SessionEnvelope } from "./session-envelope"
 import type { SessionContentBlock } from "./session-events"
+import { isPlainRecord } from "./session-store-guards"
 import type { SessionHostEvent } from "./session-types"
 
 /** 单个字符串在时间线里最多保留的 UTF-8 字节数。 */
@@ -107,12 +108,12 @@ function redactUnknown<T>(value: T, path: string, marks: Marks): T {
 
 function redactValue(value: unknown, path: string, key: string, marks: Marks): unknown {
   if (typeof value === "string") {
-    if (imageKeys.has(key.toLowerCase()) || isBase64Image(value)) return screenshotPlaceholder
+    if (imageKeys.has(key.toLowerCase())) return screenshotPlaceholder
     return redactString(value, path, marks)
   }
   if (Array.isArray(value))
     return value.map((item, index) => redactValue(item, `${path}.${index}`, "", marks))
-  if (!isRecord(value)) return value
+  if (!isPlainRecord(value)) return value
   if (isImageObject(value)) return { type: "image", omitted: true }
   return Object.fromEntries(
     Object.entries(value).map(([name, item]) => [
@@ -125,7 +126,9 @@ function redactValue(value: unknown, path: string, key: string, marks: Marks): u
 const imageKeys = new Set(["screenshot", "imagedata", "image_data", "base64image"])
 const dataUrlPattern = /data:image\/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=]+/g
 const base64ImagePrefixes = ["iVBORw0KGgo", "/9j/", "R0lGOD", "UklGR"]
+const base64ImagePattern = /(?:iVBORw0KGgo|\/9j\/|R0lGOD|UklGR)[A-Za-z0-9+/=]{48,}/g
 
+/** 整个字符串是一张 base64 图片；允许 MIME 式的换行。 */
 function isBase64Image(value: string): boolean {
   return (
     value.length >= 64 &&
@@ -141,7 +144,10 @@ function isImageObject(value: Record<string, unknown>): boolean {
 }
 
 function redactString(value: string, path: string, marks: Marks): string {
-  const text = value.replace(dataUrlPattern, screenshotPlaceholder)
+  if (isBase64Image(value)) return screenshotPlaceholder
+  const text = value
+    .replace(dataUrlPattern, screenshotPlaceholder)
+    .replace(base64ImagePattern, screenshotPlaceholder)
   const bytes = Buffer.byteLength(text, "utf8")
   if (bytes <= timelineContentLimitBytes) return text
   marks.push({ path, bytes })
@@ -153,8 +159,4 @@ function truncateUtf8(text: string, limit: number): string {
   let end = limit
   while (end > 0 && ((encoded[end] ?? 0) & 0xc0) === 0x80) end -= 1
   return encoded.subarray(0, end).toString("utf8")
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
 }

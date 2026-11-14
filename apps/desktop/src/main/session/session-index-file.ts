@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto"
 import { chmod, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { dirname } from "node:path"
 import { parseSessionIndex, type ParsedSessionIndex } from "./session-index"
+import { fileErrorCode } from "./session-store-guards"
 import { indexTemporaryFile, sessionStoreFileMode } from "./session-store-layout"
 
 /** 读索引文件的结果：没有文件、读不了的 JSON，或解析结果。 */
@@ -16,7 +17,7 @@ export async function readSessionIndexFile(path: string): Promise<SessionIndexFi
   try {
     text = await readFile(path, "utf8")
   } catch (error: unknown) {
-    if (errorCode(error) === "ENOENT") return { kind: "missing" }
+    if (fileErrorCode(error) === "ENOENT") return { kind: "missing" }
     throw error
   }
   let value: unknown
@@ -46,9 +47,4 @@ export async function writeSessionIndexFile(
     await rm(temporary, { force: true })
     throw error
   }
-}
-
-/** 取 Node 文件错误的 code；不是文件错误时返回 null。 */
-export function errorCode(error: unknown): unknown {
-  return error !== null && typeof error === "object" && "code" in error ? error.code : null
 }

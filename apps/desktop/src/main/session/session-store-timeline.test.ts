@@ -1,7 +1,7 @@
 // 验证会话存储的时间线：每行一个脱敏后的信封、只写要保存的事件、按序号分页读回、
 // 末行不完整时跳过并在下次追加前截掉。
 
-import { appendFile, readFile } from "node:fs/promises"
+import { appendFile, chmod, readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 import { SessionStore } from "./session-store"
@@ -95,6 +95,25 @@ describe("SessionStore 时间线", () => {
     expect((await readFile(file, "utf8")).trimEnd().split("\n")).toHaveLength(2)
   })
 
+  posixOnly("同一次运行里追加失败留下半行后，下次追加前先截掉它", async () => {
+    const store = await storeWithSession()
+    await store.appendTimeline("s-1", turnStarted(1))
+    const file = store.paths("s-1").timelineFile
+    await chmod(file, 0o400)
+    try {
+      await expect(store.appendTimeline("s-1", turnStarted(2))).rejects.toThrow()
+    } finally {
+      await chmod(file, 0o600)
+    }
+    await appendFile(file, '{"version":1,"sessionId":"s-1","seq":2,"at":"2026-11-14T08:')
+
+    await store.appendTimeline("s-1", turnStarted(2))
+
+    const page = await store.readTimeline("s-1")
+    expect(page.envelopes.map((envelope) => envelope.seq)).toEqual([1, 2])
+    expect(page.skippedLines).toBe(0)
+  })
+
   it("中间解析不了的行跳过并计数，其余照常读回", async () => {
     const store = await storeWithSession()
     await store.appendTimeline("s-1", turnStarted(1))
@@ -112,7 +131,7 @@ describe("SessionStore 时间线", () => {
 
     await expect(
       store.appendTimeline("s-1", envelopeOf("s-2", 1, { type: "turn-started", turnId: "t" })),
-    ).rejects.toThrow()
+    ).rejects.toMatchObject({ code: "SESSION_NOT_FOUND" })
     await expect(store.appendTimeline("missing", turnStarted(1))).rejects.toMatchObject({
       code: "SESSION_NOT_FOUND",
     })

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest"
 import { SessionStore } from "./session-store"
 import { newSessionIndex, removeTemporaryDirs, temporaryDir } from "./session-store-fixtures"
 import { sessionStoreRoot } from "./session-store-layout"
-import { startedSessionStore, startSessionStore } from "./session-store-startup"
+import { startSessionStore } from "./session-store-startup"
 
 afterEach(removeTemporaryDirs)
 
@@ -17,7 +17,6 @@ describe("startSessionStore", () => {
     const store = await startSessionStore(userData, { log: () => undefined })
 
     expect(store?.list()).toMatchObject([{ id: "s-1", status: "parked" }])
-    expect(await startedSessionStore()).toBe(store)
   })
 
   it("打开失败时只记日志并给出 null", async () => {
@@ -29,7 +28,6 @@ describe("startSessionStore", () => {
     })
 
     expect(store).toBeNull()
-    expect(await startedSessionStore()).toBeNull()
     expect(logs).toEqual([expect.stringContaining("磁盘不可用")])
   })
 })

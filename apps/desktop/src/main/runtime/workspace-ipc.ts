@@ -1,4 +1,5 @@
-// 注册最近工作区的读写入口和侧栏项目操作，仅允许受信的主窗口访问。
+// 注册最近工作区的读写入口和侧栏项目操作，仅允许受信的主窗口访问；工作台能打开的目录是最近项目
+// 加上它们登记过的 worktree。
 
 import { dirname, join } from "node:path"
 import { ipcMain, shell } from "electron"
@@ -9,6 +10,7 @@ import { ProjectNameStore } from "./project-names"
 import { listWorkspaceFiles } from "./workspace-files"
 import { WorkspaceStore } from "./workspace-store"
 import type { WorkbenchIpc } from "../workbench/workbench-ipc"
+import { WorktreeRegistry } from "../workbench/worktree-registry"
 
 /** 注册工作区入口并按需打开存储；写入只接受当前受信窗口的 frame。 */
 export function registerWorkspaceIpc(input: {
@@ -20,10 +22,15 @@ export function registerWorkspaceIpc(input: {
 }): void {
   let store: WorkspaceStore | null = null
   let names: ProjectNameStore | null = null
+  let worktrees: WorktreeRegistry | null = null
   const getStore = () => (store ??= new WorkspaceStore({ filePath: input.filePath() }))
   const getNames = () =>
     (names ??= new ProjectNameStore({
       filePath: join(dirname(input.filePath()), "project-names.json"),
+    }))
+  const getWorktrees = () =>
+    (worktrees ??= new WorktreeRegistry({
+      filePath: join(dirname(input.filePath()), "worktrees.json"),
     }))
   ipcMain.handle("pigclaude:workspaces-list", async (event) => {
     if (!input.isTrusted(event)) throw new Error("UNTRUSTED_WORKSPACE_REQUEST")
@@ -65,6 +72,10 @@ export function registerWorkspaceIpc(input: {
     isTrusted: input.isTrusted,
     membership: input.membership,
     hasActiveTurn: input.hasActiveTurn,
-    roots: () => getStore().list(),
+    roots: async () => {
+      const projects = await getStore().list()
+      return [...projects, ...(await getWorktrees().roots(projects))]
+    },
+    rememberWorktree: (path, from) => getWorktrees().remember(path, from),
   })
 }

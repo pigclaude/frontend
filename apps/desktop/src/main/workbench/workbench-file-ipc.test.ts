@@ -92,6 +92,7 @@ beforeEach(async () => {
     isTrusted: (event) => (event.sender as unknown) === trustedSender,
     membership: () => ({ state }) as MembershipView,
     roots: async () => [project],
+    rememberWorktree: async () => undefined,
     hasActiveTurn: () => false,
   })
 })

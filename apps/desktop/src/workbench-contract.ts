@@ -34,6 +34,17 @@ export type WorkbenchEditor = { id: string; name: string }
 /** 工作树的稳定目录与分支名称。 */
 export type WorkbenchWorktree = { path: string; branch: string | null }
 
+/**
+ * 项目目录的 Git 分支：游离 HEAD 时 currentBranch 为 null，还没有提交时 head 为 null；
+ * 远端分支带远端名，例如 `origin/main`。
+ */
+export type WorkbenchBranches = {
+  currentBranch: string | null
+  head: string | null
+  localBranches: string[]
+  remoteBranches: string[]
+}
+
 /** 工作台保存的 Git 快照，只暴露展示与选择需要的字段。 */
 export type WorkbenchCheckpoint = {
   id: string
@@ -104,7 +115,14 @@ export type WorkbenchBridge = {
   saveAs: (root: string, path: string) => Promise<boolean>
   diff: (root: string, path?: string, checkpointId?: string) => Promise<string>
   worktrees: (root: string) => Promise<WorkbenchWorktree[]>
-  createWorktree: (root: string) => Promise<WorkbenchWorktree>
+  /** 从 baseRef（`refs/heads/…` 或 `refs/remotes/…`）或 HEAD 建 worktree，并记到 root 所属的项目下。 */
+  createWorktree: (root: string, baseRef?: string) => Promise<WorkbenchWorktree>
+  /** 选用 root 的一个已有 worktree：记到 root 所属的项目下，之后工作台可以打开它。 */
+  useWorktree: (root: string, path: string) => Promise<void>
+  /** 项目目录的分支；普通目录或 Git 不可用时为 null。 */
+  branches: (root: string) => Promise<WorkbenchBranches | null>
+  /** 切到已有分支，或 create 为 true 时从 HEAD 新建并切过去；返回切换后的分支。 */
+  switchBranch: (root: string, branch: string, create: boolean) => Promise<WorkbenchBranches | null>
   removeWorktree: (root: string, path: string) => Promise<void>
   checkpoints: (root: string) => Promise<WorkbenchCheckpoint[]>
   capture: (root: string) => Promise<void>

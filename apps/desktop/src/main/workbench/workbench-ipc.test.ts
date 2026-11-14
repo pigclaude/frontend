@@ -134,6 +134,7 @@ beforeEach(async () => {
     isTrusted: (value) => (value.sender as unknown) === trusted.webContents,
     membership: () => ({ state }) as MembershipView,
     roots: async () => [project],
+    rememberWorktree: async () => undefined,
     hasActiveTurn: () => turnActive,
   }
   ipc.register(options)

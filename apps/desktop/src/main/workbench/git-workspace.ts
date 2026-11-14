@@ -9,6 +9,7 @@ import type { WorkbenchWorktree } from "../../workbench-contract"
 import { workbenchChildEnv } from "./child-env"
 import { assertWorkbenchGit, gitExitCode, runWorkbenchGit } from "./git-command"
 import { protectedWorkbenchPath, workbenchPathspec } from "./hidden-paths"
+import { copyWorktreeIncludes } from "./worktree-includes"
 
 const exec = promisify(execFile)
 const noExternalDiff = ["--no-color", "--no-ext-diff", "--no-textconv"]
@@ -97,17 +98,51 @@ export async function listWorkbenchWorktrees(root: string): Promise<WorkbenchWor
   })
 }
 
-/** 在主项目旁边创建独立分支的工作树，保留现有工作区的索引和分支。 */
-export async function createWorkbenchWorktree(root: string): Promise<WorkbenchWorktree> {
+/**
+ * 在主项目旁边创建独立分支的工作树，保留现有工作区的索引和分支。从 baseRef（本地或远端分支的完整
+ * ref）或 HEAD 起步，并按 .worktreeinclude 带上本机文件；任何一步失败都不留下目录和新分支。
+ */
+export async function createWorkbenchWorktree(
+  root: string,
+  baseRef?: string,
+): Promise<WorkbenchWorktree> {
   await assertWorkbenchGit(root)
   const first = (await listWorkbenchWorktrees(root))[0]
   if (!first) throw new Error("WORKBENCH_NOT_GIT")
   const gitRoot = await realpath(first.path)
+  const commit = await worktreeBase(root, baseRef)
   const suffix = randomUUID().slice(0, 8)
   const path = join(dirname(gitRoot), `${basename(gitRoot)}-worktree-${suffix}`)
   const branch = `pigclaude/worktree-${suffix}`
-  await runWorkbenchGit(root, ["worktree", "add", "-b", branch, "--", path])
+  await runWorkbenchGit(root, ["worktree", "add", "-b", branch, "--", path, commit])
+  try {
+    await copyWorktreeIncludes(gitRoot, path)
+  } catch (error: unknown) {
+    await runWorkbenchGit(gitRoot, ["worktree", "remove", "--force", "--", path]).catch(
+      () => undefined,
+    )
+    await runWorkbenchGit(gitRoot, ["branch", "-D", branch]).catch(() => undefined)
+    throw error
+  }
   return { path, branch }
+}
+
+async function worktreeBase(root: string, baseRef?: string): Promise<string> {
+  if (baseRef !== undefined && !/^refs\/(heads|remotes)\/[^\0\r\n]+$/.test(baseRef))
+    throw new Error("WORKBENCH_WORKTREE_BASE_INVALID")
+  try {
+    if (baseRef !== undefined) await runWorkbenchGit(root, ["check-ref-format", baseRef])
+    const output = await runWorkbenchGit(root, [
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      "--end-of-options",
+      `${baseRef ?? "HEAD"}^{commit}`,
+    ])
+    return output.trim()
+  } catch {
+    throw new Error("WORKBENCH_WORKTREE_BASE_INVALID")
+  }
 }
 
 /** 移除同仓库的独立工作树；Git 拒绝移除有本地改动的目录。 */

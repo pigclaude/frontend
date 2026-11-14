@@ -6,15 +6,19 @@ import { workbenchChildEnv } from "./child-env"
 const execute = promisify(execFile)
 const failedSubcommands = new WeakMap<object, string>()
 
-/** 工作台读写 Git 时只使用参数数组，避免 shell、分页器、钩子或 diff 程序改写请求。 */
+/**
+ * 工作台读写 Git 时只使用参数数组，避免 shell、分页器、钩子或 diff 程序改写请求。给了 input 时
+ * 写进标准输入后关闭。
+ */
 export async function runWorkbenchGit(
   root: string,
   args: string[],
   overrides: Record<string, string> = {},
+  input?: string,
 ): Promise<string> {
   const options = ["--no-pager", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]
   try {
-    const { stdout } = await execute("git", [...options, ...args], {
+    const pending = execute("git", [...options, ...args], {
       cwd: root,
       env: {
         ...workbenchChildEnv(),
@@ -26,6 +30,8 @@ export async function runWorkbenchGit(
       timeout: 15_000,
       windowsHide: true,
     })
+    if (input !== undefined) pending.child.stdin?.end(input)
+    const { stdout } = await pending
     return stdout
   } catch (error: unknown) {
     if (typeof error === "object" && error !== null) failedSubcommands.set(error, subcommand(args))

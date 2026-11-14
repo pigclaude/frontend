@@ -19,6 +19,7 @@ import {
   removeWorkbenchWorktree,
   workbenchDiff,
 } from "./git-workspace"
+import { switchWorkbenchBranch, workbenchBranches } from "./git-branches"
 import { workbenchStatus } from "./git-status"
 import { installedEditors } from "./installed-editors"
 import { WorkbenchTerminals } from "./terminal-service"
@@ -42,6 +43,8 @@ export type WorkbenchIpcOptions = {
   membership: () => MembershipView | undefined
   roots: () => Promise<string[]>
   hasActiveTurn: () => boolean
+  /** 记下 path 这个 worktree 属于 from 所在的项目，之后它不占最近项目也能打开工作台。 */
+  rememberWorktree: (path: string, from: string) => Promise<void>
 }
 
 const browserActions = new Set<WorkbenchBrowserAction>([
@@ -160,9 +163,28 @@ export class WorkbenchIpc {
     handle("worktrees", async (_window, _event, [root]) =>
       listWorkbenchWorktrees(await project(root)),
     )
-    handle("worktree-create", async (_window, _event, [root]) =>
-      createWorkbenchWorktree(await project(root)),
-    )
+    handle("worktree-create", async (_window, _event, [root, baseRef]) => {
+      const created = await createWorkbenchWorktree(
+        await project(root),
+        baseRef === undefined ? undefined : string(baseRef, 300),
+      )
+      await options.rememberWorktree(created.path, string(root, 4096))
+      return created
+    })
+    handle("worktree-use", async (_window, _event, [root, path]) => {
+      const target = string(path, 4096)
+      const worktrees = await listWorkbenchWorktrees(await project(root))
+      if (!worktrees.some((item) => item.path === target)) throw new Error("WORKBENCH_PATH_INVALID")
+      await options.rememberWorktree(target, string(root, 4096))
+    })
+    handle("branches", async (_window, _event, [root]) => workbenchBranches(await project(root)))
+    handle("branch-switch", async (_window, _event, [root, branch, create]) => {
+      const name = string(branch, 240)
+      const creating = boolean(create)
+      const directory = await project(root)
+      if (options.hasActiveTurn()) throw new Error("WORKBENCH_TURN_ACTIVE")
+      return switchWorkbenchBranch(directory, name, creating)
+    })
     handle("worktree-remove", async (_window, _event, [root, path]) =>
       removeWorkbenchWorktree(await project(root), string(path, 4096)),
     )

@@ -1,0 +1,33 @@
+/*
+  流式回答的光标：Pigcode 的对话组件给正在输出的回答加上 is-streaming，但没有画光标。
+  光标跟在回答最后一段的末尾，颜色取正文颜色；减少动态效果时不闪烁，一直显示。
+*/
+
+.msg-ai.is-streaming > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 1.1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0.7;
+  animation: stream-caret-blink 1s steps(1, end) infinite;
+}
+
+@keyframes stream-caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+[data-motion="reduce"] .msg-ai.is-streaming > :last-child::after {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]) .msg-ai.is-streaming > :last-child::after {
+    animation: none;
+  }
+}

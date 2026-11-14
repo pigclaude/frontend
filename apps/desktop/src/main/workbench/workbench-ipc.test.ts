@@ -238,6 +238,23 @@ describe("workbench IPC", () => {
     )
   })
 
+  it("logs only the git subcommand, exit code and signal of a hidden failure in CI", async () => {
+    vi.stubEnv("CI", "true")
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined)
+    try {
+      await expect(call("checkpoints", project)).rejects.toThrow(/^WORKBENCH_OPERATION_FAILED$/)
+      expect(log).toHaveBeenCalledWith(
+        "Workbench IPC failed",
+        "checkpoints",
+        "git rev-parse code=128 signal=none",
+      )
+      expect(JSON.stringify(log.mock.calls)).not.toContain(project)
+    } finally {
+      log.mockRestore()
+      vi.unstubAllEnvs()
+    }
+  })
+
   it("refuses to restore a checkpoint while a turn is running", async () => {
     turnActive = true
 

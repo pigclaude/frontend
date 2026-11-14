@@ -4,6 +4,7 @@ import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { WorkbenchBrowserAction } from "../../workbench-contract"
 import { WorkbenchBrowsers } from "./browser-surface"
 import { browserSessionTools } from "./browser-tools"
+import { describeWorkbenchGitFailure } from "./git-command"
 import {
   captureWorkbenchCheckpoint,
   listWorkbenchCheckpoints,
@@ -78,9 +79,12 @@ export class WorkbenchIpc {
           ) {
             throw new Error(message)
           }
-          const code = error && typeof error === "object" && "code" in error ? error.code : null
-          if (process.env.CI && typeof code === "string" && /^[A-Z0-9_]{1,35}$/.test(code)) {
-            console.error("Workbench IPC failed", name, code)
+          if (process.env.CI) {
+            const git = describeWorkbenchGitFailure(error)
+            const code = error && typeof error === "object" && "code" in error ? error.code : null
+            if (git) console.error("Workbench IPC failed", name, git)
+            else if (typeof code === "string" && /^[A-Z0-9_]{1,35}$/.test(code))
+              console.error("Workbench IPC failed", name, code)
           }
           throw new Error("WORKBENCH_OPERATION_FAILED")
         }

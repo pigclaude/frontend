@@ -47,7 +47,9 @@ async function launch() {
           logger: {
             isEnabled: (name) => name === "browser",
             log: (_name, _severity, message) => {
-              const marker = String(message).match(/Workbench IPC failed [a-z-]+ [A-Z0-9_]+/)
+              const marker = String(message).match(
+                /Workbench IPC failed [a-z-]+ (?:git [a-z-]+ code=-?\w+ signal=\w+|[A-Z0-9_]+)/,
+              )
               if (marker) console.error(marker[0])
             },
           },

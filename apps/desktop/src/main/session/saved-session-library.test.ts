@@ -102,12 +102,29 @@ describe("saved session library", () => {
     expect(host.list()).toEqual([])
     await expect(lstat(store.paths(active).directory)).rejects.toMatchObject({ code: "ENOENT" })
   })
+
+  it("applies the saved retention setting again when the desktop restarts", async () => {
+    const { host, userDataPath, store } = await launchHost()
+    await host.history.setRetention(7)
+    await host.dispose()
+    await store.create(
+      newSessionIndex("expired", {
+        lastActivityAt: new Date(now - 8 * day).toISOString(),
+      }),
+    )
+
+    const reopened = await launchHost(userDataPath)
+    await expect(reopened.host.history.retention()).resolves.toEqual({ days: 7 })
+    await reopened.host.history.sweep()
+    expect(reopened.store.list()).toEqual([])
+    await expect(lstat(store.paths("expired").directory)).rejects.toMatchObject({ code: "ENOENT" })
+  })
 })
 
-async function launchHost() {
-  const userDataPath = await temporaryDir()
+async function launchHost(existingPath?: string) {
+  const userDataPath = existingPath ?? (await temporaryDir())
   const root = join(userDataPath, "session-store")
-  await mkdir(root)
+  await mkdir(root, { recursive: true })
   const clock = new ManualClock(now)
   const store = await SessionStore.open({ root, now: clock.now })
   const adapters = new AdapterFactory([])

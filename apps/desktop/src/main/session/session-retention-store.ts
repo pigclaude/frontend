@@ -18,6 +18,7 @@ export class SessionRetentionStore {
 
   /** 读当前天数；还没有文件或内容无法解析时返回 null。 */
   async get(): Promise<SessionRetention> {
+    await this.#writes
     try {
       const value: unknown = JSON.parse(await readFile(this.#file, "utf8"))
       if (isPlainRecord(value) && isSessionRetentionDays(value.days)) return { days: value.days }

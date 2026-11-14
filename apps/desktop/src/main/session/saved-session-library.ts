@@ -203,6 +203,7 @@ export class SavedSessionLibrary {
 
 async function directorySize(directory: string): Promise<number> {
   try {
+    if (!(await lstat(directory)).isDirectory()) return 0
     let bytes = 0
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const path = join(directory, entry.name)

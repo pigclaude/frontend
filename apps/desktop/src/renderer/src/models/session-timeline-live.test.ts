@@ -205,8 +205,8 @@ describe("projectTimeline while a turn runs", () => {
     state = reduceSession(state, { type: "user-message", text: "二", turnId: "turn-2", at: t0 })
     state = reduceSession(state, {
       type: "failed",
-      message: "已有活动会话",
-      code: "SESSION_ALREADY_ACTIVE",
+      message: "当前请求尚未结束",
+      code: "TURN_ACTIVE",
       at: t0,
     })
     state = reduceSession(state, { type: "user-message", text: "三", turnId: "turn-3", at: t0 })

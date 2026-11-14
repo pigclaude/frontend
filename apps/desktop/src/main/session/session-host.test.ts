@@ -35,13 +35,16 @@ describe("SessionHost start", () => {
     await harness.host.dispose()
   })
 
-  it("rejects a second start while a session is active", async () => {
+  it("starts a second session in its own environment while the first is active", async () => {
     const harness = await startedHarness()
 
-    await expect(harness.host.start(startInput(harness.workspace))).rejects.toMatchObject({
-      code: "SESSION_ALREADY_ACTIVE",
-    })
-    expect(harness.environments.inputs).toHaveLength(1)
+    const second = await harness.host.start(startInput(harness.workspace))
+
+    expect(harness.environments.inputs.map((input) => input.sessionId)).toEqual([
+      "id-1",
+      second.sessionId,
+    ])
+    expect(harness.environments.instances[0]?.cleaned).toBe(0)
     await harness.host.dispose()
   })
 
@@ -334,7 +337,7 @@ describe("SessionHost events and usage", () => {
     await expect(
       harness.host.send(currentSessionId(harness.host), { text: "second" }),
     ).rejects.toMatchObject({
-      code: "SESSION_ALREADY_ACTIVE",
+      code: "TURN_ACTIVE",
     })
     expect(harness.adapters.last.sent).toEqual(["first"])
     expect(harness.host.status().turnId).toBe("id-2")
@@ -365,7 +368,7 @@ describe("SessionHost events and usage", () => {
 
     await expect(
       harness.host.send(currentSessionId(harness.host), { text: "hello" }),
-    ).rejects.toThrow(/会话未开始/)
+    ).rejects.toMatchObject({ code: "SESSION_NOT_FOUND" })
     expect(harness.host.status()).toEqual({
       active: false,
       sessionId: null,

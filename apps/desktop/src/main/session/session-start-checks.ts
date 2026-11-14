@@ -38,7 +38,6 @@ export type SessionStartDeps = {
   resolveBinaryPath: () => string
   resolveProfile: (accountId: string | null) => Promise<SessionProfile | null>
   userDataPath: string
-  newId: () => string
   /** 启动已被停止或宿主已关闭。 */
   cancelled: () => boolean
 }
@@ -54,15 +53,15 @@ export type PreparedSessionStart = {
 }
 
 /**
- * 依次检查并创建会话环境。保证返回时会员仍有效、启动未被取消，会话的令牌随环境清理吊销；
+ * 依次检查并为 sessionId 创建会话环境。保证返回时会员仍有效、启动未被取消，会话的令牌随环境清理吊销；
  * 抛错时不留下环境和有效令牌，错误已去掉本会话的令牌。
  */
 export async function prepareSessionStart(
   deps: SessionStartDeps,
   input: SessionStartInput,
+  sessionId: string,
 ): Promise<PreparedSessionStart> {
   const daemonBaseUrl = await assertCanStart(deps, input)
-  const sessionId = deps.newId()
   const session = deps.runtime.openSession({
     sessionId,
     preferredAccountId: input.accountId ?? null,

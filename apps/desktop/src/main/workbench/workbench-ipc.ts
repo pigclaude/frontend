@@ -1,7 +1,9 @@
 // 注册工作台命令，绑定已选择的项目、会员状态和可信的主窗口。
+import { randomUUID } from "node:crypto"
 import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { WorkbenchBrowserAction } from "../../workbench-contract"
+import type { SessionTools } from "../session/session-types"
 import { WorkbenchBrowsers } from "./browser-surface"
 import { browserSessionTools } from "./browser-tools"
 import { describeWorkbenchGitFailure, gitExitCode } from "./git-command"
@@ -42,7 +44,8 @@ export type WorkbenchIpcOptions = {
   isTrusted: (event: IpcMainInvokeEvent) => boolean
   membership: () => MembershipView | undefined
   roots: () => Promise<string[]>
-  hasActiveTurn: () => boolean
+  /** 和这个项目目录重叠的会话里有没有进行中的回合。 */
+  hasActiveTurn: (workspace: string) => boolean
   /** 记下 path 这个 worktree 属于 from 所在的项目，之后它不占最近项目也能打开工作台。 */
   rememberWorktree: (path: string, from: string) => Promise<void>
 }
@@ -63,9 +66,13 @@ export class WorkbenchIpc {
   /** 页面报告的未保存文件；退出、关窗和刷新前由这里请页面保存或放弃。 */
   readonly unsaved = new UnsavedFiles()
 
-  /** 为当前会话创建独立的本机网页预览工具。 */
-  tools(owner: Electron.WebContents, canUse: () => boolean) {
-    return browserSessionTools(owner, this.#browsers, canUse)
+  /** 为一个会话创建独立的本机网页预览工具；close 关掉这个会话打开的浏览器并清空它的分区。 */
+  tools(owner: Electron.WebContents, canUse: () => boolean): SessionTools {
+    const id = randomUUID()
+    return {
+      servers: browserSessionTools(owner, this.#browsers, canUse, id),
+      close: () => this.#browsers.closeAgent(id),
+    }
   }
 
   /** 注册仅供主窗口 preload 调用的工作台命令。 */
@@ -182,7 +189,7 @@ export class WorkbenchIpc {
       const name = string(branch, 240)
       const creating = boolean(create)
       const directory = await project(root)
-      if (options.hasActiveTurn()) throw new Error("WORKBENCH_TURN_ACTIVE")
+      if (options.hasActiveTurn(directory)) throw new Error("WORKBENCH_TURN_ACTIVE")
       return switchWorkbenchBranch(directory, name, creating)
     })
     handle("worktree-remove", async (_window, _event, [root, path]) =>
@@ -195,9 +202,8 @@ export class WorkbenchIpc {
       await captureWorkbenchCheckpoint(await project(root))
     })
     handle("checkpoint-restore", async (_window, _event, [root, checkpoint]) => {
-      if (options.hasActiveTurn()) throw new Error("WORKBENCH_TURN_ACTIVE")
       const directory = await project(root)
-      if (options.hasActiveTurn()) throw new Error("WORKBENCH_TURN_ACTIVE")
+      if (options.hasActiveTurn(directory)) throw new Error("WORKBENCH_TURN_ACTIVE")
       return restoreWorkbenchCheckpoint(directory, string(checkpoint, 64))
     })
     handle("pr", async (_window, _event, [root]) => readWorkbenchPullRequest(await project(root)))

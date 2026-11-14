@@ -88,7 +88,7 @@ describe("SessionHost envelopes", () => {
     await harness.host.dispose()
   })
 
-  it("still reads back a session that has just ended until the next one starts", async () => {
+  it("still reads back a parked session after the next one starts", async () => {
     const harness = createHarness({ workspace: await workspaceDir() })
     const first = await harness.host.start({
       workspace: harness.workspace,
@@ -103,7 +103,8 @@ describe("SessionHost envelopes", () => {
     ])
 
     await harness.host.start({ workspace: harness.workspace, permissionMode: "default" })
-    expect(() => harness.host.events(first.sessionId, 0)).toThrow(/SESSION_NOT_FOUND/)
+    expect(harness.host.events(first.sessionId, 0).map((envelope) => envelope.seq)).toEqual([1, 2])
+    expect(() => harness.host.events("never-started", 0)).toThrow(/SESSION_NOT_FOUND/)
     await harness.host.dispose()
   })
 

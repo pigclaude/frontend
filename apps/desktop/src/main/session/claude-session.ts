@@ -134,14 +134,14 @@ export class ClaudeSession {
 
   /**
    * 写入一条消息，被接受后开一轮；如有工作台回调，在交给适配器之前记录基线。
-   * 上一轮（含它的后台子代理和工作流）没结束时抛 SESSION_ALREADY_ACTIVE。
+   * 上一轮（含它的后台子代理和工作流）没结束时抛 TURN_ACTIVE。
    */
   async send(input: SessionSendInput, checkpoint?: ActiveSession["checkpoint"]): Promise<void> {
     const active = this.state
     const turnId = active.turns.reserve(this.#options.newId)
     active.checkpoint = checkpoint
     try {
-      await checkpoint?.(active.environment.workspace, "baseline")
+      await checkpoint?.(active.environment.workspace, "baseline", turnId)
       if (!active.turns.holds(turnId)) return
       if (active.stopping || active.released) {
         active.turns.release(turnId)
@@ -338,7 +338,7 @@ export class ClaudeSession {
   #handleTurnClosed(turn: ClosedTurn): void {
     const active = this.state
     if (!active.stopping && !active.released) {
-      void active.checkpoint?.(active.environment.workspace, "final")
+      void active.checkpoint?.(active.environment.workspace, "final", turn.turnId)
     }
     const record = buildUsageRecord(active, turn, this.#options.now())
     active.switchedFrom = null

@@ -178,6 +178,25 @@ describe("workbench Git", { timeout: 20_000 }, () => {
     expect(await listWorkbenchCheckpoints(root)).toHaveLength(2)
   })
 
+  it("records the session and turn a turn checkpoint belongs to", async () => {
+    await init()
+    const origin = { sessionId: "session-a", turnId: "turn-7" }
+
+    const baseline = await captureWorkbenchCheckpoint(root, "baseline", origin)
+    const manual = await captureWorkbenchCheckpoint(root)
+
+    const message = async (id: string) =>
+      git("log", "-1", "--format=%B", await resolveWorkbenchCheckpoint(root, id))
+    expect(await message(baseline)).toContain(
+      "PigClaude-Session: session-a\nPigClaude-Turn: turn-7",
+    )
+    expect(await message(manual)).not.toContain("PigClaude-Session")
+    expect((await listWorkbenchCheckpoints(root)).map((item) => item.phase)).toEqual([
+      "baseline",
+      "manual",
+    ])
+  })
+
   it("creates and removes a real linked worktree while keeping the main project", async () => {
     await init()
     const linked = await createWorkbenchWorktree(root)

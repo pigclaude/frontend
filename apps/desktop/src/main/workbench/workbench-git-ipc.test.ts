@@ -36,7 +36,7 @@ const exec = promisify(execFile)
 let directory: string
 let project: string
 let state: MembershipView["state"]
-let turnActive: boolean
+let activeTurns: string[]
 const remembered: Array<[string, string]> = []
 
 const git = (...args: string[]) =>
@@ -61,12 +61,12 @@ beforeEach(async () => {
   project = join(directory, "project")
   await mkdir(project)
   state = "active"
-  turnActive = false
+  activeTurns = []
   new WorkbenchIpc().register({
     isTrusted: (event) => (event.sender as unknown) === trustedSender,
     membership: () => ({ state }) as MembershipView,
     roots: async () => [project],
-    hasActiveTurn: () => turnActive,
+    hasActiveTurn: (workspace) => activeTurns.includes(workspace),
     rememberWorktree: async (path, from) => {
       remembered.push([path, from])
     },
@@ -125,10 +125,20 @@ describe("workbench branch and worktree IPC", { timeout: 20_000 }, () => {
         "WORKBENCH_INPUT_INVALID",
       )
     }
-    turnActive = true
+    activeTurns = [project]
     await expect(call("branch-switch", project, "main", false)).rejects.toThrow(
       "WORKBENCH_TURN_ACTIVE",
     )
+  })
+
+  it("switches branches while only a session in another workspace has a running turn", async () => {
+    await initRepository()
+    await git("branch", "feature")
+    activeTurns = [join(directory, "other-project")]
+
+    await call("branch-switch", project, "feature", false)
+
+    await expect(call("branches", project)).resolves.toMatchObject({ currentBranch: "feature" })
   })
 
   it("creates a worktree from a chosen base and records it under the project", async () => {

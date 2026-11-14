@@ -69,6 +69,10 @@ function browserSession() {
   return restrictedSession(partition)
 }
 
+function agentSession(id: string) {
+  return restrictedSession("pigclaude-workbench-agent-" + id)
+}
+
 function restrictedSession(name: string) {
   const value = session.fromPartition(name)
   value.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
@@ -224,6 +228,16 @@ export class WorkbenchBrowsers {
     if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close()
   }
 
+  /** 关闭一个会话的 Agent 浏览器并清空它的分区数据；这个会话没开过浏览器时什么也不做。 */
+  closeAgent(id: string): void {
+    const entry = this.#surfaces.get(id)
+    if (!entry?.agent) return
+    this.close(entry.window, id)
+    void agentSession(id)
+      .clearStorageData()
+      .catch(() => undefined)
+  }
+
   /** 关闭属于该主窗口的标签和独立预览。 */
   closeWindow(window: BrowserWindow): void {
     for (const id of this.#surfaces.keys()) this.close(window, id)
@@ -269,7 +283,7 @@ export class WorkbenchBrowsers {
     if (existing || this.#surfaces.size >= maxBrowsers) throw new Error("WORKBENCH_BROWSER_LIMIT")
     const view = new WebContentsView({
       webPreferences: {
-        session: agent ? restrictedSession("pigclaude-workbench-agent-" + id) : browserSession(),
+        session: agent ? agentSession(id) : browserSession(),
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,

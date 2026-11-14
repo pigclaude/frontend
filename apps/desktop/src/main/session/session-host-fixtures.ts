@@ -5,7 +5,12 @@ import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
 import type { MembershipState, MembershipView } from "@pigclaude/contracts/membership"
 import type { ClaudeModelsOptions } from "./claude-model-query"
 import type { ClaudeAgentStartOptions } from "./claude-query-options"
-import type { ClaudeModel, SessionEvent, SessionPermissionMode } from "./session-events"
+import type {
+  AdapterEvent,
+  ClaudeModel,
+  SessionEvent,
+  SessionPermissionMode,
+} from "./session-events"
 import type { DaemonEndpoint, OrganizationModel } from "./claude-bootstrap"
 import type { DevProviderOverride } from "./dev-provider"
 import type { SessionEnvelope } from "./session-envelope"
@@ -156,12 +161,12 @@ export class FakeAdapter implements SessionAdapterPort {
   modeError: Error | null = null
   /** 为 true 时模式变化通知晚于控制请求的回应到达。 */
   lateModeEvents = false
-  readonly #onEvent: (event: SessionEvent) => void
+  readonly #onEvent: (event: AdapterEvent) => void
   readonly #trace: string[]
   #startGate: { promise: Promise<void>; resolve: () => void } | null = null
   #mode: SessionPermissionMode = "default"
 
-  constructor(onEvent: (event: SessionEvent) => void, trace: string[]) {
+  constructor(onEvent: (event: AdapterEvent) => void, trace: string[]) {
     this.#onEvent = onEvent
     this.#trace = trace
   }
@@ -238,8 +243,8 @@ export class FakeAdapter implements SessionAdapterPort {
     throw new Error("no context reply")
   }
 
-  /** 把一条 SDK 事件推给 SessionHost。 */
-  emit(event: SessionEvent): void {
+  /** 把一条 SDK 事件或后台任务信号推给 SessionHost。 */
+  emit(event: AdapterEvent): void {
     this.#onEvent(event)
   }
 }
@@ -255,7 +260,7 @@ export class AdapterFactory {
     private readonly modelsError: Error | null = null,
   ) {}
 
-  readonly create = (onEvent: (event: SessionEvent) => void): SessionAdapterPort => {
+  readonly create = (onEvent: (event: AdapterEvent) => void): SessionAdapterPort => {
     const adapter = new FakeAdapter(onEvent, this.trace)
     adapter.modelsError = this.modelsError
     if (this.holdStart) adapter.holdStart()
@@ -328,6 +333,9 @@ export type HarnessOptions = {
   now?: () => number
   /** 换掉假适配器，例如接上假 SDK query 的真实适配器；adapters 这时不记录实例。 */
   createAdapter?: SessionAdapterFactory
+  /** 并发上限、排队上限和空闲停放时长；省略时用宿主的默认值。 */
+  limits?: Pick<SessionHostOptions, "maxRunningSessions" | "maxQueuedSessions" | "idleParkMs">
+  timers?: SessionHostOptions["timers"]
 }
 
 export type SessionHarness = {
@@ -388,6 +396,8 @@ export function createHarness(options: HarnessOptions): SessionHarness {
     now: options.now ?? (() => clock),
     newId: () => `id-${(nextId += 1)}`,
     ...(options.useRealEnvironment ? {} : { createEnvironment: environments.create }),
+    ...options.limits,
+    ...(options.timers === undefined ? {} : { timers: options.timers }),
   }
   const host = new SessionHost(hostOptions)
   host.subscribe((envelope) => {

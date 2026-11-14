@@ -1,7 +1,7 @@
-// 把会话回合的前后边界记录为本地 Git 检查点。
+// 把会话回合的前后边界记录为本地 Git 检查点，并记下它属于哪个会话的哪一轮。
 import type { WebContents } from "electron"
 import type { WorkbenchEvent } from "../../workbench-contract"
-import { captureWorkbenchCheckpoint } from "./git-checkpoints"
+import { captureWorkbenchCheckpoint, type CheckpointOrigin } from "./git-checkpoints"
 
 const pending = new Map<string, Promise<void>>()
 
@@ -10,9 +10,10 @@ export function captureSessionCheckpoint(
   owner: WebContents,
   workspace: string,
   phase: "baseline" | "final",
+  origin: CheckpointOrigin,
 ): Promise<void> {
   const task = (pending.get(workspace) ?? Promise.resolve())
-    .then(() => captureWorkbenchCheckpoint(workspace, phase))
+    .then(() => captureWorkbenchCheckpoint(workspace, phase, origin))
     .then(
       () => {
         const event: WorkbenchEvent = { type: "checkpoints-changed", id: workspace }

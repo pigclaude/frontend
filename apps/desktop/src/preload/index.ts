@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from "electron"
 import type { BrowserProfilesBridge } from "@pigclaude/contracts/browser-profile"
 import { browserProfilesBridge } from "./browser-profiles"
 import { isSessionEnvelope } from "./session-event-filter"
+import { isSessionSummary } from "./session-summary-filter"
 import { sessionDefaultsBridge, type SessionDefaultsBridge } from "./session-defaults"
 import { windowBridge, type WindowBridge } from "./window-bridge"
 import { workbenchBridge } from "./workbench"
@@ -290,9 +291,19 @@ const bridge: PigclaudeBridge = {
         cliError: typeof value.cliError === "string" ? value.cliError : null,
       }
     },
-    status: async () => {
-      const value: unknown = await ipcRenderer.invoke("pigclaude:session-status")
+    status: async (input) => {
+      const value: unknown =
+        input === undefined
+          ? await ipcRenderer.invoke("pigclaude:session-status")
+          : await ipcRenderer.invoke("pigclaude:session-status", input)
       if (!isSessionStatus(value)) throw new Error("INVALID_SESSION_STATUS")
+      return value
+    },
+    list: async () => {
+      const value: unknown = await ipcRenderer.invoke("pigclaude:session-list")
+      if (!Array.isArray(value) || !value.every(isSessionSummary)) {
+        throw new Error("INVALID_SESSION_RESPONSE")
+      }
       return value
     },
     subscribe: (listener) => subscribeSession(listener),

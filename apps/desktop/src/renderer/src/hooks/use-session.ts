@@ -76,8 +76,9 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
 
   const refreshStatus = useCallback(async () => {
     if (resolved === null || resolved === undefined) return
+    const sessionId = targetRef.current
     try {
-      setStatus(await resolved.status())
+      setStatus(await (sessionId === null ? resolved.status() : resolved.status({ sessionId })))
     } catch {
       setStatus(null)
     }

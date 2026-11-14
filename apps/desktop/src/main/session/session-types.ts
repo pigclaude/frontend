@@ -10,6 +10,7 @@ import type { QuestionAnswer, QuestionRequestEvent, QuestionResolvedEvent } from
 import type { SessionEnvelope } from "./session-envelope"
 import type { SessionEnvironmentInput } from "./session-environment"
 import type { TimelineNoticeEvent } from "./session-notice"
+import type { SessionSummary } from "./session-summary"
 import type {
   AdapterEvent,
   ClaudeModel,
@@ -25,6 +26,8 @@ import type { ProfileEnvironment } from "./profile-environment"
 
 /** session.start 的输入；工作区必须是绝对目录，其余字段由 main 侧校验。 */
 export type SessionStartInput = {
+  /** 调用方给新会话定的 id；同一个 id 再次启动时返回原来的会话，省略时由主进程生成。 */
+  sessionId?: string
   workspace: string
   model?: string
   thinking?: SessionThinking
@@ -111,7 +114,11 @@ export type SessionHostEvent =
   | TimelineNoticeEvent
   | SessionContextEvent
 
-/** 设计第 12 节的稳定错误码；SESSION_START_FAILED 来自第 13 节的配置目录失败分支。 */
+/**
+ * 设计第 12 节的稳定错误码；SESSION_START_FAILED 来自第 13 节的配置目录失败分支。
+ * TURN_ACTIVE 是回合未结束时的第二条消息，SESSION_RESUME_FAILED 是停放的会话还不能接着用，
+ * SESSION_LIMIT_REACHED 是等着启动的会话已经排满。
+ */
 export type SessionErrorCode =
   | "MEMBERSHIP_REQUIRED"
   | "WORKSPACE_UNAVAILABLE"
@@ -124,9 +131,11 @@ export type SessionErrorCode =
   | "AUTH_EXPIRED"
   | "PERMISSION_TIMEOUT"
   | "QUESTION_TIMEOUT"
-  | "SESSION_ALREADY_ACTIVE"
+  | "TURN_ACTIVE"
   | "SESSION_CANCELLED"
   | "SESSION_NOT_FOUND"
+  | "SESSION_RESUME_FAILED"
+  | "SESSION_LIMIT_REACHED"
   | "SDK_ERROR"
   | "SESSION_START_FAILED"
 
@@ -218,6 +227,12 @@ export type SessionAdapterPort = {
 /** 适配器工厂；onEvent 由 SessionHost 提供，会话事件由它转发，后台任务和上下文压缩信号只在主进程内部使用。 */
 export type SessionAdapterFactory = (onEvent: (event: AdapterEvent) => void) => SessionAdapterPort
 
+/** 一个会话专用的工具：启动时交给 Claude Code 的进程内 MCP 服务；close 在会话停放时关掉它们占用的浏览器，可重复调用。 */
+export type SessionTools = {
+  servers: ClaudeAgentStartOptions["mcpServers"]
+  close(): void
+}
+
 /** 用量记录器端口；真实实现是 UsageRecorder。 */
 export type SessionUsagePort = {
   record(record: UsageRecord): Promise<void>
@@ -239,7 +254,10 @@ export type SessionBridge = {
   /** 按序号补拉要保存的事件；渲染层发现断号时调用。 */
   events: (input: SessionEventsInput) => Promise<SessionEnvelope[]>
   models: () => Promise<SessionModelCatalog>
-  status: () => Promise<SessionStatusView>
+  /** 指定会话的快照；不带会话时给最近启动、还在运行的会话（单会话界面和环境页用）。 */
+  status: (input?: SessionTarget) => Promise<SessionStatusView>
+  /** 列出宿主里全部会话（排队、运行中和停放）的脱敏摘要，最近活动的在前。 */
+  list: () => Promise<SessionSummary[]>
   subscribe: (listener: (envelope: SessionEnvelope) => void) => () => void
 }
 
@@ -260,6 +278,7 @@ export type {
   SessionEnvelope,
   SessionEvent,
   SessionPermissionMode,
+  SessionSummary,
   SessionThinking,
   UsageRange,
   UsageSummary,

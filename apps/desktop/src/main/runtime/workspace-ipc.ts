@@ -18,7 +18,8 @@ export function registerWorkspaceIpc(input: {
   isTrusted: (event: Electron.IpcMainInvokeEvent) => boolean
   workbench: WorkbenchIpc
   membership: () => MembershipView | undefined
-  hasActiveTurn: () => boolean
+  /** 和这个项目目录重叠的会话里有没有进行中的回合。 */
+  hasActiveTurn: (workspace: string) => boolean
 }): void {
   let store: WorkspaceStore | null = null
   let names: ProjectNameStore | null = null

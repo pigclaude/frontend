@@ -264,7 +264,7 @@ function registerIpcHandlers(): void {
     isTrusted: isTrustedSender,
     workbench,
     membership: () => desktopComposition?.membershipGate.view(),
-    hasActiveTurn: () => Boolean(sessionHost?.status().turnId),
+    hasActiveTurn: (workspace) => sessionHost?.hasActiveTurn(workspace) ?? false,
   })
 }
 

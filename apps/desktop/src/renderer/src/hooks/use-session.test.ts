@@ -137,6 +137,8 @@ describe("useSession", () => {
     expect(bridge.setModel).toHaveBeenCalledWith({ ...target, model: "claude-opus" })
     expect(bridge.cancel).toHaveBeenCalledWith(target)
     expect(bridge.stop).toHaveBeenCalledWith(target)
+    expect(bridge.status).toHaveBeenNthCalledWith(1)
+    expect(bridge.status).toHaveBeenLastCalledWith(target)
     expect(controller?.state.turns[0]?.userText).toBe("改一下重试逻辑")
   })
 

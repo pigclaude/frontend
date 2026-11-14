@@ -77,10 +77,10 @@ export class SessionTurns {
     return this.#open?.id ?? this.#reserved
   }
 
-  /** 为一次发送占住回合并返回新一轮的 id；已有一轮进行中时抛 SESSION_ALREADY_ACTIVE，不生成 id。 */
+  /** 为一次发送占住回合并返回新一轮的 id；已有一轮进行中时抛 TURN_ACTIVE，不生成 id。 */
   reserve(newId: () => string): string {
     if (this.turnId !== null) {
-      throw new SessionHostError("SESSION_ALREADY_ACTIVE", "当前请求尚未结束")
+      throw new SessionHostError("TURN_ACTIVE", "当前请求尚未结束")
     }
     const turnId = newId()
     this.#reserved = turnId

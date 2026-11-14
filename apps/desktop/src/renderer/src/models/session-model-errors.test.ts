@@ -52,6 +52,16 @@ describe("session error text", () => {
     expect(sessionErrorText("SESSION_CANCELLED: 当前请求已取消")).toBe("已取消当前请求")
   })
 
+  it("maps the multi-session codes to Chinese text", () => {
+    expect(sessionErrorText("TURN_ACTIVE: 当前请求尚未结束")).toBe("当前请求尚未结束")
+    expect(sessionErrorText("SESSION_RESUME_FAILED: 会话已停放")).toBe(
+      "会话已停放，暂时不能接着使用，请新建会话",
+    )
+    expect(sessionErrorText("SESSION_LIMIT_REACHED: 等待启动的会话已满")).toBe(
+      "同时运行和排队的会话已满，请先停止其他会话",
+    )
+  })
+
   it("accepts lowercase usage_write_failed and strips the Electron prefix", () => {
     expect(sessionErrorText("usage_write_failed: 写入失败")).toBe("用量记录写入失败，不影响会话")
     expect(

@@ -10,13 +10,16 @@ import {
 import { z } from "zod"
 import type { WorkbenchBrowsers } from "./browser-surface"
 
-/** 将浏览器工具限定到此次会话的主窗口和临时浏览器；不共享个人浏览器会话，每个工具调用前都询问宿主。 */
+/**
+ * 将浏览器工具限定到此次会话的主窗口和临时浏览器；不共享个人浏览器会话，每个工具调用前都询问宿主。
+ * id 是这个会话的浏览器标签 id，关闭时用它找到这个会话的浏览器。
+ */
 export function browserSessionTools(
   owner: WebContents,
   browsers: WorkbenchBrowsers,
   canUse: () => boolean,
+  id: string = randomUUID(),
 ): Record<string, McpSdkServerConfigWithInstance> {
-  const id = randomUUID()
   async function run(url?: string) {
     const window = owner.isDestroyed() ? null : BrowserWindow.fromWebContents(owner)
     try {

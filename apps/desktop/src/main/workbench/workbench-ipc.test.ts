@@ -32,7 +32,15 @@ vi.mock("./browser-surface", () => ({
   WorkbenchBrowsers: class {
     constructor() {
       const self = this as unknown as Record<string, ReturnType<typeof vi.fn>>
-      for (const name of ["navigate", "command", "present", "pick", "close", "closeWindow"])
+      for (const name of [
+        "navigate",
+        "command",
+        "present",
+        "pick",
+        "close",
+        "closeWindow",
+        "closeAgent",
+      ])
         self[name] = vi.fn()
       self["external"] = vi.fn(async () => undefined)
       self["preview"] = vi.fn(async () => ({ id: "preview" }))
@@ -58,7 +66,7 @@ const resourceId = "0f8fad5b-d9cb-469f-a165-70867728950e"
 let directory: string
 let project: string
 let state: MembershipView["state"]
-let turnActive: boolean
+let activeTurns: string[]
 let ipc: WorkbenchIpc
 
 type FakeContents = {
@@ -128,14 +136,14 @@ beforeEach(async () => {
   directory = await realpath(await mkdtemp(join(tmpdir(), "pigclaude-workbench-ipc-")))
   project = directory
   state = "active"
-  turnActive = false
+  activeTurns = []
   ipc = new WorkbenchIpc()
   const options: WorkbenchIpcOptions = {
     isTrusted: (value) => (value.sender as unknown) === trusted.webContents,
     membership: () => ({ state }) as MembershipView,
     roots: async () => [project],
     rememberWorktree: async () => undefined,
-    hasActiveTurn: () => turnActive,
+    hasActiveTurn: (workspace) => activeTurns.includes(workspace),
   }
   ipc.register(options)
 })
@@ -257,11 +265,24 @@ describe("workbench IPC", () => {
   })
 
   it("refuses to restore a checkpoint while a turn is running", async () => {
-    turnActive = true
+    activeTurns = [project]
 
     await expect(call("checkpoint-restore", project, "manual-" + resourceId)).rejects.toThrow(
       "WORKBENCH_TURN_ACTIVE",
     )
+  })
+
+  it("gives each session tools whose close shuts only that session's agent browser", () => {
+    const first = ipc.tools(trusted.webContents as unknown as Electron.WebContents, () => true)
+    const second = ipc.tools(trusted.webContents as unknown as Electron.WebContents, () => true)
+
+    first.close()
+
+    expect(Object.keys(first.servers ?? {})).toEqual(["pigclaude_workbench"])
+    expect(browsers()["closeAgent"]).toHaveBeenCalledTimes(1)
+    second.close()
+    const ids = browsers()["closeAgent"]?.mock.calls.map(([id]) => id)
+    expect(new Set(ids).size).toBe(2)
   })
 
   it("opens terminals in the validated project for the calling window", async () => {

@@ -56,10 +56,14 @@ export async function resolveWorkbenchCheckpoint(root: string, id: string): Prom
   ).trim()
 }
 
-/** 用独立索引快照工作区，避免改变当前分支、索引或提交历史。 */
+/** 会话回合检查点属于哪个会话的哪一轮；以提交说明尾注的形式记在检查点提交里。 */
+export type CheckpointOrigin = { sessionId: string; turnId: string }
+
+/** 用独立索引快照工作区，避免改变当前分支、索引或提交历史；带 origin 时提交说明里记下会话和回合。 */
 export async function captureWorkbenchCheckpoint(
   root: string,
   phase: WorkbenchCheckpoint["phase"] = "manual",
+  origin?: CheckpointOrigin,
 ): Promise<string> {
   await assertWorkbenchGit(root)
   const { gitRoot, scope } = await scopeFor(root)
@@ -86,7 +90,16 @@ export async function captureWorkbenchCheckpoint(
     const sha = (
       await runWorkbenchGit(
         gitRoot,
-        ["commit-tree", tree, ...(parent ? ["-p", parent] : []), "-m", "PigClaude checkpoint"],
+        [
+          "commit-tree",
+          tree,
+          ...(parent ? ["-p", parent] : []),
+          "-m",
+          "PigClaude checkpoint",
+          ...(origin
+            ? ["-m", `PigClaude-Session: ${origin.sessionId}\nPigClaude-Turn: ${origin.turnId}`]
+            : []),
+        ],
         env,
       )
     ).trim()

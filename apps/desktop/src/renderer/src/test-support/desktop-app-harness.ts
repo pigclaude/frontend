@@ -212,6 +212,7 @@ export function installFakeDesktopBridge(
         pendingQuestions: 0,
         turnId: null,
       }),
+      list: async () => [],
       subscribe: (next) => {
         listener = next
         return () => {

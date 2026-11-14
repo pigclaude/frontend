@@ -13,11 +13,11 @@ import {
   type SessionStartInput,
   type SessionTarget,
   type SessionThinking,
+  type SessionTools,
   type UsageRange,
 } from "./session-types"
 import type { UsageRecorder } from "./usage-recorder"
 import { captureSessionCheckpoint } from "../workbench/session-checkpoints"
-import type { ClaudeAgentStartOptions } from "./claude-query-options"
 
 const permissionModes = new Set<SessionPermissionMode>([
   "default",
@@ -31,6 +31,8 @@ const effortLevels = new Set<SessionEffort>(["low", "medium", "high", "xhigh", "
 const maxUpdatedPermissions = 50
 const maxUpdatedPermissionsBytes = 64 * 1024
 const maxSessionIdLength = 200
+// 和会话存储的目录名规则一致：新会话的 id 会成为会话目录名。
+const startSessionIdPattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
 const maxRequestIdLength = 200
 const maxQuestionAnswers = 16
 const maxQuestionAnswerLength = 8 * 1024
@@ -40,10 +42,11 @@ export type SessionIpcOptions = {
   getHost: () => SessionHost | null
   getUsage: () => Pick<UsageRecorder, "summary"> | null
   isTrusted: (event: IpcMainInvokeEvent) => boolean
-  tools?: (event: IpcMainInvokeEvent) => ClaudeAgentStartOptions["mcpServers"]
+  /** 为一次启动建会话专用的工具；会话停放时由宿主关掉。 */
+  tools?: (event: IpcMainInvokeEvent) => SessionTools
 }
 
-/** 注册会话命令、按序号补拉事件和只读用量汇总。保证所有命令只接受主窗口当前 frame，命令都指明会话。 */
+/** 注册会话命令、列出会话、按序号补拉事件和只读用量汇总。保证所有命令只接受主窗口当前 frame，命令都指明会话。 */
 export function registerSessionIpc(options: SessionIpcOptions): void {
   ipcMain.handle("pigclaude:session-start", async (event, value: unknown) => {
     assertTrusted(options, event)
@@ -55,8 +58,11 @@ export function registerSessionIpc(options: SessionIpcOptions): void {
   ipcMain.handle("pigclaude:session-send", async (event, value: unknown) => {
     assertTrusted(options, event)
     const { sessionId } = readSessionTarget(value)
-    await requireHost(options).send(sessionId, readSessionSendInput(value), (workspace, phase) =>
-      captureSessionCheckpoint(event.sender, workspace, phase),
+    await requireHost(options).send(
+      sessionId,
+      readSessionSendInput(value),
+      (workspace, phase, turnId) =>
+        captureSessionCheckpoint(event.sender, workspace, phase, { sessionId, turnId }),
     )
   })
   ipcMain.handle("pigclaude:session-cancel", async (event, value: unknown) => {
@@ -96,9 +102,14 @@ export function registerSessionIpc(options: SessionIpcOptions): void {
     assertTrusted(options, event)
     return requireHost(options).models()
   })
-  ipcMain.handle("pigclaude:session-status", async (event) => {
+  ipcMain.handle("pigclaude:session-status", async (event, value: unknown) => {
     assertTrusted(options, event)
-    return requireHost(options).status()
+    const host = requireHost(options)
+    return value === undefined ? host.status() : host.status(readSessionTarget(value).sessionId)
+  })
+  ipcMain.handle("pigclaude:session-list", async (event) => {
+    assertTrusted(options, event)
+    return requireHost(options).list()
   })
   ipcMain.handle("pigclaude:usage-summary", async (event, value: unknown) => {
     assertTrusted(options, event)
@@ -108,9 +119,16 @@ export function registerSessionIpc(options: SessionIpcOptions): void {
   })
 }
 
-/** 解析 session.start 输入；拒绝非对象、相对工作区、未知模式和空模型。 */
+/** 解析 session.start 输入；拒绝非对象、相对工作区、未知模式、空模型和不能当目录名的会话 id。 */
 export function readSessionStartInput(value: unknown): SessionStartInput {
   if (!isRecord(value)) throw invalidInput()
+  const sessionId = value.sessionId
+  if (
+    sessionId !== undefined &&
+    (typeof sessionId !== "string" || !startSessionIdPattern.test(sessionId))
+  ) {
+    throw invalidInput()
+  }
   const workspace = readString(value.workspace)
   const permissionMode = readPermissionMode(value.permissionMode)
   const model = readOptionalString(value.model)
@@ -127,6 +145,7 @@ export function readSessionStartInput(value: unknown): SessionStartInput {
   if (fast !== undefined && typeof fast !== "boolean") throw invalidInput()
   if (workspace === null) throw invalidInput()
   return {
+    ...(sessionId === undefined ? {} : { sessionId }),
     workspace,
     permissionMode,
     ...(model === undefined ? {} : { model }),

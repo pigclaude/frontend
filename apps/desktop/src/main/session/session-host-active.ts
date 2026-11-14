@@ -48,7 +48,9 @@ export type ActiveSession = {
   preferredAccountId: string | null
   switchedFrom: string | null
   turns: SessionTurns
-  checkpoint?: ((workspace: string, phase: "baseline" | "final") => Promise<void>) | undefined
+  /** 工作台在一轮前后记检查点；turnId 是这一轮的 id。 */
+  checkpoint?:
+    ((workspace: string, phase: "baseline" | "final", turnId: string) => Promise<void>) | undefined
   stopping: boolean
   ending: Promise<void> | null
   released: boolean

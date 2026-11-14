@@ -55,6 +55,7 @@ export function fakeSessionBridge(overrides: Partial<SessionBridge> = {}): FakeS
     events: vi.fn(async () => []),
     models: vi.fn(async () => fakeCatalog),
     status: vi.fn(async () => idleStatus),
+    list: vi.fn(async () => []),
     subscribe: vi.fn((next: (envelope: SessionEnvelope) => void) => {
       listener = next
       return () => {

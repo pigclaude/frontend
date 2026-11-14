@@ -1,4 +1,4 @@
-// 负责验证会话回合检查点：同一项目按调用顺序记录，完成后通知窗口，Git 失败不影响会话。
+// 负责验证会话回合检查点：同一项目按调用顺序记录并带上会话和回合，完成后通知窗口，Git 失败不影响会话。
 import type { WebContents } from "electron"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { captureSessionCheckpoint } from "./session-checkpoints"
@@ -7,23 +7,26 @@ const { captures } = vi.hoisted(() => ({
   captures: [] as {
     root: string
     phase: string | undefined
+    origin: unknown
     resolve: () => void
     reject: (error: Error) => void
   }[],
 }))
 
 vi.mock("./git-checkpoints", () => ({
-  captureWorkbenchCheckpoint: (root: string, phase?: string) =>
+  captureWorkbenchCheckpoint: (root: string, phase?: string, origin?: unknown) =>
     new Promise<string>((resolve, reject) => {
       captures.push({
         root,
         phase,
+        origin,
         resolve: () => resolve(`${phase ?? "manual"}-id`),
         reject,
       })
     }),
 }))
 
+const origin = { sessionId: "session-1", turnId: "turn-1" }
 let caseNumber = 0
 let app: string
 let site: string
@@ -49,8 +52,8 @@ beforeEach(() => {
 describe("session checkpoints", () => {
   it("records one project's checkpoints one at a time in call order", async () => {
     const { owner } = ownerWindow()
-    const baseline = captureSessionCheckpoint(owner, app, "baseline")
-    const final = captureSessionCheckpoint(owner, app, "final")
+    const baseline = captureSessionCheckpoint(owner, app, "baseline", origin)
+    const final = captureSessionCheckpoint(owner, app, "final", origin)
     await settle()
     expect(captures.map((item) => item.phase)).toEqual(["baseline"])
 
@@ -64,16 +67,17 @@ describe("session checkpoints", () => {
 
   it("does not hold one project behind another", async () => {
     const { owner } = ownerWindow()
-    void captureSessionCheckpoint(owner, app, "baseline")
-    void captureSessionCheckpoint(owner, site, "baseline")
+    void captureSessionCheckpoint(owner, app, "baseline", origin)
+    void captureSessionCheckpoint(owner, site, "baseline", origin)
     await settle()
 
     expect(captures.map((item) => item.root)).toEqual([app, site])
+    expect(captures.map((item) => item.origin)).toEqual([origin, origin])
   })
 
   it("tells the window once a checkpoint is recorded", async () => {
     const { owner, send } = ownerWindow()
-    const pending = captureSessionCheckpoint(owner, app, "final")
+    const pending = captureSessionCheckpoint(owner, app, "final", origin)
     await settle()
     expect(send).not.toHaveBeenCalled()
 
@@ -88,8 +92,8 @@ describe("session checkpoints", () => {
 
   it("never rejects when Git is unavailable and keeps later checkpoints going", async () => {
     const { owner, send } = ownerWindow()
-    const failed = captureSessionCheckpoint(owner, app, "baseline")
-    const next = captureSessionCheckpoint(owner, app, "final")
+    const failed = captureSessionCheckpoint(owner, app, "baseline", origin)
+    const next = captureSessionCheckpoint(owner, app, "final", origin)
     await settle()
     captures[0]?.reject(new Error("WORKBENCH_GIT_REQUIRED"))
 
@@ -103,7 +107,7 @@ describe("session checkpoints", () => {
 
   it("does not message a window that closed while Git was still recording", async () => {
     const { owner, send, close } = ownerWindow()
-    const pending = captureSessionCheckpoint(owner, app, "baseline")
+    const pending = captureSessionCheckpoint(owner, app, "baseline", origin)
     await settle()
     close()
     captures[0]?.resolve()

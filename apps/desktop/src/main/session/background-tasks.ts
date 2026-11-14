@@ -5,8 +5,8 @@ import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 
 /** 适配器从 SDK 任务消息读出的信号；只在主进程内部使用，不发给渲染层。 */
 export type BackgroundTaskSignal =
-  /** 后台任务变化消息：当前全部在途、要等它跑完的任务。 */
-  | { type: "background-tasks"; taskIds: string[] }
+  /** 后台任务变化消息：当前全部在途、要等它跑完的任务，以及回合不等的常驻任务（后台 shell、MCP 监视器）。 */
+  | { type: "background-tasks"; taskIds: string[]; ambientTaskIds: string[] }
   /** 任务开始消息里要等它跑完的任务；只在旧版 CLI 上起作用。 */
   | { type: "background-task-started"; taskId: string }
   /** 任务通知消息：任务已结束，不论成功、失败还是被停止。 */
@@ -19,13 +19,15 @@ const awaitedTaskTypes = new Set(["local_agent", "remote_agent", "local_workflow
 export function readBackgroundTaskSignal(message: SDKMessage): BackgroundTaskSignal | null {
   if (message.type !== "system") return null
   switch (message.subtype) {
-    case "background_tasks_changed":
+    case "background_tasks_changed": {
+      const awaited = (task: (typeof message.tasks)[number]): boolean =>
+        task.ambient !== true && awaitedTaskTypes.has(task.task_type)
       return {
         type: "background-tasks",
-        taskIds: message.tasks
-          .filter((task) => task.ambient !== true && awaitedTaskTypes.has(task.task_type))
-          .map((task) => task.task_id),
+        taskIds: message.tasks.filter(awaited).map((task) => task.task_id),
+        ambientTaskIds: message.tasks.filter((task) => !awaited(task)).map((task) => task.task_id),
       }
+    }
     case "task_started":
       if (message.ambient === true) return null
       if (message.task_type !== undefined && !awaitedTaskTypes.has(message.task_type)) return null

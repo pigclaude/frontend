@@ -43,7 +43,7 @@ describe("SessionHost turns", () => {
     await waitUntil(() => harness.events.some((event) => event.type === "result"))
 
     await expect(harness.host.send(harness.sessionId, { text: "next" })).rejects.toMatchObject({
-      code: "SESSION_ALREADY_ACTIVE",
+      code: "TURN_ACTIVE",
     })
     expect(harness.host.status().turnId).not.toBeNull()
     expect(harness.host.pendingWork()).toEqual({ turns: 1, approvals: 0 })

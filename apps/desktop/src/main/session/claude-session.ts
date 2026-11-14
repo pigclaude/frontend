@@ -35,6 +35,11 @@ import {
 import type { ClaudeAgentStartOptions, ClaudePersistenceOptions } from "./claude-query-options"
 import type { SessionEventCursor } from "./session-event-log"
 import type { AdapterEvent, SessionUsage } from "./session-events"
+import type {
+  FinishReferenceDelivery,
+  PreparedSessionReferences,
+  SessionReferenceAccess,
+} from "./session-reference-access"
 import type { ClosedTurn } from "./session-turns"
 import type {
   SessionAdapterFactory,
@@ -77,6 +82,7 @@ export type ClaudeSessionOptions = {
   }
   /** 已确认的模型或回合设置改变时保存索引。 */
   saveSettings?: (settings: SessionSavedSettings) => void
+  references?: SessionReferenceAccess
 }
 
 /** 会话实际生效的模型与 SDK 已确认的设置。 */
@@ -145,7 +151,7 @@ export class ClaudeSession {
   /** 启动 Claude Code 并进入用户选的权限模式；模式进不去时只提示，启动失败照常抛出。 */
   async launch(mcpServers: ClaudeAgentStartOptions["mcpServers"]): Promise<void> {
     await this.state.adapter.start({
-      ...buildStartOptions(this.state, this.#options.input),
+      ...buildStartOptions(this.state, this.#options.input, this.#options.references !== undefined),
       ...(mcpServers ? { mcpServers } : {}),
       ...(this.#options.persistence === undefined
         ? {}
@@ -168,17 +174,24 @@ export class ClaudeSession {
     const turnId = active.turns.reserve(this.#options.newId)
     const canSend = () => active.turns.holds(turnId) && !this.closing
     active.checkpoint = checkpoint
+    const access = this.#options.references
+    let prepared: PreparedSessionReferences | undefined
+    let finishDelivery: FinishReferenceDelivery | undefined
     try {
       await checkpoint?.(active.environment.workspace, "baseline", turnId)
       await this.#flags.apply(input, canSend)
+      if (canSend() && access !== undefined && input.references?.length)
+        prepared = await access.prepare(input, (title) => this.#redact(title))
       if (!canSend()) {
         active.turns.release(turnId)
         return
       }
       this.#options.saveSettings?.(this.savedSettings())
       this.#flags.expectInit(turnId)
-      await active.adapter.send(input.text)
+      finishDelivery = prepared && access?.beforeDelivery(prepared.references)
+      await active.adapter.send(prepared?.prompt ?? input.text)
     } catch (error) {
+      if (finishDelivery !== undefined) await finishDelivery(false)
       this.#flags.ended(turnId)
       if (!active.turns.holds(turnId)) return
       active.turns.release(turnId)
@@ -187,12 +200,21 @@ export class ClaudeSession {
       throw hostError(code, message, this.#options.sessionToken())
     }
     if (!canSend()) {
+      if (finishDelivery !== undefined) await finishDelivery(false)
       active.turns.release(turnId)
       this.#flags.ended(turnId)
       return
     }
-    active.turns.open(turnId, this.#options.persistence ? this.#redact(input.text) : undefined)
+    const saved = finishDelivery?.(true).catch(() => {
+      if (!this.closing) this.#publish({ type: "notice", message: "会话引用记录写入失败" })
+    })
+    active.turns.open(
+      turnId,
+      this.#options.persistence ? this.#redact(input.text) : undefined,
+      prepared?.references,
+    )
     this.#publishFastNotice(this.#flags.opened(turnId))
+    if (saved !== undefined) await saved
   }
 
   /** 停止当前一轮：拒绝未回答的权限和提问，中断并停止在途后台任务，以中断结束这一轮；会话保留供下一次发送。 */
@@ -201,6 +223,7 @@ export class ClaudeSession {
     this.#stall.stop()
     const turnId = active.turns.turnId
     if (turnId !== null) this.#flags.ended(turnId)
+    this.#options.references?.cancelPendingDeliveries()
     active.pending.rejectAll("用户已取消")
     await active.turns.interrupt("interrupted", "SESSION_CANCELLED")
   }
@@ -246,6 +269,7 @@ export class ClaudeSession {
     if (this.#release !== null) return this.#release
     this.#stall.stop()
     active.stopping = true
+    this.#options.references?.cancelPendingDeliveries()
     this.#context.stop()
     active.ending = (async () => {
       active.pending.rejectAll(rejectMessage)
@@ -272,6 +296,7 @@ export class ClaudeSession {
     if (this.#release !== null) return this.#release
     const active = this.state
     active.released = true
+    this.#options.references?.cancelPendingDeliveries()
     this.#stall.stop()
     this.#context.stop()
     this.#release = Promise.resolve().then(() => this.#releaseEnvironment())
@@ -336,6 +361,7 @@ export class ClaudeSession {
         return
       case "exit-pending":
         active.stopping = true
+        this.#options.references?.cancelPendingDeliveries()
         this.#stall.stop()
         active.pending.rejectAll(cancelledPermissionMessage)
         this.#publish({ type: "error", code: "SDK_ERROR", message: "Claude Code 尚未确认退出" })

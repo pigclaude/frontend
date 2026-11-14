@@ -103,12 +103,13 @@ export function buildUsageRecord(
 export function buildStartOptions(
   active: ActiveSession,
   input: SessionStartInput,
+  hasThreadRead: boolean,
 ): ClaudeAgentStartOptions {
   return {
     workspace: active.environment.workspace,
     env: active.environment.env,
     permissionMode: active.permissionMode,
-    canUseTool: routeCanUseTool(active.broker, active.questions),
+    canUseTool: routeCanUseTool(active.broker, active.questions, hasThreadRead),
     abortController: active.abort,
     binaryPath: active.environment.binaryPath,
     ...(input.model === undefined ? {} : { model: input.model }),

@@ -71,10 +71,20 @@ const timelineRules: { [K in SessionHostEvent["type"]]: TimelineRule<EventOf<K>>
       : { ...event, params: redactUnknown(event.params, "event.params", marks) },
   context: (event) => event,
   result: (event) => event,
-  "turn-started": (event, marks) =>
-    "userText" in event && typeof event.userText === "string"
-      ? { ...event, userText: redactString(event.userText, "event.userText", marks) }
-      : event,
+  "turn-started": (event, marks) => ({
+    ...event,
+    ...(typeof event.userText === "string"
+      ? { userText: redactString(event.userText, "event.userText", marks) }
+      : {}),
+    ...(event.references === undefined
+      ? {}
+      : {
+          references: event.references.map((reference, index) => ({
+            ...reference,
+            title: redactString(reference.title, `event.references.${index}.title`, marks),
+          })),
+        }),
+  }),
   "turn-ended": (event) => event,
   "subagent-ended": (event, marks) => ({
     ...event,

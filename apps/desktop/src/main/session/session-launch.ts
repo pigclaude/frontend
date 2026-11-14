@@ -10,8 +10,10 @@ import type { DevProviderOverride } from "./dev-provider"
 import type { SessionEnvelope } from "./session-envelope"
 import { prepareSavedSession, type PersistedSessionLaunch } from "./session-persistence"
 import type { SessionIndex } from "./session-index"
+import { SessionReferenceAccess } from "./session-reference-access"
 import type { SessionStore } from "./session-store"
 import type { SessionSavedSettings } from "./claude-session"
+import { createThreadReadServer, threadReadServerName } from "./thread-read"
 import type { SessionTimers } from "./session-host-active"
 import { mapStartError } from "./session-host-support"
 import type { SessionCancelCode } from "./session-registry"
@@ -170,8 +172,10 @@ export async function launchSession(
   } catch (error) {
     throw interrupted() ?? error
   }
+  const references = storage && new SessionReferenceAccess(storage.store, sessionId)
   const session = new ClaudeSession({
     ...prepared,
+    ...(references === undefined ? {} : { references }),
     ...(persistence === undefined ? {} : { persistence }),
     ...(hooks.saveSettings === undefined ? {} : { saveSettings: hooks.saveSettings }),
     createAdapter: (onEvent) =>
@@ -193,6 +197,16 @@ export async function launchSession(
   })
   hooks.opened(session, canonicalWorkspace)
   try {
+    if (references !== undefined) {
+      const reader = createThreadReadServer((id) =>
+        references.read(
+          id,
+          () =>
+            !session.closing && interrupted() === null && deps.membership.view().state === "active",
+        ),
+      )
+      servers = { ...servers, [threadReadServerName]: reader }
+    }
     await session.launch(servers)
   } catch (error) {
     if (error instanceof SessionClaudeExitError) throw error

@@ -8,6 +8,7 @@ import type { SessionTimers } from "./session-host-active"
 import {
   SessionHostError,
   type SessionAdapterPort,
+  type SessionReference,
   type SessionTurnEndStatus,
   type SessionTurnEvent,
 } from "./session-types"
@@ -101,7 +102,7 @@ export class SessionTurns {
   }
 
   /** 发送已被接受：开一轮并发出 turn-started。 */
-  open(turnId: string, userText?: string): void {
+  open(turnId: string, userText?: string, references?: readonly SessionReference[]): void {
     this.#reserved = null
     this.#open = {
       id: turnId,
@@ -116,6 +117,7 @@ export class SessionTurns {
       type: "turn-started",
       turnId,
       ...(userText === undefined ? {} : { userText }),
+      ...(references?.length ? { references } : {}),
     })
   }
 

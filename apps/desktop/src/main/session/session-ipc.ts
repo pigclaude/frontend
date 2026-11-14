@@ -17,6 +17,7 @@ import {
   type SessionThinking,
   type SessionTools,
   type UsageRange,
+  isSessionReference,
 } from "./session-types"
 import type { UsageRecorder } from "./usage-recorder"
 import { isSessionStoreId } from "./session-store-layout"
@@ -201,14 +202,7 @@ function readReferences(value: unknown): SessionReference[] | undefined {
   if (value === undefined) return undefined
   if (!Array.isArray(value)) throw invalidInput()
   return value.map((item: unknown) => {
-    if (
-      !isRecord(item) ||
-      item.kind !== "thread" ||
-      typeof item.threadId !== "string" ||
-      item.threadId === "" ||
-      item.threadId.length > maxSessionIdLength ||
-      typeof item.title !== "string"
-    ) {
+    if (!isSessionReference(item) || item.threadId.length > maxSessionIdLength) {
       throw invalidInput()
     }
     return { kind: "thread", threadId: item.threadId, title: item.title }

@@ -13,6 +13,7 @@ import type { SessionEnvelope } from "./session-envelope"
 import type { SessionEnvironmentInput } from "./session-environment"
 import type { TimelineNoticeEvent } from "./session-notice"
 import type { SessionSummary } from "./session-summary"
+import { isPlainRecord } from "./session-store-guards"
 import type {
   AdapterEvent,
   ClaudeModel,
@@ -45,6 +46,17 @@ export type SessionStartInput = {
 
 /** 用户在消息里附带的会话引用；标题是输入框里的标签文字。 */
 export type SessionReference = { kind: "thread"; threadId: string; title: string }
+
+/** 检查 IPC 或磁盘事件中的单个引用标签。 */
+export function isSessionReference(value: unknown): value is SessionReference {
+  return (
+    isPlainRecord(value) &&
+    value.kind === "thread" &&
+    typeof value.threadId === "string" &&
+    value.threadId !== "" &&
+    typeof value.title === "string"
+  )
+}
 
 /** 这一条消息的设置和引用；省略设置沿用当前值，effort 为 null 时使用模型默认档位。 */
 export type SessionSendOptions = {

@@ -5,13 +5,22 @@ import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
 import { parseQuestions } from "./ask-user-question"
 import type { PermissionBroker } from "./permission-broker"
 import type { QuestionBroker } from "./question-broker"
+import { isBuiltinThreadRead } from "./thread-read"
 
-/** 按工具名分流的 canUseTool；读不出问题的 AskUserQuestion 仍按普通权限询问处理。 */
+/** 内置 thread_read 在自身作用域内执行；其余工具按现有规则分发权限或提问。 */
 export function routeCanUseTool(
   permissions: PermissionBroker,
   questions: QuestionBroker,
+  hasThreadRead = false,
 ): CanUseTool {
   return (toolName, input, options) => {
+    if (
+      !options.signal.aborted &&
+      hasThreadRead &&
+      isBuiltinThreadRead(toolName, options.mcpServer)
+    ) {
+      return Promise.resolve({ behavior: "allow", updatedInput: input })
+    }
     const asked = toolName === "AskUserQuestion" ? parseQuestions(input) : null
     if (asked !== null) return questions.ask(asked, input, options.signal)
     return permissions.request(toolName, input, options)

@@ -161,6 +161,29 @@ describe("SessionStore 时间线", () => {
     expect(await readFile(file, "utf8")).toBe(disk)
   })
 
+  it("回放有效引用，并丢弃不能作为会话标签的旧字段", async () => {
+    const store = await storeWithSession()
+    const reference = { kind: "thread", threadId: "s-other", title: "引用标题" }
+    const event = { type: "turn-started", turnId: "turn-1", userText: "复核 @引用标题" }
+    const lines = [
+      {
+        ...turnStarted(1),
+        event: { ...event, references: [reference, { ...reference, title: 1 }] },
+      },
+      { ...turnStarted(2), event: { ...event, references: { bad: true } } },
+    ]
+    await appendFile(
+      store.paths("s-1").timelineFile,
+      lines.map((line) => JSON.stringify(line)).join("\n") + "\n",
+    )
+
+    const { envelopes } = await store.readTimeline("s-1")
+    expect(envelopes.map((envelope) => envelope.event)).toEqual([
+      { ...event, references: [reference] },
+      event,
+    ])
+  })
+
   it("只把当前会话可回放的信封交给调用方，跳过其他会话和格式损坏的行", async () => {
     const store = await storeWithSession()
     const file = store.paths("s-1").timelineFile

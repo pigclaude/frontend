@@ -2,6 +2,7 @@
 
 import { sessionEventKinds, type SessionEnvelope } from "./session-envelope"
 import { isPlainRecord } from "./session-store-guards"
+import { isSessionReference } from "./session-types"
 import { subagentRef } from "./subagent-tasks"
 
 type HistoryEvent = SessionEnvelope["event"]
@@ -20,7 +21,7 @@ export function normalizeHistory<T extends SessionEnvelope>(
     ) {
       return []
     }
-    return [{ ...envelope, event: normalizeOwner(event) }]
+    return [{ ...envelope, event: normalizeEvent(event) }]
   })
 }
 
@@ -134,7 +135,12 @@ function validHistoryTime(at: string): boolean {
   return Number.isFinite(time) && at.length === 24 && new Date(time).toISOString() === at
 }
 
-function normalizeOwner(event: SessionEnvelope["event"]): SessionEnvelope["event"] {
+function normalizeEvent(event: HistoryEvent): HistoryEvent {
+  if (event.type === "turn-started" && event.references !== undefined) {
+    const { references: stored, ...turn } = event
+    const references = Array.isArray(stored) ? stored.filter(isSessionReference) : []
+    return references.length === 0 ? turn : { ...turn, references }
+  }
   if (event.type !== "message" && event.type !== "tool-result" && event.type !== "permission") {
     return event
   }

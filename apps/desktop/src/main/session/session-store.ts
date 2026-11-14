@@ -131,6 +131,24 @@ export class SessionStore {
     })
   }
 
+  /** 将收到的有效直接引用并入索引；与同一会话的其他索引更改串行写回。 */
+  recordReferences(id: string, references: ReadonlySet<string>): Promise<void> {
+    return this.#enqueue(id, async () => {
+      const { index } = this.#entry(id)
+      const added = [...references].filter(
+        (target) =>
+          target !== id &&
+          this.#entries.has(target) &&
+          !index.referencedSessionIds.includes(target),
+      )
+      if (added.length === 0) return
+      await this.#write(id, {
+        ...index,
+        referencedSessionIds: [...index.referencedSessionIds, ...added],
+      })
+    })
+  }
+
   /**
    * 往时间线追加一条信封：只用于实时的事件不写、返回 false；要保存的事件先脱敏截断再写，返回 true，
    * 并把内存索引的时间线游标推到这条的序号（下次写索引时落盘）。信封的会话 id 必须是目标会话。

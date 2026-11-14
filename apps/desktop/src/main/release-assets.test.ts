@@ -1,4 +1,4 @@
-// 验证发版核对：tag 与桌面端版本一致，测试发布只接受测试 tag；三平台更新清单与安装包的版本、大小和 sha512 一致。
+// 验证发布制品核对：三平台更新清单与安装包的版本、大小和 sha512 一致，缺少或被换过时逐条报出。
 import { createHash } from "node:crypto"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
@@ -6,50 +6,14 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 
-type ReleaseTarget = { tag: string; version: string; test: boolean }
-type ReleaseCheck = {
-  releaseTarget(input: {
-    event: string
-    pushedTag?: string
-    testTag?: string
-    version: string
-  }): ReleaseTarget
+type ReleaseAssets = {
+  parseUpdateManifest(text: string): { version: string | null; files: { url: string }[] }
   releaseAssetProblems(directory: string, version: string): string[]
-  sha512(path: string): string
 }
 
 const check = createRequire(import.meta.url)(
-  resolve(import.meta.dirname, "../../release-check.cjs"),
-) as ReleaseCheck
-
-describe("发版的 tag 和版本", () => {
-  it("推 v<桌面端版本> 时正式发布", () => {
-    expect(check.releaseTarget({ event: "push", pushedTag: "v1.2.3", version: "1.2.3" })).toEqual({
-      tag: "v1.2.3",
-      version: "1.2.3",
-      test: false,
-    })
-  })
-
-  it("tag 与桌面端版本不一致时失败", () => {
-    expect(() =>
-      check.releaseTarget({ event: "push", pushedTag: "v1.2.4", version: "1.2.3" }),
-    ).toThrow("tag v1.2.4 与桌面端版本 1.2.3 不一致")
-  })
-
-  it("手动触发只做测试发布，tag 必须是测试 tag", () => {
-    expect(
-      check.releaseTarget({
-        event: "workflow_dispatch",
-        testTag: "desktop-v0.0.0-test.1",
-        version: "0.0.1",
-      }),
-    ).toEqual({ tag: "desktop-v0.0.0-test.1", version: "0.0.1", test: true })
-    expect(() =>
-      check.releaseTarget({ event: "workflow_dispatch", testTag: "v0.0.1", version: "0.0.1" }),
-    ).toThrow("测试发布的 tag")
-  })
-})
+  resolve(import.meta.dirname, "../../release-assets.cjs"),
+) as ReleaseAssets
 
 describe("更新清单与安装包", () => {
   let directory = ""
@@ -59,7 +23,7 @@ describe("更新清单与安装包", () => {
   })
 
   async function release(files: Record<string, string>): Promise<string> {
-    directory = await mkdtemp(join(tmpdir(), "pigclaude-release-check-"))
+    directory = await mkdtemp(join(tmpdir(), "pigclaude-release-assets-"))
     for (const [name, content] of Object.entries(files)) {
       await writeFile(join(directory, name), content)
     }
@@ -83,7 +47,7 @@ describe("更新清单与安装包", () => {
     "PigClaude-1.0.0-arm64.zip": "zip",
     "PigClaude-1.0.0-arm64.dmg": "dmg",
     "PigClaude-1.0.0-x64.exe": "exe",
-    "PigClaude-x64.AppImage": "appimage",
+    "PigClaude-x86_64.AppImage": "appimage",
   }
 
   function manifests(version: string): Record<string, string> {
@@ -93,7 +57,7 @@ describe("更新清单与安装包", () => {
         ["PigClaude-1.0.0-arm64.dmg", "dmg"],
       ]),
       "latest.yml": manifest(version, [["PigClaude-1.0.0-x64.exe", "exe"]]),
-      "latest-linux.yml": manifest(version, [["PigClaude-x64.AppImage", "appimage"]]),
+      "latest-linux.yml": manifest(version, [["PigClaude-x86_64.AppImage", "appimage"]]),
     }
   }
 
@@ -114,5 +78,11 @@ describe("更新清单与安装包", () => {
       "PigClaude-1.0.0-x64.exe 的 sha512 和 latest.yml 不一致",
       "缺少更新清单 latest-linux.yml",
     ])
+  })
+
+  it("清单的版本带引号时也能读出", () => {
+    const manifest = check.parseUpdateManifest('version: "1.2.3"\nfiles:\n  - url: a.exe\n')
+    expect(manifest.version).toBe("1.2.3")
+    expect(manifest.files.map((file) => file.url)).toEqual(["a.exe"])
   })
 })

@@ -1,4 +1,4 @@
-// 验证发布说明：列出三平台安装包和 sha256，写明随包内核和不签名的限制，测试发布开头标明不是正式版本。
+// 验证发布说明：列出三平台安装包和 sha256，写明随包内核、不签名和 AppImage 的限制，测试发布开头标明不是正式版本。
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
@@ -13,6 +13,7 @@ type ReleaseNotes = {
     test: boolean
     installers: Installer[]
     pigbrowserVersion: string
+    xrayVersion: string
   }): string
 }
 
@@ -51,10 +52,12 @@ describe("发布说明", () => {
       test: false,
       installers,
       pigbrowserVersion: "156.0.8078.88",
+      xrayVersion: "v26.10.31",
     })
     expect(text.startsWith("PigClaude 1.0.0")).toBe(true)
     expect(text).toContain(`| Linux x64 | \`PigClaude-x86_64.AppImage\` | \`${sha256}\` |`)
-    expect(text).toContain("PigBrowser 156.0.8078.88")
+    expect(text).toContain("PigBrowser 156.0.8078.88 和 Xray v26.10.31")
+    expect(text).toContain("libfuse2")
     expect(text).toContain("macOS 不能自动安装更新")
     expect(text).toContain("SmartScreen")
   })
@@ -65,6 +68,7 @@ describe("发布说明", () => {
       test: true,
       installers: [],
       pigbrowserVersion: "156.0.8078.88",
+      xrayVersion: "v26.10.31",
     })
     expect(text.split("\n")[0]).toContain("测试发布")
     expect(text.split("\n")[0]).toContain("不是正式版本")

@@ -15,8 +15,11 @@ on:
 permissions:
   contents: read
 
+env:
+  XRAY_VERSION: v26.10.31
+
 concurrency:
-  group: desktop-release
+  group: desktop-release-${{ github.ref_name }}-${{ inputs.test_tag }}
   cancel-in-progress: false
 
 jobs:
@@ -29,13 +32,15 @@ jobs:
       test: ${{ steps.target.outputs.test }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - id: target
         env:
           TEST_TAG: ${{ inputs.test_tag }}
-        run: node apps/desktop/release-check.cjs target >> "$GITHUB_OUTPUT"
+        run: node apps/desktop/release-target.cjs >> "$GITHUB_OUTPUT"
 
   build:
     needs: target
@@ -68,6 +73,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -94,7 +101,7 @@ jobs:
           $browserArchive = Join-Path $root $artifact.archive
           $xrayArchive = Join-Path $root $env:XRAY_ARCHIVE
           Invoke-WebRequest $env:PIGBROWSER_URL -OutFile $browserArchive
-          Invoke-WebRequest "https://github.com/XTLS/Xray-core/releases/download/v26.10.31/$env:XRAY_ARCHIVE" -OutFile $xrayArchive
+          Invoke-WebRequest "https://github.com/XTLS/Xray-core/releases/download/$env:XRAY_VERSION/$env:XRAY_ARCHIVE" -OutFile $xrayArchive
           if ((Get-FileHash $browserArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $artifact.sha256) { throw "PigBrowser 包校验失败" }
           if ((Get-FileHash $xrayArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:XRAY_SHA256) { throw "Xray 包校验失败" }
           if ($IsMacOS) {
@@ -132,13 +139,13 @@ jobs:
             sudo chown root:root "$sandbox"
             sudo chmod 4755 "$sandbox"
           done
-      - name: 冒烟测试：安装包能启动，主进程的调试入口已关闭
+      - name: 冒烟测试：解压后的应用能启动，主进程的调试入口已关闭
         if: runner.os != 'Linux'
         working-directory: apps/desktop
         env:
           PIGCLAUDE_TEST_PACKAGED_APP: ${{ github.workspace }}/apps/desktop/${{ matrix.executable }}
         run: pnpm exec vitest run src/main/packaged-debug-entries.integration.test.ts
-      - name: 冒烟测试：安装包能启动，主进程的调试入口已关闭
+      - name: 冒烟测试：解压后的应用能启动，主进程的调试入口已关闭
         if: runner.os == 'Linux'
         working-directory: apps/desktop
         env:
@@ -162,6 +169,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -171,10 +180,10 @@ jobs:
           merge-multiple: true
           path: dist
       - name: 核对更新清单和安装包
-        run: node apps/desktop/release-check.cjs assets dist "${{ needs.target.outputs.version }}"
+        run: node apps/desktop/release-assets.cjs dist "${{ needs.target.outputs.version }}"
       - name: 生成发布说明和 sha256 清单
         run: |
-          node apps/desktop/release-notes.cjs dist "${{ needs.target.outputs.version }}" "${{ needs.target.outputs.test }}" > "$RUNNER_TEMP/notes.md"
+          node apps/desktop/release-notes.cjs dist "${{ needs.target.outputs.version }}" "${{ needs.target.outputs.test }}" "$XRAY_VERSION" > "$RUNNER_TEMP/notes.md"
           (cd dist && sha256sum -- *.dmg *.zip *.exe *.AppImage > SHA256SUMS.txt)
       - name: 作为草稿发布到 pigclaude/release
         env:
@@ -183,6 +192,11 @@ jobs:
           TEST: ${{ needs.target.outputs.test }}
         run: |
           if [ -z "$GH_TOKEN" ]; then echo "缺少 secret RELEASE_REPO_TOKEN" >&2; exit 1; fi
+          # 草稿可以重名，重跑会多出一份；已有同名发布或草稿时先由维护者处理掉旧的。
+          if gh release view "$TAG" --repo pigclaude/release >/dev/null 2>&1; then
+            echo "pigclaude/release 已有 $TAG 的发布或草稿" >&2
+            exit 1
+          fi
           title="PigClaude ${{ needs.target.outputs.version }}"
           extra=()
           if [ "$TEST" = "true" ]; then title="测试发布 $TAG（不是正式版本）"; extra=(--prerelease); fi

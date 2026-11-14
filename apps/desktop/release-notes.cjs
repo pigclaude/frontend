@@ -1,4 +1,4 @@
-// 负责生成发布说明：版本、三平台安装包和 sha256、随包内核的实际状态，以及不签名带来的已知限制。
+// 负责生成发布说明：版本、三平台安装包和 sha256、随包内核的实际状态，以及不签名和 AppImage 带来的已知限制。
 
 const { createHash } = require("node:crypto")
 const { readFileSync, readdirSync } = require("node:fs")
@@ -24,7 +24,7 @@ function installerDigests(directory) {
 }
 
 /** 生成发布说明的 Markdown。测试发布在开头标明不是正式版本。 */
-function releaseNotes({ version, test, installers, pigbrowserVersion }) {
+function releaseNotes({ version, test, installers, pigbrowserVersion, xrayVersion }) {
   const rows = installers.map(
     (item) => `| ${item.platform} | \`${item.name}\` | \`${item.sha256}\` |`,
   )
@@ -40,7 +40,7 @@ function releaseNotes({ version, test, installers, pigbrowserVersion }) {
     "",
     "## 随包内核",
     "",
-    `三个平台都带 PigBrowser ${pigbrowserVersion} 和 Xray。PigBrowser 是固定的集成用开发包（见 frontend 的 \`apps/desktop/pigbrowser-artifacts.json\`），正式版内核和安装态验收另行完成。内置的 Claude Code 和内核随整个安装包更新。`,
+    `三个平台都带 PigBrowser ${pigbrowserVersion} 和 Xray ${xrayVersion}。PigBrowser 是固定的集成用开发包（见 frontend 的 \`apps/desktop/pigbrowser-artifacts.json\`），正式版内核和安装态验收另行完成。内置的 Claude Code 和内核随整个安装包更新。`,
     "",
     "## 已知限制",
     "",
@@ -51,20 +51,33 @@ function releaseNotes({ version, test, installers, pigbrowserVersion }) {
     "- 更新后 macOS 钥匙串可能要求重新授权；拒绝时，本机加密保存的授权数据读不出来，需要重新登录。",
     "- Windows 首次安装和更新时 SmartScreen 会提示，选择「仍要运行」。",
     "",
+    "Linux 的 AppImage：",
+    "",
+    "- 需要系统装有 FUSE 2（Ubuntu 22.04 及以后是 `libfuse2` 或 `libfuse2t64`）。",
+    "- Ubuntu 24.04 等用 AppArmor 限制非特权用户命名空间的系统上，Chromium 沙箱可能起不来，应用无法启动。",
+    "",
   ].join("\n")
 }
 
 module.exports = { installerDigests, releaseNotes }
 
 if (require.main === module) {
-  const [directory, version, test] = process.argv.slice(2)
-  const artifacts = JSON.parse(readFileSync(join(__dirname, "pigbrowser-artifacts.json"), "utf8"))
-  process.stdout.write(
-    releaseNotes({
-      version,
-      test: test === "true",
-      installers: installerDigests(directory),
-      pigbrowserVersion: artifacts.version,
-    }),
-  )
+  try {
+    const [directory, version, test, xrayVersion] = process.argv.slice(2)
+    if (!directory || !version || !xrayVersion)
+      throw new Error("用法：<目录> <版本> <是否测试> <Xray 版本>")
+    const artifacts = JSON.parse(readFileSync(join(__dirname, "pigbrowser-artifacts.json"), "utf8"))
+    process.stdout.write(
+      releaseNotes({
+        version,
+        test: test === "true",
+        installers: installerDigests(directory),
+        pigbrowserVersion: artifacts.version,
+        xrayVersion,
+      }),
+    )
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`)
+    process.exitCode = 1
+  }
 }

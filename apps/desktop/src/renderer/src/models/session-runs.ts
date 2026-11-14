@@ -21,6 +21,8 @@ const inRun: Readonly<Record<SessionHostEvent["type"], boolean>> = {
   message: true,
   "tool-result": true,
   permission: true,
+  question: true,
+  "question-resolved": true,
   "account-switched": true,
   notice: false,
   result: true,

@@ -37,6 +37,8 @@ export type SessionController = {
     decision: "allow" | "deny",
     updatedPermissions?: unknown[],
   ) => Promise<void>
+  /** 回答一次提问；answers 每个问题一条，提问卡等主进程发来结束事件后才换成历史行。 */
+  answerQuestion: (requestId: string, answers: string[]) => Promise<void>
   /** 请求切换权限模式；界面上的模式只在主进程广播后才变。 */
   setMode: (mode: SessionUiState["permissionMode"]) => Promise<void>
   setModel: (model: string) => Promise<void>
@@ -255,6 +257,19 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
     [resolved],
   )
 
+  const answerQuestion = useCallback(
+    async (requestId: string, answers: string[]): Promise<void> => {
+      const sessionId = targetRef.current
+      if (sessionId === null) return
+      try {
+        await resolved?.answerQuestion({ sessionId, requestId, answers })
+      } catch (error: unknown) {
+        dispatch({ type: "failed", message: sessionErrorFrom(error), at: now() })
+      }
+    },
+    [resolved],
+  )
+
   const setMode = useCallback(
     async (mode: SessionUiState["permissionMode"]): Promise<void> => {
       const sessionId = targetRef.current
@@ -296,6 +311,7 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
     cancel,
     stop,
     respondPermission,
+    answerQuestion,
     setMode,
     setModel,
     refreshModels,

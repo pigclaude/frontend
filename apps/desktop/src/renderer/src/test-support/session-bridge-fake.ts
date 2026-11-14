@@ -26,6 +26,7 @@ export const idleStatus: SessionStatusView = {
   permissionMode: "default",
   accountId: null,
   pendingPermissions: 0,
+  pendingQuestions: 0,
   turnId: null,
 }
 
@@ -47,6 +48,7 @@ export function fakeSessionBridge(overrides: Partial<SessionBridge> = {}): FakeS
     send: vi.fn(async () => undefined),
     cancel: vi.fn(async () => undefined),
     respondPermission: vi.fn(async () => undefined),
+    answerQuestion: vi.fn(async () => undefined),
     setMode: vi.fn(async () => undefined),
     setModel: vi.fn(async () => undefined),
     stop: vi.fn(async () => undefined),

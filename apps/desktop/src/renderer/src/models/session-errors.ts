@@ -18,6 +18,7 @@ const errorTexts: Record<string, string> = {
   NETWORK_UNAVAILABLE: "网络请求失败，请检查系统网络或代理",
   AUTH_EXPIRED: "账号凭据失效，请重新授权",
   PERMISSION_TIMEOUT: "权限询问超时，已拒绝",
+  QUESTION_TIMEOUT: "提问超时，已拒绝",
   SESSION_ALREADY_ACTIVE: "已有活动会话",
   SESSION_CANCELLED: "已取消当前请求",
   SESSION_NOT_FOUND: "会话不存在或已结束",

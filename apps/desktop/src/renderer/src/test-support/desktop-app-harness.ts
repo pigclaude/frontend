@@ -193,6 +193,7 @@ export function installFakeDesktopBridge(
       },
       cancel: async () => undefined,
       respondPermission: async () => undefined,
+      answerQuestion: async () => undefined,
       setMode: async () => undefined,
       setModel: async () => undefined,
       stop: async () => undefined,
@@ -208,6 +209,7 @@ export function installFakeDesktopBridge(
         permissionMode: "default",
         accountId: null,
         pendingPermissions: 0,
+        pendingQuestions: 0,
         turnId: null,
       }),
       subscribe: (next) => {

@@ -101,6 +101,9 @@ describe("useSession", () => {
       await controller?.respondPermission("permission-1", "allow")
     })
     await act(async () => {
+      await controller?.answerQuestion("question-1", ["Blue"])
+    })
+    await act(async () => {
       await controller?.setMode("plan")
     })
     await act(async () => {
@@ -124,6 +127,11 @@ describe("useSession", () => {
       ...target,
       requestId: "permission-1",
       decision: "allow",
+    })
+    expect(bridge.answerQuestion).toHaveBeenCalledWith({
+      ...target,
+      requestId: "question-1",
+      answers: ["Blue"],
     })
     expect(bridge.setMode).toHaveBeenCalledWith({ ...target, mode: "plan" })
     expect(bridge.setModel).toHaveBeenCalledWith({ ...target, model: "claude-opus" })

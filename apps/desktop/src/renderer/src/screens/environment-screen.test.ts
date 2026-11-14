@@ -57,6 +57,7 @@ const status: SessionStatusView = {
   permissionMode: "default",
   accountId: "acc-1",
   pendingPermissions: 1,
+  pendingQuestions: 0,
   turnId: "turn-1",
 }
 

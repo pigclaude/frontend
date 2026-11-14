@@ -1,5 +1,5 @@
 // 负责聊天页：草稿选工作区、分支和 worktree，开始会话、时间线、工具/终端/浏览器视图、权限回答、
-// 换号提示和错误。
+// 时间线里的提问卡、换号提示和错误。
 // 页面只消费 useSession 控制器，界面完全由 Pigcode 的 ui-chat 绘制。
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
@@ -50,7 +50,7 @@ import { useDraftWorkspace } from "./draft-workspace"
 const CLAUDE_FEATURES: AgentFeatures = {
   streaming: true,
   approvals: true,
-  questions: false,
+  questions: true,
   plan: true,
   resume: true,
   fork: false,
@@ -407,6 +407,7 @@ export function ChatScreen({
           {...(projectName === "" ? {} : { projectName })}
           onStart={submitFromComposer}
           onInterrupt={() => void session.cancel()}
+          onAnswer={(requestId, answers) => void session.answerQuestion(requestId, answers)}
           features={CHAT_FEATURES}
           agents={composer.agents}
           catalog={composer.catalog}

@@ -79,6 +79,7 @@ export function sessionController(overrides: Partial<SessionController> = {}): S
     cancel: vi.fn(async () => undefined),
     stop: vi.fn(async () => undefined),
     respondPermission: vi.fn(async () => undefined),
+    answerQuestion: vi.fn(async () => undefined),
     setMode: vi.fn(async () => undefined),
     setModel: vi.fn(async () => undefined),
     refreshModels: vi.fn(async () => undefined),

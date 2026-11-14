@@ -1,6 +1,6 @@
 // 负责主窗口的工作目录选择：下一次会话用哪个目录、进行中的会话在哪个目录，以及 worktree 属于哪个项目。
 // worktree 只记在这里和主进程的登记里，不写进最近项目列表，侧栏和草稿都按它所属的项目显示。
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 
 /** 工作目录选择的状态和操作。 */
 export type WorkspaceSelection = {
@@ -28,6 +28,19 @@ export function useWorkspaceSelection(
   const [session, setSession] = useState<string | null>(null)
   const [owners, setOwners] = useState<Readonly<Record<string, string>>>({})
   const [draftWorkspaces, setDraftWorkspaces] = useState<ReadonlyMap<string, string>>(new Map())
+
+  useEffect(() => {
+    let active = true
+    void window.pigclaude?.workspaces?.worktreeProjects?.().then(
+      (registered) => {
+        if (active) setOwners((current) => ({ ...registered, ...current }))
+      },
+      () => undefined,
+    )
+    return () => {
+      active = false
+    }
+  }, [])
 
   const projectOf = useCallback(
     (path: string | null) => (path === null ? null : (owners[path] ?? path)),

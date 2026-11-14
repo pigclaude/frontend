@@ -27,6 +27,25 @@ export function workspaceProjects(
   }))
 }
 
+/** 最近项目之外仍有会话在运行或排队时，保留其项目和切换入口。 */
+export function sidebarProjectPaths(
+  recent: readonly string[],
+  threads: readonly Thread[],
+  statuses: Readonly<Record<string, ThreadStatus>>,
+): string[] {
+  const paths = new Set(recent)
+  for (const thread of threads) {
+    const status = statuses[thread.id]
+    if (
+      thread.projectId !== null &&
+      (status === "running" || status === "waiting-approval" || status === "queued")
+    ) {
+      paths.add(thread.projectId)
+    }
+  }
+  return [...paths]
+}
+
 /** 会话标题：首条用户消息的第一行，过长时截断；还没有消息时用 untitled。 */
 export function sessionTitle(session: Pick<SessionUiState, "turns">, untitled: string): string {
   const first = session.turns.find((turn) => turn.userText?.trim())?.userText ?? ""

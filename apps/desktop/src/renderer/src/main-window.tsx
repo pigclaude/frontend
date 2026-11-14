@@ -39,6 +39,7 @@ import {
 import {
   newSessionWorkspace,
   sessionAgentNames,
+  sidebarProjectPaths,
   toggleExpanded,
   workspaceProjects,
   workspaceThreads,
@@ -129,6 +130,7 @@ export function MainWindow({
     untitled: t("shell.session.untitled"),
     accounts: pool.accounts,
   })
+  const sidebarPaths = sidebarProjectPaths(workspaces.paths, sidebar.threads, sidebar.statuses)
   const page = location.kind === "settings" ? location.page : null
   const inChat = location.kind === "draft" || location.kind === "session"
   const bridge = window.pigclaude?.workbench ?? previewWorkbench?.bridge
@@ -293,7 +295,7 @@ export function MainWindow({
           }
         : {})}
       locationKey={page ?? sessionId ?? routedProject ?? location.kind}
-      projects={workspaceProjects(workspaces.paths, workspaces.names)}
+      projects={workspaceProjects(sidebarPaths, workspaces.names)}
       threads={sidebar.threads}
       activeThreadId={sessionId}
       threadStatus={sidebar.statuses}

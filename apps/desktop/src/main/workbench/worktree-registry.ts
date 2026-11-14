@@ -44,6 +44,12 @@ export class WorktreeRegistry {
     return roots
   }
 
+  /** 返回登记里的 worktree 和所属项目，供新窗口为已有会话恢复项目分组。 */
+  async projects(): Promise<Record<string, string>> {
+    const entries = await this.#read()
+    return Object.fromEntries(entries.map(({ path, project }) => [path, project]))
+  }
+
   async #read(): Promise<Entry[]> {
     let raw: unknown
     try {

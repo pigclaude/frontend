@@ -104,6 +104,8 @@ export type PigclaudeBridge = {
   }
   workspaces: {
     list: () => Promise<string[]>
+    /** 工作台登记的 worktree 归属，供会话侧栏恢复项目分组。 */
+    worktreeProjects?: () => Promise<Record<string, string>>
     add: (path: string) => Promise<string[]>
     /** 只读列出工作区里的文件，供输入区 @ 引用。 */
     files: (path: string) => Promise<string[]>
@@ -232,6 +234,16 @@ const bridge: PigclaudeBridge = {
     list: async () => {
       const value: unknown = await ipcRenderer.invoke("pigclaude:workspaces-list")
       return Array.isArray(value) ? value.filter(isWorkspacePath) : []
+    },
+    worktreeProjects: async () => {
+      const projects = projectNames(
+        await ipcRenderer.invoke("pigclaude:workspaces-worktree-projects"),
+      )
+      return Object.fromEntries(
+        Object.entries(projects).filter(
+          ([path, project]) => isWorkspacePath(path) && isWorkspacePath(project),
+        ),
+      )
     },
     add: async (path) => {
       const value: unknown = await ipcRenderer.invoke("pigclaude:workspaces-add", path)

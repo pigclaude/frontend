@@ -1,5 +1,5 @@
 // 负责验证最近工作区入口和项目显示名的配合：被挤出列表的项目再次添加时用回文件夹名。
-import { mkdir, mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { IpcMainInvokeEvent } from "electron"
@@ -34,6 +34,34 @@ function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
 }
 
 describe("registerWorkspaceIpc", () => {
+  it("reads the registered projects of worktrees for a new renderer window", async () => {
+    const input = {
+      filePath: () => join(directory, "workspaces.json"),
+      isTrusted: () => true,
+      workbench: { register: () => undefined } as unknown as Parameters<
+        typeof registerWorkspaceIpc
+      >[0]["workbench"],
+      membership: () => undefined,
+      hasActiveTurn: () => false,
+    }
+    registerWorkspaceIpc(input)
+    const project = join(directory, "project")
+    const worktree = join(directory, "worktree")
+    await writeFile(
+      join(directory, "worktrees.json"),
+      JSON.stringify([
+        { path: worktree, project },
+        { path: "relative", project },
+      ]),
+    )
+    await expect(invoke("workspaces-worktree-projects")).resolves.toEqual({ [worktree]: project })
+
+    registerWorkspaceIpc({ ...input, isTrusted: () => false })
+    await expect(invoke("workspaces-worktree-projects")).rejects.toThrow(
+      "UNTRUSTED_WORKSPACE_REQUEST",
+    )
+  })
+
   it("forgets an evicted project's display name when the folder is added again", async () => {
     registerWorkspaceIpc({
       filePath: () => join(directory, "workspaces.json"),

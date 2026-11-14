@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import type { WorkbenchBranches, WorkbenchBridge } from "../../workbench-contract"
 import { DesktopApp } from "./app"
+import { chooseSelect } from "./test-support/base-ui-select"
 import { typeAndSend } from "./test-support/chat-screen-harness"
 import { desktopAppRoot, flush, installFakeDesktopBridge } from "./test-support/desktop-app-harness"
 import { fakeWorkbench } from "./test-support/workbench-harness"
@@ -157,6 +158,40 @@ describe("new session draft branches and worktrees", { timeout: 20_000 }, () => 
       ["api", 1],
       ["web", 0],
     ])
+  })
+
+  it("restores a project's selected worktree when returning from another project draft", async () => {
+    const { start } = await renderWithBranches({
+      worktrees: vi.fn(async () => [
+        { path: "/work/api", branch: "main" },
+        { path: worktreePath, branch: "pigclaude/worktree-1a2b3c4d" },
+      ]),
+      useWorktree: vi.fn(async () => undefined),
+    })
+    const projectButton = (name: string, action: string) =>
+      [...app.container.querySelectorAll("button.proj")]
+        .find((row) => row.textContent?.trim() === name)
+        ?.closest(".proj-row")
+        ?.querySelector<HTMLButtonElement>(action)
+
+    await act(async () => projectButton("api", ".proj-files")?.click())
+    await flush()
+    const picker = app.container.querySelector<HTMLElement>(".worktree-compact-select")
+    if (!picker) throw new Error("没有工作树选择器")
+    await chooseSelect(picker, "pigclaude/worktree-1a2b3c4d")
+    await flush()
+    await act(async () => projectButton("web", ".proj-add")?.click())
+    await flush()
+
+    const back = app.container.querySelector<HTMLButtonElement>('button[aria-label="后退"]')
+    if (!back) throw new Error("没有后退按钮")
+    await act(async () => back.click())
+    await flush()
+    await typeAndSend(app.container, "检查工作树")
+
+    expect(start).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ workspace: worktreePath }),
+    )
   })
 
   it("keeps the text and explains why a worktree could not be created", async () => {

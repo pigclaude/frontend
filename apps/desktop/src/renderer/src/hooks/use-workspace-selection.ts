@@ -10,6 +10,8 @@ export type WorkspaceSelection = {
   session: string | null
   /** 目录所属的项目：登记过的 worktree 返回它的项目，其他目录原样返回。 */
   projectOf: (path: string | null) => string | null
+  /** 项目草稿最近选用的目录，未选 worktree 时使用项目根。 */
+  workspaceOf: (project: string) => string
   /** 把 path 作为下一次会话的目录；为 null 时回到最近项目里的第一个。 */
   select: (path: string | null) => void
   /** 选用 from 所在项目的一个 worktree（或回到项目本身）作为下一次会话的目录。 */
@@ -25,6 +27,7 @@ export function useWorkspaceSelection(
   const [selected, setSelected] = useState<string | null>(null)
   const [session, setSession] = useState<string | null>(null)
   const [owners, setOwners] = useState<Readonly<Record<string, string>>>({})
+  const [draftWorkspaces, setDraftWorkspaces] = useState<ReadonlyMap<string, string>>(new Map())
 
   const projectOf = useCallback(
     (path: string | null) => (path === null ? null : (owners[path] ?? path)),
@@ -39,10 +42,14 @@ export function useWorkspaceSelection(
     selected,
     session,
     projectOf,
+    workspaceOf: (project) => draftWorkspaces.get(project) ?? project,
     select: setSelected,
     selectWorktree(path, from) {
       const project = projectOf(from)
-      if (project !== null) remember(path, project)
+      if (project !== null) {
+        remember(path, project)
+        setDraftWorkspaces((current) => new Map(current).set(project, path))
+      }
       setSelected(path)
     },
     used(path, project, select = true) {

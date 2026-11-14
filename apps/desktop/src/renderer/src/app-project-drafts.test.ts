@@ -7,6 +7,7 @@ import { DesktopApp } from "./app"
 import { clickButton, typeAndSend } from "./test-support/chat-screen-harness"
 import { desktopAppRoot, flush, installFakeDesktopBridge } from "./test-support/desktop-app-harness"
 import { fakeSessionBridge } from "./test-support/session-bridge-fake"
+import type { SessionBridge } from "../../main/session/session-types"
 
 const app = desktopAppRoot()
 
@@ -45,9 +46,11 @@ async function choosePermission(label: string): Promise<void> {
 
 it("keeps different project draft choices and recovers the original text after startup fails", async () => {
   installFakeDesktopBridge()
-  const start = vi.fn(async () => {
-    throw new Error("NO_AVAILABLE_ACCOUNT: 没有可用的 Claude 账号")
+  let failStart: (error: Error) => void = () => undefined
+  const pending = new Promise<Awaited<ReturnType<SessionBridge["start"]>>>((_, reject) => {
+    failStart = reject
   })
+  const start = vi.fn<SessionBridge["start"]>(() => pending)
   const session = fakeSessionBridge({ start })
   if (!window.pigclaude) throw new Error("桌面桥尚未安装")
   window.pigclaude.session = session.bridge
@@ -111,14 +114,15 @@ it("keeps different project draft choices and recovers the original text after s
       accountId: "acc-home",
     }),
   )
-  expect(app.container.querySelector('.new-thread-view [role="alert"]')?.textContent).toContain(
-    "没有可用的 Claude 账号，请添加或重新授权",
-  )
-  expect(editor().textContent).toBe("保留这段草稿")
   await newDraft("web")
+  await act(async () => failStart(new Error("NO_AVAILABLE_ACCOUNT: 没有可用的 Claude 账号")))
+  await flush()
   expect(editor().textContent).toBe("")
   expect(app.container.querySelector('.new-thread-view [role="alert"]')).toBeNull()
   await newDraft("api")
+  expect(app.container.querySelector('.new-thread-view [role="alert"]')?.textContent).toContain(
+    "没有可用的 Claude 账号，请添加或重新授权",
+  )
   expect(editor().textContent).toBe("保留这段草稿")
   expect(session.bridge.send).not.toHaveBeenCalled()
 })

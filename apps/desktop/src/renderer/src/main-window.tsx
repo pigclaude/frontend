@@ -113,7 +113,7 @@ export function MainWindow({
     routedProject !== undefined &&
     routedProject !== selectedProject &&
     workspaces.paths.includes(routedProject)
-      ? routedProject
+      ? selection.workspaceOf(routedProject)
       : (selectedWorkspace ?? workspaces.paths[0] ?? previewWorkbench?.root ?? null)
   const sessionId =
     location.kind === "session" ? (location.sessionId ?? session.state.sessionId) : null
@@ -207,8 +207,8 @@ export function MainWindow({
   }
 
   function openDraft(path: string | null): boolean {
-    if (!selectWorkspace(path)) return false
     const projectId = projectOf(path)
+    if (!selectWorkspace(projectId === null ? null : selection.workspaceOf(projectId))) return false
     onNavigate({ kind: "draft", ...(projectId === null ? {} : { projectId }) })
     return true
   }
@@ -216,7 +216,7 @@ export function MainWindow({
   /** 侧栏「查看文件」打开目标项目草稿的工作台。 */
   function browseFiles(projectId: string): void {
     if (!openDraft(projectId)) return
-    setFilesRequest({ root: projectId, id: Date.now() })
+    setFilesRequest({ root: selection.workspaceOf(projectId), id: Date.now() })
     setRightOpen(true)
     setRightMax(false)
   }

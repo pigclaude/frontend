@@ -185,6 +185,8 @@ function buildEnvironment(
   env.NODE_OPTIONS = `--require ${JSON.stringify(preloadPath)}`
   env.NO_PROXY = localNoProxy
   env.no_proxy = localNoProxy
+  // Bash 工具按 CLI 进程的 PATH 找命令；宿主环境里只带 PATH。
+  if (process.env.PATH) env.PATH = process.env.PATH
   if (input.provider) {
     // 开发期覆盖：会话直连自定义供应商，不再经过 daemon，也不带 daemon 的会话头。
     // 没有 daemon 帮忙合并宿主环境，这里补上 CLI 运行工具必需的宿主变量。

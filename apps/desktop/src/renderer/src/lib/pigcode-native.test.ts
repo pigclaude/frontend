@@ -46,6 +46,18 @@ describe("pigcodeNativeFrom", () => {
     expect(source.pickFolder).toHaveBeenCalledWith({ title: "选文件夹" })
   })
 
+  it("外部应用列表是工作台桥检测到的本机编辑器；没有工作台时不提供", async () => {
+    const source = {
+      ...bridge(),
+      workbench: { editors: vi.fn(async () => [{ id: "cursor", name: "Cursor" }]) },
+    } as unknown as PigclaudeBridge
+
+    await expect(pigcodeNativeFrom(source).listOpenApps?.()).resolves.toEqual([
+      { id: "cursor", name: "Cursor", kind: "editor", icon: null },
+    ])
+    expect(pigcodeNativeFrom(bridge()).listOpenApps).toBeUndefined()
+  })
+
   it("PigClaude 没有的预览窗口在调用时拒绝", async () => {
     await expect(pigcodeNativeFrom(bridge()).previewOpen("https://example.com")).rejects.toThrow()
   })

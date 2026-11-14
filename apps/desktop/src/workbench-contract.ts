@@ -25,6 +25,9 @@ export type WorkbenchFile = {
   image?: { mime: string; base64: string } | undefined
 }
 
+/** 本机装了的一个编辑器；位置只留在主进程。 */
+export type WorkbenchEditor = { id: string; name: string }
+
 /** 工作树的稳定目录与分支名称。 */
 export type WorkbenchWorktree = { path: string; branch: string | null }
 
@@ -81,6 +84,11 @@ export type WorkbenchBridge = {
   search: (root: string, query: string) => Promise<WorkbenchSearch>
   read: (root: string, path: string) => Promise<WorkbenchFile>
   save: (root: string, path: string, text: string, mtimeMs: number | null) => Promise<WorkbenchFile>
+  editors: () => Promise<WorkbenchEditor[]>
+  /** editor 为 null 时交给系统默认应用。 */
+  openFile: (root: string, path: string, editor: string | null) => Promise<void>
+  /** 用户在系统对话框里选了位置并复制完成时为 true，取消时为 false。 */
+  saveAs: (root: string, path: string) => Promise<boolean>
   diff: (root: string, path?: string, checkpointId?: string) => Promise<string>
   worktrees: (root: string) => Promise<WorkbenchWorktree[]>
   createWorktree: (root: string) => Promise<WorkbenchWorktree>

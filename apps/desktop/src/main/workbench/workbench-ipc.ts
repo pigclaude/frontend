@@ -18,7 +18,9 @@ import {
   removeWorkbenchWorktree,
   workbenchDiff,
 } from "./git-workspace"
+import { installedEditors } from "./installed-editors"
 import { WorkbenchTerminals } from "./terminal-service"
+import { openWorkbenchFile, saveWorkbenchFileAs } from "./workspace-file-actions"
 import {
   listWorkbenchDirectory,
   readWorkbenchFile,
@@ -105,6 +107,17 @@ export class WorkbenchIpc {
         string(text, 512 * 1024),
         mtime === null ? null : number(mtime, 0, Number.MAX_SAFE_INTEGER, false),
       ),
+    )
+    handle("editors", () => installedEditors().map(({ id, name }) => ({ id, name })))
+    handle("open-file", async (_window, _event, [root, path, editor]) =>
+      openWorkbenchFile(
+        await project(root),
+        string(path, 4096),
+        editor === null ? null : editorId(editor),
+      ),
+    )
+    handle("save-as", async (window, _event, [root, path]) =>
+      saveWorkbenchFileAs(window, await project(root), string(path, 4096)),
     )
     handle("diff", async (_window, _event, [root, path, checkpoint]) => {
       const directory = await project(root)
@@ -261,6 +274,12 @@ function number(value: unknown, min: number, max: number, integer = true): numbe
   )
     throw new Error("WORKBENCH_INPUT_INVALID")
   return value
+}
+
+function editorId(value: unknown): string {
+  const id = string(value, 40)
+  if (!/^[a-z][a-z0-9-]*$/.test(id)) throw new Error("WORKBENCH_INPUT_INVALID")
+  return id
 }
 
 function resourceId(value: unknown): string {

@@ -51,7 +51,6 @@ import { resolveClaudeBinaryPath } from "./session/claude-binary"
 import { cleanupStaleSessionDirs } from "./session/session-environment"
 import { SessionHost } from "./session/session-host"
 import { registerSessionIpc } from "./session/session-ipc"
-import { createAccountModelAuth } from "./session/model-auth-factory"
 import { devProviderHostOptions } from "./session/dev-provider"
 import { accountSessionProfile } from "./session/account-session-profile"
 import { createQuitCoordinator } from "./shutdown"
@@ -409,7 +408,6 @@ async function setupAuthorization(): Promise<void> {
       defaultWorkspace: () => app.getPath("home"),
       resolveProfile: (accountId) =>
         accountSessionProfile(localStore, accountId, () => app.getSystemLocale()),
-      resolveModelAuth: createAccountModelAuth(localStore),
       ...devProviderHostOptions(app.isPackaged, process.env),
     })
     sessionHost.subscribe((event) => sendToMainWindow("pigclaude:session-event", event))

@@ -5,8 +5,9 @@ import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
 import type { MembershipState, MembershipView } from "@pigclaude/contracts/membership"
 import type { ClaudeAgentStartOptions, ClaudeModelsOptions } from "./claude-agent-adapter"
 import type { ClaudeModel, SessionEvent, SessionPermissionMode } from "./session-events"
+import type { DaemonEndpoint, OrganizationModel } from "./claude-bootstrap"
 import type { DevProviderOverride } from "./dev-provider"
-import type { ModelAuth, SessionEnvironmentInput } from "./session-environment"
+import type { SessionEnvironmentInput } from "./session-environment"
 import type {
   SessionAdapterPort,
   SessionEnvironmentFactory,
@@ -346,7 +347,8 @@ export type HarnessOptions = {
   holdAdapterStart?: boolean
   resolveBinaryPath?: () => string
   resolveProfile?: SessionProfile
-  resolveModelAuth?: ModelAuth | null
+  /** 假 daemon 读到的组织模型；null 表示没读到，省略时是空列表。 */
+  organizationModels?: OrganizationModel[] | null
   modelsError?: Error
   provider?: DevProviderOverride
 }
@@ -359,6 +361,8 @@ export type SessionHarness = {
   adapters: AdapterFactory
   environments: EnvironmentFactory
   events: SessionHostEvent[]
+  /** 每次经假 daemon 读组织模型时用的地址和令牌。 */
+  bootstrapReads: DaemonEndpoint[]
   trace: string[]
   workspace: string
   userDataPath: string
@@ -380,6 +384,7 @@ export function createHarness(options: HarnessOptions): SessionHarness {
   const userDataPath = options.userDataPath ?? "/tmp/pigclaude-session-host-user-data"
   const environments = new EnvironmentFactory(trace, userDataPath)
   const events: SessionHostEvent[] = []
+  const bootstrapReads: DaemonEndpoint[] = []
   let nextId = 0
   const hostOptions: SessionHostOptions = {
     membership,
@@ -390,7 +395,10 @@ export function createHarness(options: HarnessOptions): SessionHarness {
     resolveBinaryPath: options.resolveBinaryPath ?? (() => "/fake/claude"),
     resolveProfile: async () =>
       options.resolveProfile ?? { timezone: "America/Los_Angeles", locale: "en-US" },
-    resolveModelAuth: async () => options.resolveModelAuth ?? null,
+    readOrganizationModels: async (daemon) => {
+      bootstrapReads.push(daemon)
+      return options.organizationModels === undefined ? [] : options.organizationModels
+    },
     ...(options.provider === undefined ? {} : { provider: options.provider }),
     defaultWorkspace: () => options.workspace,
     permissionTimeoutMs: options.permissionTimeoutMs ?? 10 * 60 * 1_000,
@@ -408,6 +416,7 @@ export function createHarness(options: HarnessOptions): SessionHarness {
     adapters,
     environments,
     events,
+    bootstrapReads,
     trace,
     workspace: options.workspace,
     userDataPath,

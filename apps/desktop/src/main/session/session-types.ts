@@ -45,6 +45,9 @@ export type SessionStatusView = {
   turnId: string | null
 }
 
+/** session.models 的结果：models 一定非空。cliError 不为 null 时 Claude Code 没有列出模型，models 是内置兜底目录。 */
+export type SessionModelCatalog = { models: ClaudeModel[]; cliError: string | null }
+
 /** 账号或系统提供的时区和 locale；用于会话环境和 Intl 预加载。 */
 export type SessionProfile = ProfileEnvironment
 
@@ -170,7 +173,7 @@ export type SessionBridge = {
   setMode: (mode: SessionPermissionMode) => Promise<void>
   setModel: (model: string) => Promise<void>
   stop: () => Promise<void>
-  models: () => Promise<ClaudeModel[]>
+  models: () => Promise<SessionModelCatalog>
   status: () => Promise<SessionStatusView>
   subscribe: (listener: (event: SessionHostEvent) => void) => () => void
 }

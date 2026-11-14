@@ -51,14 +51,17 @@ describe("SessionHost with dev provider", () => {
   it("返回固定模型的单项目录且不启动适配器", async () => {
     const harness = await providerHarness()
 
-    await expect(harness.host.models()).resolves.toEqual([
-      {
-        id: provider.model,
-        displayName: provider.model,
-        description: "开发期自定义供应商",
-        isDefault: true,
-      },
-    ])
+    await expect(harness.host.models()).resolves.toEqual({
+      models: [
+        {
+          id: provider.model,
+          displayName: provider.model,
+          description: "开发期自定义供应商",
+          isDefault: true,
+        },
+      ],
+      cliError: null,
+    })
     expect(harness.adapters.instances).toHaveLength(0)
     expect(harness.environments.inputs).toHaveLength(0)
     await harness.host.dispose()
@@ -85,9 +88,9 @@ describe("SessionHost with dev provider", () => {
   it("没有固定模型时继续读 CLI 目录", async () => {
     const harness = await providerHarness("active", { ...provider, model: null })
 
-    const models = await harness.host.models()
+    const catalog = await harness.host.models()
 
-    expect(models).toEqual(harness.adapters.last.modelsResult)
+    expect(catalog.models).toEqual(harness.adapters.last.modelsResult)
     expect(harness.adapters.last.modelCalls).toHaveLength(1)
     await harness.host.dispose()
   })

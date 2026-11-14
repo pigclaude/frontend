@@ -116,39 +116,62 @@ describe("SessionEnvironment", () => {
     await environment.cleanup()
   })
 
-  it("uses the real account token and org config for a model probe", async () => {
+  it("hands the organization models to a catalog query without any real credential", async () => {
     const userDataPath = await tempDir()
-    const modelAuth = {
-      accessToken: "real-account-token",
-      accountUuid: "account-uuid",
-      email: "model@example.test",
-      organizationUuid: "organization-uuid",
-    }
+    const organizationModels = [
+      { value: "claude-org-alpha", label: "Org Alpha", description: "Alpha model" },
+    ]
     const environment = await SessionEnvironment.create({
-      sessionId: "model-probe",
+      sessionId: "model-catalog",
       workspace: "/tmp/workspace",
       daemonBaseUrl: "http://127.0.0.1:47821",
-      sessionToken: "model-probe-token",
+      sessionToken: "model-catalog-token",
       timezone: "UTC",
       locale: "en-US",
       binaryPath: "/opt/claude/bin/claude",
       userDataPath,
-      modelAuth,
+      modelCatalog: { organizationModels },
     })
 
-    expect(environment.env.CLAUDE_CODE_OAUTH_TOKEN).toBe("real-account-token")
-    expect(environment.env.ANTHROPIC_BASE_URL).toBeUndefined()
-    expect(environment.env.ANTHROPIC_CUSTOM_HEADERS).toBeUndefined()
+    expect(environment.env).toMatchObject({
+      ANTHROPIC_BASE_URL: "http://127.0.0.1:47821",
+      CLAUDE_CODE_OAUTH_TOKEN: placeholderOAuthToken,
+      ANTHROPIC_CUSTOM_HEADERS: "x-pigclaude-session: model-catalog-token",
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+    })
     const configPath = join(environment.configDir, ".claude.json")
-    expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({
-      oauthAccount: {
-        accountUuid: "account-uuid",
-        emailAddress: "model@example.test",
-        organizationUuid: "organization-uuid",
-      },
+    const config: unknown = JSON.parse(await readFile(configPath, "utf8"))
+    expect(config).toEqual({
+      additionalModelOptionsCache: organizationModels,
+      additionalModelOptionsAnsweredAt: expect.any(Number),
     })
     expect(await fileMode(configPath)).toBe(0o600)
 
+    await environment.cleanup()
+  })
+
+  it.each([
+    ["were not read", null],
+    ["are empty", []],
+  ])("lists only the built-in models when the organization models %s", async (_label, models) => {
+    const userDataPath = await tempDir()
+    const environment = await SessionEnvironment.create({
+      sessionId: "model-catalog-builtin",
+      workspace: "/tmp/workspace",
+      daemonBaseUrl: "http://127.0.0.1:47821",
+      sessionToken: "model-catalog-token",
+      timezone: "UTC",
+      locale: "en-US",
+      binaryPath: "/opt/claude/bin/claude",
+      userDataPath,
+      modelCatalog: { organizationModels: models },
+    })
+
+    expect(environment.env.CLAUDE_CODE_OAUTH_TOKEN).toBe(placeholderOAuthToken)
+    expect(environment.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe("1")
+    await expect(stat(join(environment.configDir, ".claude.json"))).rejects.toMatchObject({
+      code: "ENOENT",
+    })
     await environment.cleanup()
   })
 
@@ -173,23 +196,20 @@ describe("SessionEnvironment", () => {
     await environment.cleanup()
   })
 
-  it("供应商覆盖下不写模型查询账号配置", async () => {
+  it("供应商覆盖下不写组织模型缓存", async () => {
     const userDataPath = await tempDir()
     const environment = await SessionEnvironment.create({
-      sessionId: "provider-model-probe",
+      sessionId: "provider-model-catalog",
       workspace: "/tmp/workspace",
       daemonBaseUrl: "http://127.0.0.1:47821",
-      sessionToken: "provider-model-probe-token",
+      sessionToken: "provider-model-catalog-token",
       timezone: "UTC",
       locale: "en-US",
       binaryPath: "/opt/claude/bin/claude",
       userDataPath,
       provider: { baseUrl: "https://provider.example.test", authToken: "provider-token-xyz" },
-      modelAuth: {
-        accessToken: "real-account-token",
-        accountUuid: "account-uuid",
-        email: "model@example.test",
-        organizationUuid: "organization-uuid",
+      modelCatalog: {
+        organizationModels: [{ value: "claude-org-alpha", label: "Org Alpha", description: "" }],
       },
     })
 

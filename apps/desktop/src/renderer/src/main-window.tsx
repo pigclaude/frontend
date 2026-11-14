@@ -268,6 +268,7 @@ export function MainWindow({
             models={session.models}
             modelsLoading={session.modelsLoading}
             modelsError={session.modelsError}
+            modelsCliError={session.modelsCliError}
             onLoadModels={() => void session.refreshModels()}
             onCancelModels={session.cancelModels}
             onRecheck={() => {

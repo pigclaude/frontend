@@ -84,6 +84,7 @@ async function render(overrides: Partial<EnvironmentScreenProps> = {}): Promise<
     models,
     modelsLoading: false,
     modelsError: null,
+    modelsCliError: null,
     onLoadModels: () => undefined,
     onCancelModels: () => undefined,
     onRecheck: () => undefined,
@@ -133,6 +134,17 @@ describe("environment screen", () => {
     expect(container.textContent).toContain("没有活动会话")
     expect(container.textContent).toContain("本机中继尚未就绪")
     expect(container.textContent).toContain("没有可用的模型")
+  })
+
+  it("still reports the probe failure while the built-in list stands in for Claude Code", async () => {
+    await render({
+      status: { ...status, active: false, sessionId: null, model: null, turnId: null },
+      modelsCliError: "Claude Code 不可用，请检查安装",
+    })
+
+    expect(container.textContent).toContain("Claude Code 不可用，请检查安装")
+    expect(container.textContent).not.toContain("可用 · 2 个模型")
+    expect(container.querySelectorAll(".status.bad")).toHaveLength(2)
   })
 
   it("shows a loading probe and an empty account state", async () => {

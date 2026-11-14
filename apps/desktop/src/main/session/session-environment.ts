@@ -1,10 +1,11 @@
-// 负责为一个会话创建隔离的配置目录、环境变量和 Intl 预加载文件；不读用户设置，不保存真实凭据。
+// 负责为一个会话或一次模型目录查询创建隔离的配置目录、环境变量和 Intl 预加载文件；不读用户设置，不保存真实凭据。
 // NODE_OPTIONS 的 --require 只在 Node 运行时生效；SDK 0.3.310 启动原生/Bun CLI 时会删除该变量，
 // 因此原生 CLI 的实际时区来源是 TZ，intl-preload.cjs 只是为 Node 运行时保留的兜底。
 
 import { chmod, mkdir, readdir, rm, writeFile } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
 import { buildSessionEnv } from "@pigclaude/session-env"
+import { cliModelCache, type OrganizationModel } from "./claude-bootstrap"
 import { normalizeSessionLocale, normalizeSessionTimezone } from "./session-locale"
 
 /** 会话环境里的非秘密占位 token；真实 access token 只留在 daemon 内。 */
@@ -20,13 +21,8 @@ const sessionDirectoryMode = 0o700
 const sessionIdPattern = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
 const sessionTokenPattern = /^[A-Za-z0-9_-]+$/
 
-/** 模型目录查询使用的账号凭据；只写进一次性配置目录，不进入会话环境。 */
-export type ModelAuth = {
-  accessToken: string
-  accountUuid: string
-  email: string
-  organizationUuid: string
-}
+/** 模型目录查询的输入；organizationModels 为 null 表示没读到账号组织的模型。 */
+export type ModelCatalogInput = { organizationModels: readonly OrganizationModel[] | null }
 
 /** 自定义供应商端点；目前只有开发期覆盖会传入，会话直接连供应商而不经过 daemon。 */
 export type SessionProvider = {
@@ -44,9 +40,9 @@ export type SessionEnvironmentInput = {
   locale: string
   binaryPath: string
   userDataPath?: string
-  /** 只在模型目录查询时提供；会话环境不接收真实凭据。 */
-  modelAuth?: ModelAuth
-  /** 开发期自定义供应商；提供时替换 daemon 地址和会话 token，并忽略 modelAuth。 */
+  /** 只在模型目录查询时提供：关闭非必要流量，并把组织模型写进 CLI 的模型缓存。 */
+  modelCatalog?: ModelCatalogInput
+  /** 开发期自定义供应商；提供时替换 daemon 地址和会话 token，并忽略 modelCatalog。 */
   provider?: SessionProvider
 }
 
@@ -108,20 +104,15 @@ export class SessionEnvironment {
       created = true
       await mkdir(configDir, { mode: sessionDirectoryMode })
       await writeFile(preloadPath, preloadSource, { mode: sessionDirectoryMode })
-      if (normalized.modelAuth && !normalized.provider) {
-        // CLI 用 oauthAccount 解析模型目录所属的 org；没有它只会返回内置别名。
+      const organizationModels = normalized.provider
+        ? null
+        : (normalized.modelCatalog?.organizationModels ?? null)
+      // 空列表也不写：answeredAt 会让 CLI 换一条判断模型可用性的路径。
+      if (organizationModels !== null && organizationModels.length > 0) {
         const configPath = join(configDir, ".claude.json")
-        await writeFile(
-          configPath,
-          JSON.stringify({
-            oauthAccount: {
-              accountUuid: normalized.modelAuth.accountUuid,
-              emailAddress: normalized.modelAuth.email,
-              organizationUuid: normalized.modelAuth.organizationUuid,
-            },
-          }),
-          { mode: 0o600 },
-        )
+        await writeFile(configPath, JSON.stringify(cliModelCache(organizationModels, Date.now())), {
+          mode: 0o600,
+        })
         await chmod(configPath, 0o600)
       }
       await chmod(sessionsDir, sessionDirectoryMode)
@@ -209,14 +200,10 @@ function buildEnvironment(
     delete env.ANTHROPIC_CUSTOM_HEADERS
     return env
   }
-  if (input.modelAuth) {
-    // 模型目录查询走真实账号：CLI 需要真实 token 和 org 才能拿到完整目录。
-    env.CLAUDE_CODE_OAUTH_TOKEN = input.modelAuth.accessToken
-    delete env.ANTHROPIC_BASE_URL
-    return env
-  }
   env.CLAUDE_CODE_OAUTH_TOKEN = placeholderOAuthToken
   env.ANTHROPIC_CUSTOM_HEADERS = `x-pigclaude-session: ${input.sessionToken}`
+  // 模型目录查询期间 Claude Code 不能自己发功能开关、bootstrap 和遥测请求。
+  if (input.modelCatalog) env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1"
   return env
 }
 

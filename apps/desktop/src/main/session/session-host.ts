@@ -4,7 +4,8 @@ import { ClaudeAgentAdapter, type ClaudeAgentStartOptions } from "./claude-agent
 import { resolveClaudeBinaryPath } from "./claude-binary"
 import type { PermissionAnswer } from "./permission-broker"
 import { classifyDaemonError } from "./session-error-mapping"
-import { SessionEnvironment, type ModelAuth } from "./session-environment"
+import { SessionEnvironment } from "./session-environment"
+import { readOrganizationModels, type OrganizationModelReader } from "./claude-bootstrap"
 import type { DevProviderOverride } from "./dev-provider"
 import {
   applyModelChange,
@@ -41,11 +42,11 @@ import { normalizeSessionLocale, normalizeSessionTimezone } from "./session-loca
 import { queryModels } from "./session-models"
 import { boundSessionEnvironment } from "./bound-session-environment"
 import type {
-  ClaudeModel,
   SessionAdapterFactory,
   SessionEnvironmentFactory,
   SessionHostEvent,
   SessionMembership,
+  SessionModelCatalog,
   SessionPermissionMode,
   SessionProfile,
   SessionRuntime,
@@ -68,8 +69,8 @@ export type SessionHostOptions = {
   createAdapter?: SessionAdapterFactory
   resolveBinaryPath?: () => string
   resolveProfile?: (accountId: string | null) => Promise<SessionProfile | null>
-  /** 模型目录查询用的账号凭据；缺省时退回占位 token。 */
-  resolveModelAuth?: (accountId: string | null) => Promise<ModelAuth | null>
+  /** 经 daemon 读当次选中账号的组织模型；缺省时用随包 CLI 的 bootstrap 请求。 */
+  readOrganizationModels?: OrganizationModelReader
   /** 开发期自定义供应商；只由主进程在未打包时传入，不影响会员和账号门禁。 */
   provider?: DevProviderOverride | null
   defaultWorkspace?: () => string
@@ -90,7 +91,7 @@ export class SessionHost {
   readonly #createAdapter: SessionAdapterFactory
   readonly #resolveBinaryPath: () => string
   readonly #resolveProfile: (accountId: string | null) => Promise<SessionProfile | null>
-  readonly #resolveModelAuth: (accountId: string | null) => Promise<ModelAuth | null>
+  readonly #readOrganizationModels: OrganizationModelReader
   readonly #provider: DevProviderOverride | null
   readonly #defaultWorkspace: () => string
   readonly #permissionTimeoutMs: number
@@ -126,7 +127,7 @@ export class SessionHost {
       options.createAdapter ?? ((onEvent) => new ClaudeAgentAdapter({ onEvent }))
     this.#resolveBinaryPath = options.resolveBinaryPath ?? (() => resolveClaudeBinaryPath())
     this.#resolveProfile = options.resolveProfile ?? (async () => null)
-    this.#resolveModelAuth = options.resolveModelAuth ?? (async () => null)
+    this.#readOrganizationModels = options.readOrganizationModels ?? readOrganizationModels
     this.#provider = options.provider ?? null
     this.#defaultWorkspace = options.defaultWorkspace ?? (() => process.cwd())
     this.#permissionTimeoutMs = options.permissionTimeoutMs ?? 10 * 60 * 1_000
@@ -332,23 +333,24 @@ export class SessionHost {
     }
   }
 
-  /** 查询支持模型；开发期供应商固定模型时直接返回单项目录，否则用真实账号凭据读完整目录。 */
-  async models(): Promise<ClaudeModel[]> {
+  /** 查询模型目录；开发期供应商固定模型时直接返回单项目录。会员有效时列表不为空，降级时发一次提示。 */
+  async models(): Promise<SessionModelCatalog> {
     await assertMembershipActive(this.#membership)
     const pinned = pinnedCatalog(this.#provider)
-    if (pinned !== null) return pinned
+    if (pinned !== null) return { models: pinned, cliError: null }
     return queryModels({
       assertMembership: () => assertMembershipActive(this.#membership),
       runtime: this.#runtime,
       createEnvironment: this.#createEnvironment,
       createAdapter: this.#createAdapter,
       resolveProfile: this.#resolveProfile,
-      resolveModelAuth: this.#resolveModelAuth,
+      readOrganizationModels: this.#readOrganizationModels,
       defaultWorkspace: this.#defaultWorkspace,
       readBinaryPath: () => readBinaryPath(this.#resolveBinaryPath, this.#runtime.sessionToken),
       userDataPath: this.#userDataPath,
       newId: this.#newId,
       hostError: (code, message) => hostError(code, message, this.#runtime.sessionToken),
+      notify: (message) => this.#emit({ type: "notice", message }),
     })
   }
 

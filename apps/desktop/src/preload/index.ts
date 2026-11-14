@@ -233,7 +233,11 @@ const bridge: PigclaudeBridge = {
     stop: () => ipcRenderer.invoke("pigclaude:session-stop"),
     models: async () => {
       const value: unknown = await ipcRenderer.invoke("pigclaude:session-models")
-      return Array.isArray(value) ? value.filter(isClaudeModel) : []
+      if (!isRecord(value) || !Array.isArray(value.models)) return { models: [], cliError: null }
+      return {
+        models: value.models.filter(isClaudeModel),
+        cliError: typeof value.cliError === "string" ? value.cliError : null,
+      }
     },
     status: async () => {
       const value: unknown = await ipcRenderer.invoke("pigclaude:session-status")

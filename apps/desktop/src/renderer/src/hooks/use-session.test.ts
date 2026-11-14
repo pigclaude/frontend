@@ -8,6 +8,7 @@ import type {
   ClaudeModel,
   SessionBridge,
   SessionHostEvent,
+  SessionModelCatalog,
   SessionStatusView,
 } from "../../../main/session/session-types"
 import { useSession, type SessionController } from "./use-session"
@@ -15,6 +16,7 @@ import { useSession, type SessionController } from "./use-session"
 const models: ClaudeModel[] = [
   { id: "claude-sonnet", displayName: "Sonnet", description: "", isDefault: true },
 ]
+const catalog: SessionModelCatalog = { models, cliError: null }
 
 const status: SessionStatusView = {
   active: false,
@@ -60,7 +62,7 @@ function fakeBridge(overrides: Partial<SessionBridge> = {}): FakeBridge {
     setMode: vi.fn(async () => undefined),
     setModel: vi.fn(async () => undefined),
     stop: vi.fn(async () => undefined),
-    models: vi.fn(async () => models),
+    models: vi.fn(async () => catalog),
     status: vi.fn(async () => status),
     subscribe: vi.fn((next: (event: SessionHostEvent) => void) => {
       listener = next
@@ -248,8 +250,29 @@ describe("useSession", () => {
     expect(controller?.modelsError).toBe("Claude Code 不可用，请检查安装")
   })
 
+  it("keeps the built-in list usable and says why Claude Code could not list models", async () => {
+    const builtin: ClaudeModel[] = [
+      { id: "default", displayName: "Default (recommended)", description: "", isDefault: true },
+    ]
+    const { bridge } = fakeBridge({
+      models: async () => ({
+        models: builtin,
+        cliError: "CLAUDE_RUNTIME_UNAVAILABLE: 找不到 CLI",
+      }),
+    })
+    await render(bridge)
+
+    await act(async () => {
+      await controller?.refreshModels()
+    })
+
+    expect(controller?.models).toEqual(builtin)
+    expect(controller?.modelsError).toBeNull()
+    expect(controller?.modelsCliError).toBe("Claude Code 不可用，请检查安装")
+  })
+
   it("caches a successful model list until a forced refresh", async () => {
-    const listModels = vi.fn(async () => models)
+    const listModels = vi.fn(async () => catalog)
     const { bridge } = fakeBridge({ models: listModels })
     await render(bridge)
 
@@ -269,7 +292,7 @@ describe("useSession", () => {
 
   it("times out a hanging model probe and can cancel it", async () => {
     vi.useFakeTimers()
-    let finish: ((list: ClaudeModel[]) => void) | null = null
+    let finish: ((result: SessionModelCatalog) => void) | null = null
     const { bridge } = fakeBridge({
       models: () =>
         new Promise((resolve) => {
@@ -296,7 +319,7 @@ describe("useSession", () => {
     expect(controller?.modelsLoading).toBe(false)
     expect(controller?.modelsError).toBe("已取消模型查询")
 
-    await act(async () => finish?.(models))
+    await act(async () => finish?.(catalog))
     expect(controller?.models).toEqual([])
     vi.useRealTimers()
   })

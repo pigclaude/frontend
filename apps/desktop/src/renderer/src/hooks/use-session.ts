@@ -23,6 +23,8 @@ export type SessionController = {
   models: ClaudeModel[]
   modelsLoading: boolean
   modelsError: string | null
+  /** Claude Code 没有列出模型的原因；这时 models 是主进程给的内置目录。 */
+  modelsCliError: string | null
   start: (input: SessionStartInput) => Promise<boolean>
   /** 返回 false 表示消息没有被接受（当前 turn 未结束或桥不可用），界面保留草稿。 */
   send: (text: string) => Promise<boolean>
@@ -55,6 +57,7 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
   const [models, setModels] = useState<ClaudeModel[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
   const [modelsError, setModelsError] = useState<string | null>(null)
+  const [modelsCliError, setModelsCliError] = useState<string | null>(null)
   const turnSeq = useRef(0)
   const activeTurnRef = useRef<string | null>(null)
   const modelsLoaded = useRef(false)
@@ -82,6 +85,7 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
       modelsLoadingRef.current = true
       setModelsLoading(true)
       setModelsError(null)
+      setModelsCliError(null)
       const timer = setTimeout(() => {
         if (request !== modelsRequest.current) return
         modelsRequest.current += 1
@@ -90,10 +94,11 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
         setModelsError("模型查询超时，请重试")
       }, modelsTimeoutMs)
       try {
-        const list = await resolved.models()
+        const catalog = await resolved.models()
         if (request !== modelsRequest.current) return
         modelsLoaded.current = true
-        setModels(list)
+        setModels(catalog.models)
+        setModelsCliError(catalog.cliError === null ? null : sessionErrorText(catalog.cliError))
       } catch (error: unknown) {
         if (request !== modelsRequest.current) return
         setModels([])
@@ -246,6 +251,7 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
     models,
     modelsLoading,
     modelsError,
+    modelsCliError,
     start,
     send,
     cancel,

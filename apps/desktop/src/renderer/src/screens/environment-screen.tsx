@@ -28,6 +28,8 @@ export type EnvironmentScreenProps = {
   models: ClaudeModel[]
   modelsLoading: boolean
   modelsError: string | null
+  /** Claude Code 没有列出模型的原因；这时 models 是内置目录，检查结果仍按失败显示。 */
+  modelsCliError: string | null
   onLoadModels: () => void
   onCancelModels: () => void
   onRecheck: () => void
@@ -42,6 +44,7 @@ export function EnvironmentScreen({
   models,
   modelsLoading,
   modelsError,
+  modelsCliError,
   onLoadModels,
   onCancelModels,
   onRecheck,
@@ -66,8 +69,9 @@ export function EnvironmentScreen({
       Date.now(),
     ),
   )
-  const cli = cliState(models, modelsLoading, modelsError)
-  const daemon = daemonState(status, models, modelsLoading, modelsError)
+  const probeError = modelsError ?? modelsCliError
+  const cli = cliState(models, modelsLoading, probeError)
+  const daemon = daemonState(status, models, modelsLoading, probeError)
 
   useEffect(() => {
     if (models.length > 0 || modelsLoading || modelsError !== null) return
@@ -144,9 +148,9 @@ export function EnvironmentScreen({
             status={availableAccounts.length > 0 ? "ok" : "bad"}
           />
         </div>
-        {modelsError !== null ? (
+        {probeError !== null ? (
           <p className="error-text" role="alert">
-            {modelsError}
+            {probeError}
           </p>
         ) : null}
         <p className="note">{desktopText("settings.environment-screen.16")}</p>
@@ -280,9 +284,10 @@ function daemonState(
   if (loading) return { value: desktopText("settings.environment-screen.41"), status: "idle" }
   if (status?.active === true)
     return { value: desktopText("settings.environment-screen.42"), status: "ok" }
+  if (error !== null) return { value: error, status: "bad" }
   if (models.length > 0)
     return { value: desktopText("settings.environment-screen.43"), status: "ok" }
-  return { value: error ?? desktopText("settings.environment-screen.44"), status: "bad" }
+  return { value: desktopText("settings.environment-screen.44"), status: "bad" }
 }
 
 function egressValue(egress: EgressView | null, loading: boolean, error: string | null): string {

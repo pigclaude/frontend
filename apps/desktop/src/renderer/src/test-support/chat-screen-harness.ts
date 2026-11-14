@@ -65,6 +65,7 @@ export function sessionController(overrides: Partial<SessionController> = {}): S
     models: [{ id: "claude-sonnet", displayName: "Sonnet", description: "", isDefault: true }],
     modelsLoading: false,
     modelsError: null,
+    modelsCliError: null,
     start: vi.fn(async () => true),
     send: vi.fn(async () => true),
     cancel: vi.fn(async () => undefined),

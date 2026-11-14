@@ -273,13 +273,13 @@ it("does not start a new authorization after setup has terminally failed", async
 it("cleans late-created setup resources without reopening reception after quit", async () => {
   const { fixture, service, vault, exchange } = createCallbackReceptionFixture()
   const gate = deferred<void>()
-  fixture.deviceReadGate = gate
+  fixture.setupGate = gate
   const valid = await prepareCallbackReceptionUrl(service)
   await import("./index")
   emitCallbackReceptionUrl(valid)
   fixture.ready!.resolve(undefined)
   await vi.advanceTimersByTimeAsync(0)
-  expect(fixture.deviceReads).toBe(1)
+  expect(fixture.setupGateWaits).toBe(1)
   await disposeCallbackReceptionFixture()
 
   gate.resolve(undefined)

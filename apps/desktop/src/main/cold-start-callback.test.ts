@@ -384,12 +384,12 @@ it("does not revive startup input when a blocked setup finishes after quit", asy
   const callback = await prepareCallbackReceptionUrl(service)
   const handling = vi.spyOn(service, "handleCallback")
   const gate = deferred<void>()
-  fixture.deviceReadGate = gate
+  fixture.setupGate = gate
   setColdStartProcess("linux", ["/fixture/PigClaude client.AppImage", callback])
   await import("./index")
   fixture.ready!.resolve(undefined)
   await vi.advanceTimersByTimeAsync(0)
-  expect(fixture.deviceReads).toBe(1)
+  expect(fixture.setupGateWaits).toBe(1)
   await disposeCallbackReceptionFixture()
   gate.resolve(undefined)
   await vi.advanceTimersByTimeAsync(0)

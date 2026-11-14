@@ -33,7 +33,8 @@ const fixture = vi.hoisted(() => ({
   setupFailure: false,
   readinessFailure: null as Error | null,
   screenFailure: false,
-  deviceReadGate: null as ReturnType<typeof deferred<void>> | null,
+  setupGate: null as ReturnType<typeof deferred<void>> | null,
+  setupGateWaits: 0,
   deviceReads: 0,
   setupEntered: 0,
   quitCalls: 0,
@@ -126,8 +127,6 @@ vi.mock("../device-identity", () => ({
   DeviceIdentityService: class {
     async read() {
       fixture.deviceReads++
-      await fixture.deviceReadGate?.promise
-      if (fixture.setupFailure) throw new Error("fixture initialization failed")
       return { deviceId: "pcd_" + "1".repeat(64), platform: "darwin" }
     }
   },
@@ -144,6 +143,9 @@ vi.mock("../secret-vault", () => ({
 }))
 vi.mock("../authorization/callback-server", () => ({
   createCallbackServer: async () => {
+    fixture.setupGateWaits++
+    await fixture.setupGate?.promise
+    if (fixture.setupFailure) throw new Error("fixture initialization failed")
     fixture.callbackCreates++
     return {
       redirectUri: "http://127.0.0.1:43123/oauth/callback",
@@ -212,7 +214,8 @@ export function createCallbackReceptionFixture() {
   fixture.setupFailure = false
   fixture.readinessFailure = null
   fixture.screenFailure = false
-  fixture.deviceReadGate = null
+  fixture.setupGate = null
+  fixture.setupGateWaits = 0
   fixture.deviceReads = 0
   fixture.setupEntered = 0
   fixture.quitCalls = 0

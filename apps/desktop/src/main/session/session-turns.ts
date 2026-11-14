@@ -28,6 +28,8 @@ export type SessionTurnsOptions = {
   onClosed: (turn: ClosedTurn) => void
   now: () => number
   timers: SessionTimers
+  /** 客户端续接时随 SDK 会话记录恢复的累计用量。 */
+  usageBaseline?: SessionUsage
 }
 
 type OpenTurn = {
@@ -70,6 +72,7 @@ export class SessionTurns {
   /** 创建空闲的回合控制。 */
   constructor(options: SessionTurnsOptions) {
     this.#options = options
+    this.#total = this.#accounted = options.usageBaseline ?? noUsage
   }
 
   /** 进行中或正在发送的一轮；空闲时为 null。 */

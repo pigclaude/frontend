@@ -34,7 +34,7 @@ import {
 } from "./session-host-support"
 import type { ClaudeAgentStartOptions, ClaudePersistenceOptions } from "./claude-query-options"
 import type { SessionEventCursor } from "./session-event-log"
-import type { AdapterEvent } from "./session-events"
+import type { AdapterEvent, SessionUsage } from "./session-events"
 import type { ClosedTurn } from "./session-turns"
 import type {
   SessionAdapterFactory,
@@ -71,7 +71,10 @@ export type ClaudeSessionOptions = {
   /** 会话释放后调用一次，宿主据此放下对它的引用。 */
   onReleased: (session: ClaudeSession) => unknown
   /** 保存会话用的 SDK 选项和磁盘时间线起点。 */
-  persistence?: ClaudePersistenceOptions & { cursor: SessionEventCursor }
+  persistence?: ClaudePersistenceOptions & {
+    cursor: SessionEventCursor
+    usageBaseline?: SessionUsage
+  }
   /** 已确认的模型或回合设置改变时保存索引。 */
   saveSettings?: (settings: SessionSavedSettings) => void
 }
@@ -120,6 +123,9 @@ export class ClaudeSession {
       permissionTimeoutMs: options.permissionTimeoutMs,
       timers: options.timers,
       now: options.now,
+      ...(options.persistence?.usageBaseline === undefined
+        ? {}
+        : { usageBaseline: options.persistence.usageBaseline }),
       emitPermission: (request) => this.#publish(request),
       emitQuestion: (event) => this.#publish(event),
       emitTurn: (event) => this.#publishTurn(event),
@@ -327,6 +333,13 @@ export class ClaudeSession {
     this.#context.observe(event)
     switch (event.type) {
       case "sdk-activity":
+        return
+      case "exit-pending":
+        active.stopping = true
+        this.#stall.stop()
+        active.pending.rejectAll(cancelledPermissionMessage)
+        this.#publish({ type: "error", code: "SDK_ERROR", message: "Claude Code 尚未确认退出" })
+        active.turns.end("error", "SDK_ERROR")
         return
       case "background-tasks":
       case "background-task-started":

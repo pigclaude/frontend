@@ -229,10 +229,14 @@ export class ClaudeAgentAdapter {
     } catch (error) {
       if (this.#stopped) return
       this.#emitError(error)
-      await this.#finish("error").catch(() => undefined)
+      await this.#finish("error").catch(() => this.#emitExitPending())
       return
     }
-    if (!this.#stopped) await this.#finish("completed").catch(() => undefined)
+    if (!this.#stopped) await this.#finish("completed").catch(() => this.#emitExitPending())
+  }
+
+  #emitExitPending(): void {
+    this.#emit({ type: "exit-pending" })
   }
 
   #handleMessage(message: SDKMessage): void {

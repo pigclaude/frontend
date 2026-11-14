@@ -5,7 +5,7 @@
 import { isAbsolute, relative, resolve, sep } from "node:path"
 import type { ClaudeSession } from "./claude-session"
 import type { SessionEnvelope } from "./session-envelope"
-import type { SessionIndex } from "./session-index"
+import type { SessionIndex, SessionStoreStatus } from "./session-index"
 import { buildStatusView, noPendingWork, type SessionPendingWork } from "./session-host-support"
 import { summarizeSavedSession, summarizeSession, type SessionSummary } from "./session-summary"
 import type { SessionErrorCode, SessionStatusView, SessionTurnEndStatus } from "./session-types"
@@ -38,10 +38,18 @@ export type SessionEntry = {
   /** 停放时还有进行中的一轮。 */
   parkedMidTurn: boolean
   lastTurn: SessionTurnEndStatus | null
+  /** 这代 CLI 已完成回合，可为排队者让出名额。 */
+  ranTurn: boolean
   lastActivityAt: number
   /** Claude Code 报告的在途后台任务数，含回合不等的后台 shell；不为 0 时不算空闲。 */
   backgroundTasks: number
   closeTools: (() => void) | null
+}
+
+/** 已释放的运行会话在磁盘上的状态。 */
+function parkedSessionStatus(entry: SessionEntry): SessionStoreStatus {
+  if (entry.parkReason === null) return "failed"
+  return entry.parkedMidTurn || entry.parkReason === "membership" ? "interrupted" : "parked"
 }
 
 /** 宿主的会话注册表。保证同一个会话 id 只有一条记录；按加入顺序遍历。 */
@@ -51,6 +59,12 @@ export class SessionRegistry {
   /** 按 id 查记录；没有时返回 null。 */
   get(sessionId: string): SessionEntry | null {
     return this.#entries.get(sessionId) ?? null
+  }
+
+  /** 只有运行会话释放时需要把停放状态写入磁盘。 */
+  statusOnRelease(entry: SessionEntry): SessionStoreStatus | null {
+    if (entry.phase !== "running") return null
+    return parkedSessionStatus(entry)
   }
 
   /** 为等待启动检查的新会话登记 id；id 已存在时抛错，不覆盖。 */
@@ -67,6 +81,7 @@ export class SessionRegistry {
       parkReason: null,
       parkedMidTurn: false,
       lastTurn: null,
+      ranTurn: false,
       lastActivityAt: now,
       backgroundTasks: 0,
       closeTools: null,
@@ -85,6 +100,7 @@ export class SessionRegistry {
     entry.cancelled = null
     entry.backgroundTasks = 0
     entry.lastTurn = index.lastTurn?.status ?? null
+    entry.ranTurn = false
     return entry
   }
 
@@ -101,12 +117,15 @@ export class SessionRegistry {
   /** 记下会话发出的一条事件：更新最近活动时间，回合结束时记下这一轮的结果。 */
   observe(entry: SessionEntry, envelope: SessionEnvelope, now: number): void {
     entry.lastActivityAt = now
-    if (envelope.event.type === "turn-ended") entry.lastTurn = envelope.event.status
+    if (envelope.event.type === "turn-ended") {
+      entry.lastTurn = envelope.event.status
+      entry.ranTurn = true
+    }
   }
 
   /** 空闲，并且结束过至少一轮：可以停放来给排队的会话腾位置。 */
   evictable(sessionId: string): boolean {
-    return this.isIdle(sessionId) && this.get(sessionId)?.lastTurn != null
+    return this.isIdle(sessionId) && this.get(sessionId)?.ranTurn === true
   }
 
   /** Claude Code 在运行、没在结束，也没有进行中的回合、待答的权限和提问或后台任务。 */

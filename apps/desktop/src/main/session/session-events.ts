@@ -109,6 +109,7 @@ export type AdapterEvent =
   | TaskSignal
   | ContextCompactedSignal
   | SdkActivitySignal
+  | { type: "exit-pending" }
 
 /** 界面用的模型信息；第一行是 CLI 的默认选择。 */
 export type ClaudeModel = {

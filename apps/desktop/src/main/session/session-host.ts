@@ -21,7 +21,12 @@ import {
   type SessionLaunchHooks,
   type SessionLaunchStorage,
 } from "./session-launch"
-import { resumeSavedSession, rollbackSavedLaunch, SessionPersistence } from "./session-persistence"
+import {
+  checkFreshSessionId,
+  resumeSavedSession,
+  rollbackSavedLaunch,
+  SessionPersistence,
+} from "./session-persistence"
 import type { SessionStore } from "./session-store"
 import { sessionModelReader } from "./session-models"
 import { SessionRegistry, type SessionEntry, type SessionParkReason } from "./session-registry"
@@ -176,10 +181,7 @@ export class SessionHost {
       return existing.launch ?? { sessionId: existing.sessionId }
     }
     const sessionId = input.sessionId ?? this.#newId()
-    if (store?.get(sessionId)) {
-      tools?.close()
-      throw resumeFailed()
-    }
+    checkFreshSessionId(store, sessionId, tools)
     const entry = this.#registry.add(sessionId, input.workspace, this.#now())
     entry.closeTools = tools?.close ?? null
     const launch = this.#launch(
@@ -274,6 +276,7 @@ export class SessionHost {
     const entry = this.#registry.prepareResume(index, this.#now())
     const launch = resumeSavedSession(
       index,
+      { ...this.#launchDeps, cancelled: () => entry.cancelled !== null || this.#disposed },
       () => this.models(),
       tools,
       (input, scoped) => {
@@ -285,12 +288,15 @@ export class SessionHost {
     entry.launch = launch
     try {
       await launch
+    } catch (error) {
+      if (entry.phase === "checking" && this.#registry.get(sessionId) === entry) this.#forget(entry)
+      throw error
     } finally {
       entry.launch = null
     }
   }
 
-  /** 取消指定会话的当前 turn：立即拒绝未回答权限并中断，但保留会话供下一次发送。不是运行中的会话时什么也不做。 */
+  /** 取消该会话的当前回合。 */
   async cancel(sessionId: string): Promise<void> {
     await this.#registry.live(sessionId)?.cancel()
   }
@@ -380,9 +386,8 @@ export class SessionHost {
 
   /** 停放全部会话并释放全部订阅；应用退出时调用。 */
   async dispose(): Promise<void> {
-    if (this.#disposed) return
+    if (!this.#disposed) for (const unsubscribe of this.#unsubscribe) unsubscribe()
     this.#disposed = true
-    for (const unsubscribe of this.#unsubscribe) unsubscribe()
     await this.stop()
     this.#concurrency.dispose(new SessionHostError("SESSION_CANCELLED", "会话启动已取消"))
     this.#listeners.clear()
@@ -429,17 +434,11 @@ export class SessionHost {
 
   // 会话释放：交还名额、关掉会话专用的工具；运行中的会话转为停放，启动中的由启动流程收尾。
   async #released(entry: SessionEntry): Promise<void> {
-    if (this.#persistence !== null && entry.phase === "running") {
-      const status =
-        entry.parkReason === null
-          ? "failed"
-          : entry.parkedMidTurn || entry.parkReason === "membership"
-            ? "interrupted"
-            : "parked"
+    const status = this.#registry.statusOnRelease(entry)
+    if (status !== null && this.#persistence !== null)
       await this.#persistence.park(entry.sessionId, status)
-    }
     this.#closeTools(entry)
-    if (entry.phase === "running") entry.phase = "parked"
+    if (status !== null) entry.phase = "parked"
     this.#concurrency.release(entry.sessionId)
     this.#emitHost({ type: "sessions-changed" })
   }

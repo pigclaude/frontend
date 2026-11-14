@@ -16,6 +16,7 @@ import {
 } from "./session-store-layout"
 import { SessionHostError } from "./session-types"
 import type { SessionEnvelope } from "./session-envelope"
+import type { SessionUsage } from "./session-events"
 import { maxEnvelopesPerRead, type SessionEventCursor } from "./session-event-log"
 import { normalizeHistory } from "./session-history"
 import {
@@ -145,16 +146,31 @@ export class SessionStore {
   }
 
   /** 从已写入磁盘的完整信封取序号和时间上界，不依赖索引里可能滞后的游标。 */
-  cursor(id: string): Promise<SessionEventCursor> {
+  cursor(id: string): Promise<SessionEventCursor & { usageBaseline?: SessionUsage }> {
     return this.#enqueue(id, async () => {
       this.#entry(id)
       const { envelopes } = await this.#readTimeline(id)
       let lastAt = Number.NEGATIVE_INFINITY
-      for (const { at } of envelopes) {
+      let usageSeq = 0
+      let usageBaseline: SessionUsage | undefined
+      for (const { at, event, seq } of envelopes) {
         const time = Date.parse(at)
         if (Number.isFinite(time)) lastAt = Math.max(lastAt, time)
+        if (
+          event.type === "result" &&
+          event.totalUsage != null &&
+          (seq ?? 0) > usageSeq &&
+          (!event.isError || Object.values(event.totalUsage).some((value) => value > 0))
+        ) {
+          usageSeq = seq ?? 0
+          usageBaseline = event.totalUsage
+        }
       }
-      return { seq: lastSeqOf(envelopes), at: Number.isFinite(lastAt) ? lastAt : 0 }
+      return {
+        seq: lastSeqOf(envelopes),
+        at: Number.isFinite(lastAt) ? lastAt : 0,
+        ...(usageBaseline === undefined ? {} : { usageBaseline }),
+      }
     })
   }
 

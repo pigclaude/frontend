@@ -6,6 +6,7 @@ import type { ClaudePersistenceOptions } from "./claude-query-options"
 import type { SessionSavedSettings } from "./claude-session"
 import { retainedClaudeProject } from "./session-environment"
 import type { SessionEnvelope } from "./session-envelope"
+import type { SessionUsage } from "./session-events"
 import { maxEnvelopesPerRead, type SessionEventCursor } from "./session-event-log"
 import type { SessionIndex, SessionStoreStatus } from "./session-index"
 import type { SessionLaunchStorage } from "./session-launch"
@@ -21,19 +22,36 @@ import type {
 } from "./session-types"
 import { SessionHostError } from "./session-types"
 import { reapRetainedClaudeProcess } from "./retained-claude-process"
+import { checkSessionStart, type SessionStartDeps } from "./session-start-checks"
 
 /** 启动使用的已保存路径、SDK 选项和时间线游标。 */
 export type PersistedSessionLaunch = ClaudePersistenceOptions & {
   paths: SessionStorePaths
   cursor: SessionEventCursor
+  usageBaseline?: SessionUsage
 }
 
 /** 由磁盘索引恢复的启动参数，以及模型替换的提示。 */
 export type ResumeInput = { input: SessionStartInput; modelFellBack: boolean }
 
+/** Claude Code 用 UUID 保存和续接会话。 */
+export function checkFreshSessionId(
+  store: SessionStore | undefined,
+  id: string,
+  tools?: SessionTools,
+): void {
+  if (store === undefined) return
+  const valid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id)
+  if (!valid || store.get(id) !== null) {
+    tools?.close()
+    throw new SessionHostError("SESSION_START_FAILED", "无法用该会话 id 创建新会话")
+  }
+}
+
 /** 续接使用已保存的设置，查询模型后准备会话工具并启动原 id。 */
 export async function resumeSavedSession(
   index: SessionIndex,
+  deps: SessionStartDeps,
   models: () => Promise<SessionModelCatalog>,
   tools: (() => SessionTools | undefined) | undefined,
   launch: (
@@ -42,6 +60,10 @@ export async function resumeSavedSession(
   ) => Promise<{ sessionId: string }>,
   onFallback: () => void,
 ): Promise<{ sessionId: string }> {
+  await checkSessionStart(
+    { ...deps, requiredProfile: index.environment },
+    resumeInput(index, null).input,
+  )
   const catalog = index.model === null ? null : await models().catch(() => null)
   const { input, modelFellBack } = resumeInput(
     index,
@@ -150,12 +172,14 @@ export async function prepareSavedSession(
       model: input.model ?? null,
     })
   }
+  const { seq, at, usageBaseline } = await store.cursor(sessionId)
   return {
     directory: paths.directory,
     sessionId,
     resume: index !== null,
     paths,
-    cursor: await store.cursor(sessionId),
+    cursor: { seq, at },
+    ...(usageBaseline === undefined ? {} : { usageBaseline }),
   }
 }
 
@@ -222,15 +246,16 @@ export class SessionPersistence {
   settings(id: string, settings: SessionSavedSettings): void {
     const store = this.#loaded
     if (store !== null) {
-      const index = store.get(id)
-      if (
-        index !== null &&
-        (settings.model !== index.model ||
-          settings.effort !== index.effort ||
-          settings.fast !== index.fast)
-      ) {
-        void this.#save(id, () => store.update(id, settings))
-      }
+      void this.#save(id, async () => {
+        const index = store.get(id)
+        if (
+          index !== null &&
+          (settings.model !== index.model ||
+            settings.effort !== index.effort ||
+            settings.fast !== index.fast)
+        )
+          await store.update(id, settings)
+      })
     }
   }
 

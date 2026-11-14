@@ -13,6 +13,7 @@ import {
   type QuestionResolvedEvent,
 } from "./question-broker"
 import type { AdapterEvent } from "./session-events"
+import type { SessionUsage } from "./session-events"
 import { launchPermissionMode } from "./session-host-modes"
 import { SessionTurns, type ClosedTurn } from "./session-turns"
 import { SubagentTasks } from "./subagent-tasks"
@@ -68,6 +69,7 @@ export type ActiveSessionHooks = {
   permissionTimeoutMs: number
   timers: SessionTimers
   now: () => number
+  usageBaseline?: SessionUsage
   emitPermission: (request: PermissionRequestEvent) => void
   emitQuestion: (event: QuestionRequestEvent | QuestionResolvedEvent) => void
   emitTurn: (event: SessionTurnEvent) => void
@@ -134,6 +136,7 @@ export function createActiveSession(
       },
       now: hooks.now,
       timers: hooks.timers,
+      ...(hooks.usageBaseline === undefined ? {} : { usageBaseline: hooks.usageBaseline }),
     }),
     stopping: false,
     ending: null,

@@ -15,6 +15,7 @@ import { ProxiesScreen } from "./screens/proxies-screen"
 import { BrowserProfilesScreen } from "./screens/browser-profiles-screen"
 import type { BrowserProfilesController } from "./hooks/use-browser-profiles"
 import { SettingsScreen } from "./screens/settings/settings-sections"
+import type { AppInfo } from "../../preload/index"
 import { TrayScreen } from "./screens/tray-screen"
 import { UsageScreen } from "./screens/usage-screen"
 import type { ClaudeAccountsController } from "./hooks/use-claude-accounts"
@@ -107,10 +108,7 @@ export function MainWindow({
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [terminalMounted, setTerminalMounted] = useState(false)
   const [sessionStartedAt, setSessionStartedAt] = useState(() => new Date().toISOString())
-  const [appInfo, setAppInfo] = useState<{
-    appVersion: string
-    userDataPath: string
-  } | null>(null)
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
   const accounts = pool.accounts.map((account) => toPoolAccount(account, pool.proxies))
   const proxies = pool.proxies.map((proxy) => toPoolProxy(proxy, pool.accounts))
   const workspace = selectedWorkspace ?? workspaces.paths[0] ?? previewWorkbench?.root ?? null
@@ -309,10 +307,8 @@ export function MainWindow({
         membership={membership}
         appInfo={appInfo}
         defaultWorkspace={workspace}
-        defaultModel={
-          (session.models.find((model) => model.isDefault) ?? session.models[0])?.displayName ??
-          null
-        }
+        models={session.models}
+        accounts={pool.accounts}
         page={page}
         appearance={appearance}
         onNavigate={onNavigate}

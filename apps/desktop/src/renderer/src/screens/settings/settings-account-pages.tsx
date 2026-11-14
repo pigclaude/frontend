@@ -3,9 +3,11 @@ import { desktopText } from "../../locale/text"
 import { WithdrawAuthorization } from "../../components/withdraw-authorization"
 import { Icon } from "../../components/icon"
 import type { MembershipView } from "@pigclaude/contracts/membership"
+import type { ClaudeAccountView } from "@pigclaude/contracts/claude-account"
 import { Button } from "../../components/ui/button"
 import type { NavLocation } from "../../models/navigation"
 import { SettingPage, SettingRow, SettingSection } from "./setting-page"
+import { DefaultAccountRow } from "./session-default-rows"
 
 /** 我的账户：pigclaude 使用权限，不涉及 Claude 订阅账号。 */
 export function ProfileSettings({
@@ -78,14 +80,21 @@ function formatDateTime(value: string): string {
   return date.toLocaleString("zh-CN", { dateStyle: "medium", timeStyle: "short" })
 }
 
-/** 切换规则：什么时候从一个 Claude 账号换到下一个。 */
-export function SwitchingSettings({ onNavigate }: { onNavigate: (location: NavLocation) => void }) {
+/** 切换规则：新会话用哪个账号，以及什么时候从一个 Claude 账号换到下一个；未接入用量的阈值显示「—」。 */
+export function SwitchingSettings({
+  accounts = [],
+  onNavigate,
+}: {
+  accounts?: readonly ClaudeAccountView[]
+  onNavigate: (location: NavLocation) => void
+}) {
   return (
     <SettingPage
       title={desktopText("settings.settings-account-pages.15")}
       sub={desktopText("settings.settings-account-pages.16")}
     >
       <SettingSection>
+        <DefaultAccountRow accounts={accounts} />
         <SettingRow title={desktopText("settings.settings-account-pages.17")} value="—" />
         <SettingRow title={desktopText("settings.settings-account-pages.20")} value="—" />
         <SettingRow title={desktopText("settings.settings-account-pages.22")} value="—" />

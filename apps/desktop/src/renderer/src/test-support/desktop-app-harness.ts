@@ -1,5 +1,5 @@
 // 负责整窗页面测试的公共夹具：每个测试一个挂载点，以及只在内存里的桌面桥（会员、号池、最近工作区、
-// 项目操作、本机应用、工作台和一个跑完一轮就结束的假会话）。
+// 项目操作、本机应用、工作台、新会话默认设置和一个跑完一轮就结束的假会话）。
 import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, vi } from "vitest"
@@ -9,7 +9,13 @@ import { installPigcodeNative } from "../lib/pigcode-native"
 import { initialMembershipView } from "../models/membership-view"
 import { chatAccount } from "./chat-screen-harness"
 import { fakeWorkbench } from "./workbench-harness"
-import type { SessionEnvelope, SessionHostEvent } from "../../../main/session/session-types"
+import { resetSessionDefaultsForTest } from "../hooks/use-session-defaults"
+import type {
+  SessionEnvelope,
+  SessionHostEvent,
+  SessionStartInput,
+} from "../../../main/session/session-types"
+import { builtinSessionDefaults, type SessionDefaults } from "../../../session-defaults-contract"
 
 /** 整窗挂载点；只在测试运行期间可用。 */
 export type DesktopAppRoot = { readonly container: HTMLDivElement; readonly root: Root }
@@ -41,6 +47,7 @@ export function desktopAppRoot(): DesktopAppRoot {
     window.history.replaceState({}, "", "/")
     delete window.pigclaude
     delete window.pigcodeNative
+    resetSessionDefaultsForTest()
     vi.unstubAllGlobals()
   })
   return {
@@ -72,11 +79,16 @@ function activeMembership(): MembershipView {
   }
 }
 
-/** 装一个内存里的桌面桥并安装 window.pigcodeNative；项目操作记在 calls 里。 */
-export function installFakeDesktopBridge(initial: string[] = ["/work/api", "/work/web"]) {
+/** 装一个内存里的桌面桥并安装 window.pigcodeNative；项目操作记在 calls，启动会话的参数记在 starts。 */
+export function installFakeDesktopBridge(
+  initial: string[] = ["/work/api", "/work/web"],
+  initialDefaults: SessionDefaults = builtinSessionDefaults,
+) {
   let paths = initial
   let names: Record<string, string> = {}
+  let defaults = initialDefaults
   const calls: string[] = []
+  const starts: SessionStartInput[] = []
   let listener: ((envelope: SessionEnvelope) => void) | null = null
   let seq = 0
   const emit = (event: SessionHostEvent) =>
@@ -145,8 +157,13 @@ export function installFakeDesktopBridge(initial: string[] = ["/work/api", "/wor
       },
     },
     workbench: fakeWorkbench({ "README.md": "# demo\n" }).bridge,
+    sessionDefaults: {
+      get: async () => defaults,
+      set: async (patch) => (defaults = { ...defaults, ...patch }),
+    },
     session: {
-      start: async () => {
+      start: async (input) => {
+        starts.push(input)
         setTimeout(() =>
           emit({
             type: "started",
@@ -200,15 +217,16 @@ export function installFakeDesktopBridge(initial: string[] = ["/work/api", "/wor
     },
   }
   installPigcodeNative(window)
-  return { calls }
+  return { calls, starts, defaults: () => defaults }
 }
 
-/** 装上内存桌面桥后在挂载点里渲染整窗，等首轮读取落定；返回桌面桥记下的项目操作。 */
+/** 装上内存桌面桥后在挂载点里渲染整窗，等首轮读取落定；返回桌面桥记下的调用和当前默认设置。 */
 export async function renderDesktopApp(
   app: DesktopAppRoot,
   paths?: string[],
-): Promise<{ calls: string[] }> {
-  const bridge = installFakeDesktopBridge(paths)
+  defaults?: SessionDefaults,
+): Promise<ReturnType<typeof installFakeDesktopBridge>> {
+  const bridge = installFakeDesktopBridge(paths, defaults)
   await act(async () => app.root.render(createElement(DesktopApp)))
   await flush()
   return bridge

@@ -1,7 +1,10 @@
 // 负责按当前设置子页选出对应的设置页面。
 import type { AppearanceController } from "../../hooks/use-appearance"
 import type { MembershipView } from "@pigclaude/contracts/membership"
+import type { ClaudeAccountView } from "@pigclaude/contracts/claude-account"
 import type { NavLocation } from "../../models/navigation"
+import type { AppInfo } from "../../../../preload/index"
+import type { ClaudeModel } from "../../../../main/session/session-types"
 import { ProfileSettings, SwitchingSettings } from "./settings-account-pages"
 import { AppearancePage } from "./appearance/appearance-page"
 import { GeneralSettings, MenubarSettings, SessionSettings } from "./settings-app-pages"
@@ -15,9 +18,12 @@ export type SettingsScreenProps = {
   onNavigate: (location: NavLocation) => void
   onLogout: () => void
   membership: MembershipView
-  appInfo: { appVersion: string; userDataPath: string } | null
+  appInfo: AppInfo | null
   defaultWorkspace: string | null
-  defaultModel: string | null
+  /** Claude Code 的模型目录，默认模型从这里选。 */
+  models: readonly ClaudeModel[]
+  /** 号池里的账号，新会话账号从这里选。 */
+  accounts: readonly ClaudeAccountView[]
 }
 
 /** 根据当前设置子页绘制原型对应的设置内容；未知子页显示关于。 */
@@ -30,7 +36,8 @@ export function SettingsScreen({
   membership,
   appInfo,
   defaultWorkspace,
-  defaultModel,
+  models,
+  accounts,
 }: SettingsScreenProps) {
   if (page === "profile")
     return (
@@ -40,13 +47,17 @@ export function SettingsScreen({
         withdrawContextId={withdrawContextId}
       />
     )
-  if (page === "switching") return <SwitchingSettings onNavigate={onNavigate} />
+  if (page === "switching") return <SwitchingSettings accounts={accounts} onNavigate={onNavigate} />
   if (page === "general") return <GeneralSettings appVersion={appInfo?.appVersion ?? null} />
   if (page === "appearance") return <AppearancePage appearance={appearance} />
-  if (page === "session")
-    return <SessionSettings workspace={defaultWorkspace} defaultModel={defaultModel} />
+  if (page === "session") return <SessionSettings workspace={defaultWorkspace} models={models} />
   if (page === "menubar") return <MenubarSettings onNavigate={onNavigate} />
   if (page === "network") return <NetworkSettings />
   if (page === "data") return <DataSettings userDataPath={appInfo?.userDataPath ?? null} />
-  return <AboutSettings appVersion={appInfo?.appVersion ?? null} />
+  return (
+    <AboutSettings
+      appVersion={appInfo?.appVersion ?? null}
+      claudeCodeVersion={appInfo?.claudeCodeVersion ?? null}
+    />
+  )
 }

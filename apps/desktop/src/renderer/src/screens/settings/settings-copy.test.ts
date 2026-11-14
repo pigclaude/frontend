@@ -46,6 +46,7 @@ describe("settings proxy copy", () => {
       ),
     )
     expect(container.textContent).toContain("1.2.3")
+    expect(container.textContent).toContain("Claude Code—")
     expect(container.textContent).toContain("更新状态—")
     expect(container.textContent).not.toContain("已是最新版本")
     await act(async () =>
@@ -60,7 +61,9 @@ describe("settings proxy copy", () => {
   })
 
   it("keeps the session time zone and language tied to the account fingerprint", async () => {
-    await act(async () => root.render(createElement(SessionSettings)))
+    await act(async () =>
+      root.render(createElement(AppProviders, { children: createElement(SessionSettings, {}) })),
+    )
 
     expect(container.textContent).toContain("时区与语言来自账号指纹")
     expect(container.textContent).toContain("跟随账号指纹")

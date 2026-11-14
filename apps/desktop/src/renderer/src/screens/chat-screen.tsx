@@ -40,6 +40,7 @@ import type { NavLocation } from "../models/navigation"
 import { threadView } from "../models/thread-view"
 import type { SessionEffort } from "../../../main/session/session-types"
 import { useSlashCommands } from "../shell/registry-slash-commands"
+import { useSessionDefaults } from "../hooks/use-session-defaults"
 
 /** Claude 会话支持的 Agent 功能；界面据此显示计划、中断和审批等控件。 */
 const CLAUDE_FEATURES: AgentFeatures = {
@@ -102,10 +103,12 @@ export function ChatScreen({
 }: ChatScreenProps) {
   const toast = useToast()
   const commands = useSlashCommands()
-  const [modelId, setModelId] = useState("")
-  const [accountId, setAccountId] = useState("")
+  const { defaults } = useSessionDefaults()
+  const defaultLevel = permissionView(defaults.permissionMode, DEFAULT_PERMISSION_LEVEL).level
+  const [modelId, setModelId] = useState(defaults.model ?? "")
+  const [accountId, setAccountId] = useState(defaults.accountId ?? "")
   // 档位和计划开关分开记：计划打开期间档位不变，关掉计划或批准计划后回到这一档。
-  const [level, setLevel] = useState<RuntimeMode>(DEFAULT_PERMISSION_LEVEL)
+  const [level, setLevel] = useState<RuntimeMode>(defaultLevel)
   const [draftPlan, setDraftPlan] = useState(false)
   const startedAt = useRef(Date.now())
   const lastModelsError = useRef<string | null>(null)
@@ -123,11 +126,18 @@ export function ChatScreen({
     return null
   }, [state.turns])
   const defaultModel = session.models.find((model) => model.isDefault) ?? session.models[0]
-  const selectedModel = state.model ?? (modelId || defaultModel?.id || "")
+  // 默认模型已不在目录里时用 Claude Code 的默认；目录还没读到时先照用。
+  const draftModel =
+    session.models.length === 0 || session.models.some((model) => model.id === modelId)
+      ? modelId
+      : ""
+  const selectedModel = state.model ?? (draftModel || defaultModel?.id || "")
   const shown: PermissionView = live
     ? permissionView(state.permissionMode, level)
     : { level, plan: draftPlan }
-  const activeAccount = live ? (sessionAccountId(session) ?? "") : accountId
+  // 偏好的账号已从号池删除时按自动选择处理。
+  const draftAccount = accounts.some((account) => account.id === accountId) ? accountId : ""
+  const activeAccount = live ? (sessionAccountId(session) ?? "") : draftAccount
   const proxyUrls = new Map(proxies.map((proxy) => [proxy.id, proxy.url]))
   const availableAccounts = accounts.filter((account) =>
     isAccountSelectable(
@@ -161,12 +171,14 @@ export function ChatScreen({
     void session.refreshModels()
   }, [session.models.length, session.modelsLoading, session.modelsError, session.refreshModels])
 
-  // 每个新会话都从监督审批、计划关闭开始；上一个会话里选的档位不带到下一个会话。
+  // 每个新会话都按设置里的默认模型、默认档位和选号偏好开始，计划关闭；上一个会话里选的不带过来。
   useEffect(() => {
     if (live) return
-    setLevel(DEFAULT_PERMISSION_LEVEL)
+    setLevel(defaultLevel)
     setDraftPlan(false)
-  }, [live])
+    setModelId(defaults.model ?? "")
+    setAccountId(defaults.accountId ?? "")
+  }, [live, defaultLevel, defaults.model, defaults.accountId])
 
   // 计划之外的档位只认主进程报告的模式；没生效的选择不能成为计划结束后要回的档位。
   useEffect(() => {
@@ -249,7 +261,7 @@ export function ChatScreen({
       ...(effort === undefined ? {} : { effort }),
       ...(fast ? { fast: true } : {}),
       permissionMode: sessionPermissionMode(level, draftPlan),
-      ...(accountId === "" ? {} : { accountId }),
+      ...(draftAccount === "" ? {} : { accountId: draftAccount }),
     })
     if (ok) {
       onWorkspaceUsed(target)

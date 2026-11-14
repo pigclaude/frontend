@@ -78,7 +78,7 @@ export function RangeControl({
   )
 }
 
-/** 下拉选择，触发器外观沿用设计稿的 select。 */
+/** 下拉选择，触发器外观沿用设计稿的 select；触发器里显示选中项的 label。 */
 export function SelectControl({
   label,
   value,
@@ -88,7 +88,7 @@ export function SelectControl({
 }: {
   label: string
   value: string
-  options: string[]
+  options: ReadonlyArray<{ value: string; label: string }>
   width: number
   onChange: (value: string) => void
 }) {
@@ -99,8 +99,8 @@ export function SelectControl({
       </SelectTrigger>
       <SelectContent>
         {options.map((option) => (
-          <SelectItem key={option} value={option}>
-            {option}
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
           </SelectItem>
         ))}
       </SelectContent>

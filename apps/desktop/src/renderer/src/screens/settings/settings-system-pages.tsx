@@ -70,15 +70,21 @@ export function DataSettings({ userDataPath }: { userDataPath: string | null }) 
   )
 }
 
-/** 显示本机版本；更新服务与内置 CLI 缺少数据时显示占位符。 */
-export function AboutSettings({ appVersion }: { appVersion: string | null }) {
+/** 显示本机版本和随包 Claude Code 的版本；更新服务和读不到的版本显示占位符。 */
+export function AboutSettings({
+  appVersion,
+  claudeCodeVersion = null,
+}: {
+  appVersion: string | null
+  claudeCodeVersion?: string | null
+}) {
   const { t } = useText()
   return (
     <ScrollPanel>
       <SettingPage title={t("appSettings.about")} sub={t("appSettings.aboutDescription")}>
         <SettingSection title={t("appSettings.versions")}>
           <SettingRow title="PigClaude" value={appVersion ?? "—"} />
-          <SettingRow title={t("appSettings.claudeCode")} value="—" />
+          <SettingRow title={t("appSettings.claudeCode")} value={claudeCodeVersion ?? "—"} />
           <SettingRow title={t("appSettings.updateStatus")} value="—" />
         </SettingSection>
       </SettingPage>

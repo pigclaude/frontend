@@ -3,8 +3,10 @@ import { desktopText } from "../../locale/text"
 import { useSidebarGrouping } from "@pigclaude/ui-primitives"
 import { Button } from "../../components/ui/button"
 import type { NavLocation } from "../../models/navigation"
+import type { ClaudeModel } from "../../../../main/session/session-types"
 import { LockedValue, Segmented } from "./setting-controls"
 import { SettingPage, SettingRow, SettingSection } from "./setting-page"
+import { DefaultModelRow, DefaultPermissionRow } from "./session-default-rows"
 
 /** 通用：启动、Dock、快捷键、更新和侧栏会话分组。 */
 export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
@@ -44,14 +46,14 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
   )
 }
 
-/** 会话：新会话默认值和会话进程的固定规则。 */
+/** 会话：新会话的默认模型和默认权限（存在本机，新会话按它们初始化），以及会话进程的固定规则。 */
 export function SessionSettings({
   workspace,
-  defaultModel,
+  models = [],
 }: {
   workspace?: string | null
-  defaultModel?: string | null
-} = {}) {
+  models?: readonly ClaudeModel[]
+}) {
   return (
     <SettingPage
       title={desktopText("settings.settings-app-pages.16")}
@@ -63,15 +65,8 @@ export function SessionSettings({
           description={workspace ?? "—"}
           mono
         />
-        <SettingRow
-          title={desktopText("settings.settings-app-pages.20")}
-          value={defaultModel ?? "—"}
-        />
-        <SettingRow
-          title={desktopText("settings.settings-app-pages.22")}
-          description={desktopText("settings.settings-app-pages.23")}
-          value={desktopText("settings.settings-app-pages.25")}
-        />
+        <DefaultModelRow models={models} />
+        <DefaultPermissionRow />
       </SettingSection>
       <SettingSection title={desktopText("settings.settings-app-pages.28")}>
         <SettingRow

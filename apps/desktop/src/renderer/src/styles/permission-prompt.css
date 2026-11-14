@@ -19,6 +19,11 @@
   padding-bottom: var(--space-5);
 }
 
+/* 没有待回答的权限时宿主不占位置，时间线和输入框的间距不变。 */
+.perm-host:empty {
+  display: none;
+}
+
 .perm-prompt {
   display: flex;
   flex-direction: column;

@@ -1,50 +1,89 @@
-// 负责文件面板的原生菜单：文件工具栏的「更多」菜单（打开方式、另存为）和文件标签的右键菜单。
+// 负责文件面板的原生菜单：文件树和文件工具栏的文件菜单、目录导航的工作目录菜单，以及文件标签的右键菜单。
 // 没有原生菜单（浏览器预览）时不弹出，也不执行任何操作。
-import type { MessageKey } from "@pigclaude/ui-primitives"
+import { copyText, type MessageKey } from "@pigclaude/ui-primitives"
+import { revealLabelKey } from "@pigclaude/ui-shell"
 import type { WorkbenchBridge } from "../../../workbench-contract"
+import { absoluteFilePath } from "./workbench-path"
 
 type Point = { x: number; y: number }
 type Translate = (key: MessageKey) => string
 
-/** 文件工具栏的「更多」菜单：选一个本机编辑器或系统默认应用打开，或者另存为。 */
+/** 菜单针对的条目；路径为空表示项目目录本身。 */
+export type FileMenuEntry = { path: string; kind: "file" | "directory" }
+
+/** 文件菜单交给文件面板执行的操作。 */
+export type FileMenuActions = {
+  onOpenFile: (path: string) => void
+  onOpenFileTab: (path: string) => void
+  onMention: (path: string) => void
+}
+
+/**
+ * 弹出文件或目录的菜单：文件可以打开、在新标签打开、选编辑器打开、另存为；
+ * 都可以在文件管理器中显示、复制路径；项目内的条目还能复制相对路径、@ 提及到输入框。
+ */
 export async function showFileMenu({
   bridge,
   root,
-  path,
+  entry,
   point,
   t,
+  actions,
 }: {
   bridge: WorkbenchBridge
   root: string
-  path: string
+  entry: FileMenuEntry
   point: Point
   t: Translate
+  actions: FileMenuActions
 }): Promise<void> {
   const popup = window.pigcodeNative?.popupMenu
   if (!popup) return
+  const file = entry.kind === "file"
+  const absolute = entry.path ? absoluteFilePath(root, entry.path) : root
   const choice = await popup(
     [
-      { id: "open-with", label: t("files.menu.openWith") },
-      { id: "save-as", label: t("files.menu.saveAs") },
+      ...(file
+        ? [
+            { id: "open", label: t("files.menu.open") },
+            { id: "open-tab", label: t("files.menu.openTab") },
+            { id: "open-with", label: t("files.menu.openWith") },
+            { id: "save-as", label: t("files.menu.saveAs") },
+            { type: "separator" as const },
+          ]
+        : []),
+      { id: "reveal", label: entry.path ? t("files.menu.reveal") : t(revealLabelKey()) },
+      { id: "copy-path", label: t("files.menu.copyPath") },
+      ...(entry.path
+        ? [
+            { id: "copy-relative", label: t("files.menu.copyRelativePath") },
+            { type: "separator" as const },
+            { id: "mention", label: t("files.menu.mention") },
+          ]
+        : []),
     ],
     point,
   )
-  if (choice === "save-as") {
-    await bridge.saveAs(root, path)
-    return
-  }
-  if (choice !== "open-with") return
-  const editors = await bridge.editors()
-  const editor = await popup(
-    [
-      ...editors.map((item) => ({ id: item.id, label: item.name })),
-      { id: "default-app", label: t("files.menu.defaultApp") },
-    ],
-    point,
-  )
-  if (editor === "default-app") await bridge.openFile(root, path, null)
-  else if (editor && editors.some((item) => item.id === editor)) {
-    await bridge.openFile(root, path, editor)
+  if (choice === "open") actions.onOpenFile(entry.path)
+  else if (choice === "open-tab") actions.onOpenFileTab(entry.path)
+  else if (choice === "mention") actions.onMention(entry.path)
+  else if (choice === "reveal") await bridge.reveal(root, entry.path)
+  else if (choice === "copy-path") await copyText(absolute)
+  else if (choice === "copy-relative") await copyText(entry.path)
+  else if (choice === "save-as") await bridge.saveAs(root, entry.path)
+  else if (choice === "open-with") {
+    const editors = await bridge.editors()
+    const editor = await popup(
+      [
+        ...editors.map((item) => ({ id: item.id, label: item.name })),
+        { id: "default-app", label: t("files.menu.defaultApp") },
+      ],
+      point,
+    )
+    if (editor === "default-app") await bridge.openFile(root, entry.path, null)
+    else if (editor && editors.some((item) => item.id === editor)) {
+      await bridge.openFile(root, entry.path, editor)
+    }
   }
 }
 

@@ -5,8 +5,12 @@ import userEvent from "@testing-library/user-event"
 import { act } from "react"
 import { describe, expect, it, vi } from "vitest"
 import {
+  button,
   fakeWorkbench,
   fileEditor,
+  fire,
+  openFilesSurface,
+  panelTab,
   panelTabs,
   settle,
   treeRow,
@@ -15,38 +19,13 @@ import {
 
 const screen = workbenchRoot()
 
-function button(name: string): HTMLButtonElement {
-  const found = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
-    (candidate) =>
-      candidate.getAttribute("aria-label") === name || candidate.textContent?.trim() === name,
-  )
-  expect(found, "按钮 " + name).toBeDefined()
-  return found as HTMLButtonElement
-}
-
-function panelTab(title: string): HTMLElement {
-  const found = [...document.querySelectorAll<HTMLElement>('.right-panel [role="tab"]')].find(
-    (item) => item.textContent === title,
-  )
-  expect(found, "标签 " + title).toBeDefined()
-  return found as HTMLElement
-}
-
 async function click(element: HTMLElement, init: MouseEventInit = {}): Promise<void> {
-  await act(async () => {
-    element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ...init }))
-  })
-  await settle()
+  await fire(element, "click", init)
 }
 
 async function openFiles(files: Record<string, string>) {
   const fake = fakeWorkbench(files)
-  await screen.render(fake.bridge)
-  const launcher = [...document.querySelectorAll<HTMLElement>(".surface-launcher-item")].find(
-    (item) => item.querySelector(".grow")?.textContent === "文件",
-  )
-  expect(launcher, "启动器里的文件").toBeDefined()
-  await click(launcher as HTMLElement)
+  await openFilesSurface(screen, fake)
   return fake
 }
 

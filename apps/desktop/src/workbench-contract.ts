@@ -25,6 +25,9 @@ export type WorkbenchFile = {
   image?: { mime: string; base64: string } | undefined
 }
 
+/** 项目里一个有改动的文件：相对项目目录的路径和 porcelain 的两位状态码。 */
+export type WorkbenchChange = { path: string; status: string }
+
 /** 本机装了的一个编辑器；位置只留在主进程。 */
 export type WorkbenchEditor = { id: string; name: string }
 
@@ -84,6 +87,10 @@ export type WorkbenchBridge = {
   search: (root: string, query: string) => Promise<WorkbenchSearch>
   read: (root: string, path: string) => Promise<WorkbenchFile>
   save: (root: string, path: string, text: string, mtimeMs: number | null) => Promise<WorkbenchFile>
+  /** 项目里有改动的文件；项目不在 Git 工作树里或 Git 不可用时为 null。 */
+  status: (root: string) => Promise<WorkbenchChange[] | null>
+  /** 在文件管理器中显示项目里的文件或目录；path 为空时打开项目目录。 */
+  reveal: (root: string, path: string) => Promise<void>
   /** 本机检测到的编辑器，按登记顺序；没有装时为空。 */
   editors: () => Promise<WorkbenchEditor[]>
   /** editor 为 null 时交给系统默认应用。 */

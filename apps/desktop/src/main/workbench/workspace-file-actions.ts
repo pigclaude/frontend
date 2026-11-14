@@ -1,4 +1,4 @@
-// 负责文件面板交给系统的操作：用外部编辑器或默认应用打开项目文件、另存为。
+// 负责文件面板交给系统的操作：在文件管理器中显示、用外部编辑器或默认应用打开项目文件、另存为。
 // 源文件必须是已登记项目里的普通文件，另存为的位置只来自用户在系统对话框里的选择。
 import { randomUUID } from "node:crypto"
 import { constants, createWriteStream } from "node:fs"
@@ -62,6 +62,15 @@ export async function openWorkbenchFile(
   if (launchable(file)) throw new Error("WORKBENCH_OPEN_BLOCKED")
   const error = await settleOpenPath(shell.openPath(file))
   if (error) throw new Error("WORKBENCH_OPEN_FAILED")
+}
+
+/** 在文件管理器中显示项目里的文件或目录；path 为空时打开项目目录本身。 */
+export async function revealWorkbenchPath(root: string, path: string): Promise<void> {
+  if (path === "") {
+    if (await settleOpenPath(shell.openPath(root))) throw new Error("WORKBENCH_OPEN_FAILED")
+    return
+  }
+  shell.showItemInFolder(await workspacePath(root, path))
 }
 
 /** 弹出系统保存对话框（默认在下载目录），用户选定位置后复制文件；取消时返回 false。 */

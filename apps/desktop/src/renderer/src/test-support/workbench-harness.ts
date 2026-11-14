@@ -3,18 +3,24 @@
 import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, expect, vi } from "vitest"
-import type { WorkbenchBridge, WorkbenchFile, WorkbenchListing } from "../../../workbench-contract"
+import type {
+  WorkbenchBridge,
+  WorkbenchChange,
+  WorkbenchFile,
+  WorkbenchListing,
+} from "../../../workbench-contract"
 import { AppProviders } from "../app-providers"
 import { Workbench, type WorkbenchProps } from "../workbench/workbench"
 
 /** 工作台测试里的项目目录。 */
 export const projectRoot = "/Users/me/app"
 
-/** 内存项目和记录调用的工作台桥；change 模拟别处改了磁盘上的文件。 */
+/** 内存项目和记录调用的工作台桥；change 模拟别处改了磁盘上的文件，changes 是 Git 状态。 */
 export type FakeWorkbench = {
   bridge: WorkbenchBridge
   disk: Map<string, { text: string; mtimeMs: number }>
   change: (path: string, text: string) => void
+  changes: WorkbenchChange[] | null
 }
 
 function childrenOf(paths: readonly string[], directory: string): WorkbenchListing["entries"] {
@@ -67,6 +73,8 @@ export function fakeWorkbench(files: Record<string, string>): FakeWorkbench {
       disk.set(path, { text, mtimeMs: entry.mtimeMs + 1 })
       return read(path)
     }),
+    status: vi.fn(async () => fake.changes),
+    reveal: vi.fn(async () => undefined),
     editors: vi.fn(async () => [{ id: "cursor", name: "Cursor" }]),
     openFile: vi.fn(async () => undefined),
     saveAs: vi.fn(async () => true),
@@ -82,14 +90,16 @@ export function fakeWorkbench(files: Record<string, string>): FakeWorkbench {
       }
     },
   }) as unknown as WorkbenchBridge
-  return {
+  const fake: FakeWorkbench = {
     bridge,
     disk,
     change(path, text) {
       const entry = disk.get(path)
       disk.set(path, { text, mtimeMs: (entry?.mtimeMs ?? 0) + 1 })
     },
+    changes: null,
   }
+  return fake
 }
 
 type PopupMenu = NonNullable<NonNullable<Window["pigcodeNative"]>["popupMenu"]>
@@ -215,4 +225,41 @@ export function panelTabs(): Array<{ title: string; preview: boolean }> {
 /** 当前文件的编辑器。 */
 export function fileEditor(): HTMLTextAreaElement | null {
   return document.querySelector<HTMLTextAreaElement>(".file-view textarea")
+}
+
+/** 在元素上触发一次冒泡的鼠标事件，再等异步读取落定。 */
+export async function fire(element: Element, type: string, init: MouseEventInit = {}) {
+  await act(async () => {
+    element.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, ...init }))
+  })
+  await settle()
+}
+
+/** 无障碍名称或文字是 name 的按钮。 */
+export function button(name: string): HTMLButtonElement {
+  const found = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+    (candidate) =>
+      candidate.getAttribute("aria-label") === name || candidate.textContent?.trim() === name,
+  )
+  expect(found, "按钮 " + name).toBeDefined()
+  return found as HTMLButtonElement
+}
+
+/** 右栏里标题为 title 的标签。 */
+export function panelTab(title: string): HTMLElement {
+  const found = [...document.querySelectorAll<HTMLElement>('.right-panel [role="tab"]')].find(
+    (item) => item.textContent === title,
+  )
+  expect(found, "标签 " + title).toBeDefined()
+  return found as HTMLElement
+}
+
+/** 挂上工作台并从启动器打开「文件」。 */
+export async function openFilesSurface(screen: WorkbenchRoot, fake: FakeWorkbench): Promise<void> {
+  await screen.render(fake.bridge)
+  const launcher = [...document.querySelectorAll<HTMLElement>(".surface-launcher-item")].find(
+    (item) => item.querySelector(".grow")?.textContent === "文件",
+  )
+  expect(launcher, "启动器里的文件").toBeDefined()
+  await fire(launcher as HTMLElement, "click")
 }

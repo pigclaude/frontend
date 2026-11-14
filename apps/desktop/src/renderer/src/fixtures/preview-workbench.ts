@@ -1,4 +1,4 @@
-// 负责浏览器预览里的演示工作台：一个只在内存里的小项目，文件面板可以浏览和打开文件。
+// 负责浏览器预览里的演示工作台：一个只在内存里的小项目，文件面板可以浏览、打开文件并看到 Git 装饰。
 // 只在开发预览里使用，不接触真实文件系统、终端或网络；写入和系统操作一律拒绝。
 import type { WorkbenchBridge, WorkbenchFile } from "../../../workbench-contract"
 
@@ -91,6 +91,11 @@ export function createPreviewWorkbench(): PreviewWorkbench {
       }),
       read: async (_root, path) => read(path),
       save: unavailable,
+      status: async () => [
+        { path: "src/app.ts", status: " M" },
+        { path: "docs/guide.md", status: "??" },
+      ],
+      reveal: unavailable,
       editors: async () => [],
       openFile: unavailable,
       saveAs: unavailable,

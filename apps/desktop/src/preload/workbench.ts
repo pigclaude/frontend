@@ -11,6 +11,8 @@ export function workbenchBridge(): WorkbenchBridge {
     search: (root, query) => invoke("search", root, query),
     read: (root, path) => invoke("read", root, path),
     save: (root, path, text, mtime) => invoke("save", root, path, text, mtime),
+    status: (root) => invoke("status", root),
+    reveal: (root, path) => invoke("reveal", root, path),
     editors: () => invoke("editors"),
     openFile: (root, path, editor) => invoke("open-file", root, path, editor),
     saveAs: (root, path) => invoke("save-as", root, path),

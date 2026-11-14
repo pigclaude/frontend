@@ -19,9 +19,14 @@ import {
   removeWorkbenchWorktree,
   workbenchDiff,
 } from "./git-workspace"
+import { workbenchStatus } from "./git-status"
 import { installedEditors } from "./installed-editors"
 import { WorkbenchTerminals } from "./terminal-service"
-import { openWorkbenchFile, saveWorkbenchFileAs } from "./workspace-file-actions"
+import {
+  openWorkbenchFile,
+  revealWorkbenchPath,
+  saveWorkbenchFileAs,
+} from "./workspace-file-actions"
 import {
   listWorkbenchDirectory,
   readWorkbenchFile,
@@ -123,6 +128,10 @@ export class WorkbenchIpc {
     handle("save-as", async (window, _event, [root, path]) =>
       saveWorkbenchFileAs(window, await project(root), string(path, 4096)),
     )
+    handle("reveal", async (_window, _event, [root, path]) =>
+      revealWorkbenchPath(await project(root), string(path, 4096)),
+    )
+    handle("status", async (_window, _event, [root]) => workbenchStatus(await project(root)))
     handle("diff", async (_window, _event, [root, path, checkpoint]) => {
       const directory = await project(root)
       const checkpoints = await listWorkbenchCheckpoints(directory).catch(() => [])

@@ -1,7 +1,10 @@
-// 负责验证文件面板的系统操作 IPC：用外部编辑器或默认应用打开、另存为，只接受已登记项目里的普通文件。
+// 负责验证文件面板的系统操作 IPC：Git 状态、在文件管理器中显示、用外部编辑器或默认应用打开、另存为，
+// 只接受已登记项目里的路径。
+import { execFile } from "node:child_process"
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { promisify } from "node:util"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { IpcMainInvokeEvent } from "electron"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -18,6 +21,7 @@ const { handlers, electron, editors, cursor } = vi.hoisted(() => ({
   electron: {
     window: { id: "main-window" },
     openPath: vi.fn<(path: string) => Promise<string>>(async () => ""),
+    showItemInFolder: vi.fn<(path: string) => void>(),
     showSaveDialog: vi.fn<
       (
         window: unknown,
@@ -39,7 +43,7 @@ vi.mock("electron", () => ({
   BrowserWindow: {
     fromWebContents: (contents: unknown) => (contents === trustedSender ? electron.window : null),
   },
-  shell: { openPath: electron.openPath },
+  shell: { openPath: electron.openPath, showItemInFolder: electron.showItemInFolder },
   dialog: { showSaveDialog: electron.showSaveDialog },
   app: { getPath: () => downloads },
 }))
@@ -66,6 +70,7 @@ function call(name: string, ...args: unknown[]): Promise<unknown> {
 beforeEach(async () => {
   handlers.clear()
   electron.openPath.mockClear()
+  electron.showItemInFolder.mockClear()
   electron.showSaveDialog.mockClear()
   editors.launch.mockClear()
   directory = await realpath(await mkdtemp(join(tmpdir(), "pigclaude-workbench-files-")))
@@ -87,6 +92,30 @@ afterEach(async () => {
 })
 
 describe("workbench file actions", () => {
+  it("reports Git changes of a project and nothing for a plain folder", async () => {
+    await writeFile(join(project, "notes.md"), "hello\n")
+    await expect(call("status", project)).resolves.toBeNull()
+
+    await promisify(execFile)("git", ["init", "-q"], { cwd: project })
+
+    await expect(call("status", project)).resolves.toEqual([{ path: "notes.md", status: "??" }])
+  })
+
+  it("reveals project entries in the file manager and opens the project folder itself", async () => {
+    await mkdir(join(project, "docs"))
+    await writeFile(join(project, "docs", "notes.md"), "hello\n")
+
+    await call("reveal", project, "docs/notes.md")
+    await call("reveal", project, "docs")
+    await call("reveal", project, "")
+
+    expect(electron.showItemInFolder.mock.calls).toEqual([
+      [join(project, "docs", "notes.md")],
+      [join(project, "docs")],
+    ])
+    expect(electron.openPath).toHaveBeenCalledExactlyOnceWith(project)
+  })
+
   it("opens a project file with the system default app and nothing outside the project", async () => {
     await mkdir(join(project, "docs"))
     await writeFile(join(project, "docs", "notes.md"), "hello\n")
@@ -156,14 +185,14 @@ describe("workbench file actions", () => {
     if (links.length > 0) await symlink(join(directory, "outside.md"), join(project, "link.md"))
     const stranger = { sender: { id: "stranger" } } as unknown as IpcMainInvokeEvent
 
-    for (const name of ["editors", "open-file", "save-as"]) {
+    for (const name of ["status", "reveal", "editors", "open-file", "save-as"]) {
       const handler = handlers.get("pigclaude:workbench-" + name)
       await expect(handler?.(stranger, project, "notes.md", null)).rejects.toThrow(
         "UNTRUSTED_WORKSPACE_REQUEST",
       )
     }
     state = "expired"
-    for (const name of ["editors", "open-file", "save-as"]) {
+    for (const name of ["status", "reveal", "editors", "open-file", "save-as"]) {
       await expect(call(name, project, "notes.md", null)).rejects.toThrow("MEMBERSHIP_REQUIRED")
     }
     state = "active"
@@ -172,6 +201,7 @@ describe("workbench file actions", () => {
       ["open-file", project, "notes.md", 42],
       ["open-file", project, 42, null],
       ["save-as", project, "x".repeat(4097)],
+      ["reveal", project, 42],
     ]
     for (const [name, ...args] of malformed) {
       await expect(call(name, ...args), name).rejects.toThrow("WORKBENCH_INPUT_INVALID")
@@ -182,6 +212,10 @@ describe("workbench file actions", () => {
       )
       await expect(call("save-as", project, path), path).rejects.toThrow("WORKBENCH_PATH_INVALID")
     }
+    for (const path of [".claude/settings.local.json", "../outside.md", ...links]) {
+      await expect(call("reveal", project, path), path).rejects.toThrow("WORKBENCH_PATH_INVALID")
+    }
+    await expect(call("status", directory)).rejects.toThrow("WORKBENCH_PROJECT_REQUIRED")
     await expect(call("open-file", directory, "outside.md", null)).rejects.toThrow(
       "WORKBENCH_PROJECT_REQUIRED",
     )
@@ -189,5 +223,6 @@ describe("workbench file actions", () => {
     expect(electron.openPath).not.toHaveBeenCalled()
     expect(editors.launch).not.toHaveBeenCalled()
     expect(electron.showSaveDialog).not.toHaveBeenCalled()
+    expect(electron.showItemInFolder).not.toHaveBeenCalled()
   })
 })

@@ -1,13 +1,23 @@
 // 负责工作台的文件面板：内嵌目录导航和当前文件共用一个面板，窄面板时只显示导航；
-// Markdown 可以预览，文件可以交给本机编辑器打开或另存为。
-import { Suspense, lazy, useCallback, useState, type MouseEvent, type ReactNode } from "react"
+// 文件树带 Git 装饰和右键菜单，Markdown 可以预览，文件可以交给本机编辑器打开或另存为。
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react"
+import { requestComposerMention } from "@pigclaude/ui-composer"
 import { useLocale } from "@pigclaude/ui-primitives"
 import { OpenInButton, Resizer, useToast } from "@pigclaude/ui-shell"
-import { FileExplorer, FileViewer } from "@pigclaude/ui-workbench"
-import type { WorkbenchBridge } from "../../../workbench-contract"
+import { FileExplorer, FileViewer, gitDecorations } from "@pigclaude/ui-workbench"
+import type { WorkbenchBridge, WorkbenchChange } from "../../../workbench-contract"
 import { useText } from "../locale/text"
 import { projectNameFromPath } from "../models/project-model"
-import { showFileMenu } from "./file-menus"
+import { showFileMenu, type FileMenuEntry } from "./file-menus"
 import { useFileDocument, type FileDraft } from "./use-file-document"
 import { useFileNavigation } from "./use-file-navigation"
 import { workbenchError } from "./workbench-errors"
@@ -61,6 +71,7 @@ export function FilesSurface({
     directory: string
   } | null>(null)
   const [refreshCount, setRefreshCount] = useState(0)
+  const [changes, setChanges] = useState<WorkbenchChange[] | null>(null)
   const [markdownMode, setMarkdownMode] = useState<{
     path: string
     mode: "preview" | "source"
@@ -77,6 +88,22 @@ export function FilesSurface({
     onSaved,
     onError: (message) => toast(message, "alert"),
   })
+  useEffect(() => {
+    let ignore = false
+    void bridge.status(root).then(
+      (next) => {
+        if (!ignore) setChanges(next)
+      },
+      () => {
+        if (!ignore) setChanges(null)
+      },
+    )
+    return () => {
+      ignore = true
+    }
+  }, [bridge, root, currentRevision])
+
+  const git = useMemo(() => (changes ? gitDecorations(changes) : null), [changes])
   const rootName = projectNameFromPath(root)
   const loadDirectory = useCallback((target: string) => bridge.list(root, target), [bridge, root])
   const searchPaths = useCallback((query: string) => bridge.search(root, query), [bridge, root])
@@ -91,6 +118,19 @@ export function FilesSurface({
     if (separate) onOpenFileTab(target)
     else onOpenFile(target)
   }
+  const showMenu = (entry: FileMenuEntry, point: { x: number; y: number }) =>
+    void showFileMenu({
+      bridge,
+      root,
+      entry,
+      point,
+      t,
+      actions: {
+        onOpenFile: (target) => open(target, false),
+        onOpenFileTab: (target) => open(target, true),
+        onMention: requestComposerMention,
+      },
+    }).catch(fail)
   const keepDoubleClicked = (event: MouseEvent<HTMLElement>) => {
     const row = (event.target as Element).closest('[role="treeitem"]')
     if (row && !row.hasAttribute("aria-expanded")) onKeep()
@@ -117,11 +157,7 @@ export function FilesSurface({
           aside.show(true)
           setFocusDirectory({ path, directory: target })
         }}
-        onMore={
-          path
-            ? (point) => void showFileMenu({ bridge, root, path, point, t }).catch(fail)
-            : undefined
-        }
+        onMore={path ? (point) => showMenu({ path, kind: "file" }, point) : undefined}
         openIn={
           path ? (
             <OpenInButton
@@ -161,8 +197,11 @@ export function FilesSurface({
                 activePath={directory ?? path ?? null}
                 activeKind={directory === undefined ? "file" : "directory"}
                 revision={currentRevision}
+                git={git}
                 stateKey={`explorer:${root}`}
                 onRefresh={() => setRefreshCount((count) => count + 1)}
+                onRootMenu={(point) => showMenu({ path: "", kind: "directory" }, point)}
+                onContextMenu={showMenu}
               />
               {navigationFooter}
               {aside.docked ? (

@@ -14,6 +14,7 @@ export type SdkFixture =
   | "background-agent-2.1.310"
   | "background-interrupt-2.1.310"
   | "subagent-text-2.1.310"
+  | "context-flags-2.1.310"
   | "workflow-2.1.310"
   | "workflow-2.1.304"
 
@@ -24,6 +25,12 @@ export function loadSdkFixture(name: SdkFixture): SDKMessage[] {
     .split("\n")
     .filter((line) => line !== "")
     .map((line) => JSON.parse(line) as SDKMessage)
+}
+
+/** 读出 context-flags 夹具第一轮之后录到的 getContextUsage（summary）原始回复。 */
+export function loadContextReply(): unknown {
+  const url = new URL("./fixtures/context-usage-summary-2.1.310.json", import.meta.url)
+  return JSON.parse(readFileSync(url, "utf8"))
 }
 
 /** 接上假 SDK query 的会话宿主和已经启动的会话；canUseTool 是适配器交给 SDK 的那一个。 */

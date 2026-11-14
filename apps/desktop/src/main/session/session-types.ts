@@ -4,6 +4,7 @@
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { ClaudeModelsOptions } from "./claude-model-query"
 import type { ClaudeAgentStartOptions } from "./claude-query-options"
+import type { SessionContextEvent } from "./context-usage"
 import type { PermissionAnswer, PermissionRequestEvent } from "./permission-broker"
 import type { QuestionAnswer, QuestionRequestEvent, QuestionResolvedEvent } from "./question-broker"
 import type { SessionEnvelope } from "./session-envelope"
@@ -94,7 +95,7 @@ export type SessionTurnEvent =
       errorCode: string | null
     }
 
-/** SessionHost 发给 preload 的全部事件：适配器事件加回合开闭、子代理结束、权限、提问、换号和提示。 */
+/** SessionHost 发给 preload 的全部事件：适配器事件加回合开闭、子代理结束、权限、提问、换号、提示和上下文占用。 */
 export type SessionHostEvent =
   | SessionEvent
   | SessionTurnEvent
@@ -104,6 +105,7 @@ export type SessionHostEvent =
   | QuestionResolvedEvent
   | SessionAccountSwitchedEvent
   | SessionNoticeEvent
+  | SessionContextEvent
 
 /** 设计第 12 节的稳定错误码；SESSION_START_FAILED 来自第 13 节的配置目录失败分支。 */
 export type SessionErrorCode =
@@ -205,6 +207,8 @@ export type SessionAdapterPort = {
   models(options?: ClaudeModelsOptions): Promise<ClaudeModel[]>
   setPermissionMode(mode: SessionPermissionMode): Promise<void>
   setModel(model: string): Promise<void>
+  /** 查询当前上下文占用（summary 模式），返回 SDK 的原始回复；会话未启动或已停止时抛错。 */
+  contextUsage(): Promise<unknown>
 }
 
 /** 适配器工厂；onEvent 由 SessionHost 提供，会话事件由它转发，后台任务信号只在主进程内部使用。 */
@@ -247,6 +251,7 @@ export type {
   QuestionAnswer,
   QuestionRequestEvent,
   QuestionResolvedEvent,
+  SessionContextEvent,
   SessionEffort,
   SessionEnvelope,
   SessionEvent,

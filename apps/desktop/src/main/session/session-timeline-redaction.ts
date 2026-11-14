@@ -68,6 +68,7 @@ const timelineRules: { [K in SessionHostEvent["type"]]: TimelineRule<EventOf<K>>
     ...event,
     message: redactString(event.message, "event.message", marks),
   }),
+  context: (event) => event,
   result: (event) => event,
   "turn-started": (event) => event,
   "turn-ended": (event) => event,

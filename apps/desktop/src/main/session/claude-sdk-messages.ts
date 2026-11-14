@@ -32,6 +32,7 @@ export function normalizeSdkMessage(message: SDKMessage): AdapterEvent[] {
       if (message.subtype === "status" && message.permissionMode !== undefined) {
         return [{ type: "mode", permissionMode: message.permissionMode }]
       }
+      if (message.subtype === "compact_boundary") return [{ type: "context-compacted" }]
       return []
     }
     case "stream_event":

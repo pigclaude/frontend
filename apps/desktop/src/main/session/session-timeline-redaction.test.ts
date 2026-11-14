@@ -59,6 +59,7 @@ const samples: EventSamples = {
   "question-resolved": { type: "question-resolved", requestId: "q-1", answers: ["main"] },
   "account-switched": { type: "account-switched", from: null, to: "account-1", reason: "initial" },
   notice: { type: "notice", message: "自动审批不可用" },
+  context: { type: "context", usedTokens: 35_002, maxTokens: 200_000, autoCompactTokens: 167_000 },
   result: {
     type: "result",
     subtype: "success",

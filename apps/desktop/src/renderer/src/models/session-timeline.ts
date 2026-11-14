@@ -7,6 +7,7 @@
 
 import type { ThreadEvent } from "@pigclaude/ui-contracts"
 import type { SessionHostEvent } from "../../../main/session/session-types"
+import { latestSessionContext } from "./session-context-usage"
 import { sessionErrorText } from "./session-errors"
 import type { SessionEventRecord } from "./session-event-store"
 import type { SessionTurn } from "./session-model"
@@ -62,6 +63,11 @@ export function projectTimeline(input: SessionTimelineInput): SessionTimeline {
     const projected = projectRun(run, `run-${index + 1}`, answers, tail)
     drafts.push(...projected.drafts)
     if (open) streamingText = live !== "" ? live : (projected.heldText ?? "")
+  }
+  // 组件取最后一条 context.updated，换号的 thread.updated 会清空圆环，所以占用要排在全部事件之后。
+  const context = latestSessionContext(record.envelopes)
+  if (context !== null) {
+    drafts.push({ type: "context.updated", runId: null, payload: context.usage, at: context.at })
   }
   return {
     events: drafts.map((draft, index) => ({

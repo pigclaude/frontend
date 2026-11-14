@@ -233,6 +233,11 @@ export class FakeAdapter implements SessionAdapterPort {
     this.modelsSet.push(model)
   }
 
+  /** 缺省按查询失败处理，不发 context 事件。 */
+  async contextUsage(): Promise<unknown> {
+    throw new Error("no context reply")
+  }
+
   /** 把一条 SDK 事件推给 SessionHost。 */
   emit(event: SessionEvent): void {
     this.#onEvent(event)

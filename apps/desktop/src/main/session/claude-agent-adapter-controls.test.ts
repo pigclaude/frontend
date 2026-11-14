@@ -82,6 +82,22 @@ describe("ClaudeAgentAdapter controls", () => {
     await expect(adapter.setModel("claude-opus-4")).rejects.toThrow(/not active/)
   })
 
+  it("asks the running query for its context usage in summary mode only", async () => {
+    const fake = new FakeQuery()
+    fake.contextReply = async () => ({ totalTokens: 42 })
+    const adapter = new ClaudeAgentAdapter({
+      queryFn: capture(fake, []),
+      resolveBinaryPath: () => "/resolved/claude",
+    })
+    await adapter.start(startOptions())
+
+    await expect(adapter.contextUsage()).resolves.toEqual({ totalTokens: 42 })
+    expect(fake.contextRequests).toEqual([{ detail: "summary" }])
+
+    await adapter.stop()
+    await expect(adapter.contextUsage()).rejects.toThrow(/not active/)
+  })
+
   it("reports the permission mode from status messages and skips those without one", async () => {
     const fake = new FakeQuery()
     const events: AdapterEvent[] = []

@@ -12,6 +12,8 @@ export type AdapterQuery = AsyncIterable<SDKMessage> & {
   supportedModels(): Promise<ModelInfo[]>
   setPermissionMode(mode: SessionPermissionMode): Promise<void>
   setModel(model?: string): Promise<void>
+  /** 上下文占用；只用 summary 模式，full 模式会调用 daemon 不支持的 token 计数接口。 */
+  getContextUsage(options: { detail: "summary" }): Promise<unknown>
 }
 
 /** 可注入的 SDK 查询函数，参数与 SDK query() 一致。 */

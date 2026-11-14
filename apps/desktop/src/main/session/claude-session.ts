@@ -2,6 +2,7 @@
 // 回合开闭交给 SessionTurns；发出的事件都经这个会话自己的事件日志盖上时间和序号。
 // 只依赖这一个会话的适配器、事件出口、时钟和定时器，不引用会话宿主或模块级单例。
 
+import { ContextUsageQuery } from "./context-usage-query"
 import type { DevProviderOverride } from "./dev-provider"
 import type { PendingAnswerKind } from "./pending-answers"
 import { cancelledPermissionMessage, type PermissionAnswer } from "./permission-broker"
@@ -72,6 +73,10 @@ export class ClaudeSession {
   readonly #options: ClaudeSessionOptions
   readonly #log: SessionEventLog
   readonly #reply: LiveReply
+  readonly #context = new ContextUsageQuery({
+    read: () => this.state.adapter.contextUsage(),
+    emit: (event) => this.#publish(event),
+  })
   readonly #emitModeEvent = (event: ModeEvent): void => {
     if (event.type === "mode") this.#publish(event)
     else this.#publish({ ...event, message: this.#redact(event.message) })
@@ -169,6 +174,7 @@ export class ClaudeSession {
   /** 切换后续回复使用的模型；开发期供应商固定模型时不接受其他取值。 */
   async setModel(model: string): Promise<void> {
     await applyModelChange(this.state, this.#options.provider, model, this.#options.sessionToken())
+    this.#context.request()
   }
 
   /**
@@ -179,6 +185,7 @@ export class ClaudeSession {
     const active = this.state
     if (active.ending !== null) return active.ending
     active.stopping = true
+    this.#context.stop()
     active.ending = (async () => {
       active.pending.rejectAll(rejectMessage)
       if (errorCode !== null) {
@@ -199,6 +206,7 @@ export class ClaudeSession {
     const active = this.state
     if (active.released) return
     active.released = true
+    this.#context.stop()
     active.pending.rejectAll(cancelledPermissionMessage)
     this.#options.onReleased(this)
     await active.environment.cleanup().catch(() => undefined)
@@ -206,7 +214,7 @@ export class ClaudeSession {
 
   /**
    * 记录换号：只有 turn 进行中的换号才记入用量，并广播换号事件。
-   * 第一次选号没有用上偏好的账号时，再发一条提示说明已经换用别的账号。
+   * 第一次选号没有用上偏好的账号时，再发一条提示说明已经换用别的账号；之后的换号补查一次上下文占用。
    */
   applyAccountSwitch(event: SessionRuntimeEvent): void {
     const active = this.state
@@ -220,6 +228,7 @@ export class ClaudeSession {
       to: event.to,
       reason: event.reason,
     })
+    if (event.reason !== "initial") this.#context.request()
     const preferred = active.preferredAccountId
     if (event.reason === "initial" && preferred !== null && event.to !== preferred) {
       this.#publish({
@@ -247,6 +256,7 @@ export class ClaudeSession {
   #handleAdapterEvent(event: AdapterEvent): void {
     const active = this.state
     if (active.released) return
+    this.#context.observe(event)
     switch (event.type) {
       case "background-tasks":
       case "background-task-started":
@@ -261,6 +271,8 @@ export class ClaudeSession {
         if (ended !== null) this.#publish(ended)
         return
       }
+      case "context-compacted":
+        return
       case "started":
         active.model = event.model
         active.turns.observe(event)

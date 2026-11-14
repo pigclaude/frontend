@@ -83,8 +83,15 @@ export type SessionEvent =
   | { type: "error"; code: string; message: string }
   | { type: "ended"; reason: "completed" | "stopped" | "error" }
 
-/** 适配器交给会话的全部输入：会话事件，加上只在主进程内部使用的后台任务和子代理信号。 */
-export type AdapterEvent = SessionEvent | BackgroundTaskSignal | SubagentTaskSignal
+/** 上下文压缩完成的信号；只在主进程内部使用，不发给渲染层。 */
+export type ContextCompactedSignal = { type: "context-compacted" }
+
+/** 适配器交给会话的全部输入：会话事件，加上只在主进程内部使用的后台任务、子代理和上下文压缩信号。 */
+export type AdapterEvent =
+  | SessionEvent
+  | BackgroundTaskSignal
+  | SubagentTaskSignal
+  | ContextCompactedSignal
 
 /** 界面用的模型信息；第一行是 CLI 的默认选择。 */
 export type ClaudeModel = {

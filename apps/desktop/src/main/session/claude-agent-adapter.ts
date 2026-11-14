@@ -168,6 +168,12 @@ export class ClaudeAgentAdapter {
     await query.setModel(model)
   }
 
+  /** 用 summary 模式查询当前上下文占用，原样返回 SDK 的回复；会话未启动或已停止时抛错。 */
+  async contextUsage(): Promise<unknown> {
+    const query = this.#requireQuery()
+    return query.getContextUsage({ detail: "summary" })
+  }
+
   // 控制请求只对已启动且未结束的 query 有效；否则不静默吞掉调用方的意图。
   #requireQuery(): AdapterQuery {
     if (this.#query === null || this.#stopped) throw new Error("session is not active")

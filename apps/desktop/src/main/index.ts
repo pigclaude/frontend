@@ -50,6 +50,7 @@ import { registerSessionDefaultsIpc } from "./runtime/session-defaults-ipc"
 import { readClaudeCodeVersion } from "./session/claude-version"
 import { WorkbenchIpc } from "./workbench/workbench-ipc"
 import { cleanupStaleSessionDirs } from "./session/session-environment"
+import { startSessionStore } from "./session/session-store-startup"
 import type { SessionHost } from "./session/session-host"
 import { assembleSessionServices } from "./session/session-assembly"
 import { registerSessionIpc } from "./session/session-ipc"
@@ -311,6 +312,7 @@ async function reportDeviceInfoOnStartup(): Promise<void> {
 async function setupAuthorization(): Promise<void> {
   // 启动前清掉上次崩溃遗留的会话目录；此时还没有当前会话，调用后创建的目录不受影响。
   await cleanupStaleSessionDirs(app.getPath("userData")).catch(() => undefined)
+  void startSessionStore(app.getPath("userData"))
   const vault = new FileSecretVault(
     join(app.getPath("userData"), "authorization-secrets.json"),
     safeStorage,

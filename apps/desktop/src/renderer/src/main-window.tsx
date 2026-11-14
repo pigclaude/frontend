@@ -1,11 +1,12 @@
 // 负责登录后的主窗口：把工作区、当前会话和账号状态接到 Pigcode 外壳，并按当前位置画内容区页面。
-// 聊天、账号、代理、环境、用量和托盘都接真实会话与本地数据，不再注入 fixture。
+// 聊天、账号、代理、环境、用量和托盘都接真实会话与本地数据；只有浏览器预览会传入演示工作台。
 import { useEffect, useRef, useState } from "react"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import { ScrollPanel, useToast } from "@pigclaude/ui-shell"
 import { PanelLayoutControls } from "@pigclaude/ui-workbench"
 import { Workbench, type WorkbenchActions } from "./workbench/workbench"
 import { TerminalDrawer } from "./workbench/terminal-drawer"
+import type { PreviewWorkbench } from "./fixtures/preview-workbench"
 import { AccountsScreen } from "./screens/accounts-screen"
 import { ChatScreen } from "./screens/chat-screen"
 import { EnvironmentScreen } from "./screens/environment-screen"
@@ -63,6 +64,8 @@ export type MainWindowProps = {
   onLogout: () => void
   theme: ResolvedTheme
   appearance: AppearanceController
+  /** 浏览器预览里代替桌面桥的演示工作台和它的项目。 */
+  previewWorkbench?: PreviewWorkbench | undefined
 }
 
 /** 画外壳与内容区；离开设置时回到离开前的工作区位置。 */
@@ -82,6 +85,7 @@ export function MainWindow({
   onLogout,
   theme,
   appearance,
+  previewWorkbench,
 }: MainWindowProps) {
   const { t } = useText()
   const toast = useToast()
@@ -106,7 +110,7 @@ export function MainWindow({
   } | null>(null)
   const accounts = pool.accounts.map((account) => toPoolAccount(account, pool.proxies))
   const proxies = pool.proxies.map((proxy) => toPoolProxy(proxy, pool.accounts))
-  const workspace = selectedWorkspace ?? workspaces.paths[0] ?? null
+  const workspace = selectedWorkspace ?? workspaces.paths[0] ?? previewWorkbench?.root ?? null
   const sessionId = session.state.sessionId
   const thread = sessionThread({
     session: session.state,
@@ -116,7 +120,7 @@ export function MainWindow({
   })
   const page = location.kind === "settings" ? location.page : null
   const inChat = location.kind === "draft" || location.kind === "session"
-  const bridge = window.pigclaude?.workbench
+  const bridge = window.pigclaude?.workbench ?? previewWorkbench?.bridge
   const sessionActive = session.state.started && !session.state.ended
   const workbenchRoot = sessionActive ? (sessionWorkspace ?? workspace) : workspace
   const turnRevision = session.state.turns.filter((turn) => turn.result !== null).length

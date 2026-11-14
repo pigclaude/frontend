@@ -23,6 +23,7 @@ import {
   authorizationStatusText,
   isAuthorizationFailure,
 } from "./models/authorization-status"
+import { createPreviewWorkbench } from "./fixtures/preview-workbench"
 import { toPoolProxy } from "./models/claude-account-view"
 import { parseDevView, devLoginState, screenOfLocation, type DevView } from "./models/dev-view"
 import {
@@ -72,6 +73,9 @@ export function DesktopApp() {
 /** 按登录状态和当前位置画出整窗。 */
 function DesktopGate() {
   const [devView] = useState(() => parseDevView(window.location.search, import.meta.env.DEV))
+  const [previewWorkbench] = useState(() =>
+    devView?.workbench && !window.pigclaude ? createPreviewWorkbench() : undefined,
+  )
   const [membership, setMembership] = useState<MembershipView>(initialMembershipView)
   const [loginState, setLoginState] = useState(() => devLoginState(devView?.phase))
   const [authorizationState, setAuthorizationState] = useState(createAuthorizationState)
@@ -464,6 +468,7 @@ function DesktopGate() {
       onLogout={() => void logout()}
       theme={appearance.resolved}
       appearance={appearance}
+      previewWorkbench={previewWorkbench}
     />
   )
 }

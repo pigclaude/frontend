@@ -34,6 +34,13 @@ describe("parseDevView", () => {
     expect(parseDevView("?screen=onboarding&step=session", true)?.step).toBe("session")
     expect(parseDevView("?screen=login&step=session", true)?.step).toBeUndefined()
   })
+
+  it("只在会话页上认可演示工作台", () => {
+    expect(parseDevView("?screen=chat-new&workbench=1", true)?.workbench).toBe(true)
+    expect(parseDevView("?screen=chat&workbench=1", true)?.workbench).toBe(true)
+    expect(parseDevView("?screen=chat", true)).not.toHaveProperty("workbench")
+    expect(parseDevView("?screen=about&workbench=1", true)).not.toHaveProperty("workbench")
+  })
 })
 
 describe("页面名与导航位置", () => {

@@ -1,5 +1,5 @@
 // 负责解析开发期地址里的 screen、theme、glass 参数，让视觉回归能直接打开指定页面；
-// screen 用页面名表示，和导航位置一一对应。
+// screen 用页面名表示，和导航位置一一对应。workbench=1 让会话页接上演示工作台。
 import { createLoginState, type LoginState, type LoginView } from "./login-model"
 import type { NavLocation } from "./navigation"
 import { onboardingSteps, type OnboardingStep } from "./onboarding-model"
@@ -50,7 +50,8 @@ export const allScreens: readonly DevScreen[] = [
 
 /**
  * 开发期要直接打开的位置、主题和玻璃效果。
- * phase 让登录页停在指定阶段（同时当作未登录），step 让引导停在指定步骤。
+ * phase 让登录页停在指定阶段（同时当作未登录），step 让引导停在指定步骤，
+ * workbench 让会话页接上只读的演示工作台。
  */
 export type DevView = {
   location: NavLocation
@@ -58,6 +59,7 @@ export type DevView = {
   glass: boolean
   phase?: DevLoginPhase
   step?: OnboardingStep
+  workbench?: true
 }
 
 /** 页面名对应的导航位置。 */
@@ -98,6 +100,9 @@ export function parseDevView(search: string, dev: boolean): DevView | null {
     glass: params.get("glass") === "1",
     ...(phase && screen === "login" ? { phase } : {}),
     ...(step && screen === "onboarding" ? { step } : {}),
+    ...(params.get("workbench") === "1" && (screen === "chat" || screen === "chat-new")
+      ? { workbench: true as const }
+      : {}),
   }
 }
 

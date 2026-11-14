@@ -109,8 +109,9 @@ export async function verifyWorkbench(page, application, output, provider = fals
     await writeFile(join(root, "after-checkpoint.txt"), "created after checkpoint\n")
     await panel.getByRole("button", { name: "恢复", exact: true }).click()
     await panel.getByRole("button", { name: "确认恢复", exact: true }).click()
+    // Git 恢复文件时先删后写，中途读不到文件不算失败，继续等恢复完成。
     await expect
-      .poll(() => readFile(join(root, "example.txt"), "utf8"))
+      .poll(() => readFile(join(root, "example.txt"), "utf8").catch(() => null))
       .toBe("changed in workbench\n")
     await expect
       .poll(() =>

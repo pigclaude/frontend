@@ -294,6 +294,8 @@ try {
   await page.getByRole("button", { name: "返回应用" }).click()
   await expect(screen(page, "chat")).toBeVisible()
   pass("14 settings palette destinations, sidebar search and return to workspace")
+  // 输入框晚一帧才自动聚焦；不等它就移开焦点，快捷键可能落进输入框而被外壳忽略。
+  await expect(page.getByLabel("给 agent 的消息", { exact: true })).toBeFocused()
   await page.evaluate(() => document.activeElement?.blur())
   await page.keyboard.press(`${mod}+n`)
   await expect(screen(page, "chat-new")).toBeVisible()

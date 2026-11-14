@@ -75,7 +75,7 @@ export function pickMacPackage(
 export async function downloadVerifiedPackage(
   pkg: MacPackage,
   directory: string,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch,
   onProgress?: (percent: number) => void,
 ): Promise<string> {
   await mkdir(directory, { recursive: true })

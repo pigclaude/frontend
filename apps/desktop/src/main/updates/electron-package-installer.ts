@@ -9,7 +9,7 @@ export function electronPackageInstaller(): PackageInstaller {
   return {
     async download(onProgress) {
       const { autoUpdater } = await import("electron-updater")
-      // 没有监听者时 error 事件会变成未捕获异常；失败由下面的 await 报告。
+      // 没有监听者时 error 事件会变成未捕获异常。
       if (autoUpdater.listenerCount("error") === 0) autoUpdater.on("error", () => undefined)
       autoUpdater.autoDownload = false
       autoUpdater.autoInstallOnAppQuit = true
@@ -26,9 +26,17 @@ export function electronPackageInstaller(): PackageInstaller {
         autoUpdater.removeListener("download-progress", progress)
       }
     },
-    async quitAndInstall() {
+    async launchInstaller() {
       const { autoUpdater } = await import("electron-updater")
-      autoUpdater.quitAndInstall(true, true)
+      if (!canInstall(autoUpdater) || !autoUpdater.install(true, true)) {
+        throw new Error("update installer did not start")
+      }
     },
   }
+}
+
+type InstallingUpdater = { install(isSilent: boolean, isForceRunAfter: boolean): boolean }
+
+function canInstall(updater: object): updater is InstallingUpdater {
+  return typeof Reflect.get(updater, "install") === "function"
 }

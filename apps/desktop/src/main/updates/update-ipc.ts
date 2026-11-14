@@ -14,22 +14,22 @@ export type UpdateIpcDeps = {
  * 服务还没建好或发送者不受信任时，读取返回 null，其余什么都不做。
  */
 export function registerUpdateIpc(deps: UpdateIpcDeps): void {
-  const trusted = (event: IpcMainInvokeEvent) => (deps.isTrusted(event) ? deps.service() : null)
-  deps.ipcMain.handle("pigclaude:update-state", (event) => trusted(event)?.getState() ?? null)
+  const serviceFor = (event: IpcMainInvokeEvent) => (deps.isTrusted(event) ? deps.service() : null)
+  deps.ipcMain.handle("pigclaude:update-state", (event) => serviceFor(event)?.getState() ?? null)
   deps.ipcMain.handle(
     "pigclaude:update-action",
-    async (event) => (await trusted(event)?.perform()) ?? null,
+    async (event) => (await serviceFor(event)?.perform()) ?? null,
   )
   deps.ipcMain.handle(
     "pigclaude:update-check",
-    async (event) => (await trusted(event)?.checkNow()) ?? { status: "error" },
+    async (event) => (await serviceFor(event)?.checkNow()) ?? { status: "error" },
   )
   deps.ipcMain.handle("pigclaude:update-auto-check", async (event, value: unknown) => {
-    const service = trusted(event)
+    const service = serviceFor(event)
     if (!service || typeof value !== "boolean") return service?.getState() ?? null
     return service.setAutoCheck(value)
   })
   deps.ipcMain.handle("pigclaude:update-release-notes", async (event) => {
-    await trusted(event)?.openReleaseNotes()
+    await serviceFor(event)?.openReleaseNotes()
   })
 }

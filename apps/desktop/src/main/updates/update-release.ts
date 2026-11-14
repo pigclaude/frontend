@@ -3,6 +3,9 @@
 /** 公开发布仓库最新正式版本的接口；草稿和预发布不会出现在这里。 */
 export const LATEST_RELEASE_API = "https://api.github.com/repos/pigclaude/release/releases/latest"
 
+/** 公开发布仓库的最新版本页，检查失败又不知道新版本时让用户从这里下载。 */
+export const LATEST_RELEASE_PAGE = "https://github.com/pigclaude/release/releases/latest"
+
 /** 发布里附带的一个文件。 */
 export type ReleaseAsset = {
   name: string
@@ -46,12 +49,11 @@ export function readRelease(value: unknown): LatestRelease | null {
  */
 export async function fetchLatestRelease(
   apiUrl: string,
-  fetchImpl: typeof fetch = fetch,
-  timeoutMs = 10_000,
+  fetchImpl: typeof fetch,
 ): Promise<LatestRelease | null> {
   const response = await fetchImpl(apiUrl, {
     headers: { accept: "application/vnd.github+json" },
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: AbortSignal.timeout(10_000),
   })
   if (response.status === 404) return null
   if (!response.ok) throw new Error(`release check failed: HTTP ${response.status}`)

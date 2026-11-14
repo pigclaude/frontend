@@ -168,8 +168,7 @@ const guardMainWindowClose = installQuitFlow({
   onCancel: () => appUpdates?.cancelRestart(),
   finishQuit: () => {
     if (!appUpdates?.restartRequested()) return app.quit()
-    // 安装器没能启动时也要退出，清理已经做完了。
-    void appUpdates.installAndRestart().finally(() => setTimeout(() => app.quit(), 3_000))
+    void appUpdates.installAndRestart().finally(() => app.quit())
   },
 })
 

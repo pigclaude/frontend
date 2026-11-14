@@ -4,7 +4,7 @@ import { join } from "node:path"
 import type { DesktopUpdateState } from "@pigclaude/ui-contracts"
 import { electronPackageInstaller } from "./electron-package-installer"
 import { clearDownloads, downloadVerifiedPackage } from "./mac-update-package"
-import { fetchLatestRelease, LATEST_RELEASE_API } from "./update-release"
+import { fetchLatestRelease, LATEST_RELEASE_API, LATEST_RELEASE_PAGE } from "./update-release"
 import { updateMode } from "./update-mode"
 import { createUpdateService, type UpdateService } from "./update-service"
 import { readAutoCheck, writeAutoCheck } from "./update-settings"
@@ -13,7 +13,6 @@ import { readAutoCheck, writeAutoCheck } from "./update-settings"
 export type AppUpdatesOptions = {
   requestQuit: () => void
   onState: (state: DesktopUpdateState) => void
-  env?: NodeJS.ProcessEnv
 }
 
 /**
@@ -21,7 +20,7 @@ export type AppUpdatesOptions = {
  * `PIGCLAUDE_UPDATE_API` 只在开发运行时生效，用来指向本地假更新源。检查不带登录凭据。
  */
 export function createAppUpdates(options: AppUpdatesOptions): UpdateService {
-  const env = options.env ?? process.env
+  const env = process.env
   const userData = app.getPath("userData")
   const settingsFile = join(userData, "update-settings.json")
   const downloads = join(userData, "update-downloads")
@@ -33,6 +32,7 @@ export function createAppUpdates(options: AppUpdatesOptions): UpdateService {
     mode: updateMode(process.platform, env, app.isPackaged),
     arch: process.arch,
     enabled: env["PIGCLAUDE_UPDATE_CHECK"] !== "0",
+    downloadPage: LATEST_RELEASE_PAGE,
     autoCheck: () => readAutoCheck(settingsFile),
     saveAutoCheck: (value) => writeAutoCheck(settingsFile, value),
     findRelease: () => fetchLatestRelease(apiUrl, fetchImpl),

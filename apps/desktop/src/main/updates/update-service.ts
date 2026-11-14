@@ -2,13 +2,8 @@
 import type { DesktopUpdateState } from "@pigclaude/ui-contracts"
 import { MAC_MANIFEST, pickMacPackage, type MacPackage } from "./mac-update-package"
 import { isNewer, type LatestRelease } from "./update-release"
+import type { UpdateMode } from "./update-mode"
 import { createUpdateScheduler, type SchedulerTimers } from "./update-scheduler"
-
-/**
- * 发现新版本后怎么处理：install 由 electron-updater 后台下载、退出时安装（Windows、AppImage）；
- * replace 下载 DMG 校验后让用户手动替换（macOS）；notify 只打开发布页（开发运行和其他 Linux 包）。
- */
-export type UpdateMode = "install" | "replace" | "notify"
 
 /** 手动检查的结果，设置页直接显示。 */
 export type UpdateResult = {
@@ -19,9 +14,10 @@ export type UpdateResult = {
 
 /** Windows、Linux 的安装器：下载到 electron-updater 的缓存，退出时安装。 */
 export type PackageInstaller = {
+  /** 检查并下载新版本到缓存；源上没有更新的版本或下载失败时抛错。 */
   download(onProgress: (percent: number) => void): Promise<void>
-  /** 在退出清理完成后启动安装器，安装完再打开应用。安装器没能启动时不保证退出，调用方兜底。 */
-  quitAndInstall(): Promise<void>
+  /** 启动安装器，安装完再打开应用；没能启动时抛错。应用由调用方退出。 */
+  launchInstaller(): Promise<void>
 }
 
 /** 更新服务的依赖；网络、文件、系统外壳和退出都从这里注入，测试用本地假更新源驱动。 */
@@ -31,6 +27,8 @@ export type UpdateServiceOptions = {
   arch: string
   /** 环境变量关闭检查时为 false：不发出任何更新请求。 */
   enabled: boolean
+  /** 还不知道新版本时，检查失败后让用户去的下载页。 */
+  downloadPage: string
   autoCheck: () => boolean
   saveAutoCheck: (value: boolean) => Promise<void>
   findRelease: () => Promise<LatestRelease | null>
@@ -49,19 +47,23 @@ export type UpdateServiceOptions = {
 export type UpdateService = {
   /** 按设置开始自动检查。 */
   start(): void
+  /** 停止自动检查；已经开始的检查和下载照常结束。 */
   stop(): void
+  /** 当前的更新状态。 */
   getState(): DesktopUpdateState
+  /** 立即检查一次；环境变量关闭检查时不发请求，直接返回出错。不抛错。 */
   checkNow(): Promise<UpdateResult>
   /** 执行当前状态给出的动作：下载（或重试）、重启并更新、打开安装包、打开发布页。 */
   perform(): Promise<DesktopUpdateState>
+  /** 保存自动检查开关并按新开关安排检查；保存失败时开关不变。不抛错。 */
   setAutoCheck(value: boolean): Promise<DesktopUpdateState>
-  /** 用系统浏览器打开主进程持有的发布页；没有发布页时什么都不做。 */
+  /** 用系统浏览器打开主进程持有的发布页，打不开时记为打开失败。不抛错。 */
   openReleaseNotes(): Promise<void>
   /** 用户选了「重启并更新」且退出确认通过时返回 true，退出流程的最后一步改为启动安装器。 */
   restartRequested(): boolean
   /** 退出确认被取消，「重启并更新」也随之取消。 */
   cancelRestart(): void
-  /** 退出清理的最后一步：启动安装器，安装完再打开应用；启动失败时记为安装失败，不抛出。 */
+  /** 退出清理的最后一步：启动安装器，安装完再打开应用；启动失败时记为安装失败。不抛错。 */
   installAndRestart(): Promise<void>
 }
 
@@ -85,7 +87,7 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
     state = { ...state, ...patch }
     options.onState(state)
   }
-  const settled = () => state.phase === "downloading" || state.phase === "ready"
+  const downloadingOrReady = () => state.phase === "downloading" || state.phase === "ready"
 
   const scheduler = createUpdateScheduler({
     autoCheck: () => options.enabled && options.autoCheck(),
@@ -94,16 +96,23 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
   })
 
   async function check(): Promise<UpdateResult> {
-    if (settled()) return result()
+    if (downloadingOrReady()) return result()
     publish({ phase: "checking", error: null })
     let found: LatestRelease | null
     try {
       found = await options.findRelease()
     } catch {
-      publish({ phase: release ? "available" : "failed", error: "check" })
+      if (release) publish({ phase: "available", error: "check" })
+      else
+        publish({
+          phase: "failed",
+          error: "check",
+          url: options.downloadPage,
+          action: "open-release",
+        })
       return { status: "error" }
     }
-    if (settled()) return result()
+    if (downloadingOrReady()) return result()
     if (!found || !isNewer(found.version, options.currentVersion)) {
       release = null
       publish({ phase: "idle", version: null, url: null, action: null, progress: null })
@@ -170,9 +179,9 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
   }
 
   async function openRelease(): Promise<void> {
-    if (!release) return
+    if (!state.url) return
     try {
-      await options.openExternal(release.url)
+      await options.openExternal(state.url)
       publish({ error: null })
     } catch {
       publish({ phase: "failed", error: "open" })
@@ -209,13 +218,22 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
       return state
     },
     async setAutoCheck(value) {
-      await options.saveAutoCheck(value)
+      try {
+        await options.saveAutoCheck(value)
+      } catch {
+        return state
+      }
       publish({ autoCheck: value })
       scheduler.start()
       return state
     },
     async openReleaseNotes() {
-      if (state.url) await options.openExternal(state.url)
+      if (!state.url) return
+      try {
+        await options.openExternal(state.url)
+      } catch {
+        publish({ error: "open" })
+      }
     },
     restartRequested: () => restart && state.action === "restart",
     cancelRestart() {
@@ -224,7 +242,7 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
     async installAndRestart() {
       restart = false
       try {
-        await options.installer.quitAndInstall()
+        await options.installer.launchInstaller()
       } catch {
         publish({ phase: "failed", error: "install" })
       }

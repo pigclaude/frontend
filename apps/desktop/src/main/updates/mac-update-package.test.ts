@@ -71,7 +71,7 @@ describe("下载 DMG", () => {
       sha512: "x",
       size: 1,
     }
-    await expect(downloadVerifiedPackage(pkg, directory)).rejects.toThrow("HTTP 500")
+    await expect(downloadVerifiedPackage(pkg, directory, fetch)).rejects.toThrow("HTTP 500")
     await expect(readdir(directory)).resolves.toEqual([])
   })
 })

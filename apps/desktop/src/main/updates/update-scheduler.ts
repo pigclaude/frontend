@@ -25,6 +25,7 @@ export type UpdateSchedulerOptions<T> = {
 export type UpdateScheduler<T> = {
   /** 按当前开关重新安排定时器；开关变了再调一次。 */
   start(): void
+  /** 取消定时器；进行中的检查照常结束。 */
   stop(): void
   /** 立即检查；已经有检查在进行时返回同一个结果。 */
   checkNow(): Promise<T>

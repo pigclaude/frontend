@@ -7,7 +7,10 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { startFakeUpdateSource, type FakeUpdateSource } from "../testing/fake-update-source"
 import { downloadVerifiedPackage } from "./mac-update-package"
 import { fetchLatestRelease } from "./update-release"
-import { createUpdateService, type UpdateMode, type UpdateServiceOptions } from "./update-service"
+import type { UpdateMode } from "./update-mode"
+import { createUpdateService, type UpdateServiceOptions } from "./update-service"
+
+const downloadPage = "https://github.com/pigclaude/release/releases/latest"
 
 let source: FakeUpdateSource | null = null
 let directory = ""
@@ -30,7 +33,7 @@ async function setup(
   const states: DesktopUpdateState[] = []
   const calls = {
     download: vi.fn(async (onProgress: (percent: number) => void) => onProgress(50)),
-    quitAndInstall: vi.fn(async () => undefined),
+    launchInstaller: vi.fn(async () => undefined),
     openPath: vi.fn<(path: string) => Promise<void>>(async () => undefined),
     openExternal: vi.fn<(url: string) => Promise<void>>(async () => undefined),
     requestQuit: vi.fn(),
@@ -41,13 +44,14 @@ async function setup(
     mode,
     arch: "arm64",
     enabled: true,
+    downloadPage,
     autoCheck: () => true,
     saveAutoCheck: calls.saveAutoCheck,
-    findRelease: () => fetchLatestRelease(fake.apiUrl),
+    findRelease: () => fetchLatestRelease(fake.apiUrl, fetch),
     fetchText: async (url) => (await fetch(url)).text(),
     downloadMacPackage: (pkg, onProgress) =>
       downloadVerifiedPackage(pkg, directory, fetch, onProgress),
-    installer: { download: calls.download, quitAndInstall: calls.quitAndInstall },
+    installer: { download: calls.download, launchInstaller: calls.launchInstaller },
     openPath: calls.openPath,
     openExternal: calls.openExternal,
     requestQuit: calls.requestQuit,
@@ -120,7 +124,7 @@ describe("Windows、Linux：后台下载，退出时安装", () => {
     expect(await settle(service)).toMatchObject({ phase: "ready", action: "restart" })
     expect(calls.download).toHaveBeenCalledTimes(1)
     expect(calls.requestQuit).not.toHaveBeenCalled()
-    expect(calls.quitAndInstall).not.toHaveBeenCalled()
+    expect(calls.launchInstaller).not.toHaveBeenCalled()
   })
 
   it("「重启并更新」走统一退出；确认后才在最后一步启动安装器，取消就作罢", async () => {
@@ -136,7 +140,7 @@ describe("Windows、Linux：后台下载，退出时安装", () => {
 
     await service.perform()
     await service.installAndRestart()
-    expect(calls.quitAndInstall).toHaveBeenCalledTimes(1)
+    expect(calls.launchInstaller).toHaveBeenCalledTimes(1)
     expect(service.restartRequested()).toBe(false)
   })
 
@@ -147,7 +151,7 @@ describe("Windows、Linux：后台下载，退出时安装", () => {
       {
         installer: {
           download: async () => undefined,
-          quitAndInstall: async () => Promise.reject(new Error("spawn failed")),
+          launchInstaller: async () => Promise.reject(new Error("spawn failed")),
         },
       },
     )
@@ -165,7 +169,7 @@ describe("Windows、Linux：后台下载，退出时安装", () => {
     const { service } = await setup(
       "install",
       { version: "1.1.0" },
-      { installer: { download, quitAndInstall: async () => undefined } },
+      { installer: { download, launchInstaller: async () => undefined } },
     )
     await service.checkNow()
     expect(await settle(service)).toMatchObject({ phase: "failed", action: "download" })
@@ -186,10 +190,17 @@ describe("检查", () => {
     }
   })
 
-  it("发布源出错时记为检查失败，开发运行只给发布页", async () => {
-    const failing = await setup("notify", { version: "1.1.0", releaseStatus: 500 })
+  it("发布源出错时记为检查失败，可以打开下载页；开发运行只给发布页", async () => {
+    const failing = await setup("install", { version: "1.1.0", releaseStatus: 500 })
     await expect(failing.service.checkNow()).resolves.toEqual({ status: "error" })
-    expect(failing.service.getState()).toMatchObject({ phase: "failed", error: "check" })
+    expect(failing.service.getState()).toMatchObject({
+      phase: "failed",
+      error: "check",
+      url: downloadPage,
+      action: "open-release",
+    })
+    await failing.service.perform()
+    expect(failing.calls.openExternal).toHaveBeenCalledWith(downloadPage)
     await source?.close()
 
     const { service } = await setup("notify", { version: "1.1.0" })
@@ -235,5 +246,18 @@ describe("检查", () => {
     await service.checkNow()
     await service.openReleaseNotes()
     expect(calls.openExternal).toHaveBeenCalledWith(fake.releaseUrl)
+  })
+
+  it("保存开关失败时开关不变，打开发布页失败时记为打开失败，都不抛错", async () => {
+    const { service, calls } = await setup(
+      "notify",
+      { version: "1.1.0" },
+      { saveAutoCheck: async () => Promise.reject(new Error("disk full")) },
+    )
+    await expect(service.setAutoCheck(false)).resolves.toMatchObject({ autoCheck: true })
+    await service.checkNow()
+    calls.openExternal.mockRejectedValueOnce(new Error("no browser"))
+    await expect(service.openReleaseNotes()).resolves.toBeUndefined()
+    expect(service.getState()).toMatchObject({ phase: "available", error: "open" })
   })
 })

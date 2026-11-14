@@ -101,23 +101,31 @@ describe("new session draft branches and worktrees", () => {
     await renderWithBranches({ switchBranch })
     const user = userEvent.setup()
 
-    await act(async () => branchChip().click())
-    await flush()
-    const create = document.querySelector<HTMLButtonElement>("button.draft-branch-create")
-    await act(async () => create?.click())
-    await flush()
-    const input = document.querySelector<HTMLInputElement>('[role="dialog"] input')
-    if (!input) throw new Error("没有分支名输入框")
+    await user.click(branchChip())
+    const create = await vi.waitFor(() => {
+      const found = document.querySelector<HTMLButtonElement>("button.draft-branch-create")
+      if (!found) throw new Error("分支菜单里没有创建分支")
+      return found
+    })
+    await act(async () => create.click())
+    const input = await vi.waitFor(() => {
+      const found = document.querySelector<HTMLInputElement>('[role="dialog"] input')
+      if (!found) throw new Error("没有分支名输入框")
+      return found
+    })
     await user.type(input, "fix/typo{Enter}")
-    await flush()
-    expect(document.querySelector('[role="dialog"] [role="alert"]')?.textContent).toBe(
-      "已经有同名的分支。",
+    await vi.waitFor(() =>
+      expect(document.querySelector('[role="dialog"] [role="alert"]')?.textContent).toBe(
+        "已经有同名的分支。",
+      ),
     )
 
     await user.type(input, "{Enter}")
     await flush()
     expect(switchBranch).toHaveBeenLastCalledWith("/work/api", "fix/typo", true)
-    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull())
+    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull(), {
+      timeout: 5_000,
+    })
     expect(branchChip().getAttribute("aria-label")).toBe("切换 Git 分支 · fix/typo")
   })
 

@@ -1,5 +1,4 @@
-// 负责浏览器预览里的演示工作台：一个只在内存里的小项目，文件面板可以浏览、打开文件并看到 Git 装饰，
-// 新会话草稿显示它的分支。
+// 负责浏览器预览里的演示工作台：一个只在内存里的小项目，文件面板可以浏览、打开文件并看到 Git 装饰。
 // 只在开发预览里使用，不接触真实文件系统、终端或网络；写入和系统操作一律拒绝。
 import type { WorkbenchBridge, WorkbenchFile } from "../../../workbench-contract"
 
@@ -107,12 +106,7 @@ export function createPreviewWorkbench(): PreviewWorkbench {
       createWorktree: unavailable,
       useWorktree: unavailable,
       removeWorktree: unavailable,
-      branches: async () => ({
-        currentBranch: "main",
-        head: "4f2c9e1a7b3d5f60812c4e9a0b7d6c5e3f2a1b09",
-        localBranches: ["feature/search", "main", "fix/greeting"],
-        remoteBranches: ["origin/main", "origin/feature/search"],
-      }),
+      branches: async () => null,
       switchBranch: unavailable,
       checkpoints: async () => [],
       capture: unavailable,

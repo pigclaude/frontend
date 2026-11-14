@@ -5,9 +5,9 @@ import type { Page } from "@playwright/test"
 /** 推给页面的一条会话事件；字段按会话宿主的事件类型，这里不逐一声明。 */
 export type BridgeEvent = { type: string; [field: string]: unknown }
 
-/** 页面里的桥：emit 推一条 s-1 的信封（delta 不编号），assistant 构造一条主线程消息，install 装上桌面桥。 */
+/** 页面里的桥：emit 推一条指定会话的信封，缺省为最近启动的会话；assistant 构造主线程消息。 */
 export type ChatBridge = {
-  emit: (event: BridgeEvent) => void
+  emit: (event: BridgeEvent, sessionId?: string) => void
   assistant: (id: string, blocks: unknown[], extra?: object) => { type: string }
   /** session 里的命令覆盖默认的会话命令；其他命令都是空操作。 */
   install: (session: Record<string, unknown>) => void
@@ -53,15 +53,19 @@ export async function installChatBridge(page: Page): Promise<void> {
       updatedAt: "2026-10-21T00:00:00.000Z",
     }
     let listener: ((envelope: unknown) => void) | null = null
-    let seq = 0
-    const emit = (event: BridgeEvent) =>
+    let active = "s-1"
+    const sequences = new Map<string, number>()
+    const emit = (event: BridgeEvent, sessionId = active) => {
+      const seq = event.type === "delta" ? null : (sequences.get(sessionId) ?? 0) + 1
+      if (seq !== null) sequences.set(sessionId, seq)
       listener?.({
         version: 1,
-        sessionId: "s-1",
-        seq: event.type === "delta" ? null : (seq += 1),
+        sessionId,
+        seq,
         at: new Date().toISOString(),
         event,
       })
+    }
     const assistant = (id: string, blocks: unknown[], extra: object = {}) => ({
       type: "message",
       messageId: id,
@@ -108,17 +112,22 @@ export async function installChatBridge(page: Page): Promise<void> {
             openWith: async () => undefined,
           },
           session: {
-            start: async () => {
+            start: async (input: { sessionId?: string }) => {
+              active = input.sessionId ?? "s-1"
+              const id = active
               setTimeout(() =>
-                emit({
-                  type: "started",
-                  sessionId: "s-1",
-                  model: "claude-sonnet",
-                  tools: [],
-                  permissionMode: "default",
-                }),
+                emit(
+                  {
+                    type: "started",
+                    sessionId: id,
+                    model: "claude-sonnet",
+                    tools: [],
+                    permissionMode: "default",
+                  },
+                  id,
+                ),
               )
-              return { sessionId: "s-1" }
+              return { sessionId: id }
             },
             send: async () => undefined,
             cancel: async () => undefined,
@@ -144,6 +153,7 @@ export async function installChatBridge(page: Page): Promise<void> {
               pendingQuestions: 0,
               turnId: null,
             }),
+            list: async () => [],
             subscribe: (next: (envelope: unknown) => void) => {
               listener = next
               return () => {

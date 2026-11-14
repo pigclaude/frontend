@@ -24,29 +24,31 @@ vi.mock("./git-checkpoints", () => ({
     }),
 }))
 
-let run = 0
+let caseNumber = 0
 let app: string
 let site: string
 
-function window(destroyed = false) {
+function ownerWindow() {
+  const state = { destroyed: false }
   const send = vi.fn()
-  return { owner: { isDestroyed: () => destroyed, send } as unknown as WebContents, send }
+  const owner = { isDestroyed: () => state.destroyed, send } as unknown as WebContents
+  return { owner, send, close: () => (state.destroyed = true) }
 }
 
-async function settle(): Promise<void> {
-  for (let index = 0; index < 5; index += 1) await Promise.resolve()
+function settle(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve))
 }
 
 beforeEach(() => {
   captures.length = 0
-  run += 1
-  app = `/projects/app-${run}`
-  site = `/projects/site-${run}`
+  caseNumber += 1
+  app = `/projects/app-${caseNumber}`
+  site = `/projects/site-${caseNumber}`
 })
 
 describe("session checkpoints", () => {
   it("records one project's checkpoints one at a time in call order", async () => {
-    const { owner } = window()
+    const { owner } = ownerWindow()
     const baseline = captureSessionCheckpoint(owner, app, "baseline")
     const final = captureSessionCheckpoint(owner, app, "final")
     await settle()
@@ -61,7 +63,7 @@ describe("session checkpoints", () => {
   })
 
   it("does not hold one project behind another", async () => {
-    const { owner } = window()
+    const { owner } = ownerWindow()
     void captureSessionCheckpoint(owner, app, "baseline")
     void captureSessionCheckpoint(owner, site, "baseline")
     await settle()
@@ -70,7 +72,7 @@ describe("session checkpoints", () => {
   })
 
   it("tells the window once a checkpoint is recorded", async () => {
-    const { owner, send } = window()
+    const { owner, send } = ownerWindow()
     const pending = captureSessionCheckpoint(owner, app, "final")
     await settle()
     expect(send).not.toHaveBeenCalled()
@@ -85,7 +87,7 @@ describe("session checkpoints", () => {
   })
 
   it("never rejects when Git is unavailable and keeps later checkpoints going", async () => {
-    const { owner, send } = window()
+    const { owner, send } = ownerWindow()
     const failed = captureSessionCheckpoint(owner, app, "baseline")
     const next = captureSessionCheckpoint(owner, app, "final")
     await settle()
@@ -99,10 +101,11 @@ describe("session checkpoints", () => {
     expect(send).toHaveBeenCalledTimes(1)
   })
 
-  it("does not message a window that has already closed", async () => {
-    const { owner, send } = window(true)
+  it("does not message a window that closed while Git was still recording", async () => {
+    const { owner, send, close } = ownerWindow()
     const pending = captureSessionCheckpoint(owner, app, "baseline")
     await settle()
+    close()
     captures[0]?.resolve()
     await pending
 

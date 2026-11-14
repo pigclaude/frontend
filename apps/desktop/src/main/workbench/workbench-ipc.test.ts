@@ -54,7 +54,7 @@ vi.mock("./terminal-service", () => ({
   },
 }))
 
-const terminalId = "0f8fad5b-d9cb-469f-a165-70867728950e"
+const resourceId = "0f8fad5b-d9cb-469f-a165-70867728950e"
 let directory: string
 let project: string
 let state: MembershipView["state"]
@@ -84,7 +84,7 @@ function contents(): FakeContents {
   return fake
 }
 
-function mainWindow() {
+function fakeWindow() {
   const webContents = contents()
   const closed: Listener[] = []
   const window = {
@@ -98,8 +98,8 @@ function mainWindow() {
   return { window, webContents, browserWindow: window as unknown as BrowserWindow }
 }
 
-const trusted = mainWindow()
-const stranger = mainWindow()
+const trusted = fakeWindow()
+const stranger = fakeWindow()
 
 function event(sender: unknown = trusted.webContents): IpcMainInvokeEvent {
   return { sender } as unknown as IpcMainInvokeEvent
@@ -151,7 +151,7 @@ describe("workbench IPC", () => {
     await expect(list?.(event(stranger.webContents), project, "")).rejects.toThrow(
       "UNTRUSTED_WORKSPACE_REQUEST",
     )
-    await expect(close?.(event(stranger.webContents), terminalId)).rejects.toThrow(
+    await expect(close?.(event(stranger.webContents), resourceId)).rejects.toThrow(
       "UNTRUSTED_WORKSPACE_REQUEST",
     )
     expect(terminals()["close"]).not.toHaveBeenCalled()
@@ -161,20 +161,20 @@ describe("workbench IPC", () => {
     state = "expired"
 
     await expect(call("list", project, "")).rejects.toThrow("MEMBERSHIP_REQUIRED")
-    await expect(call("terminal-open", project, terminalId, 80, 24)).rejects.toThrow(
+    await expect(call("terminal-open", project, resourceId, 80, 24)).rejects.toThrow(
       "MEMBERSHIP_REQUIRED",
     )
     await expect(
-      call("browser-present", terminalId, { x: 0, y: 0, width: 10, height: 10, scale: 1 }),
+      call("browser-present", resourceId, { x: 0, y: 0, width: 10, height: 10, scale: 1 }),
     ).rejects.toThrow("MEMBERSHIP_REQUIRED")
     expect(terminals()["open"]).not.toHaveBeenCalled()
 
-    await call("terminal-close", terminalId)
-    await call("browser-close", terminalId)
-    await call("browser-present", terminalId, null)
-    expect(terminals()["close"]).toHaveBeenCalledWith(trusted.webContents, terminalId)
-    expect(browsers()["close"]).toHaveBeenCalledWith(trusted.browserWindow, terminalId)
-    expect(browsers()["present"]).toHaveBeenCalledWith(trusted.browserWindow, terminalId, null)
+    await call("terminal-close", resourceId)
+    await call("browser-close", resourceId)
+    await call("browser-present", resourceId, null)
+    expect(terminals()["close"]).toHaveBeenCalledWith(trusted.webContents, resourceId)
+    expect(browsers()["close"]).toHaveBeenCalledWith(trusted.browserWindow, resourceId)
+    expect(browsers()["present"]).toHaveBeenCalledWith(trusted.browserWindow, resourceId, null)
   })
 
   it("lists and reads files only inside a registered project", async () => {
@@ -200,13 +200,13 @@ describe("workbench IPC", () => {
       ["search", project, "x".repeat(401)],
       ["save", project, "notes.md", "x".repeat(512 * 1024 + 1), null],
       ["terminal-open", project, "not-a-resource-id", 80, 24],
-      ["terminal-open", project, terminalId, 0, 24],
-      ["terminal-open", project, terminalId, 80, 301],
-      ["terminal-write", terminalId, "x".repeat(128 * 1024 + 1)],
-      ["terminal-resize", terminalId, 80.5, 24],
-      ["browser-command", terminalId, "eval"],
-      ["browser-present", terminalId, { x: 0, y: 0, width: 10, height: 10, scale: 2 }],
-      ["browser-present", terminalId, "full"],
+      ["terminal-open", project, resourceId, 0, 24],
+      ["terminal-open", project, resourceId, 80, 301],
+      ["terminal-write", resourceId, "x".repeat(128 * 1024 + 1)],
+      ["terminal-resize", resourceId, 80.5, 24],
+      ["browser-command", resourceId, "eval"],
+      ["browser-present", resourceId, { x: 0, y: 0, width: 10, height: 10, scale: 2 }],
+      ["browser-present", resourceId, "full"],
       ["pr-create", project, { title: "   " }],
       ["pr-create", project, "title"],
     ]
@@ -223,14 +223,14 @@ describe("workbench IPC", () => {
     terminals()["open"]?.mockImplementationOnce(() => {
       throw new Error("WORKBENCH_TERMINAL_LIMIT")
     })
-    await expect(call("terminal-open", project, terminalId, 80, 24)).rejects.toThrow(
+    await expect(call("terminal-open", project, resourceId, 80, 24)).rejects.toThrow(
       "WORKBENCH_TERMINAL_LIMIT",
     )
 
     terminals()["open"]?.mockImplementationOnce(() => {
       throw new Error("spawn EACCES /Users/me/.secret/zsh")
     })
-    const leaked = call("terminal-open", project, terminalId, 80, 24)
+    const leaked = call("terminal-open", project, resourceId, 80, 24)
     await expect(leaked).rejects.toThrow(/^WORKBENCH_OPERATION_FAILED$/)
 
     await expect(call("read", project, "missing.txt")).rejects.toThrow(
@@ -241,25 +241,25 @@ describe("workbench IPC", () => {
   it("refuses to restore a checkpoint while a turn is running", async () => {
     turnActive = true
 
-    await expect(call("checkpoint-restore", project, "manual-" + terminalId)).rejects.toThrow(
+    await expect(call("checkpoint-restore", project, "manual-" + resourceId)).rejects.toThrow(
       "WORKBENCH_TURN_ACTIVE",
     )
   })
 
   it("opens terminals in the validated project for the calling window", async () => {
-    await expect(call("terminal-open", project, terminalId)).resolves.toEqual({
+    await expect(call("terminal-open", project, resourceId)).resolves.toEqual({
       shell: "zsh",
       cwd: "/",
     })
 
-    expect(terminals()["open"]).toHaveBeenCalledWith(trusted.webContents, terminalId, project, {
+    expect(terminals()["open"]).toHaveBeenCalledWith(trusted.webContents, resourceId, project, {
       cols: 80,
       rows: 24,
     })
   })
 
   it("releases a window's terminals and browsers when it reloads, crashes or closes", () => {
-    const { window, webContents, browserWindow } = mainWindow()
+    const { window, webContents, browserWindow } = fakeWindow()
     ipc.track(browserWindow)
     const released = () => [
       browsers()["closeWindow"]?.mock.calls.length,
@@ -281,8 +281,8 @@ describe("workbench IPC", () => {
   })
 
   it("releases every tracked window's resources when membership ends", () => {
-    const first = mainWindow()
-    const second = mainWindow()
+    const first = fakeWindow()
+    const second = fakeWindow()
     ipc.track(first.browserWindow)
     ipc.track(second.browserWindow)
 
@@ -297,7 +297,7 @@ describe("workbench IPC", () => {
   })
 
   it("opens only https pop-ups in the system browser and never creates windows", () => {
-    const { webContents, browserWindow } = mainWindow()
+    const { webContents, browserWindow } = fakeWindow()
     ipc.track(browserWindow)
     const open = webContents.openHandler
 

@@ -20,6 +20,9 @@ export type UnsavedFilesOptions = {
 export function useUnsavedFiles(options: UnsavedFilesOptions): void {
   const latest = useRef(options)
   latest.current = options
+  // 回答主进程前先更新：主进程收到回答就可能关窗，页面来不及重新渲染。
+  const blocking = useRef(options.drafts)
+  blocking.current = options.drafts
   const { bridge, root, drafts } = options
 
   useEffect(() => {
@@ -35,7 +38,7 @@ export function useUnsavedFiles(options: UnsavedFilesOptions): void {
 
   useEffect(() => {
     const block = (event: BeforeUnloadEvent) => {
-      if (latest.current.drafts.size === 0) return
+      if (blocking.current.size === 0) return
       event.preventDefault()
       event.returnValue = ""
     }
@@ -47,13 +50,13 @@ export function useUnsavedFiles(options: UnsavedFilesOptions): void {
     () =>
       bridge?.subscribe((event) => {
         if (event.type !== "unsaved-files") return
-        const answer = (done: boolean) =>
-          void bridge.unsavedDone(event.id, done).catch(() => undefined)
+        const answer = (remaining: ReadonlyMap<string, FileDraft>) => {
+          blocking.current = remaining
+          void bridge.unsavedDone(event.id, remaining.size === 0).catch(() => undefined)
+        }
         if (event.action === "discard") {
-          // 主进程收到回答就会关窗，页面可能在重新渲染前开始卸载。
-          latest.current.drafts = new Map()
           latest.current.clearDrafts()
-          answer(true)
+          answer(new Map())
           return
         }
         void saveAll(bridge, root, latest.current).then(answer)
@@ -62,22 +65,23 @@ export function useUnsavedFiles(options: UnsavedFilesOptions): void {
   )
 }
 
+/** 逐个保存草稿，返回没保存成功的那些。 */
 async function saveAll(
   bridge: WorkbenchBridge,
   root: string | null,
   options: UnsavedFilesOptions,
-): Promise<boolean> {
-  if (!root) return options.drafts.size === 0
-  const failed: string[] = []
+): Promise<ReadonlyMap<string, FileDraft>> {
+  if (!root) return options.drafts
+  const failed = new Map<string, FileDraft>()
   for (const [path, draft] of options.drafts) {
     try {
       await bridge.save(root, path, draft.text, draft.base.mtimeMs)
       options.setDraft(path, null)
     } catch {
-      failed.push(path)
+      failed.set(path, draft)
     }
   }
   options.onSaved()
-  if (failed.length > 0) options.onSaveFailed(failed)
-  return failed.length === 0
+  if (failed.size > 0) options.onSaveFailed([...failed.keys()])
+  return failed
 }

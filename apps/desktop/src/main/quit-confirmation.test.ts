@@ -135,6 +135,26 @@ describe("createQuitConfirmation", () => {
     expect(cancelled.saveFiles).not.toHaveBeenCalled()
     expect(cancelled.discardFiles).not.toHaveBeenCalled()
   })
+
+  it("does not ask again for the close that follows a confirmed quit until it is reset", async () => {
+    const ask = vi.fn(async (): Promise<LeaveAnswer> => "leave")
+    const { confirmation } = confirmationWith({ turns: 0, approvals: 0, unsavedFiles: 1 }, ask)
+    const window = fakeWindow()
+    confirmation.guardClose(window)
+    expect(confirmation.leaving()).toBe(false)
+
+    await expect(confirmation.confirm("quit")).resolves.toBe(true)
+    expect(confirmation.leaving()).toBe(true)
+    expect(window.requestClose()).toBe("closed")
+    expect(ask).toHaveBeenCalledOnce()
+
+    confirmation.reset()
+    expect(confirmation.leaving()).toBe(false)
+    const next = fakeWindow()
+    confirmation.guardClose(next)
+    expect(next.requestClose()).toBe("kept")
+    await vi.waitFor(() => expect(ask).toHaveBeenCalledTimes(2))
+  })
 })
 
 type FakeWindow = GuardedWindow & { requestClose(): "closed" | "kept"; closes: number }

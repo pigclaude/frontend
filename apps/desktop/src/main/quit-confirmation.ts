@@ -34,11 +34,16 @@ export type QuitConfirmation = {
   confirm(action: LeaveAction): true | Promise<boolean>
   /** 主窗口关闭前确认；用户取消或保存失败时窗口保持打开，会话、审批和文件都不受影响。 */
   guardClose(window: GuardedWindow): void
+  /** 用户已经同意离开：之后的关窗和页面卸载不再询问。 */
+  leaving(): boolean
+  /** 离开没有完成（例如退出时资源没能关闭）时撤回同意，下次离开重新询问。 */
+  reset(): void
 }
 
 /** 创建退出确认。同一时间只问一次：正在问时再次触发，等的是同一个回答。 */
 export function createQuitConfirmation(options: QuitConfirmationOptions): QuitConfirmation {
   let asking: Promise<boolean> | null = null
+  let approved = false
   const settle = async (answer: LeaveAnswer, work: LeaveWork): Promise<boolean> => {
     if (answer === "stay") return false
     if (answer === "save") return options.saveFiles().catch(() => false)
@@ -56,6 +61,10 @@ export function createQuitConfirmation(options: QuitConfirmationOptions): QuitCo
         (answer) => settle(answer, work),
         () => true,
       )
+      .then((leave) => {
+        approved = leave
+        return leave
+      })
       .finally(() => {
         asking = null
       })
@@ -64,10 +73,15 @@ export function createQuitConfirmation(options: QuitConfirmationOptions): QuitCo
   }
   return {
     confirm,
+    leaving: () => approved,
+    reset() {
+      approved = false
+    },
     guardClose(window) {
       let confirmed = false
+      approved = false
       window.on("close", (event) => {
-        if (confirmed) {
+        if (approved || confirmed) {
           confirmed = false
           return
         }

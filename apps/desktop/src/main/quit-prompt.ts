@@ -30,7 +30,7 @@ export async function askToLeave(
     cancelId: unsaved ? 2 : 1,
     noLink: true,
   }
-  const owner = window !== null && !window.isDestroyed() ? window : null
+  const owner = ownerOf(window)
   const { response } = owner
     ? await dialog.showMessageBox(owner, options)
     : await dialog.showMessageBox(options)
@@ -48,11 +48,15 @@ export function askBeforeReload(window: BrowserWindow | null, unsavedFiles: numb
     cancelId: 2,
     noLink: true,
   }
-  const owner = window !== null && !window.isDestroyed() ? window : null
+  const owner = ownerOf(window)
   const response = owner
     ? dialog.showMessageBoxSync(owner, options)
     : dialog.showMessageBoxSync(options)
   return answerOf(response, true)
+}
+
+function ownerOf(window: BrowserWindow | null): BrowserWindow | null {
+  return window !== null && !window.isDestroyed() ? window : null
 }
 
 function answerOf(response: number, unsaved: boolean): LeaveAnswer {

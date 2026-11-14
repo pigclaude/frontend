@@ -4,9 +4,10 @@
 // @vitest-environment jsdom
 import userEvent from "@testing-library/user-event"
 import { act } from "react"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import {
   fakeWorkbench,
+  type FakeWorkbench,
   fileEditor,
   fire,
   openFilesSurface,
@@ -36,6 +37,15 @@ function unloadBlocked(): boolean {
   return event.defaultPrevented
 }
 
+/** 记下页面回答主进程的那一刻是否还拦着卸载；主进程收到回答就可能关窗。 */
+function blockedWhenAnswering(fake: FakeWorkbench): boolean[] {
+  const seen: boolean[] = []
+  vi.mocked(fake.bridge.unsavedDone).mockImplementation(async () => {
+    seen.push(unloadBlocked())
+  })
+  return seen
+}
+
 describe("workbench unsaved files", () => {
   it("reports how many files are unsaved and blocks unloading only while some are", async () => {
     const fake = fakeWorkbench({ "a.txt": "a\n" })
@@ -52,14 +62,15 @@ describe("workbench unsaved files", () => {
 
   it("saves every unsaved file when the main process asks, then answers", async () => {
     const fake = await editTwoFiles()
+    const blocked = blockedWhenAnswering(fake)
 
     await fake.emit({ type: "unsaved-files", id, action: "save" })
 
     expect(fake.disk.get("a.txt")?.text).toBe("a\n!")
     expect(fake.disk.get("b.txt")?.text).toBe("b\n!")
     expect(fake.bridge.unsavedDone).toHaveBeenCalledExactlyOnceWith(id, true)
+    expect(blocked).toEqual([false])
     expect(fake.bridge.reportUnsaved).toHaveBeenLastCalledWith(0)
-    expect(unloadBlocked()).toBe(false)
   })
 
   it("answers that saving failed and keeps the change when a file changed on disk", async () => {
@@ -77,11 +88,12 @@ describe("workbench unsaved files", () => {
 
   it("discards every change when the main process asks, then lets the page unload", async () => {
     const fake = await editTwoFiles()
+    const blocked = blockedWhenAnswering(fake)
 
     await fake.emit({ type: "unsaved-files", id, action: "discard" })
 
     expect(fake.bridge.unsavedDone).toHaveBeenCalledExactlyOnceWith(id, true)
-    expect(unloadBlocked()).toBe(false)
+    expect(blocked).toEqual([false])
     expect(fake.disk.get("a.txt")?.text).toBe("a\n")
     expect(fake.bridge.save).not.toHaveBeenCalled()
   })

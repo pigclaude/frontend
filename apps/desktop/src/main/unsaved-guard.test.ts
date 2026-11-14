@@ -27,15 +27,22 @@ function page(): ReloadablePage & {
   return fake
 }
 
-function guarded(answer: LeaveAnswer, saved = true) {
+function guarded(answer: LeaveAnswer, saved = true, leaving = false) {
   const target = page()
   const save = vi.fn(async () => saved)
   const ask = vi.fn(() => answer)
-  guardReload(target, { unsavedFiles: () => 2, saveFiles: save, ask })
+  guardReload(target, { unsavedFiles: () => 2, saveFiles: save, ask, leaving: () => leaving })
   return { target, save, ask }
 }
 
 describe("guardReload", () => {
+  it("lets the page go without asking once the user already chose to quit or close", () => {
+    const { target, ask } = guarded("stay", true, true)
+
+    expect(target.unload()).toBe("unloaded")
+    expect(ask).not.toHaveBeenCalled()
+  })
+
   it("lets the page unload when the user does not save", () => {
     const { target, save, ask } = guarded("leave")
 

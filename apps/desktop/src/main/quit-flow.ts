@@ -47,13 +47,17 @@ export function installQuitFlow(options: QuitFlowOptions): (window: BrowserWindo
       confirm: () => confirmation.confirm("quit"),
       shutdown: options.shutdown,
       quit: () => app.quit(),
-      onFailure: showQuitFailure,
+      onFailure: (reason) => {
+        confirmation.reset()
+        showQuitFailure(reason)
+      },
       onBeforeShutdown: options.onBeforeShutdown,
     }),
   )
   return (window) => {
     confirmation.guardClose(window)
     guardReload(window.webContents, {
+      leaving: () => confirmation.leaving(),
       unsavedFiles: () => options.unsaved.count(window.webContents),
       saveFiles: () => options.unsaved.save(window.webContents),
       ask: (unsavedFiles) => askBeforeReload(window, unsavedFiles),

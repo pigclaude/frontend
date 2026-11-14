@@ -10,6 +10,7 @@ export type UnsavedOwner = {
 }
 
 type Request = { owner: UnsavedOwner; finish: (done: boolean) => void }
+type Action = Extract<WorkbenchEvent, { type: "unsaved-files" }>["action"]
 
 /** 按页面记下未保存的文件数，并转达保存和放弃的请求。 */
 export class UnsavedFiles {
@@ -41,9 +42,11 @@ export class UnsavedFiles {
     }
   }
 
-  /** 请页面保存全部文件；全部保存成功时得到 true。 */
-  save(owner: UnsavedOwner, timeoutMs = 30_000): Promise<boolean> {
-    return this.#request(owner, "save", timeoutMs)
+  /** 请页面保存全部文件；全部保存成功时得到 true，并且不再计数。 */
+  async save(owner: UnsavedOwner, timeoutMs = 30_000): Promise<boolean> {
+    const saved = await this.#request(owner, "save", timeoutMs)
+    if (saved) this.#counts.delete(owner)
+    return saved
   }
 
   /** 请页面放弃全部修改；页面回答后不再计数。 */
@@ -59,7 +62,7 @@ export class UnsavedFiles {
     request.finish(done)
   }
 
-  #request(owner: UnsavedOwner, action: "save" | "discard", timeoutMs: number): Promise<boolean> {
+  #request(owner: UnsavedOwner, action: Action, timeoutMs: number): Promise<boolean> {
     if (owner.isDestroyed()) return Promise.resolve(false)
     const id = randomUUID()
     return new Promise<boolean>((resolve) => {

@@ -51,6 +51,7 @@ describe("UnsavedFiles", () => {
     files.answer(page, requestId(page.sent[0]), true)
 
     await expect(saving).resolves.toBe(true)
+    expect(files.count(page)).toBe(0)
   })
 
   it("treats a page that does not answer or goes away as not saved", async () => {

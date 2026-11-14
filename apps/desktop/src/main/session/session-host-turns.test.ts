@@ -175,6 +175,49 @@ describe("SessionHost turns", () => {
     await harness.host.dispose()
   })
 
+  it("waits for the result of an interrupted reply so it cannot end the next turn", async () => {
+    const harness = await startReplay(await workspaceDir())
+    const [init, , , , , reply, result] = loadSdkFixture("background-agent-2.1.310")
+    if (init === undefined || reply === undefined || result?.type !== "result") {
+      throw new Error("fixture changed")
+    }
+    await harness.host.send(harness.sessionId, { text: "long answer" })
+    replay(harness.query, [init, reply])
+    await waitUntil(() => harness.events.some((event) => event.type === "message"))
+    harness.query.afterInterrupt = () => harness.query.emit(result)
+
+    await harness.host.cancel(harness.sessionId)
+    await harness.host.send(harness.sessionId, { text: "next" })
+
+    expect(turnBoundaries(harness.events)).toEqual([
+      "turn-started",
+      "result",
+      "turn-ended:interrupted",
+      "turn-started",
+    ])
+    expect(harness.usage.records).toMatchObject([{ status: "cancelled", inputTokens: 608 }])
+    expect(harness.host.status().turnId).not.toBeNull()
+    await harness.host.dispose()
+  })
+
+  it("ends a turn stopped while its first message waits for the workbench baseline", async () => {
+    const harness = await startReplay(await workspaceDir())
+    let releaseBaseline: () => void = () => undefined
+    const baseline = new Promise<void>((resolve) => {
+      releaseBaseline = resolve
+    })
+
+    const sending = harness.host.send(harness.sessionId, { text: "edit files" }, () => baseline)
+    await harness.host.cancel(harness.sessionId)
+    releaseBaseline()
+    await sending
+
+    expect(turnBoundaries(harness.events)).toEqual(["turn-started", "turn-ended:interrupted"])
+    expect(harness.host.status().turnId).toBeNull()
+    expect(harness.usage.records).toEqual([])
+    await harness.host.dispose()
+  })
+
   it("ends the open turn as interrupted before the session ends when the session is stopped", async () => {
     const harness = await startReplay(await workspaceDir())
     const messages = loadSdkFixture("background-agent-2.1.310")

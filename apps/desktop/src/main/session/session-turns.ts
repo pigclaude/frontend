@@ -1,9 +1,10 @@
 // 负责一个会话的回合开闭：发送被接受时开一轮；收到 result 且没有在途的后台子代理和工作流时结束；
 // 停止时先中断，再逐个停止在途后台任务，然后以中断结束这一轮。每轮用量取结束时和开始时会话累计用量的差值。
-// 只依赖这一个会话的适配器、事件出口和时钟，不引用会话宿主。
+// 只依赖这一个会话的适配器、事件出口、时钟和定时器，不引用会话宿主。
 
 import { BackgroundTasks } from "./background-tasks"
 import type { AdapterEvent, SessionUsage } from "./session-events"
+import type { SessionTimers } from "./session-host-active"
 import {
   SessionHostError,
   type SessionAdapterPort,
@@ -26,6 +27,7 @@ export type SessionTurnsOptions = {
   publish: (event: SessionTurnEvent) => void
   onClosed: (turn: ClosedTurn) => void
   now: () => number
+  timers: SessionTimers
 }
 
 type OpenTurn = {
@@ -34,8 +36,13 @@ type OpenTurn = {
   baseline: SessionUsage
   errorCode: string | null
   resultError: boolean
+  /** 主线程的这次回复还没给出 result；中断后 CLI 仍会补一个。 */
+  awaitingResult: boolean
   stopping: boolean
 }
+
+/** 中断后等主线程补 result 的上限；超时后照样结束这一轮，迟到的那个 result 不再结束下一轮。 */
+export const interruptedResultWaitMs = 5_000
 
 const noUsage: SessionUsage = Object.freeze({
   inputTokens: 0,
@@ -45,8 +52,9 @@ const noUsage: SessionUsage = Object.freeze({
 })
 
 /**
- * 一个会话的回合。保证同一时刻最多一轮；每个 turn-started 恰好对应一个 turn-ended；
- * 各轮用量相加等于已结束各轮覆盖的累计用量，停止后迟到的用量计入下一轮，不丢也不重复。
+ * 一个会话的回合。保证同一时刻最多一轮；每个 turn-started 恰好对应一个 turn-ended；上一轮被打断的回复
+ * 迟到的 result 不会结束下一轮。各轮用量相加等于已结束各轮覆盖的累计用量，等不到的迟到用量计入下一轮，
+ * 不丢也不重复。
  */
 export class SessionTurns {
   readonly #options: SessionTurnsOptions
@@ -56,6 +64,8 @@ export class SessionTurns {
   #total: SessionUsage = noUsage
   #accounted: SessionUsage = noUsage
   #stopping: Promise<void> | null = null
+  #owedResults = 0
+  #wakeStop: (() => void) | null = null
 
   /** 创建空闲的回合控制。 */
   constructor(options: SessionTurnsOptions) {
@@ -96,6 +106,7 @@ export class SessionTurns {
       baseline: this.#accounted,
       errorCode: null,
       resultError: false,
+      awaitingResult: true,
       stopping: false,
     }
     this.#options.publish({ type: "turn-started", turnId })
@@ -109,10 +120,22 @@ export class SessionTurns {
       case "background-task-ended":
         this.#tasks.apply(event)
         return
+      case "started":
+        if (this.#open !== null) this.#open.awaitingResult = true
+        return
       case "result": {
         this.#total = event.totalUsage ?? addUsage(this.#total, event.usage)
+        if (this.#owedResults > 0) {
+          this.#owedResults -= 1
+          return
+        }
         const open = this.#open
-        if (open === null || open.stopping) return
+        if (open === null) return
+        open.awaitingResult = false
+        if (open.stopping) {
+          this.#wakeStop?.()
+          return
+        }
         open.resultError = event.isError
         if (this.#tasks.running().length === 0) this.#closeFinished(open)
         return
@@ -126,11 +149,35 @@ export class SessionTurns {
   }
 
   /**
-   * 停止：放开发送占位，先中断，再逐个停止在途后台任务，然后以给定的状态和原因结束进行中的一轮。
+   * 停止这一轮，会话继续：先中断，再逐个停止在途后台任务；主线程的回复被打断时等它补上 result（有上限），
+   * 然后以给定的状态和原因结束这一轮。还没交给 CLI 的发送直接以同样的状态结束，不记用量。
    * 停止期间到达的 result 只计入用量，不结束这一轮。并发调用共享同一次停止。
    */
-  stop(status: SessionTurnEndStatus, errorCode: string): Promise<void> {
-    if (this.#stopping !== null) return this.#stopping
+  interrupt(status: SessionTurnEndStatus, errorCode: string): Promise<void> {
+    return this.#halt(status, errorCode, true)
+  }
+
+  /** 会话要结束：和 interrupt 一样中断并停止在途后台任务，但不等被打断的回复补 result。 */
+  shutdown(status: SessionTurnEndStatus, errorCode: string): Promise<void> {
+    return this.#halt(status, errorCode, false)
+  }
+
+  /** 会话已经结束或不能再跑：不再中断，直接结束这一轮；已记下的出错原因优先。 */
+  end(status: SessionTurnEndStatus, errorCode: string): void {
+    const reserved = this.#reserved
+    this.#reserved = null
+    const open = this.#open
+    if (open !== null) this.#close(open, status, open.errorCode ?? errorCode)
+    else if (reserved !== null) this.#abandon(reserved, status, errorCode)
+    this.#wakeStop?.()
+  }
+
+  #halt(status: SessionTurnEndStatus, errorCode: string, awaitReply: boolean): Promise<void> {
+    if (this.#stopping !== null) {
+      if (!awaitReply) this.#wakeStop?.()
+      return this.#stopping
+    }
+    const reserved = this.#reserved
     this.#reserved = null
     const open = this.#open
     if (open !== null) open.stopping = true
@@ -139,7 +186,14 @@ export class SessionTurns {
       for (const taskId of this.#tasks.running()) {
         await this.#options.adapter.stopTask(taskId).catch(() => undefined)
       }
-      if (open !== null && this.#open === open) this.#close(open, status, errorCode)
+      if (open === null) {
+        if (reserved !== null) this.#abandon(reserved, status, errorCode)
+        return
+      }
+      if (awaitReply && this.#open === open && open.awaitingResult) await this.#resultOrTimeout()
+      if (this.#open !== open) return
+      if (open.awaitingResult) this.#owedResults += 1
+      this.#close(open, status, errorCode)
     })().finally(() => {
       this.#stopping = null
     })
@@ -147,11 +201,22 @@ export class SessionTurns {
     return task
   }
 
-  /** 会话已经结束或不能再跑：不再中断，直接结束进行中的一轮；已记下的出错原因优先。 */
-  end(status: SessionTurnEndStatus, errorCode: string): void {
-    this.#reserved = null
-    const open = this.#open
-    if (open !== null) this.#close(open, status, open.errorCode ?? errorCode)
+  #resultOrTimeout(): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = this.#options.timers.set(() => wake(), interruptedResultWaitMs)
+      const wake = (): void => {
+        this.#options.timers.clear(timer)
+        this.#wakeStop = null
+        resolve()
+      }
+      this.#wakeStop = wake
+    })
+  }
+
+  // 发送还没交给 CLI 就被停止：这一轮没有用量，也不需要工作台的结束快照。
+  #abandon(turnId: string, status: SessionTurnEndStatus, errorCode: string): void {
+    this.#options.publish({ type: "turn-started", turnId })
+    this.#options.publish({ type: "turn-ended", turnId, status, errorCode })
   }
 
   #closeFinished(open: OpenTurn): void {

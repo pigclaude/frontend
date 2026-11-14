@@ -8,6 +8,15 @@ import type { SessionEnvironmentPort, SessionHostEvent } from "./session-types"
 import type { UsageRecord } from "./usage-recorder"
 
 const token = "per-session-token"
+const interruptedResult: SessionHostEvent = {
+  type: "result",
+  subtype: "error_during_execution",
+  isError: true,
+  durationMs: 900,
+  numTurns: 1,
+  stopReason: null,
+  usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheCreationTokens: 0 },
+}
 
 function fakeEnvironment(): SessionEnvironmentPort & { cleaned: number } {
   return {
@@ -62,15 +71,7 @@ describe("ClaudeSession", () => {
 
     await session.launch(undefined)
     await session.send({ text: "hello" })
-    adapters.last.emit({
-      type: "result",
-      subtype: "success",
-      isError: false,
-      durationMs: 900,
-      numTurns: 1,
-      stopReason: "end_turn",
-      usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheCreationTokens: 0 },
-    })
+    adapters.last.emit({ ...interruptedResult, subtype: "success", isError: false })
 
     expect(adapters.last.sent).toEqual(["hello"])
     expect(usage).toMatchObject([{ sessionId: "s-1", turnId: "turn-1", status: "success" }])
@@ -87,6 +88,7 @@ describe("ClaudeSession", () => {
 
     const answer = canUseTool("Bash", { command: "ls" }, askOptions())
     timers.forEach((fire) => fire())
+    adapters.last.emit(interruptedResult)
 
     await expect(answer).resolves.toMatchObject({ behavior: "deny" })
     expect(events).toContainEqual({
@@ -102,6 +104,27 @@ describe("ClaudeSession", () => {
       status: "error",
       errorCode: "PERMISSION_TIMEOUT",
     })
+  })
+
+  it("gives up waiting for an interrupted reply and keeps its late result out of the next turn", async () => {
+    const { session, adapters, events, timers } = standaloneSession()
+    await session.launch(undefined)
+    await session.send({ text: "long answer" })
+
+    const cancelling = session.cancel()
+    await waitUntil(() => timers.length === 1)
+    timers.forEach((fire) => fire())
+    await cancelling
+    await session.send({ text: "next" })
+    adapters.last.emit(interruptedResult)
+    const afterLateResult = session.status().turnId
+    adapters.last.emit({ ...interruptedResult, subtype: "success", isError: false })
+
+    expect(afterLateResult).toBe("turn-2")
+    expect(events.filter((event) => event.type === "turn-ended")).toMatchObject([
+      { turnId: "turn-1", status: "interrupted" },
+      { turnId: "turn-2", status: "completed" },
+    ])
   })
 
   it("ends once, cleans its environment and tells its owner", async () => {

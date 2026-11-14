@@ -105,6 +105,7 @@ export class FakeQuery implements AdapterQuery {
     if (after !== null) setTimeout(after, 0)
   }
 
+  /** 只记下请求，不发任务通知；测试需要时自己推送。 */
   async stopTask(taskId: string): Promise<void> {
     this.controls.push(`stopTask:${taskId}`)
   }

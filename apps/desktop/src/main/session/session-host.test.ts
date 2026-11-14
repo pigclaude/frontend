@@ -218,8 +218,9 @@ describe("SessionHost events and usage", () => {
     const harness = await startedHarness()
     await harness.host.send(currentSessionId(harness.host), { text: "long task" })
 
-    await harness.host.cancel(currentSessionId(harness.host))
+    const cancelling = harness.host.cancel(currentSessionId(harness.host))
     harness.adapters.last.emit(resultEvent({ isError: true }))
+    await cancelling
     await waitUntil(() => harness.usage.records.length === 1)
 
     expect(harness.usage.records[0]).toMatchObject({

@@ -118,7 +118,8 @@ export class ClaudeSession {
     active.checkpoint = checkpoint
     try {
       await checkpoint?.(active.environment.workspace, "baseline")
-      if (active.stopping || active.released || !active.turns.holds(turnId)) {
+      if (!active.turns.holds(turnId)) return
+      if (active.stopping || active.released) {
         active.turns.release(turnId)
         return
       }
@@ -136,7 +137,7 @@ export class ClaudeSession {
   async cancel(): Promise<void> {
     const active = this.state
     active.broker.rejectAll("用户已取消")
-    await active.turns.stop("interrupted", "SESSION_CANCELLED")
+    await active.turns.interrupt("interrupted", "SESSION_CANCELLED")
   }
 
   /** 写回一次权限回答；未知 requestId 由 PermissionBroker 忽略。 */
@@ -173,7 +174,7 @@ export class ClaudeSession {
         active.abort.abort()
         active.turns.end("interrupted", errorCode)
       } else {
-        await active.turns.stop("interrupted", "SESSION_CANCELLED")
+        await active.turns.shutdown("interrupted", "SESSION_CANCELLED")
       }
       await active.adapter.stop().catch(() => undefined)
       await this.release()
@@ -242,6 +243,7 @@ export class ClaudeSession {
         return
       case "started":
         active.model = event.model
+        active.turns.observe(event)
         followReportedMode(active, event.permissionMode, "init", this.#emitModeEvent)
         break
       case "mode":
@@ -283,7 +285,7 @@ export class ClaudeSession {
     this.#publish({ type: "error", code: "PERMISSION_TIMEOUT", message: "权限询问超时" })
     // 同一 turn 的其它权限卡片不能继续悬挂。
     active.broker.rejectAll("权限询问超时")
-    void active.turns.stop("error", "PERMISSION_TIMEOUT")
+    void active.turns.interrupt("error", "PERMISSION_TIMEOUT")
   }
 
   #publish(event: SessionHostEvent): void {

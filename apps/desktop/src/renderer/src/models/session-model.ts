@@ -7,6 +7,7 @@ import type {
   SessionAccountSwitchReason,
   SessionHostEvent,
   SessionPermissionMode,
+  SessionTurnEndStatus,
 } from "../../../main/session/session-types"
 import { sessionErrorView, type SessionErrorView } from "./session-errors"
 import {
@@ -316,7 +317,7 @@ function updateCurrentTurn(
 // 主进程结束这一轮：已经在界面上取消或出错的一轮保留原来的状态和结束时间。
 function applyTurnEnded(
   state: SessionUiState,
-  status: "completed" | "error" | "interrupted",
+  status: SessionTurnEndStatus,
   errorCode: string | null,
   at: string,
 ): SessionUiState {

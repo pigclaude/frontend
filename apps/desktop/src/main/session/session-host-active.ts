@@ -96,6 +96,7 @@ export function createActiveSession(
         if (holder.current !== null) hooks.onTurnClosed(holder.current, turn)
       },
       now: hooks.now,
+      timers: hooks.timers,
     }),
     stopping: false,
     ending: null,

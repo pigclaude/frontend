@@ -243,6 +243,7 @@ export class FakeAdapter implements SessionAdapterPort {
     this.#trace.push("interrupted")
   }
 
+  /** 只记下要停止的任务 id。 */
   async stopTask(taskId: string): Promise<void> {
     this.stoppedTasks.push(taskId)
   }

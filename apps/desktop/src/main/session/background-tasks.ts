@@ -39,14 +39,14 @@ export function readBackgroundTaskSignal(message: SDKMessage): BackgroundTaskSig
 
 /** 一个会话的在途后台任务。保证收到过后台任务变化消息后只按最新一份整表判断，不再看配对。 */
 export class BackgroundTasks {
-  #level: readonly string[] | null = null
+  #listed: readonly string[] | null = null
   readonly #paired = new Set<string>()
 
   /** 记下一条信号。 */
   apply(signal: BackgroundTaskSignal): void {
     switch (signal.type) {
       case "background-tasks":
-        this.#level = [...signal.taskIds]
+        this.#listed = [...signal.taskIds]
         break
       case "background-task-started":
         this.#paired.add(signal.taskId)
@@ -59,6 +59,6 @@ export class BackgroundTasks {
 
   /** 还在跑、回合要等它们的任务 id。 */
   running(): readonly string[] {
-    return this.#level ?? [...this.#paired]
+    return this.#listed ?? [...this.#paired]
   }
 }

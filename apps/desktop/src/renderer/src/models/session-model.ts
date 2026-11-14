@@ -1,7 +1,7 @@
 // 负责聊天界面的会话状态：会话是否在运行、权限模式、模型和账号、哪一轮开着、用户发过的消息和
 // 对权限卡片的回答、界面先行结束的一轮、错误和提示，并把主进程错误码映射成中文文案。
-// 收到的信封交给按会话 id 组织的事件存储；时间线的内容（文字、思考、工具、权限、换号）不在这里归并，
-// 由 session-timeline 从信封投影。一轮由主进程开闭：turn-ended 才结束这一轮，result 只留在信封里。
+// 收到的信封交给按会话 id 组织的事件存储，开始新会话时别的会话的信封仍留在存储里；只有当前会话的信封
+// 改变界面状态。时间线的内容（文字、思考、工具、权限、换号）不在这里归并，由 session-timeline 从信封投影。一轮由主进程开闭：turn-ended 才结束这一轮，result 只留在信封里。
 // 每个动作都带 ISO UTC 时间：事件取信封时间，界面操作取操作时的时间。
 
 import type { SessionEnvelope } from "../../../main/session/session-envelope"
@@ -17,7 +17,7 @@ import {
   storeEnvelope,
   type SessionEventStore,
 } from "./session-event-store"
-import type { SessionPermissionAnswer } from "./session-permissions"
+import type { SessionPermissionAnswers } from "./session-permissions"
 
 export { sessionErrorText, sessionErrorView } from "./session-errors"
 
@@ -60,7 +60,7 @@ export type SessionUiState = {
   activeTurnId: string | null
   turns: SessionTurn[]
   /** 用户对权限卡片的回答，按请求 id；界面立即按回答显示，不等主进程。 */
-  answers: Readonly<Record<string, SessionPermissionAnswer>>
+  answers: SessionPermissionAnswers
   /** 收到的信封，按会话 id。 */
   events: SessionEventStore
   error: SessionErrorView | null
@@ -103,7 +103,7 @@ export function createSessionState(): SessionUiState {
 export function reduceSession(state: SessionUiState, action: SessionAction): SessionUiState {
   switch (action.type) {
     case "starting":
-      return createSessionState()
+      return { ...createSessionState(), events: state.events }
     case "opened":
       return {
         ...state,
@@ -159,11 +159,24 @@ function currentSeq(state: SessionUiState): number {
   return lastSeq(sessionRecord(state.events, state.sessionId))
 }
 
+// 还不知道当前会话时（例如刷新后），跟随信封所属的会话。
 function applyEnvelope(state: SessionUiState, envelope: SessionEnvelope): SessionUiState {
   const events = storeEnvelope(state.events, envelope)
-  const duplicate = events === state.events && envelope.sessionId !== null && envelope.seq !== null
-  if (duplicate) return state
-  return applyEvent({ ...state, events }, envelope)
+  const { sessionId, seq } = envelope
+  if (events === state.events && sessionId !== null && seq !== null) return state
+  if (sessionId !== null && state.sessionId !== null && sessionId !== state.sessionId) {
+    return { ...state, events }
+  }
+  return applyEvent({ ...state, events, sessionId: state.sessionId ?? sessionId }, envelope)
+}
+
+// 一条信封之前已经收到的最大序号；只用于实时的信封按 0 算。
+function seqBefore(envelope: SessionEnvelope): number {
+  return (envelope.seq ?? 1) - 1
+}
+
+function implicitTurnId(state: SessionUiState): string {
+  return `turn-implicit-${state.turns.length + 1}`
 }
 
 function applyEvent(state: SessionUiState, envelope: SessionEnvelope): SessionUiState {
@@ -187,11 +200,11 @@ function applyEvent(state: SessionUiState, envelope: SessionEnvelope): SessionUi
     case "permission":
       // 时间线的内容由投影处理；还没有任何一轮时，事件自己开一轮，不让内容无处可放。
       if (state.turns.length > 0) return state
-      return appendTurn(state, `turn-implicit-1`, null, at, (envelope.seq ?? 1) - 1)
+      return appendTurn(state, implicitTurnId(state), null, at, seqBefore(envelope))
     case "account-switched":
       return { ...state, accountId: event.to }
     case "turn-started":
-      return applyTurnStarted(state, event.turnId, at, (envelope.seq ?? 1) - 1)
+      return applyTurnStarted(state, event.turnId, at, seqBefore(envelope))
     case "turn-ended":
       return applyTurnEnded(state, event.status, event.errorCode, at)
     case "error":
@@ -261,7 +274,7 @@ function updateActiveTurn(
       turns: state.turns.map((turn) => (turn.id === active ? update(turn) : turn)),
     }
   }
-  const implicitId = `turn-implicit-${state.turns.length + 1}`
+  const implicitId = implicitTurnId(state)
   const afterSeq = currentSeq(state)
   const turn = update(newTurn(implicitId, null, at, afterSeq))
   return { ...state, turns: [...state.turns, turn], activeTurnId: implicitId }

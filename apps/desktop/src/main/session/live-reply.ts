@@ -28,17 +28,15 @@ export class LiveReply {
     return this.#timeThinking(event)
   }
 
-  /** 取出还没落成消息的正文并清空记录；没有时返回 null。 */
+  /**
+   * 取出还没落成消息的正文并清空全部记录；没有时返回 null。一轮开始和结束时都要调用，
+   * 上一轮没收尾的思考和正文不会算进下一轮。
+   */
   takeUnfinished(): string | null {
     const text = this.#unfinished
-    this.reset()
-    return text === "" ? null : text
-  }
-
-  /** 清空记录；一轮开始或结束时调用，上一轮没收尾的思考不会算进下一轮。 */
-  reset(): void {
     this.#thinkingSince = null
     this.#unfinished = ""
+    return text === "" ? null : text
   }
 
   #timeThinking(event: MessageEvent): MessageEvent {

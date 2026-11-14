@@ -1,14 +1,15 @@
 // 负责把一个会话的信封投影成 Pigcode 对话组件要的时间线事件：按回合分段后，消息里的思考、正文和工具调用、
 // 工具结果、权限请求与回答、换号各自成为线程事件，事件时间取信封时间；一轮的开始和结束取界面状态。
 // 进行中的一轮里，正在输出的正文和最后一段已落成消息的正文作为流式回答交给组件，这一轮结束后才落成回答，
-// 显示的位置不变。纯函数，不读桌面桥。
+// 显示的位置不变。界面先行结束、主进程还没发来 turn-ended 的一轮，正在输出的正文先落在回答的位置，
+// 主进程补发的消息落在同一处。纯函数，不读桌面桥。
 
 import type { ThreadEvent } from "@pigclaude/ui-contracts"
 import type { SessionHostEvent } from "../../../main/session/session-types"
 import { sessionErrorText } from "./session-errors"
 import type { SessionEventRecord } from "./session-event-store"
 import type { SessionTurn } from "./session-model"
-import { permissionCards, type SessionPermissionAnswer } from "./session-permissions"
+import { permissionCards, type SessionPermissionAnswers } from "./session-permissions"
 import { sessionRuns, type SessionRun } from "./session-runs"
 
 /** 投影的输入：一个会话的信封和实时文字、界面上的各轮，以及用户对权限卡片的回答。 */
@@ -16,7 +17,7 @@ export type SessionTimelineInput = {
   threadId: string
   record: SessionEventRecord
   turns: readonly SessionTurn[]
-  answers: Readonly<Record<string, SessionPermissionAnswer>>
+  answers: SessionPermissionAnswers
 }
 
 /** 组件要的时间线：线程事件，进行中那一轮的流式回答和正在输出的思考，以及最后一轮的 run id。 */
@@ -32,21 +33,36 @@ type MessageEvent = Extract<SessionHostEvent, { type: "message" }>
 /** 投影前的一条线程事件；序号在整条时间线拼好之后再编。 */
 type Draft = { type: ThreadEvent["type"]; runId: string | null; payload: unknown; at: string }
 
-/** 一轮投影出的事件；held 是留在流式回答位置、还没落成回答的那段正文。 */
-type RunDrafts = { drafts: Draft[]; held: string | null }
+/** 往一轮里追加一条线程事件；at 是事件的 ISO UTC 时间。 */
+type PushDraft = (type: ThreadEvent["type"], payload: unknown, at: string) => void
+
+/** 一轮里最后一段主线程正文：它在 drafts 里的下标和正文。 */
+type LastAnswer = { index: number; text: string }
+
+/**
+ * 一轮的尾巴怎么处理：holdAnswer 为真时最后一段主线程正文留在流式回答的位置；
+ * unlanded 是界面先行结束后还没落成消息的正文，补在这一轮结束之前。
+ */
+type RunTail = { holdAnswer: boolean; unlanded: string }
+
+/** 一轮投影出的事件；heldText 是留在流式回答位置、还没落成回答的那段正文。 */
+type RunDrafts = { drafts: Draft[]; heldText: string | null }
 
 /** 把信封投影成时间线；同样的输入总是得到同样的结果。 */
 export function projectTimeline(input: SessionTimelineInput): SessionTimeline {
   const { threadId, record, turns, answers } = input
   const runs = sessionRuns(record.envelopes, turns)
   const openIndex = runs.findLastIndex((run) => run.turn.status === "streaming")
+  const live = record.live.text
   const drafts: Draft[] = []
   let streamingText = ""
   for (const [index, run] of runs.entries()) {
     const open = index === openIndex
-    const projected = projectRun(run, `run-${index + 1}`, answers, open && record.live.text === "")
+    const awaitingEnd = openIndex < 0 && index === runs.length - 1 && !run.closed
+    const tail = { holdAnswer: open && live === "", unlanded: awaitingEnd ? live : "" }
+    const projected = projectRun(run, `run-${index + 1}`, answers, tail)
     drafts.push(...projected.drafts)
-    if (open) streamingText = record.live.text !== "" ? record.live.text : (projected.held ?? "")
+    if (open) streamingText = live !== "" ? live : (projected.heldText ?? "")
   }
   return {
     events: drafts.map((draft, index) => ({
@@ -67,12 +83,12 @@ export function projectTimeline(input: SessionTimelineInput): SessionTimeline {
 function projectRun(
   run: SessionRun,
   runId: string,
-  answers: Readonly<Record<string, SessionPermissionAnswer>>,
-  hold: boolean,
+  answers: SessionPermissionAnswers,
+  tail: RunTail,
 ): RunDrafts {
   const { turn } = run
   const drafts: Draft[] = []
-  const push = (type: ThreadEvent["type"], payload: unknown, at: string): void => {
+  const push: PushDraft = (type, payload, at) => {
     drafts.push({ type, runId, payload, at })
   }
   const blocks = new Set<string>()
@@ -80,7 +96,7 @@ function projectRun(
   const finished = new Set<string>()
   const cards = new Map(permissionCards(run, answers).map((card) => [card.requestId, card]))
   let lastSwitch: string | null = null
-  let held: number | null = null
+  let lastAnswer: LastAnswer | null = null
   push(
     "run.started",
     { agentId: "claude", ...(turn.userText === null ? {} : { text: turn.userText }) },
@@ -95,7 +111,7 @@ function projectRun(
             if (tools.has(block.id)) continue
             tools.set(block.id, block.name)
             pushToolStart(push, block.id, block.name, block.input, at)
-            held = null
+            lastAnswer = null
             continue
           }
           const key = `${event.messageId}\u0000${block.type}\u0000${block.text}`
@@ -103,10 +119,11 @@ function projectRun(
           blocks.add(key)
           if (block.type === "thinking") {
             push("reasoning.completed", reasoningPayload(block.text, event), at)
-            held = null
+            lastAnswer = null
           } else {
             push("message.completed", { text: block.text }, at)
-            held = event.parentToolUseId === null ? drafts.length - 1 : null
+            lastAnswer =
+              event.parentToolUseId === null ? { index: drafts.length - 1, text: block.text } : null
           }
         }
         break
@@ -120,7 +137,7 @@ function projectRun(
           pushToolStart(push, event.toolUseId, name, null, at)
         }
         pushToolEnd(push, event, name, at)
-        held = null
+        lastAnswer = null
         break
       }
       case "permission": {
@@ -159,23 +176,24 @@ function projectRun(
         break
     }
   }
-  return endRun(turn, drafts, push, hold ? held : null)
+  return endRun(turn, drafts, push, tail.holdAnswer ? lastAnswer : null, tail.unlanded)
 }
 
 function endRun(
   turn: SessionTurn,
   drafts: Draft[],
-  push: (type: ThreadEvent["type"], payload: unknown, at: string) => void,
-  held: number | null,
+  push: PushDraft,
+  held: LastAnswer | null,
+  unlanded: string,
 ): RunDrafts {
   const endedAt = turn.endedAt ?? turn.startedAt
+  if (turn.status === "streaming") {
+    if (held === null) return { drafts, heldText: null }
+    drafts.splice(held.index, 1)
+    return { drafts, heldText: held.text }
+  }
+  if (unlanded !== "") push("message.completed", { text: unlanded }, endedAt)
   switch (turn.status) {
-    case "streaming": {
-      if (held === null) return { drafts, held: null }
-      const [answer] = drafts.splice(held, 1)
-      const payload = answer?.payload as { text?: unknown } | undefined
-      return { drafts, held: typeof payload?.text === "string" ? payload.text : null }
-    }
     case "error": {
       const fallback = sessionErrorText(`${turn.endCode ?? "SDK_ERROR"}: 会话出错`)
       push("run.failed", { message: turn.errors.at(-1)?.message ?? fallback }, endedAt)
@@ -187,7 +205,7 @@ function endRun(
     default:
       push("run.completed", {}, endedAt)
   }
-  return { drafts, held: null }
+  return { drafts, heldText: null }
 }
 
 function reasoningPayload(text: string, event: MessageEvent): Record<string, unknown> {
@@ -199,7 +217,7 @@ function isSubagentTool(name: string): boolean {
 }
 
 function pushToolStart(
-  push: (type: ThreadEvent["type"], payload: unknown, at: string) => void,
+  push: PushDraft,
   id: string,
   name: string,
   input: unknown,
@@ -223,7 +241,7 @@ function pushToolStart(
 }
 
 function pushToolEnd(
-  push: (type: ThreadEvent["type"], payload: unknown, at: string) => void,
+  push: PushDraft,
   event: Extract<SessionHostEvent, { type: "tool-result" }>,
   name: string,
   at: string,

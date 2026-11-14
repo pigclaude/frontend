@@ -1,10 +1,10 @@
 // 负责验证聊天页的流式回答和思考耗时：正在写的正文带光标显示在回答的位置，写完到一轮结束前不挪位置，
-// 结束后落成普通回答；思考块显示主进程算好的耗时，正在输出的思考显示为正在思考。
+// 结束后落成普通回答；点停止后正文留在原位，主进程补发的消息落在同一处；思考块显示主进程算好的耗时，正在输出的思考显示为正在思考。
 
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest"
 import type { SessionHostEvent } from "../../../main/session/session-types"
-import type { SessionUiState } from "../models/session-model"
+import { reduceSession, type SessionUiState } from "../models/session-model"
 import {
   chatScreenRoot,
   sessionController as controller,
@@ -68,6 +68,32 @@ describe("chat screen streaming", () => {
       }),
     )
     expect(answers()).toEqual([{ text: "先看一下重试条件", streaming: false, busy: null }])
+  })
+
+  it("keeps the reply in place after a stop and lands the main process's copy there", async () => {
+    const writing = feed(startingState(), started, {
+      type: "delta",
+      text: "先看一下重试",
+      thinking: false,
+      blockIndex: 0,
+    })
+    const stopped = reduceSession(writing, { type: "cancel-requested", at: sessionTime })
+    await show(stopped)
+    expect(answers()).toEqual([{ text: "先看一下重试", streaming: false, busy: null }])
+
+    await show(
+      feed(
+        stopped,
+        { ...message({ type: "text", text: "先看一下重试" }), messageId: "unfinished-main-turn-1" },
+        {
+          type: "turn-ended",
+          turnId: "main-turn-1",
+          status: "interrupted",
+          errorCode: "SESSION_CANCELLED",
+        },
+      ),
+    )
+    expect(answers()).toEqual([{ text: "先看一下重试", streaming: false, busy: null }])
   })
 
   it("shows how long thinking took as the main process timed it", async () => {

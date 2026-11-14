@@ -108,6 +108,47 @@ describe("projectTimeline while a turn runs", () => {
     expect(project(state).streamingText).toBe("")
   })
 
+  it("keeps the text being written in place after a stop until the main process lands it", () => {
+    const writing = feed(
+      sent(),
+      started,
+      text("m1", "先跑测试"),
+      bash("tool-1"),
+      delta("改好了一半"),
+    )
+    const stopped = reduceSession(writing, { type: "cancel-requested", at: t0 })
+    const landed = feed(stopped, text("unfinished-main-1", "改好了一半"), {
+      type: "turn-ended",
+      turnId: "main-1",
+      status: "interrupted",
+      errorCode: "SESSION_CANCELLED",
+    })
+    const shown = (state: SessionUiState) =>
+      project(state).events.map((event) => [event.type, event.payload])
+
+    expect(shown(stopped)).toEqual([
+      ["run.started", { agentId: "claude", text: "你好" }],
+      ["message.completed", { text: "先跑测试" }],
+      ["tool.started", { toolCallId: "tool-1", name: "Bash", input: { command: "ls" } }],
+      ["message.completed", { text: "改好了一半" }],
+      ["run.interrupted", {}],
+    ])
+    expect(project(stopped).streamingText).toBe("")
+    expect(shown(landed)).toEqual(shown(stopped))
+  })
+
+  it("keeps a held answer in place after a stop", () => {
+    const stopped = reduceSession(feed(sent(), started, text("m1", "答案")), {
+      type: "cancel-requested",
+      at: t0,
+    })
+    expect(project(stopped).events.map((event) => event.type)).toEqual([
+      "run.started",
+      "message.completed",
+      "run.interrupted",
+    ])
+  })
+
   it("has no live text once no turn is open", () => {
     const state = feed(sent(), started, completed, delta("迟到"))
     expect(project(state)).toMatchObject({ streamingText: "", liveReasoning: "" })

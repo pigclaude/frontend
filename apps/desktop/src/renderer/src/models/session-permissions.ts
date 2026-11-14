@@ -12,6 +12,9 @@ export type SessionPermissionStatus = "pending" | "allowed" | "denied" | "timeou
 /** 用户对一张权限卡片的回答；at 是回答时的时间。 */
 export type SessionPermissionAnswer = { decision: "allow" | "deny"; at: string }
 
+/** 用户对权限卡片的回答，按请求 id；每个请求只记第一次回答。 */
+export type SessionPermissionAnswers = Readonly<Record<string, SessionPermissionAnswer>>
+
 /** 一张需要回答或已经回答的权限卡片；时间是 ISO UTC。 */
 export type SessionPermissionCard = {
   requestId: string
@@ -27,7 +30,7 @@ export type SessionPermissionCard = {
 /** 一轮里的权限卡片，按请求的先后，同一请求只有一张。 */
 export function permissionCards(
   run: SessionRun,
-  answers: Readonly<Record<string, SessionPermissionAnswer>>,
+  answers: SessionPermissionAnswers,
 ): SessionPermissionCard[] {
   const cards: SessionPermissionCard[] = []
   for (const envelope of run.envelopes) {
@@ -52,7 +55,7 @@ export function pendingPermission(
 function cardOf(
   envelope: SessionEnvelope,
   run: SessionRun,
-  answers: Readonly<Record<string, SessionPermissionAnswer>>,
+  answers: SessionPermissionAnswers,
 ): SessionPermissionCard | null {
   const { event, at } = envelope
   if (event.type !== "permission") return null

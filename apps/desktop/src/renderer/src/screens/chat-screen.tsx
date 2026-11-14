@@ -163,6 +163,11 @@ export function ChatScreen({
     setDraftPlan(false)
   }, [live])
 
+  // 计划之外的档位只认主进程报告的模式；没生效的选择不能成为计划结束后要回的档位。
+  useEffect(() => {
+    if (live && !shown.plan) setLevel(shown.level)
+  }, [live, shown.plan, shown.level])
+
   useEffect(() => {
     startedAt.current = Date.now()
   }, [state.sessionId])
@@ -186,22 +191,18 @@ export function ChatScreen({
     return window.pigclaude?.workspaces?.files?.(workspace) ?? Promise.resolve([])
   }
 
-  /** 切换档位；完全访问的确认框由输入区自己给出。计划打开期间只记住新档位。 */
+  /** 切换档位；完全访问的确认框由输入区自己给出。会话开始前和计划打开期间只记住新档位。 */
   function chooseMode(mode: PermissionMode): void {
     const next = composerLevel(mode)
     if (next === null) return
-    setLevel(next)
     if (live && !shown.plan) void session.setMode(sessionPermissionMode(next, false))
+    else setLevel(next)
   }
 
   /** 开合计划开关；关掉时回到打开前的档位。 */
   function choosePlan(value: boolean): void {
-    if (!live) {
-      setDraftPlan(value)
-      return
-    }
-    setLevel(shown.level)
-    void session.setMode(sessionPermissionMode(shown.level, value))
+    if (live) void session.setMode(sessionPermissionMode(level, value))
+    else setDraftPlan(value)
   }
 
   /** 选中模型选择器里的实例和模型；会话开始后换账号仍然不支持。 */
@@ -286,11 +287,8 @@ export function ChatScreen({
       shown.plan &&
       pending?.requestId === requestId &&
       pending.toolName === "ExitPlanMode"
-    // 先切档位再批准：回到自动审批时也要经过 Claude Code 核实。
-    if (approvesPlan) {
-      setLevel(shown.level)
-      await session.setMode(sessionPermissionMode(shown.level, false))
-    }
+    // 顺序不能换：先切档位，回到自动审批时才会经过 Claude Code 核实。
+    if (approvesPlan) await session.setMode(sessionPermissionMode(level, false))
     await session.respondPermission(requestId, choice.decision, choice.suggestions)
   }
 

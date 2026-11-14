@@ -67,11 +67,16 @@ function planWaitingForApproval(): SessionUiState {
   })
 }
 
-async function pressShiftTab(): Promise<void> {
+function composerEditor(): HTMLElement {
   const editor = screen.container.querySelector<HTMLElement>(".composer .tiptap")
   expect(editor, "输入区").not.toBeNull()
+  return editor!
+}
+
+async function pressShiftTab(): Promise<void> {
+  const editor = composerEditor()
   await act(async () => {
-    editor?.dispatchEvent(
+    editor.dispatchEvent(
       new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }),
     )
   })
@@ -79,12 +84,11 @@ async function pressShiftTab(): Promise<void> {
 
 /** 在输入区敲一条斜杠命令，等命令列表出来后用回车执行。 */
 async function runCommand(command: string): Promise<void> {
-  const editor = screen.container.querySelector<HTMLElement>(".composer .tiptap")
-  expect(editor, "输入区").not.toBeNull()
+  const editor = composerEditor()
   const user = userEvent.setup()
   await act(async () => {
-    await user.click(editor!)
-    await user.type(editor!, command)
+    await user.click(editor)
+    await user.type(editor, command)
   })
   await vi.waitFor(() => expect(document.querySelector('[role="listbox"]')).not.toBeNull())
   await act(async () => {
@@ -181,6 +185,19 @@ describe("chat screen permission controls", () => {
     await screen.render({ fresh: false, session: { ...session, state: liveIn("auto") } })
     await openPicker()
     expect(permissionButton()?.getAttribute("aria-label")).toBe("权限: 自动审批")
+  })
+
+  it("remembers the level Claude Code ran at, not a refused one, when Claude Code enters plan mode", async () => {
+    const session = sessionController({ state: liveIn("default") })
+    await screen.render({ fresh: false, session })
+    await chooseLevel("自动审批")
+    expect(session.setMode).toHaveBeenLastCalledWith("auto")
+
+    await screen.render({ fresh: false, session: { ...session, state: liveIn("plan") } })
+    await openPicker()
+    expect(permissionButton()?.getAttribute("aria-label")).toBe("权限: 监督审批")
+    await clickButton(planToggle() ?? undefined, "计划模式")
+    expect(session.setMode).toHaveBeenLastCalledWith("default")
   })
 
   it("cycles supervised approval, accept edits and auto approval with Shift+Tab", async () => {

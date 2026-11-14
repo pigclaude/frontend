@@ -1,7 +1,7 @@
 // 验证会话宿主同时运行多个会话：每个会话有自己的适配器和回合，重复启动同一个会话返回原 id，
 // 回合未结束时拒绝第二条消息，一个会话出错、停止、换号或额度用尽不影响另一个会话。
 
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
@@ -115,6 +115,25 @@ describe("SessionHost active turns by workspace", () => {
     await harness.host.stop(busy)
     expect(harness.host.hasActiveTurn(harness.workspace)).toBe(false)
     await harness.host.dispose()
+  })
+
+  it("finds an active turn through the workspace's real path and inside a double-dot named directory", async () => {
+    const root = await workspaceDir()
+    const actual = join(root, "workspace")
+    const alias = join(root, "alias")
+    await mkdir(actual)
+    await symlink(actual, alias, "junction")
+    const harness = createHarness({ workspace: alias })
+    try {
+      const busy = await startSession(harness)
+      await harness.host.send(busy, { text: "working" })
+
+      expect(harness.host.hasActiveTurn(await realpath(actual))).toBe(true)
+      expect(harness.host.hasActiveTurn(join(await realpath(actual), "..notes"))).toBe(true)
+      expect(harness.host.list()).toMatchObject([{ workspace: alias }])
+    } finally {
+      await harness.host.dispose()
+    }
   })
 
   it("hands the turn id to the workbench checkpoints taken around a turn", async () => {

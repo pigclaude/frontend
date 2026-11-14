@@ -4,7 +4,8 @@
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { deferred } from "../testing/profile-fixture"
 import { ManualClock } from "./session-clock-fixture"
 import { createHarness, fixedNow, waitUntil, type SessionHarness } from "./session-host-fixtures"
 
@@ -34,6 +35,23 @@ describe("SessionHost concurrency limit", () => {
     await harness.host.dispose()
   })
 
+  it("rejects a start with an unavailable workspace without parking another session", async () => {
+    const { harness } = await limitedHarness(1)
+    const first = await startSession(harness)
+    await finishTurn(harness, first, 0)
+
+    await expect(
+      harness.host.start({
+        workspace: join(harness.workspace, "missing"),
+        permissionMode: "default",
+      }),
+    ).rejects.toMatchObject({ code: "WORKSPACE_UNAVAILABLE" })
+
+    expect(statuses(harness)).toEqual({ [first]: "idle" })
+    expect(harness.runtime.sessions).toMatchObject([{ sessionId: first, closed: false }])
+    await harness.host.dispose()
+  })
+
   it("queues a new session while every running session is busy and starts it once one stops", async () => {
     const { harness } = await limitedHarness(1)
     const busy = await startSession(harness)
@@ -56,16 +74,57 @@ describe("SessionHost concurrency limit", () => {
     await harness.host.dispose()
   })
 
-  it("starts a queued session once a busy session finishes its turn, parking it as idle", async () => {
+  it("starts the queued session only after the stopped session cleans up and revokes its token", async () => {
     const { harness } = await limitedHarness(1)
     const busy = await startSession(harness)
     await harness.host.send(busy, { text: "working" })
+    const done = deferred<void>()
+    const cleanup = vi
+      .spyOn(harness.environments.last, "cleanup")
+      .mockImplementation(() => done.promise)
+    const waiting = harness.host.start({
+      sessionId: "waiting",
+      workspace: harness.workspace,
+      permissionMode: "default",
+    })
+    await waitUntil(() => statuses(harness)["waiting"] === "queued")
+
+    const stopped = harness.host.stop(busy)
+    try {
+      await waitUntil(() => cleanup.mock.calls.length > 0)
+      expect(statuses(harness)).toMatchObject({ waiting: "queued" })
+      expect(statuses(harness)[busy]).not.toBe("interrupted")
+      expect(harness.runtime.sessions).toMatchObject([{ sessionId: busy, closed: true }])
+      await expect(harness.host.send(busy, { text: "again" })).rejects.toMatchObject({
+        code: "SESSION_RESUME_FAILED",
+      })
+    } finally {
+      done.resolve()
+      await stopped
+      await waiting
+      await harness.host.dispose()
+    }
+    expect(cleanup).toHaveBeenCalledOnce()
+    expect(harness.runtime.sessions[0]?.closed).toBe(true)
+  })
+
+  it("starts a queued session once a busy session finishes its turn, parking it as idle", async () => {
+    const { harness } = await limitedHarness(1)
+    const busy = await startSession(harness)
+    const checkpoints: [string, string, string][] = []
+    await harness.host.send(busy, { text: "working" }, async (workspace, phase, turnId) => {
+      checkpoints.push([workspace, phase, turnId])
+    })
     const queued = harness.host.start({ workspace: harness.workspace, permissionMode: "default" })
     await waitUntil(() => harness.host.list().some((summary) => summary.status === "queued"))
 
     harness.adapters.instances[0]?.emit(resultEvent())
 
     const { sessionId } = await queued
+    expect(checkpoints).toEqual([
+      [harness.workspace, "baseline", "id-2"],
+      [harness.workspace, "final", "id-2"],
+    ])
     expect(statuses(harness)).toEqual({ [busy]: "parked", [sessionId]: "idle" })
     expect(harness.host.list().find((summary) => summary.sessionId === busy)?.lastTurn).toBe(
       "completed",
@@ -90,8 +149,9 @@ describe("SessionHost concurrency limit", () => {
     await waitUntil(() => statuses(harness)["q-2"] === "queued")
 
     await harness.host.stop(busy)
-    await first
+    const firstStarted = await Promise.race([first, second])
 
+    expect(firstStarted.sessionId).toBe("q-1")
     expect(statuses(harness)).toMatchObject({ "q-1": "idle", "q-2": "queued" })
     await harness.host.send("q-1", { text: "not parked for q-2 before its first turn" })
     expect(harness.adapters.instances[1]?.sent).toEqual([

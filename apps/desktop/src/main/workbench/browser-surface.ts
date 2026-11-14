@@ -112,7 +112,8 @@ export class WorkbenchBrowsers {
       const entry = this.#entry(window, id, true)
       entry.agentOrigin = url.origin
       await this.navigate(window, id, url.href)
-      if (entry.error) throw new Error("WORKBENCH_PREVIEW_FAILED")
+      if (this.#surfaces.get(id) !== entry || entry.error)
+        throw new Error("WORKBENCH_PREVIEW_FAILED")
       this.#send(window, { type: "browser-open", id, url: url.href })
     }
     const entry = this.#surfaces.get(id)
@@ -226,6 +227,12 @@ export class WorkbenchBrowsers {
     this.#surfaces.delete(id)
     if (!window.isDestroyed() && entry.attached) window.contentView.removeChildView(entry.view)
     if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close()
+    if (entry.agent) {
+      this.#send(window, { type: "browser-close", id })
+      void agentSession(id)
+        .clearStorageData()
+        .catch(() => undefined)
+    }
   }
 
   /** 关闭一个会话的 Agent 浏览器并清空它的分区数据；这个会话没开过浏览器时什么也不做。 */
@@ -233,9 +240,6 @@ export class WorkbenchBrowsers {
     const entry = this.#surfaces.get(id)
     if (!entry?.agent) return
     this.close(entry.window, id)
-    void agentSession(id)
-      .clearStorageData()
-      .catch(() => undefined)
   }
 
   /** 关闭属于该主窗口的标签和独立预览。 */

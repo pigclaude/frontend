@@ -80,6 +80,7 @@ export class ClaudeSession {
     read: () => this.state.adapter.contextUsage(),
     emit: (event) => this.#publish(event),
   })
+  #release: Promise<void> | null = null
   readonly #emitModeEvent = (event: ModeEvent): void => {
     if (event.type === "mode") this.#publish(event)
     else this.#publish({ ...event, message: this.#redact(event.message) })
@@ -197,6 +198,7 @@ export class ClaudeSession {
   end(rejectMessage: string, errorCode: "MEMBERSHIP_REQUIRED" | null): Promise<void> {
     const active = this.state
     if (active.ending !== null) return active.ending
+    if (this.#release !== null) return this.#release
     this.#stall.stop()
     active.stopping = true
     this.#context.stop()
@@ -215,16 +217,22 @@ export class ClaudeSession {
     return active.ending
   }
 
-  /** 拒绝还没回答的权限和提问，释放会话环境；可重复调用，只在第一次通知宿主。 */
-  async release(): Promise<void> {
+  /** 拒绝还没回答的权限和提问，清理环境后通知宿主；并发调用等待同一次清理。 */
+  release(): Promise<void> {
+    if (this.#release !== null) return this.#release
     const active = this.state
-    if (active.released) return
     active.released = true
     this.#stall.stop()
     this.#context.stop()
+    this.#release = Promise.resolve().then(() => this.#releaseEnvironment())
+    return this.#release
+  }
+
+  async #releaseEnvironment(): Promise<void> {
+    const active = this.state
     active.pending.rejectAll(cancelledPermissionMessage)
-    this.#options.onReleased(this)
     await active.environment.cleanup().catch(() => undefined)
+    this.#options.onReleased(this)
   }
 
   /**

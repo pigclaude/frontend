@@ -53,7 +53,7 @@ export type PreparedSessionStart = {
 }
 
 /**
- * 依次检查并为 sessionId 创建会话环境。保证返回时会员仍有效、启动未被取消，会话的令牌随环境清理吊销；
+ * 为拿到进程名额的 sessionId 创建会话环境。保证返回时会员仍有效、启动未被取消，会话的令牌随环境清理吊销；
  * 抛错时不留下环境和有效令牌，错误已去掉本会话的令牌。
  */
 export async function prepareSessionStart(
@@ -61,7 +61,11 @@ export async function prepareSessionStart(
   input: SessionStartInput,
   sessionId: string,
 ): Promise<PreparedSessionStart> {
-  const daemonBaseUrl = await assertCanStart(deps, input)
+  assertStartNotStopped(deps.cancelled(), false)
+  if (deps.membership.view().state !== "active") {
+    throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
+  }
+  const daemonBaseUrl = daemonAddress(deps.runtime)
   const session = deps.runtime.openSession({
     sessionId,
     preferredAccountId: input.accountId ?? null,
@@ -74,19 +78,28 @@ export async function prepareSessionStart(
   }
 }
 
-// 会员、工作区、可用账号和 daemon 都满足时返回 daemon 地址；这些检查抛出的错误不含令牌。
-async function assertCanStart(deps: SessionStartDeps, input: SessionStartInput): Promise<string> {
+/** 在进程名额以外校验会员、工作区、可用账号和 daemon，成功时返回工作区的真实路径。 */
+export async function checkSessionStart(
+  deps: SessionStartDeps,
+  input: SessionStartInput,
+): Promise<string> {
   const assertNotCancelled = (): void => assertStartNotStopped(deps.cancelled(), false)
+  assertNotCancelled()
   await assertMembershipActive(deps.membership)
   assertNotCancelled()
-  await assertWorkspace(input.workspace)
+  const workspace = await assertWorkspace(input.workspace)
   assertNotCancelled()
   // 开发期供应商自带模型访问，不需要本机有可用的 Claude 账号。
   if (deps.provider === null && !(await deps.runtime.hasAvailableAccount())) {
     throw new SessionHostError("NO_AVAILABLE_ACCOUNT", "没有可用的 Claude 账号")
   }
   assertNotCancelled()
-  const daemonBaseUrl = deps.runtime.daemonBaseUrl
+  daemonAddress(deps.runtime)
+  return workspace
+}
+
+function daemonAddress(runtime: SessionRuntime): string {
+  const daemonBaseUrl = runtime.daemonBaseUrl
   if (daemonBaseUrl === null) {
     throw new SessionHostError("DAEMON_UNAVAILABLE", "本机 daemon 尚未就绪")
   }

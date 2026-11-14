@@ -90,6 +90,7 @@ export type WorkbenchEvent =
   | { type: "checkpoints-changed"; id: string }
   | { type: "browser-page"; id: string; page: WorkbenchBrowserPage }
   | { type: "browser-open"; id: string; url: string }
+  | { type: "browser-close"; id: string }
   | { type: "browser-context"; id: string; element: WorkbenchBrowserElement }
   | { type: "unsaved-files"; id: string; action: "save" | "discard" }
 

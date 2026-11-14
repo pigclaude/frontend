@@ -166,6 +166,7 @@ export class FakeAdapter implements SessionAdapterPort {
   #startGate: { promise: Promise<void>; resolve: () => void } | null = null
   #mode: SessionPermissionMode = "default"
 
+  /** 保留测试的事件出口和调用轨迹，供不同会话分别验证。 */
   constructor(onEvent: (event: AdapterEvent) => void, trace: string[]) {
     this.#onEvent = onEvent
     this.#trace = trace
@@ -260,6 +261,7 @@ export class AdapterFactory {
     private readonly modelsError: Error | null = null,
   ) {}
 
+  /** 为每次启动创建独立适配器，并记下按启动顺序生成的实例。 */
   readonly create = (onEvent: (event: AdapterEvent) => void): SessionAdapterPort => {
     const adapter = new FakeAdapter(onEvent, this.trace)
     adapter.modelsError = this.modelsError

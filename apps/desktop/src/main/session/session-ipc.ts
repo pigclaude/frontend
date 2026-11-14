@@ -17,6 +17,7 @@ import {
   type UsageRange,
 } from "./session-types"
 import type { UsageRecorder } from "./usage-recorder"
+import { isSessionStoreId } from "./session-store-layout"
 import { captureSessionCheckpoint } from "../workbench/session-checkpoints"
 
 const permissionModes = new Set<SessionPermissionMode>([
@@ -31,8 +32,6 @@ const effortLevels = new Set<SessionEffort>(["low", "medium", "high", "xhigh", "
 const maxUpdatedPermissions = 50
 const maxUpdatedPermissionsBytes = 64 * 1024
 const maxSessionIdLength = 200
-// 和会话存储的目录名规则一致：新会话的 id 会成为会话目录名。
-const startSessionIdPattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
 const maxRequestIdLength = 200
 const maxQuestionAnswers = 16
 const maxQuestionAnswerLength = 8 * 1024
@@ -123,10 +122,7 @@ export function registerSessionIpc(options: SessionIpcOptions): void {
 export function readSessionStartInput(value: unknown): SessionStartInput {
   if (!isRecord(value)) throw invalidInput()
   const sessionId = value.sessionId
-  if (
-    sessionId !== undefined &&
-    (typeof sessionId !== "string" || !startSessionIdPattern.test(sessionId))
-  ) {
+  if (sessionId !== undefined && (typeof sessionId !== "string" || !isSessionStoreId(sessionId))) {
     throw invalidInput()
   }
   const workspace = readString(value.workspace)

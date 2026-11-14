@@ -55,26 +55,21 @@ export class SessionConcurrency {
 
   /**
    * 为会话占一个名额。有空位时立刻占上；满了就排队，并停放最久没用的空闲会话来腾位置。
-   * 排队的会话已满时抛 SESSION_LIMIT_REACHED。
+   * 拿到名额后返回一个布尔值，说明是否排过队；排队的会话已满时抛 SESSION_LIMIT_REACHED。
    */
-  acquire(sessionId: string): Promise<void> {
+  acquire(sessionId: string): Promise<boolean> {
     if (this.#queue.length === 0 && this.#slots.size < this.#options.maxRunning) {
       this.#occupy(sessionId)
-      return Promise.resolve()
+      return Promise.resolve(false)
     }
     if (this.#queue.length >= this.#options.maxQueued) {
       return Promise.reject(new SessionHostError("SESSION_LIMIT_REACHED", "等待启动的会话已满"))
     }
-    const waiting = new Promise<void>((resolve, reject) => {
-      this.#queue.push({ sessionId, resolve, reject })
+    const waiting = new Promise<boolean>((resolve, reject) => {
+      this.#queue.push({ sessionId, resolve: () => resolve(true), reject })
     })
     this.#evictIdle()
     return waiting
-  }
-
-  /** 会话还在排队。 */
-  queued(sessionId: string): boolean {
-    return this.#queue.some((waiter) => waiter.sessionId === sessionId)
   }
 
   /** 把排队的会话移出队列，它的 acquire 以 error 拒绝；不在排队时什么也不做。 */
@@ -101,7 +96,8 @@ export class SessionConcurrency {
     if (slot !== undefined && !this.#evicting.has(sessionId)) {
       this.#arm(sessionId, slot, this.#options.idleParkMs)
     }
-    if (this.#queue.length > 0) this.#evictIdle()
+    // 回合结束事件发出后还有同步收尾，等检查点开始记录了再按新状态挑选空闲会话。
+    if (this.#queue.length > 0) queueMicrotask(() => this.#evictIdle())
   }
 
   /** 清掉所有计时，排队的会话以 error 拒绝。 */

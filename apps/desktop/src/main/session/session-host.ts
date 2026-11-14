@@ -85,6 +85,7 @@ export class SessionHost {
   readonly #concurrency: SessionConcurrency
   readonly #listeners = new Set<(envelope: SessionEnvelope) => void>()
   readonly #unsubscribe: (() => void)[]
+  #checkingStart = Promise.resolve()
   #disposed = false
 
   /** 创建会话宿主并订阅会员、换号和用量写入失败事件。 */
@@ -173,12 +174,26 @@ export class SessionHost {
     servers: SessionTools["servers"],
   ): Promise<{ sessionId: string }> {
     try {
-      await this.#concurrency.acquire(entry.sessionId)
-      entry.phase = "starting"
       const hooks: SessionLaunchHooks = {
         cancelled: () => entry.cancelled ?? (this.#disposed ? "SESSION_CANCELLED" : null),
-        opened: (session) => {
+        acquire: () => {
+          entry.phase = "queued"
+          return this.#concurrency.acquire(entry.sessionId).then((waited) => {
+            entry.phase = "starting"
+            return waited
+          })
+        },
+        checkBeforeQueue: (check) => {
+          const checked = this.#checkingStart.then(check)
+          this.#checkingStart = checked.then(
+            () => undefined,
+            () => undefined,
+          )
+          return checked
+        },
+        opened: (session, canonicalWorkspace) => {
           entry.session = session
+          entry.canonicalWorkspace = canonicalWorkspace
         },
         emit: (envelope) => this.#observe(entry, envelope),
         backgroundTasks: (count) => {
@@ -320,7 +335,7 @@ export class SessionHost {
     entry: SessionEntry,
     code: "SESSION_CANCELLED" | "MEMBERSHIP_REQUIRED",
   ): Promise<void> {
-    if (entry.phase === "queued") {
+    if (entry.phase === "checking" || entry.phase === "queued") {
       entry.cancelled = code
       this.#concurrency.cancel(entry.sessionId, cancelError(code))
       return
@@ -352,9 +367,9 @@ export class SessionHost {
 
   // 会话释放：交还名额、关掉会话专用的工具；运行中的会话转为停放，启动中的由启动流程收尾。
   #released(entry: SessionEntry): void {
-    this.#concurrency.release(entry.sessionId)
     this.#closeTools(entry)
     if (entry.phase === "running") entry.phase = "parked"
+    this.#concurrency.release(entry.sessionId)
   }
 
   #forget(entry: SessionEntry): void {
@@ -378,7 +393,7 @@ export class SessionHost {
   #requireSession(sessionId: string): ClaudeSession {
     const entry = this.#registry.get(sessionId)
     if (entry === null) throw new SessionHostError("SESSION_NOT_FOUND", "会话不存在")
-    if (entry.phase === "parked") throw resumeFailed()
+    if (entry.phase === "parked" || entry.session?.closing) throw resumeFailed()
     if (entry.phase !== "running" || entry.session === null) {
       throw new SessionHostError("SDK_ERROR", "会话尚未启动")
     }

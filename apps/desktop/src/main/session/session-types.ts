@@ -278,7 +278,6 @@ export type {
   SessionEnvelope,
   SessionEvent,
   SessionPermissionMode,
-  SessionSummary,
   SessionThinking,
   UsageRange,
   UsageSummary,

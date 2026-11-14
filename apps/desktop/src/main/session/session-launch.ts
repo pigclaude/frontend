@@ -7,7 +7,11 @@ import type { SessionEnvelope } from "./session-envelope"
 import type { SessionTimers } from "./session-host-active"
 import { mapStartError } from "./session-host-support"
 import type { SessionCancelCode } from "./session-registry"
-import { prepareSessionStart } from "./session-start-checks"
+import {
+  checkSessionStart,
+  prepareSessionStart,
+  type PreparedSessionStart,
+} from "./session-start-checks"
 import {
   SessionHostError,
   type SessionAdapterFactory,
@@ -41,8 +45,12 @@ export type SessionLaunchDeps = {
 export type SessionLaunchHooks = {
   /** 启动被打断的原因；没有被打断时为 null。 */
   cancelled: () => SessionCancelCode | null
+  /** 领取进程名额，拿到后返回是否排过队。 */
+  acquire: () => Promise<boolean>
+  /** 按请求顺序完成初次检查和排队登记，后来的启动不会越过先来的启动。 */
+  checkBeforeQueue: <T>(check: () => Promise<T>) => Promise<T>
   /** 会话对象建好、Claude Code 还没启动时调用一次。 */
-  opened: (session: ClaudeSession) => void
+  opened: (session: ClaudeSession, canonicalWorkspace: string) => void
   emit: (envelope: SessionEnvelope) => void
   /** Claude Code 报告的在途后台任务数（含回合不等的后台 shell）变了。 */
   backgroundTasks: (count: number) => void
@@ -68,13 +76,21 @@ export async function launchSession(
       ? new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
       : new SessionHostError("SESSION_CANCELLED", "会话启动已取消")
   }
-  const prepared = await prepareSessionStart(
-    { ...deps, cancelled: () => hooks.cancelled() !== null },
-    input,
-    sessionId,
-  ).catch((error: unknown) => {
+  const startDeps = { ...deps, cancelled: () => hooks.cancelled() !== null }
+  let canonicalWorkspace: string
+  let prepared: PreparedSessionStart
+  try {
+    const queued = await hooks.checkBeforeQueue(async () => ({
+      workspace: await checkSessionStart(startDeps, input),
+      slot: hooks.acquire(),
+    }))
+    canonicalWorkspace = (await queued.slot)
+      ? await checkSessionStart(startDeps, input)
+      : queued.workspace
+    prepared = await prepareSessionStart(startDeps, input, sessionId)
+  } catch (error) {
     throw interrupted() ?? error
-  })
+  }
   const session = new ClaudeSession({
     ...prepared,
     createAdapter: (onEvent) =>
@@ -94,7 +110,7 @@ export async function launchSession(
     newId: deps.newId,
     onReleased: () => hooks.released(),
   })
-  hooks.opened(session)
+  hooks.opened(session, canonicalWorkspace)
   try {
     await session.launch(servers)
   } catch (error) {
@@ -107,6 +123,7 @@ export async function launchSession(
     throw stopped
   }
   if (session.closing) {
+    await session.release()
     if (deps.membership.view().state !== "active") {
       throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
     }

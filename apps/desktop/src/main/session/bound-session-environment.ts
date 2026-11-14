@@ -1,5 +1,5 @@
-// 把配置使用权、会话的 daemon 令牌与 CLI 临时环境一起管理：环境清理确认前不会放开配置编辑，
-// 清理后吊销这个会话的令牌。
+// 把配置使用权、会话的 daemon 令牌与 CLI 临时环境一起管理：停止后立即吊销令牌，
+// 清理结束前保留配置使用权。
 
 import type { SessionEnvironmentInput } from "./session-environment"
 import type {
@@ -10,7 +10,7 @@ import type {
 } from "./session-types"
 import { SessionHostError } from "./session-types"
 
-/** 先绑定共享配置，再创建真实环境；创建失败或正常清理均释放对应绑定，清理时无论成败都吊销会话令牌。 */
+/** 先绑定共享配置，再创建真实环境；清理时先吊销会话令牌，删除临时环境后释放绑定，删除失败也释放。 */
 export async function boundSessionEnvironment(
   session: SessionRuntimeLease,
   profile: SessionProfile | null,
@@ -33,11 +33,11 @@ export async function boundSessionEnvironment(
       binaryPath: environment.binaryPath,
       timezone: environment.timezone,
       cleanup: async () => {
+        session.close()
         try {
           await environment.cleanup()
-          release()
         } finally {
-          session.close()
+          release()
         }
       },
     }

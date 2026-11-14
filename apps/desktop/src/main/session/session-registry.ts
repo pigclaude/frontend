@@ -2,15 +2,15 @@
 // 停放的原因和会话专用的工具，并回答快照、摘要、空闲判断和「某个工作区有没有进行中的回合」。
 // 不启动、不停止 Claude Code。
 
-import { isAbsolute, relative, resolve } from "node:path"
+import { isAbsolute, relative, resolve, sep } from "node:path"
 import type { ClaudeSession } from "./claude-session"
 import type { SessionEnvelope } from "./session-envelope"
 import { buildStatusView, noPendingWork, type SessionPendingWork } from "./session-host-support"
 import { summarizeSession, type SessionSummary } from "./session-summary"
 import type { SessionErrorCode, SessionStatusView, SessionTurnEndStatus } from "./session-types"
 
-/** 一个会话在宿主里的阶段：等名额、正在启动、Claude Code 在运行、进程已结束但会话还留着。 */
-export type SessionPhase = "queued" | "starting" | "running" | "parked"
+/** 一个会话在宿主里的阶段：检查启动条件、等名额、正在启动、运行中或已停放。 */
+export type SessionPhase = "checking" | "queued" | "starting" | "running" | "parked"
 
 /** 宿主主动停放会话的原因；Claude Code 自己退出时没有原因。 */
 export type SessionParkReason = "stop" | "idle" | "membership"
@@ -25,6 +25,8 @@ export type SessionCancelCode = Extract<
 export type SessionEntry = {
   readonly sessionId: string
   readonly workspace: string
+  /** 启动时确认的真实路径，供工作台识别同一目录。 */
+  canonicalWorkspace: string | null
   phase: SessionPhase
   /** 启动拿到名额之后才有；停放后仍保留，用于补拉事件和摘要。 */
   session: ClaudeSession | null
@@ -50,13 +52,14 @@ export class SessionRegistry {
     return this.#entries.get(sessionId) ?? null
   }
 
-  /** 加入一个排队中的新会话；id 已存在时抛错，不覆盖。 */
+  /** 为等待启动检查的新会话登记 id；id 已存在时抛错，不覆盖。 */
   add(sessionId: string, workspace: string, now: number): SessionEntry {
     if (this.#entries.has(sessionId)) throw new Error("session id already registered")
     const entry: SessionEntry = {
       sessionId,
       workspace,
-      phase: "queued",
+      canonicalWorkspace: null,
+      phase: "checking",
       session: null,
       launch: null,
       cancelled: null,
@@ -157,7 +160,11 @@ export class SessionRegistry {
   hasActiveTurn(workspace: string): boolean {
     return this.all().some((entry) => {
       const session = this.live(entry.sessionId)
-      return session?.status().turnId != null && overlaps(entry.workspace, workspace)
+      return (
+        session?.status().turnId != null &&
+        (overlaps(entry.workspace, workspace) ||
+          (entry.canonicalWorkspace !== null && overlaps(entry.canonicalWorkspace, workspace)))
+      )
     })
   }
 }
@@ -175,5 +182,5 @@ function comparable(path: string): string {
 
 function contains(parent: string, child: string): boolean {
   const path = relative(parent, child)
-  return path === "" || (!path.startsWith("..") && !isAbsolute(path))
+  return path === "" || (path !== ".." && !path.startsWith(".." + sep) && !isAbsolute(path))
 }

@@ -2,7 +2,7 @@
 // 除工作区状态检查外不做 I/O、不持有会话状态，便于单独审查和保持主文件行数在上限内。
 
 import { constants } from "node:fs"
-import { access, stat } from "node:fs/promises"
+import { access, realpath, stat } from "node:fs/promises"
 import { isAbsolute } from "node:path"
 import { routeCanUseTool } from "./can-use-tool"
 import type { ClaudeAgentStartOptions } from "./claude-query-options"
@@ -30,15 +30,17 @@ export type UsageTurnState = {
   switchedFrom: string | null
 }
 
-/** 校验工作区是存在、可读的绝对目录；否则统一抛 WORKSPACE_UNAVAILABLE。 */
-export async function assertWorkspace(workspace: string): Promise<void> {
+/** 返回存在、可读的工作区的真实路径；校验失败统一抛 WORKSPACE_UNAVAILABLE。 */
+export async function assertWorkspace(workspace: string): Promise<string> {
   if (!isAbsolute(workspace)) {
     throw new SessionHostError("WORKSPACE_UNAVAILABLE", "工作区必须是绝对路径")
   }
   try {
-    const info = await stat(workspace)
+    const directory = await realpath(workspace)
+    const info = await stat(directory)
     if (!info.isDirectory()) throw new Error("not a directory")
-    await access(workspace, constants.R_OK)
+    await access(directory, constants.R_OK)
+    return directory
   } catch {
     throw new SessionHostError("WORKSPACE_UNAVAILABLE", "工作区不存在或不可读")
   }

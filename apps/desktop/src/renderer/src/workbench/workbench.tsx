@@ -114,6 +114,9 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
           if (event.type === "checkpoints-changed" && event.id === root) {
             setRevision((value) => value + 1)
           }
+          if (event.type === "browser-close") {
+            setState((current) => closeSurface(current, event.id))
+          }
           if (event.type === "browser-open") {
             setState((current) => {
               if (current.surfaces.some((tab) => tab.id === event.id)) {

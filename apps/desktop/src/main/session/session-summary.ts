@@ -1,7 +1,7 @@
 // 定义会话列表里每个会话的脱敏摘要和状态集合，并从注册表记录生成摘要；preload 和渲染层也引用这里的类型。
 
 import type { SessionEntry } from "./session-registry"
-import type { SessionTurnEndStatus } from "./session-types"
+import type { SessionStatusView, SessionTurnEndStatus } from "./session-types"
 
 /**
  * 会话在列表里的状态。queued 等名额；running 有进行中的回合（含正在启动）；waiting-approval 这一轮在等权限回答；
@@ -35,7 +35,7 @@ export function summarizeSession(entry: SessionEntry): SessionSummary {
   return {
     sessionId: entry.sessionId,
     workspace: entry.workspace,
-    status: listStatus(entry),
+    status: listStatus(entry, view),
     lastTurn: entry.lastTurn,
     turnId: live ? (view?.turnId ?? null) : null,
     pendingPermissions: live ? (view?.pendingPermissions ?? 0) : 0,
@@ -46,10 +46,11 @@ export function summarizeSession(entry: SessionEntry): SessionSummary {
   }
 }
 
-function listStatus(entry: SessionEntry): SessionListStatus {
+function listStatus(entry: SessionEntry, view: SessionStatusView | null): SessionListStatus {
   switch (entry.phase) {
     case "queued":
       return "queued"
+    case "checking":
     case "starting":
       return "running"
     case "parked":
@@ -57,8 +58,7 @@ function listStatus(entry: SessionEntry): SessionListStatus {
       if (entry.parkReason === "membership" || entry.parkedMidTurn) return "interrupted"
       return "parked"
     case "running": {
-      const view = entry.session?.status()
-      if (view === undefined) return "idle"
+      if (view === null) return "idle"
       if (view.pendingPermissions > 0) return "waiting-approval"
       return view.turnId === null && view.pendingQuestions === 0 ? "idle" : "running"
     }

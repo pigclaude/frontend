@@ -117,7 +117,7 @@ async function openDraft(page: Page, theme: "light" | "dark"): Promise<void> {
                 type: "message",
                 messageId: "m-1",
                 model: "claude-sonnet",
-                parentToolUseId: null,
+                subagent: null,
                 blocks: [{ type: "text", text: "依赖都是最新的。" }],
               })
               emit({

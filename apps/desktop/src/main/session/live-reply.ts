@@ -24,7 +24,7 @@ export class LiveReply {
       else this.#unfinished += event.text
       return event
     }
-    if (event.type !== "message" || event.parentToolUseId !== null) return event
+    if (event.type !== "message" || event.subagent !== null) return event
     if (event.blocks.some((block) => block.type === "text")) this.#unfinished = ""
     return this.#timeThinking(event)
   }

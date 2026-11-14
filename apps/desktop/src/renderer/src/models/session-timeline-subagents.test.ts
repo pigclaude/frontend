@@ -1,5 +1,6 @@
 // 负责验证投影里的子代理：子代理的消息、思考和工具调用带上父工具调用 id，只进它的子代理卡；
-// 卡片在子代理结束事件到达时才完成，后台启动的工具结果不算完成；没等到结束事件的一轮按结束方式收尾。
+// 卡片在子代理结束事件到达时才完成，后台启动的工具结果不算完成；一轮结束时还没等到结束事件的卡
+// 没有结果，按中断收尾。
 
 import { collectSubagents } from "@pigclaude/ui-chat"
 import { describe, expect, it } from "vitest"
@@ -45,8 +46,7 @@ function message(
     type: "message",
     messageId,
     model: "claude-sonnet",
-    parentToolUseId,
-    ...(parentToolUseId === null ? {} : { agentId: "agent-1" }),
+    subagent: parentToolUseId === null ? null : { parentToolUseId, agentId: "agent-1" },
     blocks,
   }
 }
@@ -64,6 +64,7 @@ const launched: SessionHostEvent = {
   toolUseId: call,
   content: "Async agent launched successfully.",
   isError: false,
+  subagent: null,
 }
 const subagentWork: SessionHostEvent[] = [
   message("s1", [{ type: "thinking", text: "先跑命令" }], call),
@@ -77,8 +78,7 @@ const subagentWork: SessionHostEvent[] = [
     toolUseId: "bash-1",
     content: "SUB_DONE",
     isError: false,
-    parentToolUseId: call,
-    agentId: "agent-1",
+    subagent: { parentToolUseId: call, agentId: "agent-1" },
   },
   message("s2", [{ type: "text", text: "命令输出 SUB_DONE" }], call),
 ]
@@ -136,26 +136,21 @@ describe("projectTimeline subagents", () => {
     expect(collectSubagents(failed.events).get(call)?.status).toBe("failed")
   })
 
-  it("settles a subagent with no end event when its turn ends", () => {
-    const handBack: SessionHostEvent = { ...launched, content: "交回的结果" }
-    const finished = feed(sent(), started, spawn, handBack, {
+  it("leaves a subagent with no end event by the end of its turn without a result, as interrupted", () => {
+    const ending = (status: "completed" | "interrupted"): SessionHostEvent => ({
       type: "turn-ended",
       turnId: "main-1",
-      status: "completed",
-      errorCode: null,
+      status,
+      errorCode: status === "completed" ? null : "SESSION_CANCELLED",
     })
-    const stopped = feed(sent(), started, spawn, launched, {
-      type: "turn-ended",
-      turnId: "main-1",
-      status: "interrupted",
-      errorCode: "SESSION_CANCELLED",
-    })
+    const finished = feed(sent(), started, spawn, launched, ...subagentWork, ending("completed"))
+    const stopped = feed(sent(), started, spawn, launched, ending("interrupted"))
 
-    expect(collectSubagents(project(finished).events).get(call)).toMatchObject({
-      status: "completed",
-      output: "交回的结果",
-    })
-    expect(collectSubagents(project(stopped).events).get(call)?.status).toBe("interrupted")
+    for (const state of [finished, stopped]) {
+      const card = collectSubagents(project(state).events).get(call)
+      expect(card?.status).toBe("interrupted")
+      expect(card?.output).toBeUndefined()
+    }
   })
 
   it("keeps the main answer in the streaming place while the subagent works", () => {

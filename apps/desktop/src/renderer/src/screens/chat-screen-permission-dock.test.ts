@@ -32,7 +32,13 @@ describe("chat screen permission dock", () => {
     state = receive(state, { type: "turn-started", turnId: "main-1" }, sessionTime)
     state = receive(
       state,
-      { type: "permission", requestId: "p-1", toolName: "Bash", input: { command: "ls" } },
+      {
+        type: "permission",
+        requestId: "p-1",
+        toolName: "Bash",
+        input: { command: "ls" },
+        subagent: null,
+      },
       sessionTime,
     )
     await show(state)

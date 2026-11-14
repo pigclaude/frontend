@@ -1,7 +1,8 @@
 // 负责一轮对话里的权限卡片：从权限请求的信封得出卡片，按用户的回答结算；这一轮结束时没回答的卡片
-// 按拒绝结算，权限询问超时结束的一轮按超时结算。卡片带请求和结算的时间。
+// 按拒绝结算，权限询问超时结束的一轮按超时结算。卡片带请求和结算的时间，以及发起它的子代理。
 
 import type { SessionEnvelope } from "../../../main/session/session-envelope"
+import type { SubagentRef } from "../../../main/session/session-events"
 import { sessionRecord } from "./session-event-store"
 import type { SessionUiState } from "./session-model"
 import { sessionRuns, type SessionRun } from "./session-runs"
@@ -22,8 +23,8 @@ export type SessionPermissionCard = {
   input: Record<string, unknown>
   suggestions: unknown[]
   blockedPath: string | null
-  /** 子代理发起的请求是派生它的 Agent 工具调用 id，主线程为 null。 */
-  parentToolUseId: string | null
+  /** 发起请求的子代理；主线程为 null。 */
+  subagent: SubagentRef | null
   status: SessionPermissionStatus
   requestedAt: string
   resolvedAt: string | null
@@ -49,9 +50,35 @@ export function pendingPermission(state: PermissionState): SessionPermissionCard
   return pendingCards(state)[0] ?? null
 }
 
-/** 当前会话里正在等权限回答的子代理，按派生它们的 Agent 工具调用 id。 */
-export function waitingSubagents(state: PermissionState): Set<string> {
-  return new Set(pendingCards(state).flatMap((card) => card.parentToolUseId ?? []))
+/**
+ * 正在等权限回答的子代理。parents 是认得出的子代理（派生它们的 Agent 工具调用 id）；
+ * unplaced 为真时，还有子代理发起的请求认不出是哪一个子代理的。
+ */
+export type WaitingSubagents = { parents: ReadonlySet<string>; unplaced: boolean }
+
+/**
+ * 当前会话里正在等权限回答的子代理。请求只带 agent id 时，按这个会话里子代理自己的消息和工具结果
+ * 找回派生它的工具调用；还是找不到的记为 unplaced。主线程的请求不算。
+ */
+export function waitingSubagents(state: PermissionState): WaitingSubagents {
+  const { envelopes } = sessionRecord(state.events, state.sessionId)
+  const known = new Map<string, string>()
+  for (const { event } of envelopes) {
+    if (event.type !== "message" && event.type !== "tool-result") continue
+    const ref = event.subagent
+    if (ref?.parentToolUseId != null && ref.agentId !== null) {
+      known.set(ref.agentId, ref.parentToolUseId)
+    }
+  }
+  const parents = new Set<string>()
+  let unplaced = false
+  for (const { subagent } of pendingCards(state)) {
+    if (subagent === null) continue
+    const parent = subagent.parentToolUseId ?? known.get(subagent.agentId)
+    if (parent === undefined) unplaced = true
+    else parents.add(parent)
+  }
+  return { parents, unplaced }
 }
 
 function pendingCards(state: PermissionState): SessionPermissionCard[] {
@@ -74,7 +101,7 @@ function cardOf(
     input: event.input,
     suggestions: event.suggestions ?? [],
     blockedPath: event.blockedPath ?? null,
-    parentToolUseId: event.parentToolUseId ?? null,
+    subagent: event.subagent,
     requestedAt: at,
   }
   const answer = answers[event.requestId]

@@ -37,7 +37,13 @@ async function openChat(page: Page, theme: "light" | "dark", finish: boolean): P
           { type: "tool-use", id: "tool-1", name: "Bash", input: { command: "pnpm outdated" } },
         ]),
       )
-      emit({ type: "tool-result", toolUseId: "tool-1", content: "", isError: false })
+      emit({
+        type: "tool-result",
+        toolUseId: "tool-1",
+        content: "",
+        isError: false,
+        subagent: null,
+      })
       const answer = "依赖都是最新的，锁文件和 package.json 一致"
       if (!finishTurn) {
         emit({ type: "delta", text: answer, thinking: false, blockIndex: 0 })

@@ -11,7 +11,8 @@ import type {
   PermissionUpdateDestination,
 } from "@anthropic-ai/claude-agent-sdk"
 import type { PendingAnswers, PendingOutcome } from "./pending-answers"
-import type { SubagentOwner } from "./session-events"
+import type { SubagentRef } from "./session-events"
+import { subagentRef } from "./subagent-tasks"
 
 /** 权限请求被取消时给 SDK 的说明；会话释放时整体拒绝也用它。 */
 export const cancelledPermissionMessage = "权限请求已取消"
@@ -26,7 +27,9 @@ export type PermissionRequestEvent = {
   input: Record<string, unknown>
   suggestions?: unknown[]
   blockedPath?: string
-} & SubagentOwner
+  /** 子代理发起的请求是它的归属；主线程为 null。 */
+  subagent: SubagentRef | null
+}
 
 /** renderer 的权限回答；updatedPermissions 来自不可信输入，写回前会校验。 */
 export type PermissionAnswer = {
@@ -44,6 +47,8 @@ export type PermissionBrokerOptions = {
   emit: (request: PermissionRequestEvent) => void
   onTimeout?: (request: PermissionRequestEvent) => void
   newRequestId?: () => string
+  /** 按 SDK 给的 agent id 找回子代理归属；不提供时只记 agent id。 */
+  subagentOf?: (agentId: string | undefined) => SubagentRef | null
 }
 
 /** canUseTool 中权限代理用到的选项；SDK 多给的字段会被忽略。 */
@@ -60,6 +65,7 @@ export class PermissionBroker {
   readonly #emit: (request: PermissionRequestEvent) => void
   readonly #onTimeout: ((request: PermissionRequestEvent) => void) | undefined
   readonly #newRequestId: () => string
+  readonly #subagentOf: (agentId: string | undefined) => SubagentRef | null
   readonly #queue: PendingAnswers
   readonly #inputs = new Map<string, Record<string, unknown>>()
 
@@ -68,6 +74,7 @@ export class PermissionBroker {
     this.#emit = options.emit
     this.#onTimeout = options.onTimeout
     this.#newRequestId = options.newRequestId ?? (() => randomUUID())
+    this.#subagentOf = options.subagentOf ?? ((agentId) => subagentRef(null, agentId))
     this.#queue = options.queue
   }
 
@@ -92,7 +99,7 @@ export class PermissionBroker {
       input,
       ...(options.suggestions === undefined ? {} : { suggestions: options.suggestions }),
       ...(options.blockedPath === undefined ? {} : { blockedPath: options.blockedPath }),
-      ...(options.agentID === undefined ? {} : { agentId: options.agentID }),
+      subagent: this.#subagentOf(options.agentID),
     }
     return new Promise<PermissionResult>((resolve) => {
       this.#inputs.set(request.requestId, input)

@@ -113,7 +113,7 @@ describe("session model", () => {
       type: "message",
       messageId: "m1",
       model: "claude-sonnet",
-      parentToolUseId: null,
+      subagent: null,
       blocks: [{ type: "text", text: "先看一下" }],
     })
 
@@ -127,7 +127,7 @@ describe("session model", () => {
       type: "message",
       messageId: "m1",
       model: "claude-sonnet",
-      parentToolUseId: null,
+      subagent: null,
       blocks: [
         { type: "text", text: "先读文件" },
         { type: "tool-use", id: "tool-1", name: "Read", input: { file: "a.ts" } },
@@ -137,7 +137,7 @@ describe("session model", () => {
       type: "message",
       messageId: "m2",
       model: "claude-sonnet",
-      parentToolUseId: null,
+      subagent: null,
       blocks: [{ type: "text", text: "读完了" }],
     })
 
@@ -159,7 +159,7 @@ describe("session model", () => {
       type: "message",
       messageId: "m1",
       model: "claude-sonnet",
-      parentToolUseId: null,
+      subagent: null,
       blocks: [{ type: "tool-use", id: "tool-1", name: "Read", input: { file: "a.ts" } }],
     }
     state = emit(state, message)
@@ -169,12 +169,14 @@ describe("session model", () => {
       toolUseId: "tool-1",
       content: "done",
       isError: false,
+      subagent: null,
     })
     state = emit(state, {
       type: "tool-result",
       toolUseId: "tool-1",
       content: "done",
       isError: false,
+      subagent: null,
     })
 
     expect(payloads(state, "tool.started")).toEqual([
@@ -191,14 +193,14 @@ describe("session model", () => {
       type: "message",
       messageId: "m1",
       model: "claude-sonnet",
-      parentToolUseId: null,
+      subagent: null,
       blocks: [{ type: "thinking", text: "先看一下" }],
     })
     state = emit(state, {
       type: "message",
       messageId: "m1",
       model: "claude-sonnet",
-      parentToolUseId: null,
+      subagent: null,
       blocks: [
         { type: "thinking", text: "先看一下" },
         { type: "tool-use", id: "tool-1", name: "Bash", input: { command: "ls" } },
@@ -209,6 +211,7 @@ describe("session model", () => {
       toolUseId: "tool-1",
       content: "bin",
       isError: false,
+      subagent: null,
     })
 
     expect(payloads(state, "tool.completed")).toEqual([
@@ -229,12 +232,14 @@ describe("session model", () => {
       requestId: "permission-1",
       toolName: "Bash",
       input: { command: "pnpm test" },
+      subagent: null,
     })
     state = emit(state, {
       type: "permission",
       requestId: "permission-1",
       toolName: "Bash",
       input: { command: "pnpm test" },
+      subagent: null,
     })
 
     expect(cards(state)).toHaveLength(1)
@@ -256,6 +261,7 @@ describe("session model", () => {
       requestId: "permission-2",
       toolName: "Write",
       input: { file: "b.ts" },
+      subagent: null,
     })
     state = apply(state, {
       type: "permission-answered",
@@ -377,6 +383,7 @@ describe("session model", () => {
       requestId: "permission-1",
       toolName: "Bash",
       input: { command: "pnpm test" },
+      subagent: null,
     })
     state = apply(state, { type: "cancel-requested", at: sessionTime })
 

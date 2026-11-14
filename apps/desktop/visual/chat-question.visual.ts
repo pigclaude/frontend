@@ -57,6 +57,7 @@ async function openChat(page: Page, theme: "light" | "dark"): Promise<void> {
         toolUseId: "tool-ask",
         content: "Your questions have been answered.",
         isError: false,
+        subagent: null,
       })
       emit(assistant("m-2", [{ type: "text", text: "好的，最多重试 3 次，只重试超时和 503。" }]))
       emit({

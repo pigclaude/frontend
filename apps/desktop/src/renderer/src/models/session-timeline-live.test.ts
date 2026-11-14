@@ -44,7 +44,7 @@ function text(messageId: string, value: string, parentToolUseId: string | null =
     type: "message",
     messageId,
     model: "claude-sonnet",
-    parentToolUseId,
+    subagent: parentToolUseId === null ? null : { parentToolUseId, agentId: null },
     blocks: [{ type: "text", text: value }],
   } satisfies SessionHostEvent
 }
@@ -54,7 +54,7 @@ function bash(id: string): SessionHostEvent {
     type: "message",
     messageId: `m-${id}`,
     model: "claude-sonnet",
-    parentToolUseId: null,
+    subagent: null,
     blocks: [{ type: "tool-use", id, name: "Bash", input: { command: "ls" } }],
   }
 }
@@ -176,6 +176,7 @@ describe("projectTimeline while a turn runs", () => {
       toolUseId: "tool-1",
       content: "ok",
       isError: false,
+      subagent: null,
     })
     state = reduceSession(state, { type: "user-message", text: "二", turnId: "turn-2", at: t0 })
     state = feed(state, { type: "turn-started", turnId: "main-2" }, text("m2", "第二轮"), {

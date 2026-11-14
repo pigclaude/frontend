@@ -139,6 +139,7 @@ describe("sessionStatus", () => {
       requestId: "r1",
       toolName: "Bash",
       input: {},
+      subagent: null,
     })
     expect(sessionStatus(pending)).toBe("waiting-approval")
     expect(sessionStatus(session({ activeTurnId: "t1", turns: [turn()] }))).toBe("running")
@@ -165,45 +166,27 @@ describe("sessionStatus", () => {
     ).toBe("interrupted")
   })
 
-  it("后台子代理还在忙时主会话运行中，子代理等许可时等待许可，它结束后这一轮才完成", () => {
-    const opened = reduceSession(createSessionState(), { type: "opened", sessionId: "s-1" })
-    const sent = reduceSession(opened, {
-      type: "user-message",
-      text: "派个后台子代理",
-      turnId: "t1",
-      at: "2026-11-14T01:00:00.000Z",
-    })
-    const busy = [
-      { type: "turn-started", turnId: "main-1" },
-      {
-        type: "message",
-        messageId: "m1",
-        model: "claude-sonnet",
-        parentToolUseId: null,
-        blocks: [{ type: "tool-use", id: "agent-1", name: "Agent", input: {} }],
-      },
-      { type: "tool-result", toolUseId: "agent-1", content: "launched", isError: false },
-      {
-        type: "result",
-        subtype: "success",
-        isError: false,
-        durationMs: 10,
-        numTurns: 2,
-        stopReason: "end_turn",
-        usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
-      },
-    ] satisfies SessionHostEvent[]
-    const working = busy.reduce((state, event) => receive(state, event), sent)
-    const asking = receive(working, {
-      type: "permission",
-      requestId: "r1",
-      toolName: "Bash",
-      input: { command: "ls" },
-      parentToolUseId: "agent-1",
-      agentId: "task-1",
-    })
-    expect(sessionStatus(working)).toBe("running")
-    expect(sessionStatus(asking)).toBe("waiting-approval")
+  it("后台子代理还在忙时主会话显示运行中", () => {
+    expect(sessionStatus(subagentWorking())).toBe("running")
+  })
+
+  it("子代理等权限回答时主会话显示等待许可，认不出是哪个子代理时也一样", () => {
+    for (const subagent of [
+      { parentToolUseId: "agent-1", agentId: "task-1" },
+      { parentToolUseId: null, agentId: "task-unknown" },
+    ]) {
+      const asking = receive(subagentWorking(), {
+        type: "permission",
+        requestId: "r1",
+        toolName: "Bash",
+        input: { command: "ls" },
+        subagent,
+      })
+      expect(sessionStatus(asking)).toBe("waiting-approval")
+    }
+  })
+
+  it("子代理结束、主进程结束这一轮后主会话显示已完成", () => {
     const finished = [
       {
         type: "subagent-ended",
@@ -214,11 +197,48 @@ describe("sessionStatus", () => {
       },
       { type: "turn-ended", turnId: "main-1", status: "completed", errorCode: null },
     ] satisfies SessionHostEvent[]
-    expect(sessionStatus(finished.reduce((state, event) => receive(state, event), working))).toBe(
-      "completed",
-    )
+    const done = finished.reduce((state, event) => receive(state, event), subagentWorking())
+    expect(sessionStatus(done)).toBe("completed")
   })
 })
+
+/** 主线程已经给出 result、后台子代理还在跑的会话。 */
+function subagentWorking(): SessionUiState {
+  const opened = reduceSession(createSessionState(), { type: "opened", sessionId: "s-1" })
+  const sent = reduceSession(opened, {
+    type: "user-message",
+    text: "派个后台子代理",
+    turnId: "t1",
+    at: "2026-11-14T01:00:00.000Z",
+  })
+  const busy = [
+    { type: "turn-started", turnId: "main-1" },
+    {
+      type: "message",
+      messageId: "m1",
+      model: "claude-sonnet",
+      subagent: null,
+      blocks: [{ type: "tool-use", id: "agent-1", name: "Agent", input: {} }],
+    },
+    {
+      type: "tool-result",
+      toolUseId: "agent-1",
+      content: "launched",
+      isError: false,
+      subagent: null,
+    },
+    {
+      type: "result",
+      subtype: "success",
+      isError: false,
+      durationMs: 10,
+      numTurns: 2,
+      stopReason: "end_turn",
+      usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
+    },
+  ] satisfies SessionHostEvent[]
+  return busy.reduce((state, event) => receive(state, event), sent)
+}
 
 describe("侧栏操作", () => {
   it("折叠项目时只改变这个项目的展开状态", () => {

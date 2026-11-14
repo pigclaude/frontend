@@ -29,10 +29,12 @@ export type SessionUsage = {
 }
 
 /**
- * 子代理归属：产生这个事件的子代理是哪一次 Agent 工具调用派生的（父工具调用 id），以及它的 agent id
- * （即它的后台任务 id）。主线程的事件不带这两个字段。
+ * 子代理归属：产生事件的子代理是哪一次 Agent 工具调用派生的（父工具调用 id），以及它的 agent id
+ * （即它的任务 id）。两者至少知道一个：子代理的消息总带父工具调用 id；权限询问只带 agent id，
+ * 主进程认不出这个 agent id 时父工具调用 id 为 null。事件上主线程的归属是 null。
  */
-export type SubagentOwner = { parentToolUseId?: string; agentId?: string }
+export type SubagentRef =
+  { parentToolUseId: string; agentId: string | null } | { parentToolUseId: null; agentId: string }
 
 /** 适配器向 SessionHost 广播的事件。 */
 export type SessionEvent =
@@ -50,15 +52,20 @@ export type SessionEvent =
       type: "message"
       messageId: string
       model: string
-      /** 子代理的消息是派生它的 Agent 工具调用 id，主线程为 null。 */
-      parentToolUseId: string | null
-      /** 子代理的 agent id；主线程的消息没有。 */
-      agentId?: string
+      /** 子代理归属；主线程为 null。 */
+      subagent: SubagentRef | null
       blocks: SessionContentBlock[]
       /** 主线程的思考消息才有：从这一段思考的第一个增量到这条消息的毫秒数，由主进程计时。 */
       thinkingMs?: number
     }
-  | ({ type: "tool-result"; toolUseId: string; content: string; isError: boolean } & SubagentOwner)
+  | {
+      type: "tool-result"
+      toolUseId: string
+      content: string
+      isError: boolean
+      /** 子代理归属；主线程为 null。 */
+      subagent: SubagentRef | null
+    }
   | {
       type: "result"
       subtype: string

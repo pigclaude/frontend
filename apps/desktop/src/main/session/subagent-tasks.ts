@@ -3,7 +3,7 @@
 // 后台子代理的工具结果只说明已在后台启动，它要等任务通知才算结束。
 
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import type { SubagentOwner } from "./session-events"
+import type { SubagentRef } from "./session-events"
 
 /** 子代理结束的方式，取自任务通知：正常完成、失败，或被停止。 */
 export type SubagentEndStatus = "completed" | "failed" | "stopped"
@@ -50,13 +50,33 @@ export function readSubagentTaskSignal(message: SDKMessage): SubagentTaskSignal 
   }
 }
 
-/** 一个会话的子代理。保证只为开始过的子代理发出结束事件，并能按 agent id 找回它的归属。 */
+/** 由父工具调用 id 和 agent id 拼出归属；两者都没有时是主线程，返回 null。 */
+export function subagentRef(
+  parentToolUseId: string | null | undefined,
+  agentId: string | null | undefined,
+): SubagentRef | null {
+  if (typeof parentToolUseId === "string") {
+    return { parentToolUseId, agentId: typeof agentId === "string" ? agentId : null }
+  }
+  return typeof agentId === "string" ? { parentToolUseId: null, agentId } : null
+}
+
+/**
+ * 一个会话的子代理。保证只为认出过的子代理发出结束事件，并能按 agent id 找回派生它的工具调用：
+ * 子代理的任务开始消息和它自己的消息都会让会话认出它。
+ */
 export class SubagentTasks {
   readonly #parents = new Map<string, string>()
 
   /** 记下一个开始了的子代理。 */
   started(signal: Extract<SubagentTaskSignal, { type: "subagent-task-started" }>): void {
     this.#parents.set(signal.agentId, signal.parentToolUseId)
+  }
+
+  /** 从子代理自己的消息或工具结果记下它的归属；主线程或缺一半的归属不记。 */
+  observe(subagent: SubagentRef | null): void {
+    if (subagent?.parentToolUseId == null || subagent.agentId === null) return
+    this.#parents.set(subagent.agentId, subagent.parentToolUseId)
   }
 
   /** 任务结束：是子代理时得出结束事件，其他任务（例如子代理起的后台 shell）返回 null。 */
@@ -74,10 +94,8 @@ export class SubagentTasks {
     }
   }
 
-  /** 按 agent id 找回子代理归属；主线程（没有 agent id）或不认识的 agent id 只留下已知的部分。 */
-  owner(agentId: string | undefined): SubagentOwner {
-    if (agentId === undefined) return {}
-    const parentToolUseId = this.#parents.get(agentId)
-    return parentToolUseId === undefined ? { agentId } : { parentToolUseId, agentId }
+  /** 按 agent id 找回子代理归属：没有 agent id 是主线程；认不出的 agent id 仍归子代理，父工具调用为 null。 */
+  refOf(agentId: string | undefined): SubagentRef | null {
+    return subagentRef(agentId === undefined ? null : this.#parents.get(agentId), agentId)
   }
 }

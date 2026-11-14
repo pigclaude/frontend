@@ -40,7 +40,7 @@ const asking: SessionHostEvent[] = [
     type: "message",
     messageId: "m-1",
     model: "claude-sonnet",
-    parentToolUseId: null,
+    subagent: null,
     blocks: [{ type: "tool-use", id: "tool-ask", name: "AskUserQuestion", input: { questions } }],
   },
   { type: "question", requestId: "q-1", questions },

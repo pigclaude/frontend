@@ -66,7 +66,7 @@ export async function installChatBridge(page: Page): Promise<void> {
       type: "message",
       messageId: id,
       model: "claude-sonnet",
-      parentToolUseId: null,
+      subagent: null,
       blocks,
       ...extra,
     })

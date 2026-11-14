@@ -43,7 +43,7 @@ describe("session model times", () => {
         type: "message",
         messageId: "m1",
         model: "claude-sonnet",
-        parentToolUseId: null,
+        subagent: null,
         blocks: [
           { type: "text", text: "先跑测试" },
           { type: "tool-use", id: "tool-1", name: "Bash", input: { command: "pnpm test" } },
@@ -53,7 +53,7 @@ describe("session model times", () => {
     )
     state = emit(
       state,
-      { type: "permission", requestId: "p-1", toolName: "Bash", input: {} },
+      { type: "permission", requestId: "p-1", toolName: "Bash", input: {}, subagent: null },
       "2026-11-14T01:00:05.000Z",
     )
     state = reduceSession(state, {
@@ -64,7 +64,7 @@ describe("session model times", () => {
     })
     state = emit(
       state,
-      { type: "tool-result", toolUseId: "tool-1", content: "ok", isError: false },
+      { type: "tool-result", toolUseId: "tool-1", content: "ok", isError: false, subagent: null },
       "2026-11-14T01:01:10.000Z",
     )
     state = emit(

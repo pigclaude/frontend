@@ -1,90 +1,107 @@
-// 负责投影里一轮的子代理卡：Task/Agent 工具调用成为子代理卡，卡片在子代理结束事件到达时完成，
-// 交回的结果取任务通知里的摘要。后台子代理的工具结果只说明已在后台启动，不算完成；工具结果报错时
-// 子代理没有起来，按失败结束。一轮结束时还没完成的卡片按这一轮的结束方式收尾。
+// 负责投影里一轮的子代理：主线程的 Task/Agent 工具调用成为子代理卡；子代理自己的思考、正文和工具
+// 调用带上父工具调用 id，只进它的卡，不进主时间线。卡片在子代理结束事件到达时完成，交回的结果取
+// 任务通知里的摘要；后台子代理的工具结果只说明已在后台启动，不算完成；工具结果报错时子代理没有
+// 起来，按失败结束。一轮结束时还没等到结束事件的卡没有结果，按中断收尾。
 
+import type { ThreadEvent } from "@pigclaude/ui-contracts"
 import type { SessionHostEvent } from "../../../main/session/session-types"
-import type { SessionTurn } from "./session-model"
 
+type MessageEvent = Extract<SessionHostEvent, { type: "message" }>
 type ToolResultEvent = Extract<SessionHostEvent, { type: "tool-result" }>
 type SubagentEndedEvent = Extract<SessionHostEvent, { type: "subagent-ended" }>
+
+/** 往一轮里追加一条线程事件；at 是事件的 ISO UTC 时间。 */
+export type PushDraft = (type: ThreadEvent["type"], payload: unknown, at: string) => void
 
 /** 子代理卡的完成状态，和对话组件的子代理状态一致。 */
 type CardStatus = "completed" | "failed" | "interrupted"
 
-/** subagent.completed 的 payload。 */
-export type SubagentCompletion = {
-  toolCallId: string
-  output: string
-  isError: boolean
-  status: CardStatus
-}
-
-/** Task 和 Agent 工具调用画成子代理卡。 */
-export function isSubagentTool(name: string): boolean {
-  return name === "Task" || name === "Agent"
-}
-
-/** subagent.started 的 payload：类型、任务说明和完整任务取自工具输入。 */
-export function subagentStartPayload(id: string, input: unknown): Record<string, unknown> {
-  const fields = (input ?? {}) as Record<string, unknown>
-  return {
-    toolCallId: id,
-    name: typeof fields.subagent_type === "string" ? fields.subagent_type : "子代理",
-    ...(typeof fields.description === "string" ? { description: fields.description } : {}),
-    ...(typeof fields.prompt === "string" ? { prompt: fields.prompt } : {}),
-  }
-}
-
-/** 一轮里的子代理卡。保证每张卡只完成一次。 */
+/** 一轮里的子代理卡。保证每张卡只完成一次，子代理的每个块和每个工具只投影一次。 */
 export class SubagentCards {
+  readonly #push: PushDraft
   readonly #all = new Set<string>()
-  /** 还没完成的卡，记着它的工具结果（前台子代理交回的结果，后台子代理的启动说明）。 */
-  readonly #open = new Map<string, string | null>()
+  readonly #running = new Set<string>()
+  readonly #blocks = new Set<string>()
+  readonly #tools = new Set<string>()
+  readonly #finished = new Set<string>()
 
-  /** 一张卡开始运行。 */
-  start(id: string): void {
+  /** 投影出的事件都经 push 追加到这一轮。 */
+  constructor(push: PushDraft) {
+    this.#push = push
+  }
+
+  /** 主线程的工具调用：是 Task 或 Agent 时开一张子代理卡并返回 true，其他工具返回 false。 */
+  start(id: string, name: string, input: unknown, at: string): boolean {
+    if (name !== "Task" && name !== "Agent") return false
     this.#all.add(id)
-    this.#open.set(id, null)
+    this.#running.add(id)
+    const fields = (input ?? {}) as Record<string, unknown>
+    this.#push(
+      "subagent.started",
+      {
+        toolCallId: id,
+        name: typeof fields.subagent_type === "string" ? fields.subagent_type : "子代理",
+        ...(typeof fields.description === "string" ? { description: fields.description } : {}),
+        ...(typeof fields.prompt === "string" ? { prompt: fields.prompt } : {}),
+      },
+      at,
+    )
+    return true
   }
 
-  /** 这个工具调用是不是这一轮的子代理卡（不论是否已完成）。 */
-  owns(id: string): boolean {
-    return this.#all.has(id)
+  /** 主线程的工具结果：属于子代理卡时处理掉并返回 true（报错时按失败完成），否则返回 false。 */
+  toolResult(event: ToolResultEvent, at: string): boolean {
+    if (!this.#all.has(event.toolUseId)) return false
+    if (event.isError) this.#complete(event.toolUseId, event.content, "failed", at)
+    return true
   }
 
-  /** 子代理工具的结果：报错时按失败完成这张卡，否则只记下结果，等子代理结束事件。 */
-  toolResult(event: ToolResultEvent): SubagentCompletion | null {
-    if (!this.#open.has(event.toolUseId)) return null
-    if (!event.isError) {
-      this.#open.set(event.toolUseId, event.content)
-      return null
-    }
-    return this.#complete(event.toolUseId, event.content, "failed")
-  }
-
-  /** 子代理结束事件：完成这张卡，交回的结果是任务通知里的摘要。不是这一轮的卡时返回 null。 */
-  ended(event: SubagentEndedEvent): SubagentCompletion | null {
-    if (!this.#open.has(event.parentToolUseId)) return null
+  /** 子代理结束事件：完成它的卡，交回的结果是任务通知里的摘要；不是这一轮的卡时忽略。 */
+  ended(event: SubagentEndedEvent, at: string): void {
     const status: CardStatus =
       event.status === "stopped"
         ? "interrupted"
         : event.status === "failed"
           ? "failed"
           : "completed"
-    return this.#complete(event.parentToolUseId, event.summary, status)
+    this.#complete(event.parentToolUseId, event.summary, status, at)
   }
 
-  /** 一轮结束时收尾还没完成的卡：正常结束的一轮按完成，结果取工具结果；其他按中断。 */
-  settle(status: SessionTurn["status"]): SubagentCompletion[] {
-    return [...this.#open].map(([id, output]) =>
-      status === "done"
-        ? this.#complete(id, output ?? "", "completed")
-        : this.#complete(id, "", "interrupted"),
-    )
+  /** 子代理自己的消息或工具结果：带上父工具调用 id 进它的卡；认不出父工具调用时不显示。 */
+  owned(event: MessageEvent | ToolResultEvent, at: string): void {
+    const parentToolUseId = event.subagent?.parentToolUseId
+    if (parentToolUseId == null) return
+    if (event.type === "tool-result") {
+      if (this.#finished.has(event.toolUseId)) return
+      this.#finished.add(event.toolUseId)
+      const { toolUseId: toolCallId, content: output, isError } = event
+      this.#push("tool.completed", { toolCallId, output, isError, parentToolUseId }, at)
+      return
+    }
+    for (const block of event.blocks) {
+      if (block.type === "tool-use") {
+        if (this.#tools.has(block.id)) continue
+        this.#tools.add(block.id)
+        const payload = { toolCallId: block.id, name: block.name, input: block.input }
+        this.#push("tool.started", { ...payload, parentToolUseId }, at)
+        continue
+      }
+      const key = `${event.messageId}\u0000${block.type}\u0000${block.text}`
+      if (block.text === "" || this.#blocks.has(key)) continue
+      this.#blocks.add(key)
+      const type = block.type === "thinking" ? "reasoning.completed" : "message.completed"
+      this.#push(type, { text: block.text, parentToolUseId }, at)
+    }
   }
 
-  #complete(id: string, output: string, status: CardStatus): SubagentCompletion {
-    this.#open.delete(id)
-    return { toolCallId: id, output, isError: status === "failed", status }
+  /** 一轮结束：还没等到结束事件的卡没有结果，按中断收尾。 */
+  settle(at: string): void {
+    for (const id of [...this.#running]) this.#complete(id, "", "interrupted", at)
+  }
+
+  #complete(id: string, output: string, status: CardStatus, at: string): void {
+    if (!this.#running.delete(id)) return
+    const payload = { toolCallId: id, output, isError: status === "failed", status }
+    this.#push("subagent.completed", payload, at)
   }
 }

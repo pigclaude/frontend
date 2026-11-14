@@ -90,7 +90,8 @@ export function createActiveSession(
   })
   const subagents = new SubagentTasks()
   const broker = new PermissionBroker({
-    emit: (request) => hooks.emitPermission({ ...request, ...subagents.owner(request.agentId) }),
+    emit: (request) => hooks.emitPermission({ ...request }),
+    subagentOf: (agentId) => subagents.refOf(agentId),
     onTimeout: timedOut("permission"),
     queue: pending,
   })

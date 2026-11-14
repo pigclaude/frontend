@@ -27,7 +27,7 @@ function message(block: { type: "text" | "thinking"; text: string }, thinkingMs?
     type: "message",
     messageId: `m-${block.type}`,
     model: "claude-sonnet",
-    parentToolUseId: null,
+    subagent: null,
     blocks: [block],
     ...(thinkingMs === undefined ? {} : { thinkingMs }),
   } satisfies SessionHostEvent

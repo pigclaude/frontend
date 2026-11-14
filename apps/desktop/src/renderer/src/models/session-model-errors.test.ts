@@ -78,6 +78,7 @@ describe("session error text", () => {
       requestId: "permission-1",
       toolName: "Bash",
       input: { command: "pnpm test" },
+      subagent: null,
     })
     state = emit(state, {
       type: "error",

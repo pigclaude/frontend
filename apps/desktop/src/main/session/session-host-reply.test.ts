@@ -74,7 +74,7 @@ describe("SessionHost reply", () => {
     expect(tail.map((event) => event.type)).toEqual(["message", "turn-ended"])
     expect(tail[0]).toMatchObject({
       type: "message",
-      parentToolUseId: null,
+      subagent: null,
       blocks: [{ type: "text", text: "先看一下" }],
     })
     await harness.host.dispose()
@@ -128,7 +128,8 @@ function message(
   blocks: Message["blocks"],
   parentToolUseId: string | null = null,
 ): Message {
-  return { type: "message", messageId, model: "claude-sonnet", parentToolUseId, blocks }
+  const subagent = parentToolUseId === null ? null : { parentToolUseId, agentId: null }
+  return { type: "message", messageId, model: "claude-sonnet", subagent, blocks }
 }
 
 function result(): SessionEvent {

@@ -17,13 +17,19 @@ function called(state: SessionUiState, id: string): SessionUiState {
     type: "message",
     messageId: `m-${id}`,
     model: "claude-sonnet",
-    parentToolUseId: null,
+    subagent: null,
     blocks: [{ type: "tool-use", id, name: "Edit", input: {} }],
   })
 }
 
 function finished(state: SessionUiState, id: string, isError = false): SessionUiState {
-  return receive(state, { type: "tool-result", toolUseId: id, content: "", isError })
+  return receive(state, {
+    type: "tool-result",
+    toolUseId: id,
+    content: "",
+    isError,
+    subagent: null,
+  })
 }
 
 function ended(state: SessionUiState, mainTurnId: string): SessionUiState {

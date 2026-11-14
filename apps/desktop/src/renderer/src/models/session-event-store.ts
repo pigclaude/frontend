@@ -67,7 +67,7 @@ function liveAfter(live: SessionLiveText, event: SessionHostEvent): SessionLiveT
     case "ended":
       return noLiveText
     case "message": {
-      if (event.parentToolUseId !== null) return live
+      if (event.subagent !== null) return live
       const kinds = new Set(event.blocks.map((block) => block.type))
       const text = kinds.has("text") ? "" : live.text
       const reasoning = kinds.has("thinking") || kinds.has("tool-use") ? "" : live.reasoning

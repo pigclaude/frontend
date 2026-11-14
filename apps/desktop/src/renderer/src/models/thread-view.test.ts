@@ -74,7 +74,7 @@ describe("threadView", () => {
           type: "message",
           messageId: "m1",
           model: "claude-sonnet",
-          parentToolUseId: null,
+          subagent: null,
           blocks: [{ type: "text", text: "答" }],
         },
         "2026-11-14T01:00:09.000Z",

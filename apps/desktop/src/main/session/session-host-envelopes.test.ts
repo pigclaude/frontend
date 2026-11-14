@@ -30,7 +30,7 @@ describe("SessionHost envelopes", () => {
       type: "message",
       messageId: "m1",
       model: "claude-sonnet",
-      parentToolUseId: null,
+      subagent: null,
       blocks: [{ type: "text", text: "先看" }],
     })
     clock = Date.UTC(2026, 10, 14, 1, 0, 9)
@@ -39,6 +39,7 @@ describe("SessionHost envelopes", () => {
       toolUseId: "t1",
       content: "",
       isError: false,
+      subagent: null,
     })
 
     expect(startSeqs).toEqual([1])
@@ -70,6 +71,7 @@ describe("SessionHost envelopes", () => {
       toolUseId: "t1",
       content: "",
       isError: false,
+      subagent: null,
     })
     harness.adapters.last.emit({ type: "error", code: "SDK_ERROR", message: "boom" })
 

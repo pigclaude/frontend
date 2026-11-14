@@ -3,16 +3,21 @@
 
 import type { SubagentCall } from "@pigclaude/ui-chat"
 import { describe, expect, it } from "vitest"
+import type { WaitingSubagents } from "./session-permissions"
 import {
   closeSubagentTab,
   initialSubagentTabs,
+  mainTab,
   openSubagentTab,
   selectSubagentTab,
-  subagentTabs,
+  subagentTabBar,
+  tabFromId,
+  tabId,
   type SubagentTabState,
 } from "./subagent-tabs"
 
 const main = { title: "pigclaude", description: "workspace / pigclaude" }
+const nobodyWaits: WaitingSubagents = { parents: new Set(), unplaced: false }
 
 function call(id: string, runId: string, status: SubagentCall["status"] = "running"): SubagentCall {
   return { id, name: "general-purpose", description: `任务 ${id}`, status, events: [], runId }
@@ -22,8 +27,12 @@ function subagents(...calls: SubagentCall[]): Map<string, SubagentCall> {
   return new Map(calls.map((item) => [item.id, item]))
 }
 
-function view(state: SubagentTabState, calls: Map<string, SubagentCall>, waiting: string[] = []) {
-  return subagentTabs({ main, subagents: calls, state, waiting: new Set(waiting) })
+function view(
+  state: SubagentTabState,
+  calls: Map<string, SubagentCall>,
+  waiting: WaitingSubagents = nobodyWaits,
+) {
+  return subagentTabBar({ main, subagents: calls, state, waiting })
 }
 
 describe("subagent tabs", () => {
@@ -33,6 +42,13 @@ describe("subagent tabs", () => {
       activeId: "main",
       subagent: null,
     })
+  })
+
+  it("names tabs for the chat component and reads them back", () => {
+    const tab = { kind: "subagent", subagentId: "call-1" } as const
+    expect(tabId(tab)).toBe("spawned:call-1")
+    expect(tabFromId(tabId(tab))).toEqual(tab)
+    expect(tabFromId("main")).toEqual(mainTab)
   })
 
   it("lists the latest run's subagents and an earlier one only after it is opened", () => {
@@ -54,7 +70,7 @@ describe("subagent tabs", () => {
   it("closes a tab back to the main session and opens it again from its card", () => {
     const calls = subagents(call("b", "run-2"))
     const viewing = openSubagentTab(initialSubagentTabs, "b")
-    const closed = closeSubagentTab(viewing, "spawned:b")
+    const closed = closeSubagentTab(viewing, "b")
 
     expect(view(closed, calls)).toMatchObject({ activeId: "main", subagent: null })
     expect(view(closed, calls).tabs.map((tab) => tab.id)).toEqual(["main"])
@@ -66,17 +82,17 @@ describe("subagent tabs", () => {
 
   it("keeps the selected tab when another one closes and switches between tabs", () => {
     const calls = subagents(call("a", "run-2"), call("b", "run-2"))
-    const onA = selectSubagentTab(initialSubagentTabs, "spawned:a")
+    const onA = selectSubagentTab(initialSubagentTabs, { kind: "subagent", subagentId: "a" })
 
-    expect(view(closeSubagentTab(onA, "spawned:b"), calls).activeId).toBe("spawned:a")
-    expect(view(selectSubagentTab(onA, "main"), calls)).toMatchObject({
+    expect(view(closeSubagentTab(onA, "b"), calls).activeId).toBe("spawned:a")
+    expect(view(selectSubagentTab(onA, mainTab), calls)).toMatchObject({
       activeId: "main",
       subagent: null,
     })
   })
 
   it("falls back to the main tab when the selected subagent is gone", () => {
-    const state = selectSubagentTab(initialSubagentTabs, "spawned:gone")
+    const state = selectSubagentTab(initialSubagentTabs, { kind: "subagent", subagentId: "gone" })
     expect(view(state, subagents(call("b", "run-2")))).toMatchObject({
       activeId: "main",
       subagent: null,
@@ -85,7 +101,8 @@ describe("subagent tabs", () => {
 
   it("marks running subagents and the one waiting for a permission answer", () => {
     const calls = subagents(call("a", "run-2"), call("b", "run-2"), call("c", "run-2", "completed"))
-    const tabs = view(initialSubagentTabs, calls, ["b"]).tabs
+    const waiting = { parents: new Set(["b"]), unplaced: false }
+    const tabs = view(initialSubagentTabs, calls, waiting).tabs
 
     expect(tabs.map((tab) => [tab.id, tab.running ?? false, tab.waiting ?? false])).toEqual([
       ["main", false, false],
@@ -99,5 +116,16 @@ describe("subagent tabs", () => {
       description: "general-purpose · 任务 a",
       closable: true,
     })
+  })
+
+  it("marks every running subagent as waiting when a subagent's request cannot be placed", () => {
+    const calls = subagents(call("a", "run-2"), call("c", "run-2", "completed"))
+    const tabs = view(initialSubagentTabs, calls, { parents: new Set(), unplaced: true }).tabs
+
+    expect(tabs.map((tab) => [tab.id, tab.waiting ?? false])).toEqual([
+      ["main", false],
+      ["spawned:a", true],
+      ["spawned:c", false],
+    ])
   })
 })

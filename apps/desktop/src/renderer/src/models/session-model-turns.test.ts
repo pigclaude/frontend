@@ -81,7 +81,7 @@ describe("session model turns", () => {
       type: "message",
       messageId: "m-continuation",
       model: "deepseek-v4.1-flash",
-      parentToolUseId: null,
+      subagent: null,
       blocks: [{ type: "text", text: "子代理已经跑完：SUB_DONE" }],
     })
     state = emit(state, { ...firstResult, numTurns: 1 })

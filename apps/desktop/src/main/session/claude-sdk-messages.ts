@@ -2,13 +2,13 @@
 
 import type { ModelUsage, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { readBackgroundTaskSignal } from "./background-tasks"
-import { readSubagentTaskSignal } from "./subagent-tasks"
+import { readSubagentTaskSignal, subagentRef } from "./subagent-tasks"
 import type {
   AdapterEvent,
   SessionContentBlock,
   SessionEvent,
   SessionUsage,
-  SubagentOwner,
+  SubagentRef,
 } from "./session-events"
 
 /** 把一条 SDK 消息换成按发出顺序排列的会话事件和后台任务信号；不认识的消息返回空数组。 */
@@ -42,8 +42,7 @@ export function normalizeSdkMessage(message: SDKMessage): AdapterEvent[] {
           type: "message",
           messageId: message.message.id,
           model: message.message.model,
-          parentToolUseId: message.parent_tool_use_id,
-          ...agentOf(message.parent_tool_use_id, message.agent_id),
+          subagent: subagentRef(message.parent_tool_use_id, message.agent_id),
           blocks: mapContentBlocks(message.message.content),
         },
       ]
@@ -59,7 +58,10 @@ export function normalizeSdkMessage(message: SDKMessage): AdapterEvent[] {
     case "user":
       return toolResults(
         message.message.content,
-        ownerOf(message.parent_tool_use_id, "agent_id" in message ? message.agent_id : undefined),
+        subagentRef(
+          message.parent_tool_use_id,
+          "agent_id" in message ? message.agent_id : undefined,
+        ),
       )
     case "result": {
       const totalUsage = sumModelUsage(message.modelUsage)
@@ -123,16 +125,7 @@ function streamDelta(event: unknown): SessionEvent[] {
   return []
 }
 
-// 子代理的 agent id 只在子代理的消息上有意义；主线程的消息不带归属。
-function agentOf(parent: string | null, agentId: string | undefined): { agentId?: string } {
-  return parent !== null && typeof agentId === "string" ? { agentId } : {}
-}
-
-function ownerOf(parent: string | null, agentId: string | undefined): SubagentOwner {
-  return parent === null ? {} : { parentToolUseId: parent, ...agentOf(parent, agentId) }
-}
-
-function toolResults(content: unknown, owner: SubagentOwner): SessionEvent[] {
+function toolResults(content: unknown, subagent: SubagentRef | null): SessionEvent[] {
   if (!Array.isArray(content)) return []
   const events: SessionEvent[] = []
   for (const block of content) {
@@ -143,7 +136,7 @@ function toolResults(content: unknown, owner: SubagentOwner): SessionEvent[] {
       toolUseId: block.tool_use_id,
       content: toolResultText(block.content),
       isError: block.is_error === true,
-      ...owner,
+      subagent,
     })
   }
   return events

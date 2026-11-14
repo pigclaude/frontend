@@ -188,14 +188,20 @@ describe("ClaudeAgentAdapter", () => {
         type: "message",
         messageId: "msg-1",
         model: "claude-sonnet-4",
-        parentToolUseId: null,
+        subagent: null,
         blocks: [
           { type: "text", text: "Reading the file" },
           { type: "thinking", text: "need the config" },
           { type: "tool-use", id: "tool-1", name: "Read", input: { file_path: "/tmp/a" } },
         ],
       },
-      { type: "tool-result", toolUseId: "tool-1", content: "file body", isError: false },
+      {
+        type: "tool-result",
+        toolUseId: "tool-1",
+        content: "file body",
+        isError: false,
+        subagent: null,
+      },
       {
         type: "result",
         subtype: "success",

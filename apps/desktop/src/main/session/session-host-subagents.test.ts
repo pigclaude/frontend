@@ -1,12 +1,15 @@
 // 负责用录制的 SDK 消息回放验证子代理归属：子代理的消息、工具结果和权限询问带上父工具调用 id 和
-// agent id，子代理在收到任务通知时才发出结束事件。
+// agent id，主线程的归属为 null；认不出父工具调用的子代理权限仍归子代理。子代理在收到任务通知时
+// 才发出结束事件。
 
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { afterEach, describe, expect, it } from "vitest"
+import type { PermissionRequestEvent } from "./permission-broker"
 import { waitUntil } from "./session-host-fixtures"
-import { loadSdkFixture, replay, startReplay } from "./session-replay-fixtures"
+import { loadSdkFixture, replay, startReplay, type ReplayHarness } from "./session-replay-fixtures"
 
 const temporaryDirs: string[] = []
 const agentCall = "call_00_u5yk0fbs6v00oj3p3cd57eqe"
@@ -24,25 +27,22 @@ describe("SessionHost subagents", () => {
     replay(harness.query, loadSdkFixture("background-agent-2.1.310"))
     await waitUntil(() => harness.events.some((event) => event.type === "turn-ended"))
 
-    const owned = harness.events.flatMap((event) => {
-      if (event.type === "message") {
-        return [[event.type, event.parentToolUseId, event.agentId ?? null]]
-      }
-      if (event.type === "tool-result") {
-        return [[event.type, event.parentToolUseId ?? null, event.agentId ?? null]]
-      }
-      return []
-    })
+    const owned = harness.events.flatMap((event) =>
+      event.type === "message" || event.type === "tool-result"
+        ? [[event.type, event.subagent]]
+        : [],
+    )
+    const subagent = { parentToolUseId: agentCall, agentId }
     expect(owned).toEqual([
-      ["message", null, null],
-      ["tool-result", null, null],
-      ["message", null, null],
-      ["message", agentCall, agentId],
-      ["message", agentCall, agentId],
-      ["tool-result", agentCall, agentId],
-      ["message", agentCall, agentId],
-      ["message", null, null],
-      ["message", null, null],
+      ["message", null],
+      ["tool-result", null],
+      ["message", null],
+      ["message", subagent],
+      ["message", subagent],
+      ["tool-result", subagent],
+      ["message", subagent],
+      ["message", null],
+      ["message", null],
     ])
     await harness.host.dispose()
   })
@@ -58,7 +58,7 @@ describe("SessionHost subagents", () => {
       (event) => event.type === "tool-result" && event.toolUseId === agentCall,
     )
     const lastSubagentMessage = harness.events.findLastIndex(
-      (event) => event.type === "message" && event.parentToolUseId === agentCall,
+      (event) => event.type === "message" && event.subagent?.parentToolUseId === agentCall,
     )
     const ended = harness.events.flatMap((event, index) =>
       event.type === "subagent-ended" ? [{ index, event }] : [],
@@ -85,7 +85,7 @@ describe("SessionHost subagents", () => {
     await waitUntil(() => harness.events.some((event) => event.type === "turn-ended"))
 
     const blocks = harness.events.flatMap((event) =>
-      event.type === "message" && event.parentToolUseId === call
+      event.type === "message" && event.subagent?.parentToolUseId === call
         ? event.blocks.map((block) => block.type)
         : [],
     )
@@ -118,43 +118,78 @@ describe("SessionHost subagents", () => {
 
   it("asks a subagent's permission with its parent tool call and agent id", async () => {
     const harness = await startReplay(await workspaceDir())
-    const messages = loadSdkFixture("background-agent-2.1.310")
-    const subagentTool = messages.findIndex(
-      (message) => message.type === "assistant" && message.parent_tool_use_id === agentCall,
+    await replayUntilSubagentWorks(harness)
+
+    const permissions = await ask(harness, [agentId, undefined])
+
+    expect(permissions.map((event) => event.subagent)).toEqual([
+      { parentToolUseId: agentCall, agentId },
+      null,
+    ])
+    await harness.host.dispose()
+  })
+
+  it("finds a subagent's parent tool call from its messages when the task start is missing", async () => {
+    const harness = await startReplay(await workspaceDir())
+    await replayUntilSubagentWorks(
+      harness,
+      (message) => !(message.type === "system" && message.subtype === "task_started"),
     )
 
-    await harness.host.send(harness.sessionId, { text: "start a background subagent" })
-    replay(harness.query, messages.slice(0, subagentTool + 2))
-    await waitUntil(() =>
-      harness.events.some((event) => event.type === "message" && event.parentToolUseId !== null),
-    )
-    const signal = new AbortController().signal
-    void harness.canUseTool(
-      "Bash",
-      { command: "sleep 21" },
-      {
-        signal,
-        toolUseID: "call_00_ckmv3ue7pazeijtlxw6l9ipx",
-        agentID: agentId,
-        requestId: "control-1",
-      },
-    )
-    void harness.canUseTool(
-      "Bash",
-      { command: "ls" },
-      { signal, toolUseID: "main-tool", requestId: "control-2" },
-    )
-    await waitUntil(
-      () => harness.events.filter((event) => event.type === "permission").length === 2,
-    )
+    const permissions = await ask(harness, [agentId])
 
-    const permissions = harness.events.filter((event) => event.type === "permission")
-    expect(permissions[0]).toMatchObject({ parentToolUseId: agentCall, agentId })
-    expect(permissions[1]).not.toHaveProperty("parentToolUseId")
-    expect(permissions[1]).not.toHaveProperty("agentId")
+    expect(permissions[0]?.subagent).toEqual({ parentToolUseId: agentCall, agentId })
+    await harness.host.dispose()
+  })
+
+  it("keeps a permission from an unknown agent id on the subagent side", async () => {
+    const harness = await startReplay(await workspaceDir())
+    await replayUntilSubagentWorks(harness)
+
+    const permissions = await ask(harness, ["agent-not-seen"])
+
+    expect(permissions[0]?.subagent).toEqual({ parentToolUseId: null, agentId: "agent-not-seen" })
     await harness.host.dispose()
   })
 })
+
+async function replayUntilSubagentWorks(
+  harness: ReplayHarness,
+  keep: (message: SDKMessage) => boolean = () => true,
+): Promise<void> {
+  const messages = loadSdkFixture("background-agent-2.1.310")
+  const subagentTool = messages.findIndex(
+    (message) => message.type === "assistant" && message.parent_tool_use_id === agentCall,
+  )
+  await harness.host.send(harness.sessionId, { text: "start a background subagent" })
+  replay(harness.query, messages.slice(0, subagentTool + 2).filter(keep))
+  await waitUntil(() =>
+    harness.events.some((event) => event.type === "message" && event.subagent !== null),
+  )
+}
+
+async function ask(
+  harness: ReplayHarness,
+  agents: Array<string | undefined>,
+): Promise<PermissionRequestEvent[]> {
+  const signal = new AbortController().signal
+  for (const [index, agent] of agents.entries()) {
+    void harness.canUseTool(
+      "Bash",
+      { command: "ls" },
+      {
+        signal,
+        toolUseID: `tool-${index}`,
+        requestId: `control-${index}`,
+        ...(agent === undefined ? {} : { agentID: agent }),
+      },
+    )
+  }
+  await waitUntil(
+    () => harness.events.filter((event) => event.type === "permission").length === agents.length,
+  )
+  return harness.events.filter((event) => event.type === "permission")
+}
 
 async function workspaceDir(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "pigclaude-subagents-"))

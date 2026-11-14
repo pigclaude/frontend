@@ -1,10 +1,12 @@
 // 负责验证聊天页的子代理：子代理的消息和工具调用不进主时间线，子代理卡显示任务、运行中最近一次工具
 // 调用和交回的结果；点开卡片后线程头出现子代理标签，显示它的只读过程；子代理等待权限回答时标签显示
-// 等待；标签的选中和关闭只记在渲染层内存里。
+// 等待（认不出是哪个子代理时所有运行中的子代理都显示）；标签的选中和关闭只记在渲染层内存里，
+// 会话结束时回收。
 
 // @vitest-environment jsdom
 import { createElement } from "react"
 import { describe, expect, it } from "vitest"
+import type { SubagentRef } from "../../../main/session/session-events"
 import type { SessionHostEvent } from "../../../main/session/session-types"
 import type { SessionUiState } from "../models/session-model"
 import {
@@ -29,8 +31,7 @@ function message(
     type: "message",
     messageId,
     model: "claude-sonnet",
-    parentToolUseId,
-    ...(parentToolUseId === null ? {} : { agentId: "agent-1" }),
+    subagent: parentToolUseId === null ? null : { parentToolUseId, agentId: "agent-1" },
     blocks,
   }
 }
@@ -50,6 +51,7 @@ const working: SessionHostEvent[] = [
     toolUseId: call,
     content: "Async agent launched successfully.",
     isError: false,
+    subagent: null,
   },
   message("m-2", [{ type: "text", text: "子代理已在后台启动" }]),
   message("s-1", [{ type: "text", text: "我先跑一下命令" }], call),
@@ -70,6 +72,17 @@ const finished: SessionHostEvent = {
 
 function feed(state: SessionUiState, ...events: SessionHostEvent[]): SessionUiState {
   return events.reduce((current, event) => receive(current, event, sessionTime), state)
+}
+
+function asking(subagent: SubagentRef | null): SessionHostEvent {
+  const input = { command: "rm -rf build" }
+  return { type: "permission", requestId: "p-1", toolName: "Bash", input, subagent }
+}
+
+function waitingOn(): boolean {
+  const tab = screen.container.querySelector('[data-tab-id="spawned:call-agent"]')
+  expect(tab, "子代理标签").not.toBeNull()
+  return tab?.querySelector('[aria-label="等待许可"]') != null
 }
 
 function tabNames(): string[] {
@@ -135,19 +148,37 @@ describe("chat screen subagents", () => {
   })
 
   it("marks the subagent's tab as waiting while its permission is pending", async () => {
-    const state = feed(startingState(), ...working, {
-      type: "permission",
-      requestId: "p-1",
-      toolName: "Bash",
-      input: { command: "rm -rf build" },
-      parentToolUseId: call,
-      agentId: "agent-1",
-    })
+    for (const subagent of [
+      { parentToolUseId: call, agentId: "agent-1" },
+      { parentToolUseId: null, agentId: "agent-1" },
+      { parentToolUseId: null, agentId: "agent-not-seen" },
+    ]) {
+      const state = feed(startingState(), ...working, asking(subagent))
+      await screen.render({ fresh: false, session: controller({ state }) })
+
+      expect(waitingOn(), JSON.stringify(subagent)).toBe(true)
+    }
+  })
+
+  it("does not mark a subagent as waiting for the main thread's permission", async () => {
+    const state = feed(startingState(), ...working, asking(null))
     await screen.render({ fresh: false, session: controller({ state }) })
 
-    const tab = screen.container.querySelector('[data-tab-id="spawned:call-agent"]')
-    expect(tab, "子代理标签").not.toBeNull()
-    expect(tab?.querySelector('[aria-label="等待许可"]') ?? null).not.toBeNull()
+    expect(waitingOn()).toBe(false)
+  })
+
+  it("forgets the tabs of a session once it ends", async () => {
+    const state = feed(startingState(), ...working)
+    await screen.render({ fresh: false, session: controller({ state }) })
+    await openCard()
+    await clickButton(labelled("关闭 跑命令"), "关闭")
+    expect(tabNames()).toHaveLength(1)
+
+    const ended = feed(state, { type: "ended", reason: "stopped" })
+    await screen.render({ fresh: false, session: controller({ state: ended }) })
+
+    expect(tabNames()).toHaveLength(2)
+    expect(screen.container.querySelector(".subagent-view")).toBeNull()
   })
 
   it("keeps a closed tab closed and the chosen tab across remounts", async () => {

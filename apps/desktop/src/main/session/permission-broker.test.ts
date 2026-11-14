@@ -173,9 +173,11 @@ describe("PermissionBroker", () => {
       "blockedPath",
       "input",
       "requestId",
+      "subagent",
       "toolName",
       "type",
     ])
+    expect(events[0]?.subagent).toBeNull()
     controller.abort()
   })
 })

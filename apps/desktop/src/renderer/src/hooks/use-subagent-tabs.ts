@@ -1,42 +1,22 @@
-// 负责聊天页线程头的子代理标签：按会话 id 把标签状态记在渲染层内存里（离开聊天页再回来不丢，
-// 不写本地存储也不经主进程），并组装成对话组件要的标签栏、只读过程视图和打开、返回的回调。
+// 负责聊天页线程头的子代理标签：从标签状态存储读出当前会话的标签状态，组装成对话组件要的标签栏、
+// 只读过程视图和打开、返回、关闭的回调；会话结束时回收它的标签状态。
 
-import { useMemo, useSyncExternalStore } from "react"
+import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react"
 import type { ThreadEvent } from "@pigclaude/ui-contracts"
 import { collectSubagents, type ChatViewProps } from "@pigclaude/ui-chat"
+import type { WaitingSubagents } from "../models/session-permissions"
+import { SubagentTabStore } from "../models/subagent-tab-store"
 import {
   closeSubagentTab,
-  initialSubagentTabs,
+  mainTab,
   openSubagentTab,
   selectSubagentTab,
-  subagentTabs,
-  type SubagentTabState,
+  subagentTabBar,
+  tabFromId,
 } from "../models/subagent-tabs"
 
-const states = new Map<string, SubagentTabState>()
-const listeners = new Set<() => void>()
-let version = 0
-
-function read(sessionId: string): SubagentTabState {
-  return states.get(sessionId) ?? initialSubagentTabs
-}
-
-function update(sessionId: string, next: (state: SubagentTabState) => SubagentTabState): void {
-  states.set(sessionId, next(read(sessionId)))
-  version += 1
-  for (const listener of listeners) listener()
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener)
-  return () => listeners.delete(listener)
-}
-
-/** 清空所有会话的标签状态；只给测试在用例之间复位。 */
-export function resetSubagentTabs(): void {
-  states.clear()
-  version += 1
-}
+/** 标签状态存储；默认是整个渲染进程共用的一份，窗口不关就一直在。 */
+export const SubagentTabStoreContext = createContext(new SubagentTabStore())
 
 /** 聊天页交给对话组件的子代理标签部分。 */
 export type SubagentTabProps = Pick<
@@ -46,28 +26,43 @@ export type SubagentTabProps = Pick<
 
 /**
  * 一个会话的子代理标签。sessionId 为 null（还没有会话）时不提供标签。main 是主会话标签的标题和说明；
- * waiting 是正在等权限回答的子代理。
+ * waiting 是正在等权限回答的子代理；ended 为真时回收这个会话的标签状态。
  */
 export function useSubagentTabs(input: {
   sessionId: string | null
+  ended: boolean
   events: ThreadEvent[]
   main: { title: string; description: string }
-  waiting: ReadonlySet<string>
+  waiting: WaitingSubagents
 }): SubagentTabProps {
-  const { sessionId, events, main, waiting } = input
-  useSyncExternalStore(subscribe, () => version)
+  const { sessionId, ended, events, main, waiting } = input
+  const store = useContext(SubagentTabStoreContext)
+  useSyncExternalStore(
+    (listener) => store.subscribe(listener),
+    () => store.version(),
+  )
   const subagents = useMemo(() => collectSubagents(events), [events])
+
+  useEffect(() => {
+    if (ended && sessionId !== null) store.forget(sessionId)
+  }, [ended, sessionId, store])
+
   if (sessionId === null) return {}
-  const view = subagentTabs({ main, subagents, state: read(sessionId), waiting })
+  const bar = subagentTabBar({ main, subagents, state: store.read(sessionId), waiting })
   return {
     tabs: {
-      tabs: view.tabs,
-      activeId: view.activeId,
-      onSelect: (tabId) => update(sessionId, (state) => selectSubagentTab(state, tabId)),
-      onClose: (tabId) => update(sessionId, (state) => closeSubagentTab(state, tabId)),
+      tabs: bar.tabs,
+      activeId: bar.activeId,
+      onSelect: (id) => store.update(sessionId, (state) => selectSubagentTab(state, tabFromId(id))),
+      onClose: (id) => {
+        const tab = tabFromId(id)
+        if (tab.kind === "subagent") {
+          store.update(sessionId, (state) => closeSubagentTab(state, tab.subagentId))
+        }
+      },
     },
-    subagent: view.subagent,
-    onOpenSubagent: (id) => update(sessionId, (state) => openSubagentTab(state, id)),
-    onBackToMain: () => update(sessionId, (state) => selectSubagentTab(state, "main")),
+    subagent: bar.subagent,
+    onOpenSubagent: (id) => store.update(sessionId, (state) => openSubagentTab(state, id)),
+    onBackToMain: () => store.update(sessionId, (state) => selectSubagentTab(state, mainTab)),
   }
 }

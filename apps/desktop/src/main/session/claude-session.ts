@@ -283,6 +283,11 @@ export class ClaudeSession {
         this.#publish(sanitizeSessionEvent(event, this.#options.sessionToken()))
         if (!active.stopping) void this.release()
         return
+      case "message":
+      case "tool-result":
+        active.subagents.observe(event.subagent)
+        this.#publish(this.#reply.observe(event))
+        return
       default:
         this.#publish(this.#reply.observe(event))
         return
@@ -321,7 +326,7 @@ export class ClaudeSession {
         type: "message",
         messageId: `unfinished-${event.turnId}`,
         model: this.state.model ?? "",
-        parentToolUseId: null,
+        subagent: null,
         blocks: [{ type: "text", text: unfinished }],
       })
     }

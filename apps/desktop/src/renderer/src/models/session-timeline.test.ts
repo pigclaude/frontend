@@ -41,7 +41,10 @@ function message(
     type: "message",
     messageId,
     model: "claude-sonnet",
-    parentToolUseId: extra.parentToolUseId ?? null,
+    subagent:
+      extra.parentToolUseId === undefined
+        ? null
+        : { parentToolUseId: extra.parentToolUseId, agentId: null },
     blocks,
     ...(extra.thinkingMs === undefined ? {} : { thinkingMs: extra.thinkingMs }),
   }
@@ -80,7 +83,7 @@ describe("projectTimeline", () => {
         "2026-11-14T01:00:09.000Z",
       ],
       [
-        { type: "tool-result", toolUseId: "tool-1", content: "ok", isError: false },
+        { type: "tool-result", toolUseId: "tool-1", content: "ok", isError: false, subagent: null },
         "2026-11-14T01:00:41.500Z",
       ],
       [completed, "2026-11-14T01:01:02.000Z"],
@@ -130,8 +133,24 @@ describe("projectTimeline", () => {
       [message("m1", [{ type: "thinking", text: "先看一下" }])],
       [message("m1", [{ type: "thinking", text: "先看一下" }, tool])],
       [message("m1", [tool])],
-      [{ type: "tool-result", toolUseId: "tool-1", content: "bin", isError: false }],
-      [{ type: "tool-result", toolUseId: "tool-1", content: "bin", isError: false }],
+      [
+        {
+          type: "tool-result",
+          toolUseId: "tool-1",
+          content: "bin",
+          isError: false,
+          subagent: null,
+        },
+      ],
+      [
+        {
+          type: "tool-result",
+          toolUseId: "tool-1",
+          content: "bin",
+          isError: false,
+          subagent: null,
+        },
+      ],
       [message("m2", [{ type: "text", text: "读完了" }])],
       [completed],
     )
@@ -164,7 +183,15 @@ describe("projectTimeline", () => {
     const state = feed(
       sent(),
       [started],
-      [{ type: "tool-result", toolUseId: "tool-9", content: "孤立", isError: true }],
+      [
+        {
+          type: "tool-result",
+          toolUseId: "tool-9",
+          content: "孤立",
+          isError: true,
+          subagent: null,
+        },
+      ],
     )
     const events = project(state).events
 
@@ -192,7 +219,15 @@ describe("projectTimeline", () => {
         ]),
       ],
       [message("m1", [{ type: "tool-use", id: "task-2", name: "Agent", input: {} }])],
-      [{ type: "tool-result", toolUseId: "task-2", content: "失败", isError: true }],
+      [
+        {
+          type: "tool-result",
+          toolUseId: "task-2",
+          content: "失败",
+          isError: true,
+          subagent: null,
+        },
+      ],
     )
     const events = project(state).events
 
@@ -228,6 +263,7 @@ describe("projectTimeline", () => {
           toolName: "Bash",
           input: { command: "rm -rf build" },
           blockedPath: "/work/demo/build",
+          subagent: null,
         },
         "2026-11-14T01:00:05.000Z",
       ],
@@ -237,10 +273,11 @@ describe("projectTimeline", () => {
           requestId: "req-1",
           toolName: "Bash",
           input: { command: "rm -rf build" },
+          subagent: null,
         },
       ],
-      [{ type: "permission", requestId: "req-2", toolName: "Write", input: {} }],
-      [{ type: "permission", requestId: "req-3", toolName: "Read", input: {} }],
+      [{ type: "permission", requestId: "req-2", toolName: "Write", input: {}, subagent: null }],
+      [{ type: "permission", requestId: "req-3", toolName: "Read", input: {}, subagent: null }],
     )
     state = reduceSession(state, {
       type: "permission-answered",
@@ -283,7 +320,7 @@ describe("projectTimeline", () => {
     const asked = feed(
       sent(),
       [started],
-      [{ type: "permission", requestId: "req-1", toolName: "Bash", input: {} }],
+      [{ type: "permission", requestId: "req-1", toolName: "Bash", input: {}, subagent: null }],
     )
     const denied = feed(asked, [
       {

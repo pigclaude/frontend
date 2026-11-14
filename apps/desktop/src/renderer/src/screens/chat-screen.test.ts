@@ -199,14 +199,20 @@ describe("chat screen", () => {
         type: "message",
         messageId: "m1",
         model: "claude-sonnet",
-        parentToolUseId: null,
+        subagent: null,
         blocks: [{ type: "tool-use", id: "tool-1", name: "Bash", input: { command: "cat a.ts" } }],
       },
       sessionTime,
     )
     state = receive(
       state,
-      { type: "tool-result", toolUseId: "tool-1", content: "文件内容", isError: false },
+      {
+        type: "tool-result",
+        toolUseId: "tool-1",
+        content: "文件内容",
+        isError: false,
+        subagent: null,
+      },
       sessionTime,
     )
 
@@ -229,6 +235,7 @@ describe("chat screen", () => {
         requestId: "permission-1",
         toolName: "Bash",
         input: { command: "pnpm test" },
+        subagent: null,
       },
       sessionTime,
     )

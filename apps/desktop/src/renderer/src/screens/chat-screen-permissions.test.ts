@@ -62,6 +62,7 @@ function planWaitingForApproval(): SessionUiState {
       requestId: "plan-1",
       toolName: "ExitPlanMode",
       input: { plan: "先改测试再实现" },
+      subagent: null,
     },
     sessionTime,
   )

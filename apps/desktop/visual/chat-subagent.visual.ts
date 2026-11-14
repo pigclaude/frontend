@@ -19,7 +19,8 @@ async function openChat(page: Page, theme: "light" | "dark"): Promise<void> {
   await page.addInitScript(() => {
     const { emit, assistant, install } = (window as unknown as ChatBridgeWindow).__chatBridge
     const call = "call-agent"
-    const owned = { parentToolUseId: call, agentId: "agent-1" }
+    const subagent = { parentToolUseId: call, agentId: "agent-1" }
+    const owned = { subagent }
     const work = () => {
       emit({ type: "account-switched", from: null, to: "acc-work", reason: "initial" })
       emit({ type: "turn-started", turnId: "turn-1" })
@@ -43,6 +44,7 @@ async function openChat(page: Page, theme: "light" | "dark"): Promise<void> {
         toolUseId: call,
         content: "Async agent launched successfully.",
         isError: false,
+        subagent: null,
       })
       emit(assistant("m-2", [{ type: "text", text: "已派一个子代理在后台排查测试。" }]))
       emit(assistant("s-1", [{ type: "thinking", text: "先跑一遍测试看看哪些失败。" }], owned))
@@ -79,7 +81,7 @@ async function openChat(page: Page, theme: "light" | "dark"): Promise<void> {
       )
       emit({
         type: "subagent-ended",
-        ...owned,
+        ...subagent,
         status: "completed",
         summary: "一个用例失败：超时后的重试次数少算了一次，修正循环条件即可。",
       })

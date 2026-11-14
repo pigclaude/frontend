@@ -7,7 +7,8 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, expect, vi } from "vitest"
 import type { ClaudeAccountView, ProxyView } from "@pigclaude/contracts/claude-account"
 import { resetComposerMemory } from "@pigclaude/ui-composer"
-import { resetSubagentTabs } from "../hooks/use-subagent-tabs"
+import { SubagentTabStoreContext } from "../hooks/use-subagent-tabs"
+import { SubagentTabStore } from "../models/subagent-tab-store"
 import { LocaleProvider } from "@pigclaude/ui-primitives"
 import { ToastProvider } from "@pigclaude/ui-shell"
 import type { SessionController } from "../hooks/use-session"
@@ -126,11 +127,12 @@ export type ChatScreenRoot = {
 export function chatScreenRoot(): ChatScreenRoot {
   let root: Root | null = null
   let host: HTMLDivElement | null = null
+  let tabs = new SubagentTabStore()
 
   beforeEach(() => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true)
     resetComposerMemory()
-    resetSubagentTabs()
+    tabs = new SubagentTabStore()
     window.localStorage.clear()
     host = document.createElement("div")
     document.body.append(host)
@@ -152,7 +154,13 @@ export function chatScreenRoot(): ChatScreenRoot {
       if (host === null) throw new Error("聊天页挂载点只在测试运行期间可用")
       return host
     },
-    render: (overrides = {}) => renderElement(chatScreenElement(overrides)),
+    render: (overrides = {}) =>
+      renderElement(
+        createElement(SubagentTabStoreContext.Provider, {
+          value: tabs,
+          children: chatScreenElement(overrides),
+        }),
+      ),
     renderElement,
   }
 }

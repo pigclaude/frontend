@@ -23,7 +23,7 @@ function text(seq: number, value: string, parentToolUseId: string | null = null)
     type: "message",
     messageId: `m-${seq}`,
     model: "claude-sonnet",
-    parentToolUseId,
+    subagent: parentToolUseId === null ? null : { parentToolUseId, agentId: null },
     blocks: [{ type: "text", text: value }],
   })
 }
@@ -70,14 +70,14 @@ describe("session event store", () => {
       type: "message",
       messageId: "m-2",
       model: "claude-sonnet",
-      parentToolUseId: null,
+      subagent: null,
       blocks: [{ type: "thinking", text: "想想" }],
     })
     const tool = envelope(4, {
       type: "message",
       messageId: "m-4",
       model: "claude-sonnet",
-      parentToolUseId: null,
+      subagent: null,
       blocks: [{ type: "tool-use", id: "tool-1", name: "Bash", input: {} }],
     })
 

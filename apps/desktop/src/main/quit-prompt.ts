@@ -2,6 +2,7 @@
 import { dialog, type BrowserWindow } from "electron"
 import type { LeaveAction } from "./quit-confirmation"
 import type { SessionPendingWork } from "./session/session-host-support"
+import type { QuitFailure } from "./shutdown"
 
 /** 问用户是否中断工作离开；选「退出」或「关闭窗口」时得到 true，默认按钮是「继续运行」。 */
 export async function askToLeave(
@@ -30,7 +31,7 @@ export async function askToLeave(
 }
 
 /** 资源没能按时关闭时提示用户，应用保持运行。 */
-export function showQuitFailure(reason: "failed" | "timeout"): void {
+export function showQuitFailure(reason: QuitFailure): void {
   dialog.showErrorBox(
     "无法安全退出",
     reason === "timeout"

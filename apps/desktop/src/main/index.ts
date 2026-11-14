@@ -54,6 +54,7 @@ import { registerSessionIpc } from "./session/session-ipc"
 import { devProviderHostOptions } from "./session/dev-provider"
 import { accountSessionProfile } from "./session/account-session-profile"
 import { installQuitFlow } from "./quit-flow"
+import { noPendingWork } from "./session/session-host-support"
 import { applyLoginShellPath } from "./login-shell-path"
 import { shutdownDesktopResources } from "./shutdown-resources"
 import { UsageRecorder } from "./session/usage-recorder"
@@ -150,7 +151,7 @@ if (!hasSingleInstanceLock) {
 }
 
 const guardMainWindowClose = installQuitFlow({
-  pendingWork: () => sessionHost?.pendingWork() ?? { turns: 0, approvals: 0 },
+  pendingWork: () => sessionHost?.pendingWork() ?? noPendingWork,
   mainWindow: () => mainWindow,
   shutdown: shutdownDesktop,
   onBeforeShutdown: () => {

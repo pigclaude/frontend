@@ -5,11 +5,14 @@ export type QuitEvent = {
   preventDefault(): void
 }
 
+/** 资源没能确认关闭的原因：清理报错，或超过时限仍在清理。 */
+export type QuitFailure = "failed" | "timeout"
+
 /** 退出协调器依赖；清理失败或超时时通知用户。 */
 export type QuitCoordinatorOptions = {
   shutdown: () => Promise<void>
   quit: () => void
-  onFailure: (reason: "failed" | "timeout") => void
+  onFailure: (reason: QuitFailure) => void
   onBeforeShutdown?: () => void
   /**
    * 退出前的确认。立即得到 true 时马上开始清理；异步得到 false 时取消这次退出，什么都不清理。

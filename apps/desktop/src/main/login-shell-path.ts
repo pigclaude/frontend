@@ -1,6 +1,5 @@
 // 负责从图形入口启动时读取一次登录 shell 的 PATH，只把 PATH 合并进应用环境。
-// 从 Dock、访达或桌面菜单启动时 PATH 只有系统目录，会话和工作台终端找不到用户装的命令。
-// 登录 shell 的其他变量（代理、API key 等）不导入，免得带进会话环境。
+// 登录 shell 的其他变量（代理、API key 等）不能进入应用环境，否则会带进会话环境。
 import { spawn, type ChildProcess } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { userInfo } from "node:os"
@@ -18,7 +17,7 @@ export function needsLoginShellPath(env: NodeJS.ProcessEnv, platform: NodeJS.Pla
 
 /**
  * 运行一次登录 shell，返回它的 PATH；shell 失败、超时或输出里找不到 PATH 时返回 null。
- * 用 `-i` 是因为很多人把 PATH 写在 .zshrc 里。rc 文件可能打印任何内容，所以输出前后加随机标记；
+ * PATH 可能只在交互 rc 文件里设置，所以带 `-i`。rc 文件可能打印任何内容，所以输出前后加随机标记；
  * 读到结束标记就返回，不等输出关闭，rc 文件启动的后台进程可能一直占着 stdout。
  */
 export function readLoginShellPath(

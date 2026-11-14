@@ -40,6 +40,7 @@ export type ShellView = "chat" | "settings" | "plugins" | "schedules"
 
 /** 外壳所需的数据与事件；项目/线程数据由 store 传入。 */
 export interface ShellProps {
+  updates?: ReactNode
   view: ShellView
   projects: Project[]
   threads: Thread[]
@@ -75,10 +76,13 @@ export interface ShellProps {
   onAddProject: (path: string, name?: string) => void
   onToggleProject?: (projectId: string, expanded: boolean) => void
   onNewThread: (projectId?: string) => void
+  onBrowseFiles?: ((projectId: string) => void) | undefined
   onOpenThread: (threadId: string) => void
   /** 会话行右键菜单的重命名与归档；两个都传时才有右键菜单。 */
   onRenameThread?: (threadId: string, title: string) => void
   onArchiveThread?: (threadId: string) => void
+  /** 会话行右键菜单里的「在输入框里引用」。 */
+  onReferenceThread?: (thread: Thread) => void
   /** 项目行右键菜单的重命名与从侧栏移除；两个都传时才有右键菜单。 */
   onRenameProject?: (projectId: string, name: string) => void
   onRemoveProject?: (projectId: string) => void
@@ -110,6 +114,7 @@ export function PanelTop({ children }: { children?: ReactNode }) {
  * 否则使用组件内部状态，方便 M0-B 的集成阶段逐步接管。
  */
 export function Shell({
+  updates,
   view,
   projects,
   threads,
@@ -135,9 +140,11 @@ export function Shell({
   onAddProject,
   onToggleProject,
   onNewThread,
+  onBrowseFiles,
   onOpenThread,
   onRenameThread,
   onArchiveThread,
+  onReferenceThread,
   onRenameProject,
   onRemoveProject,
   children,
@@ -357,6 +364,7 @@ export function Shell({
     <div className={appClass} style={appStyle}>
       {menus ? <TitleBar menus={menus} label={t("menu.label")} /> : null}
       <WindowControls
+        updates={updates}
         sidebarOpen={narrow ? drawerOpen : open}
         canGoBack={canGoBack}
         canGoForward={canGoForward}
@@ -396,11 +404,20 @@ export function Shell({
               setDrawerOpen(false)
               onNewThread(projectId)
             }}
+            onBrowseFiles={
+              onBrowseFiles
+                ? (projectId) => {
+                    setDrawerOpen(false)
+                    onBrowseFiles(projectId)
+                  }
+                : undefined
+            }
             onOpenSchedules={() => onView("schedules")}
             onOpenPlugins={() => onView("plugins")}
             activeNav={view === "schedules" || view === "plugins" ? view : undefined}
             onRenameThread={onRenameThread}
             onArchiveThread={onArchiveThread}
+            onReferenceThread={onReferenceThread}
             onRenameProject={onRenameProject}
             onRemoveProject={onRemoveProject}
             shortcutHints={shortcutHints}

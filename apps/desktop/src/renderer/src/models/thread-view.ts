@@ -1,9 +1,8 @@
 // 负责把 PigClaude 的会话状态映射成 Pigcode 的线程与事件模型，让界面完全由 ui-chat 绘制。
 // 只做纯数据转换，不读取桌面桥，也不改变 PigClaude 的会话规则。
 
-import type { Thread, ThreadEvent } from "@pigclaude/ui-contracts"
+import type { RuntimeMode, Thread, ThreadEvent } from "@pigclaude/ui-contracts"
 import type { SessionTurn, SessionUiState } from "./session-model"
-import { composerPermissionMode } from "./composer-config"
 
 /** 生成线程与事件需要的会话级信息。 */
 export type ThreadViewInput = {
@@ -13,9 +12,12 @@ export type ThreadViewInput = {
   workspace: string | null
   /** 项目名，取工作区最后一段。 */
   projectName: string
-  /** 当前实例（账号）与模型；界面用来显示线程头与环境抽屉。 */
+  /** 当前实例（账号）与模型；界面用来显示线程头和模型选择器。 */
   instanceId: string
   modelId: string
+  /** 输入框显示的档位；计划开关打开时仍是打开前的那一档。 */
+  permissionLevel: RuntimeMode
+  planMode: boolean
   /** 会话开始时的时间戳，事件时间按它递增，避免每帧都变。 */
   startedAt: number
 }
@@ -103,6 +105,7 @@ function endEvent(turn: SessionTurn): ThreadEvent["type"] | null {
 /** 把会话状态转成线程和时间线事件；没有活动会话时事件为空。 */
 export function threadView(input: ThreadViewInput): ThreadView {
   const { state, threadId, workspace, projectName, instanceId, modelId, startedAt } = input
+  const { permissionLevel, planMode } = input
   const events: ThreadEvent[] = []
   let seq = 0
   const iso = (step: number): string => new Date(startedAt + step * 1_000).toISOString()
@@ -154,7 +157,8 @@ export function threadView(input: ThreadViewInput): ThreadView {
       lastAgentId: "claude",
       lastInstanceId: instanceId,
       lastModelId: modelId === "" ? null : modelId,
-      permissionMode: composerPermissionMode(state.permissionMode),
+      permissionMode: permissionLevel,
+      planMode,
       createdAt: iso(0),
       updatedAt: iso(seq),
       archivedAt: null,

@@ -1,11 +1,12 @@
 // 负责证明 Pigcode 来源守卫的判定：原样拷入通过，直接改拷入文件、多出清单外文件、删掉清单内文件都失败；
-// 以及同步时只做登记过的替换：包名、点分存储键前缀、主语言包里的产品名。
+// 以及同步时只做登记过的替换：包名、点分存储键前缀、主语言包里的产品名，合约只取登记的声明。
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { cp, mkdtemp, readFile, rm, writeFile, appendFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test } from "node:test"
+import { projectUiContracts } from "../scripts/pigcode-ui-contracts.mjs"
 import { rewriteSource } from "../scripts/vendor-pigcode.mjs"
 
 const frontend = join(import.meta.dirname, "..")
@@ -131,6 +132,29 @@ test("产品名只在登记的语言包里替换", () => {
     rewriteSource('"newThread.noProjectHint": "Pigcode"', "src/locale/new-thread.messages.ts"),
     '"newThread.noProjectHint": "PigClaude"',
   )
+})
+
+test("合约只取界面需要的声明，并删掉这些声明用不到的导入", () => {
+  const source = [
+    'import { z } from "zod"',
+    'import { agentFeaturesSchema, type Unused } from "./domain"',
+    "/** 文案。 */",
+    "export const localizedTextSchema = z.union([z.string(), z.record(z.string(), z.string())])",
+    "export const agentPermissionModeSchema = z.object({ label: localizedTextSchema })",
+    "export const agentExecutionModesSchema = z.object({ plan: z.boolean() })",
+    "export type AgentPermissionMode = z.infer<typeof agentPermissionModeSchema>",
+    "export type AgentExecutionModes = z.infer<typeof agentExecutionModesSchema>",
+    "export type LocalizedText = z.infer<typeof localizedTextSchema>",
+    "export interface AgentCliUpdateState { instanceId: string }",
+    "export const agentContributionSchema = z.object({ features: agentFeaturesSchema })",
+    "export function localizeText(text: LocalizedText): string { return String(text) }",
+  ].join("\n")
+  const projected = projectUiContracts(source, "src/agents.ts")
+
+  assert.match(projected, /^import \{ z \} from "zod"/)
+  assert.doesNotMatch(projected, /\.\/domain|agentContributionSchema/)
+  assert.match(projected, /\/\*\* 文案。 \*\/\nexport const localizedTextSchema/)
+  assert.throws(() => projectUiContracts("export const other = 1", "src/updates.ts"), /缺少/)
 })
 
 test("固定提交不是完整 SHA 时失败", async () => {

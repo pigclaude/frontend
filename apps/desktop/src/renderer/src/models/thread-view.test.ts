@@ -47,6 +47,8 @@ function input(overrides: Partial<ThreadViewInput> = {}): ThreadViewInput {
     projectName: "demo",
     instanceId: "account-1",
     modelId: "sonnet",
+    permissionLevel: "approval-required",
+    planMode: false,
     startedAt: Date.UTC(2026, 10, 13, 0, 0, 0),
     ...overrides,
   }
@@ -63,7 +65,8 @@ describe("threadView", () => {
       defaultInstanceId: "account-1",
       lastInstanceId: "account-1",
       lastModelId: "sonnet",
-      permissionMode: "workspace-write",
+      permissionMode: "approval-required",
+      planMode: false,
       lastRunId: null,
       parentThreadId: null,
       archivedAt: null,
@@ -317,24 +320,18 @@ describe("threadView", () => {
   })
 
   it("没有工作区、项目名或模型时使用稳定回退值", () => {
-    const view = threadView(
-      input({ workspace: null, projectName: "", modelId: "", permissionMode: "plan" } as never),
-    )
+    const view = threadView(input({ workspace: null, projectName: "", modelId: "" }))
     expect(view.thread.projectId).toBe("workspace")
     expect(view.thread.title).toBe("会话")
     expect(view.thread.lastModelId).toBeNull()
   })
 
-  it("权限模式映射到 Pigcode 的 PermissionMode", () => {
+  it("线程带上输入框的档位和独立的计划开关", () => {
     expect(
-      threadView(input({ state: state({ permissionMode: "plan" }) })).thread.permissionMode,
-    ).toBe("plan")
+      threadView(input({ permissionLevel: "full-access", planMode: true })).thread,
+    ).toMatchObject({ permissionMode: "full-access", planMode: true })
     expect(
-      threadView(input({ state: state({ permissionMode: "bypassPermissions" }) })).thread
-        .permissionMode,
-    ).toBe("danger-full-access")
-    expect(
-      threadView(input({ state: state({ permissionMode: "acceptEdits" }) })).thread.permissionMode,
-    ).toBe("workspace-write")
+      threadView(input({ permissionLevel: "auto-accept-edits", planMode: false })).thread,
+    ).toMatchObject({ permissionMode: "auto-accept-edits", planMode: false })
   })
 })

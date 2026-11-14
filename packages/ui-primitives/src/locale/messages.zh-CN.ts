@@ -8,6 +8,7 @@ import { newThreadZhCN } from "./new-thread.messages"
 import { pluginsZhCN } from "./plugins.messages"
 import { schedulesZhCN } from "./schedules.messages"
 import { workbenchZhCN } from "./workbench.messages"
+import { updatesZhCN } from "./updates.messages"
 
 export const zhCN = {
   ...agentsZhCN,
@@ -19,6 +20,7 @@ export const zhCN = {
   ...pluginsZhCN,
   ...schedulesZhCN,
   ...workbenchZhCN,
+  ...updatesZhCN,
   "nav.newThread": "新会话",
   "nav.search": "搜索",
   "nav.projects": "项目",
@@ -31,6 +33,7 @@ export const zhCN = {
   "sidebar.grouping": "会话排列方式",
   "sidebar.noThreads": "还没有会话",
   "sidebar.rename": "重命名",
+  "sidebar.reference": "在输入框里引用",
   "sidebar.archive": "归档",
   "sidebar.threadName": "会话名称",
   "sidebar.projectName": "项目名称",
@@ -218,8 +221,13 @@ export const zhCN = {
   "composer.ultracode.hint": "Claude 把任务拆给多个子代理并行完成，耗时和用量更多",
   "composer.ultracode.unsupported": "此模型不支持 Ultracode",
   "composer.permission.title": "权限",
-  "composer.permission.ask": "每次询问",
-  "composer.permission.ask.description": "改文件、运行命令前先问你",
+  "composer.build.short": "执行",
+  "composer.plan.short": "计划",
+  "composer.permission.confirmTitle": "启用{mode}？",
+  "composer.permission.confirm": "启用{mode}",
+  "composer.permission.ask": "按需审批",
+  "composer.permission.ask.description": "已授权的操作自动执行，需要额外权限时询问",
+  "composer.permission.ask.codexDescription": "允许项目内读写和运行命令，超出权限时询问",
   "composer.permission.plan": "计划模式",
   "composer.permission.plan.description": "先给出计划，确认前不改文件",
   "composer.permission.readOnly": "只读",
@@ -233,6 +241,10 @@ export const zhCN = {
   "composer.command.model": "切换 agent 与模型",
   "composer.command.model.keyword": "模型",
   "composer.suggest.files": "文件",
+  "composer.suggest.mentions": "引用",
+  "composer.suggest.group.threads": "会话",
+  "composer.suggest.group.files": "文件",
+  "composer.suggest.archived": "已归档",
   "composer.suggest.commands": "命令",
   "composer.suggest.noFiles": "没有匹配的文件",
   "composer.suggest.noCommands": "没有匹配的命令",
@@ -253,18 +265,7 @@ export const zhCN = {
   "chat.question.multi": "可多选",
   "chat.question.other": "其他（自己填写）",
   "chat.question.submit": "提交回答",
-  "chat.environment": "会话环境",
-  "chat.environment.close": "关闭会话环境",
-  "chat.environment.agent": "Agent",
-  "chat.environment.cwd": "工作目录",
-  "chat.environment.model": "模型",
-  "chat.environment.permission": "权限模式",
   "chat.agent.next": "下一次消息将使用",
-  "chat.environment.unknown": "—",
-  "chat.permission.readOnly": "只读",
-  "chat.permission.workspaceWrite": "工作区可写",
-  "chat.permission.dangerFullAccess": "完全访问",
-  "chat.permission.plan": "计划模式",
   "workbench.files": "文件",
   "workbench.diff": "Diff",
   "workbench.terminal": "终端",
@@ -311,6 +312,10 @@ export const zhCN = {
   "pr.creating": "正在创建…",
   "chat.switch.to": "已切换到 {agent}",
   "chat.switch.handoff": "上下文以摘要交接",
+  "chat.switch.resumed": "接回原来的会话",
+  "chat.switch.resumedWithDelta": "接回原来的会话，补上离开后的 {items} 条",
+  "chat.switch.fresh": "新会话，交接了 {items} 条",
+  "chat.switch.freshWithOmitted": "新会话，交接了 {items} 条，省略 {omitted} 条",
   "chat.tabs.label": "会话标签",
   "chat.tabs.close": "关闭",
   "chat.subagent.open": "在标签页中打开",
@@ -347,6 +352,8 @@ export const zhCN = {
   /* 会话提示：Agent 只给稳定的键（如 mcp.bridge.failed），界面在 chat.notice.<键> 里找文案。 */
   "chat.notice.mcp.bridge.failed":
     "插件工具没有接上：{name} 服务启动失败。这一轮里模型看不到插件工具。",
+  "chat.notice.run.stalled":
+    "已经 {seconds} 秒没有收到 Agent 的任何回应，它可能卡住了。可以中断这一轮后重试；如果它正在跑一个长时间没有输出的命令，也可以继续等。",
   "chat.notice.host.restarted":
     "应用重启过，这一轮被中断了。等审批的请求也跟着 agent 进程一起没了，需要重新发一条消息。",
   "chat.notice.session.resumeFailed":
@@ -384,5 +391,6 @@ export const zhCN = {
   "status.connecting": "正在连接 Host…",
   "status.dismiss": "关闭提示",
   "thread.defaultTitle": "新会话",
-  "app.noAgent": "没有可用的 agent：在「设置 → Agent」里启用或安装一个。",
+  "app.noAgent":
+    "没有可用的 agent。请在「设置 → Agent」启用已有的 agent，或在「插件」页安装 agent 插件。",
 } as const

@@ -1,6 +1,7 @@
 // 负责把 PigClaude 的账号、模型、权限和思考深度映射成 Pigcode 输入区需要的形状。
 // 页面只消费这里的纯函数，输入区本身完全复用拷入的 Pigcode ui-composer。
 
+import { RUNTIME_MODE_OPTIONS, type RuntimeMode } from "@pigclaude/ui-contracts"
 import type {
   ComposerAgent,
   ComposerModel,
@@ -29,6 +30,8 @@ export type ComposerConfig = {
   catalog: ComposerModelCatalog
   permissionMode: PermissionMode
   onPermissionMode: (mode: PermissionMode) => void
+  planMode: boolean
+  onPlanMode: (value: boolean) => void
   onSelectModel: (choice: ComposerModelChoice) => void
   onLoadModels: (instanceId: string) => void
   files: () => Promise<readonly string[]>
@@ -36,28 +39,49 @@ export type ComposerConfig = {
   smartPunctuation: boolean
 }
 
-/** Pigcode 权限模式对应的 Claude 会话权限；只读和计划都落到 plan，和原版 Claude driver 一致。 */
-export function sessionPermissionMode(mode: PermissionMode): SessionPermissionMode {
-  switch (mode) {
-    case "danger-full-access":
-      return "bypassPermissions"
-    case "plan":
-    case "read-only":
-      return "plan"
-    default:
+/** 新会话的默认档位：Claude Code 自己的默认档 `default`，即监督审批。 */
+export const DEFAULT_PERMISSION_LEVEL: RuntimeMode = "approval-required"
+
+/** Claude 会话支持独立的计划开关；每个账号实例都声明这一点，输入框才显示计划开关。 */
+const CLAUDE_EXECUTION_MODES = { plan: true }
+
+/** 输入框传来的档位 id；不是四档之一时返回 null，调用方忽略这次选择。 */
+export function permissionLevelOf(mode: PermissionMode): RuntimeMode | null {
+  return RUNTIME_MODE_OPTIONS.some((option) => option.id === mode) ? (mode as RuntimeMode) : null
+}
+
+/**
+ * 档位和计划开关对应的 Claude Code 权限模式；计划开关打开时一律是 plan。
+ * 会话宿主还不支持 auto，自动审批返回 null，调用方如实提示，不换成别的模式运行。
+ */
+export function sessionPermissionMode(
+  level: RuntimeMode,
+  plan: boolean,
+): SessionPermissionMode | null {
+  if (plan) return "plan"
+  switch (level) {
+    case "approval-required":
       return "default"
+    case "auto-accept-edits":
+      return "acceptEdits"
+    case "full-access":
+      return "bypassPermissions"
+    case "auto":
+      return null
   }
 }
 
-/** Claude 会话权限对应的 Pigcode 权限模式；自动改文件和默认都显示成每次询问。 */
-export function composerPermissionMode(mode: SessionPermissionMode): PermissionMode {
+/** Claude Code 模式对应的档位；plan 不是档位，返回 null，由调用方沿用打开计划前记住的档位。 */
+export function permissionLevel(mode: SessionPermissionMode): RuntimeMode | null {
   switch (mode) {
+    case "default":
+      return "approval-required"
+    case "acceptEdits":
+      return "auto-accept-edits"
     case "bypassPermissions":
-      return "danger-full-access"
+      return "full-access"
     case "plan":
-      return "plan"
-    default:
-      return "workspace-write"
+      return null
   }
 }
 
@@ -87,6 +111,7 @@ export function composerAgent(account: {
     id: account.id,
     agentId: "claude",
     label: account.proxyId === null ? `${account.displayName} · 系统网络` : account.displayName,
+    executionModes: CLAUDE_EXECUTION_MODES,
   }
 }
 
@@ -95,7 +120,12 @@ export function composerAgents(
   accounts: readonly { id: string; displayName: string; proxyId: string | null }[],
 ): ComposerAgent[] {
   return [
-    { id: AUTO_ACCOUNT, agentId: "claude", label: "自动选择账号" },
+    {
+      id: AUTO_ACCOUNT,
+      agentId: "claude",
+      label: "自动选择账号",
+      executionModes: CLAUDE_EXECUTION_MODES,
+    },
     ...accounts.map(composerAgent),
   ]
 }

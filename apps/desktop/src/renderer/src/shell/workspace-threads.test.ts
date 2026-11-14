@@ -57,6 +57,16 @@ describe("sessionThread", () => {
     })
   })
 
+  it("会话的 Claude Code 模式映射成输入框的档位和独立的计划开关", () => {
+    const base = { workspace: "/work/api", startedAt: "2026-11-11T08:00:00.000Z", untitled: "" }
+    expect(
+      sessionThread({ ...base, session: session({ permissionMode: "acceptEdits" }) }),
+    ).toMatchObject({ permissionMode: "auto-accept-edits", planMode: false })
+    expect(sessionThread({ ...base, session: session({ permissionMode: "plan" }) })).toMatchObject({
+      planMode: true,
+    })
+  })
+
   it("还没开始或不知道工作区时侧栏没有会话", () => {
     const base = { startedAt: "2026-11-11T08:00:00.000Z", untitled: "新会话" }
     expect(sessionThread({ ...base, session: createSessionState(), workspace: "/w" })).toBeNull()

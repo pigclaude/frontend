@@ -2,6 +2,7 @@
 // PigClaude 同一时间只有一个会话，它挂在运行它的工作区下；不引入 Pigcode 的线程模型语义。
 import type { Project, Thread } from "@pigclaude/ui-contracts"
 import type { ThreadStatus } from "@pigclaude/ui-shell"
+import { DEFAULT_PERMISSION_LEVEL, permissionLevel } from "../models/composer-config"
 import { projectNameFromPath } from "../models/project-model"
 import type { SessionUiState } from "../models/session-model"
 
@@ -64,20 +65,13 @@ export function sessionThread({
     lastAgentId: null,
     lastInstanceId: null,
     lastModelId: session.model,
-    permissionMode: threadPermissionMode(session.permissionMode),
+    permissionMode: permissionLevel(session.permissionMode) ?? DEFAULT_PERMISSION_LEVEL,
+    planMode: session.permissionMode === "plan",
     createdAt: startedAt,
     updatedAt: startedAt,
     archivedAt: null,
     lastRunId: null,
   }
-}
-
-/** 把 Claude 会话的权限名称映射成 Pigcode 线程显示模型的四种权限。 */
-function threadPermissionMode(mode: SessionUiState["permissionMode"]): Thread["permissionMode"] {
-  if (mode === "bypassPermissions") return "danger-full-access"
-  if (mode === "acceptEdits") return "workspace-write"
-  if (mode === "plan") return "plan"
-  return "read-only"
 }
 
 /** 侧栏会话行的 Agent 显示名。 */

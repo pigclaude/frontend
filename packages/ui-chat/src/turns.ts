@@ -46,6 +46,8 @@ export interface Turn {
   key: string
   runId: string | null
   userText: string | null
+  /** 用户这条消息 @ 引用的会话（#81）。 */
+  userReferences: ReadonlyArray<{ threadId: string; title: string }>
   agentId: string | null
   status: TurnStatus
   startedAt: string | null
@@ -74,7 +76,18 @@ export interface Turn {
 /** 时间线上的一项：一轮对话、切换 agent 的分隔线，或子代理带上主会话近况的提示。 */
 export type TimelineEntry =
   | { kind: "turn"; turn: Turn }
-  | { kind: "switch"; key: string; agentId: string; handoff: boolean }
+  | {
+      kind: "switch"
+      key: string
+      agentId: string
+      /** 这次切换带了交接。 */
+      handoff: boolean
+      /** 接回了这个实例原来停放的原生会话。 */
+      resumed: boolean
+      /** 交接里放了几条、省略了几条；旧事件没有这两个数时为 null。 */
+      items: number | null
+      omitted: number | null
+    }
   | { kind: "brief"; key: string }
 
 function emptyTurn(key: string, runId: string | null): Turn {
@@ -82,6 +95,7 @@ function emptyTurn(key: string, runId: string | null): Turn {
     key,
     runId,
     userText: null,
+    userReferences: [],
     agentId: null,
     status: "completed",
     startedAt: null,
@@ -161,6 +175,9 @@ export function buildTimeline(events: readonly ThreadEvent[], streaming = false)
           agentId,
           // 以前交接的文字直接写在事件里，现在只写交接记录的 id。
           handoff: Boolean(asText(payload?.handoff) || asText(payload?.handoffId)),
+          resumed: payload?.resumed === true,
+          items: typeof payload?.handoffItems === "number" ? payload.handoffItems : null,
+          omitted: typeof payload?.handoffOmitted === "number" ? payload.handoffOmitted : null,
         })
       } else if (
         (asText(payload?.handoff) && payload?.deferred !== true) ||
@@ -190,6 +207,7 @@ export function buildTimeline(events: readonly ThreadEvent[], streaming = false)
         if (!text) break
         if (asText(payload?.role) === "user") {
           turn.userText = text
+          turn.userReferences = referencesOf(payload?.references)
           break
         }
         draft.texts.push({ text, at: event.createdAt })
@@ -361,4 +379,15 @@ export function hasPendingApproval(events: ThreadEvent[]): boolean {
     if (request && !resolved.has(request.id)) return true
   }
   return false
+}
+
+/** 用户消息里记下的会话引用；格式不对的项跳过。 */
+function referencesOf(value: unknown): Array<{ threadId: string; title: string }> {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    const record = item as { threadId?: unknown; title?: unknown } | null
+    return typeof record?.threadId === "string" && typeof record.title === "string"
+      ? [{ threadId: record.threadId, title: record.title }]
+      : []
+  })
 }

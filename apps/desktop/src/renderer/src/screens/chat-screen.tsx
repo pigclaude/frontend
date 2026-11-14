@@ -7,7 +7,7 @@ import {
   type ClaudeAccountView,
   type ProxyView,
 } from "@pigclaude/contracts/claude-account"
-import type { AgentFeatures } from "@pigclaude/ui-contracts"
+import type { AgentFeatures, RuntimeMode } from "@pigclaude/ui-contracts"
 import { ChatView, NewThreadView } from "@pigclaude/ui-chat"
 import {
   prefillComposer,
@@ -21,20 +21,22 @@ import { PermissionPrompt, type PermissionChoice } from "../components/permissio
 import { ToolRenderers } from "../components/tool-renderers"
 import type { SessionController } from "../hooks/use-session"
 import {
+  DEFAULT_PERMISSION_LEVEL,
   accountIdForAgent,
   agentIdForAccount,
   composerAgent,
   composerAgents,
   composerCatalog,
-  composerPermissionMode,
   effortForComposer,
+  permissionLevel,
+  permissionLevelOf,
   sessionPermissionMode,
   type ComposerConfig,
 } from "../models/composer-config"
 import { projectNameFromPath } from "../models/project-model"
 import type { NavLocation } from "../models/navigation"
 import { threadView } from "../models/thread-view"
-import type { SessionEffort, SessionPermissionMode } from "../../../main/session/session-types"
+import type { SessionEffort } from "../../../main/session/session-types"
 
 /** Claude 会话支持的 Agent 功能；界面据此显示计划、中断和审批等控件。 */
 const CLAUDE_FEATURES: AgentFeatures = {
@@ -95,7 +97,9 @@ export function ChatScreen({
   const toast = useToast()
   const [modelId, setModelId] = useState("")
   const [accountId, setAccountId] = useState("")
-  const [permissionMode, setPermissionMode] = useState<SessionPermissionMode>("default")
+  // 档位和计划开关分开记：计划打开期间档位不变，关掉计划或批准计划后回到这一档。
+  const [level, setLevel] = useState<RuntimeMode>(DEFAULT_PERMISSION_LEVEL)
+  const [draftPlan, setDraftPlan] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const startedAt = useRef(Date.now())
   const lastModelsError = useRef<string | null>(null)
@@ -114,7 +118,8 @@ export function ChatScreen({
   }, [state.turns])
   const defaultModel = session.models.find((model) => model.isDefault) ?? session.models[0]
   const selectedModel = state.model ?? (modelId || defaultModel?.id || "")
-  const activeMode = live ? state.permissionMode : permissionMode
+  const plan = live ? state.permissionMode === "plan" : draftPlan
+  const shownLevel = (live ? permissionLevel(state.permissionMode) : null) ?? level
   const activeAccount = live ? (state.accountId ?? session.status?.accountId ?? "") : accountId
   const proxyUrls = new Map(proxies.map((proxy) => [proxy.id, proxy.url]))
   const availableAccounts = accounts.filter((account) =>
@@ -178,15 +183,29 @@ export function ChatScreen({
     return window.pigclaude?.workspaces?.files?.(workspace) ?? Promise.resolve([])
   }
 
-  /** 切换权限；完全访问的确认框由输入区自己给出。 */
+  /** 切换档位；完全访问的确认框由输入区自己给出。计划打开期间只记住新档位。 */
   function chooseMode(mode: PermissionMode): void {
     setLocalError(null)
-    const next = sessionPermissionMode(mode)
-    if (!live) {
-      setPermissionMode(next)
+    const next = permissionLevelOf(mode)
+    if (next === null) return
+    const target = sessionPermissionMode(next, false)
+    if (target === null) {
+      setLocalError("自动审批暂未接通，已保持当前档位")
       return
     }
-    void session.setMode(next)
+    setLevel(next)
+    if (live && !plan) void session.setMode(target)
+  }
+
+  /** 开合计划开关；关掉时回到打开前的档位。 */
+  function choosePlan(value: boolean): void {
+    setLocalError(null)
+    if (!live) {
+      setDraftPlan(value)
+      return
+    }
+    setLevel(shownLevel)
+    void session.setMode(value ? "plan" : (sessionPermissionMode(shownLevel, false) ?? "default"))
   }
 
   /** 选中模型选择器里的实例和模型；会话开始后换账号仍然不支持。 */
@@ -207,8 +226,10 @@ export function ChatScreen({
     agentId: agentIdForAccount(activeAccount),
     modelId: selectedModel,
     catalog,
-    permissionMode: composerPermissionMode(activeMode),
+    permissionMode: shownLevel,
     onPermissionMode: chooseMode,
+    planMode: plan,
+    onPlanMode: choosePlan,
     onSelectModel: chooseModel,
     onLoadModels: () => void session.refreshModels(),
     files,
@@ -226,7 +247,7 @@ export function ChatScreen({
       ...(selectedModel === "" ? {} : { model: selectedModel }),
       ...(effort === undefined ? {} : { effort }),
       ...(fast ? { fast: true } : {}),
-      permissionMode,
+      permissionMode: sessionPermissionMode(level, draftPlan) ?? "default",
       ...(accountId === "" ? {} : { accountId }),
     })
     if (ok) {
@@ -284,9 +305,11 @@ export function ChatScreen({
         projectName,
         instanceId: agentIdForAccount(activeAccount),
         modelId: selectedModel,
+        permissionLevel: shownLevel,
+        planMode: plan,
         startedAt: startedAt.current,
       }),
-    [state, threadId, workspace, projectName, activeAccount, selectedModel],
+    [state, threadId, workspace, projectName, activeAccount, selectedModel, shownLevel, plan],
   )
 
   // 草稿页只在还没有会话时使用；从草稿发第一条消息后即使导航还没切换，也要显示时间线。
@@ -314,7 +337,8 @@ export function ChatScreen({
           onSelectModel={composer.onSelectModel}
           permissionMode={composer.permissionMode}
           onPermissionMode={composer.onPermissionMode}
-          canPlan
+          planMode={composer.planMode}
+          onPlanMode={composer.onPlanMode}
           files={composer.files}
           onSubmit={submitFromComposer}
         />
@@ -341,6 +365,7 @@ export function ChatScreen({
           onLoadModels={composer.onLoadModels}
           onSelectModel={composer.onSelectModel}
           onPermissionMode={composer.onPermissionMode}
+          onPlanMode={composer.onPlanMode}
           files={composer.files}
         />
       </ToolRenderers>

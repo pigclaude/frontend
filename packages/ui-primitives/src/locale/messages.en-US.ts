@@ -9,6 +9,7 @@ import { newThreadEnUS } from "./new-thread.messages"
 import { pluginsEnUS } from "./plugins.messages"
 import { schedulesEnUS } from "./schedules.messages"
 import { workbenchEnUS } from "./workbench.messages"
+import { updatesEnUS } from "./updates.messages"
 
 export const enUS = {
   ...agentsEnUS,
@@ -20,6 +21,7 @@ export const enUS = {
   ...pluginsEnUS,
   ...schedulesEnUS,
   ...workbenchEnUS,
+  ...updatesEnUS,
   "nav.newThread": "New chat",
   "nav.search": "Search",
   "nav.projects": "Projects",
@@ -32,6 +34,7 @@ export const enUS = {
   "sidebar.grouping": "Arrange threads",
   "sidebar.noThreads": "No threads yet",
   "sidebar.rename": "Rename",
+  "sidebar.reference": "Mention in the composer",
   "sidebar.archive": "Archive",
   "sidebar.threadName": "Thread name",
   "sidebar.projectName": "Project name",
@@ -222,8 +225,15 @@ export const enUS = {
     "Claude splits the work across parallel subagents; takes longer and uses more",
   "composer.ultracode.unsupported": "No Ultracode for this model",
   "composer.permission.title": "Permissions",
-  "composer.permission.ask": "Ask every time",
-  "composer.permission.ask.description": "Ask before editing files or running commands",
+  "composer.build.short": "Build",
+  "composer.plan.short": "Plan",
+  "composer.permission.confirmTitle": "Enable {mode}?",
+  "composer.permission.confirm": "Enable {mode}",
+  "composer.permission.ask": "Ask as needed",
+  "composer.permission.ask.description":
+    "Run authorized actions automatically; ask for additional permissions",
+  "composer.permission.ask.codexDescription":
+    "Read, edit, and run commands in the project; ask beyond that scope",
   "composer.permission.plan": "Plan mode",
   "composer.permission.plan.description": "Plan first, change no files until you approve",
   "composer.permission.readOnly": "Read only",
@@ -238,6 +248,10 @@ export const enUS = {
   "composer.command.model": "Switch agent and model",
   "composer.command.model.keyword": "model",
   "composer.suggest.files": "Files",
+  "composer.suggest.mentions": "Mention",
+  "composer.suggest.group.threads": "Threads",
+  "composer.suggest.group.files": "Files",
+  "composer.suggest.archived": "Archived",
   "composer.suggest.commands": "Commands",
   "composer.suggest.noFiles": "No matching files",
   "composer.suggest.noCommands": "No matching commands",
@@ -258,18 +272,7 @@ export const enUS = {
   "chat.question.multi": "Pick any",
   "chat.question.other": "Other (type your own)",
   "chat.question.submit": "Send answers",
-  "chat.environment": "Session environment",
-  "chat.environment.close": "Close session environment",
-  "chat.environment.agent": "Agent",
-  "chat.environment.cwd": "Working directory",
-  "chat.environment.model": "Model",
-  "chat.environment.permission": "Permission mode",
   "chat.agent.next": "Next message will use",
-  "chat.environment.unknown": "—",
-  "chat.permission.readOnly": "Read only",
-  "chat.permission.workspaceWrite": "Workspace write",
-  "chat.permission.dangerFullAccess": "Full access",
-  "chat.permission.plan": "Plan",
   "workbench.files": "Files",
   "workbench.diff": "Diff",
   "workbench.terminal": "Terminal",
@@ -316,6 +319,11 @@ export const enUS = {
   "pr.creating": "Creating…",
   "chat.switch.to": "Switched to {agent}",
   "chat.switch.handoff": "context handed off as a summary",
+  "chat.switch.resumed": "resumed its earlier session",
+  "chat.switch.resumedWithDelta":
+    "resumed its earlier session with {items} items from while it was away",
+  "chat.switch.fresh": "new session, {items} items handed over",
+  "chat.switch.freshWithOmitted": "new session, {items} items handed over, {omitted} omitted",
   "chat.tabs.label": "Thread tabs",
   "chat.tabs.close": "Close",
   "chat.subagent.open": "Open in tab",
@@ -352,6 +360,8 @@ export const enUS = {
   "chat.error": "Run failed",
   "chat.notice.mcp.bridge.failed":
     "Plugin tools are not connected: the {name} server failed to start. The model cannot see plugin tools in this turn.",
+  "chat.notice.run.stalled":
+    "No response from the agent for {seconds} seconds; it may be stuck. Interrupt this turn and try again, or keep waiting if it is running a long command that prints nothing.",
   "chat.notice.host.restarted":
     "PigClaude restarted, so this turn was interrupted. Any pending approvals went with the agent process — send the message again to continue.",
   "chat.notice.session.resumeFailed":
@@ -392,5 +402,6 @@ export const enUS = {
   "status.connecting": "Connecting to the Host…",
   "status.dismiss": "Dismiss",
   "thread.defaultTitle": "New thread",
-  "app.noAgent": "No agent available. Enable or install one in Settings → Agents.",
+  "app.noAgent":
+    "No agent available. Enable one in Settings → Agents or install an agent plugin from the Plugins page.",
 } satisfies Record<keyof typeof zhCN, string>

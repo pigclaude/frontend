@@ -1,51 +1,21 @@
-// 负责验证聊天页：空状态、开始会话、流式文本、工具折叠、权限卡片、换号提示、取消/停止、错误提示和会话环境抽屉，且页面不出现凭据。
+// 负责验证聊天页：空状态、开始会话、流式文本、工具折叠、权限卡片、换号提示、取消/停止和错误提示，且页面不出现凭据。
 
 // @vitest-environment jsdom
 import { act, createElement, useState } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import type { ClaudeAccountView, ProxyView } from "@pigclaude/contracts/claude-account"
-import { LocaleProvider } from "@pigclaude/ui-primitives"
-import { ToastProvider } from "@pigclaude/ui-shell"
 import { resetComposerMemory } from "@pigclaude/ui-composer"
-import type { SessionController } from "../hooks/use-session"
-import { createSessionState, reduceSession, type SessionUiState } from "../models/session-model"
-import { ChatScreen, type ChatScreenProps } from "./chat-screen"
-
-const account = (id: string, displayName: string): ClaudeAccountView => ({
-  id,
-  displayName,
-  enabled: true,
-  email: null,
-  subscriptionType: "max",
-  needsReauth: false,
-  credentialExpiresAt: 1_760_000_000_000,
-  proxyId: "proxy-1",
-  fingerprint: {
-    seed: "123456",
-    brand: "Chrome",
-    platform: "macos",
-    lang: "en-US",
-    timezone: "America/Los_Angeles",
-    canvasNoise: "1",
-    clientRectsNoise: "1",
-  },
-  createdAt: "2026-10-21T00:00:00.000Z",
-  updatedAt: "2026-10-21T00:00:00.000Z",
-})
-
-const directAccount = (id: string, displayName: string): ClaudeAccountView => ({
-  ...account(id, displayName),
-  proxyId: null,
-})
-
-const proxy: ProxyView = {
-  id: "proxy-1",
-  name: "代理",
-  url: "http://127.0.0.1:8080",
-  lastTest: null,
-}
+import { createSessionState, reduceSession } from "../models/session-model"
+import {
+  chatAccount,
+  chatScreenElement,
+  clickButton,
+  sessionController as controller,
+  startingState,
+  typeAndSend as typeInto,
+} from "../test-support/chat-screen-harness"
+import type { ChatScreenProps } from "./chat-screen"
 
 let root: Root
 let container: HTMLDivElement
@@ -65,58 +35,8 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 
-function startingState(): SessionUiState {
-  let state = createSessionState()
-  state = reduceSession(state, { type: "starting" })
-  state = reduceSession(state, { type: "opened", sessionId: "session-1" })
-  return reduceSession(state, { type: "user-message", text: "改一下重试逻辑", turnId: "turn-1" })
-}
-
-function controller(overrides: Partial<SessionController> = {}): SessionController {
-  return {
-    state: createSessionState(),
-    status: null,
-    models: [{ id: "claude-sonnet", displayName: "Sonnet", description: "", isDefault: true }],
-    modelsLoading: false,
-    modelsError: null,
-    start: vi.fn(async () => true),
-    send: vi.fn(async () => true),
-    cancel: vi.fn(async () => undefined),
-    stop: vi.fn(async () => undefined),
-    respondPermission: vi.fn(async () => undefined),
-    setMode: vi.fn(async () => undefined),
-    setModel: vi.fn(async () => undefined),
-    refreshModels: vi.fn(async () => undefined),
-    cancelModels: vi.fn(() => undefined),
-    refreshStatus: vi.fn(async () => undefined),
-    clearError: vi.fn(() => undefined),
-    ...overrides,
-  }
-}
-
 async function render(overrides: Partial<ChatScreenProps> = {}): Promise<void> {
-  const props: ChatScreenProps = {
-    fresh: true,
-    session: controller(),
-    workspace: "/Users/me/app",
-    workspaceOptions: ["/Users/me/app"],
-    accounts: [account("account-a", "主力 Max"), account("account-b", "备用 Pro")],
-    proxies: [proxy],
-    onPickWorkspace: () => undefined,
-    onSelectWorkspace: () => undefined,
-    onWorkspaceUsed: () => undefined,
-    onOpen: () => undefined,
-    smartPunctuation: false,
-    ...overrides,
-  }
-  await act(async () =>
-    root.render(
-      createElement(LocaleProvider, {
-        locale: "zh-CN",
-        children: createElement(ToastProvider, { children: createElement(ChatScreen, props) }),
-      }),
-    ),
-  )
+  await act(async () => root.render(chatScreenElement(overrides)))
 }
 
 function button(name: string, scope: ParentNode = container): HTMLButtonElement | undefined {
@@ -134,26 +54,8 @@ function buttonStartingWith(
   )
 }
 
-async function clickButton(target: HTMLElement | undefined, name: string): Promise<void> {
-  expect(target, name).toBeDefined()
-  await act(async () => target?.click())
-}
-
-/** 在输入区里敲字并回车；第一条消息会先建会话再发送。 */
-async function typeAndSend(text: string): Promise<void> {
-  const editor = container.querySelector<HTMLElement>(".composer .tiptap")
-  expect(editor, "输入区").not.toBeNull()
-  const user = userEvent.setup()
-  await act(async () => {
-    await user.click(editor!)
-    await user.type(editor!, text)
-  })
-  await act(async () => {
-    editor!.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
-    )
-    await Promise.resolve()
-  })
+function typeAndSend(text: string): Promise<void> {
+  return typeInto(container, text)
 }
 
 describe("chat screen", () => {
@@ -203,7 +105,7 @@ describe("chat screen", () => {
   })
 
   it("offers a direct account in the model picker without any proxy", async () => {
-    await render({ accounts: [directAccount("account-direct", "直连 Max")], proxies: [] })
+    await render({ accounts: [chatAccount("account-direct", "直连 Max", null)], proxies: [] })
 
     const trigger = container.querySelector<HTMLButtonElement>(".model-chip")
     expect(trigger, "模型选择器").not.toBeNull()
@@ -268,23 +170,10 @@ describe("chat screen", () => {
           return true
         },
       })
-      return createElement(LocaleProvider, {
-        locale: "zh-CN",
-        children: createElement(ToastProvider, {
-          children: createElement(ChatScreen, {
-            fresh: true,
-            session,
-            workspace: "/Users/me/app",
-            workspaceOptions: ["/Users/me/app"],
-            accounts: [account("account-a", "主力 Max")],
-            proxies: [proxy],
-            onPickWorkspace: () => undefined,
-            onSelectWorkspace: () => undefined,
-            onWorkspaceUsed: () => undefined,
-            onOpen,
-            smartPunctuation: false,
-          }),
-        }),
+      return chatScreenElement({
+        session,
+        accounts: [chatAccount("account-a", "主力 Max")],
+        onOpen,
       })
     }
 
@@ -425,36 +314,6 @@ describe("chat screen", () => {
       "没有可用的 Claude 账号",
     )
     expect(container.textContent).toContain("Claude Code 不可用")
-  })
-
-  it("shows only agent, workspace and permission in the environment drawer", async () => {
-    await render({
-      fresh: false,
-      session: controller({
-        state: startingState(),
-        status: {
-          active: true,
-          sessionId: "session-1",
-          model: null,
-          permissionMode: "default",
-          accountId: "account-a",
-          pendingPermissions: 0,
-          turnId: "turn-1",
-        },
-      }),
-    })
-
-    const trigger =
-      container.querySelector<HTMLElement>('button[aria-label="会话环境"]') ?? undefined
-    await clickButton(trigger, "打开会话环境")
-
-    const drawer = container.querySelector<HTMLElement>('aside[aria-label="会话环境"]')
-    expect(drawer, "会话环境抽屉").not.toBeNull()
-    const text = drawer!.textContent ?? ""
-    expect(text).toContain("主力 Max")
-    expect(text).toContain("/Users/me/app")
-    expect(text).toContain("工作区可写")
-    expect(text).not.toMatch(/accessToken|refreshToken|sk-ant-|Bearer |ANTHROPIC_|环境变量/)
   })
 
   it("never puts credentials into the page or localStorage", async () => {

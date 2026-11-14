@@ -2,6 +2,7 @@
 import { contextBridge, ipcRenderer } from "electron"
 import type { BrowserProfilesBridge } from "@pigclaude/contracts/browser-profile"
 import { browserProfilesBridge } from "./browser-profiles"
+import { isSessionEvent } from "./session-event-filter"
 import { windowBridge, type WindowBridge } from "./window-bridge"
 import { workbenchBridge } from "./workbench"
 import type { WorkbenchBridge } from "../workbench-contract"
@@ -263,22 +264,6 @@ function subscribeSession(listener: (event: SessionHostEvent) => void): () => vo
   }
   ipcRenderer.on("pigclaude:session-event", handler)
   return () => ipcRenderer.removeListener("pigclaude:session-event", handler)
-}
-
-const sessionEventTypes = new Set([
-  "started",
-  "delta",
-  "message",
-  "tool-result",
-  "permission",
-  "account-switched",
-  "result",
-  "error",
-  "ended",
-])
-
-function isSessionEvent(value: unknown): value is SessionHostEvent {
-  return isRecord(value) && typeof value.type === "string" && sessionEventTypes.has(value.type)
 }
 
 function isSessionStatus(value: unknown): value is SessionStatusView {

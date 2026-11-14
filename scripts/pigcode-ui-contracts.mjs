@@ -76,7 +76,7 @@ export const contractFiles = {
   "src/updates.ts": "src/updates.ts",
 }
 
-/** 合约包只公开拷入界面包用到的类型、运行时常量和已知错误码判定。 */
+/** 合约包只公开拷入界面包和桌面适配层用到的类型、运行时常量和已知错误码判定。 */
 export const contractEntry = `/** 界面依赖的 Pigcode 数据类型、运行时常量和错误码。 */
 export type {
   AgentCommand, AgentFeatures, KnownReasoningEffort, PermissionMode, Project, ReasoningEffort,
@@ -86,7 +86,7 @@ export type { ThreadEvent, WorkflowAgent, WorkflowSnapshot, WorkflowStatus } fro
 export { HOST_ERROR_CODES, isHostErrorCode, type HostErrorCode } from "./error-codes"
 export {
   agentExecutionModesSchema, localizeText, type AgentCliUpdateState, type AgentExecutionModes,
-  type AgentPermissionMode, type LocalizedText,
+  type AgentPermissionMode,
 } from "./agents"
 export { DEFAULT_RUNTIME_MODE, type RuntimeMode } from "./runtime-modes"
 export { RUNTIME_MODE_OPTIONS } from "./runtime-mode-options"

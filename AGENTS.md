@@ -41,7 +41,7 @@ Rust 使用 rustfmt：`edition = "2024"`，`max_width = 100`。
 
 ## Pigcode 界面包
 
-`packages/ui-contracts`、`packages/ui-primitives`、`packages/ui-shell`、`packages/ui-settings`、`packages/ui-chat`、`packages/ui-composer`、`packages/ui-workbench` 和 `packages/client-runtime` 来自 pigcode/pigcode 固定提交。`ui-contracts` 只保留拷入界面包用到的类型、运行时常量和错误码判定，声明范围见 `scripts/pigcode-ui-contracts.mjs`。`pigcode-source.json` 记录上游原文件和生成后文件的 SHA256，`pnpm --dir frontend pigcode:verify` 核对工作区。
+`packages/ui-contracts`、`packages/ui-primitives`、`packages/ui-shell`、`packages/ui-settings`、`packages/ui-chat`、`packages/ui-composer`、`packages/ui-workbench` 和 `packages/client-runtime` 来自 pigcode/pigcode 固定提交。`ui-contracts` 只保留拷入界面包和桌面适配层用到的类型、运行时常量和错误码判定，声明范围见 `scripts/pigcode-ui-contracts.mjs`。`pigcode-source.json` 记录上游原文件和生成后文件的 SHA256，`pnpm --dir frontend pigcode:verify` 核对工作区。
 
 - 不直接改这些包。PigClaude 自己的逻辑、产品名、本地存储键和原生桥放在桌面端的适配层。
 - 它们沿用 Pigcode 的写法：`src/index.ts` 入口和原有注释，按哈希核对，不受本仓库「不建 index.ts」「中文文件头」两条约束；行数上限和 `any` 规则照常适用。

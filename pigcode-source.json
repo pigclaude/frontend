@@ -7,7 +7,7 @@
       "path": "packages/ui-contracts/src/index.ts",
       "source": null,
       "sourceSha256": null,
-      "sha256": "21e31d18f907cecb8d8f64dc3b7ff0363357d9d3c666c28e6e8fa2935d2e7317"
+      "sha256": "bf37ffa116e54bde53350379c0fc0d7af85e9df41712a2b36217650a3e32c757"
     },
     {
       "path": "packages/ui-contracts/package.json",

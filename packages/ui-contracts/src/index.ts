@@ -20,7 +20,6 @@ export {
   type AgentCliUpdateState,
   type AgentExecutionModes,
   type AgentPermissionMode,
-  type LocalizedText,
 } from "./agents"
 export { DEFAULT_RUNTIME_MODE, type RuntimeMode } from "./runtime-modes"
 export { RUNTIME_MODE_OPTIONS } from "./runtime-mode-options"

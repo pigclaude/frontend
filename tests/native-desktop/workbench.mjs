@@ -85,6 +85,7 @@ export async function verifyWorkbench(page, application, output, provider = fals
     await expect
       .poll(() => readFile(join(root, "example.txt"), "utf8"))
       .toBe("changed in workbench\n")
+    await page.screenshot({ path: join(output, "workbench-files.png") })
     await writeFile(join(root, "added.txt"), "new untracked file\n")
     await open("Diff")
     await expect(

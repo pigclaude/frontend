@@ -28,7 +28,7 @@ import { composerSessionOptions } from "./models/composer-session-options"
 import { projectNameFromPath, workspaceErrorMessage } from "./models/project-model"
 import { toPoolAccount } from "./models/claude-account-view"
 import type { NavLocation } from "./models/navigation"
-import { openSessionReferenceDraft } from "./screens/session-reference-recovery"
+import { useSessionReferenceRecovery } from "./screens/session-reference-recovery"
 import type { AppearanceController } from "./hooks/use-appearance"
 import type { ResolvedTheme } from "./models/theme-model"
 import { AddProjectDialog } from "./shell/add-project-dialog"
@@ -183,6 +183,14 @@ export function MainWindow({
   const composerReferences = useComposerReferenceQueue(sessionId, projectDraft.key, (path) =>
     location.kind === "draft" && draftProject ? projectDraft.key : openDraft(draftProject ?? path),
   )
+  const recoverReference = useSessionReferenceRecovery(sessionId, {
+    projects: sidebarPaths,
+    pickWorkspace: workspaces.pick,
+    openDraft,
+    queue: composerReferences.queue,
+    untitled: t("shell.session.untitled"),
+    report: (error) => toast(workspaceErrorMessage(error, t("shell.project.unavailable")), "alert"),
+  })
   const currentDraft = useRef(draftProject)
   currentDraft.current = draftProject
   const workbenchRoot = chatWorkspace
@@ -451,24 +459,7 @@ export function MainWindow({
             if (currentDraft.current === project) onNavigate({ kind: "session", sessionId: id })
           }}
           {...(activeSummary === undefined ? {} : { summary: activeSummary })}
-          onRecoverReference={(summary, missing) =>
-            openSessionReferenceDraft(summary, missing, {
-              projects: sidebarPaths,
-              isCurrent: () => {
-                const visible = currentLocation.current
-                return (
-                  visible.kind === "session" &&
-                  (visible.sessionId ?? sessionId) === summary.sessionId
-                )
-              },
-              pickWorkspace: workspaces.pick,
-              openDraft,
-              queue: composerReferences.queue,
-              untitled: t("shell.session.untitled"),
-            }).catch((error: unknown) =>
-              toast(workspaceErrorMessage(error, t("shell.project.unavailable")), "alert"),
-            )
-          }
+          onRecoverReference={recoverReference}
           projectDraft={projectDraft}
           identifySessions
           onOpen={onNavigate}

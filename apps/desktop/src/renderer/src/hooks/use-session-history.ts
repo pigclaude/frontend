@@ -134,7 +134,7 @@ export function useSessionHistory({
       } else {
         setArchived((current) => current.filter((item) => item.sessionId !== sessionId))
       }
-      await Promise.all([refreshActive(), readArchived()])
+      await refreshActive()
     } catch (reason) {
       report(sessionErrorFrom(reason))
     }

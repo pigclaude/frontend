@@ -5,11 +5,7 @@ import { useState } from "react"
 import { useText } from "../locale/text"
 import type { SessionErrorView } from "../models/session-errors"
 
-const recoverable = new Set([
-  "SESSION_RESUME_FAILED",
-  "NO_AVAILABLE_ACCOUNT",
-  "WORKSPACE_UNAVAILABLE",
-])
+const accountUnavailable = new Set(["NO_AVAILABLE_ACCOUNT", "ACCOUNT_ENVIRONMENT_MISMATCH"])
 
 /** 显示续接失败的原因和新建会话并引用原会话的操作。 */
 export function SessionResumeError({
@@ -21,6 +17,11 @@ export function SessionResumeError({
 }) {
   const { t } = useText()
   const [opening, setOpening] = useState(false)
+  const sameEnvironmentUnavailable = accountUnavailable.has(error.code)
+  const canRecover =
+    sameEnvironmentUnavailable ||
+    error.code === "SESSION_RESUME_FAILED" ||
+    error.code === "WORKSPACE_UNAVAILABLE"
   async function open(): Promise<void> {
     setOpening(true)
     try {
@@ -32,11 +33,9 @@ export function SessionResumeError({
   return (
     <div className="session-resume-error error-text" role="alert">
       <span>
-        {error.code === "NO_AVAILABLE_ACCOUNT"
-          ? t("shell.session.noOriginalAccount")
-          : error.message}
+        {sameEnvironmentUnavailable ? t("shell.session.noOriginalAccount") : error.message}
       </span>
-      {onRecover && recoverable.has(error.code) ? (
+      {onRecover && canRecover ? (
         <Button size="sm" variant="ghost" disabled={opening} onClick={() => void open()}>
           {t("shell.session.recoverReference")}
         </Button>

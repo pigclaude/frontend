@@ -68,7 +68,7 @@ const timeline = [
 
 async function openSaved(
   send: SessionBridge["send"],
-  available?: readonly string[],
+  recovery?: { available: () => Promise<string[]>; pickFolder?: () => Promise<string | null> },
 ): Promise<SessionBridge> {
   installFakeDesktopBridge()
   const session = fakeSessionBridge({
@@ -81,8 +81,9 @@ async function openSaved(
   })
   if (!window.pigclaude) throw new Error("桌面桥尚未安装")
   window.pigclaude.session = session.bridge
-  if (available && window.pigclaude.workspaces) {
-    window.pigclaude.workspaces.available = async () => [...available]
+  if (recovery && window.pigclaude.workspaces) {
+    window.pigclaude.workspaces.available = recovery.available
+    if (recovery.pickFolder) window.pigclaude.pickFolder = recovery.pickFolder
   }
   await act(async () => app.root.render(createElement(DesktopApp)))
   await flush()
@@ -111,9 +112,9 @@ it("opens saved messages and sends the first new message to the existing session
   expect(bridge.start).not.toHaveBeenCalled()
 })
 
-it("keeps the original conversation and offers a new draft referencing it when resume fails", async () => {
+it("keeps the conversation and offers a new draft when no account matches the original environment", async () => {
   const send = vi.fn(async () => {
-    throw new Error("NO_AVAILABLE_ACCOUNT: 没有同环境的账号")
+    throw new Error("ACCOUNT_ENVIRONMENT_MISMATCH: 没有同环境的账号")
   })
   const bridge = await openSaved(send)
   await typeAndSend(app.container, "这段输入要保留")
@@ -144,7 +145,7 @@ it("starts a referenced draft in a readable project when the saved workspace is 
     vi.fn(async () => {
       throw new Error("WORKSPACE_UNAVAILABLE: 工作区不存在")
     }),
-    ["/work/web"],
+    { available: async () => ["/work/web"] },
   )
   await typeAndSend(app.container, "原工作目录已经不存在")
   const fallback = app.container.querySelector<HTMLButtonElement>(".session-resume-error button")
@@ -156,4 +157,25 @@ it("starts a referenced draft in a readable project when the saved workspace is 
     "@磁盘保存的会话",
   )
   expect(bridge.start).not.toHaveBeenCalled()
+})
+
+it("discards a delayed recovery selection after its window has closed", async () => {
+  let ready: (paths: string[]) => void = () => undefined
+  const available = new Promise<string[]>((resolve) => {
+    ready = resolve
+  })
+  const pickFolder = vi.fn(async () => "/work/web")
+  await openSaved(
+    async () => {
+      throw new Error("WORKSPACE_UNAVAILABLE: 工作区不存在")
+    },
+    { available: () => available, pickFolder },
+  )
+  await typeAndSend(app.container, "继续原会话")
+  const fallback = app.container.querySelector<HTMLButtonElement>(".session-resume-error button")
+  await clickButton(fallback ?? undefined, "新建会话并引用本会话")
+  await act(async () => app.root.render(null))
+  await act(async () => ready([]))
+  await flush()
+  expect(pickFolder).not.toHaveBeenCalled()
 })

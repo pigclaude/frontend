@@ -3,6 +3,7 @@
 import { act, createElement } from "react"
 import { expect, it, vi } from "vitest"
 import { DesktopApp } from "./app"
+import { typeAndSend } from "./test-support/chat-screen-harness"
 import { desktopAppRoot, flush, installFakeDesktopBridge } from "./test-support/desktop-app-harness"
 import { fakeSessionBridge } from "./test-support/session-bridge-fake"
 import type { SessionSummary } from "../../main/session/session-summary"
@@ -149,4 +150,115 @@ it("reads a parked session without waiting for a later event and refreshes the q
     }),
   )
   expect(projectRows("web")[0]?.dataset.status).toBe("running")
+})
+
+it("waits for the existing history before adding the next user turn", async () => {
+  installFakeDesktopBridge()
+  let finishHistory: (page: Awaited<ReturnType<SessionBridge["events"]>>) => void = () => undefined
+  const history = new Promise<Awaited<ReturnType<SessionBridge["events"]>>>((resolve) => {
+    finishHistory = resolve
+  })
+  const selected = summary("one", "/work/api")
+  const send = vi.fn(async () => undefined)
+  const session = fakeSessionBridge({
+    list: async () => [{ ...selected, status: "idle", turnId: null }],
+    status: async () => ({
+      ...selected,
+      active: true,
+      turnId: null,
+      permissionMode: "default",
+    }),
+    events: ({ afterSeq }) => (afterSeq === 0 ? history : Promise.resolve([])),
+    send,
+  })
+  if (!window.pigclaude) throw new Error("桌面桥尚未安装")
+  window.pigclaude.session = session.bridge
+  await act(async () => app.root.render(createElement(DesktopApp)))
+  await flush()
+  await act(async () => projectRows("api")[0]?.click())
+  await flush()
+
+  await typeAndSend(app.container, "新的一轮")
+  const sentBeforeHistory = send.mock.calls.length
+  await act(async () =>
+    finishHistory([
+      { version: 1, sessionId: "one", seq: 1, at, event: { type: "turn-started", turnId: "old" } },
+      {
+        version: 1,
+        sessionId: "one",
+        seq: 2,
+        at,
+        event: { type: "turn-ended", turnId: "old", status: "completed", errorCode: null },
+      },
+    ]),
+  )
+  await flush()
+
+  expect(sentBeforeHistory).toBe(0)
+  const editor = app.container.querySelector<HTMLElement>(".composer .tiptap")
+  expect(editor?.textContent).toBe("新的一轮")
+  await act(async () =>
+    editor?.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+      }),
+    ),
+  )
+  expect(send).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({
+      sessionId: "one",
+      text: "新的一轮",
+    }),
+  )
+})
+
+it("retries an unfinished history from its last received page when reopening the session", async () => {
+  installFakeDesktopBridge()
+  const selected = summary("one", "/work/api")
+  const page = (seq: number, text: string) => ({
+    version: 1 as const,
+    sessionId: "one",
+    seq,
+    at,
+    event: {
+      type: "message" as const,
+      messageId: `reply-${seq}`,
+      model: "claude-sonnet",
+      subagent: null,
+      blocks: [{ type: "text" as const, text }],
+    },
+  })
+  let didFail = false
+  const events = vi.fn<SessionBridge["events"]>(async ({ sessionId, afterSeq }) => {
+    if (sessionId !== "one" || afterSeq > 1) return []
+    if (afterSeq === 0) return [page(1, "第一份历史")]
+    if (!didFail) {
+      didFail = true
+      throw new Error("fixture unavailable")
+    }
+    return [page(2, "第二份历史")]
+  })
+  const session = fakeSessionBridge({
+    list: async () => [selected, summary("two", "/work/web")],
+    events,
+  })
+  if (!window.pigclaude) throw new Error("桌面桥尚未安装")
+  window.pigclaude.session = session.bridge
+  await act(async () => app.root.render(createElement(DesktopApp)))
+  await flush()
+  await act(async () => projectRows("api")[0]?.click())
+  await flush()
+  expect(app.container.querySelector(".chat-page")?.textContent).toContain("第一份历史")
+
+  await act(async () => projectRows("web")[0]?.click())
+  await act(async () => projectRows("api")[0]?.click())
+  await flush()
+  expect(
+    events.mock.calls
+      .filter(([input]) => input.sessionId === "one")
+      .map(([input]) => input.afterSeq),
+  ).toEqual([0, 1, 1, 2])
+  expect(app.container.querySelector(".chat-page")?.textContent).toContain("第二份历史")
 })

@@ -38,7 +38,12 @@ export type SessionController = {
   modelsCliError: string | null
   start: (input: SessionStartInput, onError?: (message: string) => void) => Promise<boolean>
   /** 用选定的设置发送；消息未被接受时返回 false，界面保留草稿。 */
-  send: (text: string, options?: SessionSendOptions, sessionId?: string) => Promise<boolean>
+  send: (
+    text: string,
+    options?: SessionSendOptions,
+    sessionId?: string,
+    onError?: (message: string) => void,
+  ) => Promise<boolean>
   cancel: () => Promise<void>
   stop: () => Promise<void>
   /** updatedPermissions 是“始终允许”要写回的 SDK 规则；只允许一次时省略。 */
@@ -209,6 +214,9 @@ export function useSession(
         if (event.type === "notice" && "message" in event && timelineNotice(event) === null) {
           setNotice({ message: event.message })
         }
+        if (sessionId === null && event.type === "error") {
+          setNotice({ message: sessionErrorText(`${event.code}: ${event.message}`) })
+        }
         if (targetRef.current === null && sessionId !== null && route.current === undefined) {
           targetRef.current = sessionId
           setDiscovered(sessionId)
@@ -216,9 +224,7 @@ export function useSession(
         if (sessionId !== null && (event.type === "turn-ended" || event.type === "ended")) {
           activeTurns.current.delete(sessionId)
         }
-        if (event.type !== "sessions-changed") {
-          apply(sessionId ?? targetRef.current, { type: "envelope", envelope })
-        }
+        if (event.type !== "sessions-changed") apply(sessionId, { type: "envelope", envelope })
         if (refreshesSessionList(envelope)) void refreshSummaries()
       },
     })
@@ -238,7 +244,7 @@ export function useSession(
   }, [selection, refreshStatus])
 
   useEffect(() => {
-    if (historySelection && resolved?.events) intakeRef.current?.catchUp(historySelection)
+    if (historySelection && resolved?.events) void intakeRef.current?.catchUp(historySelection)
   }, [resolved, historySelection])
 
   const start = useCallback(
@@ -269,6 +275,7 @@ export function useSession(
       }
       try {
         const result = await pending
+        intakeRef.current?.startedHere(result.sessionId)
         if (automatic) {
           targetRef.current = result.sessionId
           setDiscovered(result.sessionId)
@@ -289,7 +296,12 @@ export function useSession(
   )
 
   const send = useCallback(
-    async (text: string, options?: SessionSendOptions, target?: string): Promise<boolean> => {
+    async (
+      text: string,
+      options?: SessionSendOptions,
+      target?: string,
+      onError?: (message: string) => void,
+    ): Promise<boolean> => {
       const sessionId = target ?? commandTarget()
       if (resolved === null || resolved === undefined) {
         apply(sessionId, { type: "failed", message: "桌面会话服务不可用", at: now() })
@@ -300,6 +312,7 @@ export function useSession(
         apply(null, { type: "failed", message: notStarted, at: now() })
         return false
       }
+      if (historySelection === sessionId && intakeRef.current?.isCatchingUp(sessionId)) return false
       if (activeTurns.current.has(sessionId)) return false
       turnSeq.current += 1
       const turnId = `turn-${turnSeq.current}`
@@ -309,14 +322,16 @@ export function useSession(
         await resolved.send({ ...options, sessionId, text })
         return true
       } catch (error: unknown) {
+        const message = sessionErrorFrom(error)
         if (activeTurns.current.get(sessionId) === turnId) {
           activeTurns.current.delete(sessionId)
-          apply(sessionId, { type: "failed", message: sessionErrorFrom(error), at: now() })
+          apply(sessionId, { type: "failed", message, at: now() })
         }
+        onError?.(sessionErrorText(message))
         return false
       }
     },
-    [apply, commandTarget, resolved],
+    [apply, commandTarget, historySelection, resolved],
   )
 
   const cancel = useCallback(async (): Promise<void> => {

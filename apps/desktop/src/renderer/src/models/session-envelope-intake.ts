@@ -24,6 +24,7 @@ export class SessionEnvelopeIntake {
   readonly #options: SessionEnvelopeIntakeOptions
   readonly #lastSeq = new Map<string, number>()
   readonly #waiting = new Map<string, SessionEnvelope[]>()
+  readonly #caughtUp = new Set<string>()
   #closed = false
 
   /** 创建接收器；每个会话的已收序号从 0 开始。 */
@@ -39,11 +40,21 @@ export class SessionEnvelopeIntake {
     else this.#route(sessionId, envelope)
   }
 
-  /** 没接到这个会话的事件时补拉现有历史；读完后再接着处理实时信封。 */
-  catchUp(sessionId: string): void {
-    if (this.#closed || this.#lastSeq.has(sessionId) || this.#waiting.has(sessionId)) return
+  /** 正在读选中会话的历史时，新回合必须等它读完。 */
+  isCatchingUp(sessionId: string): boolean {
+    return this.#waiting.has(sessionId)
+  }
+
+  /** 补拉选中会话的历史，直到主进程返回空页；失败后下次可从同一游标重试。 */
+  async catchUp(sessionId: string): Promise<void> {
+    if (this.#closed || this.#caughtUp.has(sessionId) || this.#waiting.has(sessionId)) return
     this.#waiting.set(sessionId, [])
-    void this.#fill(sessionId, null)
+    await this.#fill(sessionId, null)
+  }
+
+  /** 新建会话从空历史开始，不需要阻挡它第一次发送。 */
+  startedHere(sessionId: string): void {
+    this.#caughtUp.add(sessionId)
   }
 
   /** 停止接收；之后到达的信封和补拉结果都丢弃。 */
@@ -83,6 +94,7 @@ export class SessionEnvelopeIntake {
         const before = last()
         const page = await this.#options.fetch(sessionId, before)
         if (this.#closed) return
+        if (targetSeq === null && page.length === 0) this.#caughtUp.add(sessionId)
         for (const envelope of page) {
           if (envelope.sessionId !== sessionId || envelope.seq !== last() + 1) continue
           if (targetSeq !== null && envelope.seq >= targetSeq) break

@@ -2,7 +2,8 @@
 // @vitest-environment jsdom
 import { act, createElement } from "react"
 import userEvent from "@testing-library/user-event"
-import { expect, it, vi } from "vitest"
+import { beforeEach, expect, it, vi } from "vitest"
+import { resetComposerMemory } from "@pigclaude/ui-composer"
 import { DesktopApp } from "./app"
 import { clickButton, typeAndSend } from "./test-support/chat-screen-harness"
 import { desktopAppRoot, flush, installFakeDesktopBridge } from "./test-support/desktop-app-harness"
@@ -10,6 +11,8 @@ import { fakeSessionBridge } from "./test-support/session-bridge-fake"
 import type { SessionBridge } from "../../main/session/session-types"
 
 const app = desktopAppRoot()
+
+beforeEach(resetComposerMemory)
 
 function editor(): HTMLElement {
   const node = app.container.querySelector<HTMLElement>(".composer .tiptap")
@@ -125,4 +128,26 @@ it("keeps different project draft choices and recovers the original text after s
   )
   expect(editor().textContent).toBe("保留这段草稿")
   expect(session.bridge.send).not.toHaveBeenCalled()
+})
+
+it("keeps the draft visible and restores its text when the first send fails after startup", async () => {
+  installFakeDesktopBridge()
+  const session = fakeSessionBridge({
+    start: async ({ sessionId }) => ({ sessionId: sessionId ?? "new" }),
+    send: async () => {
+      throw new Error("NETWORK_UNAVAILABLE: fixture")
+    },
+  })
+  if (!window.pigclaude) throw new Error("桌面桥尚未安装")
+  window.pigclaude.session = session.bridge
+  await act(async () => app.root.render(createElement(DesktopApp)))
+  await flush()
+  await typeAndSend(app.container, "还没有发出去")
+  await flush()
+
+  expect(app.container.querySelector(".new-thread-view")).not.toBeNull()
+  expect(app.container.querySelector('.new-thread-view [role="alert"]')?.textContent).toContain(
+    "网络请求失败，请检查系统网络或代理",
+  )
+  expect(editor().textContent).toBe("还没有发出去")
 })

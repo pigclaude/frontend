@@ -315,8 +315,7 @@ export function ChatScreen({
     if (ok) {
       if (sessionId === undefined) onWorkspaceUsed(target, project)
       else onWorkspaceUsed(target, project, sessionId)
-      if (sessionId !== undefined && onDraftOpened) onDraftOpened(sessionId, project)
-      else if (fresh || sessionId !== undefined)
+      if (onDraftOpened === undefined && (fresh || sessionId !== undefined))
         onOpen({ kind: "session", ...(sessionId === undefined ? {} : { sessionId }) })
     }
     return ok
@@ -349,9 +348,12 @@ export function ChatScreen({
     const sessionId = identifySessions ? crypto.randomUUID() : undefined
     const ok = await startSession(directory, project, effort, fast, sessionId)
     if (!ok) return false
-    return sessionId === undefined
-      ? session.send(text, sendOptions)
-      : session.send(text, sendOptions, sessionId)
+    if (sessionId === undefined) return session.send(text, sendOptions)
+    const sent = await session.send(text, sendOptions, sessionId, (error) =>
+      projectDraft?.update({ error }),
+    )
+    if (sent) onDraftOpened?.(sessionId, project)
+    return sent
   }
 
   /** 输入区发送后立即清空；提交失败时把文字放回草稿，避免用户重写。 */

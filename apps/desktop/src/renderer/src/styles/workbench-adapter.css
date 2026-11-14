@@ -1,20 +1,4 @@
-/* 保证 PigClaude 工作台的文件树与预览共享高度，终端工具栏对齐现有控件。 */
-.workbench-file-content {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-}
-.workbench-file-content > .fx {
-  flex: 0 1 40%;
-  min-width: 100px;
-  max-width: 220px;
-  border-right: 1px solid var(--divider);
-}
-.workbench-file-content > :last-child {
-  flex: 1;
-  min-width: 0;
-}
+/* 让 PigClaude 工作台的终端工具栏和抽屉对齐现有控件。 */
 .terminal-toolbar {
   display: flex;
   align-items: center;

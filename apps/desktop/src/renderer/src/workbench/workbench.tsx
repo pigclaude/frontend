@@ -1,5 +1,12 @@
 // 管理工作台的标签与项目绑定，将 Pigcode 的内置面板接到本机工作区。
-import { forwardRef, useEffect, useImperativeHandle, useState, type ReactNode } from "react"
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react"
 import { FileDiff, Files, GitPullRequest, Globe, History, SquareTerminal } from "lucide-react"
 import { useExtensionRegistry, type SurfaceContribution } from "@pigclaude/client-runtime"
 import { EmptyState, useLocale } from "@pigclaude/ui-primitives"
@@ -14,11 +21,14 @@ import {
   updateSurface,
 } from "@pigclaude/ui-workbench"
 import type { WorkbenchBridge } from "../../../workbench-contract"
-import { useText } from "../locale/text"
+import { fill, useText } from "../locale/text"
 import { BrowserPane } from "./browser-pane"
-import { FilePane, FilesPane } from "./file-pane"
+import { showFileTabMenu } from "./file-menus"
+import { keepSurface, markUnsaved, openNavigationFile } from "./file-tabs"
+import { FilesSurface } from "./files-surface"
 import { CheckpointsPane, DiffPane, PullRequestPane, Worktrees } from "./git-panes"
 import { TerminalPane } from "./terminal-pane"
+import type { FileDraft } from "./use-file-document"
 import { workbenchRelativePath } from "./workbench-path"
 
 const owner = { kind: "builtin", id: "workbench" } as const
@@ -55,15 +65,17 @@ export type WorkbenchProps = {
   onSelectWorkspace: (path: string) => Promise<void>
 }
 
-/** 工作区与聊天共用右栏；子组件在切换普通标签时保留运行状态。 */
+/** 工作区与聊天共用右栏；子组件在切换普通标签时保留运行状态，文件标签共用一个文件面板。 */
 export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
   function Workbench(props, ref) {
     const { t } = useLocale()
     const { t: text } = useText()
     const registry = useExtensionRegistry()
     const [state, setState] = useState(EMPTY_SURFACE_STATE)
+    const [drafts, setDrafts] = useState<ReadonlyMap<string, FileDraft>>(() => new Map())
     const [revision, setRevision] = useState(0)
     const { bridge, root } = props
+    const hasDraft = (path: string) => drafts.has(path)
 
     useEffect(() => {
       if (!registry) return
@@ -84,6 +96,7 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
 
     useEffect(() => {
       setState(EMPTY_SURFACE_STATE)
+      setDrafts(new Map())
     }, [root])
 
     useEffect(
@@ -132,10 +145,52 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
       )
     }
 
-    function close(id: string): void {
-      const tab = state.surfaces.find((item) => item.id === id)
-      if (tab?.dirty && !window.confirm(text("workbench.discardDraft"))) return
-      setState((current) => closeSurface(current, id))
+    function setDraft(path: string, draft: FileDraft | null): void {
+      setDrafts((current) => {
+        if (draft === null && !current.has(path)) return current
+        const next = new Map(current)
+        if (draft === null) next.delete(path)
+        else next.set(path, draft)
+        return next
+      })
+    }
+
+    /** 关闭一组标签；其中有未保存的文件时先问一次，取消就什么都不关。 */
+    function close(ids: readonly string[]): void {
+      const unsaved = state.surfaces.filter(
+        (tab) =>
+          ids.includes(tab.id) &&
+          tab.kind === FILE_SURFACE_KIND &&
+          tab.path &&
+          drafts.has(tab.path),
+      )
+      const question =
+        unsaved.length > 1
+          ? fill(text("workbench.discardDrafts"), {
+              files: unsaved.map((tab) => tab.title).join("、"),
+            })
+          : text("workbench.discardDraft")
+      if (unsaved.length > 0 && !window.confirm(question)) return
+      for (const tab of unsaved) if (tab.path) setDraft(tab.path, null)
+      setState((current) => ids.reduce((next, id) => closeSurface(next, id), current))
+    }
+
+    async function showTabMenu(id: string, point: { x: number; y: number }): Promise<void> {
+      const ids = state.surfaces.map((tab) => tab.id)
+      const choice = await showFileTabMenu(point, ids.length, t)
+      if (choice === "close") close([id])
+      else if (choice === "close-others") close(ids.filter((other) => other !== id))
+      else if (choice === "close-all") close(ids)
+    }
+
+    function keep(id: string): void {
+      setState((current) => keepSurface(current, id))
+    }
+
+    function keepDoubleClickedTab(event: MouseEvent<HTMLElement>): void {
+      const tab = (event.target as Element).closest(".surface-tab[data-preview]")
+      const id = tab?.querySelector('[role="tab"]')?.id.replace(/^surface-tab-/, "")
+      if (id) keep(id)
     }
 
     function openFile(path: string): void {
@@ -145,11 +200,14 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
       const id = crypto.randomUUID()
       setState((current) => openFileSurface(current, relative, id))
     }
+
+    function openFromNavigation(path: string, preview: boolean): void {
+      const id = crypto.randomUUID()
+      setState((current) => openNavigationFile(current, path, id, { preview, hasDraft }))
+    }
+
     function confirmSwitch(): boolean {
-      return (
-        !state.surfaces.some((tab) => tab.dirty) ||
-        window.confirm(text("workbench.discardProjectDrafts"))
-      )
+      return drafts.size === 0 || window.confirm(text("workbench.discardProjectDrafts"))
     }
 
     useImperativeHandle(ref, () => ({
@@ -177,21 +235,49 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
     )
     if (!bridge) return <EmptyState title={text("workbench.unavailable")} />
 
+    const shared = root ? { bridge, root, revision: revision + props.turnRevision } : null
+    const activeTab = state.surfaces.find((tab) => tab.id === state.activeId)
+    const fileTab = activeTab?.kind === "files" || activeTab?.kind === FILE_SURFACE_KIND
     return (
-      <div className="workbench">
+      <div className="workbench" onDoubleClick={keepDoubleClickedTab}>
         <RightPanel
           threadId={props.sessionId}
-          surfaces={state.surfaces}
+          surfaces={markUnsaved(state.surfaces, hasDraft)}
           activeId={state.activeId}
           unavailable={(kind) => (kind !== "browser" && !root ? "project.add.pickerTitle" : null)}
           onAdd={add}
-          onClose={close}
+          onClose={(id) => close([id])}
+          onFileTabMenu={(id, point) => void showTabMenu(id, point)}
           onActivate={(id) => setState((current) => ({ ...current, activeId: id }))}
           controls={controls}
         >
+          {activeTab && fileTab && shared ? (
+            <div key="file-navigation" className="surface-pane workbench-files">
+              <FilesSurface
+                {...shared}
+                path={activeTab.path}
+                line={activeTab.line}
+                draft={activeTab.path ? (drafts.get(activeTab.path) ?? null) : null}
+                onDraft={setDraft}
+                onOpenFile={(path) => openFromNavigation(path, true)}
+                onOpenFileTab={(path) => openFromNavigation(path, false)}
+                onKeep={() => keep(activeTab.id)}
+                onSaved={refresh}
+                navigationFooter={
+                  <Worktrees
+                    {...shared}
+                    current={shared.root}
+                    onSelect={props.onSelectWorkspace}
+                    onChanged={refresh}
+                    confirmSwitch={confirmSwitch}
+                    sessionActive={props.sessionActive}
+                  />
+                }
+              />
+            </div>
+          ) : null}
           {state.surfaces.map((tab) => {
             const active = state.activeId === tab.id
-            const shared = root ? { bridge, root, revision: revision + props.turnRevision } : null
             let content: ReactNode = null
             if (tab.kind === "browser") {
               content = (
@@ -214,34 +300,7 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
                     id={tab.id}
                     active={active && props.visible}
                     onNew={() => add("terminal")}
-                    onClose={() => close(tab.id)}
-                  />
-                )
-              if (tab.kind === "files" && active)
-                content = (
-                  <>
-                    <Worktrees
-                      {...shared}
-                      current={shared.root}
-                      onSelect={props.onSelectWorkspace}
-                      onChanged={refresh}
-                      confirmSwitch={confirmSwitch}
-                      sessionActive={props.sessionActive}
-                    />
-                    <FilesPane {...shared} onOpen={openFile} />
-                  </>
-                )
-              if (tab.kind === FILE_SURFACE_KIND && tab.path)
-                content = (
-                  <FilePane
-                    {...shared}
-                    path={tab.path}
-                    line={tab.line}
-                    onOpen={openFile}
-                    onSaved={refresh}
-                    onDirty={(dirty) =>
-                      setState((current) => updateSurface(current, tab.id, { dirty }))
-                    }
+                    onClose={() => close([tab.id])}
                   />
                 )
               if (tab.kind === "diff" && active)

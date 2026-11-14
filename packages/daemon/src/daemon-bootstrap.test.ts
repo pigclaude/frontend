@@ -43,6 +43,15 @@ function testDaemon(choose: ChooseAccount): LocalDaemon {
   })
 }
 
+// 先停 daemon 再停记录代理，保证代理连接全部释放后再结束用例。
+async function stopBoth(daemon: LocalDaemon, proxy: { stop: () => Promise<void> }): Promise<void> {
+  try {
+    await daemon.stop()
+  } finally {
+    await proxy.stop()
+  }
+}
+
 describe("bootstrap endpoint", () => {
   beforeEach(() => {
     directUpstream.calls.length = 0
@@ -100,11 +109,7 @@ describe("bootstrap endpoint", () => {
         },
       ])
     } finally {
-      try {
-        await daemon.stop()
-      } finally {
-        await proxy.stop()
-      }
+      await stopBoth(daemon, proxy)
     }
   })
 
@@ -134,11 +139,7 @@ describe("bootstrap endpoint", () => {
         { path: "/v1/messages", authorization: "Bearer pool-token", beta: "oauth-2025-04-20" },
       ])
     } finally {
-      try {
-        await daemon.stop()
-      } finally {
-        await proxy.stop()
-      }
+      await stopBoth(daemon, proxy)
     }
   })
 
@@ -177,11 +178,7 @@ describe("bootstrap endpoint", () => {
         expect(selected).toEqual([])
         expect(rejected).toEqual([])
       } finally {
-        try {
-          await daemon.stop()
-        } finally {
-          await proxy.stop()
-        }
+        await stopBoth(daemon, proxy)
       }
     },
   )

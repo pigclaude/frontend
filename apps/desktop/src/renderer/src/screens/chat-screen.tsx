@@ -430,7 +430,8 @@ export function ChatScreen({
           files={composer.files}
         />
       </ToolRenderers>
-      <PermissionDock container={page} mounted={live ? "live" : null}>
+      {/* 还没有一轮时对话组件显示问候页，没有输入区容器；第一轮出现后要重新挂上。 */}
+      <PermissionDock container={page} mounted={live ? `live-${state.turns.length > 0}` : null}>
         {pending === null ? null : (
           <PermissionPrompt
             request={pending}

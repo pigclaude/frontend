@@ -6,13 +6,14 @@ import type { PermissionResult } from "@anthropic-ai/claude-agent-sdk"
 /** 等待回答的请求种类。 */
 export type PendingAnswerKind = "permission" | "question"
 
-/** 按拒绝结算的原因：SDK 中止了请求、超时没人回答，或者被整体拒绝（停止、取消、会员失效等）。 */
-export type PendingDenialReason = "aborted" | "timeout" | "rejected"
-
-/** 一个请求的结算结果：代理按用户的回答给出的 SDK 结果，或者按拒绝结算；rejected 时 message 是整体拒绝给的原因。 */
+/**
+ * 一个请求的结算结果：代理按用户的回答给出的 SDK 结果；SDK 中止了请求或超时没人回答；
+ * 或者被整体拒绝（停止、取消、会员失效等），message 是整体拒绝给的原因。
+ */
 export type PendingOutcome =
   | { type: "answered"; result: PermissionResult }
-  | { type: "denied"; reason: PendingDenialReason; message: string }
+  | { type: "denied"; reason: "aborted" | "timeout" }
+  | { type: "denied"; reason: "rejected"; message: string }
 
 /** 加入队列的一个请求；settle 只会被调用一次，onTimeout 在超时结算之后调用。 */
 export type PendingAnswer = {
@@ -55,7 +56,7 @@ export class PendingAnswers {
   /** 加入一个请求并开始计时；signal 中止时按拒绝结算。 */
   add(requestId: string, request: PendingAnswer): void {
     const abortListener = (): void => {
-      this.#settle(requestId, { type: "denied", reason: "aborted", message: "" })
+      this.#settle(requestId, { type: "denied", reason: "aborted" })
     }
     const timer = this.#options.setTimer(() => this.#expire(requestId), this.#options.timeoutMs)
     this.#entries.set(requestId, { ...request, timer, abortListener })
@@ -79,7 +80,7 @@ export class PendingAnswers {
   #expire(requestId: string): void {
     const entry = this.#entries.get(requestId)
     if (entry === undefined) return
-    this.#settle(requestId, { type: "denied", reason: "timeout", message: "" })
+    this.#settle(requestId, { type: "denied", reason: "timeout" })
     try {
       entry.onTimeout?.()
     } catch {

@@ -4,7 +4,7 @@
 
 import type { DevProviderOverride } from "./dev-provider"
 import type { PendingAnswerKind } from "./pending-answers"
-import type { PermissionAnswer } from "./permission-broker"
+import { cancelledPermissionMessage, type PermissionAnswer } from "./permission-broker"
 import type { QuestionAnswer } from "./question-broker"
 import type { SessionEnvelope } from "./session-envelope"
 import { classifyDaemonError } from "./session-error-mapping"
@@ -199,7 +199,7 @@ export class ClaudeSession {
     const active = this.state
     if (active.released) return
     active.released = true
-    active.pending.rejectAll("权限请求已取消")
+    active.pending.rejectAll(cancelledPermissionMessage)
     this.#options.onReleased(this)
     await active.environment.cleanup().catch(() => undefined)
   }

@@ -19,6 +19,7 @@ import type { SessionHostEvent, SessionPermissionMode } from "./session-types"
 type QuestionEvent = Extract<SessionHostEvent, { type: "question" }>
 
 const temporaryDirs: string[] = []
+const unanswered = { behavior: "deny", message: "The user did not answer these questions." }
 
 afterEach(async () => {
   vi.useRealTimers()
@@ -232,7 +233,7 @@ describe("SessionHost questions", () => {
 
     await harness.host.stop()
 
-    await expect(pending).resolves.toMatchObject({ behavior: "deny" })
+    await expect(pending).resolves.toEqual(unanswered)
     expect(harness.trace).toEqual(["started", "denied", "interrupted", "stopped", "cleaned"])
     await harness.host.dispose()
   })
@@ -247,7 +248,7 @@ describe("SessionHost questions", () => {
     harness.membership.setState("expired")
     await waitUntil(() => !harness.host.status().active)
 
-    await expect(question).resolves.toMatchObject({ behavior: "deny" })
+    await expect(question).resolves.toEqual(unanswered)
     await expect(permission).resolves.toMatchObject({ behavior: "deny" })
     expect(() =>
       harness.host.answerQuestion(currentSessionId(harness.host), {
@@ -256,6 +257,29 @@ describe("SessionHost questions", () => {
       }),
     ).toThrow("MEMBERSHIP_REQUIRED")
     await harness.host.dispose()
+  })
+
+  it("tells the model the user did not answer when Claude Code exits or the session is disposed", async () => {
+    const exited = await startedHarness()
+    const first = canUseTool(exited)(
+      "AskUserQuestion",
+      { questions: [colorQuestion] },
+      askOptions(),
+    )
+    await waitForQuestion(exited)
+    exited.adapters.last.emit({ type: "ended", reason: "error" })
+    await expect(first).resolves.toEqual(unanswered)
+    await exited.host.dispose()
+
+    const disposed = await startedHarness()
+    const second = canUseTool(disposed)(
+      "AskUserQuestion",
+      { questions: [colorQuestion] },
+      askOptions(),
+    )
+    await waitForQuestion(disposed)
+    await disposed.host.dispose()
+    await expect(second).resolves.toEqual(unanswered)
   })
 
   it("denies after ten minutes, denies the other open requests and ends the turn with QUESTION_TIMEOUT", async () => {

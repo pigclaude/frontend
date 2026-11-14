@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk"
+import { PendingAnswers } from "./pending-answers"
 import {
   PermissionBroker,
   type PermissionBrokerOptions,
@@ -69,15 +70,16 @@ describe("PermissionBroker", () => {
     expect(broker.pendingCount).toBe(0)
   })
 
-  it("denies every pending request immediately on rejectAll", async () => {
+  it("denies every pending request immediately when the shared queue rejects all", async () => {
     const events: PermissionRequestEvent[] = []
-    const broker = createBroker({ emit: (request) => events.push(request) })
+    const queue = sharedQueue()
+    const broker = createBroker({ emit: (request) => events.push(request), queue })
 
     const first = broker.request("Bash", {}, { signal: new AbortController().signal })
     const second = broker.request("Read", {}, { signal: new AbortController().signal })
     expect(broker.pendingCount).toBe(2)
 
-    broker.rejectAll("会话已停止")
+    queue.rejectAll("会话已停止")
 
     await expect(first).resolves.toEqual({ behavior: "deny", message: "会话已停止" })
     await expect(second).resolves.toEqual({ behavior: "deny", message: "会话已停止" })
@@ -116,7 +118,6 @@ describe("PermissionBroker", () => {
     const broker = createBroker({
       emit: (request) => events.push(request),
       onTimeout: (request) => timeouts.push(request.requestId),
-      timeoutMs: 10 * 60 * 1_000,
     })
 
     const pending = broker.request("Bash", {}, { signal: new AbortController().signal })
@@ -179,9 +180,19 @@ describe("PermissionBroker", () => {
   })
 })
 
+/** 和会话里一样的共用待答队列：10 分钟超时，真实定时器（测试里可以换成假定时器）。 */
+function sharedQueue(): PendingAnswers {
+  return new PendingAnswers({
+    timeoutMs: 10 * 60 * 1_000,
+    setTimer: (callback, ms) => setTimeout(callback, ms),
+    clearTimer: (handle) => clearTimeout(handle),
+  })
+}
+
 function createBroker(overrides: Partial<PermissionBrokerOptions> = {}): PermissionBroker {
   let next = 0
   return new PermissionBroker({
+    queue: sharedQueue(),
     emit: () => undefined,
     newRequestId: () => `permission-${(next += 1)}`,
     ...overrides,

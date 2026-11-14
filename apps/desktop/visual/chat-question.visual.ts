@@ -1,7 +1,8 @@
 // 负责提问卡的视觉回归：Claude 用 AskUserQuestion 提问时，提问卡显示在这一轮里（一个单选、一个多选），
 // 回答后卡片换成「已询问」的历史行，展开后逐条列出问题和答案。浅色和深色各一套。
-// 页面加载前装一个只在内存里的桌面桥：一个最近工作区、一个账号和一个按信封回放的假会话。
+// 页面加载前装上共用的内存桌面桥，发送后提问，回答后按信封结束这一轮。
 import { expect, test, type Page } from "@playwright/test"
+import { installChatBridge, type ChatBridgeWindow } from "./chat-bridge"
 
 const options = { threshold: 0.1, maxDiffPixels: 0, animations: "disabled" } as const
 
@@ -14,40 +15,9 @@ const STEP_MS = 1_000
 
 async function openChat(page: Page, theme: "light" | "dark"): Promise<void> {
   await page.clock.install({ time: FIXED_TIME })
+  await installChatBridge(page)
   await page.addInitScript(() => {
-    const membership = {
-      startupPhase: "settled",
-      revision: 1,
-      state: "active",
-      account: { userId: "u1", nickname: "林舟", email: "lin@example.com", avatar: "" },
-      tier: null,
-      membershipValidUntil: null,
-      offlineValidUntil: null,
-    }
-    const reject = async () => {
-      throw new Error("not used in the visual preview")
-    }
-    const account = {
-      id: "acc-work",
-      displayName: "工作号",
-      enabled: true,
-      email: null,
-      subscriptionType: "max",
-      needsReauth: false,
-      credentialExpiresAt: 1_900_000_000_000,
-      proxyId: null,
-      fingerprint: {
-        seed: "123456",
-        brand: "Chrome",
-        platform: "macos",
-        lang: "en-US",
-        timezone: "America/Los_Angeles",
-        canvasNoise: "1",
-        clientRectsNoise: "1",
-      },
-      createdAt: "2026-10-21T00:00:00.000Z",
-      updatedAt: "2026-10-21T00:00:00.000Z",
-    }
+    const { emit, assistant, install } = (window as unknown as ChatBridgeWindow).__chatBridge
     const questions = [
       {
         question: "重试的上限定为几次？",
@@ -65,24 +35,6 @@ async function openChat(page: Page, theme: "light" | "dark"): Promise<void> {
         options: [{ label: "超时" }, { label: "连接被重置" }, { label: "HTTP 503" }],
       },
     ]
-    let listener: ((envelope: unknown) => void) | null = null
-    let seq = 0
-    const emit = (event: { type: string }) =>
-      listener?.({
-        version: 1,
-        sessionId: "s-1",
-        seq: (seq += 1),
-        at: new Date().toISOString(),
-        event,
-      })
-    const assistant = (id: string, blocks: unknown[], extra: object = {}) => ({
-      type: "message",
-      messageId: id,
-      model: "claude-sonnet",
-      parentToolUseId: null,
-      blocks,
-      ...extra,
-    })
     const ask = () => {
       emit({ type: "account-switched", from: null, to: "acc-work", reason: "initial" })
       emit({ type: "turn-started", turnId: "turn-1" })
@@ -118,90 +70,12 @@ async function openChat(page: Page, theme: "light" | "dark"): Promise<void> {
       })
       emit({ type: "turn-ended", turnId: "turn-1", status: "completed", errorCode: null })
     }
-    Object.assign(window, {
-      pigclaude: {
-        platform: "darwin",
-        membership: {
-          inspect: async () => membership,
-          subscribe: () => () => undefined,
-          withdraw: async () => membership,
-          signOut: async () => membership,
-        },
-        claudeAccounts: {
-          list: async () => [account],
-          authorize: reject,
-          cancelAuthorization: async () => undefined,
-          update: reject,
-          remove: async () => undefined,
-          importFromClaudeCli: reject,
-          subscribe: () => () => undefined,
-        },
-        proxies: {
-          list: async () => [],
-          save: reject,
-          remove: async () => undefined,
-          test: reject,
-        },
-        egress: { check: reject },
-        workspaces: {
-          list: async () => ["/Users/me/work/api"],
-          add: async () => ["/Users/me/work/api"],
-          files: async () => [],
-          names: async () => ({}),
-          rename: async () => ({}),
-          remove: async () => [],
-          reveal: async () => undefined,
-          apps: async () => [],
-          openWith: async () => undefined,
-        },
-        session: {
-          start: async () => {
-            setTimeout(() =>
-              emit({
-                type: "started",
-                sessionId: "s-1",
-                model: "claude-sonnet",
-                tools: [],
-                permissionMode: "default",
-              }),
-            )
-            return { sessionId: "s-1" }
-          },
-          send: async () => {
-            setTimeout(ask)
-          },
-          cancel: async () => undefined,
-          respondPermission: async () => undefined,
-          answerQuestion: async (input: { answers: string[] }) => {
-            setTimeout(() => answer(input.answers))
-          },
-          setMode: async () => undefined,
-          setModel: async () => undefined,
-          stop: async () => undefined,
-          events: async () => [],
-          models: async () => ({
-            models: [
-              { id: "claude-sonnet", displayName: "Sonnet", description: "", isDefault: true },
-            ],
-            cliError: null,
-          }),
-          status: async () => ({
-            active: false,
-            sessionId: null,
-            model: null,
-            permissionMode: "default",
-            accountId: null,
-            pendingPermissions: 0,
-            pendingQuestions: 0,
-            turnId: null,
-          }),
-          subscribe: (next: (envelope: unknown) => void) => {
-            listener = next
-            return () => {
-              listener = null
-            }
-          },
-        },
+    install({
+      send: async () => {
+        setTimeout(ask)
+      },
+      answerQuestion: async (input: { answers: string[] }) => {
+        setTimeout(() => answer(input.answers))
       },
     })
   })

@@ -4,12 +4,23 @@ import type { SessionToolCall, SessionTurn } from "./session-model"
 import { workspaceRevision } from "./workspace-revision"
 
 function tool(status: SessionToolCall["status"]): SessionToolCall {
-  return { id: crypto.randomUUID(), name: "Edit", input: {}, status, output: null }
+  const endedAt = status === "running" ? null : "2026-11-14T00:00:01.000Z"
+  return {
+    id: crypto.randomUUID(),
+    name: "Edit",
+    input: {},
+    status,
+    output: null,
+    startedAt: "2026-11-14T00:00:00.000Z",
+    endedAt,
+  }
 }
 
 function turn(tools: SessionToolCall[], finished: boolean): SessionTurn {
   return {
     id: crypto.randomUUID(),
+    startedAt: "2026-11-14T00:00:00.000Z",
+    endedAt: finished ? "2026-11-14T00:00:02.000Z" : null,
     userText: "go",
     blocks: [],
     tools,

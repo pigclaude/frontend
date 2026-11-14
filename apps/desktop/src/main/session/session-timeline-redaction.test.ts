@@ -27,11 +27,23 @@ const samples: EventSamples = {
     type: "message",
     messageId: "m-1",
     model: "claude-sonnet-4-5",
-    parentToolUseId: null,
+    subagent: null,
     blocks: [{ type: "text", text: "你好" }],
   },
-  "tool-result": { type: "tool-result", toolUseId: "t-1", content: "ok", isError: false },
-  permission: { type: "permission", requestId: "p-1", toolName: "Bash", input: { command: "ls" } },
+  "tool-result": {
+    type: "tool-result",
+    toolUseId: "t-1",
+    content: "ok",
+    isError: false,
+    subagent: null,
+  },
+  permission: {
+    type: "permission",
+    requestId: "p-1",
+    toolName: "Bash",
+    input: { command: "ls" },
+    subagent: null,
+  },
   question: {
     type: "question",
     requestId: "q-1",
@@ -58,6 +70,13 @@ const samples: EventSamples = {
   },
   "turn-started": { type: "turn-started", turnId: "turn-1" },
   "turn-ended": { type: "turn-ended", turnId: "turn-1", status: "completed", errorCode: null },
+  "subagent-ended": {
+    type: "subagent-ended",
+    parentToolUseId: "t-agent",
+    agentId: "agent-1",
+    status: "completed",
+    summary: "子代理做完了",
+  },
   error: { type: "error", code: "SDK_ERROR", message: "出错了" },
   ended: { type: "ended", reason: "completed" },
 }
@@ -67,7 +86,7 @@ function messageWithTool(name: string, input: unknown): SessionHostEvent {
     type: "message",
     messageId: "m-2",
     model: "claude-sonnet-4-5",
-    parentToolUseId: null,
+    subagent: null,
     blocks: [{ type: "tool-use", id: "t-2", name, input }],
   }
 }
@@ -219,6 +238,7 @@ describe("timelineEnvelope 密码打码", () => {
       requestId: "p-2",
       toolName: "mcp__pigclaude_workbench__browser_fill_form",
       input: fields,
+      subagent: null,
     }
 
     const form = toolInputOf(

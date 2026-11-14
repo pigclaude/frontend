@@ -71,6 +71,10 @@ const timelineRules: { [K in SessionHostEvent["type"]]: TimelineRule<EventOf<K>>
   result: (event) => event,
   "turn-started": (event) => event,
   "turn-ended": (event) => event,
+  "subagent-ended": (event, marks) => ({
+    ...event,
+    summary: redactString(event.summary, "event.summary", marks),
+  }),
   error: (event, marks) => ({
     ...event,
     message: redactString(event.message, "event.message", marks),

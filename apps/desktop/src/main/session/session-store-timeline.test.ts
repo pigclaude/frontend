@@ -46,6 +46,7 @@ describe("SessionStore 时间线", () => {
         toolUseId: "t-1",
         content: long,
         isError: false,
+        subagent: null,
       }),
     )
 

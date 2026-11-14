@@ -21,7 +21,13 @@ afterEach(removeTemporaryDirs)
 
 const openTurn: SessionEnvelope[] = [
   envelopeOf("s-1", 1, { type: "turn-started", turnId: "turn-1" }),
-  envelopeOf("s-1", 2, { type: "permission", requestId: "p-1", toolName: "Bash", input: {} }),
+  envelopeOf("s-1", 2, {
+    type: "permission",
+    requestId: "p-1",
+    toolName: "Bash",
+    input: {},
+    subagent: null,
+  }),
   envelopeOf("s-1", 3, {
     type: "question",
     requestId: "q-1",

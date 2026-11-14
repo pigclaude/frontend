@@ -1,5 +1,5 @@
 // 提供会话宿主回放测试用的 SDK 消息夹具和装配：读出录制的消息，把真实适配器接到假 SDK query 上。
-// 夹具只保留回放需要的消息（去掉流式增量、思考 token 计数和请求状态），来源见 fixtures 目录的文件名。
+// 夹具只保留回放需要的消息（去掉流式增量、思考 token 计数和请求状态）。
 
 import { readFileSync } from "node:fs"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
@@ -8,7 +8,7 @@ import { FakeQuery } from "./claude-agent-adapter-fixtures"
 import { createHarness, type SessionHarness } from "./session-host-fixtures"
 import type { SessionHostEvent } from "./session-types"
 
-/** 随包 Claude Code 2.1.310 的开发供应商录制（#72）和 Pigcode 录制的 2.1.304 工作流。 */
+/** 可以回放的夹具；名字末尾是录制它的 Claude Code 版本，回放结果只对这个版本的消息格式成立。 */
 export type SdkFixture =
   | "background-agent-2.1.310"
   | "background-interrupt-2.1.310"

@@ -157,9 +157,9 @@ export class SessionTurns {
     return this.#halt(status, errorCode, true)
   }
 
-  /** 会话要结束：和 interrupt 一样中断并停止在途后台任务，但不等被打断的回复补 result。 */
-  shutdown(status: SessionTurnEndStatus, errorCode: string): Promise<void> {
-    return this.#halt(status, errorCode, false)
+  /** 会话要结束：和 interrupt 一样中断并停止在途后台任务，但不等被打断的回复补 result，以停止结束这一轮。 */
+  shutdown(): Promise<void> {
+    return this.#halt("interrupted", "SESSION_CANCELLED", false)
   }
 
   /** 会话已经结束或不能再跑：不再中断，直接结束这一轮；已记下的出错原因优先。 */

@@ -174,7 +174,7 @@ export class ClaudeSession {
         active.abort.abort()
         active.turns.end("interrupted", errorCode)
       } else {
-        await active.turns.shutdown("interrupted", "SESSION_CANCELLED")
+        await active.turns.shutdown()
       }
       await active.adapter.stop().catch(() => undefined)
       await this.release()

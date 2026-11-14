@@ -1,5 +1,5 @@
-// 负责文件面板的视觉回归：在演示工作台里截宽面板的空状态、Markdown 预览和源码，
-// 以及窄面板只显示目录导航、选中文件后只显示文件内容，浅色和深色各一套。
+// 负责文件面板的视觉回归：在演示工作台里截宽面板的空状态、Markdown 预览、源码和只看改动，
+// 以及窄面板只显示目录导航、选中文件后只显示文件内容，浅色和深色各一套。文件树带 Git 装饰。
 import { expect, test, type Locator, type Page } from "@playwright/test"
 
 const options = { threshold: 0.1, maxDiffPixels: 0, animations: "disabled" } as const
@@ -39,6 +39,10 @@ for (const theme of ["light", "dark"] as const) {
 
     await openSource(panel)
     await expect(page).toHaveScreenshot(`workbench-files-source-${theme}.png`, options)
+
+    await panel.getByRole("button", { name: "仅显示变更文件", exact: true }).click()
+    await expect(panel.getByRole("treeitem", { name: "README.md" })).toHaveCount(0)
+    await expect(page).toHaveScreenshot(`workbench-files-changed-${theme}.png`, options)
   })
 
   test(`workbench files narrow ${theme}`, async ({ page }) => {

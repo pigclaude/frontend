@@ -85,6 +85,10 @@ export async function verifyWorkbench(page, application, output, provider = fals
     await expect
       .poll(() => readFile(join(root, "example.txt"), "utf8"))
       .toBe("changed in workbench\n")
+    await expect(panel.getByRole("treeitem", { name: /example\.txt/ })).toHaveAttribute(
+      "data-git",
+      "modified",
+    )
     await page.screenshot({ path: join(output, "workbench-files.png") })
     await writeFile(join(root, "added.txt"), "new untracked file\n")
     await open("Diff")
@@ -95,7 +99,7 @@ export async function verifyWorkbench(page, application, output, provider = fals
       panel.locator(".workbench-diff").getByText("new untracked file", { exact: true }),
     ).toBeVisible()
     await page.screenshot({ path: join(output, "workbench-diff.png") })
-    console.log("PASS file editing and tracked/untracked Git diff")
+    console.log("PASS file editing, Git decorations and tracked/untracked Git diff")
 
     await open("检查点")
     await panel.getByRole("button", { name: "创建检查点", exact: true }).click()

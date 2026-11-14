@@ -1,5 +1,5 @@
 // 负责渲染层接收会话信封：按会话记下已收到的最大序号，丢掉重复的事件；发现断号时按序号补拉，
-// 补齐之前到达的信封先缓存，补齐后按序号交给会话模型。
+// 补齐之前到达的信封先缓存，补齐后按到达顺序交给会话模型。
 
 import type { SessionEnvelope } from "../../../main/session/session-envelope"
 
@@ -17,8 +17,8 @@ export type SessionEnvelopeIntakeOptions = {
 
 /**
  * 会话信封接收器。保证同一会话要保存的事件按序号连续交出、每个序号只交一次；
- * 只用于实时的事件和宿主事件直接交出，补拉期间到达的则排在补齐的事件之后。
- * 补拉失败时放弃这段断号，缓存的信封照常交出。
+ * 只用于实时的事件和宿主事件直接交出，补拉期间到达的则排在补齐的事件之后、保持到达顺序。
+ * 补拉失败或拉不到时放弃这段断号，缓存的信封照常交出。
  */
 export class SessionEnvelopeIntake {
   readonly #options: SessionEnvelopeIntakeOptions
@@ -35,22 +35,20 @@ export class SessionEnvelopeIntake {
   receive(envelope: SessionEnvelope): void {
     if (this.#closed) return
     const { sessionId } = envelope
-    if (sessionId === null) {
-      this.#options.apply(envelope)
-      return
-    }
-    const waiting = this.#waiting.get(sessionId)
-    if (waiting !== undefined) {
-      waiting.push(envelope)
-      return
-    }
-    this.#admit(sessionId, envelope)
+    if (sessionId === null) this.#options.apply(envelope)
+    else this.#route(sessionId, envelope)
   }
 
   /** 停止接收；之后到达的信封和补拉结果都丢弃。 */
   close(): void {
     this.#closed = true
     this.#waiting.clear()
+  }
+
+  #route(sessionId: string, envelope: SessionEnvelope): void {
+    const waiting = this.#waiting.get(sessionId)
+    if (waiting !== undefined) waiting.push(envelope)
+    else this.#admit(sessionId, envelope)
   }
 
   #admit(sessionId: string, envelope: SessionEnvelope): void {
@@ -70,38 +68,29 @@ export class SessionEnvelopeIntake {
     void this.#fill(sessionId, seq)
   }
 
+  // 只补到断号之前；断号处及之后的事件都在缓存里，按到达顺序和夹在中间的实时事件一起交出。
   async #fill(sessionId: string, targetSeq: number): Promise<void> {
+    const last = (): number => this.#lastSeq.get(sessionId) ?? 0
     try {
-      while ((this.#lastSeq.get(sessionId) ?? 0) < targetSeq - 1) {
-        const last = this.#lastSeq.get(sessionId) ?? 0
-        const page = await this.#options.fetch(sessionId, last)
+      while (last() < targetSeq - 1) {
+        const before = last()
+        const page = await this.#options.fetch(sessionId, before)
         if (this.#closed) return
-        for (const envelope of page) this.#admitFetched(sessionId, envelope)
-        if ((this.#lastSeq.get(sessionId) ?? 0) === last) break
+        for (const envelope of page) {
+          if (envelope.sessionId !== sessionId || envelope.seq !== last() + 1) continue
+          if (envelope.seq >= targetSeq) break
+          this.#lastSeq.set(sessionId, envelope.seq)
+          this.#options.apply(envelope)
+        }
+        if (last() === before) break
       }
     } catch {
       // 补拉失败时这段断号补不回来，缓存的信封照常交出。
     }
     if (this.#closed) return
+    this.#lastSeq.set(sessionId, Math.max(last(), targetSeq - 1))
     const waiting = this.#waiting.get(sessionId) ?? []
     this.#waiting.delete(sessionId)
-    for (const envelope of waiting) this.#drain(sessionId, envelope)
-  }
-
-  #admitFetched(sessionId: string, envelope: SessionEnvelope): void {
-    const last = this.#lastSeq.get(sessionId) ?? 0
-    if (envelope.sessionId !== sessionId || envelope.seq !== last + 1) return
-    this.#lastSeq.set(sessionId, envelope.seq)
-    this.#options.apply(envelope)
-  }
-
-  // 补拉结束后交出缓存：还有断号就接受它，避免为同一段断号反复补拉。
-  #drain(sessionId: string, envelope: SessionEnvelope): void {
-    const seq = envelope.seq
-    if (seq !== null) {
-      if (seq <= (this.#lastSeq.get(sessionId) ?? 0)) return
-      this.#lastSeq.set(sessionId, seq)
-    }
-    this.#options.apply(envelope)
+    for (const envelope of waiting) this.#route(sessionId, envelope)
   }
 }

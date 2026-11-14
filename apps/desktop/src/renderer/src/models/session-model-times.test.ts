@@ -5,17 +5,12 @@ import type { SessionHostEvent } from "../../../main/session/session-types"
 import {
   createSessionState,
   reduceSession,
-  type SessionAction,
   type SessionTurn,
   type SessionUiState,
 } from "./session-model"
 
-function apply(state: SessionUiState, action: SessionAction): SessionUiState {
-  return reduceSession(state, action)
-}
-
 function emit(state: SessionUiState, event: SessionHostEvent, at: string): SessionUiState {
-  return apply(state, { type: "event", event, at })
+  return reduceSession(state, { type: "event", event, at })
 }
 
 function activeTurn(state: SessionUiState): SessionTurn {
@@ -26,7 +21,7 @@ function activeTurn(state: SessionUiState): SessionTurn {
 
 describe("session model times", () => {
   it("keeps the envelope times of a turn, its text, tools and permission cards", () => {
-    let state = apply(createSessionState(), {
+    let state = reduceSession(createSessionState(), {
       type: "user-message",
       text: "跑一下测试",
       turnId: "turn-1",
@@ -56,7 +51,7 @@ describe("session model times", () => {
       { type: "permission", requestId: "p-1", toolName: "Bash", input: {} },
       "2026-11-14T01:00:05.000Z",
     )
-    state = apply(state, {
+    state = reduceSession(state, {
       type: "permission-answered",
       requestId: "p-1",
       decision: "allow",

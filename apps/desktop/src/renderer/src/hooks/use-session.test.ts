@@ -129,6 +129,31 @@ describe("useSession", () => {
     expect(controller?.state.turns[0]?.userText).toBe("改一下重试逻辑")
   })
 
+  it("stops a session that is still starting once its id is known", async () => {
+    let finishStart: (value: { sessionId: string }) => void = () => undefined
+    const { bridge } = fakeBridge({
+      start: () =>
+        new Promise((resolve) => {
+          finishStart = resolve
+        }),
+    })
+    await render(bridge)
+
+    let stopping: Promise<void> | undefined
+    await act(async () => {
+      void controller?.start({ workspace: "/Users/me/app", permissionMode: "default" })
+      stopping = controller?.stop()
+    })
+    expect(bridge.stop).not.toHaveBeenCalled()
+    await act(async () => {
+      finishStart({ sessionId: "session-2" })
+      await stopping
+    })
+
+    expect(bridge.stop).toHaveBeenCalledWith({ sessionId: "session-2" })
+    expect(controller?.state.ended).toBe(true)
+  })
+
   it("does not create a second turn while the first turn is still active", async () => {
     const send = vi.fn(async () => undefined)
     const { bridge, emit } = fakeBridge({ send })

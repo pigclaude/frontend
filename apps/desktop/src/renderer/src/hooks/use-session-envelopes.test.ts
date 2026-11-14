@@ -102,6 +102,48 @@ describe("useSession envelopes", () => {
     expect(errorsOfLastTurn()).toEqual(["第一条", "第二条", "第三条"])
   })
 
+  it("keeps live text that arrived during a fill ahead of later kept events", async () => {
+    let finish: (page: SessionEnvelope[]) => void = () => undefined
+    const events = vi.fn(
+      () =>
+        new Promise<SessionEnvelope[]>((resolve) => {
+          finish = resolve
+        }),
+    )
+    const { bridge, push } = fakeSessionBridge({ events })
+    await render(bridge)
+    const result: SessionHostEvent = {
+      type: "result",
+      subtype: "success",
+      isError: false,
+      durationMs: 1,
+      numTurns: 1,
+      stopReason: "end_turn",
+      usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
+    }
+
+    await act(async () => {
+      push(kept(2, failure("第二条")))
+      push({
+        version: 1,
+        sessionId: "session-1",
+        seq: null,
+        at: "2026-11-14T01:00:02.500Z",
+        event: { type: "delta", text: "答", thinking: false, blockIndex: 0 },
+      })
+      push(kept(3, result))
+    })
+    await act(async () =>
+      finish([kept(1, failure("第一条")), kept(2, failure("第二条")), kept(3, result)]),
+    )
+
+    expect(controller?.state.turns).toHaveLength(1)
+    expect(controller?.state.turns[0]?.blocks).toEqual([
+      { type: "text", text: "答", at: "2026-11-14T01:00:02.500Z" },
+    ])
+    expect(controller?.state.turns[0]?.status).toBe("done")
+  })
+
   it("still applies what it has when the fill fails", async () => {
     const events = vi.fn(async () => {
       throw new Error("SESSION_NOT_FOUND: 会话不存在")

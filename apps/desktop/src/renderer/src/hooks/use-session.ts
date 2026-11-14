@@ -67,6 +67,7 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
   const turnSeq = useRef(0)
   const activeTurnRef = useRef<string | null>(null)
   const targetRef = useRef<string | null>(null)
+  const startingRef = useRef<Promise<string | null> | null>(null)
   const modelsLoaded = useRef(false)
   const modelsLoadingRef = useRef(false)
   const modelsRequest = useRef(0)
@@ -156,8 +157,13 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
       dispatch({ type: "starting" })
       activeTurnRef.current = null
       targetRef.current = null
+      const pending = resolved.start(input)
+      startingRef.current = pending.then(
+        (result) => result.sessionId,
+        () => null,
+      )
       try {
-        const result = await resolved.start(input)
+        const result = await pending
         targetRef.current = result.sessionId
         dispatch({ type: "opened", sessionId: result.sessionId })
         void refreshStatus()
@@ -211,7 +217,7 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
   }, [resolved])
 
   const stop = useCallback(async (): Promise<void> => {
-    const sessionId = targetRef.current
+    const sessionId = targetRef.current ?? (await startingRef.current)
     try {
       if (sessionId !== null) await resolved?.stop({ sessionId })
     } catch (error: unknown) {

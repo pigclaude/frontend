@@ -87,6 +87,7 @@ export class SessionHost {
   readonly #unsubscribeRuntime: () => void
   readonly #unsubscribeUsage: () => void
   #session: ClaudeSession | null = null
+  #ended: ClaudeSession | null = null
   #startPromise: Promise<{ sessionId: string }> | null = null
   #stopRequested = false
   #closing: Promise<void> | null = null
@@ -180,10 +181,13 @@ export class SessionHost {
       now: this.#now,
       newId: this.#newId,
       onReleased: (released) => {
-        if (this.#session === released) this.#session = null
+        if (this.#session !== released) return
+        this.#session = null
+        this.#ended = released
       },
     })
     this.#session = session
+    this.#ended = null
     try {
       await session.launch(mcpServers)
     } catch (error) {
@@ -237,14 +241,15 @@ export class SessionHost {
   }
 
   /**
-   * 按序号补拉指定会话要保存的事件，按序号排列，一次有上限。会员无效时抛 MEMBERSHIP_REQUIRED，
-   * 不是当前会话时抛 SESSION_NOT_FOUND。
+   * 按序号补拉指定会话要保存的事件，按序号排列，一次有上限。刚结束的会话在下一个会话启动前仍可读。
+   * 会员无效时抛 MEMBERSHIP_REQUIRED，既不是当前会话也不是刚结束的会话时抛 SESSION_NOT_FOUND。
    */
   events(sessionId: string, afterSeq: number): SessionEnvelope[] {
     if (this.#membership.view().state !== "active") {
       throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
     }
-    const session = this.#sessionFor(sessionId)
+    const ended = this.#ended?.state.sessionId === sessionId ? this.#ended : null
+    const session = this.#sessionFor(sessionId) ?? ended
     if (session === null) throw new SessionHostError("SESSION_NOT_FOUND", "会话不存在")
     return session.events(afterSeq)
   }

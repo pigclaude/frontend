@@ -86,6 +86,25 @@ describe("SessionHost envelopes", () => {
     await harness.host.dispose()
   })
 
+  it("still reads back a session that has just ended until the next one starts", async () => {
+    const harness = createHarness({ workspace: await workspaceDir() })
+    const first = await harness.host.start({
+      workspace: harness.workspace,
+      permissionMode: "default",
+    })
+    harness.adapters.last.emit({ type: "ended", reason: "completed" })
+
+    expect(harness.host.status().active).toBe(false)
+    expect(harness.host.events(first.sessionId, 0).map((envelope) => envelope.event.type)).toEqual([
+      "mode",
+      "ended",
+    ])
+
+    await harness.host.start({ workspace: harness.workspace, permissionMode: "default" })
+    expect(() => harness.host.events(first.sessionId, 0)).toThrow(/SESSION_NOT_FOUND/)
+    await harness.host.dispose()
+  })
+
   it("sends host notices outside any session without a seq", async () => {
     const harness = createHarness({ workspace: await workspaceDir() })
 

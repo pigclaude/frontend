@@ -1,8 +1,9 @@
 // 负责中继、隐私与版本页，仅显示主进程已提供的运行时事实。
-import { SettingPage, SettingRow, SettingSection } from "@pigclaude/ui-primitives"
+import { Button, SettingPage, SettingRow, SettingSection } from "@pigclaude/ui-primitives"
 import { ScrollPanel } from "@pigclaude/ui-shell"
 import { useAppUpdates } from "../../hooks/use-app-updates"
-import { useText } from "../../locale/text"
+import { fill, useText } from "../../locale/text"
+import type { SessionHistoryController } from "../../hooks/use-session-history"
 import { updateStatusText } from "./update-settings"
 
 /** 展示中继与代理策略；暂无运行信息的字段显示占位符。 */
@@ -46,8 +47,14 @@ export function NetworkSettings() {
 }
 
 /** 展示本机数据目录与已接入的存储信息。 */
-export function DataSettings({ userDataPath }: { userDataPath: string | null }) {
-  const { t } = useText()
+export function DataSettings({
+  userDataPath,
+  history,
+}: {
+  userDataPath: string | null
+  history?: SessionHistoryController
+}) {
+  const { t, locale } = useText()
   return (
     <ScrollPanel>
       <SettingPage title={t("appSettings.privacy")} sub={t("appSettings.privacyDescription")}>
@@ -59,6 +66,37 @@ export function DataSettings({ userDataPath }: { userDataPath: string | null }) 
           <SettingRow title="accounts.json" description={t("appSettings.accountsFile")} value="—" />
           <SettingRow title="proxies.json" description={t("appSettings.proxiesFile")} value="—" />
         </SettingSection>
+        {history?.enabled ? (
+          <SettingSection title={t("shell.session.storage")}>
+            {history.loadError === null ? null : (
+              <p className="error-text" role="alert">
+                {history.loadError}
+              </p>
+            )}
+            <SettingRow
+              title={t("shell.session.storage")}
+              value={
+                history.stats === null
+                  ? "—"
+                  : fill(t("shell.session.storageValue"), {
+                      bytes: new Intl.NumberFormat(locale, { style: "unit", unit: "byte" }).format(
+                        history.stats.bytes,
+                      ),
+                      count: history.stats.count,
+                    })
+              }
+            />
+            <SettingRow title={t("shell.session.clear")}>
+              <Button
+                variant="ghost"
+                disabled={!history.canClear || history.stats === null || history.stats.count === 0}
+                onClick={() => history.promptDeletion({ kind: "all" })}
+              >
+                {t("shell.session.clear")}
+              </Button>
+            </SettingRow>
+          </SettingSection>
+        ) : null}
         <SettingSection title={t("appSettings.usageRecords")}>
           <SettingRow
             title={t("appSettings.retention")}

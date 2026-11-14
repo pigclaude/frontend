@@ -52,6 +52,7 @@ import {
   goBack,
   goForward,
   pushLocation,
+  replaceDeletedSessionLocations,
   type FlowName,
   type NavLocation,
 } from "./models/navigation"
@@ -472,6 +473,9 @@ function DesktopGate() {
       claudeAccounts={claudeAccounts}
       browserProfiles={browserProfiles}
       onNavigate={navigate}
+      onSessionsDeleted={(projects) =>
+        setHistory((current) => replaceDeletedSessionLocations(current, projects))
+      }
       onBack={() => setHistory(goBack)}
       onForward={() => setHistory(goForward)}
       onOpenAuthorize={() => openAuthorize()}

@@ -88,6 +88,7 @@ export function workspaceThreads(input: {
   summaries: readonly SavedSessionSummary[]
   states: SessionCollection
   workspaces: ReadonlyMap<string, string>
+  hidden?: ReadonlySet<string>
   projectOf: (workspace: string) => string | null
   untitled: string
   accounts: readonly BadgeAccount[]
@@ -97,6 +98,7 @@ export function workspaceThreads(input: {
   const threads: Thread[] = []
   const statuses: Record<string, ThreadStatus> = {}
   for (const id of ids) {
+    if (input.hidden?.has(id)) continue
     const summary = summaries.get(id)
     const workspace = summary?.workspace ?? input.workspaces.get(id)
     if (workspace === undefined) continue

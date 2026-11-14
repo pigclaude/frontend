@@ -42,8 +42,11 @@ export function registerSettingsPages(
   registry: ExtensionRegistry,
   render: SettingsPageRenderer,
   onSelect: (page: SettingsPageId) => void,
+  archiveAvailable = true,
 ): () => void {
-  const pages = settingsNav.flatMap((group) => group.items)
+  const pages = settingsNav
+    .flatMap((group) => group.items)
+    .filter((item) => archiveAvailable || item.page !== "archived")
   const pageDisposers = pages.map((item, index) => {
     const contribution: SettingsPageContribution = {
       id: item.page,
@@ -75,9 +78,12 @@ export function registerSettingsPages(
 export function SettingsRegistry({
   render,
   onSelect,
+  archiveAvailable = true,
 }: {
   render: SettingsPageRenderer
   onSelect: (page: SettingsPageId) => void
+  /** 旧的桌面桥或浏览器预览没有已归档清单。 */
+  archiveAvailable?: boolean
 }) {
   const registry = useExtensionRegistry()
   const latest = useRef({ render, onSelect })
@@ -88,8 +94,9 @@ export function SettingsRegistry({
       registry,
       (page) => latest.current.render(page),
       (page) => latest.current.onSelect(page),
+      archiveAvailable,
     )
-  }, [registry])
+  }, [archiveAvailable, registry])
   return null
 }
 

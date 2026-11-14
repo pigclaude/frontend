@@ -7,6 +7,7 @@ import type { AppearanceController } from "../hooks/use-appearance"
 import type { BrowserProfilesController } from "../hooks/use-browser-profiles"
 import type { ClaudeAccountsController } from "../hooks/use-claude-accounts"
 import type { SessionController } from "../hooks/use-session"
+import type { SessionHistoryController } from "../hooks/use-session-history"
 import { toPoolAccount, toPoolProxy } from "../models/claude-account-view"
 import type { NavLocation } from "../models/navigation"
 import { AccountsScreen } from "./accounts-screen"
@@ -15,6 +16,7 @@ import { EnvironmentScreen } from "./environment-screen"
 import { ProxiesScreen } from "./proxies-screen"
 import { SettingsScreen } from "./settings/settings-sections"
 import { UsageScreen } from "./usage-screen"
+import { ArchivedSessions } from "./settings/archived-sessions"
 
 type Props = {
   page: string
@@ -22,6 +24,8 @@ type Props = {
   pool: ClaudeAccountsController
   browserProfiles: BrowserProfilesController | undefined
   session: SessionController
+  history: SessionHistoryController
+  canSelectWorkspace: (workspace: string) => boolean
   workspace: string | null
   appInfo: AppInfo | null
   appearance: AppearanceController
@@ -39,6 +43,8 @@ export function MainWindowSettings({
   pool,
   browserProfiles,
   session,
+  history,
+  canSelectWorkspace,
   workspace,
   appInfo,
   appearance,
@@ -49,6 +55,15 @@ export function MainWindowSettings({
   onLogout,
 }: Props) {
   const accounts = pool.accounts.map((account) => toPoolAccount(account, pool.proxies))
+  if (page === "archived")
+    return (
+      <ArchivedSessions
+        history={history}
+        onOpen={({ workspace, sessionId }) => {
+          if (canSelectWorkspace(workspace)) onNavigate({ kind: "session", sessionId })
+        }}
+      />
+    )
   const proxies = pool.proxies.map((proxy) => toPoolProxy(proxy, pool.accounts))
   if (page === "accounts") {
     return (
@@ -129,6 +144,7 @@ export function MainWindowSettings({
       appInfo={appInfo}
       defaultWorkspace={workspace}
       models={session.models}
+      history={history}
       accounts={pool.accounts}
       page={page}
       appearance={appearance}

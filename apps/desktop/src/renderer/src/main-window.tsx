@@ -15,6 +15,8 @@ import type { AppInfo } from "../../preload/index"
 import { TrayScreen } from "./screens/tray-screen"
 import type { ClaudeAccountsController } from "./hooks/use-claude-accounts"
 import { sessionAccountId, useSession } from "./hooks/use-session"
+import { useSessionHistory } from "./hooks/use-session-history"
+import { SessionDeleteDialog } from "./components/session-delete-dialog"
 import type { ProjectDrafts } from "./hooks/use-project-draft"
 import { useSessionNotices } from "./hooks/use-session-notices"
 import { useWorkspaces } from "./hooks/use-workspaces"
@@ -59,6 +61,8 @@ export type MainWindowProps = {
   claudeAccounts: ClaudeAccountsController
   browserProfiles?: BrowserProfilesController
   onNavigate: (location: NavLocation) => void
+  /** 用各个已删除会话的原项目草稿替换导航记录。 */
+  onSessionsDeleted: (projects: ReadonlyMap<string, string>) => void
   onBack: () => void
   onForward: () => void
   onOpenAuthorize: () => void
@@ -82,6 +86,7 @@ export function MainWindow({
   claudeAccounts,
   browserProfiles,
   onNavigate,
+  onSessionsDeleted,
   onBack,
   onForward,
   onOpenAuthorize,
@@ -97,9 +102,9 @@ export function MainWindow({
   const session = useSession(undefined, location.kind === "session" ? location.sessionId : null)
   useSessionNotices(session.notice)
   const workspaces = useWorkspaces()
+  const page = location.kind === "settings" ? location.page : null
   const selection = useWorkspaceSelection(workspaces.add)
   const { selected: selectedWorkspace, projectOf } = selection
-  const [sessionWorkspaces, setSessionWorkspaces] = useState<ReadonlyMap<string, string>>(new Map())
   const currentLocation = useRef(location)
   currentLocation.current = location
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -112,12 +117,20 @@ export function MainWindow({
   const [terminalMounted, setTerminalMounted] = useState(false)
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
   const accounts = pool.accounts.map((account) => toPoolAccount(account, pool.proxies))
+  const history = useSessionHistory({
+    page,
+    summaries: session.summaries,
+    refreshActive: session.refreshSummaries,
+    report: (message) => toast(message, "alert"),
+    onSessionsDeleted,
+  })
   const selectedProject = projectOf(selectedWorkspace)
   const routedProject = location.kind === "draft" ? location.projectId : undefined
   const workspace =
     routedProject !== undefined &&
     routedProject !== selectedProject &&
     (workspaces.paths.includes(routedProject) ||
+      [...history.deleted.values()].includes(routedProject) ||
       session.summaries.some(
         (summary) => summary.projectPath === routedProject && summary.restorable,
       ))
@@ -125,14 +138,18 @@ export function MainWindow({
       : (selectedWorkspace ?? workspaces.paths[0] ?? previewWorkbench?.root ?? null)
   const sessionId =
     location.kind === "session" ? (location.sessionId ?? session.state.sessionId) : null
+  const activeSummary = [...session.summaries, ...history.archived].find(
+    (item) => item.sessionId === sessionId,
+  )
   const sessionWorkspace =
-    session.summaries.find((item) => item.sessionId === sessionId)?.workspace ??
-    (sessionId === null ? null : sessionWorkspaces.get(sessionId)) ??
+    activeSummary?.workspace ??
+    (sessionId === null ? null : history.workspaces.get(sessionId)) ??
     null
   const sidebar = workspaceThreads({
     summaries: session.summaries,
     states: session.states,
-    workspaces: sessionWorkspaces,
+    workspaces: history.workspaces,
+    hidden: history.hidden,
     projectOf,
     untitled: t("shell.session.untitled"),
     accounts: pool.accounts,
@@ -143,7 +160,6 @@ export function MainWindow({
     sidebar.statuses,
     session.summaries,
   )
-  const page = location.kind === "settings" ? location.page : null
   const inChat = location.kind === "draft" || location.kind === "session"
   const bridge = window.pigclaude?.workbench ?? previewWorkbench?.bridge
   const sessionActive = session.state.started && !session.state.ended
@@ -152,7 +168,6 @@ export function MainWindow({
   const projectDraft = drafts.forProject(draftProject)
   const currentDraft = useRef(draftProject)
   currentDraft.current = draftProject
-  const activeSummary = session.summaries.find((item) => item.sessionId === sessionId)
   const workbenchRoot = chatWorkspace
   const turnActive = sessionActive && session.state.activeTurnId !== null
   const toggleRight = () => {
@@ -259,6 +274,8 @@ export function MainWindow({
       pool={pool}
       browserProfiles={browserProfiles}
       session={session}
+      history={history}
+      canSelectWorkspace={canSelectWorkspace}
       workspace={workspace}
       appInfo={appInfo}
       appearance={appearance}
@@ -323,11 +340,18 @@ export function MainWindow({
       onOpenThread={(id) => {
         const path =
           session.summaries.find((item) => item.sessionId === id)?.workspace ??
-          sessionWorkspaces.get(id)
+          history.workspaces.get(id)
         if (path && !canSelectWorkspace(path)) return
         onNavigate({ kind: "session", sessionId: id })
       }}
       onAddProject={() => setAddingProject(true)}
+      {...(history.enabled
+        ? {
+            onRenameThread: history.rename,
+            onArchiveThread: (id: string) => void history.archive(id, true),
+            onOpenArchived: () => settings("archived"),
+          }
+        : {})}
       {...projectActions({
         workspaces,
         t,
@@ -374,8 +398,13 @@ export function MainWindow({
         />
       }
     >
-      <SettingsRegistry render={renderSettingsPage} onSelect={settings} />
+      <SettingsRegistry
+        render={renderSettingsPage}
+        onSelect={settings}
+        archiveAvailable={history.enabled}
+      />
       <AddProjectDialog open={addingProject} onOpenChange={setAddingProject} onAdd={addWorkspace} />
+      <SessionDeleteDialog history={history} />
       {inChat ? (
         <ChatScreen
           {...(bridge
@@ -418,7 +447,7 @@ export function MainWindow({
           }}
           onSelectWorkspace={openDraft}
           onWorkspaceUsed={(path, project, id) => {
-            if (id) setSessionWorkspaces((current) => new Map(current).set(id, path))
+            if (id) history.rememberWorkspace(id, path)
             selection.used(path, project, false)
           }}
           onDraftOpened={(id, project) => {

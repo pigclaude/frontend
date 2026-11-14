@@ -15,6 +15,7 @@ export type SettingsPageId =
   | "menubar"
   | "network"
   | "data"
+  | "archived"
   | "about"
 
 /** 设置侧栏的一个条目；keywords 是页面里的设置项，用来搜索。 */
@@ -118,6 +119,12 @@ export const settingsNav: SettingsNavGroup[] = [
         icon: "database",
         label: "数据与隐私",
         keywords: ["数据目录", "accounts.json", "proxies.json", "清除用量", "保留"],
+      },
+      {
+        page: "archived",
+        icon: "archive",
+        label: "已归档",
+        keywords: ["会话", "取消归档", "删除"],
       },
       { page: "about", icon: "info", label: "关于", keywords: ["版本", "设计系统"] },
     ],

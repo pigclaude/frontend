@@ -8,6 +8,8 @@ import { LockedValue, Segmented } from "./setting-controls"
 import { SettingPage, SettingRow, SettingSection } from "./setting-page"
 import { DefaultModelRow, DefaultPermissionRow } from "./session-default-rows"
 import { UpdateSettingsSection } from "./update-settings"
+import type { SessionHistoryController } from "../../hooks/use-session-history"
+import { SessionRetentionSettings } from "./session-retention-settings"
 
 /** 通用：启动、Dock、快捷键、更新和侧栏会话分组。 */
 export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
@@ -43,9 +45,11 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
 export function SessionSettings({
   workspace,
   models = [],
+  history,
 }: {
   workspace?: string | null
   models?: readonly ClaudeModel[]
+  history?: SessionHistoryController
 }) {
   return (
     <SettingPage
@@ -80,6 +84,7 @@ export function SessionSettings({
           <LockedValue>{desktopText("settings.settings-app-pages.38")}</LockedValue>
         </SettingRow>
       </SettingSection>
+      {history?.enabled ? <SessionRetentionSettings history={history} /> : null}
     </SettingPage>
   )
 }

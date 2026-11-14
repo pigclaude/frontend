@@ -90,6 +90,7 @@ export function sessionController(overrides: Partial<SessionController> = {}): S
     refreshModels: vi.fn(async () => undefined),
     cancelModels: vi.fn(() => undefined),
     refreshStatus: vi.fn(async () => undefined),
+    refreshSummaries: vi.fn(async () => undefined),
     clearError: vi.fn(() => undefined),
     ...overrides,
   }

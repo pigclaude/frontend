@@ -7,6 +7,7 @@ export type SavedSessionSummary = SessionSummary & {
   title?: string
   projectPath?: string
   restorable?: boolean
+  archivedAt?: string | null
 }
 
 /** 历史会话可以从停放、中断或失败状态续接；运行时命令仍走原有发送入口。 */

@@ -36,11 +36,11 @@ export type SessionController = {
   /** Claude Code 没有列出模型的原因；这时 models 是主进程给的内置目录。 */
   modelsCliError: string | null
   start: (input: SessionStartInput, onError?: (message: string) => void) => Promise<boolean>
-  /** 用选定的设置发送；消息未被接受时返回 false，界面保留草稿。 */
+  /** 用选定的设置发送；已归档目标可带摘要，失败时保留草稿。 */
   send: (
     text: string,
     options?: SessionSendOptions,
-    sessionId?: string,
+    target?: string | SavedSessionSummary,
     onError?: (message: string) => void,
   ) => Promise<boolean>
   cancel: () => Promise<void>
@@ -61,6 +61,8 @@ export type SessionController = {
   /** 放弃当前模型查询等待；迟到结果不会再写入状态。 */
   cancelModels: () => void
   refreshStatus: () => Promise<void>
+  /** 刷新未归档摘要，无需触动会话或时间线。 */
+  refreshSummaries: () => Promise<void>
   clearError: () => void
 }
 
@@ -307,10 +309,10 @@ export function useSession(
     async (
       text: string,
       options?: SessionSendOptions,
-      target?: string,
+      target?: string | SavedSessionSummary,
       onError?: (message: string) => void,
     ): Promise<boolean> => {
-      const sessionId = target ?? commandTarget()
+      const sessionId = typeof target === "object" ? target.sessionId : (target ?? commandTarget())
       if (resolved === null || resolved === undefined) {
         apply(sessionId, { type: "failed", message: "桌面会话服务不可用", at: now() })
         return false
@@ -321,7 +323,8 @@ export function useSession(
         return false
       }
       if (historySelection === sessionId && intakeRef.current?.isCatchingUp(sessionId)) return false
-      const summary = summaries.find((item) => item.sessionId === sessionId)
+      const summary =
+        typeof target === "object" ? target : summaries.find((item) => item.sessionId === sessionId)
       if (summary?.restorable === true && !intakeRef.current?.hasHistory(sessionId)) {
         void intakeRef.current?.catchUp(sessionId)
         return false
@@ -471,6 +474,7 @@ export function useSession(
     refreshModels,
     cancelModels,
     refreshStatus,
+    refreshSummaries,
     clearError,
   }
 }

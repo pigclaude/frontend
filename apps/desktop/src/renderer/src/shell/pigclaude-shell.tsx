@@ -12,9 +12,11 @@ import {
 } from "react"
 import type { Project, Thread } from "@pigclaude/ui-contracts"
 import { useExtensionRegistry } from "@pigclaude/client-runtime"
-import { useLocale, useSidebarGrouping } from "@pigclaude/ui-primitives"
+import { ListRow, useLocale, useSidebarGrouping } from "@pigclaude/ui-primitives"
+import { useText } from "../locale/text"
 import {
   CommandPalette,
+  Icon,
   TitleBar,
   WindowControls,
   WorkspaceSidebar,
@@ -59,6 +61,10 @@ export type PigclaudeShellProps = {
   onOpenThread: (threadId: string) => void
   /** 打开「添加项目」对话框。 */
   onAddProject: () => void
+  /** 会话历史操作沿用工作区侧栏的右键菜单。 */
+  onRenameThread?: (id: string, title: string) => void
+  onArchiveThread?: (id: string) => void
+  onOpenArchived?: () => void
   /** 项目右键菜单：只改侧栏显示名；从侧栏移除，不删文件。 */
   onRenameProject: (projectId: string, name: string) => void
   onRemoveProject: (projectId: string) => void
@@ -84,6 +90,7 @@ export type PigclaudeShellProps = {
 /** 组合窗口外壳；窄窗口里侧栏变成抽屉，点遮罩或按 Esc 关闭。 */
 export function PigclaudeShell(props: PigclaudeShellProps) {
   const { t } = useLocale()
+  const { t: text } = useText()
   const registry = useExtensionRegistry()
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth()
   const [rightWidth, setRightWidth] = useRightWidth()
@@ -229,6 +236,8 @@ export function PigclaudeShell(props: PigclaudeShellProps) {
             agentNames={props.agentNames}
             expandedProjects={props.expandedProjects}
             onAddProject={props.onAddProject}
+            onRenameThread={props.onRenameThread}
+            onArchiveThread={props.onArchiveThread}
             onRenameProject={props.onRenameProject}
             onRemoveProject={props.onRemoveProject}
             onBrowseFiles={
@@ -249,6 +258,18 @@ export function PigclaudeShell(props: PigclaudeShellProps) {
               props.onNewSession(projectId)
             }}
             shortcutHints={shortcutHints}
+          />
+        )}
+        {props.inSettings || !props.onOpenArchived ? null : (
+          <ListRow
+            render={<button type="button" />}
+            className="nav-item"
+            leading={<Icon name="archive" aria-hidden="true" />}
+            title={text("shell.session.archived")}
+            onClick={() => {
+              setDrawerOpen(false)
+              props.onOpenArchived?.()
+            }}
           />
         )}
         {props.inSettings ? null : props.notice}

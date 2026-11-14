@@ -342,7 +342,7 @@ export function ChatScreen({
       return session.send(text, sendOptions)
     }
     if (identifySessions && state.sessionId !== null) {
-      if (parked) return session.send(text, undefined, state.sessionId, setResumeError)
+      if (parked) return session.send(text, undefined, summary ?? state.sessionId, setResumeError)
       if (summary?.status === "queued" || summary?.status === "running") return false
       notify(t("shell.session.parked"))
       return false

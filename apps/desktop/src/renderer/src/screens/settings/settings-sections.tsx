@@ -5,6 +5,7 @@ import type { ClaudeAccountView } from "@pigclaude/contracts/claude-account"
 import type { NavLocation } from "../../models/navigation"
 import type { AppInfo } from "../../../../preload/index"
 import type { ClaudeModel } from "../../../../main/session/session-types"
+import type { SessionHistoryController } from "../../hooks/use-session-history"
 import { ProfileSettings, SwitchingSettings } from "./settings-account-pages"
 import { AppearancePage } from "./appearance/appearance-page"
 import { GeneralSettings, MenubarSettings, SessionSettings } from "./settings-app-pages"
@@ -24,6 +25,7 @@ export type SettingsScreenProps = {
   models: readonly ClaudeModel[]
   /** 号池里的账号，新会话账号从这里选。 */
   accounts: readonly ClaudeAccountView[]
+  history: SessionHistoryController
 }
 
 /** 根据当前设置子页绘制原型对应的设置内容；未知子页显示关于。 */
@@ -38,6 +40,7 @@ export function SettingsScreen({
   defaultWorkspace,
   models,
   accounts,
+  history,
 }: SettingsScreenProps) {
   if (page === "profile")
     return (
@@ -50,10 +53,12 @@ export function SettingsScreen({
   if (page === "switching") return <SwitchingSettings accounts={accounts} onNavigate={onNavigate} />
   if (page === "general") return <GeneralSettings appVersion={appInfo?.appVersion ?? null} />
   if (page === "appearance") return <AppearancePage appearance={appearance} />
-  if (page === "session") return <SessionSettings workspace={defaultWorkspace} models={models} />
+  if (page === "session")
+    return <SessionSettings workspace={defaultWorkspace} models={models} history={history} />
   if (page === "menubar") return <MenubarSettings onNavigate={onNavigate} />
   if (page === "network") return <NetworkSettings />
-  if (page === "data") return <DataSettings userDataPath={appInfo?.userDataPath ?? null} />
+  if (page === "data")
+    return <DataSettings userDataPath={appInfo?.userDataPath ?? null} history={history} />
   return (
     <AboutSettings
       appVersion={appInfo?.appVersion ?? null}

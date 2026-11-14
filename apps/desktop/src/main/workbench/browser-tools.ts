@@ -5,14 +5,15 @@ import {
   createSdkMcpServer,
   tool,
   type McpSdkServerConfigWithInstance,
+  type McpServerToolPolicy,
 } from "@anthropic-ai/claude-agent-sdk"
 import { z } from "zod"
 import type { WorkbenchBrowsers } from "./browser-surface"
 
-const permission = [
-  { name: "browser_open", policy: "always_ask" },
-  { name: "browser_snapshot", policy: "always_ask" },
-] as const
+const permission: readonly McpServerToolPolicy[] = [
+  { name: "browser_open", permission_policy: "always_ask" },
+  { name: "browser_snapshot", permission_policy: "always_ask" },
+]
 
 /** 将浏览器工具限定到此次会话的主窗口和临时浏览器；不共享个人浏览器会话。 */
 export function browserSessionTools(

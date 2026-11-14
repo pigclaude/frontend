@@ -55,11 +55,14 @@ export function sessionRuns(
       continue
     }
     if (event.type === "turn-ended") {
-      if (cursor.current !== null) {
+      if (
+        cursor.current !== null &&
+        (cursor.current.turn.mainTurnId === null || cursor.current.turn.mainTurnId === event.turnId)
+      ) {
         cursor.current.closed = true
         cursor.last = cursor.current
+        cursor.current = null
       }
-      cursor.current = null
       continue
     }
     if (!inRun[event.type]) continue

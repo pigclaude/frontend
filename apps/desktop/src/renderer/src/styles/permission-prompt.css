@@ -13,6 +13,16 @@
   flex-direction: column;
 }
 
+.session-resume-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: min(var(--chat-col), calc(100% - 2 * var(--space-4)));
+  margin: var(--space-2) auto;
+  font-size: var(--fs-sm);
+}
+
 .perm-host {
   max-width: var(--chat-col);
   margin: 0 auto;

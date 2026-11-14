@@ -9,7 +9,7 @@ import type {
   SessionStartInput,
   SessionStatusView,
 } from "../../../main/session/session-types"
-import type { SessionSummary } from "../../../main/session/session-summary"
+import { needsSessionResume, type SavedSessionSummary } from "../models/saved-session"
 import { timelineNotice } from "../../../main/session/session-notice"
 import {
   reduceSessionCollection,
@@ -19,7 +19,6 @@ import {
 } from "../models/session-collection"
 import { SessionEnvelopeIntake } from "../models/session-envelope-intake"
 import { sessionErrorText, type SessionAction, type SessionUiState } from "../models/session-model"
-import type { SessionPermissionStatus } from "../models/session-permissions"
 
 /** 聊天页和环境页共用的会话控制器。 */
 export type SessionController = {
@@ -27,7 +26,7 @@ export type SessionController = {
   /** 各会话的状态按 id 保存，切换选择时保留后台会话的回合。 */
   states: SessionCollection
   /** 主进程的活动会话和停放会话摘要。 */
-  summaries: readonly SessionSummary[]
+  summaries: readonly SavedSessionSummary[]
   /** 这次窗口收到的最新提示，包括后台会话和宿主的文字通知。 */
   notice: SessionUiState["notice"]
   status: SessionStatusView | null
@@ -82,7 +81,7 @@ export function useSession(
 ): SessionController {
   const resolved = bridge === undefined ? window.pigclaude?.session : bridge
   const [states, dispatch] = useReducer(reduceSessionCollection, new Map())
-  const [summaries, setSummaries] = useState<readonly SessionSummary[]>([])
+  const [summaries, setSummaries] = useState<readonly SavedSessionSummary[]>([])
   const [notice, setNotice] = useState<SessionUiState["notice"]>(null)
   const [status, setStatus] = useState<SessionStatusView | null>(null)
   const [models, setModels] = useState<ClaudeModel[]>([])
@@ -209,9 +208,14 @@ export function useSession(
     if (resolved === null || resolved === undefined) return
     const intake = new SessionEnvelopeIntake({
       fetch: (sessionId, afterSeq) => resolved.events({ sessionId, afterSeq }),
-      apply: (envelope) => {
+      apply: (envelope, replay = false) => {
         const { sessionId, event } = envelope
-        if (event.type === "notice" && "message" in event && timelineNotice(event) === null) {
+        if (
+          !replay &&
+          event.type === "notice" &&
+          "message" in event &&
+          timelineNotice(event) === null
+        ) {
           setNotice({ message: event.message })
         }
         if (sessionId === null && event.type === "error") {
@@ -221,11 +225,15 @@ export function useSession(
           targetRef.current = sessionId
           setDiscovered(sessionId)
         }
-        if (sessionId !== null && (event.type === "turn-ended" || event.type === "ended")) {
+        if (
+          !replay &&
+          sessionId !== null &&
+          (event.type === "turn-ended" || event.type === "ended")
+        ) {
           activeTurns.current.delete(sessionId)
         }
         if (event.type !== "sessions-changed") apply(sessionId, { type: "envelope", envelope })
-        if (refreshesSessionList(envelope)) void refreshSummaries()
+        if (!replay && refreshesSessionList(envelope)) void refreshSummaries()
       },
     })
     intakeRef.current = intake
@@ -313,6 +321,11 @@ export function useSession(
         return false
       }
       if (historySelection === sessionId && intakeRef.current?.isCatchingUp(sessionId)) return false
+      const summary = summaries.find((item) => item.sessionId === sessionId)
+      if (summary?.restorable === true && !intakeRef.current?.hasHistory(sessionId)) {
+        void intakeRef.current?.catchUp(sessionId)
+        return false
+      }
       if (activeTurns.current.has(sessionId)) return false
       turnSeq.current += 1
       const turnId = `turn-${turnSeq.current}`
@@ -325,13 +338,15 @@ export function useSession(
         const message = sessionErrorFrom(error)
         if (activeTurns.current.get(sessionId) === turnId) {
           activeTurns.current.delete(sessionId)
-          apply(sessionId, { type: "failed", message, at: now() })
+          if (needsSessionResume(summary))
+            apply(sessionId, { type: "resume-failed", message, at: now(), turnId })
+          else apply(sessionId, { type: "failed", message, at: now() })
         }
         onError?.(sessionErrorText(message))
         return false
       }
     },
-    [apply, commandTarget, historySelection, resolved],
+    [apply, commandTarget, historySelection, resolved, summaries],
   )
 
   const cancel = useCallback(async (): Promise<void> => {
@@ -470,18 +485,4 @@ export function sessionAccountId(
 /** 把未知错误转成文本；主进程前缀由 sessionErrorText 统一剥离。 */
 export function sessionErrorFrom(error: unknown): string {
   return error instanceof Error ? error.message : "会话操作失败"
-}
-
-/** 权限卡片状态的展示文案，页面和测试共用。 */
-export function permissionStatusText(status: SessionPermissionStatus): string {
-  switch (status) {
-    case "allowed":
-      return "已允许一次"
-    case "denied":
-      return "已拒绝"
-    case "timeout":
-      return "权限询问超时，已拒绝"
-    default:
-      return "等待回答"
-  }
 }

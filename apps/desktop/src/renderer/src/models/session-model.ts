@@ -79,6 +79,7 @@ export type SessionAction =
   | { type: "cancel-requested"; at: string }
   | { type: "stopped"; at: string }
   | { type: "failed"; message: string; code?: string; at: string }
+  | { type: "resume-failed"; turnId: string; message: string; at: string }
   | { type: "clear-error" }
   | { type: "model-changed"; model: string }
 
@@ -148,6 +149,18 @@ export function reduceSession(state: SessionUiState, action: SessionAction): Ses
       }
     case "failed":
       return applyFailure(state, action.message, action.at, action.code)
+    case "resume-failed": {
+      const accepted = state.turns.some(
+        (turn) => turn.id === action.turnId && turn.mainTurnId !== null,
+      )
+      if (accepted) return applyFailure(state, action.message, action.at)
+      return {
+        ...state,
+        turns: state.turns.filter((turn) => turn.id !== action.turnId),
+        activeTurnId: state.activeTurnId === action.turnId ? null : state.activeTurnId,
+        error: sessionErrorView(action.message),
+      }
+    }
     case "clear-error":
       return { ...state, error: null }
     case "model-changed":
@@ -208,10 +221,13 @@ function applyEvent(state: SessionUiState, envelope: SessionEnvelope): SessionUi
       return appendTurn(state, implicitTurnId(state), null, at, seqBefore(envelope))
     case "account-switched":
       return { ...state, accountId: event.to }
-    case "turn-started":
-      return applyTurnStarted(state, event.turnId, at, seqBefore(envelope))
+    case "turn-started": {
+      const userText =
+        "userText" in event && typeof event.userText === "string" ? event.userText : null
+      return applyTurnStarted(state, event.turnId, userText, at, seqBefore(envelope))
+    }
     case "turn-ended":
-      return applyTurnEnded(state, event.status, event.errorCode, at)
+      return applyTurnEnded(state, event.turnId, event.status, event.errorCode, at)
     case "error":
       return applyError(state, event, at)
     case "ended":
@@ -253,17 +269,27 @@ function appendTurn(
 function applyTurnStarted(
   state: SessionUiState,
   mainTurnId: string,
+  userText: string | null,
   at: string,
   afterSeq: number,
 ): SessionUiState {
   if (state.turns.some((turn) => turn.mainTurnId === mainTurnId)) return state
   const active = state.turns.find((turn) => turn.id === state.activeTurnId)
-  if (active === undefined) {
-    const next = appendTurn(state, mainTurnId, null, at, afterSeq)
+  if (active?.mainTurnId != null && userText === null) return state
+  if (active === undefined || active.mainTurnId !== null) {
+    // 旧回合的结束记录损坏或丢失时，下一条有正文的开轮记录仍能开始自己的回合。
+    const closed =
+      active === undefined
+        ? state
+        : updateActiveTurn(state, at, (turn) => endTurn(turn, "cancelled", null, at))
+    const next = appendTurn(closed, mainTurnId, userText, at, afterSeq)
     return updateActiveTurn(next, at, (turn) => ({ ...turn, mainTurnId }))
   }
-  if (active.mainTurnId !== null) return state
-  return updateActiveTurn(state, at, (turn) => ({ ...turn, mainTurnId }))
+  return updateActiveTurn(state, at, (turn) => ({
+    ...turn,
+    mainTurnId,
+    userText: turn.userText ?? userText,
+  }))
 }
 
 // 没有活动轮时，事件自己开一轮，开始时间取这条事件的时间。
@@ -297,11 +323,14 @@ function endTurn(
 // 主进程结束这一轮：已经在界面上取消或出错的一轮保留原来的状态和结束时间。
 function applyTurnEnded(
   state: SessionUiState,
+  mainTurnId: string,
   status: SessionTurnEndStatus,
   errorCode: string | null,
   at: string,
 ): SessionUiState {
   if (state.activeTurnId === null) return state
+  const active = state.turns.find((turn) => turn.id === state.activeTurnId)
+  if (active?.mainTurnId != null && active.mainTurnId !== mainTurnId) return state
   const next = updateActiveTurn(state, at, (turn) => {
     if (turn.status !== "streaming") return turn
     const ended = status === "completed" ? "done" : status === "error" ? "error" : "cancelled"

@@ -117,7 +117,10 @@ export function MainWindow({
   const workspace =
     routedProject !== undefined &&
     routedProject !== selectedProject &&
-    workspaces.paths.includes(routedProject)
+    (workspaces.paths.includes(routedProject) ||
+      session.summaries.some(
+        (summary) => summary.projectPath === routedProject && summary.restorable,
+      ))
       ? selection.workspaceOf(routedProject)
       : (selectedWorkspace ?? workspaces.paths[0] ?? previewWorkbench?.root ?? null)
   const sessionId =
@@ -134,7 +137,12 @@ export function MainWindow({
     untitled: t("shell.session.untitled"),
     accounts: pool.accounts,
   })
-  const sidebarPaths = sidebarProjectPaths(workspaces.paths, sidebar.threads, sidebar.statuses)
+  const sidebarPaths = sidebarProjectPaths(
+    workspaces.paths,
+    sidebar.threads,
+    sidebar.statuses,
+    session.summaries,
+  )
   const page = location.kind === "settings" ? location.page : null
   const inChat = location.kind === "draft" || location.kind === "session"
   const bridge = window.pigclaude?.workbench ?? previewWorkbench?.bridge
@@ -202,7 +210,7 @@ export function MainWindow({
   function newSession(projectId?: string): void {
     const path = newSessionWorkspace(
       projectId,
-      workspaces.paths,
+      sidebarPaths,
       projectOf(sessionWorkspace) ?? workspace,
     )
     openDraft(path)
@@ -396,8 +404,8 @@ export function MainWindow({
           key={sessionId ?? draftProject}
           session={session}
           workspace={chatWorkspace}
-          workspaceProject={projectOf(chatWorkspace)}
-          workspaceOptions={workspaces.paths}
+          workspaceProject={activeSummary?.projectPath ?? projectOf(chatWorkspace)}
+          workspaceOptions={sidebarPaths}
           accounts={pool.accounts}
           proxies={pool.proxies}
           onPickWorkspace={() => {
@@ -419,7 +427,8 @@ export function MainWindow({
             if (location.kind === "session" && location.sessionId !== undefined) return
             if (currentDraft.current === project) onNavigate({ kind: "session", sessionId: id })
           }}
-          {...(activeSummary === undefined ? {} : { listStatus: activeSummary.status })}
+          {...(activeSummary === undefined ? {} : { summary: activeSummary })}
+          onNewSession={newSession}
           projectDraft={projectDraft}
           identifySessions
           onOpen={onNavigate}

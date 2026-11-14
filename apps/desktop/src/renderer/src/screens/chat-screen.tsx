@@ -11,6 +11,7 @@ import {
 import type { AgentFeatures, RuntimeMode } from "@pigclaude/ui-contracts"
 import { ChatView } from "@pigclaude/ui-chat"
 import {
+  captureComposerDraft,
   prefillComposer,
   type ComposerModelChoice,
   type ComposerSubmitOptions,
@@ -46,7 +47,8 @@ import type { WorkbenchBridge } from "../../../workbench-contract"
 import { useSlashCommands } from "../shell/registry-slash-commands"
 import { useSessionDefaults } from "../hooks/use-session-defaults"
 import type { ProjectDraftEditor } from "../hooks/use-project-draft"
-import type { SessionListStatus } from "../../../main/session/session-summary"
+import { needsSessionResume, type SavedSessionSummary } from "../models/saved-session"
+import { SessionResumeError } from "./session-resume-error"
 import { useText } from "../locale/text"
 import { ChatDraft } from "./chat-draft"
 import { useDraftWorkspace } from "./draft-workspace"
@@ -90,8 +92,10 @@ export type ChatScreenProps = {
   identifySessions?: boolean
   /** 当前项目的草稿，离开聊天页也保留。 */
   projectDraft?: ProjectDraftEditor
-  /** 排队中的会话需要等主进程启动后才能发下一条。 */
-  listStatus?: SessionListStatus
+  /** 当前选中的会话摘要；只有已保存会话有续接能力。 */
+  summary?: SavedSessionSummary
+  /** 续接失败时在原项目打开新草稿。 */
+  onNewSession?: (projectId?: string) => void
   /** 当前草稿启动完成后，由窗口只有仍在这个草稿时切换。 */
   onDraftOpened?: (sessionId: string, project: string) => void
   onOpen: (location: NavLocation) => void
@@ -119,7 +123,8 @@ export function ChatScreen({
   onWorkspaceUsed,
   identifySessions = false,
   projectDraft,
-  listStatus,
+  summary,
+  onNewSession,
   onDraftOpened,
   onOpen,
   smartPunctuation,
@@ -133,7 +138,8 @@ export function ChatScreen({
   const { t } = useText()
   const commands = useSlashCommands()
   const { state } = session
-  const live = state.started && !state.ended
+  const parked = needsSessionResume(summary)
+  const live = state.started && !state.ended && !parked
   const { defaults } = useSessionDefaults()
   const defaultLevel = permissionView(defaults.permissionMode, DEFAULT_PERMISSION_LEVEL).level
   const [modelId, setModelId] = useState(defaults.model ?? "")
@@ -145,6 +151,7 @@ export function ChatScreen({
   const startedAt = useRef(Date.now())
   const lastModelsError = useRef<string | null>(null)
   const [page, setPage] = useState<HTMLDivElement | null>(null)
+  const [resumeError, setResumeError] = useState<string | null>(null)
   const submitting = useRef(false)
 
   // 同一时间只回答一张卡片；答完后下一张会顶上来。
@@ -335,7 +342,8 @@ export function ChatScreen({
       return session.send(text, sendOptions)
     }
     if (identifySessions && state.sessionId !== null) {
-      if (listStatus === "queued" || listStatus === "running") return false
+      if (parked) return session.send(text, sendOptions, state.sessionId, setResumeError)
+      if (summary?.status === "queued" || summary?.status === "running") return false
       notify(t("shell.session.parked"))
       return false
     }
@@ -362,11 +370,13 @@ export function ChatScreen({
   function submitFromComposer(text: string, options: ComposerSubmitOptions): void {
     if (submitting.current) return
     submitting.current = true
+    setResumeError(null)
     if (fresh) projectDraft?.update({ pending: true, error: null })
     const key = draftKey
+    const restoreDraft = parked ? captureComposerDraft(key) : () => prefillComposer(key, { text })
     void submit(text, options)
       .then((ok) => {
-        if (!ok && (projectDraft?.isCurrent() ?? true)) prefillComposer(key, { text })
+        if (!ok && (projectDraft?.isCurrent() ?? true)) restoreDraft(key)
       })
       .finally(() => {
         submitting.current = false
@@ -441,6 +451,12 @@ export function ChatScreen({
 
   return (
     <div className="chat-page" ref={setPage}>
+      {resumeError && onNewSession ? (
+        <SessionResumeError
+          error={resumeError}
+          onNewSession={() => onNewSession(workspaceProject ?? undefined)}
+        />
+      ) : null}
       <ToolRenderers>
         <ChatView
           layoutControls={layoutControls}

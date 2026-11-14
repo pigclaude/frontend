@@ -12,11 +12,11 @@ export type SessionEnvelopeFetch = (
 /** 接收器的依赖：补拉接口和把信封交给会话模型的出口。 */
 export type SessionEnvelopeIntakeOptions = {
   fetch: SessionEnvelopeFetch
-  apply: (envelope: SessionEnvelope) => void
+  apply: (envelope: SessionEnvelope, replay?: boolean) => void
 }
 
 /**
- * 会话信封接收器。保证同一会话要保存的事件按序号连续交出、每个序号只交一次；
+ * 会话信封接收器。保证同一会话要保存的事件按序号交出、每个序号只交一次，磁盘上的坏行不妨碍后面的记录；
  * 只用于实时的事件和宿主事件直接交出，补拉期间到达的则排在补齐的事件之后、保持到达顺序。
  * 补拉失败或拉不到时放弃这段断号，缓存的信封照常交出。
  */
@@ -43,6 +43,11 @@ export class SessionEnvelopeIntake {
   /** 正在读选中会话的历史时，新回合必须等它读完。 */
   isCatchingUp(sessionId: string): boolean {
     return this.#waiting.has(sessionId)
+  }
+
+  /** 磁盘历史已读尽或是本窗口新建的会话，可以发起下一轮。 */
+  hasHistory(sessionId: string): boolean {
+    return this.#caughtUp.has(sessionId)
   }
 
   /** 补拉选中会话的历史，直到主进程返回空页；失败后下次可从同一游标重试。 */
@@ -95,11 +100,12 @@ export class SessionEnvelopeIntake {
         const page = await this.#options.fetch(sessionId, before)
         if (this.#closed) return
         if (targetSeq === null && page.length === 0) this.#caughtUp.add(sessionId)
-        for (const envelope of page) {
-          if (envelope.sessionId !== sessionId || envelope.seq !== last() + 1) continue
-          if (targetSeq !== null && envelope.seq >= targetSeq) break
-          this.#lastSeq.set(sessionId, envelope.seq)
-          this.#options.apply(envelope)
+        for (const envelope of [...page].sort(compareSeq)) {
+          const seq = envelope.seq
+          if (envelope.sessionId !== sessionId || seq === null || seq <= last()) continue
+          if (targetSeq !== null && seq >= targetSeq) break
+          this.#lastSeq.set(sessionId, seq)
+          this.#options.apply(envelope, targetSeq === null)
         }
         if (last() === before) break
       }
@@ -112,4 +118,8 @@ export class SessionEnvelopeIntake {
     this.#waiting.delete(sessionId)
     for (const envelope of waiting) this.#route(sessionId, envelope)
   }
+}
+
+function compareSeq(left: SessionEnvelope, right: SessionEnvelope): number {
+  return (left.seq ?? 0) - (right.seq ?? 0)
 }

@@ -7,6 +7,7 @@ import type { SessionUiState } from "../models/session-model"
 import { sessionState, type SessionCollection } from "../models/session-collection"
 import { pendingPermission } from "../models/session-permissions"
 import type { SessionSummary } from "../../../main/session/session-summary"
+import type { SavedSessionSummary } from "../models/saved-session"
 
 /** 侧栏不显示项目的创建时间，项目统一用这个占位时间。 */
 const UNDATED = "1970-01-01T00:00:00.000Z"
@@ -27,18 +28,25 @@ export function workspaceProjects(
   }))
 }
 
-/** 最近项目之外仍有会话在运行或排队时，保留其项目和切换入口。 */
+/** 最近项目以外只要有运行、排队或已保存的会话，项目仍有切换入口。 */
 export function sidebarProjectPaths(
   recent: readonly string[],
   threads: readonly Thread[],
   statuses: Readonly<Record<string, ThreadStatus>>,
+  summaries: readonly SavedSessionSummary[] = [],
 ): string[] {
   const paths = new Set(recent)
+  const saved = new Set(
+    summaries.filter((summary) => summary.restorable).map((summary) => summary.sessionId),
+  )
   for (const thread of threads) {
     const status = statuses[thread.id]
     if (
       thread.projectId !== null &&
-      (status === "running" || status === "waiting-approval" || status === "queued")
+      (status === "running" ||
+        status === "waiting-approval" ||
+        status === "queued" ||
+        saved.has(thread.id))
     ) {
       paths.add(thread.projectId)
     }
@@ -77,7 +85,7 @@ export type BadgeAccount = { id: string; displayName: string }
 
 /** 工作区侧栏要展示的会话与即时状态，摘要负责补齐还没收到信封的会话。 */
 export function workspaceThreads(input: {
-  summaries: readonly SessionSummary[]
+  summaries: readonly SavedSessionSummary[]
   states: SessionCollection
   workspaces: ReadonlyMap<string, string>
   projectOf: (workspace: string) => string | null
@@ -103,13 +111,13 @@ export function workspaceThreads(input: {
         accountId: state.accountId ?? summary?.accountId ?? null,
         model: state.model ?? summary?.model ?? null,
       },
-      workspace: input.projectOf(workspace),
+      workspace: summary?.projectPath ?? input.projectOf(workspace),
       startedAt: at ?? UNDATED,
       untitled: input.untitled,
       accounts: input.accounts,
     })
     if (thread === null) continue
-    threads.push(thread)
+    threads.push(summary?.title ? { ...thread, title: summary.title } : thread)
     statuses[id] = summaryStatus(summary, state)
   }
   threads.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))

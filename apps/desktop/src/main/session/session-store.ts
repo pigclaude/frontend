@@ -16,8 +16,14 @@ import {
 } from "./session-store-layout"
 import { SessionHostError } from "./session-types"
 import type { SessionEnvelope } from "./session-envelope"
-import { maxEnvelopesPerRead } from "./session-event-log"
-import { appendTimelineFile, readTimelineFile, repairTimelineTail } from "./session-timeline-file"
+import { maxEnvelopesPerRead, type SessionEventCursor } from "./session-event-log"
+import { normalizeHistory } from "./session-history"
+import {
+  appendTimelineFile,
+  readTimelineFile,
+  repairTimelineTail,
+  type TimelineFileRead,
+} from "./session-timeline-file"
 import { timelineEnvelope, type TimelineEnvelope } from "./session-timeline-redaction"
 
 /** 新建会话时由调用方给出的索引；时间线游标由存储从 0 开始维护。 */
@@ -87,6 +93,12 @@ export class SessionStore {
     return [...this.#entries.values()].map((entry) => structuredClone(entry.index))
   }
 
+  /** 读一个会话的索引副本；找不到时返回 null。 */
+  get(id: string): SessionIndex | null {
+    const entry = this.#entries.get(id)
+    return entry === undefined ? null : structuredClone(entry.index)
+  }
+
   /** 新建 0700 的会话目录并写第一份索引；目录已存在时抛错，不覆盖。 */
   async create(input: NewSessionIndex): Promise<SessionIndex> {
     const paths = this.paths(input.id)
@@ -132,18 +144,37 @@ export class SessionStore {
     })
   }
 
+  /** 从已写入磁盘的完整信封取序号和时间上界，不依赖索引里可能滞后的游标。 */
+  cursor(id: string): Promise<SessionEventCursor> {
+    return this.#enqueue(id, async () => {
+      this.#entry(id)
+      const { envelopes } = await this.#readTimeline(id)
+      let lastAt = Number.NEGATIVE_INFINITY
+      for (const { at } of envelopes) {
+        const time = Date.parse(at)
+        if (Number.isFinite(time)) lastAt = Math.max(lastAt, time)
+      }
+      return { seq: lastSeqOf(envelopes), at: Number.isFinite(lastAt) ? lastAt : 0 }
+    })
+  }
+
   /** 读回时间线里序号大于 afterSeq 的最多 limit 条（默认 0 和 maxEnvelopesPerRead），跳过不完整的末行。 */
   readTimeline(id: string, range: TimelineRange = {}): Promise<TimelinePage> {
     return this.#enqueue(id, async () => {
       this.#entry(id)
       const afterSeq = range.afterSeq ?? 0
       const limit = range.limit ?? maxEnvelopesPerRead
-      const read = await readTimelineFile(this.paths(id).timelineFile)
-      const envelopes = read.envelopes
+      const read = await this.#readTimeline(id)
+      const compatible = normalizeHistory(read.envelopes)
+      const envelopes = compatible
         .filter((envelope) => (envelope.seq ?? 0) > afterSeq)
         .sort((left, right) => (left.seq ?? 0) - (right.seq ?? 0))
         .slice(0, limit)
-      return { envelopes, lastSeq: lastSeqOf(read.envelopes), skippedLines: read.skippedLines }
+      return {
+        envelopes,
+        lastSeq: lastSeqOf(read.envelopes),
+        skippedLines: read.skippedLines + read.envelopes.length - compatible.length,
+      }
     })
   }
 
@@ -188,7 +219,7 @@ export class SessionStore {
 
   async #recover(id: string): Promise<void> {
     const now = this.#now()
-    const timeline = (await readTimelineFile(this.paths(id).timelineFile)).envelopes
+    const timeline = (await this.#readTimeline(id)).envelopes
     const recovery = recoverSession(id, timeline, now)
     const lines = recovery.envelopes.flatMap((envelope) => timelineEnvelope(envelope) ?? [])
     await this.#appendLines(id, lines)
@@ -206,6 +237,16 @@ export class SessionStore {
     const raw = sessionIndexRecord(this.#entry(id).raw, index)
     await writeSessionIndexFile(this.paths(id).indexFile, raw)
     this.#entries.set(id, { index, raw })
+  }
+
+  async #readTimeline(id: string): Promise<TimelineFileRead> {
+    const read = await readTimelineFile(this.paths(id).timelineFile)
+    const envelopes = read.envelopes.filter((envelope) => envelope.sessionId === id)
+    return {
+      ...read,
+      envelopes,
+      skippedLines: read.skippedLines + read.envelopes.length - envelopes.length,
+    }
   }
 
   async #appendLines(id: string, lines: readonly TimelineEnvelope[]): Promise<void> {

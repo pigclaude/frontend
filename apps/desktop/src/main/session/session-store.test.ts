@@ -27,6 +27,24 @@ describe("SessionStore 索引", () => {
     expect(reopened.list()).toEqual([created])
   })
 
+  it("重开时实际工作区和项目路径分别保留，旧索引可以只有项目路径", async () => {
+    const root = join(await temporaryDir(), "session-store")
+    const store = await SessionStore.open({ root })
+    const projectPath = join(root, "project")
+    const workspace = join(root, "worktree")
+    await store.create(newSessionIndex("s-old", { projectPath }))
+    await store.create(newSessionIndex("s-new", { projectPath, workspace }))
+
+    const reopened = await SessionStore.open({ root })
+    expect(reopened.get("s-old")).toMatchObject({ projectPath })
+    expect(reopened.get("s-old")).not.toHaveProperty("workspace")
+    const current = reopened.get("s-new")
+    expect(current).toMatchObject({ projectPath, workspace })
+    if (current !== null) current.environment.locale = "en-US"
+    expect(reopened.get("s-new")?.environment.locale).toBe("zh-CN")
+    expect(reopened.get("missing")).toBeNull()
+  })
+
   posixOnly("根目录和会话目录是 0700，索引文件是 0600", async () => {
     const root = join(await temporaryDir(), "session-store")
     const store = await SessionStore.open({ root })

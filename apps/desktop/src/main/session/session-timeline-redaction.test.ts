@@ -133,6 +133,21 @@ describe("timelineEnvelope 保存分类", () => {
 })
 
 describe("timelineEnvelope 截断", () => {
+  it("按同一时间线规则处理用户发出的正文", () => {
+    const userText = "中".repeat(30_000)
+    const event = { ...samples["turn-started"], userText }
+    const written = timelineEnvelope(envelopeOf("s-1", 3, event))
+
+    const kept = written?.event
+    const text = kept && "userText" in kept ? kept.userText : null
+    expect(typeof text === "string" && Buffer.byteLength(text, "utf8")).toBe(65_535)
+    expect(written?.truncated).toEqual([{ path: "event.userText", bytes: 90_000 }])
+    const imageEvent = { ...event, userText: pngBase64 }
+    expect(timelineEnvelope(envelopeOf("s-1", 4, imageEvent))?.event).toMatchObject({
+      userText: screenshotPlaceholder,
+    })
+  })
+
   it("超过 64 KiB 的文本按 UTF-8 字节截断，不切断多字节字符，并在信封里标出截断的位置和原长度", () => {
     const text = "中".repeat(30_000)
     const event: SessionHostEvent = { ...samples.message, blocks: [{ type: "text", text }] }

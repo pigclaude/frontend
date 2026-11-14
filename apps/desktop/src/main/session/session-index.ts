@@ -38,6 +38,8 @@ export type SessionIndex = {
   title: string
   titleSource: SessionTitleSource
   projectPath: string
+  /** CLI 的工作目录，旧索引省略时使用项目路径。 */
+  workspace?: string
   createdAt: string
   updatedAt: string
   lastActivityAt: string
@@ -89,11 +91,13 @@ export function parseSessionIndex(value: unknown): ParsedSessionIndex {
   const environment = parseEnvironment(value.environment)
   const lastTurn = parseLastTurn(value.lastTurn)
   const referenced = value.referencedSessionIds
+  const workspace = value.workspace
   if (
     typeof value.id !== "string" ||
     typeof value.title !== "string" ||
     !oneOf(value.titleSource, titleSources) ||
     typeof value.projectPath !== "string" ||
+    (workspace !== undefined && typeof workspace !== "string") ||
     !isTime(value.createdAt) ||
     !isTime(value.updatedAt) ||
     !isTime(value.lastActivityAt) ||
@@ -124,6 +128,7 @@ export function parseSessionIndex(value: unknown): ParsedSessionIndex {
       title: value.title,
       titleSource: value.titleSource,
       projectPath: value.projectPath,
+      ...(workspace === undefined ? {} : { workspace }),
       createdAt: value.createdAt,
       updatedAt: value.updatedAt,
       lastActivityAt: value.lastActivityAt,

@@ -5,6 +5,7 @@ import { appendFile, chmod, mkdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 import type { SessionEnvelope } from "./session-envelope"
+import { timelineNotice } from "./session-notice"
 import type { SessionStoreStatus } from "./session-index"
 import { SessionStore } from "./session-store"
 import {
@@ -206,6 +207,35 @@ describe("SessionStore 启动收敛", () => {
 
     const page = await store.readTimeline("s-1")
     expect(page.envelopes.map((envelope) => envelope.seq)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(page.skippedLines).toBe(0)
+  })
+
+  it.each([
+    { type: "notice", key: "host.restarted", level: "warning", params: {} },
+    { type: "notice", message: "应用已重启，这一轮已中断" },
+  ] as const)("上次已写重启提示但未写完回合结束，再开只补闭合 %#", async (notice) => {
+    const root = await seed("running", [
+      ...openTurn,
+      envelopeOf("s-1", 4, { type: "question-resolved", requestId: "q-1", answers: [] }),
+      envelopeOf("s-1", 5, notice),
+    ])
+    await appendFile(join(root, "s-1", "timeline.jsonl"), '{"version":1,"seq":6,"ev')
+
+    const store = await SessionStore.open({ root, now: () => now })
+    const page = await store.readTimeline("s-1")
+
+    expect(store.list()[0]).toMatchObject({ status: "interrupted", timelineCursor: 6 })
+    expect(page.envelopes.at(-1)?.event).toEqual({
+      type: "turn-ended",
+      turnId: "turn-1",
+      status: "interrupted",
+      errorCode: appRestartedErrorCode,
+    })
+    expect(
+      page.envelopes.filter(
+        ({ event }) => event.type === "notice" && timelineNotice(event)?.key === "host.restarted",
+      ),
+    ).toHaveLength(1)
     expect(page.skippedLines).toBe(0)
   })
 })

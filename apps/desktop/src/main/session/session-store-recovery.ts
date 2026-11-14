@@ -5,6 +5,7 @@
 
 import { sessionEnvelopeVersion, type SessionEnvelope } from "./session-envelope"
 import type { SessionLastTurn } from "./session-index"
+import { timelineNotice } from "./session-notice"
 import type { SessionHostEvent } from "./session-types"
 
 /** 应用重启打断的回合在 turn-ended 和索引最后一轮里用的错误码。 */
@@ -25,6 +26,7 @@ export function recoverSession(
   now: number,
 ): SessionRecovery {
   const openTurns: string[] = []
+  const alreadyNotified = new Set<string>()
   const openQuestions: string[] = []
   let lastSeq = 0
   let lastAt = now
@@ -33,6 +35,9 @@ export function recoverSession(
     lastAt = Math.max(lastAt, Date.parse(at) || 0)
     if (event.type === "turn-started") openTurns.push(event.turnId)
     if (event.type === "turn-ended") remove(openTurns, event.turnId)
+    if (event.type === "notice" && timelineNotice(event)?.key === "host.restarted") {
+      for (const turnId of openTurns) alreadyNotified.add(turnId)
+    }
     if (event.type === "question") openQuestions.push(event.requestId)
     if (event.type === "question-resolved") remove(openQuestions, event.requestId)
   }
@@ -41,7 +46,7 @@ export function recoverSession(
     requestId,
     answers: [],
   }))
-  if (openTurns.length > 0) {
+  if (openTurns.some((turnId) => !alreadyNotified.has(turnId))) {
     events.push({ type: "notice", key: "host.restarted", level: "warning", params: {} })
   }
   for (const turnId of openTurns)

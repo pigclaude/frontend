@@ -4,6 +4,7 @@
 import { appendFile, chmod, readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
+import { maxEnvelopesPerRead, SessionEventLog } from "./session-event-log"
 import { SessionStore } from "./session-store"
 import {
   envelopeOf,
@@ -77,6 +78,106 @@ describe("SessionStore 时间线", () => {
 
     expect(page.envelopes.map((envelope) => envelope.seq)).toEqual([3, 4])
     expect(page.lastSeq).toBe(5)
+  })
+
+  it("从磁盘最高序号延续日志，不受滞后的索引或倒退的时钟影响", async () => {
+    const store = await storeWithSession()
+    const { timelineFile } = store.paths("s-1")
+    await expect(store.cursor("s-1")).resolves.toEqual({ seq: 0, at: 0 })
+    const first = turnStarted(5)
+    const last = turnStarted(9)
+    await appendFile(
+      timelineFile,
+      [first, last, { ...last, seq: 10 }].map((envelope) => JSON.stringify(envelope)).join("\n"),
+    )
+    const cursor = await store.cursor("s-1")
+    expect(store.list()[0]?.timelineCursor).toBe(0)
+    expect(cursor).toEqual({ seq: 9, at: Date.parse(last.at) })
+
+    const log = new SessionEventLog("s-1", () => Date.parse(first.at), cursor)
+    const next = log.append({ type: "turn-started", turnId: "resumed" })
+    for (let index = 0; index < maxEnvelopesPerRead; index += 1) {
+      log.append({ type: "mode", permissionMode: "plan" })
+    }
+
+    expect(next).toMatchObject({ seq: 10, at: last.at })
+    expect(log.since(0)).toHaveLength(maxEnvelopesPerRead)
+    expect(log.since(9)[0]).toEqual(next)
+    expect(log.since(10)[0]?.seq).toBe(11)
+    expect(log.since(10).at(-1)?.seq).toBe(510)
+  })
+
+  it("读回早期信封时补子代理归属，不改变原始记录、序号或时间", async () => {
+    const store = await storeWithSession()
+    const file = store.paths("s-1").timelineFile
+    const envelopes = [
+      {
+        ...turnStarted(1),
+        event: { type: "message", messageId: "m-1", model: "Sonnet", blocks: [] },
+      },
+      {
+        ...turnStarted(2),
+        event: {
+          type: "message",
+          messageId: "m-2",
+          model: "Sonnet",
+          blocks: [],
+          parentToolUseId: "t-agent",
+        },
+      },
+      {
+        ...turnStarted(3),
+        event: { type: "tool-result", toolUseId: "t-1", content: "ok", isError: false },
+      },
+      {
+        ...turnStarted(4),
+        event: { type: "permission", requestId: "p-1", toolName: "Bash", input: {} },
+      },
+      {
+        ...turnStarted(5),
+        event: {
+          type: "permission",
+          requestId: "p-2",
+          toolName: "Bash",
+          input: {},
+          subagent: { parentToolUseId: null, agentId: "agent-1" },
+        },
+      },
+    ]
+    const disk = envelopes.map((envelope) => JSON.stringify(envelope)).join("\n") + "\n"
+    await appendFile(file, disk)
+
+    const { envelopes: history } = await store.readTimeline("s-1")
+    expect(history.map(({ seq, at }) => [seq, at])).toEqual(
+      envelopes.map(({ seq, at }) => [seq, at]),
+    )
+    expect(history.map(({ event }) => ("subagent" in event ? event.subagent : undefined))).toEqual([
+      null,
+      { parentToolUseId: "t-agent", agentId: null },
+      null,
+      null,
+      { parentToolUseId: null, agentId: "agent-1" },
+    ])
+    expect(await readFile(file, "utf8")).toBe(disk)
+  })
+
+  it("只把当前会话可回放的信封交给调用方，跳过其他会话和格式损坏的行", async () => {
+    const store = await storeWithSession()
+    const file = store.paths("s-1").timelineFile
+    const lines = [
+      turnStarted(1),
+      { ...turnStarted(2), sessionId: "s-2" },
+      { ...turnStarted(3), at: "not-a-date" },
+      turnStarted(5),
+      { ...turnStarted(6), event: { type: "unknown-event" } },
+    ]
+    await appendFile(file, lines.map((envelope) => JSON.stringify(envelope)).join("\n") + "\n")
+
+    const page = await store.readTimeline("s-1")
+    expect(page.envelopes.map(({ seq }) => seq)).toEqual([1, 5])
+    expect(page.lastSeq).toBe(6)
+    expect(await store.cursor("s-1")).toEqual({ seq: 6, at: Date.parse(turnStarted(6).at) })
+    expect(page.skippedLines).toBe(3)
   })
 
   it("末行不完整时跳过它读回其余内容，下次追加前先截掉半行", async () => {

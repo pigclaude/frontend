@@ -192,6 +192,7 @@ it("删除后以同一 id 新建会话，原引用既不会立即授权也不会
 
 it("按位置分页，返回可继续读取长条目的字符偏移并遵守 50 条上限", async () => {
   const { ownerId, store, workspace } = await fixture()
+  const wholeTimeline = vi.spyOn(store, "readTimeline")
   const long = "a".repeat(199) + "😀还有正文"
   for (let seq = 4; seq <= 56; seq += 1) {
     await store.appendTimeline(
@@ -255,6 +256,22 @@ it("按位置分页，返回可继续读取长条目的字符偏移并遵守 50 
   expect(continued.items).toMatchObject([{ text: "😀还有正文", truncated: false }])
   expect(continued.nextPosition).toBeNull()
   await expect(call(read, { ...request, itemId: "2" })).resolves.toMatchObject({ isError: true })
+  expect(wholeTimeline).not.toHaveBeenCalled()
+
+  // 之前认证过的文件一旦改变，后续分页仍需发现旧记录里的乱序。
+  for (const seq of [61, 60]) {
+    await store.appendTimeline(
+      sourceId,
+      envelopeOf(sourceId, seq, {
+        type: "turn-started",
+        turnId: `turn-${seq}`,
+        userText: `条目 ${seq}`,
+      }),
+    )
+  }
+  const sorted = await readPage(read, { ...request, afterPosition: 59, limit: 1 })
+  expect(sorted.items.map(({ position }) => position)).toEqual([60])
+  expect(sorted.nextPosition).toBe(60)
 })
 
 it("仅放行这次启动注册的 SDK 会话读工具，其他同名来源继续走普通审批", async () => {

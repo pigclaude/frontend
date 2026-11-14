@@ -7,22 +7,32 @@ import { subagentRef } from "./subagent-tasks"
 
 type HistoryEvent = SessionEnvelope["event"]
 
+type Normalized<T extends SessionEnvelope> = Omit<T, "event"> & Pick<SessionEnvelope, "event">
+
 /** 补齐旧事件的归属、跳过本版本无法回放的事件，保留可回放信封的序号、时间及附加字段。 */
 export function normalizeHistory<T extends SessionEnvelope>(
   envelopes: readonly T[],
-): Array<Omit<T, "event"> & Pick<SessionEnvelope, "event">> {
+): Normalized<T>[] {
   return envelopes.flatMap((envelope) => {
-    const { event } = envelope
-    if (
-      !Object.hasOwn(sessionEventKinds, event.type) ||
-      sessionEventKinds[event.type] !== "persisted" ||
-      !validHistoryTime(envelope.at) ||
-      !canReplay(event)
-    ) {
-      return []
-    }
-    return [{ ...envelope, event: normalizeEvent(event) }]
+    const normalized = normalizeHistoryEnvelope(envelope)
+    return normalized === null ? [] : [normalized]
   })
+}
+
+/** 给顺序读取使用的单条历史兼容检查，无法回放时返回 null。 */
+export function normalizeHistoryEnvelope<T extends SessionEnvelope>(
+  envelope: T,
+): Normalized<T> | null {
+  const { event } = envelope
+  if (
+    !Object.hasOwn(sessionEventKinds, event.type) ||
+    sessionEventKinds[event.type] !== "persisted" ||
+    !validHistoryTime(envelope.at) ||
+    !canReplay(event)
+  ) {
+    return null
+  }
+  return { ...envelope, event: normalizeEvent(event) }
 }
 
 // 这里只校验重放必需的字段；额外字段、可选元数据及 SDK 的工具输入原样保留。

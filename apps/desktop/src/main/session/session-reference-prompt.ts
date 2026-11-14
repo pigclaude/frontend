@@ -4,8 +4,8 @@ import type { SessionIndex } from "./session-index"
 import type { SessionReference } from "./session-types"
 
 const maxReferences = 5
-// 按每个 token 约 3 个 UTF-8 字节估算，给本轮 JSON 中的所有摘录共用。
-const excerptBudgetBytes = 6_000
+/** 按每个 token 约 3 个 UTF-8 字节估算，给本轮 JSON 中的所有摘录共用。 */
+export const excerptBudgetBytes = 6_000
 
 /** 用户选择的引用和当前索引；原标签供气泡回放，索引中的名称和项目用于模型的参考说明。 */
 export type SelectedSessionReference = { reference: SessionReference; index: SessionIndex }

@@ -1,6 +1,7 @@
 // 负责时间线文件的读写：每行一个信封，追加写；进程崩溃可能留下不完整的末行，
 // 读回时跳过它，追加前把它截掉。中间解析不了的行跳过并计数。
 
+import { createReadStream } from "node:fs"
 import { appendFile, chmod, open, readFile, stat, truncate } from "node:fs/promises"
 import { sessionEnvelopeVersion } from "./session-envelope"
 import { fileErrorCode, isPlainRecord } from "./session-store-guards"
@@ -34,6 +35,27 @@ export async function readTimelineFile(path: string): Promise<TimelineFileRead> 
     else skippedLines += 1
   }
   return { envelopes, skippedLines, incompleteTail: tail.length > 0 }
+}
+
+/** 顺序读出完整且可解析的行，只保留当前块和未收齐的一行。 */
+export async function* streamTimelineFile(path: string): AsyncGenerator<TimelineEnvelope> {
+  const fragments: string[] = []
+  try {
+    for await (const chunk of createReadStream(path, { encoding: "utf8" })) {
+      if (typeof chunk !== "string") continue
+      let start = 0
+      for (let end = chunk.indexOf("\n"); end >= 0; end = chunk.indexOf("\n", start)) {
+        const line = chunk.slice(start, end)
+        const envelope = parseLine(fragments.length === 0 ? line : fragments.concat(line).join(""))
+        fragments.length = 0
+        if (envelope !== null) yield envelope
+        start = end + 1
+      }
+      if (start < chunk.length) fragments.push(chunk.slice(start))
+    }
+  } catch (error: unknown) {
+    if (fileErrorCode(error) !== "ENOENT") throw error
+  }
 }
 
 /** 截掉不完整的末行，保证之后追加的行不会接在半行后面；文件不存在或以换行结尾时不动。 */

@@ -5,6 +5,7 @@ import { appendFile, chmod, readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 import { maxEnvelopesPerRead, SessionEventLog } from "./session-event-log"
+import { sessionInstance } from "./session-index"
 import { SessionStore } from "./session-store"
 import {
   envelopeOf,
@@ -13,7 +14,7 @@ import {
   removeTemporaryDirs,
   temporaryDir,
 } from "./session-store-fixtures"
-import { timelineContentLimitBytes } from "./session-timeline-redaction"
+import { timelineContentLimitBytes, type TimelineEnvelope } from "./session-timeline-redaction"
 
 const posixOnly = it.skipIf(process.platform === "win32")
 
@@ -29,6 +30,37 @@ const turnStarted = (seq: number) =>
   envelopeOf("s-1", seq, { type: "turn-started", turnId: `turn-${seq}` })
 
 describe("SessionStore 时间线", () => {
+  it("顺序投影能跨文件块解码中文，并忽略未换行的末条记录", async () => {
+    const store = await storeWithSession()
+    const index = store.get("s-1")
+    if (index === null) throw new Error("没有会话索引")
+    const userText = "中".repeat(22_000)
+    await store.appendTimeline(
+      index.id,
+      envelopeOf(index.id, 1, { type: "turn-started", turnId: "turn-1", userText }),
+    )
+    await appendFile(store.paths(index.id).timelineFile, JSON.stringify(turnStarted(2)))
+
+    const envelopes = await store.readReferenceTimeline(sessionInstance(index), () => {
+      const seen: TimelineEnvelope[] = []
+      return {
+        accept(envelope) {
+          seen.push(envelope)
+          return true
+        },
+        result: () => seen,
+      }
+    })
+
+    expect(envelopes).toMatchObject([
+      {
+        seq: 1,
+        event: { userText: "中".repeat(Math.floor(timelineContentLimitBytes / 3)) },
+        truncated: [{ path: "event.userText", bytes: Buffer.byteLength(userText) }],
+      },
+    ])
+  })
+
   it("只把要保存的事件脱敏后逐行写进时间线，读回时按序号排列", async () => {
     const store = await storeWithSession()
     const long = "a".repeat(timelineContentLimitBytes + 1)

@@ -7,9 +7,13 @@ import {
   type SessionInstance,
 } from "./session-index"
 import type { SessionStore } from "./session-store"
-import { composeSessionReferencePrompt, selectSessionReferences } from "./session-reference-prompt"
+import {
+  composeSessionReferencePrompt,
+  excerptBudgetBytes,
+  selectSessionReferences,
+} from "./session-reference-prompt"
 import type { SessionReference, SessionSendInput } from "./session-types"
-import { threadItems, type ReadableThread } from "./thread-read"
+import { threadExcerpt, threadPage, type ReadableThread, type ThreadReadInput } from "./thread-read"
 
 /** 给 SDK 的扩展正文与留在 PigClaude 时间线里的结构化引用。 */
 export type PreparedSessionReferences = {
@@ -50,12 +54,13 @@ export class SessionReferenceAccess {
       (id) => this.store.get(id),
     )
     const sources = await Promise.all(
-      selected.map(async ({ reference, index }) => ({
-        reference,
-        index,
-        instance: sessionInstance(index),
-        items: await this.#items(index.id).catch(() => []),
-      })),
+      selected.map(async ({ reference, index }) => {
+        const instance = sessionInstance(index)
+        const items = await this.store
+          .readReferenceTimeline(instance, () => threadExcerpt(excerptBudgetBytes))
+          .catch(() => [])
+        return { reference, index, instance, items }
+      }),
     )
     const available = sources.filter(({ instance }) =>
       sameSessionInstance(this.store.get(instance.id), instance),
@@ -100,7 +105,11 @@ export class SessionReferenceAccess {
   }
 
   /** 首先验证调用方范围，再从独立的 PigClaude 时间线读出内容。拒绝时不泄露目标是否存在。 */
-  async read(id: string | undefined, active: () => boolean): Promise<ReadableThread | null> {
+  async read(
+    id: string | undefined,
+    input: ThreadReadInput,
+    active: () => boolean,
+  ): Promise<ReadableThread | null> {
     if (!active()) return null
     const target = id ?? this.owner.id
     let selected = this.#authorizedIndex(target)
@@ -114,11 +123,11 @@ export class SessionReferenceAccess {
       }
     }
     if (!active() || selected === null) return null
-    const items = await this.#items(target)
+    const instance = sessionInstance(selected)
+    const page = await this.store.readReferenceTimeline(instance, () => threadPage(input))
     const index = this.#authorizedIndex(target)
-    if (!active() || index === null || !sameSessionInstance(index, sessionInstance(selected)))
-      return null
-    return { index, items }
+    if (!active() || index === null || !sameSessionInstance(index, instance)) return null
+    return { index, page }
   }
 
   #finish(grant: Grant): void {
@@ -134,11 +143,5 @@ export class SessionReferenceAccess {
     if (selected === undefined) return null
     const current = this.store.get(target)
     return sameSessionInstance(current, selected) ? current : null
-  }
-
-  async #items(id: string): Promise<ReadableThread["items"]> {
-    // 结果按投影出的条目分页；读完整信封序列以核对工具结果的调用来源。
-    const { envelopes } = await this.store.readTimeline(id, { limit: Number.MAX_SAFE_INTEGER })
-    return threadItems(envelopes)
   }
 }

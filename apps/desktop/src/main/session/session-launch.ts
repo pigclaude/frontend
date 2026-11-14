@@ -200,9 +200,10 @@ export async function launchSession(
   hooks.opened(session, canonicalWorkspace)
   try {
     if (references !== undefined) {
-      const reader = createThreadReadServer((id) =>
+      const reader = createThreadReadServer((id, input) =>
         references.read(
           id,
+          input,
           () =>
             !session.closing && interrupted() === null && deps.membership.view().state === "active",
         ),

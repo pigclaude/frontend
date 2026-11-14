@@ -2,7 +2,7 @@
 // 同一会话的写入排队串行；不调用 SDK 的会话函数，也不读 ~/.claude。
 
 import { randomUUID } from "node:crypto"
-import { chmod, mkdir, readdir, rm } from "node:fs/promises"
+import { chmod, mkdir, readdir, rm, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { errorMessage } from "../error-message"
 import { readSessionIndexFile, writeSessionIndexFile } from "./session-index-file"
@@ -24,11 +24,12 @@ import { SessionHostError } from "./session-types"
 import type { SessionEnvelope } from "./session-envelope"
 import type { SessionUsage } from "./session-events"
 import { maxEnvelopesPerRead, type SessionEventCursor } from "./session-event-log"
-import { normalizeHistory } from "./session-history"
+import { normalizeHistory, normalizeHistoryEnvelope } from "./session-history"
 import {
   appendTimelineFile,
   readTimelineFile,
   repairTimelineTail,
+  streamTimelineFile,
   type TimelineFileRead,
 } from "./session-timeline-file"
 import { timelineEnvelope, type TimelineEnvelope } from "./session-timeline-redaction"
@@ -69,6 +70,12 @@ export type TimelinePage = {
   skippedLines: number
 }
 
+/** 顺序消费一个引用的时间线；收到足够内容时 accept 返回 false。 */
+export type ReferenceTimelineProjection<T> = {
+  accept(envelope: TimelineEnvelope): boolean
+  result(): T
+}
+
 type Entry = { index: SessionIndex; raw: Record<string, unknown> }
 
 /** 本机会话存储。保证内存索引和磁盘一致，同一会话的写入按调用顺序串行。 */
@@ -79,6 +86,7 @@ export class SessionStore {
   readonly #entries = new Map<string, Entry>()
   readonly #queues = new Map<string, Promise<unknown>>()
   readonly #repairedTimelines = new Set<string>()
+  readonly #orderedReferenceFiles = new Map<string, string>()
 
   private constructor(options: SessionStoreOptions) {
     this.#root = options.root
@@ -252,6 +260,57 @@ export class SessionStore {
     })
   }
 
+  /** 顺序投影同一实例；文件验证有序且没变时只读到页尾，遇到乱序时按历史规则排序。 */
+  readReferenceTimeline<T>(
+    instance: SessionInstance,
+    make: () => ReferenceTimelineProjection<T>,
+  ): Promise<T> {
+    return this.#enqueue(instance.id, async () => {
+      const projection = make()
+      if (!sameSessionInstance(this.#entries.get(instance.id)?.index ?? null, instance)) {
+        return projection.result()
+      }
+      const file = this.paths(instance.id).timelineFile
+      const stamp = await timelineStamp(file)
+      let canStop = stamp !== null && this.#orderedReferenceFiles.get(instance.id) === stamp
+      let lastSeq = 0
+      let complete = false
+      let ordered = true
+      for await (const line of streamTimelineFile(file)) {
+        if (line.sessionId !== instance.id) continue
+        const envelope = normalizeHistoryEnvelope(line)
+        if (envelope?.seq == null) continue
+        if (envelope.seq < lastSeq) {
+          ordered = false
+          break
+        }
+        lastSeq = envelope.seq
+        if (!complete) complete = !projection.accept(envelope)
+        if (complete && canStop) {
+          if (stamp === (await timelineStamp(file))) return projection.result()
+          canStop = false
+        }
+      }
+      if (ordered) {
+        if (stamp !== null && stamp === (await timelineStamp(file))) {
+          this.#orderedReferenceFiles.set(instance.id, stamp)
+        }
+        return projection.result()
+      }
+
+      this.#orderedReferenceFiles.delete(instance.id)
+      const restarted = make()
+      const { envelopes } = await this.#readTimeline(instance.id)
+      const sorted = normalizeHistory(envelopes).sort(
+        (left, right) => (left.seq ?? 0) - (right.seq ?? 0),
+      )
+      for (const envelope of sorted) {
+        if (!restarted.accept(envelope)) break
+      }
+      return restarted.result()
+    })
+  }
+
   /** 删除整个会话目录（含 Claude Code 配置目录和临时目录）并移出内存索引。 */
   delete(id: string): Promise<void> {
     return this.#enqueue(id, async () => {
@@ -259,6 +318,7 @@ export class SessionStore {
       await rm(this.paths(id).directory, { recursive: true, force: true, maxRetries: 3 })
       this.#entries.delete(id)
       this.#repairedTimelines.delete(id)
+      this.#orderedReferenceFiles.delete(id)
     })
   }
 
@@ -351,6 +411,13 @@ export class SessionStore {
     )
     return next
   }
+}
+
+async function timelineStamp(path: string): Promise<string | null> {
+  const identity = await stat(path, { bigint: true }).catch(() => null)
+  if (identity === null) return null
+  const { dev, ino, size, ctimeNs, mtimeNs } = identity
+  return `${dev}:${ino}:${size}:${ctimeNs}:${mtimeNs}`
 }
 
 function lastSeqOf(envelopes: readonly TimelineEnvelope[]): number {

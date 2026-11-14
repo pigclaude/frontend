@@ -26,6 +26,8 @@ export type ActiveSession = {
   permissionMode: SessionPermissionMode
   unconfirmedModes: SessionPermissionMode[]
   accountId: string | null
+  /** 启动时偏好的账号；null 表示自动选择。 */
+  preferredAccountId: string | null
   switchedFrom: string | null
   turnId: string | null
   turnCancelled: boolean
@@ -82,6 +84,7 @@ export function createActiveSession(
     permissionMode: launchPermissionMode(input.permissionMode),
     unconfirmedModes: [],
     accountId: input.accountId ?? null,
+    preferredAccountId: input.accountId ?? null,
     switchedFrom: null,
     turnId: null,
     turnCancelled: false,

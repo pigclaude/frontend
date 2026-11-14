@@ -252,6 +252,21 @@ describe("SessionHost events and usage", () => {
     await harness.host.dispose()
   })
 
+  it("explains in the session when the preferred account was not the first choice", async () => {
+    const preferredUnavailable = await startedHarness()
+    preferredUnavailable.runtime.switchAccount(null, "account-a", "initial")
+    preferredUnavailable.runtime.switchAccount("account-a", "account-b", "quota")
+    const preferredUsed = await startedHarness()
+    preferredUsed.runtime.switchAccount(null, "account-1", "initial")
+
+    expect(preferredUnavailable.events.filter((event) => event.type === "notice")).toEqual([
+      { type: "notice", message: "偏好的 Claude 账号现在不可用，已按切换规则改用其他账号。" },
+    ])
+    expect(preferredUsed.events.filter((event) => event.type === "notice")).toEqual([])
+    await preferredUnavailable.host.dispose()
+    await preferredUsed.host.dispose()
+  })
+
   it("records switchedFrom only when the switch happens during a turn", async () => {
     const harness = await startedHarness()
 

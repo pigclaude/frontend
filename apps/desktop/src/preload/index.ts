@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from "electron"
 import type { BrowserProfilesBridge } from "@pigclaude/contracts/browser-profile"
 import { browserProfilesBridge } from "./browser-profiles"
 import { isSessionEnvelope } from "./session-event-filter"
+import { sessionDefaultsBridge, type SessionDefaultsBridge } from "./session-defaults"
 import { windowBridge, type WindowBridge } from "./window-bridge"
 import { workbenchBridge } from "./workbench"
 import type { WorkbenchBridge } from "../workbench-contract"
@@ -41,8 +42,8 @@ export type PigclaudeBridge = {
   systemVersion: string
   window: WindowBridge
   workbench?: WorkbenchBridge
-  /** 读取当前发布版本和本机数据目录，设置页只展示真实运行时信息。 */
-  appInfo?: () => Promise<{ appVersion: string; userDataPath: string }>
+  /** 读取当前发布版本、本机数据目录和实际使用的 Claude Code 版本，设置页只展示真实运行时信息。 */
+  appInfo?: () => Promise<AppInfo>
   openExternal: (url: string) => Promise<void>
   setTheme: (source: "light" | "dark" | "system") => Promise<void>
   setDockIcon: (dataUrl: string) => Promise<void>
@@ -117,7 +118,16 @@ export type PigclaudeBridge = {
     openWith: (path: string, appId: string) => Promise<void>
   }
   session: SessionBridge
+  /** 新会话的默认模型、默认权限和选号偏好，存在本机。 */
+  sessionDefaults: SessionDefaultsBridge
   usage: UsageBridge
+}
+
+/** 设置页展示的运行时信息；claudeCodeVersion 读不到时为 null。 */
+export type AppInfo = {
+  appVersion: string
+  userDataPath: string
+  claudeCodeVersion: string | null
 }
 
 const bridge: PigclaudeBridge = {
@@ -283,6 +293,7 @@ const bridge: PigclaudeBridge = {
     },
     subscribe: (listener) => subscribeSession(listener),
   },
+  sessionDefaults: sessionDefaultsBridge(),
   usage: {
     summary: async (input) => {
       const value: unknown = await ipcRenderer.invoke("pigclaude:usage-summary", input)

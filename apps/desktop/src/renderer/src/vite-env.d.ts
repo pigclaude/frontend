@@ -6,7 +6,7 @@ interface PigclaudeBridge {
   platform: string
   systemVersion?: string
   window?: import("../../preload/window-bridge").WindowBridge
-  appInfo?: () => Promise<{ appVersion: string; userDataPath: string }>
+  appInfo?: () => Promise<import("../../preload/index").AppInfo>
   openExternal?: (url: string) => Promise<void>
   setTheme?: (source: "light" | "dark" | "system") => Promise<void>
   setDockIcon?: (dataUrl: string) => Promise<void>
@@ -52,6 +52,7 @@ interface PigclaudeBridge {
   workspaces?: import("../../preload/index").PigclaudeBridge["workspaces"]
   workbench?: import("../../preload/index").PigclaudeBridge["workbench"]
   session?: import("../../preload/index").PigclaudeBridge["session"]
+  sessionDefaults?: import("../../preload/index").PigclaudeBridge["sessionDefaults"]
   usage?: import("../../preload/index").PigclaudeBridge["usage"]
 }
 

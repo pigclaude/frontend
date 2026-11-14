@@ -45,6 +45,9 @@ import { configureRuntimeProfile } from "./runtime-profile"
 import { registerMembershipIpc } from "./membership/ipc"
 import { readDesktopRuntimeEndpoints } from "./runtime-endpoints"
 import { registerWorkspaceIpc } from "./runtime/workspace-ipc"
+import { SessionDefaultsStore } from "./runtime/session-defaults"
+import { registerSessionDefaultsIpc } from "./runtime/session-defaults-ipc"
+import { readClaudeCodeVersion } from "./session/claude-version"
 import { WorkbenchIpc } from "./workbench/workbench-ipc"
 import { cleanupStaleSessionDirs } from "./session/session-environment"
 import type { SessionHost } from "./session/session-host"
@@ -159,10 +162,20 @@ const guardMainWindowClose = installQuitFlow({
 })
 
 function registerIpcHandlers(): void {
-  ipcMain.handle("pigclaude:app-info", () => ({
+  let claudeCodeVersion: Promise<string | null> | null = null
+  ipcMain.handle("pigclaude:app-info", async () => ({
     appVersion: app.getVersion(),
     userDataPath: app.getPath("userData"),
+    claudeCodeVersion: await (claudeCodeVersion ??= readClaudeCodeVersion()),
   }))
+  let sessionDefaults: SessionDefaultsStore | null = null
+  registerSessionDefaultsIpc(ipcMain, {
+    isTrusted: isTrustedSender,
+    store: () =>
+      (sessionDefaults ??= new SessionDefaultsStore({
+        filePath: join(app.getPath("userData"), "session-defaults.json"),
+      })),
+  })
   registerFolderPickerIpc(ipcMain, (options) =>
     mainWindow ? dialog.showOpenDialog(mainWindow, options) : dialog.showOpenDialog(options),
   )

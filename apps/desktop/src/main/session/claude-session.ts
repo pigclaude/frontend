@@ -191,7 +191,10 @@ export class ClaudeSession {
     await active.environment.cleanup().catch(() => undefined)
   }
 
-  /** 记录换号：只有 turn 进行中的换号才记入用量，并广播换号事件。 */
+  /**
+   * 记录换号：只有 turn 进行中的换号才记入用量，并广播换号事件。
+   * 第一次选号没有用上偏好的账号时，再发一条提示说明已经换用别的账号。
+   */
   applyAccountSwitch(event: SessionRuntimeEvent): void {
     const active = this.state
     if (event.reason !== "initial" && event.from !== null && active.turnId !== null) {
@@ -204,6 +207,13 @@ export class ClaudeSession {
       to: event.to,
       reason: event.reason,
     })
+    const preferred = active.preferredAccountId
+    if (event.reason === "initial" && preferred !== null && event.to !== preferred) {
+      this.#publish({
+        type: "notice",
+        message: "偏好的 Claude 账号现在不可用，已按切换规则改用其他账号。",
+      })
+    }
   }
 
   /** 返回脱敏会话快照。 */

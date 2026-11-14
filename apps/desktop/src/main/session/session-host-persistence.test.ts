@@ -69,7 +69,8 @@ describe("SessionHost 保存与续接", () => {
     const firstQuery = original.sessions[0]
     if (firstQuery === undefined) throw new Error("没有建立会话查询")
     expect(firstQuery.flagSettings).toEqual([{ effortLevel: "high", fastMode: true }])
-    await finishTurn(original.host, firstQuery, sessionId, "bypassPermissions")
+    await finishTurn(original.host, firstQuery, sessionId, "bypassPermissions", 16)
+    expect(original.usage.records.map(({ inputTokens }) => inputTokens)).toEqual([16])
     await original.host.setMode(sessionId, "plan")
     const transcript = await writeTranscript(fixture.store, sessionId)
     await original.host.stop(sessionId)
@@ -161,7 +162,8 @@ describe("SessionHost 保存与续接", () => {
 
     const resumedQuery = reopened.sessions[0]
     if (resumedQuery === undefined) throw new Error("没有建立续接查询")
-    await finishTurn(reopened.host, resumedQuery, sessionId, "default")
+    await finishTurn(reopened.host, resumedQuery, sessionId, "default", 23)
+    expect(reopened.usage.records.map(({ inputTokens }) => inputTokens)).toEqual([7])
     await reopened.host.stop(sessionId)
     const reopenedAgain = await SessionStore.open({ root: fixture.root })
     expect(reopenedAgain.get(sessionId)).toMatchObject({
@@ -188,7 +190,7 @@ describe("SessionHost 保存与续接", () => {
       newSessionIndex(sessionId, {
         workspace: fixture.workspace,
         projectPath: fixture.project,
-        model: null,
+        model: savedModel,
         environment: {
           timezone: savedProfile.timezone,
           locale: savedProfile.locale,
@@ -237,10 +239,11 @@ function hostFixture(
   const sessions: PersistenceQuery[] = []
   const prompts: SDKUserMessage[] = []
   const runtime = new FakeRuntime()
+  const usage = new FakeUsage()
   const host = new SessionHost({
     membership: new FakeMembership(),
     runtime,
-    usage: new FakeUsage(),
+    usage,
     userDataPath: fixture.userDataPath,
     defaultWorkspace: () => fixture.workspace,
     resolveBinaryPath: () => join(fixture.userDataPath, "fake-claude"),
@@ -264,7 +267,7 @@ function hostFixture(
       }),
   })
   hosts.push(host)
-  return { host, queries, prompts, sessions, runtime }
+  return { host, queries, prompts, sessions, runtime, usage }
 }
 
 async function writeTranscript(store: SessionStore, sessionId: string): Promise<string> {
@@ -281,12 +284,19 @@ async function finishTurn(
   query: FakeQuery,
   sessionId: string,
   permissionMode: "default" | "bypassPermissions",
+  inputTokens: number,
 ): Promise<void> {
   const trace = loadSdkFixture("context-flags-2.1.310")
   const init = trace.find((message) => message.type === "system" && message.subtype === "init")
   const result = trace.find((message) => message.type === "result")
   if (!init || !result) throw new Error("录制的 SDK 消息缺少初始化或结果")
+  const modelUsage = Object.values(result.modelUsage)[0]
+  if (!modelUsage) throw new Error("录制的 SDK 消息没有模型用量")
   query.emit({ ...init, session_id: sessionId, model: savedModel, permissionMode })
-  query.emit({ ...result, session_id: sessionId })
+  query.emit({
+    ...result,
+    session_id: sessionId,
+    modelUsage: { [savedModel]: { ...modelUsage, inputTokens } },
+  })
   await waitUntil(() => host.status(sessionId).turnId === null)
 }

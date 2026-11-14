@@ -1,6 +1,7 @@
 // 负责把一个会话的信封投影成 Pigcode 对话组件要的时间线事件：按回合分段后，消息里的思考、正文、
-// 工具调用、工具结果、权限请求与回答、提问与回答、换号各自成为线程事件，事件时间取信封时间；
-// 一轮的开始和结束取界面状态。子代理的消息和工具调用带上父工具调用 id，只进它的子代理卡。
+// 工具调用、工具结果、权限请求与回答、提问与回答、换号、工作流快照各自成为线程事件，事件时间取
+// 信封时间；一轮的开始和结束取界面状态。子代理的消息和工具调用带上父工具调用 id，只进它的子代理卡；
+// Workflow 工具调用由工作流卡代替。
 // 进行中的一轮里，正在输出的正文和最后一段已落成消息的正文作为流式回答交给组件，这一轮结束后才
 // 落成回答，显示的位置不变。界面先行结束、主进程还没发来 turn-ended 的一轮，正在输出的正文先落在
 // 回答的位置，主进程补发的消息落在同一处。纯函数，不读桌面桥。
@@ -32,6 +33,9 @@ export type SessionTimeline = {
 }
 
 type MessageEvent = Extract<SessionHostEvent, { type: "message" }>
+
+// 主线程的这个工具画成工作流卡，卡片来自 workflow 事件，不再画工具行。
+const workflowTool = "Workflow"
 
 /** 投影前的一条线程事件；序号在整条时间线拼好之后再编。 */
 type Draft = { type: ThreadEvent["type"]; runId: string | null; payload: unknown; at: string }
@@ -120,6 +124,8 @@ function projectRun(
           if (block.type === "tool-use") {
             if (tools.has(block.id)) continue
             tools.set(block.id, block.name)
+            lastAnswer = null
+            if (block.name === workflowTool) continue
             if (!subagents.start(block.id, block.name, block.input, at)) {
               push(
                 "tool.started",
@@ -127,7 +133,6 @@ function projectRun(
                 at,
               )
             }
-            lastAnswer = null
             continue
           }
           const key = `${event.messageId}\u0000${block.type}\u0000${block.text}`
@@ -152,6 +157,7 @@ function projectRun(
         lastAnswer = null
         if (subagents.toolResult(event, at)) break
         let name = tools.get(event.toolUseId)
+        if (name === workflowTool) break
         if (name === undefined) {
           name = "工具结果"
           tools.set(event.toolUseId, name)
@@ -163,6 +169,9 @@ function projectRun(
       }
       case "subagent-ended":
         subagents.ended(event, at)
+        break
+      case "workflow":
+        push("workflow.updated", event.workflow, at)
         break
       case "permission": {
         const card = cards.get(event.requestId)

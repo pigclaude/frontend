@@ -13,7 +13,7 @@ export class LinuxMachineIdReader implements PlatformMachineIdReader {
   /** 默认使用 Node 文件读取，测试可替换系统文件边界。 */
   constructor(private readonly readFile: MachineIdFileReader = readSystemFile) {}
 
-  /** 读取唯一系统路径并在五秒后中止，不使用 dbus 或随机替代。 */
+  /** 读取唯一系统路径并在二十秒后中止，不使用 dbus 或随机替代。 */
   async read(): Promise<{ platform: "linux"; machineId: string }> {
     return withMachineIdDeadline(async (signal) => ({
       platform: "linux",

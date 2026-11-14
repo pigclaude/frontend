@@ -114,16 +114,21 @@ describe("fixed platform readers", () => {
     await expect(new LinuxMachineIdReader(read).read()).rejects.toThrow("DEVICE_ID_UNAVAILABLE")
     expect(read).toHaveBeenCalledTimes(1)
   })
-  it("aborts a stuck Linux read at the five-second deadline", async () => {
+  it("waits out a slow read and aborts a stuck Linux read at the twenty-second deadline", async () => {
     vi.useFakeTimers()
     let signal: AbortSignal | undefined
+    let settled = false
     const read = new LinuxMachineIdReader(async (_path, options) => {
       signal = options.signal
       return new Promise(() => {})
     })
       .read()
       .catch((error: unknown) => error)
-    await vi.advanceTimersByTimeAsync(5_000)
+      .finally(() => (settled = true))
+    await vi.advanceTimersByTimeAsync(19_999)
+    expect(settled).toBe(false)
+    expect(signal?.aborted).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
     expect(await read).toMatchObject({ message: "DEVICE_ID_UNAVAILABLE" })
     expect(signal?.aborted).toBe(true)
   })
@@ -143,11 +148,11 @@ describe("fixed platform readers", () => {
       "DEVICE_ID_UNAVAILABLE",
     )
   })
-  it("uses execFile without a shell, caps output and kills after five seconds", async () => {
+  it("uses execFile without a shell, caps output and kills after twenty seconds", async () => {
     processFixture.exec.mockImplementationOnce((_file, _args, options, callback) => {
       expect(options).toEqual({
         encoding: "utf8",
-        timeout: 5_000,
+        timeout: 20_000,
         maxBuffer: 64 * 1024,
         windowsHide: true,
         shell: false,

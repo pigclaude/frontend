@@ -80,11 +80,11 @@ describe("DeviceIdentityService", () => {
     expect(error).not.toHaveProperty("cause")
     expect(error).not.toHaveProperty("stdout")
   })
-  it("rejects at five seconds when the reader never settles", async () => {
+  it("rejects at twenty seconds when the reader never settles", async () => {
     vi.useFakeTimers()
     const service = new DeviceIdentityService({ read: () => new Promise(() => {}) })
     const result = service.read().catch((value: unknown) => value)
-    await vi.advanceTimersByTimeAsync(4_999)
+    await vi.advanceTimersByTimeAsync(19_999)
     let settled = false
     void result.then(() => {
       settled = true

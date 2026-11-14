@@ -27,7 +27,10 @@ export class DeviceIdentityUnavailableError extends Error {
   }
 }
 
-/** 在最多五秒内完成读取，超时中止可取消的 IO，并擦除底层错误细节。 */
+// Windows 上第一次启动 PowerShell 查询 CIM 就要四五秒，期限要远大于这个时间。
+const MACHINE_ID_DEADLINE_MS = 20_000
+
+/** 在最多二十秒内完成读取，超时中止可取消的 IO，并擦除底层错误细节。 */
 export async function withMachineIdDeadline<T>(
   operation: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
@@ -37,7 +40,7 @@ export async function withMachineIdDeadline<T>(
     timer = setTimeout(() => {
       controller.abort()
       reject(new DeviceIdentityUnavailableError())
-    }, 5_000)
+    }, MACHINE_ID_DEADLINE_MS)
   })
   try {
     return await Promise.race([operation(controller.signal), timeout])
@@ -55,7 +58,13 @@ export function runMachineIdCommand(file: string, args: string[]): Promise<strin
       execFile(
         file,
         args,
-        { encoding: "utf8", timeout: 5_000, maxBuffer: 64 * 1024, windowsHide: true, shell: false },
+        {
+          encoding: "utf8",
+          timeout: MACHINE_ID_DEADLINE_MS,
+          maxBuffer: 64 * 1024,
+          windowsHide: true,
+          shell: false,
+        },
         (error, stdout) => {
           if (error) reject(new DeviceIdentityUnavailableError())
           else resolve(stdout)

@@ -179,7 +179,7 @@ export function workbenchRoot(): WorkbenchRoot {
         sessionId: null,
         sessionActive: false,
         turnActive: false,
-        turnRevision: 0,
+        workspaceRevision: 0,
         visible: true,
         open: true,
         maximized: false,

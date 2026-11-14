@@ -7,6 +7,7 @@ import { PanelLayoutControls } from "@pigclaude/ui-workbench"
 import { Workbench, type FilesRequest, type WorkbenchActions } from "./workbench/workbench"
 import { TerminalDrawer } from "./workbench/terminal-drawer"
 import type { PreviewWorkbench } from "./fixtures/preview-workbench"
+import { workspaceRevision } from "./models/workspace-revision"
 import { AccountsScreen } from "./screens/accounts-screen"
 import { ChatScreen } from "./screens/chat-screen"
 import { EnvironmentScreen } from "./screens/environment-screen"
@@ -127,7 +128,7 @@ export function MainWindow({
   const sessionActive = session.state.started && !session.state.ended
   const workbenchRoot = sessionActive ? (sessionWorkspace ?? workspace) : workspace
   const openInPath = location.kind === "session" ? (sessionWorkspace ?? workspace) : workspace
-  const turnRevision = session.state.turns.filter((turn) => turn.result !== null).length
+  const projectRevision = workspaceRevision(session.state.turns)
   const turnActive = sessionActive && session.state.turns.at(-1)?.result === null
   const toggleRight = () => {
     setRightOpen((open) => !open)
@@ -339,7 +340,7 @@ export function MainWindow({
                   sessionId={sessionId}
                   sessionActive={sessionActive}
                   turnActive={turnActive}
-                  turnRevision={turnRevision}
+                  workspaceRevision={projectRevision}
                   visible={inChat && rightOpen}
                   open={rightOpen}
                   maximized={rightMax}

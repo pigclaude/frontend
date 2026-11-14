@@ -59,7 +59,8 @@ export type WorkbenchProps = {
   sessionId: string | null
   sessionActive: boolean
   turnActive: boolean
-  turnRevision: number
+  /** Claude 可能改动过项目的次数；变化时文件树、Git 状态、Diff 和打开的文件都重读。 */
+  workspaceRevision: number
   visible: boolean
   open: boolean
   maximized: boolean
@@ -251,7 +252,7 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
     )
     if (!bridge) return <EmptyState title={text("workbench.unavailable")} />
 
-    const shared = root ? { bridge, root, revision: revision + props.turnRevision } : null
+    const shared = root ? { bridge, root, revision: revision + props.workspaceRevision } : null
     const activeTab = state.surfaces.find((tab) => tab.id === state.activeId)
     const fileTab = activeTab?.kind === "files" || activeTab?.kind === FILE_SURFACE_KIND
     return (

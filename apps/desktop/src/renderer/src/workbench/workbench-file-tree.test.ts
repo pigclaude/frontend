@@ -10,6 +10,7 @@ import {
   openFilesSurface,
   panelTabs,
   projectRoot,
+  settle,
   treeRow,
   workbenchRoot,
 } from "../test-support/workbench-harness"
@@ -46,6 +47,19 @@ describe("workbench file tree", () => {
     expect(rowNames()).toEqual(["src", "main.ts", "new.txt"])
     await fire(button("显示全部文件"), "click")
     expect(rowNames()).toContain("README.md")
+  })
+
+  it("re-reads the tree and Git status while Claude is still working", async () => {
+    const fake = fakeWorkbench(files)
+    await openFilesSurface(screen, fake)
+    expect(rowNames()).not.toContain("added.ts")
+
+    fake.disk.set("added.ts", { text: "export {}\n", mtimeMs: 1 })
+    fake.changes = [{ path: "added.ts", status: "??" }]
+    await screen.render(fake.bridge, { workspaceRevision: 1 })
+    await settle()
+
+    expect(treeRow("added.ts").dataset.git).toBe("untracked")
   })
 
   it("shows no decorations or change filter outside a Git work tree", async () => {

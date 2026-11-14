@@ -87,6 +87,8 @@ export function fakeWorkbench(files: Record<string, string>): FakeWorkbench {
     openFile: vi.fn(async () => undefined),
     saveAs: vi.fn(async () => true),
     worktrees: vi.fn(async () => []),
+    useWorktree: vi.fn(async () => undefined),
+    branches: vi.fn(async () => null),
     subscribe: vi.fn((listener: (event: WorkbenchEvent) => void) => {
       listeners.add(listener)
       return () => listeners.delete(listener)

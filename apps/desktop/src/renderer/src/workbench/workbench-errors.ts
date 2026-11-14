@@ -10,5 +10,12 @@ export function workbenchError(error: unknown, t: (key: TextKey) => string): str
   if (message.includes("WORKBENCH_FILE_CHANGED")) return t("workbench.fileChanged")
   if (message.includes("WORKBENCH_TURN_ACTIVE")) return t("workbench.turnActive")
   if (message.includes("WORKBENCH_TERMINAL_FAILED")) return t("workbench.terminalFailed")
+  if (message.includes("WORKBENCH_BRANCH_CONFLICT")) return t("workbench.branchConflict")
+  if (message.includes("WORKBENCH_BRANCH_EXISTS")) return t("workbench.branchExists")
+  if (message.includes("WORKBENCH_BRANCH_INVALID")) return t("workbench.branchInvalid")
+  if (message.includes("WORKBENCH_BRANCH_FAILED")) return t("workbench.branchFailed")
+  if (message.includes("WORKBENCH_WORKTREE_BASE_INVALID")) return t("workbench.worktreeBaseInvalid")
+  if (message.includes("WORKBENCH_WORKTREE_INCLUDE_TOO_LARGE"))
+    return t("workbench.worktreeIncludeTooLarge")
   return t("workbench.operationFailed")
 }

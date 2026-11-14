@@ -22,6 +22,7 @@ import type { ClaudeAccountsController } from "./hooks/use-claude-accounts"
 import { sessionAccountId, useSession } from "./hooks/use-session"
 import { useSessionNotices } from "./hooks/use-session-notices"
 import { useWorkspaces } from "./hooks/use-workspaces"
+import { useWorkspaceSelection } from "./hooks/use-workspace-selection"
 import { fill, useText } from "./locale/text"
 import { projectNameFromPath } from "./models/project-model"
 import { toPoolAccount, toPoolProxy } from "./models/claude-account-view"
@@ -96,11 +97,11 @@ export function MainWindow({
   const session = useSession()
   useSessionNotices(session.state.notice)
   const workspaces = useWorkspaces()
+  const selection = useWorkspaceSelection(workspaces.add)
+  const { selected: selectedWorkspace, session: sessionWorkspace, projectOf } = selection
   const [lastWorkspace, setLastWorkspace] = useState<NavLocation>({ kind: "session" })
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [addingProject, setAddingProject] = useState(false)
-  const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null)
-  const [sessionWorkspace, setSessionWorkspace] = useState<string | null>(null)
   const workbench = useRef<WorkbenchActions>(null)
   const [rightOpen, setRightOpen] = useState(false)
   const [rightMax, setRightMax] = useState(false)
@@ -115,7 +116,7 @@ export function MainWindow({
   const sessionId = session.state.sessionId
   const thread = sessionThread({
     session: session.state,
-    workspace: sessionWorkspace,
+    workspace: projectOf(sessionWorkspace),
     startedAt: sessionStartedAt,
     untitled: t("shell.session.untitled"),
     accounts: pool.accounts,
@@ -212,7 +213,7 @@ export function MainWindow({
     void workspaces
       .add(path)
       .then(() => {
-        setSelectedWorkspace(path)
+        selection.select(path)
         toast(fill(t("shell.project.added"), { name: projectNameFromPath(path) }), "folder")
       })
       .catch((error: unknown) => toast(workspaceErrorMessage(error, t), "info"))
@@ -224,7 +225,7 @@ export function MainWindow({
 
   function selectWorkspace(path: string | null): boolean {
     if (!canSelectWorkspace(path)) return false
-    setSelectedWorkspace(path)
+    selection.select(path)
     return true
   }
 
@@ -343,10 +344,7 @@ export function MainWindow({
                   onShow={() => setRightOpen(true)}
                   onMaximize={() => setRightMax((value) => !value)}
                   filesRequest={filesRequest}
-                  onSelectWorkspace={async (path) => {
-                    await workspaces.add(path)
-                    setSelectedWorkspace(path)
-                  }}
+                  onSelectWorkspace={async (path) => selection.selectWorktree(path, workbenchRoot)}
                 />
               ),
             },
@@ -377,7 +375,7 @@ export function MainWindow({
         t,
         toast,
         onRemoved: (path) => {
-          if (selectedWorkspace === path) setSelectedWorkspace(null)
+          if (selectedWorkspace === path) selection.select(null)
         },
       })}
       onOpenSettings={() => settings("general")}
@@ -440,12 +438,14 @@ export function MainWindow({
                   workbench.current?.openDiff(path)
                   setRightOpen(true)
                 },
+                workbench: bridge,
               }
             : {})}
           {...(openInPath ? { openIn: <OpenInButton path={openInPath} /> } : {})}
           fresh={location.kind === "draft"}
           session={session}
           workspace={workspace}
+          workspaceProject={projectOf(workspace)}
           workspaceOptions={workspaces.paths}
           accounts={pool.accounts}
           proxies={pool.proxies}
@@ -458,11 +458,7 @@ export function MainWindow({
               .catch((error: unknown) => toast(workspaceErrorMessage(error, t), "info"))
           }}
           onSelectWorkspace={selectWorkspace}
-          onWorkspaceUsed={(path) => {
-            setSelectedWorkspace(path)
-            setSessionWorkspace(path)
-            void workspaces.add(path).catch(() => undefined)
-          }}
+          onWorkspaceUsed={selection.used}
           onOpen={onNavigate}
           smartPunctuation={appearance.settings.smartPunctuation}
         />

@@ -1,4 +1,5 @@
-// 负责聊天页：草稿选工作区、开始会话、时间线、工具/终端/浏览器视图、权限回答、换号提示和错误。
+// 负责聊天页：草稿选工作区、分支和 worktree，开始会话、时间线、工具/终端/浏览器视图、权限回答、
+// 换号提示和错误。
 // 页面只消费 useSession 控制器，界面完全由 Pigcode 的 ui-chat 绘制。
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
@@ -39,8 +40,10 @@ import { projectNameFromPath } from "../models/project-model"
 import type { NavLocation } from "../models/navigation"
 import { threadView } from "../models/thread-view"
 import type { SessionEffort } from "../../../main/session/session-types"
+import type { WorkbenchBridge } from "../../../workbench-contract"
 import { useSlashCommands } from "../shell/registry-slash-commands"
 import { useSessionDefaults } from "../hooks/use-session-defaults"
+import { useDraftWorkspace } from "./draft-workspace"
 
 /** Claude 会话支持的 Agent 功能；界面据此显示计划、中断和审批等控件。 */
 const CLAUDE_FEATURES: AgentFeatures = {
@@ -68,12 +71,15 @@ export type ChatScreenProps = {
   fresh: boolean
   session: SessionController
   workspace: string | null
+  /** workspace 所属的项目；workspace 是 worktree 时是它的项目，否则就是 workspace 本身。 */
+  workspaceProject?: string | null
   workspaceOptions: string[]
   accounts: ClaudeAccountView[]
   proxies: ProxyView[]
   onPickWorkspace: () => void
   onSelectWorkspace: (path: string) => void
-  onWorkspaceUsed: (path: string) => void
+  /** 会话在 path 里开始了；project 是 path 所属的项目。 */
+  onWorkspaceUsed: (path: string, project: string) => void
   onOpen: (location: NavLocation) => void
   smartPunctuation: boolean
   layoutControls?: ReactNode
@@ -81,6 +87,8 @@ export type ChatScreenProps = {
   openIn?: ReactNode
   onOpenFile?: (path: string) => void
   onViewDiff?: (path?: string) => void
+  /** 草稿读写分支、新建 worktree 用的工作台桥；没有时草稿不显示分支控件。 */
+  workbench?: WorkbenchBridge
 }
 
 /** 绘制新会话草稿或进行中的会话。 */
@@ -88,6 +96,7 @@ export function ChatScreen({
   fresh,
   session,
   workspace,
+  workspaceProject = workspace,
   workspaceOptions,
   accounts,
   proxies,
@@ -100,6 +109,7 @@ export function ChatScreen({
   openIn,
   onOpenFile,
   onViewDiff,
+  workbench,
 }: ChatScreenProps) {
   const toast = useToast()
   const commands = useSlashCommands()
@@ -166,6 +176,12 @@ export function ChatScreen({
   const draftKey = live ? (state.sessionId ?? "session") : (workspace ?? "new-thread")
   const projectName = workspace === null ? "" : projectNameFromPath(workspace)
   const threadId = state.sessionId ?? (workspace === null ? "new-thread" : `draft-${workspace}`)
+  // 草稿页只在还没有会话时使用；从草稿发第一条消息后即使导航还没切换，也要显示时间线。
+  const showDraft = fresh && !live && state.sessionId === null
+  const draft = useDraftWorkspace(
+    workbench,
+    showDraft ? (workspace ?? workspaceOptions[0] ?? null) : null,
+  )
 
   useEffect(() => {
     if (session.models.length > 0 || session.modelsLoading || session.modelsError !== null) return
@@ -253,6 +269,7 @@ export function ChatScreen({
 
   async function startSession(
     target: string,
+    project: string,
     effort?: SessionEffort,
     fast?: boolean,
   ): Promise<boolean> {
@@ -265,7 +282,7 @@ export function ChatScreen({
       ...(draftAccount === "" ? {} : { accountId: draftAccount }),
     })
     if (ok) {
-      onWorkspaceUsed(target)
+      onWorkspaceUsed(target, project)
       if (fresh) onOpen({ kind: "session" })
     }
     return ok
@@ -285,7 +302,10 @@ export function ChatScreen({
       notify("先选择一个工作区")
       return false
     }
-    const ok = await startSession(target, effort, options.fast === true)
+    const directory = await draft.start(target)
+    if (directory === null) return false
+    const project = (workspace === null ? null : workspaceProject) ?? target
+    const ok = await startSession(directory, project, effort, options.fast === true)
     if (!ok) return false
     return session.send(text)
   }
@@ -339,8 +359,6 @@ export function ChatScreen({
     ],
   )
 
-  // 草稿页只在还没有会话时使用；从草稿发第一条消息后即使导航还没切换，也要显示时间线。
-  const showDraft = fresh && !live && state.sessionId === null
   if (showDraft) {
     const projects = workspaceOptions.map((path) => ({
       id: path,
@@ -354,7 +372,10 @@ export function ChatScreen({
           openIn={openIn}
           commands={commands}
           projects={projects}
-          projectId={workspace}
+          projectId={workspaceProject}
+          workspaceControls={draft.controls}
+          workspaceStatus={draft.status}
+          pending={draft.busy}
           onSelectProject={chooseWorkspace}
           onAddProject={onPickWorkspace}
           draftKey={draftKey}

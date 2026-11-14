@@ -238,7 +238,9 @@ export function Worktrees({
         }
         onSwitch={(path) =>
           run(async () => {
-            if (path !== current && confirmSwitch()) await onSelect(path)
+            if (path === current || !confirmSwitch()) return
+            if (path !== main) await bridge.useWorktree(root, path)
+            await onSelect(path)
           })
         }
         onRemove={() =>

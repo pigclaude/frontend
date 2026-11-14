@@ -1,49 +1,27 @@
-// 负责管理一个窗口的唯一活动 Claude 会话：启动、发送、取消、权限回答、模式/模型切换、停止和事件广播。
+// 负责编排一个窗口的唯一活动 Claude 会话：启动前检查、把命令交给 ClaudeSession、停止、模型目录和事件广播。
 import { randomUUID } from "node:crypto"
 import { ClaudeAgentAdapter } from "./claude-agent-adapter"
-import type { ClaudeAgentStartOptions } from "./claude-query-options"
 import { resolveClaudeBinaryPath } from "./claude-binary"
-import type { PermissionAnswer } from "./permission-broker"
-import { classifyDaemonError } from "./session-error-mapping"
-import { SessionEnvironment } from "./session-environment"
 import { readOrganizationModels, type OrganizationModelReader } from "./claude-bootstrap"
+import type { ClaudeAgentStartOptions } from "./claude-query-options"
+import { ClaudeSession } from "./claude-session"
 import type { DevProviderOverride } from "./dev-provider"
+import type { PermissionAnswer } from "./permission-broker"
+import { SessionEnvironment } from "./session-environment"
+import type { ActiveSession } from "./session-host-active"
+import { pinnedCatalog } from "./session-host-provider"
 import {
-  applyModelChange,
-  pinnedCatalog,
-  pinnedStartInput,
-  providerEnvironmentInput,
-  providerSessionProfile,
-} from "./session-host-provider"
-import {
-  assertStartNotStopped,
-  assertTurnIdle,
-  assertWorkspace,
-  buildStartOptions,
-  buildUsageRecord,
-  createEnvironmentOrThrow,
-  errorMessage,
+  assertMembershipActive,
+  buildStatusView,
   hostError,
   mapStartError,
   readBinaryPath,
-  redactSessionToken,
-  sanitizeSessionEvent,
   sanitizeStartError,
-  assertMembershipActive,
-  buildStatusView,
   pendingWorkOf,
   type SessionPendingWork,
 } from "./session-host-support"
-import { createActiveSession, type ActiveSession } from "./session-host-active"
-import {
-  enterRequestedMode,
-  followReportedMode,
-  switchPermissionMode,
-  type ModeEvent,
-} from "./session-host-modes"
-import { normalizeSessionLocale, normalizeSessionTimezone } from "./session-locale"
 import { queryModels } from "./session-models"
-import { boundSessionEnvironment } from "./bound-session-environment"
+import { prepareSessionStart } from "./session-start-checks"
 import type {
   SessionAdapterFactory,
   SessionEnvironmentFactory,
@@ -60,7 +38,6 @@ import type {
   SessionUsagePort,
 } from "./session-types"
 import { SessionHostError } from "./session-types"
-import type { SessionEvent } from "./session-events"
 
 /** SessionHost 依赖；所有外部端口都可注入，便于不启动真实 CLI 的测试。 */
 export type SessionHostOptions = {
@@ -104,19 +81,11 @@ export class SessionHost {
   readonly #unsubscribeMembership: () => void
   readonly #unsubscribeRuntime: () => void
   readonly #unsubscribeUsage: () => void
-  #session: ActiveSession | null = null
+  #session: ClaudeSession | null = null
   #startPromise: Promise<{ sessionId: string }> | null = null
   #stopRequested = false
   #closing: Promise<void> | null = null
   #disposed = false
-  readonly #emitModeEvent = (event: ModeEvent): void => {
-    if (event.type === "mode") this.#emit(event)
-    else
-      this.#emit({
-        ...event,
-        message: redactSessionToken(event.message, this.#runtime.sessionToken),
-      })
-  }
 
   /** 创建会话宿主并订阅会员、换号和用量写入失败事件。 */
   constructor(options: SessionHostOptions) {
@@ -176,144 +145,81 @@ export class SessionHost {
     input: SessionStartInput,
     mcpServers: ClaudeAgentStartOptions["mcpServers"],
   ): Promise<{ sessionId: string }> {
-    await assertMembershipActive(this.#membership)
-    assertStartNotStopped(this.#stopRequested, this.#disposed)
-    await assertWorkspace(input.workspace)
-    assertStartNotStopped(this.#stopRequested, this.#disposed)
-    // 开发期供应商自带模型访问，不再要求本机有可用的 Claude 账号。
-    if (this.#provider === null && !(await this.#runtime.hasAvailableAccount())) {
-      throw new SessionHostError("NO_AVAILABLE_ACCOUNT", "没有可用的 Claude 账号")
-    }
-    assertStartNotStopped(this.#stopRequested, this.#disposed)
-    const daemonBaseUrl = this.#runtime.daemonBaseUrl
-    if (daemonBaseUrl === null) {
-      throw new SessionHostError("DAEMON_UNAVAILABLE", "本机 daemon 尚未就绪")
-    }
-    const binaryPath = readBinaryPath(this.#resolveBinaryPath, this.#runtime.sessionToken)
-    this.#runtime.beginSession?.()
-    this.#runtime.setPreferredAccount?.(input.accountId ?? null)
-    const sessionId = this.#newId()
-    const resolvedProfile = await this.#resolveProfile(input.accountId ?? null)
-    const profile =
-      this.#provider === null ? resolvedProfile : providerSessionProfile(resolvedProfile)
-    assertStartNotStopped(this.#stopRequested, this.#disposed)
-    const environment = await createEnvironmentOrThrow(
-      (environmentInput) =>
-        boundSessionEnvironment(this.#runtime, profile, this.#createEnvironment, environmentInput),
+    const prepared = await prepareSessionStart(
       {
-        sessionId,
-        workspace: input.workspace,
-        daemonBaseUrl,
-        sessionToken: this.#runtime.sessionToken,
-        timezone: normalizeSessionTimezone(profile?.timezone),
-        locale: normalizeSessionLocale(profile?.locale),
-        binaryPath,
+        membership: this.#membership,
+        runtime: this.#runtime,
+        provider: this.#provider,
+        createEnvironment: this.#createEnvironment,
+        resolveBinaryPath: this.#resolveBinaryPath,
+        resolveProfile: this.#resolveProfile,
         userDataPath: this.#userDataPath,
-        ...providerEnvironmentInput(this.#provider),
+        newId: this.#newId,
+        cancelled: () => this.#stopRequested || this.#disposed,
       },
-      this.#runtime.sessionToken,
+      input,
     )
-    if (this.#stopRequested || this.#disposed) {
-      await environment.cleanup().catch(() => undefined)
-      throw new SessionHostError("SESSION_CANCELLED", "会话启动已取消")
-    }
-    if (this.#membership.view().state !== "active") {
-      await environment.cleanup().catch(() => undefined)
-      throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
-    }
-    const effectiveInput = pinnedStartInput(this.#provider, input)
-    const active = createActiveSession(sessionId, effectiveInput, environment, {
+    const session = new ClaudeSession({
+      ...prepared,
       createAdapter: this.#createAdapter,
+      emit: (event) => this.#emit(event),
+      recordUsage: (record) => void this.#usage.record(record),
+      sessionToken: () => this.#runtime.sessionToken,
+      provider: this.#provider,
       permissionTimeoutMs: this.#permissionTimeoutMs,
-      emitPermission: (request) => this.#emit(request),
-      onPermissionTimeout: (session) => this.#handlePermissionTimeout(session),
-      onAdapterEvent: (session, event) => this.#handleAdapterEvent(session, event),
+      now: this.#now,
+      newId: this.#newId,
+      onReleased: (released) => {
+        if (this.#session === released) this.#session = null
+      },
     })
-    this.#session = active
+    this.#session = session
     try {
-      await active.adapter.start({
-        ...buildStartOptions(active, effectiveInput),
-        ...(mcpServers ? { mcpServers } : {}),
-      })
+      await session.launch(mcpServers)
     } catch (error) {
-      await this.#release(active)
+      await session.release()
       if (this.#stopRequested || this.#disposed) {
         throw new SessionHostError("SESSION_CANCELLED", "会话启动已取消")
       }
       throw mapStartError(error, this.#runtime.sessionToken)
     }
-    await enterRequestedMode(active, effectiveInput.permissionMode, this.#emitModeEvent)
     if (this.#stopRequested || this.#disposed) {
-      await this.#release(active)
+      await session.release()
       throw new SessionHostError("SESSION_CANCELLED", "会话启动已取消")
     }
-    if (active.released || active.stopping) {
+    if (session.closing) {
       if (this.#membership.view().state !== "active") {
         throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
       }
       throw new SessionHostError("SDK_ERROR", "会话在启动期间结束")
     }
-    this.#emit({ type: "mode", permissionMode: active.permissionMode })
-    return { sessionId }
+    session.announceMode()
+    return { sessionId: prepared.sessionId }
   }
 
   /** 写入当前消息；如有工作台回调，在交给适配器之前记录基线。 */
   async send(input: SessionSendInput, checkpoint?: ActiveSession["checkpoint"]): Promise<void> {
-    const active = this.#requireActive()
-    assertTurnIdle(active)
-    active.turnId = this.#newId()
-    active.turnCancelled = false
-    active.turnErrorCode = null
-    active.checkpoint = checkpoint
-    try {
-      await checkpoint?.(active.environment.workspace, "baseline")
-      if (active.stopping || active.released || active.turnCancelled) {
-        active.turnId = null
-        return
-      }
-      await active.adapter.send(input.text)
-    } catch (error) {
-      active.turnId = null
-      const message = errorMessage(error)
-      const code = classifyDaemonError(message) ?? "SDK_ERROR"
-      throw hostError(code, message, this.#runtime.sessionToken)
-    }
+    await this.#requireActive().send(input, checkpoint)
   }
 
   /** 取消当前 turn：立即拒绝未回答权限并中断，但保留会话供下一次发送。 */
   async cancel(): Promise<void> {
-    const active = this.#session
-    if (active === null) return
-    if (active.turnId !== null) {
-      active.turnCancelled = true
-      active.turnErrorCode = "SESSION_CANCELLED"
-      this.#emit({ type: "error", code: "SESSION_CANCELLED", message: "当前请求已取消" })
-    }
-    active.broker.rejectAll("用户已取消")
-    await active.adapter.interrupt().catch(() => undefined)
+    await this.#session?.cancel()
   }
 
   /** 写回一次权限回答；未知 requestId 由 PermissionBroker 忽略。 */
   async respondPermission(answer: PermissionAnswer): Promise<void> {
-    const active = this.#session
-    if (active === null) return
-    active.broker.respond(answer)
+    this.#session?.respondPermission(answer)
   }
 
   /** 切换后续工具调用的权限模式；等待中的权限请求保持原模式。自动审批被拒时不抛错，改发提示。 */
   async setMode(mode: SessionPermissionMode): Promise<void> {
-    const active = this.#requireActive()
-    try {
-      await switchPermissionMode(active, mode, this.#emitModeEvent)
-    } catch (error) {
-      throw hostError("SDK_ERROR", errorMessage(error), this.#runtime.sessionToken)
-    }
+    await this.#requireActive().setMode(mode)
   }
 
   /** 切换后续回复使用的模型；不影响已发出的请求。开发期供应商固定模型时不接受其他取值。 */
   async setModel(model: string): Promise<void> {
-    const active = this.#requireActive()
-    await applyModelChange(active, this.#provider, model, this.#runtime.sessionToken)
+    await this.#requireActive().setModel(model)
   }
 
   /** 停止会话：先拒绝未回答权限，再中断、停止适配器并删除会话目录；可重复调用。 */
@@ -327,7 +233,7 @@ export class SessionHost {
       if (pendingStart !== null) await pendingStart.catch(() => undefined)
       return
     }
-    const task = this.#endSession(active, "会话已停止", null)
+    const task = active.end("会话已停止", null)
     this.#closing = task
     try {
       await task
@@ -360,12 +266,12 @@ export class SessionHost {
 
   /** 返回脱敏会话快照；没有活动会话时所有 id 和模型为 null。 */
   status(): SessionStatusView {
-    return buildStatusView(this.#session)
+    return this.#session?.status() ?? buildStatusView(null)
   }
 
   /** 退出前要确认的工作：进行中的回合和等待回答的权限；正在结束的会话不算。 */
   pendingWork(): SessionPendingWork {
-    return pendingWorkOf(this.#session)
+    return pendingWorkOf(this.#session?.state ?? null)
   }
 
   /** 停止会话并释放全部订阅；应用退出时调用。 */
@@ -379,106 +285,17 @@ export class SessionHost {
     this.#listeners.clear()
   }
 
-  // 结束会话共用路径：拒绝权限 -> 中止/中断 -> 停止适配器 -> 清理环境。
-  async #endSession(
-    active: ActiveSession,
-    rejectMessage: string,
-    errorCode: "MEMBERSHIP_REQUIRED" | null,
-  ): Promise<void> {
-    if (active.ending !== null) return active.ending
-    active.stopping = true
-    active.ending = (async () => {
-      active.broker.rejectAll(rejectMessage)
-      if (errorCode !== null) {
-        this.#emit({ type: "error", code: errorCode, message: rejectMessage })
-        active.abort.abort()
-      } else {
-        await active.adapter.interrupt().catch(() => undefined)
-      }
-      await active.adapter.stop().catch(() => undefined)
-      await this.#release(active)
-    })()
-    return active.ending
-  }
-
-  async #release(active: ActiveSession): Promise<void> {
-    if (active.released) return
-    active.released = true
-    active.broker.dispose()
-    if (this.#session === active) this.#session = null
-    await active.environment.cleanup().catch(() => undefined)
-  }
-
   async #handleMembershipLost(): Promise<void> {
     const active = this.#session
     if (active === null) return
-    await this.#endSession(active, "会员状态已失效", "MEMBERSHIP_REQUIRED")
+    await active.end("会员状态已失效", "MEMBERSHIP_REQUIRED")
   }
 
   #handleRuntimeEvent(event: SessionRuntimeEvent): void {
-    const active = this.#session
-    if (active === null) return
-    // 只有 turn 进行中的换号才记入用量；两次 turn 之间的换号不制造 switchedFrom。
-    if (event.reason !== "initial" && event.from !== null && active.turnId !== null) {
-      active.switchedFrom = event.from
-    }
-    active.accountId = event.to
-    this.#emit({
-      type: "account-switched",
-      from: event.from,
-      to: event.to,
-      reason: event.reason,
-    })
+    this.#session?.applyAccountSwitch(event)
   }
 
-  #handleAdapterEvent(active: ActiveSession, event: SessionEvent): void {
-    if (active.released) return
-    switch (event.type) {
-      case "started":
-        active.model = event.model
-        followReportedMode(active, event.permissionMode, "init", this.#emitModeEvent)
-        break
-      case "mode":
-        followReportedMode(active, event.permissionMode, "status", this.#emitModeEvent)
-        return
-      case "result":
-        if (active.turnId !== null) void active.checkpoint?.(active.environment.workspace, "final")
-        this.#recordUsage(active, event)
-        break
-      case "error":
-        active.turnErrorCode = event.code
-        break
-      case "ended":
-        active.broker.rejectAll("会话已结束")
-        this.#emit(sanitizeSessionEvent(event, this.#runtime.sessionToken))
-        if (!active.stopping) void this.#release(active)
-        return
-      default:
-        break
-    }
-    this.#emit(sanitizeSessionEvent(event, this.#runtime.sessionToken))
-  }
-
-  #recordUsage(active: ActiveSession, event: Extract<SessionEvent, { type: "result" }>): void {
-    const record = buildUsageRecord(active, event, this.#now())
-    if (record === null) return
-    active.turnId = null
-    active.turnCancelled = false
-    active.turnErrorCode = null
-    active.switchedFrom = null
-    void this.#usage.record(record)
-  }
-
-  #handlePermissionTimeout(active: ActiveSession): void {
-    if (this.#session !== active || active.released) return
-    active.turnErrorCode = "PERMISSION_TIMEOUT"
-    this.#emit({ type: "error", code: "PERMISSION_TIMEOUT", message: "权限询问超时" })
-    // 同一 turn 的其它权限卡片不能继续悬挂。
-    active.broker.rejectAll("权限询问超时")
-    void active.adapter.interrupt().catch(() => undefined)
-  }
-
-  #requireActive(): ActiveSession {
+  #requireActive(): ClaudeSession {
     const active = this.#session
     if (active === null) throw new SessionHostError("SDK_ERROR", "会话未开始")
     return active

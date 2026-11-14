@@ -87,8 +87,7 @@ export type SessionEvent =
 export type ContextCompactedSignal = { type: "context-compacted" }
 
 /** 适配器交给会话的全部输入：会话事件，以及只在主进程使用的后台任务、任务进度和上下文压缩信号。 */
-export type AdapterEvent =
-  SessionEvent | BackgroundTaskSignal | TaskSignal | ContextCompactedSignal
+export type AdapterEvent = SessionEvent | BackgroundTaskSignal | TaskSignal | ContextCompactedSignal
 
 /** 界面用的模型信息；第一行是 CLI 的默认选择。 */
 export type ClaudeModel = {

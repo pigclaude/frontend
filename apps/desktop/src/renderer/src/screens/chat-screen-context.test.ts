@@ -21,7 +21,7 @@ const answered: SessionHostEvent[] = [
     type: "message",
     messageId: "m-1",
     model: "claude-sonnet",
-    parentToolUseId: null,
+    subagent: null,
     blocks: [{ type: "text", text: "改好了。" }],
   },
   { type: "turn-ended", turnId: "main-turn-1", status: "completed", errorCode: null },

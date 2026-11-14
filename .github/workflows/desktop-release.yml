@@ -1,0 +1,192 @@
+# 推版本 tag 时构建三平台安装包和更新清单，冒烟测试后作为草稿发布到 pigclaude/release，维护者确认后公开。
+# 手动触发只做测试发布：tag 必须形如 desktop-v0.0.0-test.1，草稿标成预发布并在说明里写明是测试。
+name: Desktop release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      test_tag:
+        description: 测试发布的 tag，例如 desktop-v0.0.0-test.1
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  target:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.target.outputs.tag }}
+      version: ${{ steps.target.outputs.version }}
+      test: ${{ steps.target.outputs.test }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: target
+        env:
+          TEST_TAG: ${{ inputs.test_tag }}
+        run: node apps/desktop/release-check.cjs target >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: target
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: macos-14
+            target: darwin-arm64
+            package: --mac dmg zip --arm64
+            pigbrowser_url: PIGBROWSER_DARWIN_ARM64_URL
+            xray_archive: Xray-macos-arm64-v8a.zip
+            xray_sha256: 0a05dca3bd311b0bc5a89c7ce56350cab1e829e131e4b2bcd48eb304fac07e9a
+            executable: release/mac-arm64/PigClaude.app/Contents/MacOS/PigClaude
+          - os: windows-2022
+            target: win32-x64
+            package: --win nsis --x64
+            pigbrowser_url: PIGBROWSER_WIN32_X64_URL
+            xray_archive: Xray-windows-64.zip
+            xray_sha256: 2e04a9995a6f2ad1b28c0bb25c708ecb2695e43a1c9c7889c4b6ac2b48cf7a6a
+            executable: release/win-unpacked/PigClaude.exe
+          - os: ubuntu-24.04
+            target: linux-x64
+            package: --linux AppImage --x64
+            pigbrowser_url: PIGBROWSER_LINUX_X64_URL
+            xray_archive: Xray-linux-64.zip
+            xray_sha256: e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214
+            executable: release/linux-unpacked/pigclaude
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 获取并校验固定 PigBrowser 与 Xray
+        shell: pwsh
+        env:
+          PIGBROWSER_URL: ${{ secrets[matrix.pigbrowser_url] }}
+          TARGET: ${{ matrix.target }}
+          XRAY_ARCHIVE: ${{ matrix.xray_archive }}
+          XRAY_SHA256: ${{ matrix.xray_sha256 }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ([string]::IsNullOrWhiteSpace($env:PIGBROWSER_URL)) {
+            throw "缺少 secret ${{ matrix.pigbrowser_url }}：固定 PigBrowser 开发包的下载地址"
+          }
+          $root = Join-Path $env:RUNNER_TEMP "pigclaude-runtime"
+          $browserDir = Join-Path $root "browser"
+          $xrayDir = Join-Path $root "xray"
+          New-Item -ItemType Directory -Force $browserDir, $xrayDir | Out-Null
+          $artifact = (Get-Content "apps/desktop/pigbrowser-artifacts.json" -Raw | ConvertFrom-Json).targets.$env:TARGET
+          $browserArchive = Join-Path $root $artifact.archive
+          $xrayArchive = Join-Path $root $env:XRAY_ARCHIVE
+          Invoke-WebRequest $env:PIGBROWSER_URL -OutFile $browserArchive
+          Invoke-WebRequest "https://github.com/XTLS/Xray-core/releases/download/v26.10.31/$env:XRAY_ARCHIVE" -OutFile $xrayArchive
+          if ((Get-FileHash $browserArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $artifact.sha256) { throw "PigBrowser 包校验失败" }
+          if ((Get-FileHash $xrayArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:XRAY_SHA256) { throw "Xray 包校验失败" }
+          if ($IsMacOS) {
+            ditto -x -k $browserArchive $browserDir
+          } elseif ($IsWindows) {
+            Expand-Archive $browserArchive -DestinationPath $browserDir
+          } else {
+            tar -xf $browserArchive -C $browserDir
+          }
+          if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "PigBrowser 包解压失败" }
+          Expand-Archive $xrayArchive -DestinationPath $xrayDir
+          $packages = @(Get-ChildItem $browserDir -Directory | Where-Object { Test-Path (Join-Path $_.FullName "manifest.json") })
+          if ($packages.Count -ne 1) { throw "无法确认唯一 PigBrowser 开发包" }
+          node apps/desktop/stage-pigbrowser.cjs --package $packages[0].FullName --target $env:TARGET
+          if ($LASTEXITCODE -ne 0) { throw "PigBrowser 完整资源校验失败" }
+          $xrayTarget = "apps/desktop/runtime-assets/pigclaude-runtime/xray/$env:TARGET"
+          New-Item -ItemType Directory -Force $xrayTarget | Out-Null
+          $xrayName = if ($IsWindows) { "xray.exe" } else { "xray" }
+          Copy-Item (Join-Path $xrayDir $xrayName), (Join-Path $xrayDir "LICENSE") $xrayTarget
+          if (!$IsWindows) { chmod 755 (Join-Path $xrayTarget $xrayName) }
+      - run: pnpm --filter @pigclaude/desktop build
+      - name: 打包
+        working-directory: apps/desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm exec electron-builder --config electron-builder.json ${{ matrix.package }} --publish never
+      - name: Linux 准备显示与沙箱
+        if: runner.os == 'Linux'
+        working-directory: apps/desktop
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb xauth
+          electron="$(node -p 'require("electron")')"
+          for sandbox in release/linux-unpacked/chrome-sandbox "$(dirname "$electron")/chrome-sandbox"; do
+            sudo chown root:root "$sandbox"
+            sudo chmod 4755 "$sandbox"
+          done
+      - name: 冒烟测试：安装包能启动，主进程的调试入口已关闭
+        if: runner.os != 'Linux'
+        working-directory: apps/desktop
+        env:
+          PIGCLAUDE_TEST_PACKAGED_APP: ${{ github.workspace }}/apps/desktop/${{ matrix.executable }}
+        run: pnpm exec vitest run src/main/packaged-debug-entries.integration.test.ts
+      - name: 冒烟测试：安装包能启动，主进程的调试入口已关闭
+        if: runner.os == 'Linux'
+        working-directory: apps/desktop
+        env:
+          PIGCLAUDE_TEST_PACKAGED_APP: ${{ github.workspace }}/apps/desktop/${{ matrix.executable }}
+        run: xvfb-run -a pnpm exec vitest run src/main/packaged-debug-entries.integration.test.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-release-${{ matrix.target }}
+          if-no-files-found: error
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/latest*.yml
+
+  publish:
+    needs: [target, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-release-*
+          merge-multiple: true
+          path: dist
+      - name: 核对更新清单和安装包
+        run: node apps/desktop/release-check.cjs assets dist "${{ needs.target.outputs.version }}"
+      - name: 生成发布说明和 sha256 清单
+        run: |
+          node apps/desktop/release-notes.cjs dist "${{ needs.target.outputs.version }}" "${{ needs.target.outputs.test }}" > "$RUNNER_TEMP/notes.md"
+          (cd dist && sha256sum -- *.dmg *.zip *.exe *.AppImage > SHA256SUMS.txt)
+      - name: 作为草稿发布到 pigclaude/release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+          TAG: ${{ needs.target.outputs.tag }}
+          TEST: ${{ needs.target.outputs.test }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "缺少 secret RELEASE_REPO_TOKEN" >&2; exit 1; fi
+          title="PigClaude ${{ needs.target.outputs.version }}"
+          extra=()
+          if [ "$TEST" = "true" ]; then title="测试发布 $TAG（不是正式版本）"; extra=(--prerelease); fi
+          gh release create "$TAG" dist/* --repo pigclaude/release --target main --draft \
+            --title "$title" --notes-file "$RUNNER_TEMP/notes.md" "${extra[@]}"
+          gh release view "$TAG" --repo pigclaude/release --json url,isDraft,assets \
+            --jq '"\(.url) draft=\(.isDraft) assets=\(.assets | length)"'

@@ -134,6 +134,17 @@ test("产品名只在登记的语言包里替换", () => {
   )
 })
 
+test("顶栏更新中心写死的应用名替换为 PigClaude，原生桥的名字不变", async () => {
+  const source = '<UpdateRow name="Pigcode" />\nwindow.pigcodeNative?.openExternal?.(url)'
+  assert.equal(
+    rewriteSource(source, "src/update-center.tsx"),
+    '<UpdateRow name="PigClaude" />\nwindow.pigcodeNative?.openExternal?.(url)',
+  )
+  const vendored = await readFile(join(frontend, "packages/ui-shell/src/update-center.tsx"), "utf8")
+  assert.match(vendored, /name="PigClaude"/)
+  assert.doesNotMatch(vendored, /"Pigcode"/)
+})
+
 test("合约只取界面需要的声明，并删掉这些声明用不到的导入", () => {
   const source = [
     'import { z } from "zod"',

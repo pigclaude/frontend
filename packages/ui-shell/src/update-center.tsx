@@ -142,7 +142,7 @@ export function UpdateCenter(props: UpdateCenterProps) {
             <div className="update-center-list" ref={list}>
               {app && hasAppUpdate(app) ? (
                 <UpdateRow
-                  name="Pigcode"
+                  name="PigClaude"
                   icon={<Icon name="snout" />}
                   detail={
                     app.phase === "downloading"

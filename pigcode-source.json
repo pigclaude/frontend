@@ -1147,7 +1147,7 @@
       "path": "packages/ui-shell/src/update-center.tsx",
       "source": "packages/ui-shell/src/update-center.tsx",
       "sourceSha256": "1773d71fda6365b909b20e95015c02d8919a098630ca88c7d550ae6f97635f7b",
-      "sha256": "ed4da86280fe34bd83bd46870a53d722eef7bde81449a88bedc50da406049307"
+      "sha256": "49343addd11e08197cfce6e3c3cd738dbe605fa9e533eb201742e3d8ccdcd455"
     },
     {
       "path": "packages/ui-shell/src/update-items.test.ts",

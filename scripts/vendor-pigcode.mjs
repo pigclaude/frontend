@@ -51,12 +51,16 @@ export * from "./general-page"
 /** 点分的本地存储键（侧栏宽度、侧栏排法等）改用 PigClaude 的前缀；主题文件格式与主题代码前缀不在此列。 */
 const storageKey = /"pigcode\.([A-Za-z]+)"/g
 
-/** 产品名只在已接入的语言包及其断言测试里替换；其他来源文件保持 Pigcode 原文。 */
+/**
+ * 产品名只在已接入的语言包及其断言测试，以及写死产品名的顶栏更新中心里替换；
+ * 其他来源文件保持 Pigcode 原文。
+ */
 export const productNameFiles = new Set([
   "src/locale/messages.zh-CN.ts",
   "src/locale/messages.en-US.ts",
   "src/locale/new-thread.messages.ts",
   "src/add-project-dialog.test.tsx",
+  "src/update-center.tsx",
 ])
 
 /**

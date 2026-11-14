@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { ClaudeAgentAdapter, type SessionEvent } from "./claude-agent-adapter"
+import { ClaudeAgentAdapter, type AdapterEvent } from "./claude-agent-adapter"
 import {
   capture,
   FakeQuery,
@@ -84,7 +84,7 @@ describe("ClaudeAgentAdapter controls", () => {
 
   it("reports the permission mode from status messages and skips those without one", async () => {
     const fake = new FakeQuery()
-    const events: SessionEvent[] = []
+    const events: AdapterEvent[] = []
     const adapter = new ClaudeAgentAdapter({
       queryFn: capture(fake, []),
       resolveBinaryPath: () => "/resolved/claude",

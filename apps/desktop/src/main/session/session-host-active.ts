@@ -1,18 +1,20 @@
-// 负责会话宿主的活动会话：一份会话的全部可变状态，以及把权限代理、适配器回调和启动模式装配到这份状态上。
+// 负责会话宿主的活动会话：一份会话的全部可变状态，以及把权限代理、回合控制、适配器回调和启动模式装配到这份状态上。
 
 import {
   PermissionBroker,
   type PermissionBrokerOptions,
   type PermissionRequestEvent,
 } from "./permission-broker"
-import type { SessionEvent } from "./session-events"
+import type { AdapterEvent } from "./session-events"
 import { launchPermissionMode } from "./session-host-modes"
+import { SessionTurns, type ClosedTurn } from "./session-turns"
 import type {
   SessionAdapterFactory,
   SessionAdapterPort,
   SessionEnvironmentPort,
   SessionPermissionMode,
   SessionStartInput,
+  SessionTurnEvent,
 } from "./session-types"
 
 /** 一个活动会话的全部可变状态；只有 SessionHost 会修改它。 */
@@ -29,9 +31,7 @@ export type ActiveSession = {
   /** 启动时偏好的账号；null 表示自动选择。 */
   preferredAccountId: string | null
   switchedFrom: string | null
-  turnId: string | null
-  turnCancelled: boolean
-  turnErrorCode: string | null
+  turns: SessionTurns
   checkpoint?: ((workspace: string, phase: "baseline" | "final") => Promise<void>) | undefined
   stopping: boolean
   ending: Promise<void> | null
@@ -49,12 +49,15 @@ export type ActiveSessionHooks = {
   createAdapter: SessionAdapterFactory
   permissionTimeoutMs: number
   timers: SessionTimers
+  now: () => number
   emitPermission: (request: PermissionRequestEvent) => void
+  emitTurn: (event: SessionTurnEvent) => void
+  onTurnClosed: (active: ActiveSession, turn: ClosedTurn) => void
   onPermissionTimeout: (active: ActiveSession) => void
-  onAdapterEvent: (active: ActiveSession, event: SessionEvent) => void
+  onAdapterEvent: (active: ActiveSession, event: AdapterEvent) => void
 }
 
-/** 组装一个活动会话：权限代理和适配器的回调都指回这一份会话，初始模式是 CLI 的启动模式。 */
+/** 组装一个活动会话：权限代理、回合控制和适配器的回调都指回这一份会话，初始模式是 CLI 的启动模式。 */
 export function createActiveSession(
   sessionId: string,
   input: SessionStartInput,
@@ -86,9 +89,14 @@ export function createActiveSession(
     accountId: input.accountId ?? null,
     preferredAccountId: input.accountId ?? null,
     switchedFrom: null,
-    turnId: null,
-    turnCancelled: false,
-    turnErrorCode: null,
+    turns: new SessionTurns({
+      adapter,
+      publish: hooks.emitTurn,
+      onClosed: (turn) => {
+        if (holder.current !== null) hooks.onTurnClosed(holder.current, turn)
+      },
+      now: hooks.now,
+    }),
     stopping: false,
     ending: null,
     released: false,

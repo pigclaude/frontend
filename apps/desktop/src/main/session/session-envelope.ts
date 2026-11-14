@@ -20,6 +20,8 @@ export const sessionEventKinds: Readonly<Record<SessionHostEvent["type"], Sessio
   "account-switched": "persisted",
   notice: "persisted",
   result: "persisted",
+  "turn-started": "persisted",
+  "turn-ended": "persisted",
   error: "persisted",
   ended: "persisted",
 }

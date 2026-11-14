@@ -8,6 +8,7 @@ import type { PermissionAnswer, PermissionRequestEvent } from "./permission-brok
 import type { SessionEnvelope } from "./session-envelope"
 import type { SessionEnvironmentInput } from "./session-environment"
 import type {
+  AdapterEvent,
   ClaudeModel,
   SessionEffort,
   SessionEvent,
@@ -73,9 +74,30 @@ export type SessionAccountSwitchedEvent = {
 /** 给用户的一次性提示，例如自动审批不可用的原因；界面用通知展示，不进对话记录。 */
 export type SessionNoticeEvent = { type: "notice"; message: string }
 
-/** SessionHost 发给 preload 的全部事件：适配器事件加权限、换号和提示。 */
+/** 一轮的结束方式：正常结束、出错结束，或被停止（含会话结束和会员失效）。 */
+export type SessionTurnEndStatus = "completed" | "error" | "interrupted"
+
+/**
+ * 回合开闭事件。发送被接受时发出 turn-started；收到 result 且没有在途的后台子代理和工作流时，
+ * 或者这一轮被停止、出错结束时，发出 turn-ended。每个 turn-started 都恰好有一个对应的 turn-ended。
+ */
+export type SessionTurnEvent =
+  | { type: "turn-started"; turnId: string }
+  | {
+      type: "turn-ended"
+      turnId: string
+      status: SessionTurnEndStatus
+      /** 出错或被停止的原因；正常结束时为 null。 */
+      errorCode: string | null
+    }
+
+/** SessionHost 发给 preload 的全部事件：适配器事件加回合开闭、权限、换号和提示。 */
 export type SessionHostEvent =
-  SessionEvent | PermissionRequestEvent | SessionAccountSwitchedEvent | SessionNoticeEvent
+  | SessionEvent
+  | SessionTurnEvent
+  | PermissionRequestEvent
+  | SessionAccountSwitchedEvent
+  | SessionNoticeEvent
 
 /** 设计第 12 节的稳定错误码；SESSION_START_FAILED 来自第 13 节的配置目录失败分支。 */
 export type SessionErrorCode =
@@ -157,14 +179,16 @@ export type SessionAdapterPort = {
   start(options: ClaudeAgentStartOptions): Promise<void>
   send(text: string): Promise<void>
   interrupt(): Promise<void>
+  /** 停止一个在途的后台任务；任务已经结束或会话已停止时不抛错。 */
+  stopTask(taskId: string): Promise<void>
   stop(): Promise<void>
   models(options?: ClaudeModelsOptions): Promise<ClaudeModel[]>
   setPermissionMode(mode: SessionPermissionMode): Promise<void>
   setModel(model: string): Promise<void>
 }
 
-/** 适配器工厂；onEvent 由 SessionHost 提供并负责转发。 */
-export type SessionAdapterFactory = (onEvent: (event: SessionEvent) => void) => SessionAdapterPort
+/** 适配器工厂；onEvent 由 SessionHost 提供，会话事件由它转发，后台任务信号只在主进程内部使用。 */
+export type SessionAdapterFactory = (onEvent: (event: AdapterEvent) => void) => SessionAdapterPort
 
 /** 用量记录器端口；真实实现是 UsageRecorder。 */
 export type SessionUsagePort = {

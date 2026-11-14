@@ -1,12 +1,20 @@
 // 负责把 SDK 消息归一化为应用的会话事件：只取界面和用量需要的字段，忽略不认识的消息和内容块。
 
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import type { SessionContentBlock, SessionEvent } from "./session-events"
+import type { ModelUsage, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
+import { readBackgroundTaskSignal } from "./background-tasks"
+import type {
+  AdapterEvent,
+  SessionContentBlock,
+  SessionEvent,
+  SessionUsage,
+} from "./session-events"
 
-/** 把一条 SDK 消息换成按发出顺序排列的会话事件；不认识的消息返回空数组。 */
-export function normalizeSdkMessage(message: SDKMessage): SessionEvent[] {
+/** 把一条 SDK 消息换成按发出顺序排列的会话事件和后台任务信号；不认识的消息返回空数组。 */
+export function normalizeSdkMessage(message: SDKMessage): AdapterEvent[] {
   switch (message.type) {
-    case "system":
+    case "system": {
+      const signal = readBackgroundTaskSignal(message)
+      if (signal !== null) return [signal]
       if (message.subtype === "init") {
         return [
           {
@@ -22,6 +30,7 @@ export function normalizeSdkMessage(message: SDKMessage): SessionEvent[] {
         return [{ type: "mode", permissionMode: message.permissionMode }]
       }
       return []
+    }
     case "stream_event":
       return streamDelta(message.event)
     case "assistant": {
@@ -45,7 +54,8 @@ export function normalizeSdkMessage(message: SDKMessage): SessionEvent[] {
     }
     case "user":
       return toolResults(message.message.content)
-    case "result":
+    case "result": {
+      const totalUsage = sumModelUsage(message.modelUsage)
       return [
         {
           type: "result",
@@ -60,11 +70,36 @@ export function normalizeSdkMessage(message: SDKMessage): SessionEvent[] {
             cacheReadTokens: message.usage.cache_read_input_tokens,
             cacheCreationTokens: message.usage.cache_creation_input_tokens,
           },
+          ...(totalUsage === null ? {} : { totalUsage }),
         },
       ]
+    }
     default:
       return []
   }
+}
+
+// modelUsage 是整个 CLI 进程到这里为止的累计，含子代理和工作流。
+function sumModelUsage(modelUsage: Record<string, ModelUsage> | undefined): SessionUsage | null {
+  if (!isRecord(modelUsage)) return null
+  const total: SessionUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+  }
+  for (const usage of Object.values(modelUsage)) {
+    if (!isRecord(usage)) continue
+    total.inputTokens += count(usage.inputTokens)
+    total.outputTokens += count(usage.outputTokens)
+    total.cacheReadTokens += count(usage.cacheReadInputTokens)
+    total.cacheCreationTokens += count(usage.cacheCreationInputTokens)
+  }
+  return total
+}
+
+function count(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0
 }
 
 function streamDelta(event: unknown): SessionEvent[] {

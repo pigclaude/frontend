@@ -6,6 +6,7 @@ import type { SessionPermissionMode } from "./session-events"
 /** SDK query 返回对象的最小端口；真实 Query 和测试假实现都满足。 */
 export type AdapterQuery = AsyncIterable<SDKMessage> & {
   interrupt(): Promise<unknown>
+  stopTask(taskId: string): Promise<void>
   close(): void
   supportedModels(): Promise<ModelInfo[]>
   setPermissionMode(mode: SessionPermissionMode): Promise<void>

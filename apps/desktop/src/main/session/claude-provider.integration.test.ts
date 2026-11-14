@@ -7,7 +7,7 @@ import { join } from "node:path"
 import { expect, it } from "vitest"
 import { ClaudeAgentAdapter } from "./claude-agent-adapter"
 import { resolveClaudeBinaryPath } from "./claude-binary"
-import type { SessionEvent } from "./session-events"
+import type { AdapterEvent } from "./session-events"
 import { SessionEnvironment } from "./session-environment"
 import { FakeMembership, FakeRuntime, FakeUsage } from "./session-host-fixtures"
 import { SessionHost } from "./session-host"
@@ -40,8 +40,8 @@ async function runPrompt(
   workspace: string,
   prompt: string,
   options: { permissionMode: "default" | "bypassPermissions"; modelId?: string },
-): Promise<SessionEvent[]> {
-  const events: SessionEvent[] = []
+): Promise<AdapterEvent[]> {
+  const events: AdapterEvent[] = []
   let resolveDone: (() => void) | null = null
   const done = new Promise<void>((resolve) => {
     resolveDone = resolve
@@ -195,7 +195,7 @@ it.skipIf(!baseUrl || !authToken)(
   async () => {
     const workspace = await mkdtemp(join(tmpdir(), "pigclaude-provider-env-"))
     const userData = await mkdtemp(join(tmpdir(), "pigclaude-provider-env-userdata-"))
-    const events: SessionEvent[] = []
+    const events: AdapterEvent[] = []
     let resolveDone: (() => void) | null = null
     const done = new Promise<void>((resolve) => {
       resolveDone = resolve

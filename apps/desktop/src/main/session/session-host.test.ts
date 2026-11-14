@@ -173,13 +173,16 @@ describe("SessionHost start", () => {
 })
 
 describe("SessionHost events and usage", () => {
-  it("forwards adapter events and records result metadata", async () => {
-    const harness = await startedHarness()
+  it("forwards adapter events and records the turn's usage and duration", async () => {
+    let clock = Date.UTC(2026, 10, 14, 1, 0, 0)
+    const harness = createHarness({ workspace: await workspaceDir(), now: () => clock })
+    await harness.host.start({ ...startInput(harness.workspace), accountId: "account-1" })
     const adapter = harness.adapters.last
 
     adapter.emit(startedEvent("claude-sonnet-4"))
     adapter.emit({ type: "delta", text: "Hel", thinking: false, blockIndex: 0 })
     await harness.host.send(currentSessionId(harness.host), { text: "hello" })
+    clock += 1_500
     adapter.emit(resultEvent())
 
     await waitUntil(() => harness.usage.records.length === 1)
@@ -188,7 +191,9 @@ describe("SessionHost events and usage", () => {
       "mode",
       "started",
       "delta",
+      "turn-started",
       "result",
+      "turn-ended",
     ])
     expect(harness.usage.records[0]).toMatchObject({
       schemaVersion: 1,
@@ -200,7 +205,7 @@ describe("SessionHost events and usage", () => {
       outputTokens: 20,
       cacheReadTokens: 3,
       cacheCreationTokens: 4,
-      durationMs: 1_200,
+      durationMs: 1_500,
       status: "success",
       errorCode: null,
       switchedFrom: null,

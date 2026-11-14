@@ -84,6 +84,7 @@ it.each([
           await response.text()
         },
         interrupt: async () => undefined,
+        stopTask: async () => undefined,
         stop: async () => undefined,
         models: async () => [],
         setModel: async () => undefined,

@@ -1,6 +1,7 @@
 // 定义会话适配器向上层广播的事件类型；只含脱敏内容，不带 token、代理地址或完整环境变量。
 
 import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk"
+import type { BackgroundTaskSignal } from "./background-tasks"
 
 /** 应用允许的权限模式：四个档位加计划。 */
 export type SessionPermissionMode =
@@ -53,10 +54,16 @@ export type SessionEvent =
       durationMs: number
       numTurns: number
       stopReason: string | null
+      /** 这一个 result 的主线程用量，不含子代理。 */
       usage: SessionUsage
+      /** 会话到这里为止的累计用量，含子代理和工作流，各模型相加；CLI 没给时省略。 */
+      totalUsage?: SessionUsage
     }
   | { type: "error"; code: string; message: string }
   | { type: "ended"; reason: "completed" | "stopped" | "error" }
+
+/** 适配器交给会话的全部输入：会话事件，加上只在主进程内部使用的后台任务信号。 */
+export type AdapterEvent = SessionEvent | BackgroundTaskSignal
 
 /** 界面用的模型信息；第一行是 CLI 的默认选择。 */
 export type ClaudeModel = {

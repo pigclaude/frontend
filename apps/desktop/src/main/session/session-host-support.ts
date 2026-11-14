@@ -8,6 +8,7 @@ import type { ClaudeAgentStartOptions } from "./claude-query-options"
 import type { SessionEnvironmentInput } from "./session-environment"
 import type { SessionEvent } from "./session-events"
 import type { ActiveSession } from "./session-host-active"
+import type { ClosedTurn } from "./session-turns"
 import type {
   SessionEnvironmentFactory,
   SessionEnvironmentPort,
@@ -20,22 +21,12 @@ import { classifyDaemonError } from "./session-error-mapping"
 import { SessionHostError } from "./session-types"
 import type { UsageRecord } from "./usage-recorder"
 
-/** 构造用量记录所需的 turn 状态；由 SessionHost 的活动会话结构满足。 */
+/** 构造用量记录所需的会话状态；由活动会话结构满足。 */
 export type UsageTurnState = {
   sessionId: string
-  turnId: string | null
   accountId: string | null
   model: string | null
   switchedFrom: string | null
-  turnCancelled: boolean
-  turnErrorCode: string | null
-}
-
-/** 当前回合结束后才能接收下一条消息。 */
-export function assertTurnIdle(turn: Pick<ActiveSession, "turnId">): void {
-  if (turn.turnId !== null) {
-    throw new SessionHostError("SESSION_ALREADY_ACTIVE", "当前请求尚未结束")
-  }
 }
 
 /** 校验工作区是存在、可读的绝对目录；否则统一抛 WORKSPACE_UNAVAILABLE。 */
@@ -79,37 +70,29 @@ export function sanitizeStartError(error: unknown, token: string): SessionHostEr
   return new SessionHostError("SDK_ERROR", redactSessionToken(errorMessage(error), token))
 }
 
-/** 用当前 turn 和 result 事件构造只含元数据的用量记录；没有 turn 时返回 null。 */ export function buildUsageRecord(
-  turn: UsageTurnState,
-  event: Extract<SessionEvent, { type: "result" }>,
+/** 用刚结束的一轮构造只含元数据的用量记录：正常结束记成功，出错记错误，被停止记取消。 */
+export function buildUsageRecord(
+  state: UsageTurnState,
+  turn: ClosedTurn,
   now: number,
-): UsageRecord | null {
-  if (turn.turnId === null) return null
-  const status: UsageRecord["status"] = turn.turnCancelled
-    ? "cancelled"
-    : event.isError || turn.turnErrorCode !== null
-      ? "error"
-      : "success"
-  const errorCode = turn.turnCancelled
-    ? "SESSION_CANCELLED"
-    : status === "error"
-      ? (turn.turnErrorCode ?? "SDK_ERROR")
-      : null
+): UsageRecord {
+  const status: UsageRecord["status"] =
+    turn.status === "completed" ? "success" : turn.status === "error" ? "error" : "cancelled"
   return {
     schemaVersion: 1,
     at: new Date(now).toISOString(),
-    sessionId: turn.sessionId,
+    sessionId: state.sessionId,
     turnId: turn.turnId,
-    accountId: turn.accountId,
-    model: turn.model,
-    inputTokens: event.usage.inputTokens,
-    outputTokens: event.usage.outputTokens,
-    cacheReadTokens: event.usage.cacheReadTokens,
-    cacheCreationTokens: event.usage.cacheCreationTokens,
-    durationMs: event.durationMs,
+    accountId: state.accountId,
+    model: state.model,
+    inputTokens: turn.usage.inputTokens,
+    outputTokens: turn.usage.outputTokens,
+    cacheReadTokens: turn.usage.cacheReadTokens,
+    cacheCreationTokens: turn.usage.cacheCreationTokens,
+    durationMs: turn.durationMs,
     status,
-    errorCode,
-    switchedFrom: turn.switchedFrom,
+    errorCode: status === "success" ? null : turn.errorCode,
+    switchedFrom: state.switchedFrom,
   }
 }
 
@@ -142,7 +125,7 @@ export const noPendingWork: SessionPendingWork = Object.freeze({ turns: 0, appro
 /** 统计活动会话里退出会中断的工作；没有会话或会话正在结束时都为 0。 */
 export function pendingWorkOf(active: ActiveSession | null): SessionPendingWork {
   if (active === null || active.stopping || active.released) return noPendingWork
-  return { turns: active.turnId === null ? 0 : 1, approvals: active.broker.pendingCount }
+  return { turns: active.turns.turnId === null ? 0 : 1, approvals: active.broker.pendingCount }
 }
 
 /** 返回脱敏会话快照；没有活动会话时所有 id 和模型为 null。 */
@@ -165,7 +148,7 @@ export function buildStatusView(active: ActiveSession | null): SessionStatusView
     permissionMode: active.permissionMode,
     accountId: active.accountId,
     pendingPermissions: active.broker.pendingCount,
-    turnId: active.turnId,
+    turnId: active.turns.turnId,
   }
 }
 

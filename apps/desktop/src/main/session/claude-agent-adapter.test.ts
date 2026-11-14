@@ -7,7 +7,7 @@ import type {
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
-import { ClaudeAgentAdapter, type SessionEvent } from "./claude-agent-adapter"
+import { ClaudeAgentAdapter, type AdapterEvent } from "./claude-agent-adapter"
 import {
   capture,
   collectPrompt,
@@ -21,7 +21,7 @@ describe("ClaudeAgentAdapter", () => {
   it("starts the SDK with the fixed isolated options", async () => {
     const fake = new FakeQuery()
     const captured: CapturedQuery[] = []
-    const events: SessionEvent[] = []
+    const events: AdapterEvent[] = []
     const canUseTool: CanUseTool = async () => ({ behavior: "allow" })
     const abortController = new AbortController()
     const adapter = new ClaudeAgentAdapter({
@@ -83,7 +83,7 @@ describe("ClaudeAgentAdapter", () => {
   })
 
   it("broadcasts a typed error and ends when binary resolution fails", async () => {
-    const events: SessionEvent[] = []
+    const events: AdapterEvent[] = []
     let queryFnCalls = 0
     const adapter = new ClaudeAgentAdapter({
       queryFn: (params) => {
@@ -127,7 +127,7 @@ describe("ClaudeAgentAdapter", () => {
 
   it("closes the query and rejects sends after the stream ends", async () => {
     const fake = new FakeQuery()
-    const events: SessionEvent[] = []
+    const events: AdapterEvent[] = []
     const adapter = new ClaudeAgentAdapter({
       queryFn: capture(fake, []),
       resolveBinaryPath: () => "/resolved/claude",
@@ -148,7 +148,7 @@ describe("ClaudeAgentAdapter", () => {
 
   it("maps init, partial, assistant, tool result and result messages to session events", async () => {
     const fake = new FakeQuery()
-    const events: SessionEvent[] = []
+    const events: AdapterEvent[] = []
     const adapter = new ClaudeAgentAdapter({
       queryFn: capture(fake, []),
       resolveBinaryPath: () => "/resolved/claude",
@@ -216,7 +216,7 @@ describe("ClaudeAgentAdapter", () => {
   it("forwards send input to the prompt stream and closes the query once", async () => {
     const fake = new FakeQuery()
     const prompts: SDKUserMessage[] = []
-    const events: SessionEvent[] = []
+    const events: AdapterEvent[] = []
     const adapter = new ClaudeAgentAdapter({
       queryFn: (params) => {
         void collectPrompt(params.prompt, prompts)
@@ -275,7 +275,7 @@ describe("ClaudeAgentAdapter", () => {
 
   it("emits an error and ends when the SDK stream fails", async () => {
     const fake = new FakeQuery()
-    const events: SessionEvent[] = []
+    const events: AdapterEvent[] = []
     const adapter = new ClaudeAgentAdapter({
       queryFn: capture(fake, []),
       resolveBinaryPath: () => "/resolved/claude",
@@ -358,7 +358,7 @@ describe("ClaudeAgentAdapter", () => {
       },
     ])
     const captured: CapturedQuery[] = []
-    const events: SessionEvent[] = []
+    const events: AdapterEvent[] = []
     const adapter = new ClaudeAgentAdapter({
       queryFn: capture(fake, captured),
       resolveBinaryPath: () => "/resolved/claude",

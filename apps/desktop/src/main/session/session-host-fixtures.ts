@@ -11,6 +11,7 @@ import type { DevProviderOverride } from "./dev-provider"
 import type { SessionEnvelope } from "./session-envelope"
 import type { SessionEnvironmentInput } from "./session-environment"
 import type {
+  SessionAdapterFactory,
   SessionAdapterPort,
   SessionEnvironmentFactory,
   SessionEnvironmentPort,
@@ -191,6 +192,7 @@ export class FakeAdapter implements SessionAdapterPort {
   canUseTool: CanUseTool | null = null
   interrupts = 0
   stops = 0
+  readonly stoppedTasks: string[] = []
   /** 切到自动审批时抛出的错误，模拟 Claude Code 拒绝。 */
   autoRefusal: Error | null = null
   /** 任何模式切换都抛出的错误，模拟 CLI 已经不可用。 */
@@ -239,6 +241,10 @@ export class FakeAdapter implements SessionAdapterPort {
     await Promise.resolve()
     this.interrupts += 1
     this.#trace.push("interrupted")
+  }
+
+  async stopTask(taskId: string): Promise<void> {
+    this.stoppedTasks.push(taskId)
   }
 
   async stop(): Promise<void> {
@@ -357,6 +363,8 @@ export type HarnessOptions = {
   provider?: DevProviderOverride
   /** 宿主的时钟；省略时固定在 fixedNow，只随读组织模型的耗时前进。 */
   now?: () => number
+  /** 换掉假适配器，例如接上假 SDK query 的真实适配器；adapters 这时不记录实例。 */
+  createAdapter?: SessionAdapterFactory
 }
 
 export type SessionHarness = {
@@ -402,7 +410,7 @@ export function createHarness(options: HarnessOptions): SessionHarness {
     runtime,
     usage,
     userDataPath,
-    createAdapter: adapters.create,
+    createAdapter: options.createAdapter ?? adapters.create,
     resolveBinaryPath: options.resolveBinaryPath ?? (() => "/fake/claude"),
     resolveProfile: async () =>
       options.resolveProfile ?? { timezone: "America/Los_Angeles", locale: "en-US" },

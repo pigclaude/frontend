@@ -8,9 +8,10 @@ import { buildQueryOptions, type ClaudeAgentStartOptions } from "./claude-query-
 import { normalizeSdkMessage } from "./claude-sdk-messages"
 import { PromptStream } from "./prompt-stream"
 import { classifyDaemonError } from "./session-error-mapping"
-import type { ClaudeModel, SessionEvent, SessionPermissionMode } from "./session-events"
+import type { AdapterEvent, ClaudeModel, SessionPermissionMode } from "./session-events"
 
 export type {
+  AdapterEvent,
   ClaudeModel,
   SessionContentBlock,
   SessionEvent,
@@ -23,7 +24,7 @@ export type {
 export type ClaudeAgentAdapterOptions = {
   queryFn?: QueryFn
   resolveBinaryPath?: () => string
-  onEvent?: (event: SessionEvent) => void
+  onEvent?: (event: AdapterEvent) => void
   /** 一次性模型查询的有界等待时间；超时后关闭 query 并抛出可读错误。 */
   modelsTimeoutMs?: number
 }
@@ -32,7 +33,7 @@ export type ClaudeAgentAdapterOptions = {
 export class ClaudeAgentAdapter {
   readonly #queryFn: QueryFn
   readonly #resolveBinaryPath: () => string
-  readonly #onEvent: ((event: SessionEvent) => void) | undefined
+  readonly #onEvent: ((event: AdapterEvent) => void) | undefined
   readonly #modelsTimeoutMs: number
   #query: AdapterQuery | null = null
   #prompt: PromptStream | null = null
@@ -116,6 +117,13 @@ export class ClaudeAgentAdapter {
     return pending
   }
 
+  /** 停止一个在途的后台任务；任务已经结束、会话未启动或已停止时什么也不做。 */
+  async stopTask(taskId: string): Promise<void> {
+    const query = this.#query
+    if (query === null || this.#stopped) return
+    await query.stopTask(taskId).catch(() => undefined)
+  }
+
   /**
    * 结束输入流并关闭 SDK 进程；重复调用返回同一个 Promise，ended 只广播一次。未启动时不缓存。
    * 保证返回前等待在途的 query 创建和消息迭代结束，调用方随后清理目录不会与 CLI 启动竞态。
@@ -193,7 +201,7 @@ export class ClaudeAgentAdapter {
     for (const event of normalizeSdkMessage(message)) this.#emit(event)
   }
 
-  #emit(event: SessionEvent): void {
+  #emit(event: AdapterEvent): void {
     try {
       this.#onEvent?.(event)
     } catch {

@@ -3,7 +3,7 @@
 import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
 import { describe, expect, it } from "vitest"
 import { ClaudeSession } from "./claude-session"
-import { AdapterFactory, fixedNow } from "./session-host-fixtures"
+import { AdapterFactory, fixedNow, waitUntil } from "./session-host-fixtures"
 import type { SessionEnvironmentPort, SessionHostEvent } from "./session-types"
 import type { UsageRecord } from "./usage-recorder"
 
@@ -74,11 +74,11 @@ describe("ClaudeSession", () => {
 
     expect(adapters.last.sent).toEqual(["hello"])
     expect(usage).toMatchObject([{ sessionId: "s-1", turnId: "turn-1", status: "success" }])
-    expect(events.map((event) => event.type)).toEqual(["result"])
+    expect(events.map((event) => event.type)).toEqual(["turn-started", "result", "turn-ended"])
     expect(session.status()).toMatchObject({ active: true, sessionId: "s-1", turnId: null })
   })
 
-  it("denies an unanswered permission when its own timer fires", async () => {
+  it("denies an unanswered permission and ends the turn when its own timer fires", async () => {
     const { session, adapters, events, timers } = standaloneSession()
     await session.launch(undefined)
     await session.send({ text: "run ls" })
@@ -94,8 +94,14 @@ describe("ClaudeSession", () => {
       code: "PERMISSION_TIMEOUT",
       message: "权限询问超时",
     })
+    await waitUntil(() => session.pendingWork().turns === 0)
     expect(adapters.last.interrupts).toBe(1)
-    expect(session.pendingWork()).toEqual({ turns: 1, approvals: 0 })
+    expect(events.at(-1)).toEqual({
+      type: "turn-ended",
+      turnId: "turn-1",
+      status: "error",
+      errorCode: "PERMISSION_TIMEOUT",
+    })
   })
 
   it("ends once, cleans its environment and tells its owner", async () => {

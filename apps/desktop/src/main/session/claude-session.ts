@@ -1,5 +1,5 @@
 // 负责一个 Claude 会话的运行：发送、取消、权限回答、模式和模型切换、结束，以及把适配器事件变成会话事件和用量记录。
-// 发出的事件都经这个会话自己的事件日志盖上时间和序号。
+// 回合开闭交给 SessionTurns；发出的事件都经这个会话自己的事件日志盖上时间和序号。
 // 只依赖这一个会话的适配器、事件出口、时钟和定时器，不引用会话宿主或模块级单例。
 
 import type { DevProviderOverride } from "./dev-provider"
@@ -7,7 +7,6 @@ import type { PermissionAnswer } from "./permission-broker"
 import type { SessionEnvelope } from "./session-envelope"
 import { classifyDaemonError } from "./session-error-mapping"
 import { SessionEventLog } from "./session-event-log"
-import type { SessionEvent } from "./session-events"
 import { createActiveSession, type ActiveSession, type SessionTimers } from "./session-host-active"
 import {
   enterRequestedMode,
@@ -17,7 +16,6 @@ import {
 } from "./session-host-modes"
 import { applyModelChange } from "./session-host-provider"
 import {
-  assertTurnIdle,
   buildStartOptions,
   buildStatusView,
   buildUsageRecord,
@@ -29,6 +27,8 @@ import {
   type SessionPendingWork,
 } from "./session-host-support"
 import type { ClaudeAgentStartOptions } from "./claude-query-options"
+import type { AdapterEvent } from "./session-events"
+import type { ClosedTurn } from "./session-turns"
 import type {
   SessionAdapterFactory,
   SessionEnvironmentPort,
@@ -80,7 +80,10 @@ export class ClaudeSession {
       createAdapter: options.createAdapter,
       permissionTimeoutMs: options.permissionTimeoutMs,
       timers: options.timers,
+      now: options.now,
       emitPermission: (request) => this.#publish(request),
+      emitTurn: (event) => this.#publish(event),
+      onTurnClosed: (_active, turn) => this.#handleTurnClosed(turn),
       onPermissionTimeout: () => this.#handlePermissionTimeout(),
       onAdapterEvent: (_active, event) => this.#handleAdapterEvent(event),
     })
@@ -105,39 +108,35 @@ export class ClaudeSession {
     this.#publish({ type: "mode", permissionMode: this.state.permissionMode })
   }
 
-  /** 写入一条消息；如有工作台回调，在交给适配器之前记录基线。 */
+  /**
+   * 写入一条消息，被接受后开一轮；如有工作台回调，在交给适配器之前记录基线。
+   * 上一轮（含它的后台子代理和工作流）没结束时抛 SESSION_ALREADY_ACTIVE。
+   */
   async send(input: SessionSendInput, checkpoint?: ActiveSession["checkpoint"]): Promise<void> {
     const active = this.state
-    assertTurnIdle(active)
-    active.turnId = this.#options.newId()
-    active.turnCancelled = false
-    active.turnErrorCode = null
+    const turnId = active.turns.reserve(this.#options.newId)
     active.checkpoint = checkpoint
     try {
       await checkpoint?.(active.environment.workspace, "baseline")
-      if (active.stopping || active.released || active.turnCancelled) {
-        active.turnId = null
+      if (active.stopping || active.released || !active.turns.holds(turnId)) {
+        active.turns.release(turnId)
         return
       }
       await active.adapter.send(input.text)
     } catch (error) {
-      active.turnId = null
+      active.turns.release(turnId)
       const message = errorMessage(error)
       const code = classifyDaemonError(message) ?? "SDK_ERROR"
       throw hostError(code, message, this.#options.sessionToken())
     }
+    active.turns.open(turnId)
   }
 
-  /** 取消当前 turn：立即拒绝未回答权限并中断，但保留会话供下一次发送。 */
+  /** 停止当前一轮：拒绝未回答权限，中断并停止在途后台任务，以中断结束这一轮；会话保留供下一次发送。 */
   async cancel(): Promise<void> {
     const active = this.state
-    if (active.turnId !== null) {
-      active.turnCancelled = true
-      active.turnErrorCode = "SESSION_CANCELLED"
-      this.#publish({ type: "error", code: "SESSION_CANCELLED", message: "当前请求已取消" })
-    }
     active.broker.rejectAll("用户已取消")
-    await active.adapter.interrupt().catch(() => undefined)
+    await active.turns.stop("interrupted", "SESSION_CANCELLED")
   }
 
   /** 写回一次权限回答；未知 requestId 由 PermissionBroker 忽略。 */
@@ -160,8 +159,8 @@ export class ClaudeSession {
   }
 
   /**
-   * 结束会话：拒绝权限，再中断（会员失效时直接中止并报错）、停止适配器、清理环境。
-   * 重复调用返回同一个 Promise。
+   * 结束会话：拒绝权限，再中断并停止在途后台任务（会员失效时直接中止并报错），以中断结束进行中的一轮，
+   * 然后停止适配器、清理环境。重复调用返回同一个 Promise。
    */
   end(rejectMessage: string, errorCode: "MEMBERSHIP_REQUIRED" | null): Promise<void> {
     const active = this.state
@@ -172,8 +171,9 @@ export class ClaudeSession {
       if (errorCode !== null) {
         this.#publish({ type: "error", code: errorCode, message: rejectMessage })
         active.abort.abort()
+        active.turns.end("interrupted", errorCode)
       } else {
-        await active.adapter.interrupt().catch(() => undefined)
+        await active.turns.stop("interrupted", "SESSION_CANCELLED")
       }
       await active.adapter.stop().catch(() => undefined)
       await this.release()
@@ -197,7 +197,7 @@ export class ClaudeSession {
    */
   applyAccountSwitch(event: SessionRuntimeEvent): void {
     const active = this.state
-    if (event.reason !== "initial" && event.from !== null && active.turnId !== null) {
+    if (event.reason !== "initial" && event.from !== null && active.turns.turnId !== null) {
       active.switchedFrom = event.from
     }
     active.accountId = event.to
@@ -231,10 +231,15 @@ export class ClaudeSession {
     return pendingWorkOf(this.state)
   }
 
-  #handleAdapterEvent(event: SessionEvent): void {
+  #handleAdapterEvent(event: AdapterEvent): void {
     const active = this.state
     if (active.released) return
     switch (event.type) {
+      case "background-tasks":
+      case "background-task-started":
+      case "background-task-ended":
+        active.turns.observe(event)
+        return
       case "started":
         active.model = event.model
         followReportedMode(active, event.permissionMode, "init", this.#emitModeEvent)
@@ -243,14 +248,16 @@ export class ClaudeSession {
         followReportedMode(active, event.permissionMode, "status", this.#emitModeEvent)
         return
       case "result":
-        if (active.turnId !== null) void active.checkpoint?.(active.environment.workspace, "final")
-        this.#recordUsage(event)
-        break
+        this.#publish(event)
+        active.turns.observe(event)
+        return
       case "error":
-        active.turnErrorCode = event.code
+        active.turns.observe(event)
         break
       case "ended":
         active.broker.rejectAll("会话已结束")
+        if (active.stopping) active.turns.end("interrupted", "SESSION_CANCELLED")
+        else active.turns.end("error", "SDK_ERROR")
         this.#publish(sanitizeSessionEvent(event, this.#options.sessionToken()))
         if (!active.stopping) void this.release()
         return
@@ -260,13 +267,12 @@ export class ClaudeSession {
     this.#publish(sanitizeSessionEvent(event, this.#options.sessionToken()))
   }
 
-  #recordUsage(event: Extract<SessionEvent, { type: "result" }>): void {
+  #handleTurnClosed(turn: ClosedTurn): void {
     const active = this.state
-    const record = buildUsageRecord(active, event, this.#options.now())
-    if (record === null) return
-    active.turnId = null
-    active.turnCancelled = false
-    active.turnErrorCode = null
+    if (!active.stopping && !active.released) {
+      void active.checkpoint?.(active.environment.workspace, "final")
+    }
+    const record = buildUsageRecord(active, turn, this.#options.now())
     active.switchedFrom = null
     this.#options.recordUsage(record)
   }
@@ -274,11 +280,10 @@ export class ClaudeSession {
   #handlePermissionTimeout(): void {
     const active = this.state
     if (active.released) return
-    active.turnErrorCode = "PERMISSION_TIMEOUT"
     this.#publish({ type: "error", code: "PERMISSION_TIMEOUT", message: "权限询问超时" })
     // 同一 turn 的其它权限卡片不能继续悬挂。
     active.broker.rejectAll("权限询问超时")
-    void active.adapter.interrupt().catch(() => undefined)
+    void active.turns.stop("error", "PERMISSION_TIMEOUT")
   }
 
   #publish(event: SessionHostEvent): void {

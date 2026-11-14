@@ -65,12 +65,16 @@ class AsyncQueue<T> implements AsyncIterator<T> {
   }
 }
 
-/** 假的 SDK query，实现适配器需要的迭代、interrupt、close 和 supportedModels。 */
+/** 假的 SDK query，实现适配器需要的迭代、interrupt、stopTask、close 和 supportedModels。 */
 export class FakeQuery implements AdapterQuery {
   readonly #messages = new AsyncQueue<SDKMessage>()
   readonly #models: ModelInfo[]
   readonly permissionModes: string[] = []
   readonly modelChanges: (string | undefined)[] = []
+  /** 中断和停止单个任务的控制请求，按到达顺序，形如 interrupt、stopTask:<id>。 */
+  readonly controls: string[] = []
+  /** 中断返回之后调用；测试用它模拟中断后才到达的消息。 */
+  afterInterrupt: (() => void) | null = null
   interrupts = 0
   closes = 0
 
@@ -96,6 +100,13 @@ export class FakeQuery implements AdapterQuery {
 
   async interrupt(): Promise<void> {
     this.interrupts += 1
+    this.controls.push("interrupt")
+    const after = this.afterInterrupt
+    if (after !== null) setTimeout(after, 0)
+  }
+
+  async stopTask(taskId: string): Promise<void> {
+    this.controls.push(`stopTask:${taskId}`)
   }
 
   close(): void {

@@ -12,6 +12,7 @@ import {
   chatScreenRoot,
   clickButton,
   sessionController as controller,
+  sessionTime,
   startingState,
   typeAndSend,
 } from "../test-support/chat-screen-harness"
@@ -130,9 +131,15 @@ describe("chat screen", () => {
           setState((current) => {
             let next = reduceSession(current, { type: "starting" })
             next = reduceSession(next, { type: "opened", sessionId: "session-1" })
-            next = reduceSession(next, { type: "user-message", text: "改一下", turnId: "turn-1" })
+            next = reduceSession(next, {
+              type: "user-message",
+              text: "改一下",
+              turnId: "turn-1",
+              at: sessionTime,
+            })
             return reduceSession(next, {
               type: "event",
+              at: sessionTime,
               event: { type: "delta", text: "先看", thinking: false, blockIndex: 0 },
             })
           })
@@ -155,7 +162,7 @@ describe("chat screen", () => {
   })
 
   it("starts a new session after the previous one is stopped", async () => {
-    const stopped = reduceSession(startingState(), { type: "stopped" })
+    const stopped = reduceSession(startingState(), { type: "stopped", at: sessionTime })
     const start = vi.fn(async () => true)
     await screen.render({ fresh: false, session: controller({ state: stopped, start }) })
 
@@ -167,10 +174,12 @@ describe("chat screen", () => {
     let state = startingState()
     state = reduceSession(state, {
       type: "event",
+      at: sessionTime,
       event: { type: "delta", text: "先看", thinking: false, blockIndex: 0 },
     })
     state = reduceSession(state, {
       type: "event",
+      at: sessionTime,
       event: { type: "delta", text: "一下重试条件", thinking: false, blockIndex: 0 },
     })
 
@@ -185,6 +194,7 @@ describe("chat screen", () => {
     let state = startingState()
     state = reduceSession(state, {
       type: "event",
+      at: sessionTime,
       event: {
         type: "message",
         messageId: "m1",
@@ -195,6 +205,7 @@ describe("chat screen", () => {
     })
     state = reduceSession(state, {
       type: "event",
+      at: sessionTime,
       event: { type: "tool-result", toolUseId: "tool-1", content: "文件内容", isError: false },
     })
 
@@ -212,6 +223,7 @@ describe("chat screen", () => {
     let state = startingState()
     state = reduceSession(state, {
       type: "event",
+      at: sessionTime,
       event: {
         type: "permission",
         requestId: "permission-1",
@@ -251,6 +263,7 @@ describe("chat screen", () => {
     let state = startingState()
     state = reduceSession(state, {
       type: "event",
+      at: sessionTime,
       event: { type: "account-switched", from: "account-a", to: "account-b", reason: "quota" },
     })
 
@@ -277,6 +290,7 @@ describe("chat screen", () => {
     const session = controller({
       state: reduceSession(startingState(), {
         type: "failed",
+        at: sessionTime,
         message: "没有可用的 Claude 账号，请添加或重新授权",
         code: "NO_AVAILABLE_ACCOUNT",
       }),

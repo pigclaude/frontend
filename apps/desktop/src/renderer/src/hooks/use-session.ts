@@ -1,5 +1,5 @@
-// 负责把 preload 会话桥接到界面控制器：订阅事件、维护会话模型、加载模型探针并转发命令。
-// 页面只消费这个控制器，不直接调用 window.pigclaude。
+// 负责把 preload 会话桥接到界面控制器：订阅事件信封、维护会话模型、加载模型探针，
+// 并把命令带上会话 id 转发。页面只消费这个控制器，不直接调用 window.pigclaude。
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react"
 import type {
@@ -8,13 +8,14 @@ import type {
   SessionStartInput,
   SessionStatusView,
 } from "../../../main/session/session-types"
+import { SessionEnvelopeIntake } from "../models/session-envelope-intake"
 import {
   createSessionState,
   reduceSession,
   sessionErrorText,
-  type SessionPermissionStatus,
   type SessionUiState,
 } from "../models/session-model"
+import type { SessionPermissionStatus } from "../models/session-permissions"
 
 /** 聊天页和环境页共用的会话控制器。 */
 export type SessionController = {
@@ -48,6 +49,11 @@ export type SessionController = {
 }
 
 const modelsTimeoutMs = 20_000
+const notStarted = "SDK_ERROR: 会话未开始"
+
+function now(): string {
+  return new Date().toISOString()
+}
 
 /** 订阅会话事件。传入 null 表示桌面桥不可用，所有命令都会给出可读错误。 */
 export function useSession(bridge?: SessionBridge | null): SessionController {
@@ -60,6 +66,7 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
   const [modelsCliError, setModelsCliError] = useState<string | null>(null)
   const turnSeq = useRef(0)
   const activeTurnRef = useRef<string | null>(null)
+  const targetRef = useRef<string | null>(null)
   const modelsLoaded = useRef(false)
   const modelsLoadingRef = useRef(false)
   const modelsRequest = useRef(0)
@@ -124,29 +131,39 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
 
   useEffect(() => {
     if (resolved === null || resolved === undefined) return
-    const unsubscribe = resolved.subscribe((event) => {
-      if (event.type === "result" || event.type === "ended") activeTurnRef.current = null
-      dispatch({ type: "event", event })
+    const intake = new SessionEnvelopeIntake({
+      fetch: (sessionId, afterSeq) => resolved.events({ sessionId, afterSeq }),
+      apply: ({ sessionId, event, at }) => {
+        if (targetRef.current === null && sessionId !== null) targetRef.current = sessionId
+        if (event.type === "result" || event.type === "ended") activeTurnRef.current = null
+        dispatch({ type: "event", event, at })
+      },
     })
+    const unsubscribe = resolved.subscribe((envelope) => intake.receive(envelope))
     void refreshStatus()
-    return unsubscribe
+    return () => {
+      intake.close()
+      unsubscribe()
+    }
   }, [refreshStatus, resolved])
 
   const start = useCallback(
     async (input: SessionStartInput): Promise<boolean> => {
       if (resolved === null || resolved === undefined) {
-        dispatch({ type: "failed", message: "桌面会话服务不可用" })
+        dispatch({ type: "failed", message: "桌面会话服务不可用", at: now() })
         return false
       }
       dispatch({ type: "starting" })
       activeTurnRef.current = null
+      targetRef.current = null
       try {
         const result = await resolved.start(input)
+        targetRef.current = result.sessionId
         dispatch({ type: "opened", sessionId: result.sessionId })
         void refreshStatus()
         return true
       } catch (error: unknown) {
-        dispatch({ type: "failed", message: sessionErrorFrom(error) })
+        dispatch({ type: "failed", message: sessionErrorFrom(error), at: now() })
         return false
       }
     },
@@ -156,21 +173,26 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
   const send = useCallback(
     async (text: string): Promise<boolean> => {
       if (resolved === null || resolved === undefined) {
-        dispatch({ type: "failed", message: "桌面会话服务不可用" })
+        dispatch({ type: "failed", message: "桌面会话服务不可用", at: now() })
         return false
       }
       // 当前 turn 未结束时拒绝第二次发送，避免为一个 turn 建两条用户消息。
       if (activeTurnRef.current !== null) return false
+      const sessionId = targetRef.current
+      if (sessionId === null) {
+        dispatch({ type: "failed", message: notStarted, at: now() })
+        return false
+      }
       turnSeq.current += 1
       const turnId = `turn-${turnSeq.current}`
       activeTurnRef.current = turnId
-      dispatch({ type: "user-message", text, turnId })
+      dispatch({ type: "user-message", text, turnId, at: now() })
       try {
-        await resolved.send({ text })
+        await resolved.send({ sessionId, text })
         return true
       } catch (error: unknown) {
         activeTurnRef.current = null
-        dispatch({ type: "failed", message: sessionErrorFrom(error) })
+        dispatch({ type: "failed", message: sessionErrorFrom(error), at: now() })
         return false
       }
     },
@@ -178,23 +200,26 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
   )
 
   const cancel = useCallback(async (): Promise<void> => {
-    dispatch({ type: "cancel-requested" })
+    dispatch({ type: "cancel-requested", at: now() })
+    const sessionId = targetRef.current
+    if (sessionId === null) return
     try {
-      await resolved?.cancel()
+      await resolved?.cancel({ sessionId })
     } catch (error: unknown) {
-      dispatch({ type: "failed", message: sessionErrorFrom(error) })
+      dispatch({ type: "failed", message: sessionErrorFrom(error), at: now() })
     }
   }, [resolved])
 
   const stop = useCallback(async (): Promise<void> => {
+    const sessionId = targetRef.current
     try {
-      await resolved?.stop()
+      if (sessionId !== null) await resolved?.stop({ sessionId })
     } catch (error: unknown) {
-      dispatch({ type: "failed", message: sessionErrorFrom(error) })
+      dispatch({ type: "failed", message: sessionErrorFrom(error), at: now() })
       return
     }
     activeTurnRef.current = null
-    dispatch({ type: "stopped" })
+    dispatch({ type: "stopped", at: now() })
     void refreshStatus()
   }, [refreshStatus, resolved])
 
@@ -204,9 +229,12 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
       decision: "allow" | "deny",
       updatedPermissions?: unknown[],
     ): Promise<void> => {
-      dispatch({ type: "permission-answered", requestId, decision })
+      dispatch({ type: "permission-answered", requestId, decision, at: now() })
+      const sessionId = targetRef.current
+      if (sessionId === null) return
       try {
         await resolved?.respondPermission({
+          sessionId,
           requestId,
           decision,
           ...(updatedPermissions === undefined || updatedPermissions.length === 0
@@ -214,7 +242,7 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
             : { updatedPermissions }),
         })
       } catch (error: unknown) {
-        dispatch({ type: "failed", message: sessionErrorFrom(error) })
+        dispatch({ type: "failed", message: sessionErrorFrom(error), at: now() })
       }
     },
     [resolved],
@@ -222,10 +250,12 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
 
   const setMode = useCallback(
     async (mode: SessionUiState["permissionMode"]): Promise<void> => {
+      const sessionId = targetRef.current
+      if (sessionId === null) return
       try {
-        await resolved?.setMode(mode)
+        await resolved?.setMode({ sessionId, mode })
       } catch (error: unknown) {
-        dispatch({ type: "failed", message: sessionErrorFrom(error) })
+        dispatch({ type: "failed", message: sessionErrorFrom(error), at: now() })
       }
     },
     [resolved],
@@ -234,10 +264,12 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
   const setModel = useCallback(
     async (model: string): Promise<void> => {
       dispatch({ type: "model-changed", model })
+      const sessionId = targetRef.current
+      if (sessionId === null) return
       try {
-        await resolved?.setModel(model)
+        await resolved?.setModel({ sessionId, model })
       } catch (error: unknown) {
-        dispatch({ type: "failed", message: sessionErrorFrom(error) })
+        dispatch({ type: "failed", message: sessionErrorFrom(error), at: now() })
       }
     },
     [resolved],

@@ -10,6 +10,7 @@ import type { PermissionRequestEvent } from "./permission-broker"
 import {
   autoModeRefusal,
   createHarness,
+  currentSessionId,
   waitUntil,
   type SessionHarness,
 } from "./session-host-fixtures"
@@ -85,7 +86,7 @@ describe("SessionHost permission modes", () => {
       "auto mode is unavailable for your plan",
     )
 
-    await harness.host.setMode("auto")
+    await harness.host.setMode(currentSessionId(harness.host), "auto")
 
     expect(harness.adapters.last.modes).toEqual(["auto"])
     expect(harness.host.status().permissionMode).toBe("acceptEdits")
@@ -102,7 +103,7 @@ describe("SessionHost permission modes", () => {
       "auto mode availability is not known yet · ask again",
     )
 
-    await harness.host.setMode("auto")
+    await harness.host.setMode(currentSessionId(harness.host), "auto")
 
     expect(notices(harness)).toEqual([
       "自动审批不可用：Claude Code 还没确认能否使用，请稍后再试。会话按监督审批运行。",
@@ -117,7 +118,7 @@ describe("SessionHost permission modes", () => {
       "auto mode unavailable while fast mode is on · run /fast off",
     )
 
-    await harness.host.setMode("auto")
+    await harness.host.setMode(currentSessionId(harness.host), "auto")
 
     expect(harness.adapters.last.modes).toEqual(["auto", "default"])
     expect(harness.host.status().permissionMode).toBe("default")
@@ -133,7 +134,9 @@ describe("SessionHost permission modes", () => {
       "Cannot set permission mode to bypassPermissions because it is disabled by settings",
     )
 
-    await expect(harness.host.setMode("bypassPermissions")).rejects.toThrow(/^SDK_ERROR: Cannot/)
+    await expect(
+      harness.host.setMode(currentSessionId(harness.host), "bypassPermissions"),
+    ).rejects.toThrow(/^SDK_ERROR: Cannot/)
 
     expect(harness.host.status().permissionMode).toBe("default")
     expect(notices(harness)).toEqual([])
@@ -172,10 +175,10 @@ describe("SessionHost permission modes", () => {
   it("does not mistake a requested switch away from auto for Claude Code turning it off", async () => {
     const harness = await startedHarness("auto")
 
-    await harness.host.setMode("acceptEdits")
+    await harness.host.setMode(currentSessionId(harness.host), "acceptEdits")
     harness.adapters.last.lateModeEvents = true
-    await harness.host.setMode("auto")
-    await harness.host.setMode("default")
+    await harness.host.setMode(currentSessionId(harness.host), "auto")
+    await harness.host.setMode(currentSessionId(harness.host), "default")
     await waitUntil(() => modes(harness).at(-1) === "default")
 
     expect(harness.host.status().permissionMode).toBe("default")
@@ -194,7 +197,7 @@ describe("SessionHost permission modes", () => {
     })
     const request = await waitForPermission(harness)
 
-    await harness.host.setMode("acceptEdits")
+    await harness.host.setMode(currentSessionId(harness.host), "acceptEdits")
 
     expect(harness.adapters.last.modes).toEqual(["acceptEdits"])
     expect(harness.host.status()).toMatchObject({
@@ -203,7 +206,10 @@ describe("SessionHost permission modes", () => {
     })
     expect(settled).toBe(false)
 
-    await harness.host.respondPermission({ requestId: request.requestId, decision: "allow" })
+    await harness.host.respondPermission(currentSessionId(harness.host), {
+      requestId: request.requestId,
+      decision: "allow",
+    })
     const result = await approval
     expect(result).toMatchObject({ behavior: "allow" })
     expect(result).not.toHaveProperty("updatedPermissions")

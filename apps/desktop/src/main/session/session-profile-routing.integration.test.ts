@@ -92,8 +92,12 @@ it.each([
     })
     try {
       await runtime.start()
-      await host.start({ workspace: directory, accountId: "a", permissionMode: "default" })
-      await host.send({ text: "synthetic environment routing" })
+      const { sessionId } = await host.start({
+        workspace: directory,
+        accountId: "a",
+        permissionMode: "default",
+      })
+      await host.send(sessionId, { text: "synthetic environment routing" })
       expect(actualEnvironment.TZ).toBe("America/New_York")
       expect(actualEnvironment.LANG).toBe(process.platform === "win32" ? "en-US" : "en_US.UTF-8")
       expect(status).toBe(options.expectedStatus)

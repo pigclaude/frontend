@@ -5,7 +5,12 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 import type { SessionStartInput } from "./session-types"
-import { createHarness, waitUntil, type SessionHarness } from "./session-host-fixtures"
+import {
+  createHarness,
+  currentSessionId,
+  waitUntil,
+  type SessionHarness,
+} from "./session-host-fixtures"
 
 const temporaryDirs: string[] = []
 
@@ -155,7 +160,7 @@ describe("SessionHost start", () => {
     harness.runtime.switchAccount(null, "auto-account", "initial")
     expect(harness.host.status().accountId).toBe("auto-account")
 
-    await harness.host.send({ text: "hello" })
+    await harness.host.send(currentSessionId(harness.host), { text: "hello" })
     harness.adapters.last.emit(resultEvent())
     await waitUntil(() => harness.usage.records.length === 1)
 
@@ -174,7 +179,7 @@ describe("SessionHost events and usage", () => {
 
     adapter.emit(startedEvent("claude-sonnet-4"))
     adapter.emit({ type: "delta", text: "Hel", thinking: false, blockIndex: 0 })
-    await harness.host.send({ text: "hello" })
+    await harness.host.send(currentSessionId(harness.host), { text: "hello" })
     adapter.emit(resultEvent())
 
     await waitUntil(() => harness.usage.records.length === 1)
@@ -206,9 +211,9 @@ describe("SessionHost events and usage", () => {
 
   it("marks an interrupted turn as cancelled and keeps the session open", async () => {
     const harness = await startedHarness()
-    await harness.host.send({ text: "long task" })
+    await harness.host.send(currentSessionId(harness.host), { text: "long task" })
 
-    await harness.host.cancel()
+    await harness.host.cancel(currentSessionId(harness.host))
     harness.adapters.last.emit(resultEvent({ isError: true }))
     await waitUntil(() => harness.usage.records.length === 1)
 
@@ -226,7 +231,7 @@ describe("SessionHost events and usage", () => {
     const harness = await startedHarness()
     harness.runtime.switchAccount(null, "account-a", "initial")
 
-    await harness.host.send({ text: "hello" })
+    await harness.host.send(currentSessionId(harness.host), { text: "hello" })
     harness.runtime.switchAccount("account-a", "account-b", "quota")
 
     expect(harness.events.filter((event) => event.type === "account-switched")).toEqual([
@@ -251,12 +256,12 @@ describe("SessionHost events and usage", () => {
     const harness = await startedHarness()
 
     harness.runtime.switchAccount("account-1", "account-b", "switch")
-    await harness.host.send({ text: "first" })
+    await harness.host.send(currentSessionId(harness.host), { text: "first" })
     harness.adapters.last.emit(resultEvent())
     await waitUntil(() => harness.usage.records.length === 1)
     expect(harness.usage.records[0]?.switchedFrom).toBeNull()
 
-    await harness.host.send({ text: "second" })
+    await harness.host.send(currentSessionId(harness.host), { text: "second" })
     harness.runtime.switchAccount("account-b", "account-c", "quota")
     harness.adapters.last.emit(resultEvent())
     await waitUntil(() => harness.usage.records.length === 2)
@@ -292,7 +297,9 @@ describe("SessionHost events and usage", () => {
       code: "usage_write_failed",
       message: "用量记录写入失败",
     })
-    await expect(harness.host.send({ text: "still works" })).resolves.toBeUndefined()
+    await expect(
+      harness.host.send(currentSessionId(harness.host), { text: "still works" }),
+    ).resolves.toBeUndefined()
     expect(harness.adapters.last.sent).toEqual(["still works"])
     expect(harness.host.status().active).toBe(true)
     await harness.host.dispose()
@@ -300,9 +307,11 @@ describe("SessionHost events and usage", () => {
 
   it("rejects a second send until the active turn produces a result", async () => {
     const harness = await startedHarness()
-    await harness.host.send({ text: "first" })
+    await harness.host.send(currentSessionId(harness.host), { text: "first" })
 
-    await expect(harness.host.send({ text: "second" })).rejects.toMatchObject({
+    await expect(
+      harness.host.send(currentSessionId(harness.host), { text: "second" }),
+    ).rejects.toMatchObject({
       code: "SESSION_ALREADY_ACTIVE",
     })
     expect(harness.adapters.last.sent).toEqual(["first"])
@@ -311,7 +320,9 @@ describe("SessionHost events and usage", () => {
     harness.adapters.last.emit(resultEvent())
     await waitUntil(() => harness.host.status().turnId === null)
 
-    await expect(harness.host.send({ text: "second" })).resolves.toBeUndefined()
+    await expect(
+      harness.host.send(currentSessionId(harness.host), { text: "second" }),
+    ).resolves.toBeUndefined()
     expect(harness.adapters.last.sent).toEqual(["first", "second"])
     await harness.host.dispose()
   })
@@ -320,7 +331,7 @@ describe("SessionHost events and usage", () => {
     const harness = await startedHarness()
     const before = harness.events.length
 
-    await harness.host.cancel()
+    await harness.host.cancel(currentSessionId(harness.host))
 
     expect(harness.events.length).toBe(before)
     expect(harness.host.status().turnId).toBeNull()
@@ -330,7 +341,9 @@ describe("SessionHost events and usage", () => {
   it("rejects send when no session is active", async () => {
     const harness = createHarness({ workspace: await workspaceDir() })
 
-    await expect(harness.host.send({ text: "hello" })).rejects.toThrow(/会话未开始/)
+    await expect(
+      harness.host.send(currentSessionId(harness.host), { text: "hello" }),
+    ).rejects.toThrow(/会话未开始/)
     expect(harness.host.status()).toEqual({
       active: false,
       sessionId: null,

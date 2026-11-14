@@ -8,6 +8,7 @@ import type { ClaudeAgentStartOptions } from "./claude-query-options"
 import type { ClaudeModel, SessionEvent, SessionPermissionMode } from "./session-events"
 import type { DaemonEndpoint, OrganizationModel } from "./claude-bootstrap"
 import type { DevProviderOverride } from "./dev-provider"
+import type { SessionEnvelope } from "./session-envelope"
 import type { SessionEnvironmentInput } from "./session-environment"
 import type {
   SessionAdapterPort,
@@ -354,6 +355,8 @@ export type HarnessOptions = {
   bootstrapDelayMs?: number
   modelsError?: Error
   provider?: DevProviderOverride
+  /** 宿主的时钟；省略时固定在 fixedNow，只随读组织模型的耗时前进。 */
+  now?: () => number
 }
 
 export type SessionHarness = {
@@ -363,6 +366,9 @@ export type SessionHarness = {
   usage: FakeUsage
   adapters: AdapterFactory
   environments: EnvironmentFactory
+  /** 宿主广播的信封，按到达顺序。 */
+  envelopes: SessionEnvelope[]
+  /** 信封里的事件，按到达顺序。 */
   events: SessionHostEvent[]
   /** 每次经假 daemon 读组织模型时用的地址和令牌。 */
   bootstrapReads: DaemonEndpoint[]
@@ -386,6 +392,7 @@ export function createHarness(options: HarnessOptions): SessionHarness {
   )
   const userDataPath = options.userDataPath ?? "/tmp/pigclaude-session-host-user-data"
   const environments = new EnvironmentFactory(trace, userDataPath)
+  const envelopes: SessionEnvelope[] = []
   const events: SessionHostEvent[] = []
   const bootstrapReads: DaemonEndpoint[] = []
   let clock = fixedNow
@@ -407,12 +414,15 @@ export function createHarness(options: HarnessOptions): SessionHarness {
     ...(options.provider === undefined ? {} : { provider: options.provider }),
     defaultWorkspace: () => options.workspace,
     permissionTimeoutMs: options.permissionTimeoutMs ?? 10 * 60 * 1_000,
-    now: () => clock,
+    now: options.now ?? (() => clock),
     newId: () => `id-${(nextId += 1)}`,
     ...(options.useRealEnvironment ? {} : { createEnvironment: environments.create }),
   }
   const host = new SessionHost(hostOptions)
-  host.subscribe((event) => events.push(event))
+  host.subscribe((envelope) => {
+    envelopes.push(envelope)
+    events.push(envelope.event)
+  })
   return {
     host,
     membership,
@@ -420,12 +430,18 @@ export function createHarness(options: HarnessOptions): SessionHarness {
     usage,
     adapters,
     environments,
+    envelopes,
     events,
     bootstrapReads,
     trace,
     workspace: options.workspace,
     userDataPath,
   }
+}
+
+/** 宿主当前会话的 id；没有会话时为空字符串，命令按「会话未开始」处理。 */
+export function currentSessionId(host: SessionHost): string {
+  return host.status().sessionId ?? ""
 }
 
 /** 等待异步广播条件成立，避免固定延时。 */

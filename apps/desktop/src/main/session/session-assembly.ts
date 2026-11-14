@@ -6,7 +6,8 @@ import { accountSessionProfile } from "./account-session-profile"
 import { resolveClaudeBinaryPath } from "./claude-binary"
 import { devProviderHostOptions } from "./dev-provider"
 import { SessionHost } from "./session-host"
-import type { SessionHostEvent, SessionMembership, SessionRuntime } from "./session-types"
+import type { SessionEnvelope } from "./session-envelope"
+import type { SessionMembership, SessionRuntime } from "./session-types"
 import { UsageRecorder } from "./usage-recorder"
 
 /** 装配会话服务所需的应用环境。 */
@@ -21,8 +22,8 @@ export type SessionAssemblyInput = {
   systemLocale: () => string
   isPackaged: boolean
   env: Record<string, string | undefined>
-  /** 会话事件出口；事件都已脱敏。 */
-  onEvent: (event: SessionHostEvent) => void
+  /** 会话事件出口；事件都已脱敏并包在信封里。 */
+  onEvent: (envelope: SessionEnvelope) => void
 }
 
 /** 主进程持有的会话服务。 */

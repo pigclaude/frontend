@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 import type { DevProviderOverride } from "./dev-provider"
-import { createHarness } from "./session-host-fixtures"
+import { createHarness, currentSessionId } from "./session-host-fixtures"
 import { providerSessionProfile } from "./session-host-provider"
 import type { SessionStartInput } from "./session-types"
 
@@ -79,8 +79,10 @@ describe("SessionHost with dev provider", () => {
     const harness = await providerHarness()
     await harness.host.start(startInput(harness.workspace))
 
-    await expect(harness.host.setModel("claude-sonnet-4")).rejects.toThrow("已固定模型")
-    await harness.host.setModel(pinnedModel)
+    await expect(
+      harness.host.setModel(currentSessionId(harness.host), "claude-sonnet-4"),
+    ).rejects.toThrow("已固定模型")
+    await harness.host.setModel(currentSessionId(harness.host), pinnedModel)
     expect(harness.adapters.last.modelsSet).toHaveLength(0)
     await harness.host.dispose()
   })

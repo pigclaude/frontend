@@ -20,6 +20,7 @@ const errorTexts: Record<string, string> = {
   PERMISSION_TIMEOUT: "权限询问超时，已拒绝",
   SESSION_ALREADY_ACTIVE: "已有活动会话",
   SESSION_CANCELLED: "已取消当前请求",
+  SESSION_NOT_FOUND: "会话不存在或已结束",
   SDK_ERROR: "Claude 返回错误",
   SESSION_START_FAILED: "会话启动失败，请检查工作区和网络",
   usage_write_failed: "用量记录写入失败，不影响会话",

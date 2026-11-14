@@ -7,6 +7,7 @@ import type { ClaudeAgentStartOptions } from "./claude-query-options"
 import { ClaudeSession } from "./claude-session"
 import type { DevProviderOverride } from "./dev-provider"
 import type { PermissionAnswer } from "./permission-broker"
+import { hostEnvelope, type SessionEnvelope } from "./session-envelope"
 import { SessionEnvironment } from "./session-environment"
 import type { ActiveSession, SessionTimers } from "./session-host-active"
 import { pinnedCatalog } from "./session-host-provider"
@@ -81,7 +82,7 @@ export class SessionHost {
   readonly #permissionTimeoutMs: number
   readonly #now: () => number
   readonly #newId: () => string
-  readonly #listeners = new Set<(event: SessionHostEvent) => void>()
+  readonly #listeners = new Set<(envelope: SessionEnvelope) => void>()
   readonly #unsubscribeMembership: () => void
   readonly #unsubscribeRuntime: () => void
   readonly #unsubscribeUsage: () => void
@@ -110,7 +111,11 @@ export class SessionHost {
     this.#now = options.now ?? Date.now
     this.#newId = options.newId ?? (() => randomUUID())
     this.#unsubscribeUsage = this.#usage.onWriteFailed(() => {
-      this.#emit({ type: "error", code: "usage_write_failed", message: usageWriteFailedMessage })
+      this.#emitHost({
+        type: "error",
+        code: "usage_write_failed",
+        message: usageWriteFailedMessage,
+      })
     })
     this.#unsubscribeMembership = this.#membership.subscribe((view) => {
       if (view.state === "active") return
@@ -119,8 +124,8 @@ export class SessionHost {
     this.#unsubscribeRuntime = this.#runtime.subscribe((event) => this.#handleRuntimeEvent(event))
   }
 
-  /** 订阅脱敏会话事件，返回取消订阅函数。 */
-  subscribe(listener: (event: SessionHostEvent) => void): () => void {
+  /** 订阅脱敏会话事件的信封，返回取消订阅函数。 */
+  subscribe(listener: (envelope: SessionEnvelope) => void): () => void {
     this.#listeners.add(listener)
     return () => this.#listeners.delete(listener)
   }
@@ -166,7 +171,7 @@ export class SessionHost {
     const session = new ClaudeSession({
       ...prepared,
       createAdapter: this.#createAdapter,
-      emit: (event) => this.#emit(event),
+      emit: (envelope) => this.#emit(envelope),
       recordUsage: (record) => void this.#usage.record(record),
       sessionToken: () => this.#runtime.sessionToken,
       provider: this.#provider,
@@ -202,33 +207,54 @@ export class SessionHost {
     return { sessionId: prepared.sessionId }
   }
 
-  /** 写入当前消息；如有工作台回调，在交给适配器之前记录基线。 */
-  async send(input: SessionSendInput, checkpoint?: ActiveSession["checkpoint"]): Promise<void> {
-    await this.#requireActive().send(input, checkpoint)
+  /** 向指定会话写入一条消息；如有工作台回调，在交给适配器之前记录基线。 */
+  async send(
+    sessionId: string,
+    input: SessionSendInput,
+    checkpoint?: ActiveSession["checkpoint"],
+  ): Promise<void> {
+    await this.#requireSession(sessionId).send(input, checkpoint)
   }
 
-  /** 取消当前 turn：立即拒绝未回答权限并中断，但保留会话供下一次发送。 */
-  async cancel(): Promise<void> {
-    await this.#session?.cancel()
+  /** 取消指定会话的当前 turn：立即拒绝未回答权限并中断，但保留会话供下一次发送。不是当前会话时什么也不做。 */
+  async cancel(sessionId: string): Promise<void> {
+    await this.#sessionFor(sessionId)?.cancel()
   }
 
-  /** 写回一次权限回答；未知 requestId 由 PermissionBroker 忽略。 */
-  async respondPermission(answer: PermissionAnswer): Promise<void> {
-    this.#session?.respondPermission(answer)
+  /** 写回指定会话的一次权限回答；未知会话或未知 requestId 都忽略。 */
+  async respondPermission(sessionId: string, answer: PermissionAnswer): Promise<void> {
+    this.#sessionFor(sessionId)?.respondPermission(answer)
   }
 
   /** 切换后续工具调用的权限模式；等待中的权限请求保持原模式。自动审批被拒时不抛错，改发提示。 */
-  async setMode(mode: SessionPermissionMode): Promise<void> {
-    await this.#requireActive().setMode(mode)
+  async setMode(sessionId: string, mode: SessionPermissionMode): Promise<void> {
+    await this.#requireSession(sessionId).setMode(mode)
   }
 
   /** 切换后续回复使用的模型；不影响已发出的请求。开发期供应商固定模型时不接受其他取值。 */
-  async setModel(model: string): Promise<void> {
-    await this.#requireActive().setModel(model)
+  async setModel(sessionId: string, model: string): Promise<void> {
+    await this.#requireSession(sessionId).setModel(model)
   }
 
-  /** 停止会话：先拒绝未回答权限，再中断、停止适配器并删除会话目录；可重复调用。 */
-  async stop(): Promise<void> {
+  /**
+   * 按序号补拉指定会话要保存的事件，按序号排列，一次有上限。会员无效时抛 MEMBERSHIP_REQUIRED，
+   * 不是当前会话时抛 SESSION_NOT_FOUND。
+   */
+  events(sessionId: string, afterSeq: number): SessionEnvelope[] {
+    if (this.#membership.view().state !== "active") {
+      throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
+    }
+    const session = this.#sessionFor(sessionId)
+    if (session === null) throw new SessionHostError("SESSION_NOT_FOUND", "会话不存在")
+    return session.events(afterSeq)
+  }
+
+  /**
+   * 停止会话：先拒绝未回答权限，再中断、停止适配器并删除会话目录；可重复调用。
+   * 带会话 id 时只停这个会话，不是当前会话就什么也不做；不带时停止当前会话和正在进行的启动。
+   */
+  async stop(sessionId?: string): Promise<void> {
+    if (sessionId !== undefined && this.#sessionFor(sessionId) === null) return
     this.#stopRequested = true
     const pendingStart = this.#startPromise
     if (this.#closing !== null) return this.#closing
@@ -265,7 +291,7 @@ export class SessionHost {
       newId: this.#newId,
       now: this.#now,
       hostError: (code, message) => hostError(code, message, this.#runtime.sessionToken),
-      notify: (message) => this.#emit({ type: "notice", message }),
+      notify: (message) => this.#emitHost({ type: "notice", message }),
     })
   }
 
@@ -300,16 +326,28 @@ export class SessionHost {
     this.#session?.applyAccountSwitch(event)
   }
 
-  #requireActive(): ClaudeSession {
+  #sessionFor(sessionId: string): ClaudeSession | null {
+    const active = this.#session
+    return active !== null && active.state.sessionId === sessionId ? active : null
+  }
+
+  #requireSession(sessionId: string): ClaudeSession {
     const active = this.#session
     if (active === null) throw new SessionHostError("SDK_ERROR", "会话未开始")
+    if (active.state.sessionId !== sessionId) {
+      throw new SessionHostError("SESSION_NOT_FOUND", "会话不存在")
+    }
     return active
   }
 
-  #emit(event: SessionHostEvent): void {
+  #emitHost(event: SessionHostEvent): void {
+    this.#emit(hostEnvelope(event, this.#now()))
+  }
+
+  #emit(envelope: SessionEnvelope): void {
     for (const listener of [...this.#listeners]) {
       try {
-        listener(event)
+        listener(envelope)
       } catch {
         // 单个订阅者失败不能中断会话。
       }

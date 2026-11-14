@@ -14,6 +14,8 @@ import {
 function turn(patch: Partial<SessionTurn> = {}): SessionTurn {
   return {
     id: "t1",
+    startedAt: "2026-11-14T01:00:00.000Z",
+    endedAt: null,
     userText: "帮我看看 README",
     blocks: [],
     tools: [],
@@ -137,6 +139,8 @@ describe("sessionStatus", () => {
           suggestions: [],
           blockedPath: null,
           status: "pending",
+          requestedAt: "2026-11-14T01:00:00.000Z",
+          resolvedAt: null,
         },
       ],
     })

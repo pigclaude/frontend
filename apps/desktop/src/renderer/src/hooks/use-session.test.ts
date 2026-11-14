@@ -1,4 +1,4 @@
-// 负责验证会话控制器：订阅假桥事件、转发命令、加载模型探针并映射启动和模型错误，不启动真实 CLI。
+// 负责验证会话控制器：订阅假桥事件、带会话 id 转发命令、加载模型探针并映射启动和模型错误，不启动真实 CLI。
 
 // @vitest-environment jsdom
 import { act, createElement } from "react"
@@ -7,26 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type {
   ClaudeModel,
   SessionBridge,
-  SessionHostEvent,
   SessionModelCatalog,
-  SessionStatusView,
 } from "../../../main/session/session-types"
+import {
+  fakeCatalog as catalog,
+  fakeModels as models,
+  fakeSessionBridge as fakeBridge,
+} from "../test-support/session-bridge-fake"
 import { useSession, type SessionController } from "./use-session"
-
-const models: ClaudeModel[] = [
-  { id: "claude-sonnet", displayName: "Sonnet", description: "", isDefault: true },
-]
-const catalog: SessionModelCatalog = { models, cliError: null }
-
-const status: SessionStatusView = {
-  active: false,
-  sessionId: null,
-  model: null,
-  permissionMode: "default",
-  accountId: null,
-  pendingPermissions: 0,
-  turnId: null,
-}
 
 let root: Root
 let container: HTMLDivElement
@@ -46,37 +34,6 @@ afterEach(async () => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
-
-type FakeBridge = {
-  bridge: SessionBridge
-  emit: (event: SessionHostEvent) => void
-}
-
-function fakeBridge(overrides: Partial<SessionBridge> = {}): FakeBridge {
-  let listener: ((event: SessionHostEvent) => void) | null = null
-  const bridge: SessionBridge = {
-    start: vi.fn(async () => ({ sessionId: "session-1" })),
-    send: vi.fn(async () => undefined),
-    cancel: vi.fn(async () => undefined),
-    respondPermission: vi.fn(async () => undefined),
-    setMode: vi.fn(async () => undefined),
-    setModel: vi.fn(async () => undefined),
-    stop: vi.fn(async () => undefined),
-    models: vi.fn(async () => catalog),
-    status: vi.fn(async () => status),
-    subscribe: vi.fn((next: (event: SessionHostEvent) => void) => {
-      listener = next
-      return () => {
-        listener = null
-      }
-    }),
-    ...overrides,
-  }
-  return {
-    bridge,
-    emit: (event) => listener?.(event),
-  }
-}
 
 function Probe({ bridge }: { bridge: SessionBridge }) {
   controller = useSession(bridge)
@@ -116,10 +73,12 @@ describe("useSession", () => {
     expect(bridge.models).toHaveBeenCalledTimes(1)
     expect(controller?.status).toMatchObject({ active: false })
     expect(controller?.models).toEqual(models)
-    expect(controller?.state.turns[0]?.blocks).toEqual([{ type: "text", text: "先看" }])
+    expect(controller?.state.turns[0]?.blocks).toEqual([
+      { type: "text", text: "先看", at: "2026-11-14T01:00:00.000Z" },
+    ])
   })
 
-  it("forwards start, send, permission, mode, model, cancel and stop commands", async () => {
+  it("forwards start, then sends every command to the started session", async () => {
     const { bridge } = fakeBridge()
     await render(bridge)
 
@@ -156,15 +115,17 @@ describe("useSession", () => {
       permissionMode: "default",
       thinking: "medium",
     })
-    expect(bridge.send).toHaveBeenCalledWith({ text: "改一下重试逻辑" })
+    const target = { sessionId: "session-1" }
+    expect(bridge.send).toHaveBeenCalledWith({ ...target, text: "改一下重试逻辑" })
     expect(bridge.respondPermission).toHaveBeenCalledWith({
+      ...target,
       requestId: "permission-1",
       decision: "allow",
     })
-    expect(bridge.setMode).toHaveBeenCalledWith("plan")
-    expect(bridge.setModel).toHaveBeenCalledWith("claude-opus")
-    expect(bridge.cancel).toHaveBeenCalledTimes(1)
-    expect(bridge.stop).toHaveBeenCalledTimes(1)
+    expect(bridge.setMode).toHaveBeenCalledWith({ ...target, mode: "plan" })
+    expect(bridge.setModel).toHaveBeenCalledWith({ ...target, model: "claude-opus" })
+    expect(bridge.cancel).toHaveBeenCalledWith(target)
+    expect(bridge.stop).toHaveBeenCalledWith(target)
     expect(controller?.state.turns[0]?.userText).toBe("改一下重试逻辑")
   })
 

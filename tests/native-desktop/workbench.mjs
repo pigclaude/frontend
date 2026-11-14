@@ -169,7 +169,10 @@ export async function verifyWorkbench(page, application, output, provider = fals
     console.log("PASS isolated Chromium navigation, back and terminal tab persistence")
 
     if (provider) await verifyProviderWorkspace(page, panel, open, root, local)
-    await page.evaluate(() => window.pigclaude.session.stop())
+    await page.evaluate(async () => {
+      const { sessionId } = await window.pigclaude.session.status()
+      if (sessionId !== null) await window.pigclaude.session.stop({ sessionId })
+    })
     await open("PR")
     await expect(panel.getByText(/没有指向 GitHub 的远程仓库/)).toBeVisible()
     await open("文件")

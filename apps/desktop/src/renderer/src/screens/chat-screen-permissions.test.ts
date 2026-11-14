@@ -11,6 +11,7 @@ import {
   chatScreenRoot,
   clickButton,
   sessionController,
+  sessionTime,
   startingState,
   typeAndSend,
 } from "../test-support/chat-screen-harness"
@@ -46,18 +47,20 @@ async function chooseLevel(label: string): Promise<void> {
 function liveIn(mode: SessionUiState["permissionMode"]): SessionUiState {
   return reduceSession(startingState(), {
     type: "event",
+    at: sessionTime,
     event: { type: "mode", permissionMode: mode },
   })
 }
 
 function endedIn(mode: SessionUiState["permissionMode"]): SessionUiState {
-  return reduceSession(liveIn(mode), { type: "stopped" })
+  return reduceSession(liveIn(mode), { type: "stopped", at: sessionTime })
 }
 
 /** 计划模式下 Claude Code 交出计划、等待批准的会话。 */
 function planWaitingForApproval(): SessionUiState {
   return reduceSession(liveIn("plan"), {
     type: "event",
+    at: sessionTime,
     event: {
       type: "permission",
       requestId: "plan-1",
@@ -322,6 +325,7 @@ describe("chat screen permission controls", () => {
   it("keeps the plan switch when the session's account has left the pool", async () => {
     const state = reduceSession(liveIn("default"), {
       type: "event",
+      at: sessionTime,
       event: { type: "account-switched", from: "account-a", to: "account-gone", reason: "quota" },
     })
     await screen.render({ fresh: false, session: sessionController({ state }) })

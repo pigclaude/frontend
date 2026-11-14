@@ -12,12 +12,14 @@ import {
   type SessionUiState,
 } from "./session-model"
 
+const sessionTime = "2026-11-14T01:00:00.000Z"
+
 function apply(state: SessionUiState, action: SessionAction): SessionUiState {
   return reduceSession(state, action)
 }
 
-function emit(state: SessionUiState, event: SessionHostEvent): SessionUiState {
-  return apply(state, { type: "event", event })
+function emit(state: SessionUiState, event: SessionHostEvent, at = sessionTime): SessionUiState {
+  return apply(state, { type: "event", event, at })
 }
 
 function activeTurn(state: SessionUiState): SessionTurn {
@@ -30,7 +32,12 @@ function startedTurn(): SessionUiState {
   let state = createSessionState()
   state = apply(state, { type: "starting" })
   state = apply(state, { type: "opened", sessionId: "session-1" })
-  return apply(state, { type: "user-message", text: "改一下重试逻辑", turnId: "turn-1" })
+  return apply(state, {
+    type: "user-message",
+    text: "改一下重试逻辑",
+    turnId: "turn-1",
+    at: sessionTime,
+  })
 }
 
 describe("session model", () => {
@@ -52,8 +59,8 @@ describe("session model", () => {
     state = emit(state, { type: "delta", text: "条件", thinking: true, blockIndex: 1 })
 
     expect(activeTurn(state).blocks).toEqual([
-      { type: "text", text: "先看一下" },
-      { type: "thinking", text: "判断条件" },
+      { type: "text", text: "先看一下", at: sessionTime },
+      { type: "thinking", text: "判断条件", at: sessionTime },
     ])
   })
 
@@ -68,7 +75,7 @@ describe("session model", () => {
       blocks: [{ type: "text", text: "先看一下" }],
     })
 
-    expect(activeTurn(state).blocks).toEqual([{ type: "text", text: "先看一下" }])
+    expect(activeTurn(state).blocks).toEqual([{ type: "text", text: "先看一下", at: sessionTime }])
     expect(activeTurn(state).seenMessageIds).toEqual(["m1"])
   })
 
@@ -93,9 +100,9 @@ describe("session model", () => {
     })
 
     expect(activeTurn(state).blocks).toEqual([
-      { type: "text", text: "先读文件" },
+      { type: "text", text: "先读文件", at: sessionTime },
       { type: "tool", id: "tool-1" },
-      { type: "text", text: "读完了" },
+      { type: "text", text: "读完了", at: sessionTime },
     ])
   })
 
@@ -188,6 +195,7 @@ describe("session model", () => {
       type: "permission-answered",
       requestId: "permission-1",
       decision: "allow",
+      at: sessionTime,
     })
     expect(activeTurn(state).permissions[0]?.status).toBe("allowed")
     expect(activeTurn(state).status).toBe("streaming")
@@ -202,6 +210,7 @@ describe("session model", () => {
       type: "permission-answered",
       requestId: "permission-2",
       decision: "deny",
+      at: sessionTime,
     })
     expect(activeTurn(state).permissions[1]?.status).toBe("denied")
   })
@@ -225,7 +234,7 @@ describe("session model", () => {
     })
     expect(state.accountId).toBe("account-b")
     expect(activeTurn(state).switches).toEqual([
-      { from: "account-a", to: "account-b", reason: "quota" },
+      { from: "account-a", to: "account-b", reason: "quota", at: sessionTime },
     ])
   })
 
@@ -293,7 +302,7 @@ describe("session model", () => {
     expect(ended.turns).toEqual([])
 
     let stopped = startedTurn()
-    stopped = apply(stopped, { type: "stopped" })
+    stopped = apply(stopped, { type: "stopped", at: sessionTime })
     expect(stopped.started).toBe(false)
     stopped = apply(stopped, { type: "starting" })
     stopped = apply(stopped, { type: "opened", sessionId: "session-3" })
@@ -309,12 +318,12 @@ describe("session model", () => {
       toolName: "Bash",
       input: { command: "pnpm test" },
     })
-    state = apply(state, { type: "cancel-requested" })
+    state = apply(state, { type: "cancel-requested", at: sessionTime })
 
     expect(activeTurn(state).status).toBe("cancelled")
     expect(activeTurn(state).permissions[0]?.status).toBe("denied")
 
-    state = apply(state, { type: "stopped" })
+    state = apply(state, { type: "stopped", at: sessionTime })
     expect(state.ended).toBe(true)
     expect(state.endedReason).toBe("stopped")
   })
@@ -323,7 +332,7 @@ describe("session model", () => {
     let state = createSessionState()
     state = apply(state, { type: "opened", sessionId: "session-1" })
 
-    state = apply(state, { type: "cancel-requested" })
+    state = apply(state, { type: "cancel-requested", at: sessionTime })
     state = emit(state, { type: "error", code: "SESSION_CANCELLED", message: "当前请求已取消" })
 
     expect(state.turns).toEqual([])

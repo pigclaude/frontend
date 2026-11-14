@@ -1,6 +1,7 @@
 // 负责把 SDK 的 canUseTool 转成 renderer 可回答的权限请求；
 // 处理 allow/deny 写回、取消、窗口关闭、会员失效和 10 分钟超时，工具输入不落盘也不写日志。
 
+import { randomUUID } from "node:crypto"
 import type {
   PermissionBehavior,
   PermissionMode,
@@ -65,14 +66,13 @@ export class PermissionBroker {
   readonly #setTimer: (callback: () => void, ms: number) => ReturnType<typeof setTimeout>
   readonly #clearTimer: (handle: ReturnType<typeof setTimeout>) => void
   readonly #pending = new Map<string, PendingRequest>()
-  #nextId = 0
 
-  /** 创建权限代理；默认每个请求 10 分钟后自动拒绝。 */
+  /** 创建权限代理；默认每个请求 10 分钟后自动拒绝，请求 id 是全局唯一的 UUID。 */
   constructor(options: PermissionBrokerOptions) {
     this.#emit = options.emit
     this.#onTimeout = options.onTimeout
     this.#timeoutMs = options.timeoutMs ?? defaultTimeoutMs
-    this.#newRequestId = options.newRequestId ?? (() => `permission-${(this.#nextId += 1)}`)
+    this.#newRequestId = options.newRequestId ?? (() => randomUUID())
     this.#setTimer = options.setTimer ?? ((callback, ms) => setTimeout(callback, ms))
     this.#clearTimer = options.clearTimer ?? ((handle) => clearTimeout(handle))
   }

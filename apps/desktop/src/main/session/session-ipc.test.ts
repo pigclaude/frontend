@@ -1,4 +1,5 @@
-// 负责验证 session IPC 的边界校验：非法输入、未知字段、超大权限更新、不可信发送者和未装配服务。
+// 负责验证 session IPC 的边界校验：会话 id、补拉事件的参数、非法输入、未知字段、超大权限更新、
+// 不可信发送者和未装配服务。
 
 import type { IpcMainInvokeEvent } from "electron"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -45,6 +46,7 @@ function fakeHost(): SessionHost {
     setMode: vi.fn(async () => undefined),
     setModel: vi.fn(async () => undefined),
     stop: vi.fn(async () => undefined),
+    events: vi.fn(() => []),
     models: vi.fn(async () => []),
     status: vi.fn(() => null),
   } as unknown as SessionHost
@@ -86,6 +88,64 @@ describe("session IPC registration", () => {
       model: "claude-opus",
       accountId: "account-1",
     })
+  })
+
+  it("passes the named session with every session command", async () => {
+    const { host } = register()
+    const target = { sessionId: "session-1" }
+
+    await handler("pigclaude:session-send")(event(), { ...target, text: "hello" })
+    await handler("pigclaude:session-cancel")(event(), target)
+    await handler("pigclaude:session-respond-permission")(event(), {
+      ...target,
+      requestId: "permission-1",
+      decision: "deny",
+    })
+    await handler("pigclaude:session-set-mode")(event(), { ...target, mode: "plan" })
+    await handler("pigclaude:session-set-model")(event(), { ...target, model: "claude-opus" })
+    await handler("pigclaude:session-stop")(event(), target)
+    await handler("pigclaude:session-events")(event(), { ...target, afterSeq: 3 })
+
+    expect(host.send).toHaveBeenCalledWith("session-1", { text: "hello" }, expect.any(Function))
+    expect(host.cancel).toHaveBeenCalledWith("session-1")
+    expect(host.respondPermission).toHaveBeenCalledWith("session-1", {
+      requestId: "permission-1",
+      decision: "deny",
+    })
+    expect(host.setMode).toHaveBeenCalledWith("session-1", "plan")
+    expect(host.setModel).toHaveBeenCalledWith("session-1", "claude-opus")
+    expect(host.stop).toHaveBeenCalledWith("session-1")
+    expect(host.events).toHaveBeenCalledWith("session-1", 3)
+  })
+
+  it("rejects session commands without a usable session id", async () => {
+    const { host } = register()
+
+    for (const value of [undefined, {}, { sessionId: "" }, { sessionId: "x".repeat(201) }]) {
+      await expect(handler("pigclaude:session-stop")(event(), value)).rejects.toThrow(
+        "INVALID_SESSION_INPUT",
+      )
+    }
+    await expect(handler("pigclaude:session-send")(event(), { text: "hello" })).rejects.toThrow(
+      "INVALID_SESSION_INPUT",
+    )
+    expect(host.stop).not.toHaveBeenCalled()
+    expect(host.send).not.toHaveBeenCalled()
+  })
+
+  it("checks the sender and the seq before reading missed events", async () => {
+    const { host } = register()
+    const read = handler("pigclaude:session-events")
+
+    await expect(read(event(false), { sessionId: "session-1", afterSeq: 0 })).rejects.toThrow(
+      "UNTRUSTED_SESSION_REQUEST",
+    )
+    for (const afterSeq of [-1, 1.5, "2", null, Number.MAX_SAFE_INTEGER + 1]) {
+      await expect(read(event(), { sessionId: "session-1", afterSeq })).rejects.toThrow(
+        "INVALID_SESSION_INPUT",
+      )
+    }
+    expect(host.events).not.toHaveBeenCalled()
   })
 
   it("rejects an untrusted sender before calling the host", async () => {

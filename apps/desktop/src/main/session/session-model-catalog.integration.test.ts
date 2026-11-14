@@ -211,7 +211,7 @@ async function queryCatalog(proxyUrl: string | null): Promise<CatalogRun> {
   })
   cleanups.push(() => host.dispose())
   const events: SessionHostEvent[] = []
-  host.subscribe((event) => events.push(event))
+  host.subscribe((envelope) => events.push(envelope.event))
 
   await runtime.start()
   const catalog = await host.models()

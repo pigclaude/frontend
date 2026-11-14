@@ -6,7 +6,7 @@ import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { LocaleProvider } from "@pigclaude/ui-primitives"
-import type { SessionPermissionCard } from "../models/session-model"
+import type { SessionPermissionCard } from "../models/session-permissions"
 import { PermissionPrompt } from "./permission-prompt"
 
 let root: Root
@@ -33,6 +33,8 @@ function card(overrides: Partial<SessionPermissionCard> = {}): SessionPermission
     suggestions: [],
     blockedPath: null,
     status: "pending",
+    requestedAt: "2026-11-14T01:00:00.000Z",
+    resolvedAt: null,
     ...overrides,
   }
 }

@@ -156,17 +156,21 @@ it.skipIf(!baseUrl || !authToken)(
         }
       },
     })
-    host.subscribe((event) => events.push(event))
+    host.subscribe((envelope) => events.push(envelope.event))
     let resolveResult: (() => void) | null = null
     const result = new Promise<void>((resolve) => {
       resolveResult = resolve
     })
-    const unsubscribe = host.subscribe((event) => {
+    const unsubscribe = host.subscribe(({ event }) => {
       if (event.type === "result" || event.type === "ended") resolveResult?.()
     })
     try {
-      await host.start({ workspace, model, permissionMode: "bypassPermissions" })
-      await host.send({ text: "Reply with exactly: PIGCLAUDE_HOST_OK" })
+      const { sessionId } = await host.start({
+        workspace,
+        model,
+        permissionMode: "bypassPermissions",
+      })
+      await host.send(sessionId, { text: "Reply with exactly: PIGCLAUDE_HOST_OK" })
       await Promise.race([result, new Promise((resolve) => setTimeout(resolve, 90_000))])
       const text = events
         .filter((event) => event.type === "message")

@@ -5,6 +5,7 @@ import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { ClaudeModelsOptions } from "./claude-model-query"
 import type { ClaudeAgentStartOptions } from "./claude-query-options"
 import type { PermissionAnswer, PermissionRequestEvent } from "./permission-broker"
+import type { SessionEnvelope } from "./session-envelope"
 import type { SessionEnvironmentInput } from "./session-environment"
 import type {
   ClaudeModel,
@@ -34,6 +35,12 @@ export type SessionSendInput = {
   text: string
   attachments?: string[]
 }
+
+/** 会话命令指向的会话；id 是 session.start 返回的 PigClaude 会话 id。 */
+export type SessionTarget = { sessionId: string }
+
+/** 按序号补拉事件的输入：读出序号大于 afterSeq 的要保存的事件。 */
+export type SessionEventsInput = SessionTarget & { afterSeq: number }
 
 /** session.status 返回的脱敏会话快照。 */
 export type SessionStatusView = {
@@ -84,6 +91,7 @@ export type SessionErrorCode =
   | "PERMISSION_TIMEOUT"
   | "SESSION_ALREADY_ACTIVE"
   | "SESSION_CANCELLED"
+  | "SESSION_NOT_FOUND"
   | "SDK_ERROR"
   | "SESSION_START_FAILED"
 
@@ -165,18 +173,20 @@ export type SessionUsagePort = {
   onWriteFailed(listener: (message: string) => void): () => void
 }
 
-/** preload 暴露给 renderer 的 session 命名空间；只有设计第 12 节的命令和事件。 */
+/** preload 暴露给 renderer 的 session 命名空间；会话命令都带会话 id，事件都包在信封里。 */
 export type SessionBridge = {
   start: (input: SessionStartInput) => Promise<{ sessionId: string }>
-  send: (input: SessionSendInput) => Promise<void>
-  cancel: () => Promise<void>
-  respondPermission: (input: PermissionAnswer) => Promise<void>
-  setMode: (mode: SessionPermissionMode) => Promise<void>
-  setModel: (model: string) => Promise<void>
-  stop: () => Promise<void>
+  send: (input: SessionTarget & SessionSendInput) => Promise<void>
+  cancel: (input: SessionTarget) => Promise<void>
+  respondPermission: (input: SessionTarget & PermissionAnswer) => Promise<void>
+  setMode: (input: SessionTarget & { mode: SessionPermissionMode }) => Promise<void>
+  setModel: (input: SessionTarget & { model: string }) => Promise<void>
+  stop: (input: SessionTarget) => Promise<void>
+  /** 按序号补拉要保存的事件；渲染层发现断号时调用。 */
+  events: (input: SessionEventsInput) => Promise<SessionEnvelope[]>
   models: () => Promise<SessionModelCatalog>
   status: () => Promise<SessionStatusView>
-  subscribe: (listener: (event: SessionHostEvent) => void) => () => void
+  subscribe: (listener: (envelope: SessionEnvelope) => void) => () => void
 }
 
 /** preload 暴露的只读用量命名空间。 */
@@ -189,6 +199,7 @@ export type {
   PermissionAnswer,
   PermissionRequestEvent,
   SessionEffort,
+  SessionEnvelope,
   SessionEvent,
   SessionPermissionMode,
   SessionThinking,

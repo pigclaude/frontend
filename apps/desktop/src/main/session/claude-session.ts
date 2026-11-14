@@ -1,9 +1,12 @@
 // 负责一个 Claude 会话的运行：发送、取消、权限回答、模式和模型切换、结束，以及把适配器事件变成会话事件和用量记录。
+// 发出的事件都经这个会话自己的事件日志盖上时间和序号。
 // 只依赖这一个会话的适配器、事件出口、时钟和定时器，不引用会话宿主或模块级单例。
 
 import type { DevProviderOverride } from "./dev-provider"
 import type { PermissionAnswer } from "./permission-broker"
+import type { SessionEnvelope } from "./session-envelope"
 import { classifyDaemonError } from "./session-error-mapping"
+import { SessionEventLog } from "./session-event-log"
 import type { SessionEvent } from "./session-events"
 import { createActiveSession, type ActiveSession, type SessionTimers } from "./session-host-active"
 import {
@@ -45,8 +48,8 @@ export type ClaudeSessionOptions = {
   input: SessionStartInput
   environment: SessionEnvironmentPort
   createAdapter: SessionAdapterFactory
-  /** 事件出口；收到的事件都已脱敏。 */
-  emit: (event: SessionHostEvent) => void
+  /** 事件出口；收到的事件都已脱敏，并已盖上这个会话的时间和序号。 */
+  emit: (envelope: SessionEnvelope) => void
   recordUsage: (record: UsageRecord) => void
   /** 当前 daemon 会话令牌，只用于从错误文本里去掉它。 */
   sessionToken: () => string
@@ -59,23 +62,25 @@ export type ClaudeSessionOptions = {
   onReleased: (session: ClaudeSession) => void
 }
 
-/** 一个 Claude 会话。保证结束路径只走一次；释放后忽略迟到的适配器事件和权限超时。 */
+/** 一个 Claude 会话。保证结束路径只走一次；释放后忽略迟到的适配器事件和权限超时；发出的事件时间不倒退、序号连续。 */
 export class ClaudeSession {
   readonly state: ActiveSession
   readonly #options: ClaudeSessionOptions
+  readonly #log: SessionEventLog
   readonly #emitModeEvent = (event: ModeEvent): void => {
-    if (event.type === "mode") this.#options.emit(event)
-    else this.#options.emit({ ...event, message: this.#redact(event.message) })
+    if (event.type === "mode") this.#publish(event)
+    else this.#publish({ ...event, message: this.#redact(event.message) })
   }
 
-  /** 组装会话状态、权限代理和适配器；不启动 Claude Code。 */
+  /** 组装会话状态、事件日志、权限代理和适配器；不启动 Claude Code。 */
   constructor(options: ClaudeSessionOptions) {
     this.#options = options
+    this.#log = new SessionEventLog(options.sessionId, options.now)
     this.state = createActiveSession(options.sessionId, options.input, options.environment, {
       createAdapter: options.createAdapter,
       permissionTimeoutMs: options.permissionTimeoutMs,
       timers: options.timers,
-      emitPermission: (request) => options.emit(request),
+      emitPermission: (request) => this.#publish(request),
       onPermissionTimeout: () => this.#handlePermissionTimeout(),
       onAdapterEvent: (_active, event) => this.#handleAdapterEvent(event),
     })
@@ -97,7 +102,7 @@ export class ClaudeSession {
 
   /** 广播会话当前生效的权限模式。 */
   announceMode(): void {
-    this.#options.emit({ type: "mode", permissionMode: this.state.permissionMode })
+    this.#publish({ type: "mode", permissionMode: this.state.permissionMode })
   }
 
   /** 写入一条消息；如有工作台回调，在交给适配器之前记录基线。 */
@@ -129,7 +134,7 @@ export class ClaudeSession {
     if (active.turnId !== null) {
       active.turnCancelled = true
       active.turnErrorCode = "SESSION_CANCELLED"
-      this.#options.emit({ type: "error", code: "SESSION_CANCELLED", message: "当前请求已取消" })
+      this.#publish({ type: "error", code: "SESSION_CANCELLED", message: "当前请求已取消" })
     }
     active.broker.rejectAll("用户已取消")
     await active.adapter.interrupt().catch(() => undefined)
@@ -165,7 +170,7 @@ export class ClaudeSession {
     active.ending = (async () => {
       active.broker.rejectAll(rejectMessage)
       if (errorCode !== null) {
-        this.#options.emit({ type: "error", code: errorCode, message: rejectMessage })
+        this.#publish({ type: "error", code: errorCode, message: rejectMessage })
         active.abort.abort()
       } else {
         await active.adapter.interrupt().catch(() => undefined)
@@ -193,7 +198,7 @@ export class ClaudeSession {
       active.switchedFrom = event.from
     }
     active.accountId = event.to
-    this.#options.emit({
+    this.#publish({
       type: "account-switched",
       from: event.from,
       to: event.to,
@@ -204,6 +209,11 @@ export class ClaudeSession {
   /** 返回脱敏会话快照。 */
   status(): SessionStatusView {
     return buildStatusView(this.state)
+  }
+
+  /** 按序号补拉这个会话要保存的事件：序号大于 afterSeq 的部分，按序号排列，一次有上限。 */
+  events(afterSeq: number): SessionEnvelope[] {
+    return this.#log.since(afterSeq)
   }
 
   /** 退出会中断的工作；会话正在结束时为 0。 */
@@ -231,13 +241,13 @@ export class ClaudeSession {
         break
       case "ended":
         active.broker.rejectAll("会话已结束")
-        this.#options.emit(sanitizeSessionEvent(event, this.#options.sessionToken()))
+        this.#publish(sanitizeSessionEvent(event, this.#options.sessionToken()))
         if (!active.stopping) void this.release()
         return
       default:
         break
     }
-    this.#options.emit(sanitizeSessionEvent(event, this.#options.sessionToken()))
+    this.#publish(sanitizeSessionEvent(event, this.#options.sessionToken()))
   }
 
   #recordUsage(event: Extract<SessionEvent, { type: "result" }>): void {
@@ -255,10 +265,14 @@ export class ClaudeSession {
     const active = this.state
     if (active.released) return
     active.turnErrorCode = "PERMISSION_TIMEOUT"
-    this.#options.emit({ type: "error", code: "PERMISSION_TIMEOUT", message: "权限询问超时" })
+    this.#publish({ type: "error", code: "PERMISSION_TIMEOUT", message: "权限询问超时" })
     // 同一 turn 的其它权限卡片不能继续悬挂。
     active.broker.rejectAll("权限询问超时")
     void active.adapter.interrupt().catch(() => undefined)
+  }
+
+  #publish(event: SessionHostEvent): void {
+    this.#options.emit(this.#log.append(event))
   }
 
   #redact(message: string): string {

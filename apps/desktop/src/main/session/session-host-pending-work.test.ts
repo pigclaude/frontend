@@ -5,7 +5,12 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
-import { createHarness, waitUntil, type SessionHarness } from "./session-host-fixtures"
+import {
+  createHarness,
+  currentSessionId,
+  waitUntil,
+  type SessionHarness,
+} from "./session-host-fixtures"
 
 const temporaryDirs: string[] = []
 
@@ -16,7 +21,7 @@ afterEach(async () => {
 describe("SessionHost pending work", () => {
   it("counts the running turn and the permissions waiting for an answer", async () => {
     const harness = await startedHarness()
-    await harness.host.send({ text: "hello" })
+    await harness.host.send(currentSessionId(harness.host), { text: "hello" })
     void askPermission(harness)
     await waitUntil(() => harness.host.status().pendingPermissions === 1)
 
@@ -26,7 +31,7 @@ describe("SessionHost pending work", () => {
 
   it("has nothing pending once the turn has its result", async () => {
     const harness = await startedHarness()
-    await harness.host.send({ text: "hello" })
+    await harness.host.send(currentSessionId(harness.host), { text: "hello" })
     harness.adapters.last.emit({
       type: "result",
       subtype: "success",
@@ -43,7 +48,7 @@ describe("SessionHost pending work", () => {
 
   it("stops counting as soon as the session starts ending", async () => {
     const harness = await startedHarness()
-    await harness.host.send({ text: "hello" })
+    await harness.host.send(currentSessionId(harness.host), { text: "hello" })
     void askPermission(harness)
     await waitUntil(() => harness.host.status().pendingPermissions === 1)
 

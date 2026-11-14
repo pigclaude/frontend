@@ -49,12 +49,20 @@ const chatProxy: ProxyView = {
   lastTest: null,
 }
 
+/** 测试里会话事件和界面操作共用的时间。 */
+export const sessionTime = "2026-11-14T01:00:00.000Z"
+
 /** 已开始并发出第一条消息的会话状态。 */
 export function startingState(): SessionUiState {
   let state = createSessionState()
   state = reduceSession(state, { type: "starting" })
   state = reduceSession(state, { type: "opened", sessionId: "session-1" })
-  return reduceSession(state, { type: "user-message", text: "改一下重试逻辑", turnId: "turn-1" })
+  return reduceSession(state, {
+    type: "user-message",
+    text: "改一下重试逻辑",
+    turnId: "turn-1",
+    at: sessionTime,
+  })
 }
 
 /** 会话控制器替身；命令都是记录调用的假函数。 */

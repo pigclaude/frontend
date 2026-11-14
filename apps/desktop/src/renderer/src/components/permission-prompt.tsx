@@ -6,7 +6,7 @@ import { FileText, Globe, Keyboard, Search } from "lucide-react"
 import { MessageText, toolFamily, type ToolFamily } from "@pigclaude/ui-chat"
 import { Button } from "@pigclaude/ui-primitives"
 import { fill, useText, type TextKey } from "../locale/text"
-import type { SessionPermissionCard } from "../models/session-model"
+import type { SessionPermissionCard } from "../models/session-permissions"
 
 /** 用户对一张权限卡的回答；suggestions 是 SDK 建议的长期规则，允许时一起写回。 */
 export type PermissionChoice = {

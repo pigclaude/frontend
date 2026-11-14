@@ -6,7 +6,12 @@ import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
 import type { PermissionRequestEvent } from "./permission-broker"
-import { createHarness, waitUntil, type SessionHarness } from "./session-host-fixtures"
+import {
+  createHarness,
+  currentSessionId,
+  waitUntil,
+  type SessionHarness,
+} from "./session-host-fixtures"
 
 const temporaryDirs: string[] = []
 
@@ -30,7 +35,7 @@ describe("SessionHost permissions", () => {
     })
     expect(harness.host.status().pendingPermissions).toBe(1)
 
-    harness.host.respondPermission({
+    harness.host.respondPermission(currentSessionId(harness.host), {
       requestId: allowEvent.requestId,
       decision: "allow",
       updatedPermissions: [
@@ -41,7 +46,10 @@ describe("SessionHost permissions", () => {
 
     const denyPromise = canUseTool("Write", { file_path: "/tmp/x" }, askOptions())
     const denyEvent = await waitForPermission(harness, 2)
-    harness.host.respondPermission({ requestId: denyEvent.requestId, decision: "deny" })
+    harness.host.respondPermission(currentSessionId(harness.host), {
+      requestId: denyEvent.requestId,
+      decision: "deny",
+    })
     await expect(denyPromise).resolves.toMatchObject({ behavior: "deny" })
 
     expect(harness.host.status().pendingPermissions).toBe(0)
@@ -78,7 +86,7 @@ describe("SessionHost permissions", () => {
     const pending = canUseTool("Bash", { command: "rm" }, askOptions())
     await waitForPermission(harness)
 
-    await harness.host.cancel()
+    await harness.host.cancel(currentSessionId(harness.host))
 
     await expect(pending).resolves.toMatchObject({ behavior: "deny" })
     expect(harness.adapters.last.interrupts).toBe(1)
@@ -161,8 +169,8 @@ describe("SessionHost permissions", () => {
     })
     const event = await waitForPermission(harness)
 
-    await harness.host.setMode("acceptEdits")
-    await harness.host.setModel("claude-opus-4")
+    await harness.host.setMode(currentSessionId(harness.host), "acceptEdits")
+    await harness.host.setModel(currentSessionId(harness.host), "claude-opus-4")
 
     expect(harness.adapters.last.modes).toEqual(["acceptEdits"])
     expect(harness.adapters.last.modelsSet).toEqual(["claude-opus-4"])
@@ -173,7 +181,10 @@ describe("SessionHost permissions", () => {
     })
     expect(settled).toBe(false)
 
-    harness.host.respondPermission({ requestId: event.requestId, decision: "deny" })
+    harness.host.respondPermission(currentSessionId(harness.host), {
+      requestId: event.requestId,
+      decision: "deny",
+    })
     await pending
     expect(settled).toBe(true)
     await harness.host.dispose()

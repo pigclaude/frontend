@@ -2,7 +2,7 @@
 import { contextBridge, ipcRenderer } from "electron"
 import type { BrowserProfilesBridge } from "@pigclaude/contracts/browser-profile"
 import { browserProfilesBridge } from "./browser-profiles"
-import { isSessionEvent } from "./session-event-filter"
+import { isSessionEnvelope } from "./session-event-filter"
 import { windowBridge, type WindowBridge } from "./window-bridge"
 import { workbenchBridge } from "./workbench"
 import type { WorkbenchBridge } from "../workbench-contract"
@@ -27,7 +27,7 @@ import type {
 import type {
   ClaudeModel,
   SessionBridge,
-  SessionHostEvent,
+  SessionEnvelope,
   SessionStatusView,
   UsageBridge,
   UsageSummary,
@@ -256,11 +256,18 @@ const bridge: PigclaudeBridge = {
       return { sessionId: value.sessionId }
     },
     send: (input) => ipcRenderer.invoke("pigclaude:session-send", input),
-    cancel: () => ipcRenderer.invoke("pigclaude:session-cancel"),
+    cancel: (input) => ipcRenderer.invoke("pigclaude:session-cancel", input),
     respondPermission: (input) => ipcRenderer.invoke("pigclaude:session-respond-permission", input),
-    setMode: (mode) => ipcRenderer.invoke("pigclaude:session-set-mode", mode),
-    setModel: (model) => ipcRenderer.invoke("pigclaude:session-set-model", model),
-    stop: () => ipcRenderer.invoke("pigclaude:session-stop"),
+    setMode: (input) => ipcRenderer.invoke("pigclaude:session-set-mode", input),
+    setModel: (input) => ipcRenderer.invoke("pigclaude:session-set-model", input),
+    stop: (input) => ipcRenderer.invoke("pigclaude:session-stop", input),
+    events: async (input) => {
+      const value: unknown = await ipcRenderer.invoke("pigclaude:session-events", input)
+      if (!Array.isArray(value) || !value.every(isSessionEnvelope)) {
+        throw new Error("INVALID_SESSION_RESPONSE")
+      }
+      return value
+    },
     models: async () => {
       const value: unknown = await ipcRenderer.invoke("pigclaude:session-models")
       if (!isRecord(value) || !Array.isArray(value.models)) return { models: [], cliError: null }
@@ -292,9 +299,9 @@ function subscribeAuthorization(listener: (event: AuthorizationStateEvent) => vo
   return () => ipcRenderer.removeListener("pigclaude:authorization-state", handler)
 }
 
-function subscribeSession(listener: (event: SessionHostEvent) => void): () => void {
+function subscribeSession(listener: (envelope: SessionEnvelope) => void): () => void {
   const handler = (_event: Electron.IpcRendererEvent, value: unknown) => {
-    if (isSessionEvent(value)) listener(value)
+    if (isSessionEnvelope(value)) listener(value)
   }
   ipcRenderer.on("pigclaude:session-event", handler)
   return () => ipcRenderer.removeListener("pigclaude:session-event", handler)

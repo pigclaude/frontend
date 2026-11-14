@@ -37,7 +37,7 @@ function standaloneSession() {
     input: { workspace: "/workspace", permissionMode: "default" },
     environment,
     createAdapter: adapters.create,
-    emit: (event) => events.push(event),
+    emit: (envelope) => events.push(envelope.event),
     recordUsage: (record) => usage.push(record),
     sessionToken: () => token,
     provider: null,

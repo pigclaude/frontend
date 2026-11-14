@@ -1,29 +1,30 @@
-// 负责预加载脚本放行哪些会话事件：只把会话宿主会广播的事件类型交给渲染进程。
+// 负责预加载脚本校验会话信封：只把格式版本、会话 id、序号、时间都合规，
+// 且事件类型在会话宿主事件表里的信封交给渲染进程。
 
-import type { SessionHostEvent } from "../main/session/session-types"
+import {
+  sessionEnvelopeVersion,
+  sessionEventKinds,
+  type SessionEnvelope,
+} from "../main/session/session-envelope"
 
-// 键必须和会话宿主的事件类型一一对应；宿主新增事件类型时，这里不补就编译不过。
-const sessionEventTypes: Record<SessionHostEvent["type"], true> = {
-  started: true,
-  mode: true,
-  delta: true,
-  message: true,
-  "tool-result": true,
-  permission: true,
-  "account-switched": true,
-  notice: true,
-  result: true,
-  error: true,
-  ended: true,
+const isoUtc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+
+/**
+ * 判断主进程发来的值是不是合规的会话信封。要保存的会话事件必须带正整数序号，只用于实时的事件
+ * 和不属于任何会话的宿主事件不带序号；时间必须是 ISO UTC。
+ */
+export function isSessionEnvelope(value: unknown): value is SessionEnvelope {
+  if (!isRecord(value) || value.version !== sessionEnvelopeVersion) return false
+  const { sessionId, seq, at, event } = value
+  if (sessionId !== null && (typeof sessionId !== "string" || sessionId === "")) return false
+  if (typeof at !== "string" || !isoUtc.test(at) || !Number.isFinite(Date.parse(at))) return false
+  if (!isRecord(event) || typeof event.type !== "string") return false
+  if (!Object.hasOwn(sessionEventKinds, event.type)) return false
+  const kind = sessionEventKinds[event.type as SessionEnvelope["event"]["type"]]
+  if (sessionId === null || kind === "live") return seq === null
+  return typeof seq === "number" && Number.isSafeInteger(seq) && seq > 0
 }
 
-/** 判断主进程发来的值是不是会话事件；类型不在会话宿主的事件列表里时不放行。 */
-export function isSessionEvent(value: unknown): value is SessionHostEvent {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "type" in value &&
-    typeof value.type === "string" &&
-    Object.hasOwn(sessionEventTypes, value.type)
-  )
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
 }

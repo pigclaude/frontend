@@ -6,9 +6,11 @@ import {
   SessionHostError,
   type PermissionAnswer,
   type SessionEffort,
+  type SessionEventsInput,
   type SessionPermissionMode,
   type SessionSendInput,
   type SessionStartInput,
+  type SessionTarget,
   type SessionThinking,
   type UsageRange,
 } from "./session-types"
@@ -27,6 +29,7 @@ const thinkingLevels = new Set<SessionThinking>(["off", "low", "medium", "high"]
 const effortLevels = new Set<SessionEffort>(["low", "medium", "high", "xhigh", "max"])
 const maxUpdatedPermissions = 50
 const maxUpdatedPermissionsBytes = 64 * 1024
+const maxSessionIdLength = 200
 
 /** 会话 IPC 依赖；host 和用量记录器可能在窗口创建后仍未装配。 */
 export type SessionIpcOptions = {
@@ -36,7 +39,7 @@ export type SessionIpcOptions = {
   tools?: (event: IpcMainInvokeEvent) => ClaudeAgentStartOptions["mcpServers"]
 }
 
-/** 注册会话命令和只读用量汇总。保证写操作只接受主窗口当前 frame。 */
+/** 注册会话命令、按序号补拉事件和只读用量汇总。保证所有命令只接受主窗口当前 frame，命令都指明会话。 */
 export function registerSessionIpc(options: SessionIpcOptions): void {
   ipcMain.handle("pigclaude:session-start", async (event, value: unknown) => {
     assertTrusted(options, event)
@@ -47,29 +50,38 @@ export function registerSessionIpc(options: SessionIpcOptions): void {
   })
   ipcMain.handle("pigclaude:session-send", async (event, value: unknown) => {
     assertTrusted(options, event)
-    await requireHost(options).send(readSessionSendInput(value), (workspace, phase) =>
+    const { sessionId } = readSessionTarget(value)
+    await requireHost(options).send(sessionId, readSessionSendInput(value), (workspace, phase) =>
       captureSessionCheckpoint(event.sender, workspace, phase),
     )
   })
-  ipcMain.handle("pigclaude:session-cancel", async (event) => {
+  ipcMain.handle("pigclaude:session-cancel", async (event, value: unknown) => {
     assertTrusted(options, event)
-    await requireHost(options).cancel()
+    await requireHost(options).cancel(readSessionTarget(value).sessionId)
   })
   ipcMain.handle("pigclaude:session-respond-permission", async (event, value: unknown) => {
     assertTrusted(options, event)
-    await requireHost(options).respondPermission(readPermissionAnswer(value))
+    const { sessionId } = readSessionTarget(value)
+    await requireHost(options).respondPermission(sessionId, readPermissionAnswer(value))
   })
   ipcMain.handle("pigclaude:session-set-mode", async (event, value: unknown) => {
     assertTrusted(options, event)
-    await requireHost(options).setMode(readPermissionMode(value))
+    const { sessionId } = readSessionTarget(value)
+    await requireHost(options).setMode(sessionId, readPermissionMode(fieldOf(value, "mode")))
   })
   ipcMain.handle("pigclaude:session-set-model", async (event, value: unknown) => {
     assertTrusted(options, event)
-    await requireHost(options).setModel(readModel(value))
+    const { sessionId } = readSessionTarget(value)
+    await requireHost(options).setModel(sessionId, readModel(fieldOf(value, "model")))
   })
-  ipcMain.handle("pigclaude:session-stop", async (event) => {
+  ipcMain.handle("pigclaude:session-stop", async (event, value: unknown) => {
     assertTrusted(options, event)
-    await requireHost(options).stop()
+    await requireHost(options).stop(readSessionTarget(value).sessionId)
+  })
+  ipcMain.handle("pigclaude:session-events", async (event, value: unknown) => {
+    assertTrusted(options, event)
+    const input = readSessionEventsInput(value)
+    return requireHost(options).events(input.sessionId, input.afterSeq)
   })
   ipcMain.handle("pigclaude:session-models", async (event) => {
     assertTrusted(options, event)
@@ -114,6 +126,23 @@ export function readSessionStartInput(value: unknown): SessionStartInput {
     ...(effort === undefined ? {} : { effort: effort as SessionEffort }),
     ...(fast === undefined ? {} : { fast }),
   }
+}
+
+/** 解析会话命令指向的会话；会话 id 必须是不超长的非空字符串。 */
+export function readSessionTarget(value: unknown): SessionTarget {
+  const sessionId = readString(fieldOf(value, "sessionId"))
+  if (sessionId === null || sessionId.length > maxSessionIdLength) throw invalidInput()
+  return { sessionId }
+}
+
+/** 解析按序号补拉事件的输入；afterSeq 是不小于 0 的安全整数。 */
+export function readSessionEventsInput(value: unknown): SessionEventsInput {
+  const { sessionId } = readSessionTarget(value)
+  const afterSeq = fieldOf(value, "afterSeq")
+  if (typeof afterSeq !== "number" || !Number.isSafeInteger(afterSeq) || afterSeq < 0) {
+    throw invalidInput()
+  }
+  return { sessionId, afterSeq }
 }
 
 /** 解析 session.send 输入；附件只接受非空字符串数组。 */
@@ -201,6 +230,10 @@ function requireHost(options: SessionIpcOptions): SessionHost {
 
 function invalidInput(): Error {
   return new Error("INVALID_SESSION_INPUT")
+}
+
+function fieldOf(value: unknown, key: string): unknown {
+  return isRecord(value) ? value[key] : undefined
 }
 
 function readString(value: unknown): string | null {

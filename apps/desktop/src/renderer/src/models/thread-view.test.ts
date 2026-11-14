@@ -1,13 +1,18 @@
-// 负责验证会话状态到 Pigcode 线程模型的纯函数映射：线程元数据、事件顺序、工具/权限/换号事件和各结束状态。
+// 负责验证会话状态到 Pigcode 线程模型的纯函数映射：线程元数据、事件顺序与真实时间、
+// 工具/权限/换号事件和各结束状态。
 
 import { describe, expect, it } from "vitest"
 import type { SessionTurn, SessionUiState } from "./session-model"
 import { threadView, type ThreadViewInput } from "./thread-view"
 
+const t0 = "2026-11-14T01:00:00.000Z"
+
 /** 构造一轮会话；默认是一轮还在进行、没有内容的对话。 */
 function turn(overrides: Partial<SessionTurn> = {}): SessionTurn {
   return {
     id: "turn-1",
+    startedAt: t0,
+    endedAt: null,
     userText: null,
     blocks: [],
     tools: [],
@@ -84,8 +89,8 @@ describe("threadView", () => {
             turn({
               userText: "你好",
               blocks: [
-                { type: "thinking", text: "想一想" },
-                { type: "text", text: "答" },
+                { type: "thinking", text: "想一想", at: "2026-11-14T01:00:04.000Z" },
+                { type: "text", text: "答", at: "2026-11-14T01:00:09.000Z" },
                 { type: "tool", id: "tool-1" },
               ],
               tools: [
@@ -95,9 +100,12 @@ describe("threadView", () => {
                   input: { command: "ls" },
                   status: "done",
                   output: "ok",
+                  startedAt: "2026-11-14T01:00:09.000Z",
+                  endedAt: "2026-11-14T01:00:41.500Z",
                 },
               ],
               status: "done",
+              endedAt: "2026-11-14T01:01:02.000Z",
             }),
           ],
         }),
@@ -126,9 +134,17 @@ describe("threadView", () => {
       output: "ok",
       isError: false,
     })
-    expect(view.events[1]?.createdAt).toBe(new Date(Date.UTC(2026, 10, 13, 0, 0, 2)).toISOString())
+    expect(view.events.map((event) => event.createdAt)).toEqual([
+      "2026-11-14T01:00:00.000Z",
+      "2026-11-14T01:00:04.000Z",
+      "2026-11-14T01:00:09.000Z",
+      "2026-11-14T01:00:09.000Z",
+      "2026-11-14T01:00:41.500Z",
+      "2026-11-14T01:01:02.000Z",
+    ])
     expect(view.thread.lastRunId).toBe("run-1")
-    expect(view.thread.updatedAt).toBe(new Date(Date.UTC(2026, 10, 13, 0, 0, 6)).toISOString())
+    expect(view.thread.createdAt).toBe(t0)
+    expect(view.thread.updatedAt).toBe("2026-11-14T01:01:02.000Z")
   })
 
   it("跳过空文本块，不产出空消息", () => {
@@ -138,8 +154,8 @@ describe("threadView", () => {
           turns: [
             turn({
               blocks: [
-                { type: "text", text: "" },
-                { type: "thinking", text: "" },
+                { type: "text", text: "", at: t0 },
+                { type: "thinking", text: "", at: t0 },
               ],
             }),
           ],
@@ -154,9 +170,13 @@ describe("threadView", () => {
     expect(view.events.map((event) => event.type)).toEqual(["run.started"])
   })
 
-  it("取消的一轮以 run.interrupted 结束", () => {
-    const view = threadView(input({ state: state({ turns: [turn({ status: "cancelled" })] }) }))
+  it("取消的一轮以 run.interrupted 结束，时间取这一轮的结束时间", () => {
+    const endedAt = "2026-11-14T01:00:12.000Z"
+    const view = threadView(
+      input({ state: state({ turns: [turn({ status: "cancelled", endedAt })] }) }),
+    )
     expect(view.events.map((event) => event.type)).toEqual(["run.started", "run.interrupted"])
+    expect(view.events[1]?.createdAt).toBe(endedAt)
   })
 
   it("出错的一轮只发一条 run.failed，并带上最后一条错误文案", () => {
@@ -193,6 +213,8 @@ describe("threadView", () => {
                   suggestions: [],
                   blockedPath: "/work/demo/build",
                   status: "allowed",
+                  requestedAt: "2026-11-14T01:00:05.000Z",
+                  resolvedAt: "2026-11-14T01:00:30.000Z",
                 },
                 {
                   requestId: "req-2",
@@ -201,6 +223,8 @@ describe("threadView", () => {
                   suggestions: [],
                   blockedPath: null,
                   status: "denied",
+                  requestedAt: t0,
+                  resolvedAt: t0,
                 },
                 {
                   requestId: "req-3",
@@ -209,6 +233,8 @@ describe("threadView", () => {
                   suggestions: [],
                   blockedPath: null,
                   status: "pending",
+                  requestedAt: t0,
+                  resolvedAt: null,
                 },
               ],
             }),
@@ -233,6 +259,10 @@ describe("threadView", () => {
       description: "/work/demo/build",
     })
     expect(approvals[1]?.payload).toMatchObject({ id: "req-1", decision: "allow-once" })
+    expect(approvals.slice(0, 2).map((event) => event.createdAt)).toEqual([
+      "2026-11-14T01:00:05.000Z",
+      "2026-11-14T01:00:30.000Z",
+    ])
     expect(approvals[3]?.payload).toMatchObject({ id: "req-2", decision: "deny" })
     expect(approvals[4]?.payload).not.toHaveProperty("decision")
   })
@@ -254,6 +284,8 @@ describe("threadView", () => {
                   input: { subagent_type: "explore", description: "找文件", prompt: "搜索" },
                   status: "running",
                   output: null,
+                  startedAt: t0,
+                  endedAt: null,
                 },
                 {
                   id: "task-2",
@@ -261,6 +293,8 @@ describe("threadView", () => {
                   input: {},
                   status: "error",
                   output: "失败",
+                  startedAt: t0,
+                  endedAt: t0,
                 },
               ],
             }),
@@ -296,7 +330,7 @@ describe("threadView", () => {
         state: state({
           turns: [
             turn({
-              switches: [{ from: "a", to: "b", reason: "switch" }],
+              switches: [{ from: "a", to: "b", reason: "switch", at: t0 }],
             }),
           ],
         }),

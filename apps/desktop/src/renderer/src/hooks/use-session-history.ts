@@ -1,25 +1,10 @@
 // 负责会话历史设置的主进程请求、归档列表和确认后的删除操作。
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import type { SessionHistoryStats, SessionRetention } from "../../../session-history-contract"
 import type { SavedSessionSummary } from "../models/saved-session"
 import { sessionErrorFrom } from "./use-session"
 import { useSessionWorkspaces } from "./use-session-workspaces"
-
-type Retention = { days: number | null }
-type DataStats = { count: number; bytes: number }
-type Target = { sessionId: string }
-
-/** 已保存会话的管理命令；列表默认返回未归档会话。 */
-export type SessionHistoryBridge = {
-  list: (input?: { archived?: boolean }) => Promise<SavedSessionSummary[]>
-  rename: (input: Target & { title: string }) => Promise<void>
-  archive: (input: Target & { archived: boolean }) => Promise<void>
-  delete: (input: Target) => Promise<void>
-  dataStats: () => Promise<DataStats>
-  clearHistory: () => Promise<void>
-  retention: () => Promise<Retention>
-  setRetention: (input: Retention) => Promise<Retention>
-}
 
 /** 需要用户确认的删除目标；all 指当前存储的全部会话。 */
 export type HistoryDeletion = { kind: "one"; session: SavedSessionSummary } | { kind: "all" }
@@ -40,12 +25,12 @@ export function useSessionHistory({
   onSessionsDeleted,
   refreshActive,
 }: HistoryOptions) {
-  const bridge: Partial<SessionHistoryBridge> | undefined = window.pigclaude?.session
+  const bridge = window.pigclaude?.session
   const enabled = bridge?.rename !== undefined && bridge.archive !== undefined
   const local = useSessionWorkspaces(summaries)
   const [archived, setArchived] = useState<readonly SavedSessionSummary[]>([])
-  const [stats, setStats] = useState<DataStats | null>(null)
-  const [retention, setRetention] = useState<Retention | null>(null)
+  const [stats, setStats] = useState<SessionHistoryStats | null>(null)
+  const [retention, setRetention] = useState<SessionRetention | null>(null)
   const [deletion, setDeletion] = useState<HistoryDeletion | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -60,7 +45,7 @@ export function useSessionHistory({
 
   const readArchived = useCallback(async () => {
     const request = ++archivedRevision.current
-    const value = await bridge?.list?.({ archived: true })
+    const value = await bridge?.list({ archived: true })
     if (value && request === archivedRevision.current) setArchived(value)
   }, [bridge])
 

@@ -3,12 +3,7 @@
 import type { SessionSummary } from "../../../main/session/session-summary"
 
 /** 会话摘要可携带索引元数据；没有落盘的会话仍使用原摘要。 */
-export type SavedSessionSummary = SessionSummary & {
-  title?: string
-  projectPath?: string
-  restorable?: boolean
-  archivedAt?: string | null
-}
+export type SavedSessionSummary = SessionSummary
 
 /** 历史会话可以从停放、中断或失败状态续接；运行时命令仍走原有发送入口。 */
 export function needsSessionResume(summary: SavedSessionSummary | undefined): boolean {

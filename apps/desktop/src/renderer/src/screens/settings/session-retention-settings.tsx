@@ -1,6 +1,10 @@
 // 负责会话保留期设置。关闭时不限期保留，打开后才能调整天数。
 import { useEffect, useState } from "react"
 import { Button, SettingRow, SettingSection } from "@pigclaude/ui-primitives"
+import {
+  isSessionRetentionDays,
+  maxSessionRetentionDays,
+} from "../../../../session-history-contract"
 import { Switch } from "../../components/ui/switch"
 import { Input } from "../../components/ui/input"
 import type { SessionHistoryController } from "../../hooks/use-session-history"
@@ -8,7 +12,6 @@ import { useText } from "../../locale/text"
 
 const firstDays = 30
 const minimumDays = 1
-const maximumDays = 36_500
 
 /** 显示并编辑会话自动删除开关，成功保存后才更新已生效的天数。 */
 export function SessionRetentionSettings({ history }: { history: SessionHistoryController }) {
@@ -21,7 +24,7 @@ export function SessionRetentionSettings({ history }: { history: SessionHistoryC
     setConfiguring(false)
   }, [saved])
   const number = Number(days)
-  const valid = Number.isInteger(number) && number >= minimumDays && number <= maximumDays
+  const valid = isSessionRetentionDays(number)
 
   return (
     <SettingSection>
@@ -50,7 +53,7 @@ export function SessionRetentionSettings({ history }: { history: SessionHistoryC
             aria-label={t("shell.session.retentionDays")}
             type="number"
             min={minimumDays}
-            max={maximumDays}
+            max={maxSessionRetentionDays}
             step={1}
             value={days}
             disabled={history.saving}

@@ -5,6 +5,7 @@ import { resolve } from "node:path"
 import type { Plugin } from "vite"
 import { DevAuthorizationFixture } from "./src/dev/authorization-fixture"
 import { createAuthorizationMiddleware } from "./src/dev/authorization-middleware"
+import { rendererContentSecurityPolicy } from "./src/main/renderer-csp"
 
 const stripComments = { legalComments: "none" as const }
 
@@ -29,6 +30,24 @@ function devAuthorization(): Plugin {
     configureServer(server) {
       server.middlewares.use(createAuthorizationMiddleware(fixture))
     },
+  }
+}
+
+/** 构建时把 CSP 写在 head 最前面，早于任何脚本；开发服务器要用内联的热更新脚本，不加。 */
+function contentSecurityPolicy(): Plugin {
+  return {
+    name: "pigclaude-content-security-policy",
+    apply: "build",
+    transformIndexHtml: () => [
+      {
+        tag: "meta",
+        attrs: {
+          "http-equiv": "Content-Security-Policy",
+          content: rendererContentSecurityPolicy(),
+        },
+        injectTo: "head-prepend",
+      },
+    ],
   }
 }
 
@@ -57,7 +76,7 @@ export default defineConfig({
   },
   renderer: {
     esbuild: stripComments,
-    plugins: [react(), devAuthorization()],
+    plugins: [react(), devAuthorization(), contentSecurityPolicy()],
     build: { minify: true, sourcemap: false },
     server: { port: 5173, strictPort: true },
   },

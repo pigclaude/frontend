@@ -7,6 +7,11 @@
   },
   "artifactName": "${productName}-${version}-${arch}.${ext}",
   "asar": true,
+  "electronFuses": {
+    "runAsNode": true,
+    "enableNodeOptionsEnvironmentVariable": false,
+    "enableNodeCliInspectArguments": false
+  },
   "npmRebuild": false,
   "files": [
     "out/main/**",

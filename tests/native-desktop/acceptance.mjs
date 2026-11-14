@@ -8,6 +8,7 @@ import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { _electron, expect } from "@playwright/test"
 import { startMembershipFixture } from "./membership-fixture.mjs"
+import { collectPolicyViolations, verifyRendererHardening } from "./renderer-hardening.mjs"
 import { verifySystemClose, verifySystemControls } from "./window-controls.mjs"
 import { systemInput } from "./system-pointer.mjs"
 import { verifyWorkbench } from "./workbench.mjs"
@@ -17,6 +18,7 @@ await mkdir(out, { recursive: true })
 const userData = await mkdtemp(join(tmpdir(), "pigclaude-native-ui-"))
 const fixture = await startMembershipFixture()
 const report = { platform: process.platform, arch: process.arch, checks: [] }
+const policyViolations = []
 const desktopPath = resolve("apps/desktop")
 const electron = createRequire(join(desktopPath, "package.json"))("electron")
 let application
@@ -46,6 +48,7 @@ async function launch() {
   if (process.env.CI) forwardWorkbenchFailures(application.process().stderr)
   applicationPid = await application.evaluate(() => process.pid)
   const page = await application.firstWindow({ timeout: 25_000 })
+  await collectPolicyViolations(page, policyViolations)
   page.setDefaultTimeout(10_000)
   await page.waitForFunction(() => !!window.pigclaude?.membership, null, { timeout: 15_000 })
   if (process.platform === "darwin") {
@@ -411,6 +414,8 @@ try {
   }))
   assert.deepEqual(report.themeAfterRestart, { applied: "dark", saved: "dark" })
   pass("theme retained after restart")
+  report.rendererHardening = await verifyRendererHardening(application, page, policyViolations)
+  pass("sandboxed main window under a CSP that refuses eval, inline and remote scripts")
   if (platform !== "darwin") {
     await verifySystemClose(application, page, out)
     pass("system close button emits native window close")

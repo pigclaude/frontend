@@ -1,4 +1,4 @@
-// 负责验证安装包的固定身份、私有协议和仅发布构建产物的白名单。
+// 负责验证安装包的固定身份、私有协议、仅发布构建产物的白名单和打包时关闭的 fuses。
 import { readFileSync, existsSync } from "node:fs"
 import { resolve } from "node:path"
 import { describe, expect, it } from "vitest"
@@ -52,6 +52,15 @@ describe("macOS 安装包配置", () => {
     expect(config.extraMetadata.pigclaudeEndpoints).toEqual({
       rustBaseUrl: "http://127.0.0.1:8788",
       authOrigin: "http://127.0.0.1:3000",
+    })
+  })
+
+  it("打包时关闭 Node 调试参数和 NODE_OPTIONS；Xray 守护程序还要 RunAsNode", () => {
+    const config = JSON.parse(readFileSync(configPath, "utf8"))
+    expect(config.electronFuses).toEqual({
+      runAsNode: true,
+      enableNodeOptionsEnvironmentVariable: false,
+      enableNodeCliInspectArguments: false,
     })
   })
 })

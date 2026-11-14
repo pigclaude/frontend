@@ -1,4 +1,4 @@
-// 验证主窗口按系统选择标题栏与材质、有最小宽度，并只接受已知的外观值和标题栏颜色。
+// 验证主窗口按系统选择标题栏与材质、有最小宽度、在沙箱里运行，并只接受已知的外观值和标题栏颜色。
 import { describe, expect, it } from "vitest"
 import {
   MIN_WINDOW_WIDTH,
@@ -56,6 +56,18 @@ describe("window options", () => {
     for (const platform of ["darwin", "win32", "linux"] as const) {
       const options = createMainWindowOptions({ platform, preloadPath: "/p.js", isPackaged: true })
       expect(options.minWidth).toBe(640)
+    }
+  })
+
+  it("各系统的主窗口都在沙箱里运行，页面拿不到 Node", () => {
+    for (const platform of ["darwin", "win32", "linux"] as const) {
+      const options = createMainWindowOptions({ platform, preloadPath: "/p.js", isPackaged: false })
+      expect(options.webPreferences).toMatchObject({
+        preload: "/p.js",
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+      })
     }
   })
 

@@ -104,6 +104,35 @@ describe("SessionHost turn settings", () => {
     expect(session.query.flags).toEqual([{ fastMode: true }, { fastMode: false }])
   })
 
+  it("rejects a new send until the cancelled turn has finished interrupting the SDK", async () => {
+    const session = await startSession()
+    const releaseSettings = holdSettings(session.query)
+    let releaseInterrupt = () => {}
+    session.query.interruptReply = () =>
+      new Promise<void>((resolve) => {
+        releaseInterrupt = resolve
+      })
+    const abandoned = session.host.send(session.sessionId, { text: "abandoned", fast: true })
+    await waitUntil(() => session.query.flags.length === 1)
+    const cancel = session.host.cancel(session.sessionId)
+    await waitUntil(() => session.query.interrupts === 1)
+    const replacement = session.host.send(session.sessionId, { text: "replacement" })
+
+    try {
+      releaseSettings()
+      await expect(replacement).rejects.toMatchObject({ code: "TURN_ACTIVE" })
+      expect(session.prompts).toEqual([])
+    } finally {
+      releaseInterrupt()
+      session.query.interruptReply = () => Promise.resolve()
+      await Promise.allSettled([abandoned, cancel, replacement])
+    }
+
+    await session.host.send(session.sessionId, { text: "after interrupt" })
+    await waitUntil(() => session.prompts.length === 1)
+    expect(session.prompts[0]?.message.content).toBe("after interrupt")
+  })
+
   it("warns from the first init of each fast turn, including later turns on the same query", async () => {
     const session = await startSession({ fast: true })
     // 启动探针的 init 在实际发送之前，不能生成这条消息对应的提示。
@@ -164,10 +193,17 @@ describe("SessionHost turn settings", () => {
 class FlagQuery extends FakeQuery {
   readonly flags: unknown[] = []
   reply: () => Promise<void> = () => Promise.resolve()
+  interruptReply: () => Promise<void> = () => Promise.resolve()
 
   async applyFlagSettings(settings?: unknown): Promise<void> {
     this.flags.push(settings)
     await this.reply()
+  }
+
+  /** 允许在测试中延长 SDK 的中断，验证这期间不能发送下一轮。 */
+  override async interrupt(): Promise<void> {
+    await super.interrupt()
+    await this.interruptReply()
   }
 }
 

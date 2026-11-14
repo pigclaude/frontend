@@ -2,15 +2,11 @@
 
 import type { SessionFlagSettings } from "./claude-query"
 import type { ReportedFastMode, SessionEffort } from "./session-events"
+import type { TimelineNoticeEvent } from "./session-notice"
 import type { SessionAdapterPort, SessionSendOptions, SessionStartInput } from "./session-types"
 
 /** 快速模式未生效的提示键，与拷入的聊天语言包对应。 */
-export type FastModeNoticeKey =
-  | "fast.unavailable"
-  | "fast.unavailable.cooldown"
-  | "fast.unavailable.extra_usage_disabled"
-  | "fast.unavailable.free"
-  | "fast.unavailable.model_not_allowed"
+export type FastModeNoticeKey = Extract<TimelineNoticeEvent["key"], `fast.unavailable${string}`>
 
 type FastTurn = {
   id: string

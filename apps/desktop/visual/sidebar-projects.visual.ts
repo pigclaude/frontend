@@ -45,11 +45,12 @@ async function openDraft(page: Page, theme: "light" | "dark"): Promise<void> {
       updatedAt: "2026-10-21T00:00:00.000Z",
     }
     let listener: ((envelope: unknown) => void) | null = null
+    let sessionId = "s-1"
     let seq = 0
     const emit = (event: unknown) =>
       listener?.({
         version: 1,
-        sessionId: "s-1",
+        sessionId,
         seq: (seq += 1),
         at: new Date().toISOString(),
         event,
@@ -97,17 +98,18 @@ async function openDraft(page: Page, theme: "light" | "dark"): Promise<void> {
           openWith: async () => undefined,
         },
         session: {
-          start: async () => {
+          start: async (input: { sessionId?: string }) => {
+            sessionId = input.sessionId ?? sessionId
             setTimeout(() =>
               emit({
                 type: "started",
-                sessionId: "s-1",
+                sessionId,
                 model: "claude-sonnet",
                 tools: [],
                 permissionMode: "default",
               }),
             )
-            return { sessionId: "s-1" }
+            return { sessionId }
           },
           send: async () => {
             setTimeout(() => {

@@ -3,7 +3,8 @@
 
 import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
 import type { MembershipState, MembershipView } from "@pigclaude/contracts/membership"
-import type { ClaudeAgentStartOptions, ClaudeModelsOptions } from "./claude-agent-adapter"
+import type { ClaudeModelsOptions } from "./claude-model-query"
+import type { ClaudeAgentStartOptions } from "./claude-query-options"
 import type { ClaudeModel, SessionEvent, SessionPermissionMode } from "./session-events"
 import type { DaemonEndpoint, OrganizationModel } from "./claude-bootstrap"
 import type { DevProviderOverride } from "./dev-provider"

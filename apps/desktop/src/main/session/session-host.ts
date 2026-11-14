@@ -1,6 +1,7 @@
 // 负责管理一个窗口的唯一活动 Claude 会话：启动、发送、取消、权限回答、模式/模型切换、停止和事件广播。
 import { randomUUID } from "node:crypto"
-import { ClaudeAgentAdapter, type ClaudeAgentStartOptions } from "./claude-agent-adapter"
+import { ClaudeAgentAdapter } from "./claude-agent-adapter"
+import type { ClaudeAgentStartOptions } from "./claude-query-options"
 import { resolveClaudeBinaryPath } from "./claude-binary"
 import type { PermissionAnswer } from "./permission-broker"
 import { classifyDaemonError } from "./session-error-mapping"

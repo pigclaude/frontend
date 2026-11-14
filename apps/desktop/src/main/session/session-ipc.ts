@@ -14,7 +14,7 @@ import {
 } from "./session-types"
 import type { UsageRecorder } from "./usage-recorder"
 import { captureSessionCheckpoint } from "../workbench/session-checkpoints"
-import type { ClaudeAgentStartOptions } from "./claude-agent-adapter"
+import type { ClaudeAgentStartOptions } from "./claude-query-options"
 
 const permissionModes = new Set<SessionPermissionMode>([
   "default",

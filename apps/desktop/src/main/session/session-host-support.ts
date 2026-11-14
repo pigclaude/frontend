@@ -4,7 +4,7 @@
 import { constants } from "node:fs"
 import { access, stat } from "node:fs/promises"
 import { isAbsolute } from "node:path"
-import type { ClaudeAgentStartOptions } from "./claude-agent-adapter"
+import type { ClaudeAgentStartOptions } from "./claude-query-options"
 import type { SessionEnvironmentInput } from "./session-environment"
 import type { SessionEvent } from "./session-events"
 import type { ActiveSession } from "./session-host-active"

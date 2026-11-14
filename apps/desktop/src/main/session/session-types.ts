@@ -2,7 +2,8 @@
 // 事件只含脱敏内容，不放 access/refresh token、代理密码或 daemon 会话令牌。
 
 import type { MembershipView } from "@pigclaude/contracts/membership"
-import type { ClaudeAgentStartOptions, ClaudeModelsOptions } from "./claude-agent-adapter"
+import type { ClaudeModelsOptions } from "./claude-model-query"
+import type { ClaudeAgentStartOptions } from "./claude-query-options"
 import type { PermissionAnswer, PermissionRequestEvent } from "./permission-broker"
 import type { SessionEnvironmentInput } from "./session-environment"
 import type {

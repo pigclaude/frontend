@@ -1,7 +1,8 @@
 // 提供 ClaudeAgentAdapter 测试共用的假 SDK 查询、消息队列和启动参数；不接触真实 CLI 或网络。
 
 import type { ModelInfo, Options, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
-import type { AdapterQuery, ClaudeAgentStartOptions, QueryFn } from "./claude-agent-adapter"
+import type { AdapterQuery, QueryFn } from "./claude-query"
+import type { ClaudeAgentStartOptions } from "./claude-query-options"
 
 /** 测试捕获到的 query 参数。 */
 export type CapturedQuery = {

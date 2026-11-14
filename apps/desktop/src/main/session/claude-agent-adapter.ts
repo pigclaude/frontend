@@ -1,25 +1,14 @@
-// 负责包装 Claude Agent SDK 的 query：固定会话选项，把 SDK 消息映射为应用事件，并管理发送、中断、停止和模型查询。
+// 负责包装 Claude Agent SDK 的 query：管理一次会话的发送、中断、停止和控制请求，把 SDK 消息转发为应用事件。
 
-import type {
-  CanUseTool,
-  ModelInfo,
-  Options,
-  SDKMessage,
-  SDKUserMessage,
-  ThinkingConfig,
-} from "@anthropic-ai/claude-agent-sdk"
+import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { resolveClaudeBinaryPath } from "./claude-binary"
+import { queryClaudeModels, type ClaudeModelsOptions } from "./claude-model-query"
+import { closeQuietly, defaultQueryFn, type AdapterQuery, type QueryFn } from "./claude-query"
+import { buildQueryOptions, type ClaudeAgentStartOptions } from "./claude-query-options"
+import { normalizeSdkMessage } from "./claude-sdk-messages"
 import { PromptStream } from "./prompt-stream"
-import { mergeClaudeModels } from "./claude-model-catalog"
 import { classifyDaemonError } from "./session-error-mapping"
-import type {
-  ClaudeModel,
-  SessionContentBlock,
-  SessionEffort,
-  SessionEvent,
-  SessionPermissionMode,
-  SessionThinking,
-} from "./session-events"
+import type { ClaudeModel, SessionEvent, SessionPermissionMode } from "./session-events"
 
 export type {
   ClaudeModel,
@@ -30,21 +19,6 @@ export type {
   SessionUsage,
 } from "./session-events"
 
-/** SDK query 返回对象的最小端口；真实 Query 和测试假实现都满足。 */
-export type AdapterQuery = AsyncIterable<SDKMessage> & {
-  interrupt(): Promise<unknown>
-  close(): void
-  supportedModels(): Promise<ModelInfo[]>
-  setPermissionMode(mode: SessionPermissionMode): Promise<void>
-  setModel(model?: string): Promise<void>
-}
-
-/** 可注入的 SDK 查询函数，参数与 SDK query() 一致。 */
-export type QueryFn = (params: {
-  prompt: string | AsyncIterable<SDKUserMessage>
-  options: Options
-}) => AdapterQuery | Promise<AdapterQuery>
-
 /** 适配器构造参数；所有外部依赖都可注入，便于不启动真实 CLI 的测试。 */
 export type ClaudeAgentAdapterOptions = {
   queryFn?: QueryFn
@@ -52,33 +26,6 @@ export type ClaudeAgentAdapterOptions = {
   onEvent?: (event: SessionEvent) => void
   /** 一次性模型查询的有界等待时间；超时后关闭 query 并抛出可读错误。 */
   modelsTimeoutMs?: number
-}
-
-/** 开始一次会话的参数；binaryPath 省略时使用 PIGCLAUDE_CLAUDE_BIN 或平台包二进制。 */
-export type ClaudeAgentStartOptions = {
-  workspace: string
-  env: Record<string, string>
-  permissionMode: SessionPermissionMode
-  canUseTool: CanUseTool
-  abortController: AbortController
-  binaryPath?: string
-  model?: string
-  thinking?: SessionThinking
-  /** SDK 的 effort 档位；提供时优先于 thinking。 */
-  effort?: SessionEffort
-  /** 模型支持时启用快速模式。 */
-  fast?: boolean
-  /** 会话专用的宿主工具，未配置时沿用 SDK 自带工具。 */
-  mcpServers?: Options["mcpServers"]
-}
-
-/** 查询模型列表的参数；env 由调用方提供，避免把宿主进程的凭据带进子进程。 */
-export type ClaudeModelsOptions = {
-  workspace?: string
-  env?: Record<string, string>
-  binaryPath?: string
-  /** 这一次查询的有界等待时间；省略时用适配器的 modelsTimeoutMs。 */
-  timeoutMs?: number
 }
 
 /** 包装 SDK query 的会话适配器。保证同一实例只开始一次会话，停止和并发中断可安全重复调用。 */
@@ -193,39 +140,12 @@ export class ClaudeAgentAdapter {
    * 保证整次查询有界：超时或取消时关闭 query、结束输入流并抛出可读错误。
    */
   async models(options: ClaudeModelsOptions = {}): Promise<ClaudeModel[]> {
-    const prompt = new PromptStream()
-    const abortController = new AbortController()
-    const sdkOptions: Options = {
-      cwd: options.workspace ?? process.cwd(),
-      pathToClaudeCodeExecutable: options.binaryPath ?? this.#resolveBinaryPath(),
-      env: { ...options.env },
-      settingSources: [],
-      persistSession: false,
-      includePartialMessages: true,
-      permissionMode: "default",
-      abortController,
-    }
-    let query: AdapterQuery | null = null
-    let creation: Promise<AdapterQuery> | null = null
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const timeoutMs = options.timeoutMs ?? this.#modelsTimeoutMs
-    const timeout = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => {
-        abortController.abort()
-        reject(new Error(`MODEL_QUERY_TIMEOUT: 模型查询超时（${timeoutMs} 毫秒）`))
-      }, timeoutMs)
+    return queryClaudeModels({
+      ...options,
+      queryFn: this.#queryFn,
+      binaryPath: options.binaryPath ?? this.#resolveBinaryPath(),
+      timeoutMs: options.timeoutMs ?? this.#modelsTimeoutMs,
     })
-    try {
-      creation = Promise.resolve(this.#queryFn({ prompt, options: sdkOptions }))
-      query = await Promise.race([creation, timeout])
-      const models = await Promise.race([query.supportedModels(), timeout])
-      return mergeClaudeModels(models)
-    } finally {
-      if (timer !== null) clearTimeout(timer)
-      prompt.end()
-      abortController.abort()
-      closeModelQuery(query, creation)
-    }
   }
 
   /** 切换后续工具调用的权限模式；正在等待的 canUseTool 请求不受影响。会话未启动时抛错。 */
@@ -270,88 +190,7 @@ export class ClaudeAgentAdapter {
   }
 
   #handleMessage(message: SDKMessage): void {
-    switch (message.type) {
-      case "system":
-        if (message.subtype === "init") {
-          this.#emit({
-            type: "started",
-            sessionId: message.session_id,
-            model: message.model,
-            tools: [...message.tools],
-            permissionMode: message.permissionMode,
-          })
-        } else if (message.subtype === "status" && message.permissionMode !== undefined) {
-          this.#emit({ type: "mode", permissionMode: message.permissionMode })
-        }
-        return
-      case "stream_event":
-        this.#handleStreamEvent(message.event)
-        return
-      case "assistant": {
-        this.#emit({
-          type: "message",
-          messageId: message.message.id,
-          model: message.message.model,
-          parentToolUseId: message.parent_tool_use_id,
-          blocks: mapContentBlocks(message.message.content),
-        })
-        if (message.error !== undefined) {
-          this.#emit({
-            type: "error",
-            code: "SDK_ERROR",
-            message: `assistant error: ${message.error}`,
-          })
-        }
-        return
-      }
-      case "user":
-        this.#handleToolResults(message.message.content)
-        return
-      case "result":
-        this.#emit({
-          type: "result",
-          subtype: message.subtype,
-          isError: message.is_error,
-          durationMs: message.duration_ms,
-          numTurns: message.num_turns,
-          stopReason: message.stop_reason,
-          usage: {
-            inputTokens: message.usage.input_tokens,
-            outputTokens: message.usage.output_tokens,
-            cacheReadTokens: message.usage.cache_read_input_tokens,
-            cacheCreationTokens: message.usage.cache_creation_input_tokens,
-          },
-        })
-        return
-      default:
-        return
-    }
-  }
-
-  #handleStreamEvent(event: unknown): void {
-    if (!isRecord(event) || event.type !== "content_block_delta") return
-    const delta = event.delta
-    if (!isRecord(delta)) return
-    const blockIndex = typeof event.index === "number" ? event.index : 0
-    if (delta.type === "text_delta" && typeof delta.text === "string") {
-      this.#emit({ type: "delta", text: delta.text, thinking: false, blockIndex })
-    } else if (delta.type === "thinking_delta" && typeof delta.thinking === "string") {
-      this.#emit({ type: "delta", text: delta.thinking, thinking: true, blockIndex })
-    }
-  }
-
-  #handleToolResults(content: unknown): void {
-    if (!Array.isArray(content)) return
-    for (const block of content) {
-      if (!isRecord(block) || block.type !== "tool_result") continue
-      if (typeof block.tool_use_id !== "string") continue
-      this.#emit({
-        type: "tool-result",
-        toolUseId: block.tool_use_id,
-        content: toolResultText(block.content),
-        isError: block.is_error === true,
-      })
-    }
+    for (const event of normalizeSdkMessage(message)) this.#emit(event)
   }
 
   #emit(event: SessionEvent): void {
@@ -372,104 +211,6 @@ export class ClaudeAgentAdapter {
     this.#endedEmitted = true
     this.#emit({ type: "ended", reason })
   }
-}
-
-// 一次性查询结束：已拿到的 query 立即关闭；还在创建的 query 在返回后立刻关闭，避免遗留进程。
-function closeModelQuery(query: AdapterQuery | null, creation: Promise<AdapterQuery> | null): void {
-  if (query !== null) {
-    closeQuietly(query)
-    return
-  }
-  if (creation === null) return
-  void creation.then(closeQuietly, () => undefined)
-}
-
-function closeQuietly(query: AdapterQuery): void {
-  try {
-    query.close()
-  } catch {
-    // SDK 进程可能已经退出，关闭失败不影响超时或结果。
-  }
-}
-
-function buildQueryOptions(options: ClaudeAgentStartOptions, binaryPath: string): Options {
-  return {
-    cwd: options.workspace,
-    pathToClaudeCodeExecutable: binaryPath,
-    env: { ...options.env },
-    settingSources: [],
-    persistSession: false,
-    includePartialMessages: true,
-    ...(options.mcpServers ? { mcpServers: options.mcpServers } : {}),
-    permissionMode: options.permissionMode,
-    canUseTool: options.canUseTool,
-    abortController: options.abortController,
-    ...(options.model === undefined ? {} : { model: options.model }),
-    ...(options.effort !== undefined
-      ? { effort: options.effort }
-      : options.thinking === undefined
-        ? {}
-        : { thinking: thinkingConfig(options.thinking) }),
-    ...(options.fast ? { settings: { fastMode: true } } : {}),
-    // CLI 只在带这个开关启动时才接受会话中途切到完全访问。
-    allowDangerouslySkipPermissions: true,
-  }
-}
-
-// 固定档位映射，避免 renderer 直接传任意 token 预算。
-function thinkingConfig(thinking: SessionThinking): ThinkingConfig {
-  switch (thinking) {
-    case "off":
-      return { type: "disabled" }
-    case "low":
-      return { type: "enabled", budgetTokens: 2_048 }
-    case "medium":
-      return { type: "enabled", budgetTokens: 8_192 }
-    case "high":
-      return { type: "enabled", budgetTokens: 16_384 }
-  }
-}
-
-function mapContentBlocks(content: unknown): SessionContentBlock[] {
-  if (!Array.isArray(content)) return []
-  const blocks: SessionContentBlock[] = []
-  for (const block of content) {
-    if (!isRecord(block)) continue
-    if (block.type === "text" && typeof block.text === "string") {
-      blocks.push({ type: "text", text: block.text })
-    } else if (block.type === "thinking" && typeof block.thinking === "string") {
-      blocks.push({ type: "thinking", text: block.thinking })
-    } else if (block.type === "tool_use" && typeof block.id === "string") {
-      blocks.push({
-        type: "tool-use",
-        id: block.id,
-        name: typeof block.name === "string" ? block.name : "unknown",
-        input: block.input,
-      })
-    }
-  }
-  return blocks
-}
-
-function toolResultText(content: unknown): string {
-  if (typeof content === "string") return content
-  if (!Array.isArray(content)) return ""
-  const parts: string[] = []
-  for (const block of content) {
-    if (isRecord(block) && block.type === "text" && typeof block.text === "string") {
-      parts.push(block.text)
-    }
-  }
-  return parts.join("")
-}
-
-const defaultQueryFn: QueryFn = async ({ prompt, options }) => {
-  const sdk = await import("@anthropic-ai/claude-agent-sdk")
-  return sdk.query({ prompt, options })
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
 }
 
 function errorMessage(error: unknown): string {

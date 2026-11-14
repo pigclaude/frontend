@@ -59,8 +59,12 @@ export type SessionAccountSwitchedEvent = {
   reason: SessionAccountSwitchReason
 }
 
-/** SessionHost 发给 preload 的全部事件：适配器事件加权限和换号。 */
-export type SessionHostEvent = SessionEvent | PermissionRequestEvent | SessionAccountSwitchedEvent
+/** 给用户的一次性提示，例如自动审批不可用的原因；界面用通知展示，不进对话记录。 */
+export type SessionNoticeEvent = { type: "notice"; message: string }
+
+/** SessionHost 发给 preload 的全部事件：适配器事件加权限、换号和提示。 */
+export type SessionHostEvent =
+  SessionEvent | PermissionRequestEvent | SessionAccountSwitchedEvent | SessionNoticeEvent
 
 /** 设计第 12 节的稳定错误码；SESSION_START_FAILED 来自第 13 节的配置目录失败分支。 */
 export type SessionErrorCode =

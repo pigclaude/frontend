@@ -34,6 +34,7 @@ function state(overrides: Partial<SessionUiState> = {}): SessionUiState {
     activeTurnId: null,
     turns: [],
     error: null,
+    notice: null,
     ...overrides,
   }
 }

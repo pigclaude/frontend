@@ -23,6 +23,11 @@ import { SessionHost, type SessionHostOptions } from "./session-host"
 
 export const fixedNow = new Date(2026, 9, 26, 12, 0, 0).getTime()
 
+/** 构造 SDK 转来的自动审批拒绝：消息是 CLI 原文，errorCode 是 CLI 的错误码。 */
+export function autoModeRefusal(errorCode: string, reason: string): Error {
+  return Object.assign(new Error(`Cannot set permission mode to auto: ${reason}`), { errorCode })
+}
+
 /** 构造一份脱敏会员视图；测试只关心状态。 */
 export function membershipView(state: MembershipState = "active"): MembershipView {
   return {
@@ -183,9 +188,16 @@ export class FakeAdapter implements SessionAdapterPort {
   canUseTool: CanUseTool | null = null
   interrupts = 0
   stops = 0
+  /** 切到自动审批时抛出的错误，模拟 Claude Code 拒绝。 */
+  autoRefusal: Error | null = null
+  /** 任何模式切换都抛出的错误，模拟 CLI 已经不可用。 */
+  modeError: Error | null = null
+  /** 为 true 时模式变化通知晚于控制请求的回应到达。 */
+  lateModeEvents = false
   readonly #onEvent: (event: SessionEvent) => void
   readonly #trace: string[]
   #startGate: { promise: Promise<void>; resolve: () => void } | null = null
+  #mode: SessionPermissionMode = "default"
 
   constructor(onEvent: (event: SessionEvent) => void, trace: string[]) {
     this.#onEvent = onEvent
@@ -195,6 +207,7 @@ export class FakeAdapter implements SessionAdapterPort {
   async start(options: ClaudeAgentStartOptions): Promise<void> {
     this.startCalls.push(options)
     this.canUseTool = options.canUseTool
+    this.#mode = options.permissionMode
     this.#trace.push("started")
     if (this.#startGate !== null) await this.#startGate.promise
   }
@@ -237,8 +250,16 @@ export class FakeAdapter implements SessionAdapterPort {
     return this.modelsResult
   }
 
+  /** 和 CLI 一样：被拒时模式不变，真正变化时发一条模式通知。 */
   async setPermissionMode(mode: SessionPermissionMode): Promise<void> {
     this.modes.push(mode)
+    if (mode === "auto" && this.autoRefusal !== null) throw this.autoRefusal
+    if (this.modeError !== null) throw this.modeError
+    if (mode === this.#mode) return
+    this.#mode = mode
+    const event: SessionEvent = { type: "mode", permissionMode: mode }
+    if (this.lateModeEvents) setTimeout(() => this.#onEvent(event), 0)
+    else this.#onEvent(event)
   }
 
   async setModel(model: string): Promise<void> {
@@ -254,6 +275,7 @@ export class FakeAdapter implements SessionAdapterPort {
 /** 记录创建参数的假适配器工厂。 */
 export class AdapterFactory {
   readonly instances: FakeAdapter[] = []
+  #configure: ((adapter: FakeAdapter) => void) | null = null
 
   constructor(
     private readonly trace: string[],
@@ -265,8 +287,14 @@ export class AdapterFactory {
     const adapter = new FakeAdapter(onEvent, this.trace)
     adapter.modelsError = this.modelsError
     if (this.holdStart) adapter.holdStart()
+    this.#configure?.(adapter)
     this.instances.push(adapter)
     return adapter
+  }
+
+  /** 之后新建的适配器在启动前先交给 configure，便于设置拒绝或失败。 */
+  onCreate(configure: (adapter: FakeAdapter) => void): void {
+    this.#configure = configure
   }
 
   get last(): FakeAdapter {

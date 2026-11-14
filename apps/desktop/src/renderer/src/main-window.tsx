@@ -17,6 +17,7 @@ import { TrayScreen } from "./screens/tray-screen"
 import { UsageScreen } from "./screens/usage-screen"
 import type { ClaudeAccountsController } from "./hooks/use-claude-accounts"
 import { sessionAccountId, useSession } from "./hooks/use-session"
+import { useSessionNotices } from "./hooks/use-session-notices"
 import { useWorkspaces } from "./hooks/use-workspaces"
 import { fill, useText } from "./locale/text"
 import { projectNameFromPath } from "./models/project-model"
@@ -86,6 +87,7 @@ export function MainWindow({
   const toast = useToast()
   const pool = claudeAccounts
   const session = useSession()
+  useSessionNotices(session.state.notice)
   const workspaces = useWorkspaces()
   const [lastWorkspace, setLastWorkspace] = useState<NavLocation>({ kind: "session" })
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})

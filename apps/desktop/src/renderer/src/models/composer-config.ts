@@ -40,14 +40,11 @@ export type ComposerConfig = {
   smartPunctuation: boolean
 }
 
-/** 会话宿主能运行的档位。自动审批不在其中：选它时如实提示并保持原档。 */
-export type RunnableLevel = Exclude<RuntimeMode, "auto">
-
 /** 会话的权限状态在输入框里的样子：一个档位加一个计划开关。 */
-export type PermissionView = { level: RunnableLevel; plan: boolean }
+export type PermissionView = { level: RuntimeMode; plan: boolean }
 
 /** 新会话的默认档位：Claude Code 自己的默认档 `default`，即监督审批。 */
-export const DEFAULT_PERMISSION_LEVEL: RunnableLevel = "approval-required"
+export const DEFAULT_PERMISSION_LEVEL: RuntimeMode = "approval-required"
 
 /** Claude 会话支持独立的计划开关；每个账号实例都声明这一点，输入框才显示计划开关。 */
 const CLAUDE_EXECUTION_MODES = { plan: true }
@@ -58,13 +55,15 @@ export function composerLevel(mode: PermissionMode): RuntimeMode | null {
 }
 
 /** 档位和计划开关对应的 Claude Code 权限模式；计划开关打开时一律是 plan。 */
-export function sessionPermissionMode(level: RunnableLevel, plan: boolean): SessionPermissionMode {
+export function sessionPermissionMode(level: RuntimeMode, plan: boolean): SessionPermissionMode {
   if (plan) return "plan"
   switch (level) {
     case "approval-required":
       return "default"
     case "auto-accept-edits":
       return "acceptEdits"
+    case "auto":
+      return "auto"
     case "full-access":
       return "bypassPermissions"
   }
@@ -73,13 +72,15 @@ export function sessionPermissionMode(level: RunnableLevel, plan: boolean): Sess
 /** 把会话的 Claude Code 模式拆成档位和计划开关；plan 期间档位取打开计划前记住的 remembered。 */
 export function permissionView(
   mode: SessionPermissionMode,
-  remembered: RunnableLevel,
+  remembered: RuntimeMode,
 ): PermissionView {
   switch (mode) {
     case "default":
       return { level: "approval-required", plan: false }
     case "acceptEdits":
       return { level: "auto-accept-edits", plan: false }
+    case "auto":
+      return { level: "auto", plan: false }
     case "bypassPermissions":
       return { level: "full-access", plan: false }
     case "plan":

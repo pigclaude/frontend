@@ -19,6 +19,7 @@ import type { ClaudeAgentStartOptions } from "./claude-agent-adapter"
 const permissionModes = new Set<SessionPermissionMode>([
   "default",
   "acceptEdits",
+  "auto",
   "plan",
   "bypassPermissions",
 ])

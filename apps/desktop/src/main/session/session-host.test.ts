@@ -179,7 +179,12 @@ describe("SessionHost events and usage", () => {
 
     await waitUntil(() => harness.usage.records.length === 1)
 
-    expect(harness.events.map((event) => event.type)).toEqual(["started", "delta", "result"])
+    expect(harness.events.map((event) => event.type)).toEqual([
+      "mode",
+      "started",
+      "delta",
+      "result",
+    ])
     expect(harness.usage.records[0]).toMatchObject({
       schemaVersion: 1,
       sessionId: "id-1",

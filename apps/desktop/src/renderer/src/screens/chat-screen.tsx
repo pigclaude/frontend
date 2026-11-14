@@ -7,7 +7,7 @@ import {
   type ClaudeAccountView,
   type ProxyView,
 } from "@pigclaude/contracts/claude-account"
-import type { AgentFeatures } from "@pigclaude/ui-contracts"
+import type { AgentFeatures, RuntimeMode } from "@pigclaude/ui-contracts"
 import { ChatView, NewThreadView } from "@pigclaude/ui-chat"
 import {
   prefillComposer,
@@ -34,7 +34,6 @@ import {
   sessionPermissionMode,
   type ComposerConfig,
   type PermissionView,
-  type RunnableLevel,
 } from "../models/composer-config"
 import { projectNameFromPath } from "../models/project-model"
 import type { NavLocation } from "../models/navigation"
@@ -101,7 +100,7 @@ export function ChatScreen({
   const [modelId, setModelId] = useState("")
   const [accountId, setAccountId] = useState("")
   // 档位和计划开关分开记：计划打开期间档位不变，关掉计划或批准计划后回到这一档。
-  const [level, setLevel] = useState<RunnableLevel>(DEFAULT_PERMISSION_LEVEL)
+  const [level, setLevel] = useState<RuntimeMode>(DEFAULT_PERMISSION_LEVEL)
   const [draftPlan, setDraftPlan] = useState(false)
   const startedAt = useRef(Date.now())
   const lastModelsError = useRef<string | null>(null)
@@ -191,10 +190,6 @@ export function ChatScreen({
   function chooseMode(mode: PermissionMode): void {
     const next = composerLevel(mode)
     if (next === null) return
-    if (next === "auto") {
-      notify("自动审批暂未接通，已保持当前档位")
-      return
-    }
     setLevel(next)
     if (live && !shown.plan) void session.setMode(sessionPermissionMode(next, false))
   }
@@ -284,9 +279,19 @@ export function ChatScreen({
     })
   }
 
-  /** 回答一次权限请求；“始终允许”把 SDK 建议的规则一起写回。 */
-  function decidePermission(requestId: string, choice: PermissionChoice): void {
-    void session.respondPermission(requestId, choice.decision, choice.suggestions)
+  /** 回答一次权限请求；“始终允许”把 SDK 建议的规则一起写回。批准计划时先回到打开计划前的档位。 */
+  async function decidePermission(requestId: string, choice: PermissionChoice): Promise<void> {
+    const approvesPlan =
+      choice.decision === "allow" &&
+      shown.plan &&
+      pending?.requestId === requestId &&
+      pending.toolName === "ExitPlanMode"
+    // 先切档位再批准：回到自动审批时也要经过 Claude Code 核实。
+    if (approvesPlan) {
+      setLevel(shown.level)
+      await session.setMode(sessionPermissionMode(shown.level, false))
+    }
+    await session.respondPermission(requestId, choice.decision, choice.suggestions)
   }
 
   function chooseWorkspace(path: string): void {
@@ -377,7 +382,10 @@ export function ChatScreen({
       </ToolRenderers>
       <PermissionDock container={page} mounted={live ? "live" : null}>
         {pending === null ? null : (
-          <PermissionPrompt request={pending} onDecide={decidePermission} />
+          <PermissionPrompt
+            request={pending}
+            onDecide={(requestId, choice) => void decidePermission(requestId, choice)}
+          />
         )}
       </PermissionDock>
     </div>

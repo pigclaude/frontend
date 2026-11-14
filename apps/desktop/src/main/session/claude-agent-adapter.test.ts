@@ -50,12 +50,12 @@ describe("ClaudeAgentAdapter", () => {
     })
     expect(captured[0]?.options.canUseTool).toBe(canUseTool)
     expect(captured[0]?.options.abortController).toBe(abortController)
-    expect(captured[0]?.options.allowDangerouslySkipPermissions).toBeUndefined()
+    expect(captured[0]?.options.allowDangerouslySkipPermissions).toBe(true)
     expect(events).toEqual([])
     await adapter.stop()
   })
 
-  it("uses the explicit binary path before the resolver and allows bypass only when requested", async () => {
+  it("uses the explicit binary path before the resolver", async () => {
     const fake = new FakeQuery()
     const captured: CapturedQuery[] = []
     let resolved = 0

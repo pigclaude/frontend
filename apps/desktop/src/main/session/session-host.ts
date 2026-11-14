@@ -2,7 +2,6 @@
 import { randomUUID } from "node:crypto"
 import { ClaudeAgentAdapter, type ClaudeAgentStartOptions } from "./claude-agent-adapter"
 import { resolveClaudeBinaryPath } from "./claude-binary"
-import { PermissionBroker } from "./permission-broker"
 import type { PermissionAnswer } from "./permission-broker"
 import { classifyDaemonError } from "./session-error-mapping"
 import { SessionEnvironment, type ModelAuth } from "./session-environment"
@@ -20,17 +19,25 @@ import {
   assertWorkspace,
   buildStartOptions,
   buildUsageRecord,
+  createActiveSession,
   createEnvironmentOrThrow,
   errorMessage,
   hostError,
   mapStartError,
   readBinaryPath,
+  redactSessionToken,
   sanitizeSessionEvent,
   sanitizeStartError,
   assertMembershipActive,
   buildStatusView,
 } from "./session-host-support"
 import type { ActiveSession } from "./session-host-support"
+import {
+  enterRequestedMode,
+  followReportedMode,
+  switchPermissionMode,
+  type ModeEvent,
+} from "./session-host-modes"
 import { normalizeSessionLocale, normalizeSessionTimezone } from "./session-locale"
 import { queryModels } from "./session-models"
 import { boundSessionEnvironment } from "./bound-session-environment"
@@ -38,7 +45,6 @@ import type {
   ClaudeModel,
   SessionAdapterFactory,
   SessionEnvironmentFactory,
-  SessionEnvironmentPort,
   SessionHostEvent,
   SessionMembership,
   SessionPermissionMode,
@@ -100,6 +106,14 @@ export class SessionHost {
   #stopRequested = false
   #closing: Promise<void> | null = null
   #disposed = false
+  readonly #emitModeEvent = (event: ModeEvent): void => {
+    if (event.type === "mode") this.#emit(event)
+    else
+      this.#emit({
+        ...event,
+        message: redactSessionToken(event.message, this.#runtime.sessionToken),
+      })
+  }
 
   /** 创建会话宿主并订阅会员、换号和用量写入失败事件。 */
   constructor(options: SessionHostOptions) {
@@ -205,7 +219,13 @@ export class SessionHost {
       throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
     }
     const effectiveInput = pinnedStartInput(this.#provider, input)
-    const active = this.#createActiveSession(sessionId, effectiveInput, environment)
+    const active = createActiveSession(sessionId, effectiveInput, environment, {
+      createAdapter: this.#createAdapter,
+      permissionTimeoutMs: this.#permissionTimeoutMs,
+      emitPermission: (request) => this.#emit(request),
+      onPermissionTimeout: (session) => this.#handlePermissionTimeout(session),
+      onAdapterEvent: (session, event) => this.#handleAdapterEvent(session, event),
+    })
     this.#session = active
     try {
       await active.adapter.start({
@@ -219,6 +239,7 @@ export class SessionHost {
       }
       throw mapStartError(error, this.#runtime.sessionToken)
     }
+    await enterRequestedMode(active, effectiveInput.permissionMode, this.#emitModeEvent)
     if (this.#stopRequested || this.#disposed) {
       await this.#release(active)
       throw new SessionHostError("SESSION_CANCELLED", "会话启动已取消")
@@ -229,6 +250,7 @@ export class SessionHost {
       }
       throw new SessionHostError("SDK_ERROR", "会话在启动期间结束")
     }
+    this.#emit({ type: "mode", permissionMode: active.permissionMode })
     return { sessionId }
   }
 
@@ -275,12 +297,11 @@ export class SessionHost {
     active.broker.respond(answer)
   }
 
-  /** 切换后续工具调用的权限模式；等待中的权限请求保持原模式。 */
+  /** 切换后续工具调用的权限模式；等待中的权限请求保持原模式。自动审批被拒时不抛错，改发提示。 */
   async setMode(mode: SessionPermissionMode): Promise<void> {
     const active = this.#requireActive()
     try {
-      await active.adapter.setPermissionMode(mode)
-      active.permissionMode = mode
+      await switchPermissionMode(active, mode, this.#emitModeEvent)
     } catch (error) {
       throw hostError("SDK_ERROR", errorMessage(error), this.#runtime.sessionToken)
     }
@@ -348,45 +369,6 @@ export class SessionHost {
     this.#listeners.clear()
   }
 
-  #createActiveSession(
-    sessionId: string,
-    input: SessionStartInput,
-    environment: SessionEnvironmentPort,
-  ): ActiveSession {
-    const holder: { current: ActiveSession | null } = { current: null }
-    const broker = new PermissionBroker({
-      emit: (request) => this.#emit({ ...request }),
-      onTimeout: () => {
-        const active = holder.current
-        if (active !== null) this.#handlePermissionTimeout(active)
-      },
-      timeoutMs: this.#permissionTimeoutMs,
-    })
-    const adapter = this.#createAdapter((event) => {
-      const active = holder.current
-      if (active !== null) this.#handleAdapterEvent(active, event)
-    })
-    const active: ActiveSession = {
-      sessionId,
-      environment,
-      adapter,
-      broker,
-      abort: new AbortController(),
-      model: input.model ?? null,
-      permissionMode: input.permissionMode,
-      accountId: input.accountId ?? null,
-      switchedFrom: null,
-      turnId: null,
-      turnCancelled: false,
-      turnErrorCode: null,
-      stopping: false,
-      ending: null,
-      released: false,
-    }
-    holder.current = active
-    return active
-  }
-
   // 结束会话共用路径：拒绝权限 -> 中止/中断 -> 停止适配器 -> 清理环境。
   async #endSession(
     active: ActiveSession,
@@ -444,7 +426,11 @@ export class SessionHost {
     switch (event.type) {
       case "started":
         active.model = event.model
+        followReportedMode(active, event.permissionMode, "init", this.#emitModeEvent)
         break
+      case "mode":
+        followReportedMode(active, event.permissionMode, "status", this.#emitModeEvent)
+        return
       case "result":
         if (active.turnId !== null) void active.checkpoint?.(active.environment.workspace, "final")
         this.#recordUsage(active, event)

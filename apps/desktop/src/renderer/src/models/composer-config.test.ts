@@ -1,4 +1,4 @@
-// 负责验证输入区适配层：四档权限与计划开关的映射、思考深度、账号实例和模型目录。
+// 负责验证输入区适配层：四档权限（含自动审批）与计划开关的映射、思考深度、账号实例和模型目录。
 
 import { describe, expect, it } from "vitest"
 import type { ClaudeModel } from "../../../main/session/session-types"
@@ -30,15 +30,17 @@ describe("composer permission mapping", () => {
     expect(sessionPermissionMode(DEFAULT_PERMISSION_LEVEL, false)).toBe("default")
   })
 
-  it("maps the levels the session host runs to Claude Code modes", () => {
+  it("maps the four levels to Claude Code modes", () => {
     expect(sessionPermissionMode("approval-required", false)).toBe("default")
     expect(sessionPermissionMode("auto-accept-edits", false)).toBe("acceptEdits")
+    expect(sessionPermissionMode("auto", false)).toBe("auto")
     expect(sessionPermissionMode("full-access", false)).toBe("bypassPermissions")
   })
 
   it("runs every level in Claude Code's plan mode while the plan switch is on", () => {
     expect(sessionPermissionMode("approval-required", true)).toBe("plan")
     expect(sessionPermissionMode("auto-accept-edits", true)).toBe("plan")
+    expect(sessionPermissionMode("auto", true)).toBe("plan")
     expect(sessionPermissionMode("full-access", true)).toBe("plan")
   })
 
@@ -51,6 +53,7 @@ describe("composer permission mapping", () => {
       level: "auto-accept-edits",
       plan: false,
     })
+    expect(permissionView("auto", "approval-required")).toEqual({ level: "auto", plan: false })
     expect(permissionView("bypassPermissions", "approval-required")).toEqual({
       level: "full-access",
       plan: false,

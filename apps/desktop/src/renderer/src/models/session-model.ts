@@ -1,5 +1,5 @@
 // 负责把会话桥的流式事件归并成聊天界面状态：增量合并、消息/工具去重、权限卡片、
-// 换号提示、结果和结束状态，并把主进程错误码映射成中文文案。
+// 换号提示、权限模式和会话提示、结果和结束状态，并把主进程错误码映射成中文文案。
 
 import type {
   SessionAccountSwitchReason,
@@ -80,6 +80,9 @@ export type SessionTurn = {
   seenMessageIds: string[]
 }
 
+/** 一条会话提示；每条都是新对象，同样的话再次出现也能和上一条区分。 */
+export type SessionNotice = { message: string }
+
 /** 聊天页消费的全部会话状态；不包含任何凭据。 */
 export type SessionUiState = {
   sessionId: string | null
@@ -87,11 +90,13 @@ export type SessionUiState = {
   ended: boolean
   endedReason: "completed" | "stopped" | "error" | null
   model: string | null
+  /** 只跟随主进程广播的模式，界面不自行假设切换成功。 */
   permissionMode: SessionPermissionMode
   accountId: string | null
   activeTurnId: string | null
   turns: SessionTurn[]
   error: SessionErrorView | null
+  notice: SessionNotice | null
 }
 
 /** 会话状态机动作；事件统一包在 event 里，界面操作使用其余类型。 */
@@ -105,7 +110,6 @@ export type SessionAction =
   | { type: "stopped" }
   | { type: "failed"; message: string; code?: string }
   | { type: "clear-error" }
-  | { type: "mode-changed"; mode: SessionPermissionMode }
   | { type: "model-changed"; model: string }
 
 /** 创建空会话状态；没有活动会话时 started 为 false。 */
@@ -121,6 +125,7 @@ export function createSessionState(): SessionUiState {
     activeTurnId: null,
     turns: [],
     error: null,
+    notice: null,
   }
 }
 
@@ -174,8 +179,6 @@ export function reduceSession(state: SessionUiState, action: SessionAction): Ses
       return applyFailure(state, action.message, action.code)
     case "clear-error":
       return { ...state, error: null }
-    case "mode-changed":
-      return { ...state, permissionMode: action.mode }
     case "model-changed":
       return { ...state, model: action.model }
     default:
@@ -193,8 +196,11 @@ function applyEvent(state: SessionUiState, event: SessionHostEvent): SessionUiSt
         ended: false,
         endedReason: null,
         model: event.model,
-        permissionMode: readMode(event.permissionMode),
       }
+    case "mode":
+      return { ...state, permissionMode: readMode(event.permissionMode, state.permissionMode) }
+    case "notice":
+      return { ...state, notice: { message: event.message } }
     case "delta":
       return updateActiveTurn(state, (turn) => appendDelta(turn, event.text, event.thinking))
     case "message":
@@ -465,14 +471,15 @@ function settlePendingPermissions(
   return cards.map((card) => (card.status === "pending" ? { ...card, status } : card))
 }
 
-function readMode(value: string): SessionPermissionMode {
+function readMode(value: string, current: SessionPermissionMode): SessionPermissionMode {
   if (
     value === "default" ||
     value === "acceptEdits" ||
+    value === "auto" ||
     value === "plan" ||
     value === "bypassPermissions"
   ) {
     return value
   }
-  return "default"
+  return current
 }

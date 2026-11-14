@@ -34,6 +34,7 @@ export type SessionController = {
     decision: "allow" | "deny",
     updatedPermissions?: unknown[],
   ) => Promise<void>
+  /** 请求切换权限模式；界面上的模式只在主进程广播后才变。 */
   setMode: (mode: SessionUiState["permissionMode"]) => Promise<void>
   setModel: (model: string) => Promise<void>
   /** force 为 true 时忽略缓存重新查询；成功一次后默认不重复启动 CLI。 */
@@ -216,7 +217,6 @@ export function useSession(bridge?: SessionBridge | null): SessionController {
 
   const setMode = useCallback(
     async (mode: SessionUiState["permissionMode"]): Promise<void> => {
-      dispatch({ type: "mode-changed", mode })
       try {
         await resolved?.setMode(mode)
       } catch (error: unknown) {

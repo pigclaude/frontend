@@ -1,11 +1,14 @@
-// 负责验证适配器把 model/thinking/effort/fast 固定进 query 选项，并把模式/模型切换转发给运行中的 query。
+// 负责验证适配器把 model/thinking/effort/fast 固定进 query 选项，把模式/模型切换转发给运行中的 query，
+// 并把 Claude Code 报告的权限模式转成会话事件。
 
 import { describe, expect, it } from "vitest"
-import { ClaudeAgentAdapter } from "./claude-agent-adapter"
+import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
+import { ClaudeAgentAdapter, type SessionEvent } from "./claude-agent-adapter"
 import {
   capture,
   FakeQuery,
   startOptions,
+  waitUntil,
   type CapturedQuery,
 } from "./claude-agent-adapter-fixtures"
 
@@ -78,4 +81,35 @@ describe("ClaudeAgentAdapter controls", () => {
     await expect(adapter.setPermissionMode("plan")).rejects.toThrow(/not active/)
     await expect(adapter.setModel("claude-opus-4")).rejects.toThrow(/not active/)
   })
+
+  it("reports the permission mode from status messages and skips those without one", async () => {
+    const fake = new FakeQuery()
+    const events: SessionEvent[] = []
+    const adapter = new ClaudeAgentAdapter({
+      queryFn: capture(fake, []),
+      resolveBinaryPath: () => "/resolved/claude",
+      onEvent: (event) => events.push(event),
+    })
+    await adapter.start(startOptions())
+
+    fake.emit(statusMessage({ status: "compacting" }))
+    fake.emit(statusMessage({ status: null, permissionMode: "auto" }))
+    await waitUntil(() => events.length > 0)
+
+    expect(events).toEqual([{ type: "mode", permissionMode: "auto" }])
+    await adapter.stop()
+  })
 })
+
+function statusMessage(fields: {
+  status: "compacting" | null
+  permissionMode?: string
+}): SDKMessage {
+  return {
+    type: "system",
+    subtype: "status",
+    ...fields,
+    uuid: "00000000-0000-4000-8000-000000000009",
+    session_id: "sdk-session",
+  } as unknown as SDKMessage
+}

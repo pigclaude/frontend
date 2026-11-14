@@ -2,8 +2,9 @@
 
 import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk"
 
-/** 应用允许的四档权限模式；与设计第 9.1 节一致。 */
-export type SessionPermissionMode = "default" | "acceptEdits" | "plan" | "bypassPermissions"
+/** 应用允许的权限模式：四个档位加计划；与设计第 9.1 节一致。 */
+export type SessionPermissionMode =
+  "default" | "acceptEdits" | "auto" | "plan" | "bypassPermissions"
 
 /** 应用允许的四档思考深度；off 关闭，其余映射到固定 token 预算。 */
 export type SessionThinking = "off" | "low" | "medium" | "high"
@@ -34,6 +35,8 @@ export type SessionEvent =
       tools: string[]
       permissionMode: PermissionMode
     }
+  /** Claude Code 报告的当前权限模式；它自己改模式时也会发。 */
+  | { type: "mode"; permissionMode: PermissionMode }
   | { type: "delta"; text: string; thinking: boolean; blockIndex: number }
   | {
       type: "message"

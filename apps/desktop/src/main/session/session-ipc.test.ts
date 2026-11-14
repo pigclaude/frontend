@@ -114,7 +114,7 @@ describe("readSessionStartInput", () => {
       "INVALID_SESSION_INPUT",
     )
     expect(() =>
-      readSessionStartInput({ workspace: "/Users/me/app", permissionMode: "auto" }),
+      readSessionStartInput({ workspace: "/Users/me/app", permissionMode: "dontAsk" }),
     ).toThrow("INVALID_SESSION_INPUT")
     expect(() =>
       readSessionStartInput({
@@ -234,9 +234,10 @@ describe("readPermissionAnswer", () => {
 })
 
 describe("readPermissionMode and readUsageRange", () => {
-  it("accepts only the four modes and two ranges", () => {
+  it("accepts only the four levels, plan and two ranges", () => {
     expect(readPermissionMode("bypassPermissions")).toBe("bypassPermissions")
-    expect(() => readPermissionMode("auto")).toThrow("INVALID_SESSION_INPUT")
+    expect(readPermissionMode("auto")).toBe("auto")
+    expect(() => readPermissionMode("dontAsk")).toThrow("INVALID_SESSION_INPUT")
     expect(readUsageRange({ range: "7d" })).toBe("7d")
     expect(() => readUsageRange({ range: "30d" })).toThrow("INVALID_SESSION_INPUT")
     expect(() => readUsageRange(null)).toThrow("INVALID_SESSION_INPUT")

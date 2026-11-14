@@ -1,14 +1,16 @@
-// 负责 SessionHost 的纯辅助逻辑：工作区校验、启动错误映射、系统时区回退、用量记录构造和秘密脱敏。
+// 负责 SessionHost 的纯辅助逻辑：活动会话组装、工作区校验、启动错误映射、系统时区回退、用量记录构造和秘密脱敏。
 // 除工作区状态检查外不做 I/O、不持有会话状态，便于单独审查和保持主文件行数在上限内。
 
 import { constants } from "node:fs"
 import { access, stat } from "node:fs/promises"
 import { isAbsolute } from "node:path"
 import type { ClaudeAgentStartOptions } from "./claude-agent-adapter"
-import type { PermissionBroker } from "./permission-broker"
+import { PermissionBroker, type PermissionRequestEvent } from "./permission-broker"
 import type { SessionEnvironmentInput } from "./session-environment"
 import type { SessionEvent } from "./session-events"
+import { launchPermissionMode } from "./session-host-modes"
 import type {
+  SessionAdapterFactory,
   SessionAdapterPort,
   SessionEnvironmentFactory,
   SessionEnvironmentPort,
@@ -31,6 +33,7 @@ export type ActiveSession = {
   abort: AbortController
   model: string | null
   permissionMode: SessionPermissionMode
+  modeEchoes: SessionPermissionMode[]
   accountId: string | null
   switchedFrom: string | null
   turnId: string | null
@@ -40,6 +43,55 @@ export type ActiveSession = {
   stopping: boolean
   ending: Promise<void> | null
   released: boolean
+}
+
+/** 活动会话回调宿主的入口；权限超时和适配器事件都带上产生它们的那一份会话。 */
+export type ActiveSessionHooks = {
+  createAdapter: SessionAdapterFactory
+  permissionTimeoutMs: number
+  emitPermission: (request: PermissionRequestEvent) => void
+  onPermissionTimeout: (active: ActiveSession) => void
+  onAdapterEvent: (active: ActiveSession, event: SessionEvent) => void
+}
+
+/** 组装一个活动会话：权限代理和适配器的回调都指回这一份会话，初始模式是 CLI 的启动模式。 */
+export function createActiveSession(
+  sessionId: string,
+  input: SessionStartInput,
+  environment: SessionEnvironmentPort,
+  hooks: ActiveSessionHooks,
+): ActiveSession {
+  const holder: { current: ActiveSession | null } = { current: null }
+  const broker = new PermissionBroker({
+    emit: (request) => hooks.emitPermission({ ...request }),
+    onTimeout: () => {
+      if (holder.current !== null) hooks.onPermissionTimeout(holder.current)
+    },
+    timeoutMs: hooks.permissionTimeoutMs,
+  })
+  const adapter = hooks.createAdapter((event) => {
+    if (holder.current !== null) hooks.onAdapterEvent(holder.current, event)
+  })
+  const active: ActiveSession = {
+    sessionId,
+    environment,
+    adapter,
+    broker,
+    abort: new AbortController(),
+    model: input.model ?? null,
+    permissionMode: launchPermissionMode(input.permissionMode),
+    modeEchoes: [],
+    accountId: input.accountId ?? null,
+    switchedFrom: null,
+    turnId: null,
+    turnCancelled: false,
+    turnErrorCode: null,
+    stopping: false,
+    ending: null,
+    released: false,
+  }
+  holder.current = active
+  return active
 }
 
 /** 构造用量记录所需的 turn 状态；由 SessionHost 的活动会话结构满足。 */
@@ -135,7 +187,7 @@ export function sanitizeStartError(error: unknown, token: string): SessionHostEr
   }
 }
 
-/** 把活动会话和启动输入转换成适配器参数；canUseTool 直接写入 PermissionBroker。 */
+/** 把活动会话和启动输入转换成适配器参数；按会话的启动模式启动，canUseTool 直接写入 PermissionBroker。 */
 export function buildStartOptions(
   active: ActiveSession,
   input: SessionStartInput,
@@ -143,7 +195,7 @@ export function buildStartOptions(
   return {
     workspace: active.environment.workspace,
     env: active.environment.env,
-    permissionMode: input.permissionMode,
+    permissionMode: active.permissionMode,
     canUseTool: (toolName, toolInput, options) =>
       active.broker.request(toolName, toolInput, options),
     abortController: active.abort,

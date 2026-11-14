@@ -277,6 +277,8 @@ export class ClaudeAgentAdapter {
             tools: [...message.tools],
             permissionMode: message.permissionMode,
           })
+        } else if (message.subtype === "status" && message.permissionMode !== undefined) {
+          this.#emit({ type: "mode", permissionMode: message.permissionMode })
         }
         return
       case "stream_event":
@@ -406,9 +408,8 @@ function buildQueryOptions(options: ClaudeAgentStartOptions, binaryPath: string)
         ? {}
         : { thinking: thinkingConfig(options.thinking) }),
     ...(options.fast ? { settings: { fastMode: true } } : {}),
-    ...(options.permissionMode === "bypassPermissions"
-      ? { allowDangerouslySkipPermissions: true }
-      : {}),
+    // CLI 只在带这个开关启动时才接受会话中途切到完全访问；用户的二次确认在界面完成。
+    allowDangerouslySkipPermissions: true,
   }
 }
 

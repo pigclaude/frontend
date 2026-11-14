@@ -229,6 +229,33 @@ describe("session model", () => {
     ])
   })
 
+  it("shows only the permission mode the host announces", () => {
+    let state = emit(startedTurn(), { type: "mode", permissionMode: "auto" })
+    expect(state.permissionMode).toBe("auto")
+
+    state = emit(state, {
+      type: "started",
+      sessionId: "native-1",
+      model: "claude-sonnet",
+      tools: [],
+      permissionMode: "default",
+    })
+    expect(state.permissionMode).toBe("auto")
+    expect(emit(state, { type: "mode", permissionMode: "dontAsk" }).permissionMode).toBe("auto")
+  })
+
+  it("keeps each notice as a new entry even when the text repeats", () => {
+    const message = "自动审批不可用：当前模型不支持。会话按监督审批运行。"
+    const first = emit(startedTurn(), { type: "notice", message })
+    const second = emit(first, { type: "notice", message })
+
+    expect(first.notice).toEqual({ message })
+    expect(second.notice).toEqual({ message })
+    expect(second.notice).not.toBe(first.notice)
+    expect(second.turns).toEqual(first.turns)
+    expect(apply(second, { type: "starting" }).notice).toBeNull()
+  })
+
   it("stores result usage and ends the session", () => {
     let state = startedTurn()
     state = emit(state, {

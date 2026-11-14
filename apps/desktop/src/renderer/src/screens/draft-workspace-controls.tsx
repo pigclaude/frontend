@@ -141,7 +141,7 @@ function BranchPicker({
         disabled={disabled}
       >
         <GitBranch className="ic" aria-hidden="true" />
-        <span className="truncate draft-branch-label">{label}</span>
+        <span className="truncate">{label}</span>
         <ChevronDown className="ic chip-caret" aria-hidden="true" />
       </Popover.Trigger>
       <Popover.Portal>

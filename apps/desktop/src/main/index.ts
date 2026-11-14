@@ -19,12 +19,11 @@ import { checkEgress } from "@pigclaude/login-gate/egress-check"
 import { createCallbackServer } from "./authorization/callback-server"
 import {
   createAuthorizationCallbackReceiver,
-  privateAuthorizationRedirectUri,
   type AuthorizationCallbackReceiver,
 } from "./authorization/callback-receiver"
-import { AuthorizationStartError, AuthorizationService } from "./authorization/service"
-import type { AuthorizationStartResult, AuthorizationStateEvent } from "./authorization/types"
-import { readAuthorizationRequest } from "./authorization/request-input"
+import type { AuthorizationService } from "./authorization/service"
+import type { AuthorizationStateEvent } from "./authorization/types"
+import { registerAuthorizationIpc } from "./authorization/authorization-ipc"
 import { isAllowedAuthorizationUrl } from "./authorization/url-policy"
 import { ClaudeAccountService } from "./claude/account-service"
 import { ClaudeAccountError } from "./claude/errors"
@@ -47,17 +46,15 @@ import { registerMembershipIpc } from "./membership/ipc"
 import { readDesktopRuntimeEndpoints } from "./runtime-endpoints"
 import { registerWorkspaceIpc } from "./runtime/workspace-ipc"
 import { WorkbenchIpc } from "./workbench/workbench-ipc"
-import { resolveClaudeBinaryPath } from "./session/claude-binary"
 import { cleanupStaleSessionDirs } from "./session/session-environment"
-import { SessionHost } from "./session/session-host"
+import type { SessionHost } from "./session/session-host"
+import { assembleSessionServices } from "./session/session-assembly"
 import { registerSessionIpc } from "./session/session-ipc"
-import { devProviderHostOptions } from "./session/dev-provider"
-import { accountSessionProfile } from "./session/account-session-profile"
 import { installQuitFlow } from "./quit-flow"
 import { noPendingWork } from "./session/session-host-support"
 import { applyLoginShellPath } from "./login-shell-path"
 import { shutdownDesktopResources } from "./shutdown-resources"
-import { UsageRecorder } from "./session/usage-recorder"
+import type { UsageRecorder } from "./session/usage-recorder"
 import { FileSecretVault } from "./secret-vault"
 import { registerFolderPickerIpc } from "./folder-picker"
 import { forwardFullScreen, registerWindowIpc } from "./window-ipc"
@@ -208,73 +205,17 @@ function registerIpcHandlers(): void {
       callbackReceiver?.clearPending()
     },
   })
-  ipcMain.handle("pigclaude:authorization-start", async (event, value: unknown) => {
-    const request = readAuthorizationRequest(value)
-    if (!request || !authorizationReady || !authorizationService || !callbackServer) {
-      const result: AuthorizationStartResult = {
-        ok: false,
-        status: "network-error",
-        error: authorizationSetupError ?? "授权服务尚未准备好",
-      }
-      return result
-    }
-    let started: Awaited<ReturnType<AuthorizationService["start"]>> | null = null
-    try {
-      const redirectUri = app.isPackaged
-        ? privateAuthorizationRedirectUri
-        : callbackServer.redirectUri
-      started = await authorizationService.start(request, redirectUri)
-      if (authorizationService.getActiveSession()?.sessionId !== started.sessionId) {
-        throw new AuthorizationStartError("cancelled", "授权会话已取消")
-      }
-      const browserEvent: AuthorizationStateEvent = {
-        sessionId: started.sessionId,
-        purpose: request.purpose,
-        mode: request.mode,
-        status: "browser-open",
-        authorizationUrl: started.authorizationUrl,
-        expiresAt: started.expiresAt,
-      }
-      event.sender.send("pigclaude:authorization-state", browserEvent)
-      if (!isAllowedAuthorizationUrl(started.authorizationUrl, authOrigin)) {
-        throw new Error("授权地址不在 Rust 服务 allowlist 内")
-      }
-      await shell.openExternal(started.authorizationUrl)
-      return { ok: true, ...started } satisfies AuthorizationStartResult
-    } catch (error: unknown) {
-      if (started) {
-        const cancellation = await authorizationService.cancel(started.sessionId)
-        if (cancellation.status === "committing")
-          return { ok: true, ...started } satisfies AuthorizationStartResult
-      }
-      const status = error instanceof AuthorizationStartError ? error.status : "network-error"
-      const result: AuthorizationStartResult = { ok: false, status, error: errorMessage(error) }
-      event.sender.send("pigclaude:authorization-state", {
-        purpose: request.purpose,
-        mode: request.mode,
-        sessionId: "",
-        status,
-        error: result.error,
-      } satisfies AuthorizationStateEvent)
-      return result
-    }
+  registerAuthorizationIpc({
+    ready: () =>
+      authorizationReady && authorizationService && callbackServer
+        ? { service: authorizationService, redirectUri: callbackServer.redirectUri }
+        : null,
+    service: () => authorizationService,
+    setupError: () => authorizationSetupError,
+    isPackaged: app.isPackaged,
+    authOrigin,
+    onState: sendAuthorizationState,
   })
-
-  ipcMain.handle("pigclaude:authorization-cancel", async (_event, sessionId: unknown) => {
-    if (!authorizationService || typeof sessionId !== "string") {
-      return {
-        sessionId: typeof sessionId === "string" ? sessionId : "",
-        purpose: "pigclaude-login",
-        mode: "login",
-        status: "cancelled",
-        error: "授权会话已结束",
-      } satisfies AuthorizationStateEvent
-    }
-    const result = await authorizationService.cancel(sessionId)
-    sendAuthorizationState(result)
-    return result
-  })
-
   registerClaudeIpc({
     getService: () => claudeAccountService,
     getProxyService: () => proxyService,
@@ -389,21 +330,19 @@ async function setupAuthorization(): Promise<void> {
     profileUsage,
     startProxyRuntime,
   })
-  usageRecorder = new UsageRecorder({ filePath: join(app.getPath("userData"), "usage.jsonl") })
-  if (composition.runtime) {
-    sessionHost = new SessionHost({
-      membership: composition.membershipGate,
-      runtime: composition.runtime,
-      usage: usageRecorder,
-      userDataPath: app.getPath("userData"),
-      resolveBinaryPath: () => resolveClaudeBinaryPath(),
-      defaultWorkspace: () => app.getPath("home"),
-      resolveProfile: (accountId) =>
-        accountSessionProfile(localStore, accountId, () => app.getSystemLocale()),
-      ...devProviderHostOptions(app.isPackaged, process.env),
-    })
-    sessionHost.subscribe((event) => sendToMainWindow("pigclaude:session-event", event))
-  }
+  const sessions = assembleSessionServices({
+    userDataPath: app.getPath("userData"),
+    homePath: app.getPath("home"),
+    membership: composition.membershipGate,
+    runtime: composition.runtime ?? null,
+    store: localStore,
+    systemLocale,
+    isPackaged: app.isPackaged,
+    env: process.env,
+    onEvent: (event) => sendToMainWindow("pigclaude:session-event", event),
+  })
+  usageRecorder = sessions.usage
+  sessionHost = sessions.host
   const checkLive = () => {
     void desktopComposition?.resume()
   }

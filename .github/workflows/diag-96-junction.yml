@@ -1,0 +1,33 @@
+# 诊断（只在诊断分支）：在 Windows 与 Linux 运行器上检查项目配置根经目录联接/链接加载 .claude 的行为。
+name: Diag project config junction
+
+on:
+  push:
+    branches: ["codex/diag-96-junction"]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node tests/diag/project-config-junction-probe.mjs test-results/junction-probe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junction-probe-${{ runner.os }}
+          path: test-results/junction-probe
+          if-no-files-found: warn

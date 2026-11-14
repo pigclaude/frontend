@@ -167,6 +167,33 @@ describe("session IPC registration", () => {
     expect(host.historyEvents).toHaveBeenCalledWith("session-1", 3)
   })
 
+  it("only accepts structured conversation references from the trusted sender", async () => {
+    const { host } = register()
+    const send = handler("pigclaude:session-send")
+    const reference = { kind: "thread", threadId: "session-2", title: "排查记录" }
+    const input = { sessionId: "session-1", text: "参考 @排查记录" }
+
+    await expect(send(event(false), { ...input, references: [reference] })).rejects.toThrow(
+      "UNTRUSTED_SESSION_REQUEST",
+    )
+    for (const references of [
+      null,
+      [{}],
+      [{ ...reference, kind: "file" }],
+      [{ ...reference, title: 2 }],
+    ]) {
+      await expect(send(event(), { ...input, references })).rejects.toThrow("INVALID_SESSION_INPUT")
+    }
+    expect(host.send).not.toHaveBeenCalled()
+
+    await send(event(), { ...input, references: [{ ...reference, path: "/ignored" }] })
+    expect(host.send).toHaveBeenCalledWith(
+      "session-1",
+      { text: "参考 @排查记录", references: [reference] },
+      expect.any(Function),
+    )
+  })
+
   it("rejects session commands without a usable session id", async () => {
     const { host } = register()
 

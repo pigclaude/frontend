@@ -10,6 +10,7 @@ import {
   type SessionEffort,
   type SessionEventsInput,
   type SessionPermissionMode,
+  type SessionReference,
   type SessionSendInput,
   type SessionStartInput,
   type SessionTarget,
@@ -186,12 +187,32 @@ export function readSessionSendInput(value: unknown): SessionSendInput {
   }
   const effort = value.effort === null ? null : readOptionalEffort(value.effort)
   const fast = readOptionalFast(value.fast)
+  const references = readReferences(value.references)
   return {
     text,
     ...(attachments === undefined ? {} : { attachments: [...attachments] as string[] }),
     ...(effort === undefined ? {} : { effort }),
     ...(fast === undefined ? {} : { fast }),
+    ...(references === undefined ? {} : { references }),
   }
+}
+
+function readReferences(value: unknown): SessionReference[] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value)) throw invalidInput()
+  return value.map((item: unknown) => {
+    if (
+      !isRecord(item) ||
+      item.kind !== "thread" ||
+      typeof item.threadId !== "string" ||
+      item.threadId === "" ||
+      item.threadId.length > maxSessionIdLength ||
+      typeof item.title !== "string"
+    ) {
+      throw invalidInput()
+    }
+    return { kind: "thread", threadId: item.threadId, title: item.title }
+  })
 }
 
 function readOptionalEffort(value: unknown): SessionEffort | undefined {

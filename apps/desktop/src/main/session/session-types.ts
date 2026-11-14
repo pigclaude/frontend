@@ -43,10 +43,14 @@ export type SessionStartInput = {
   accountId?: string
 }
 
-/** 这一条消息使用的设置；省略沿用当前值，effort 为 null 时使用模型默认档位。 */
+/** 用户在消息里附带的会话引用；标题是输入框里的标签文字。 */
+export type SessionReference = { kind: "thread"; threadId: string; title: string }
+
+/** 这一条消息的设置和引用；省略设置沿用当前值，effort 为 null 时使用模型默认档位。 */
 export type SessionSendOptions = {
   effort?: SessionEffort | null
   fast?: boolean
+  references?: readonly SessionReference[]
 }
 
 /** session.send 的输入；附件当前只做形状校验，不由适配器传递。 */
@@ -101,7 +105,12 @@ export type SessionTurnEndStatus = "completed" | "error" | "interrupted"
  * 或者这一轮被停止、出错结束时，发出 turn-ended。每个 turn-started 都恰好有一个对应的 turn-ended。
  */
 export type SessionTurnEvent =
-  | { type: "turn-started"; turnId: string; userText?: string }
+  | {
+      type: "turn-started"
+      turnId: string
+      userText?: string
+      references?: readonly SessionReference[]
+    }
   | {
       type: "turn-ended"
       turnId: string

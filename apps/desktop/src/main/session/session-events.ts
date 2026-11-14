@@ -45,6 +45,8 @@ export type SessionEvent =
       model: string
       parentToolUseId: string | null
       blocks: SessionContentBlock[]
+      /** 主线程的思考消息才有：从这一段思考的第一个增量到这条消息的毫秒数，由主进程计时。 */
+      thinkingMs?: number
     }
   | { type: "tool-result"; toolUseId: string; content: string; isError: boolean }
   | {

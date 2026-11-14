@@ -6,6 +6,7 @@ import type { DevProviderOverride } from "./dev-provider"
 import type { PermissionAnswer } from "./permission-broker"
 import type { SessionEnvelope } from "./session-envelope"
 import { classifyDaemonError } from "./session-error-mapping"
+import { LiveReply } from "./live-reply"
 import { SessionEventLog } from "./session-event-log"
 import { createActiveSession, type ActiveSession, type SessionTimers } from "./session-host-active"
 import {
@@ -38,6 +39,7 @@ import type {
   SessionSendInput,
   SessionStartInput,
   SessionStatusView,
+  SessionTurnEvent,
 } from "./session-types"
 import type { UsageRecord } from "./usage-recorder"
 
@@ -67,6 +69,7 @@ export class ClaudeSession {
   readonly state: ActiveSession
   readonly #options: ClaudeSessionOptions
   readonly #log: SessionEventLog
+  readonly #reply: LiveReply
   readonly #emitModeEvent = (event: ModeEvent): void => {
     if (event.type === "mode") this.#publish(event)
     else this.#publish({ ...event, message: this.#redact(event.message) })
@@ -76,13 +79,14 @@ export class ClaudeSession {
   constructor(options: ClaudeSessionOptions) {
     this.#options = options
     this.#log = new SessionEventLog(options.sessionId, options.now)
+    this.#reply = new LiveReply(options.now)
     this.state = createActiveSession(options.sessionId, options.input, options.environment, {
       createAdapter: options.createAdapter,
       permissionTimeoutMs: options.permissionTimeoutMs,
       timers: options.timers,
       now: options.now,
       emitPermission: (request) => this.#publish(request),
-      emitTurn: (event) => this.#publish(event),
+      emitTurn: (event) => this.#publishTurn(event),
       onTurnClosed: (_active, turn) => this.#handleTurnClosed(turn),
       onPermissionTimeout: () => this.#handlePermissionTimeout(),
       onAdapterEvent: (_active, event) => this.#handleAdapterEvent(event),
@@ -264,7 +268,8 @@ export class ClaudeSession {
         if (!active.stopping) void this.release()
         return
       default:
-        break
+        this.#publish(this.#reply.observe(event))
+        return
     }
     this.#publish(sanitizeSessionEvent(event, this.#options.sessionToken()))
   }
@@ -286,6 +291,21 @@ export class ClaudeSession {
     // 同一 turn 的其它权限卡片不能继续悬挂。
     active.broker.rejectAll("权限询问超时")
     void active.turns.interrupt("error", "PERMISSION_TIMEOUT")
+  }
+
+  // 没有正常结束的一轮里，界面上已经流出、却没落成消息的正文补成一条消息，结束后不会消失。
+  #publishTurn(event: SessionTurnEvent): void {
+    const unfinished = this.#reply.takeUnfinished()
+    if (event.type === "turn-ended" && event.status !== "completed" && unfinished !== null) {
+      this.#publish({
+        type: "message",
+        messageId: `unfinished-${event.turnId}`,
+        model: this.state.model ?? "",
+        parentToolUseId: null,
+        blocks: [{ type: "text", text: unfinished }],
+      })
+    }
+    this.#publish(event)
   }
 
   #publish(event: SessionHostEvent): void {

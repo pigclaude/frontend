@@ -21,7 +21,9 @@ describe("SessionHost envelopes", () => {
       workspace: harness.workspace,
       permissionMode: "default",
     })
-    const startSeqs = harness.envelopes.map((envelope) => envelope.seq)
+    const sessionEnvelopes = () =>
+      harness.envelopes.filter((envelope) => envelope.sessionId === sessionId)
+    const startSeqs = sessionEnvelopes().map((envelope) => envelope.seq)
 
     clock = Date.UTC(2026, 10, 14, 1, 0, 5)
     harness.adapters.last.emit({ type: "delta", text: "先看", thinking: false, blockIndex: 0 })
@@ -44,18 +46,26 @@ describe("SessionHost envelopes", () => {
 
     expect(startSeqs).toEqual([1])
     expect(
-      harness.envelopes.slice(1).map(({ version, sessionId, seq, at, event }) => ({
-        version,
-        sessionId,
-        seq,
-        at,
-        type: event.type,
-      })),
+      sessionEnvelopes()
+        .slice(1)
+        .map(({ version, sessionId, seq, at, event }) => ({
+          version,
+          sessionId,
+          seq,
+          at,
+          type: event.type,
+        })),
     ).toEqual([
       { version: 1, sessionId, seq: null, at: "2026-11-14T01:00:05.000Z", type: "delta" },
       { version: 1, sessionId, seq: 2, at: "2026-11-14T01:00:05.000Z", type: "message" },
       { version: 1, sessionId, seq: 3, at: "2026-11-14T01:00:09.000Z", type: "tool-result" },
     ])
+
+    const listEvents = harness.envelopes.filter(({ event }) => event.type === "sessions-changed")
+    expect(listEvents).not.toHaveLength(0)
+    expect(
+      listEvents.every((envelope) => envelope.sessionId === null && envelope.seq === null),
+    ).toBe(true)
     await harness.host.dispose()
   })
 

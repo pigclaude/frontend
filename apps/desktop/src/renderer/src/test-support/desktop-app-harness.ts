@@ -9,7 +9,7 @@ import { installPigcodeNative } from "../lib/pigcode-native"
 import { initialMembershipView } from "../models/membership-view"
 import { chatAccount } from "./chat-screen-harness"
 import { fakeWorkbench } from "./workbench-harness"
-import type { SessionHostEvent } from "../../../main/session/session-types"
+import type { SessionEnvelope, SessionHostEvent } from "../../../main/session/session-types"
 
 /** 整窗挂载点；只在测试运行期间可用。 */
 export type DesktopAppRoot = { readonly container: HTMLDivElement; readonly root: Root }
@@ -77,8 +77,16 @@ export function installFakeDesktopBridge(initial: string[] = ["/work/api", "/wor
   let paths = initial
   let names: Record<string, string> = {}
   const calls: string[] = []
-  let listener: ((event: SessionHostEvent) => void) | null = null
-  const emit = (event: SessionHostEvent) => listener?.(event)
+  let listener: ((envelope: SessionEnvelope) => void) | null = null
+  let seq = 0
+  const emit = (event: SessionHostEvent) =>
+    listener?.({
+      version: 1,
+      sessionId: "s-1",
+      seq: (seq += 1),
+      at: new Date().toISOString(),
+      event,
+    })
   window.pigclaude = {
     platform: "darwin",
     membership: {
@@ -169,6 +177,7 @@ export function installFakeDesktopBridge(initial: string[] = ["/work/api", "/wor
       setMode: async () => undefined,
       setModel: async () => undefined,
       stop: async () => undefined,
+      events: async () => [],
       models: async () => ({
         models: [{ id: "claude-sonnet", displayName: "Sonnet", description: "", isDefault: true }],
         cliError: null,

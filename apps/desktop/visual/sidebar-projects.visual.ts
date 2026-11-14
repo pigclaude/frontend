@@ -44,8 +44,16 @@ async function openDraft(page: Page, theme: "light" | "dark"): Promise<void> {
       createdAt: "2026-10-21T00:00:00.000Z",
       updatedAt: "2026-10-21T00:00:00.000Z",
     }
-    let listener: ((event: unknown) => void) | null = null
-    const emit = (event: unknown) => listener?.(event)
+    let listener: ((envelope: unknown) => void) | null = null
+    let seq = 0
+    const emit = (event: unknown) =>
+      listener?.({
+        version: 1,
+        sessionId: "s-1",
+        seq: (seq += 1),
+        at: new Date().toISOString(),
+        event,
+      })
     Object.assign(window, {
       pigclaude: {
         platform: "darwin",

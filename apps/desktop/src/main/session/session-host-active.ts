@@ -1,6 +1,10 @@
 // 负责会话宿主的活动会话：一份会话的全部可变状态，以及把权限代理、适配器回调和启动模式装配到这份状态上。
 
-import { PermissionBroker, type PermissionRequestEvent } from "./permission-broker"
+import {
+  PermissionBroker,
+  type PermissionBrokerOptions,
+  type PermissionRequestEvent,
+} from "./permission-broker"
 import type { SessionEvent } from "./session-events"
 import { launchPermissionMode } from "./session-host-modes"
 import type {
@@ -32,10 +36,17 @@ export type ActiveSession = {
   released: boolean
 }
 
+/** 会话用的定时器；测试可以换成假定时器。 */
+export type SessionTimers = {
+  set: NonNullable<PermissionBrokerOptions["setTimer"]>
+  clear: NonNullable<PermissionBrokerOptions["clearTimer"]>
+}
+
 /** 活动会话回调宿主的入口；权限超时和适配器事件都带上产生它们的那一份会话。 */
 export type ActiveSessionHooks = {
   createAdapter: SessionAdapterFactory
   permissionTimeoutMs: number
+  timers: SessionTimers
   emitPermission: (request: PermissionRequestEvent) => void
   onPermissionTimeout: (active: ActiveSession) => void
   onAdapterEvent: (active: ActiveSession, event: SessionEvent) => void
@@ -55,6 +66,8 @@ export function createActiveSession(
       if (holder.current !== null) hooks.onPermissionTimeout(holder.current)
     },
     timeoutMs: hooks.permissionTimeoutMs,
+    setTimer: hooks.timers.set,
+    clearTimer: hooks.timers.clear,
   })
   const adapter = hooks.createAdapter((event) => {
     if (holder.current !== null) hooks.onAdapterEvent(holder.current, event)

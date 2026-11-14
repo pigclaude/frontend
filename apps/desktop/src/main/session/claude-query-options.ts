@@ -21,15 +21,26 @@ export type ClaudeAgentStartOptions = {
   mcpServers?: Options["mcpServers"]
 }
 
-/** 会话 query 的 SDK 选项。保证不读用户设置、不保存 transcript，环境只用调用方给的 env。 */
-export function buildQueryOptions(options: ClaudeAgentStartOptions, binaryPath: string): Options {
+/** 所有 query 共用的隔离选项。保证不读用户设置、不保存 transcript，环境只用调用方给的 env。 */
+export function isolatedQueryOptions(
+  cwd: string,
+  binaryPath: string,
+  env: Record<string, string> | undefined,
+): Options {
   return {
-    cwd: options.workspace,
+    cwd,
     pathToClaudeCodeExecutable: binaryPath,
-    env: { ...options.env },
+    env: { ...env },
     settingSources: [],
     persistSession: false,
     includePartialMessages: true,
+  }
+}
+
+/** 会话 query 的 SDK 选项：在隔离选项上加权限、工具、模型和思考档位。 */
+export function buildQueryOptions(options: ClaudeAgentStartOptions, binaryPath: string): Options {
+  return {
+    ...isolatedQueryOptions(options.workspace, binaryPath, options.env),
     ...(options.mcpServers ? { mcpServers: options.mcpServers } : {}),
     permissionMode: options.permissionMode,
     canUseTool: options.canUseTool,

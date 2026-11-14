@@ -8,7 +8,7 @@ import { ClaudeSession } from "./claude-session"
 import type { DevProviderOverride } from "./dev-provider"
 import type { PermissionAnswer } from "./permission-broker"
 import { SessionEnvironment } from "./session-environment"
-import type { ActiveSession } from "./session-host-active"
+import type { ActiveSession, SessionTimers } from "./session-host-active"
 import { pinnedCatalog } from "./session-host-provider"
 import {
   assertMembershipActive,
@@ -17,7 +17,7 @@ import {
   mapStartError,
   readBinaryPath,
   sanitizeStartError,
-  pendingWorkOf,
+  noPendingWork,
   type SessionPendingWork,
 } from "./session-host-support"
 import { queryModels } from "./session-models"
@@ -60,6 +60,10 @@ export type SessionHostOptions = {
 }
 
 const usageWriteFailedMessage = "用量记录写入失败"
+const realTimers: SessionTimers = {
+  set: (callback, ms) => setTimeout(callback, ms),
+  clear: (handle) => clearTimeout(handle),
+}
 
 /** 单活动会话宿主。保证同一时刻只有一个会话；启动失败不留半启动环境；停止后可再次启动。 */
 export class SessionHost {
@@ -167,6 +171,7 @@ export class SessionHost {
       sessionToken: () => this.#runtime.sessionToken,
       provider: this.#provider,
       permissionTimeoutMs: this.#permissionTimeoutMs,
+      timers: realTimers,
       now: this.#now,
       newId: this.#newId,
       onReleased: (released) => {
@@ -271,7 +276,7 @@ export class SessionHost {
 
   /** 退出前要确认的工作：进行中的回合和等待回答的权限；正在结束的会话不算。 */
   pendingWork(): SessionPendingWork {
-    return pendingWorkOf(this.#session?.state ?? null)
+    return this.#session?.pendingWork() ?? noPendingWork
   }
 
   /** 停止会话并释放全部订阅；应用退出时调用。 */

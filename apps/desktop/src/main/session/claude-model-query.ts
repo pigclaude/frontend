@@ -3,6 +3,7 @@
 import type { Options } from "@anthropic-ai/claude-agent-sdk"
 import { mergeClaudeModels } from "./claude-model-catalog"
 import { closeQuietly, type AdapterQuery, type QueryFn } from "./claude-query"
+import { isolatedQueryOptions } from "./claude-query-options"
 import { PromptStream } from "./prompt-stream"
 import type { ClaudeModel } from "./session-events"
 
@@ -16,7 +17,7 @@ export type ClaudeModelsOptions = {
 }
 
 /** 一次查询的已解析参数：二进制路径和等待时间都已确定。 */
-export type ResolvedModelQuery = Omit<ClaudeModelsOptions, "binaryPath" | "timeoutMs"> & {
+type ResolvedModelQuery = Omit<ClaudeModelsOptions, "binaryPath" | "timeoutMs"> & {
   queryFn: QueryFn
   binaryPath: string
   timeoutMs: number
@@ -30,12 +31,7 @@ export async function queryClaudeModels(request: ResolvedModelQuery): Promise<Cl
   const prompt = new PromptStream()
   const abortController = new AbortController()
   const sdkOptions: Options = {
-    cwd: request.workspace ?? process.cwd(),
-    pathToClaudeCodeExecutable: request.binaryPath,
-    env: { ...request.env },
-    settingSources: [],
-    persistSession: false,
-    includePartialMessages: true,
+    ...isolatedQueryOptions(request.workspace ?? process.cwd(), request.binaryPath, request.env),
     permissionMode: "default",
     abortController,
   }

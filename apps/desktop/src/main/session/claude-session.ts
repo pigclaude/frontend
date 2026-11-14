@@ -1,11 +1,11 @@
 // 负责一个 Claude 会话的运行：发送、取消、权限回答、模式和模型切换、结束，以及把适配器事件变成会话事件和用量记录。
-// 只依赖这一个会话的适配器、事件出口、时钟和权限超时，不依赖会话宿主。
+// 只依赖这一个会话的适配器、事件出口、时钟和定时器，不引用会话宿主或模块级单例。
 
 import type { DevProviderOverride } from "./dev-provider"
 import type { PermissionAnswer } from "./permission-broker"
 import { classifyDaemonError } from "./session-error-mapping"
 import type { SessionEvent } from "./session-events"
-import { createActiveSession, type ActiveSession } from "./session-host-active"
+import { createActiveSession, type ActiveSession, type SessionTimers } from "./session-host-active"
 import {
   enterRequestedMode,
   followReportedMode,
@@ -20,8 +20,10 @@ import {
   buildUsageRecord,
   errorMessage,
   hostError,
+  pendingWorkOf,
   redactSessionToken,
   sanitizeSessionEvent,
+  type SessionPendingWork,
 } from "./session-host-support"
 import type { ClaudeAgentStartOptions } from "./claude-query-options"
 import type {
@@ -50,6 +52,7 @@ export type ClaudeSessionOptions = {
   sessionToken: () => string
   provider: DevProviderOverride | null
   permissionTimeoutMs: number
+  timers: SessionTimers
   now: () => number
   newId: () => string
   /** 会话释放后调用一次，宿主据此放下对它的引用。 */
@@ -71,15 +74,11 @@ export class ClaudeSession {
     this.state = createActiveSession(options.sessionId, options.input, options.environment, {
       createAdapter: options.createAdapter,
       permissionTimeoutMs: options.permissionTimeoutMs,
+      timers: options.timers,
       emitPermission: (request) => options.emit(request),
       onPermissionTimeout: () => this.#handlePermissionTimeout(),
       onAdapterEvent: (_active, event) => this.#handleAdapterEvent(event),
     })
-  }
-
-  /** 会话 id。 */
-  get sessionId(): string {
-    return this.state.sessionId
   }
 
   /** 会话已释放或正在结束。 */
@@ -205,6 +204,11 @@ export class ClaudeSession {
   /** 返回脱敏会话快照。 */
   status(): SessionStatusView {
     return buildStatusView(this.state)
+  }
+
+  /** 退出会中断的工作；会话正在结束时为 0。 */
+  pendingWork(): SessionPendingWork {
+    return pendingWorkOf(this.state)
   }
 
   #handleAdapterEvent(event: SessionEvent): void {

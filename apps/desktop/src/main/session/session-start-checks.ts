@@ -59,7 +59,7 @@ export async function prepareSessionStart(
   assertNotCancelled()
   await assertWorkspace(input.workspace)
   assertNotCancelled()
-  // 开发期供应商自带模型访问，不再要求本机有可用的 Claude 账号。
+  // 开发期供应商自带模型访问，不需要本机有可用的 Claude 账号。
   if (deps.provider === null && !(await deps.runtime.hasAvailableAccount())) {
     throw new SessionHostError("NO_AVAILABLE_ACCOUNT", "没有可用的 Claude 账号")
   }

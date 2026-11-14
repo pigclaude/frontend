@@ -1,5 +1,6 @@
-// 测试 ClaudeSession 不经会话宿主、只用测试替身构造时的一轮对话、结束路径和脱敏。
+// 测试 ClaudeSession 不经会话宿主、只用测试替身构造时的一轮对话、权限超时、结束路径和脱敏。
 
+import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
 import { describe, expect, it } from "vitest"
 import { ClaudeSession } from "./claude-session"
 import { AdapterFactory, fixedNow } from "./session-host-fixtures"
@@ -29,6 +30,7 @@ function standaloneSession() {
   const events: SessionHostEvent[] = []
   const usage: UsageRecord[] = []
   const released: ClaudeSession[] = []
+  const timers: (() => void)[] = []
   let nextId = 0
   const session = new ClaudeSession({
     sessionId: "s-1",
@@ -40,11 +42,18 @@ function standaloneSession() {
     sessionToken: () => token,
     provider: null,
     permissionTimeoutMs: 60_000,
+    timers: {
+      set: (callback) => {
+        timers.push(callback)
+        return setTimeout(() => undefined, 0)
+      },
+      clear: (handle) => clearTimeout(handle),
+    },
     now: () => fixedNow,
     newId: () => `turn-${(nextId += 1)}`,
     onReleased: (session) => released.push(session),
   })
-  return { session, adapters, environment, events, usage, released }
+  return { session, adapters, environment, events, usage, released, timers }
 }
 
 describe("ClaudeSession", () => {
@@ -67,6 +76,26 @@ describe("ClaudeSession", () => {
     expect(usage).toMatchObject([{ sessionId: "s-1", turnId: "turn-1", status: "success" }])
     expect(events.map((event) => event.type)).toEqual(["result"])
     expect(session.status()).toMatchObject({ active: true, sessionId: "s-1", turnId: null })
+  })
+
+  it("denies an unanswered permission when its own timer fires", async () => {
+    const { session, adapters, events, timers } = standaloneSession()
+    await session.launch(undefined)
+    await session.send({ text: "run ls" })
+    const canUseTool = adapters.last.canUseTool
+    if (canUseTool === null) throw new Error("canUseTool was not passed to the adapter")
+
+    const answer = canUseTool("Bash", { command: "ls" }, askOptions())
+    timers.forEach((fire) => fire())
+
+    await expect(answer).resolves.toMatchObject({ behavior: "deny" })
+    expect(events).toContainEqual({
+      type: "error",
+      code: "PERMISSION_TIMEOUT",
+      message: "权限询问超时",
+    })
+    expect(adapters.last.interrupts).toBe(1)
+    expect(session.pendingWork()).toEqual({ turns: 1, approvals: 0 })
   })
 
   it("ends once, cleans its environment and tells its owner", async () => {
@@ -95,3 +124,7 @@ describe("ClaudeSession", () => {
     ])
   })
 })
+
+function askOptions(): Parameters<CanUseTool>[2] {
+  return { signal: new AbortController().signal, toolUseID: "tool-1", requestId: "request-1" }
+}

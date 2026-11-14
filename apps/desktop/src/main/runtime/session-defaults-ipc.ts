@@ -1,4 +1,5 @@
 // 负责新会话默认设置的 IPC：读取和修改 session-defaults.json，只接受受信主窗口。
+// 这里只存本机偏好，不调用 Claude 也不动账号，所以不要求会员有效；启动会话时仍按会员校验。
 
 import type { IpcMain, IpcMainInvokeEvent } from "electron"
 import { readSessionDefaultsPatch, type SessionDefaults } from "../../session-defaults-contract"

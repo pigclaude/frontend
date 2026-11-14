@@ -13,6 +13,7 @@ export type SdkFixture =
   | "ask-plan-2.1.310"
   | "background-agent-2.1.310"
   | "background-interrupt-2.1.310"
+  | "subagent-text-2.1.310"
   | "workflow-2.1.310"
   | "workflow-2.1.304"
 

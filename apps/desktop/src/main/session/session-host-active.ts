@@ -1,5 +1,5 @@
-// 负责会话宿主的活动会话：一份会话的全部可变状态，以及把待答队列、权限代理、提问代理、回合控制、
-// 适配器回调和启动模式装配到这份状态上。
+// 负责会话宿主的活动会话：一份会话的全部可变状态，以及把待答队列、权限代理、提问代理、子代理、
+// 回合控制、适配器回调和启动模式装配到这份状态上。
 
 import {
   PendingAnswers,
@@ -15,6 +15,7 @@ import {
 import type { AdapterEvent } from "./session-events"
 import { launchPermissionMode } from "./session-host-modes"
 import { SessionTurns, type ClosedTurn } from "./session-turns"
+import { SubagentTasks } from "./subagent-tasks"
 import type {
   SessionAdapterFactory,
   SessionAdapterPort,
@@ -33,6 +34,8 @@ export type ActiveSession = {
   pending: PendingAnswers
   broker: PermissionBroker
   questions: QuestionBroker
+  /** 这个会话开始过的子代理；权限询问和子代理结束事件据它找回归属。 */
+  subagents: SubagentTasks
   abort: AbortController
   model: string | null
   permissionMode: SessionPermissionMode
@@ -85,8 +88,9 @@ export function createActiveSession(
     setTimer: hooks.timers.set,
     clearTimer: hooks.timers.clear,
   })
+  const subagents = new SubagentTasks()
   const broker = new PermissionBroker({
-    emit: (request) => hooks.emitPermission({ ...request }),
+    emit: (request) => hooks.emitPermission({ ...request, ...subagents.owner(request.agentId) }),
     onTimeout: timedOut("permission"),
     queue: pending,
   })
@@ -105,6 +109,7 @@ export function createActiveSession(
     pending,
     broker,
     questions,
+    subagents,
     abort: new AbortController(),
     model: input.model ?? null,
     permissionMode: launchPermissionMode(input.permissionMode),

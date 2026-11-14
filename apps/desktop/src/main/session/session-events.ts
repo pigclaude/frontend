@@ -2,6 +2,7 @@
 
 import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk"
 import type { BackgroundTaskSignal } from "./background-tasks"
+import type { SubagentTaskSignal } from "./subagent-tasks"
 
 /** 应用允许的权限模式：四个档位加计划。 */
 export type SessionPermissionMode =
@@ -27,6 +28,12 @@ export type SessionUsage = {
   cacheCreationTokens: number
 }
 
+/**
+ * 子代理归属：产生这个事件的子代理是哪一次 Agent 工具调用派生的（父工具调用 id），以及它的 agent id
+ * （即它的后台任务 id）。主线程的事件不带这两个字段。
+ */
+export type SubagentOwner = { parentToolUseId?: string; agentId?: string }
+
 /** 适配器向 SessionHost 广播的事件。 */
 export type SessionEvent =
   | {
@@ -43,12 +50,15 @@ export type SessionEvent =
       type: "message"
       messageId: string
       model: string
+      /** 子代理的消息是派生它的 Agent 工具调用 id，主线程为 null。 */
       parentToolUseId: string | null
+      /** 子代理的 agent id；主线程的消息没有。 */
+      agentId?: string
       blocks: SessionContentBlock[]
       /** 主线程的思考消息才有：从这一段思考的第一个增量到这条消息的毫秒数，由主进程计时。 */
       thinkingMs?: number
     }
-  | { type: "tool-result"; toolUseId: string; content: string; isError: boolean }
+  | ({ type: "tool-result"; toolUseId: string; content: string; isError: boolean } & SubagentOwner)
   | {
       type: "result"
       subtype: string
@@ -64,8 +74,8 @@ export type SessionEvent =
   | { type: "error"; code: string; message: string }
   | { type: "ended"; reason: "completed" | "stopped" | "error" }
 
-/** 适配器交给会话的全部输入：会话事件，加上只在主进程内部使用的后台任务信号。 */
-export type AdapterEvent = SessionEvent | BackgroundTaskSignal
+/** 适配器交给会话的全部输入：会话事件，加上只在主进程内部使用的后台任务和子代理信号。 */
+export type AdapterEvent = SessionEvent | BackgroundTaskSignal | SubagentTaskSignal
 
 /** 界面用的模型信息；第一行是 CLI 的默认选择。 */
 export type ClaudeModel = {

@@ -52,6 +52,8 @@ export function buildQueryOptions(options: ClaudeAgentStartOptions, binaryPath: 
         ? {}
         : { thinking: thinkingConfig(options.thinking) }),
     ...(options.fast ? { settings: { fastMode: true } } : {}),
+    // 子代理的正文和思考也转发，只读过程视图才看得到它说了什么；不开进度摘要，省号池额度。
+    forwardSubagentText: true,
     // CLI 只在带这个开关启动时才接受会话中途切到完全访问。
     allowDangerouslySkipPermissions: true,
   }

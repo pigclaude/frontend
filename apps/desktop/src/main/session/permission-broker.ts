@@ -11,13 +11,14 @@ import type {
   PermissionUpdateDestination,
 } from "@anthropic-ai/claude-agent-sdk"
 import type { PendingAnswers, PendingOutcome } from "./pending-answers"
+import type { SubagentOwner } from "./session-events"
 
 /** 权限请求被取消时给 SDK 的说明；会话释放时整体拒绝也用它。 */
 export const cancelledPermissionMessage = "权限请求已取消"
 const timeoutMessage = "权限询问超时"
 const deniedMessage = "用户拒绝了该操作"
 
-/** 发给 renderer 的权限请求；只含展示所需字段。 */
+/** 发给 renderer 的权限请求；只含展示所需字段。子代理发起的请求带上它的归属。 */
 export type PermissionRequestEvent = {
   type: "permission"
   requestId: string
@@ -25,7 +26,7 @@ export type PermissionRequestEvent = {
   input: Record<string, unknown>
   suggestions?: unknown[]
   blockedPath?: string
-}
+} & SubagentOwner
 
 /** renderer 的权限回答；updatedPermissions 来自不可信输入，写回前会校验。 */
 export type PermissionAnswer = {
@@ -50,6 +51,8 @@ export type PermissionRequestOptions = {
   signal: AbortSignal
   suggestions?: PermissionUpdate[]
   blockedPath?: string
+  /** 请求来自子代理时，SDK 给出的子代理 agent id。 */
+  agentID?: string
 }
 
 /** 权限请求的代理。保证每个请求只结算一次；中止、超时和整体拒绝时按拒绝写回。 */
@@ -89,6 +92,7 @@ export class PermissionBroker {
       input,
       ...(options.suggestions === undefined ? {} : { suggestions: options.suggestions }),
       ...(options.blockedPath === undefined ? {} : { blockedPath: options.blockedPath }),
+      ...(options.agentID === undefined ? {} : { agentId: options.agentID }),
     }
     return new Promise<PermissionResult>((resolve) => {
       this.#inputs.set(request.requestId, input)

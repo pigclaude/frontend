@@ -46,8 +46,10 @@ describe("ClaudeAgentAdapter", () => {
       settingSources: [],
       persistSession: false,
       includePartialMessages: true,
+      forwardSubagentText: true,
       permissionMode: "default",
     })
+    expect(captured[0]?.options).not.toHaveProperty("agentProgressSummaries")
     expect(captured[0]?.options.canUseTool).toBe(canUseTool)
     expect(captured[0]?.options.abortController).toBe(abortController)
     expect(captured[0]?.options.allowDangerouslySkipPermissions).toBe(true)

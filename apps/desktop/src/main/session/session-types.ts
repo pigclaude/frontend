@@ -16,6 +16,7 @@ import type {
   SessionPermissionMode,
   SessionThinking,
 } from "./session-events"
+import type { SubagentEndedEvent } from "./subagent-tasks"
 import type { UsageRange, UsageRecord, UsageSummary } from "./usage-recorder"
 import type { ProfileEnvironment } from "./profile-environment"
 
@@ -93,10 +94,11 @@ export type SessionTurnEvent =
       errorCode: string | null
     }
 
-/** SessionHost 发给 preload 的全部事件：适配器事件加回合开闭、权限、提问、换号和提示。 */
+/** SessionHost 发给 preload 的全部事件：适配器事件加回合开闭、子代理结束、权限、提问、换号和提示。 */
 export type SessionHostEvent =
   | SessionEvent
   | SessionTurnEvent
+  | SubagentEndedEvent
   | PermissionRequestEvent
   | QuestionRequestEvent
   | QuestionResolvedEvent

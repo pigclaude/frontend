@@ -24,6 +24,7 @@ export const sessionEventKinds: Readonly<Record<SessionHostEvent["type"], Sessio
   result: "persisted",
   "turn-started": "persisted",
   "turn-ended": "persisted",
+  "subagent-ended": "persisted",
   error: "persisted",
   ended: "persisted",
 }

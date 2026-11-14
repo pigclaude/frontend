@@ -28,6 +28,7 @@ const inRun: Readonly<Record<SessionHostEvent["type"], boolean>> = {
   result: true,
   "turn-started": false,
   "turn-ended": false,
+  "subagent-ended": true,
   error: true,
   ended: false,
 }

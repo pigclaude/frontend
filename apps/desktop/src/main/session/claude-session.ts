@@ -253,6 +253,14 @@ export class ClaudeSession {
       case "background-task-ended":
         active.turns.observe(event)
         return
+      case "subagent-task-started":
+        active.subagents.started(event)
+        return
+      case "subagent-task-ended": {
+        const ended = active.subagents.ended(event)
+        if (ended !== null) this.#publish(ended)
+        return
+      }
       case "started":
         active.model = event.model
         active.turns.observe(event)

@@ -120,8 +120,8 @@ export type SessionHostEvent =
   | QuestionRequestEvent
   | QuestionResolvedEvent
   | SessionAccountSwitchedEvent
-  /** 进程名额、启动或停放状态更新，可以重读会话列表。 */
-  | { type: "sessions-changed" }
+  /** 会话列表更新；磁盘删除成功时提供被删会话的 id 和原项目路径。 */
+  | { type: "sessions-changed"; removed?: { sessionId: string; projectPath: string } }
   | SessionNoticeEvent
   | TimelineNoticeEvent
   | SessionContextEvent

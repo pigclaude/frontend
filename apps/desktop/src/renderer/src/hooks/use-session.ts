@@ -19,6 +19,7 @@ import {
 } from "../models/session-collection"
 import { SessionEnvelopeIntake } from "../models/session-envelope-intake"
 import { sessionErrorText, type SessionAction, type SessionUiState } from "../models/session-model"
+import { sessionErrorFrom } from "../models/session-errors"
 
 /** 聊天页和环境页共用的会话控制器。 */
 export type SessionController = {
@@ -27,6 +28,8 @@ export type SessionController = {
   states: SessionCollection
   /** 主进程的活动会话和停放会话摘要。 */
   summaries: readonly SavedSessionSummary[]
+  /** 磁盘已删除的会话 id 和项目，覆盖当前窗口中可能保留的旧导航。 */
+  removedSessions: ReadonlyMap<string, string>
   /** 这次窗口收到的最新提示，包括后台会话和宿主的文字通知。 */
   notice: SessionUiState["notice"]
   status: SessionStatusView | null
@@ -84,6 +87,7 @@ export function useSession(
   const resolved = bridge === undefined ? window.pigclaude?.session : bridge
   const [states, dispatch] = useReducer(reduceSessionCollection, new Map())
   const [summaries, setSummaries] = useState<readonly SavedSessionSummary[]>([])
+  const [removedSessions, setRemovedSessions] = useState<ReadonlyMap<string, string>>(new Map())
   const [notice, setNotice] = useState<SessionUiState["notice"]>(null)
   const [status, setStatus] = useState<SessionStatusView | null>(null)
   const [models, setModels] = useState<ClaudeModel[]>([])
@@ -212,6 +216,13 @@ export function useSession(
       fetch: (sessionId, afterSeq) => resolved.events({ sessionId, afterSeq }),
       apply: (envelope, replay = false) => {
         const { sessionId, event } = envelope
+        if (event.type === "sessions-changed" && event.removed) {
+          const { sessionId, projectPath } = event.removed
+          intake.forget(sessionId)
+          activeTurns.current.delete(sessionId)
+          dispatch({ removed: sessionId })
+          setRemovedSessions((current) => new Map(current).set(sessionId, projectPath))
+        }
         if (
           !replay &&
           event.type === "notice" &&
@@ -454,6 +465,7 @@ export function useSession(
     state,
     states,
     summaries,
+    removedSessions,
     notice,
     status:
       selection === undefined || selected === null || status?.sessionId === selected
@@ -484,9 +496,4 @@ export function sessionAccountId(
   session: Pick<SessionController, "state" | "status">,
 ): string | null {
   return session.state.accountId ?? session.status?.accountId ?? null
-}
-
-/** 把未知错误转成文本；主进程前缀由 sessionErrorText 统一剥离。 */
-export function sessionErrorFrom(error: unknown): string {
-  return error instanceof Error ? error.message : "会话操作失败"
 }

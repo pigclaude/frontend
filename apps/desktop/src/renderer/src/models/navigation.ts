@@ -41,17 +41,21 @@ export function currentLocation(history: NavHistory): NavLocation | null {
   return history.entries[history.index] ?? null
 }
 
-/** 将已删除会话在前进和后退历史中的位置改为原项目草稿。 */
+/** 将已删除会话的位置改为原项目草稿，包括当前自动选中的会话。 */
 export function replaceDeletedSessionLocations(
   history: NavHistory,
   deleted: ReadonlyMap<string, string>,
+  selected: string | null,
 ): NavHistory {
-  const entries = history.entries.map((item): NavLocation => {
-    if (item.kind !== "session" || item.sessionId === undefined) return item
-    const projectId = deleted.get(item.sessionId)
+  const entries = history.entries.map((item, index): NavLocation => {
+    if (item.kind !== "session") return item
+    const id = item.sessionId ?? (index === history.index ? selected : null)
+    const projectId = id === null ? undefined : deleted.get(id)
     return projectId === undefined ? item : { kind: "draft", projectId }
   })
-  return { ...history, entries }
+  return entries.some((item, index) => item !== history.entries[index])
+    ? { ...history, entries }
+    : history
 }
 
 /** 记录一次导航：与当前位置相同时原样返回；否则丢掉前进分支再追加。 */

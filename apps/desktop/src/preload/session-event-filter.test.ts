@@ -36,6 +36,17 @@ describe("session envelope filter", () => {
     )
   })
 
+  it("accepts only host list updates with a valid optional removal", () => {
+    const host = { sessionId: null, seq: null }
+    const event = { type: "sessions-changed", removed: { sessionId: "s-1", projectPath: "/work" } }
+    expect(isSessionEnvelope(envelope(event, host))).toBe(true)
+    expect(isSessionEnvelope(envelope({ type: "sessions-changed" }, host))).toBe(true)
+    expect(isSessionEnvelope(envelope(event, { seq: null }))).toBe(false)
+    expect(isSessionEnvelope(envelope({ ...event, removed: { sessionId: "s-1" } }, host))).toBe(
+      false,
+    )
+  })
+
   it("drops values that are not session events", () => {
     expect(isSessionEnvelope(envelope({ type: "status", permissionMode: "auto" }))).toBe(false)
     expect(isSessionEnvelope(envelope({ type: "toString" }))).toBe(false)

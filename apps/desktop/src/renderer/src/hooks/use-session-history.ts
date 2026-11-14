@@ -1,9 +1,9 @@
 // 负责会话历史设置的主进程请求、归档列表和确认后的删除操作。
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { SessionHistoryStats, SessionRetention } from "../../../session-history-contract"
 import type { SavedSessionSummary } from "../models/saved-session"
-import { sessionErrorFrom } from "./use-session"
+import { sessionErrorFrom } from "../models/session-errors"
 import { useSessionWorkspaces } from "./use-session-workspaces"
 
 /** 需要用户确认的删除目标；all 指当前存储的全部会话。 */
@@ -11,7 +11,9 @@ export type HistoryDeletion = { kind: "one"; session: SavedSessionSummary } | { 
 
 type HistoryOptions = {
   page: string | null
+  selection: string | null
   summaries: readonly SavedSessionSummary[]
+  hostRemoved: ReadonlyMap<string, string>
   report: (message: string) => void
   onSessionsDeleted: (projects: ReadonlyMap<string, string>) => void
   refreshActive: () => Promise<void>
@@ -20,15 +22,16 @@ type HistoryOptions = {
 /** 连接桌面桥；预览和旧桥没有管理命令时保留原有会话视图。 */
 export function useSessionHistory({
   page,
+  selection,
   summaries,
+  hostRemoved,
   report,
   onSessionsDeleted,
   refreshActive,
 }: HistoryOptions) {
   const bridge = window.pigclaude?.session
   const enabled = bridge?.rename !== undefined && bridge.archive !== undefined
-  const local = useSessionWorkspaces(summaries)
-  const [archived, setArchived] = useState<readonly SavedSessionSummary[]>([])
+  const [cachedArchive, setArchived] = useState<readonly SavedSessionSummary[]>([])
   const [stats, setStats] = useState<SessionHistoryStats | null>(null)
   const [retention, setRetention] = useState<SessionRetention | null>(null)
   const [deletion, setDeletion] = useState<HistoryDeletion | null>(null)
@@ -38,10 +41,34 @@ export function useSessionHistory({
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [refresh, setRefresh] = useState(0)
   const [loading, setLoading] = useState(false)
-  const [deleted, setDeleted] = useState<ReadonlyMap<string, string>>(new Map())
+  const [manuallyRemoved, setManuallyRemoved] = useState<ReadonlyMap<string, string>>(new Map())
+  const deleted = useMemo(
+    () => new Map([...manuallyRemoved, ...hostRemoved]),
+    [manuallyRemoved, hostRemoved],
+  )
+  const local = useSessionWorkspaces(summaries, deleted)
+  const archived = cachedArchive.filter((entry) => !deleted.has(entry.sessionId))
   const mutate = useRef(false)
   const archivedRevision = useRef(0)
-  const archivedRefresh = page === "archived" ? summaries : null
+  const handledRemovals = useRef(hostRemoved)
+  // 选中的归档会话还会运行和停放，需要继续更新它的摘要。
+  const selectedArchive =
+    selection !== null && !summaries.some((item) => item.sessionId === selection)
+  const readPage =
+    page === "session" && saving ? null : (page ?? (selectedArchive ? "archived" : null))
+  const archivedRefresh = readPage === "archived" ? summaries : null
+  const statsRefresh = readPage === "data" ? hostRemoved : null
+
+  useEffect(() => {
+    const selectedRemoved = selection !== null && hostRemoved.has(selection)
+    const newRemoval = hostRemoved !== handledRemovals.current
+    if (newRemoval) {
+      handledRemovals.current = hostRemoved
+      ++archivedRevision.current
+      setArchived((current) => current.filter((entry) => !hostRemoved.has(entry.sessionId)))
+    }
+    if (newRemoval || selectedRemoved) onSessionsDeleted(hostRemoved)
+  }, [hostRemoved, onSessionsDeleted, selection])
 
   const readArchived = useCallback(async () => {
     const request = ++archivedRevision.current
@@ -53,13 +80,13 @@ export function useSessionHistory({
     if (!enabled || !bridge) return
     let current = true
     const load =
-      page === "archived"
+      readPage === "archived"
         ? readArchived()
-        : page === "data"
+        : readPage === "data"
           ? bridge.dataStats?.().then((value) => {
               if (current) setStats(value)
             })
-          : page === "session"
+          : readPage === "session"
             ? bridge.retention?.().then((value) => {
                 if (current) setRetention(value)
               })
@@ -76,7 +103,7 @@ export function useSessionHistory({
     return () => {
       current = false
     }
-  }, [archivedRefresh, bridge, enabled, page, readArchived, refresh])
+  }, [archivedRefresh, bridge, enabled, readArchived, readPage, refresh, statsRefresh])
 
   const rename = useCallback(
     (sessionId: string, title: string) => {
@@ -126,7 +153,7 @@ export function useSessionHistory({
         targets.map((item) => [item.sessionId, item.projectPath ?? item.workspace] as const),
       )
       ++archivedRevision.current
-      setDeleted((current) => new Map([...current, ...projects]))
+      setManuallyRemoved((current) => new Map([...current, ...projects]))
       local.remove(deletion.kind === "all" ? undefined : deletion.session.sessionId)
       onSessionsDeleted(projects)
       setArchived((current) =>
@@ -168,6 +195,13 @@ export function useSessionHistory({
     rename,
     archive,
     archived,
+    summaryForSession: (id: string | null) => {
+      if (id === null || deleted.has(id)) return undefined
+      return (
+        summaries.find((entry) => entry.sessionId === id) ??
+        archived.find((entry) => entry.sessionId === id)
+      )
+    },
     workspaces: local.workspaces,
     rememberWorkspace: local.remember,
     hidden: new Set([...deleted.keys(), ...archived.map((item) => item.sessionId)]),

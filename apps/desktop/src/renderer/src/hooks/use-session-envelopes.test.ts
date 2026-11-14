@@ -159,6 +159,39 @@ describe("useSession envelopes", () => {
     expect(errorsOfLastTurn()).toEqual(["迟到的"])
   })
 
+  it("removes cached state and ignores late pages for a deleted session", async () => {
+    let finish: (page: SessionEnvelope[]) => void = () => undefined
+    const { bridge, push } = fakeSessionBridge({
+      events: () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    })
+    await render(bridge)
+    await act(async () => {
+      push(kept(1, failure("记录")))
+      push(kept(3, failure("缺号后到达")))
+      push(kept(1, failure("另一个会话"), "other"))
+    })
+    expect(controller?.states.has("session-1")).toBe(true)
+    await act(async () => {
+      push({
+        version: 1,
+        sessionId: null,
+        seq: null,
+        at: "2026-11-14T01:00:04.000Z",
+        event: {
+          type: "sessions-changed",
+          removed: { sessionId: "session-1", projectPath: "/work" },
+        },
+      })
+      finish([kept(2, failure("迟到的历史页"))])
+      push(kept(4, failure("迟到的实时消息")))
+    })
+    expect(controller?.states.has("session-1")).toBe(false)
+    expect(controller?.states.has("other")).toBe(true)
+  })
+
   it("sends commands to the session its envelopes came from after a reload", async () => {
     const { bridge, push } = fakeSessionBridge()
     await render(bridge)

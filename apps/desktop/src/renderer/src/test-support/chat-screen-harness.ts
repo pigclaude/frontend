@@ -73,6 +73,7 @@ export function sessionController(overrides: Partial<SessionController> = {}): S
     state: createSessionState(),
     states: new Map(),
     summaries: [],
+    removedSessions: new Map(),
     notice: null,
     status: null,
     models: [{ id: "claude-sonnet", displayName: "Sonnet", description: "", isDefault: true }],

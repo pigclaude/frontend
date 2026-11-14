@@ -25,6 +25,7 @@ export class SessionEnvelopeIntake {
   readonly #lastSeq = new Map<string, number>()
   readonly #waiting = new Map<string, SessionEnvelope[]>()
   readonly #caughtUp = new Set<string>()
+  readonly #removed = new Set<string>()
   #closed = false
 
   /** 创建接收器；每个会话的已收序号从 0 开始。 */
@@ -37,7 +38,7 @@ export class SessionEnvelopeIntake {
     if (this.#closed) return
     const { sessionId } = envelope
     if (sessionId === null) this.#options.apply(envelope)
-    else this.#route(sessionId, envelope)
+    else if (!this.#removed.has(sessionId)) this.#route(sessionId, envelope)
   }
 
   /** 正在读选中会话的历史时，新回合必须等它读完。 */
@@ -52,7 +53,13 @@ export class SessionEnvelopeIntake {
 
   /** 补拉选中会话的历史，直到主进程返回空页；失败后下次可从同一游标重试。 */
   async catchUp(sessionId: string): Promise<void> {
-    if (this.#closed || this.#caughtUp.has(sessionId) || this.#waiting.has(sessionId)) return
+    if (
+      this.#closed ||
+      this.#removed.has(sessionId) ||
+      this.#caughtUp.has(sessionId) ||
+      this.#waiting.has(sessionId)
+    )
+      return
     this.#waiting.set(sessionId, [])
     await this.#fill(sessionId, null)
   }
@@ -60,6 +67,14 @@ export class SessionEnvelopeIntake {
   /** 新建会话从空历史开始，不需要阻挡它第一次发送。 */
   startedHere(sessionId: string): void {
     this.#caughtUp.add(sessionId)
+  }
+
+  /** 清除已删除会话的游标；丢弃迟到的历史页和实时事件。 */
+  forget(sessionId: string): void {
+    this.#removed.add(sessionId)
+    this.#lastSeq.delete(sessionId)
+    this.#waiting.delete(sessionId)
+    this.#caughtUp.delete(sessionId)
   }
 
   /** 停止接收；之后到达的信封和补拉结果都丢弃。 */
@@ -98,7 +113,7 @@ export class SessionEnvelopeIntake {
       while (targetSeq === null || last() < targetSeq - 1) {
         const before = last()
         const page = await this.#options.fetch(sessionId, before)
-        if (this.#closed) return
+        if (this.#closed || this.#removed.has(sessionId)) return
         if (targetSeq === null && page.length === 0) this.#caughtUp.add(sessionId)
         for (const envelope of [...page].sort(compareSeq)) {
           const seq = envelope.seq
@@ -112,7 +127,7 @@ export class SessionEnvelopeIntake {
     } catch {
       // 补拉失败时这段断号补不回来，缓存的信封照常交出。
     }
-    if (this.#closed) return
+    if (this.#closed || this.#removed.has(sessionId)) return
     if (targetSeq !== null) this.#lastSeq.set(sessionId, Math.max(last(), targetSeq - 1))
     const waiting = this.#waiting.get(sessionId) ?? []
     this.#waiting.delete(sessionId)

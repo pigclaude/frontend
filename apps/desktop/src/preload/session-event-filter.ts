@@ -20,9 +20,23 @@ export function isSessionEnvelope(value: unknown): value is SessionEnvelope {
   if (typeof at !== "string" || !isoUtc.test(at) || !Number.isFinite(Date.parse(at))) return false
   if (!isRecord(event) || typeof event.type !== "string") return false
   if (!Object.hasOwn(sessionEventKinds, event.type)) return false
+  if (event.type === "sessions-changed") {
+    return sessionId === null && seq === null && isOptionalRemoval(event.removed)
+  }
   const kind = sessionEventKinds[event.type as SessionEnvelope["event"]["type"]]
   if (sessionId === null || kind === "live") return seq === null
   return typeof seq === "number" && Number.isSafeInteger(seq) && seq > 0
+}
+
+function isOptionalRemoval(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (isRecord(value) &&
+      typeof value.sessionId === "string" &&
+      value.sessionId.length > 0 &&
+      typeof value.projectPath === "string" &&
+      value.projectPath.length > 0)
+  )
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -51,3 +51,8 @@ export function sessionErrorView(input: string): SessionErrorView {
 export function sessionErrorText(input: string): string {
   return sessionErrorView(input).message
 }
+
+/** 从未知异常提取会话错误，缺少可读消息时返回默认提示。 */
+export function sessionErrorFrom(error: unknown): string {
+  return error instanceof Error ? error.message : "会话操作失败"
+}

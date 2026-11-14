@@ -16,6 +16,7 @@ const at = "2026-10-01T01:02:03.000Z"
 const id = "saved"
 const agent = { parentToolUseId: "agent-call", agentId: "agent-1" }
 const events: SessionHostEvent[] = [
+  { type: "started", sessionId: id, model: "claude-sonnet", tools: [], permissionMode: "default" },
   { type: "turn-started", turnId: "turn-saved", userText: "归档前的问题" },
   {
     type: "message",
@@ -73,7 +74,7 @@ async function menu(action: string): Promise<void> {
   await flush()
 }
 
-async function openApp() {
+async function openApp(status: SavedSessionSummary["status"] = "parked") {
   installFakeDesktopBridge()
   let saved: (SavedSessionSummary & { archivedAt: string | null }) | null = {
     sessionId: id,
@@ -82,7 +83,7 @@ async function openApp() {
     projectPath: "/work/api",
     restorable: true,
     archivedAt: null,
-    status: "parked",
+    status,
     lastTurn: "completed",
     turnId: null,
     pendingPermissions: 0,
@@ -94,7 +95,12 @@ async function openApp() {
   let retention: number | null = null
   const session = fakeSessionBridge({
     events: async ({ sessionId, afterSeq }) =>
-      sessionId === id ? timeline.filter((entry) => entry.seq > afterSeq) : [],
+      sessionId === id
+        ? timeline.filter(
+            (entry) =>
+              entry.seq > afterSeq && (entry.event.type !== "ended" || saved?.status === "parked"),
+          )
+        : [],
   })
   const rename = vi.fn(async ({ title }: { title: string }) => {
     if (saved) saved = { ...saved, title }
@@ -126,7 +132,44 @@ async function openApp() {
   })
   await act(async () => app.root.render(createElement(DesktopApp)))
   await flush()
-  return { rename, archive, remove, clearHistory, setRetention, bridge: session.bridge }
+  function expire() {
+    if (!saved) throw new Error("会话不存在")
+    const removed = {
+      sessionId: saved.sessionId,
+      projectPath: saved.projectPath ?? saved.workspace,
+    }
+    saved = null
+    session.push({
+      version: 1,
+      sessionId: null,
+      seq: null,
+      at,
+      event: { type: "sessions-changed", removed },
+    })
+  }
+  function parkArchived() {
+    if (!saved) throw new Error("会话不存在")
+    saved = { ...saved, status: "parked" }
+    const ended = timeline.at(-1)
+    if (ended) session.push(ended)
+    session.push({
+      version: 1,
+      sessionId: null,
+      seq: null,
+      at,
+      event: { type: "sessions-changed" },
+    })
+  }
+  return {
+    rename,
+    archive,
+    remove,
+    clearHistory,
+    setRetention,
+    expire,
+    parkArchived,
+    bridge: session.bridge,
+  }
 }
 
 it(
@@ -236,6 +279,56 @@ it("returns an unarchived session to the sidebar", async () => {
     "返回工作区",
   )
   expect(app.container.querySelector(".proj-sessions .sess")?.textContent).toContain("原会话")
+})
+
+it("cannot reopen a conversation the retention policy deleted while it was archived", async () => {
+  const calls = await openApp()
+  await menu("归档")
+  await click("已归档")
+  await click("打开")
+  expect(app.container.querySelector(".chat-page")?.textContent).toContain("归档前的问题")
+  await click("已归档")
+  expect(app.container.textContent).toContain("原会话")
+  await act(async () => calls.expire())
+  await flush()
+  expect(app.container.textContent).toContain("没有已归档的会话")
+  await clickButton(
+    app.container.querySelector<HTMLElement>('button[aria-label="后退"]') ?? undefined,
+    "后退",
+  )
+  await flush()
+  expect(app.container.querySelector(".new-thread-view")).not.toBeNull()
+  expect(app.container.textContent).not.toContain("归档前的问题")
+  await clickButton(
+    app.container.querySelector<HTMLElement>('button[aria-label="前进"]') ?? undefined,
+    "前进",
+  )
+  await flush()
+  expect(app.container.textContent).toContain("没有已归档的会话")
+})
+
+it("returns to the draft when retention deletes the conversation picked by the startup view", async () => {
+  window.history.replaceState({}, "", "/?screen=chat")
+  const calls = await openApp()
+  expect(app.container.querySelector(".chat-page")?.textContent).toContain("归档前的问题")
+  await act(async () => calls.expire())
+  await flush()
+  expect(app.container.querySelector(".new-thread-view")).not.toBeNull()
+})
+
+it("resumes an archived session that parked while it was still displayed", async () => {
+  const calls = await openApp("idle")
+  await clickButton(
+    app.container.querySelector<HTMLElement>(".proj-sessions .sess") ?? undefined,
+    "会话",
+  )
+  await flush()
+  await menu("归档")
+  await act(async () => calls.parkArchived())
+  await flush()
+  await typeAndSend(app.container, "停放后续接")
+  expect(calls.bridge.send).toHaveBeenCalledWith({ sessionId: id, text: "停放后续接" })
+  expect(calls.bridge.start).not.toHaveBeenCalled()
 })
 
 it(

@@ -4,17 +4,21 @@ import { useEffect, useState } from "react"
 import type { SavedSessionSummary } from "../models/saved-session"
 
 /** 主进程第一次返回该会话后移除回退，后续归档或清理不会让旧行重新出现。 */
-export function useSessionWorkspaces(summaries: readonly SavedSessionSummary[]) {
+export function useSessionWorkspaces(
+  summaries: readonly SavedSessionSummary[],
+  removed: ReadonlyMap<string, string>,
+) {
   const [workspaces, setWorkspaces] = useState<ReadonlyMap<string, string>>(new Map())
   useEffect(() => {
-    const confirmed = summaries.filter((summary) => workspaces.has(summary.sessionId))
-    if (confirmed.length === 0) return
+    const confirmed = new Set(summaries.map((summary) => summary.sessionId))
+    const stale = [...workspaces.keys()].filter((id) => confirmed.has(id) || removed.has(id))
+    if (stale.length === 0) return
     setWorkspaces((current) => {
       const next = new Map(current)
-      for (const { sessionId } of confirmed) next.delete(sessionId)
+      for (const id of stale) next.delete(id)
       return next
     })
-  }, [summaries, workspaces])
+  }, [removed, summaries, workspaces])
   return {
     workspaces,
     remember: (id: string, path: string) =>

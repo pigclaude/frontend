@@ -62,7 +62,7 @@ export type MainWindowProps = {
   browserProfiles?: BrowserProfilesController
   onNavigate: (location: NavLocation) => void
   /** 用各个已删除会话的原项目草稿替换导航记录。 */
-  onSessionsDeleted: (projects: ReadonlyMap<string, string>) => void
+  onSessionsDeleted: (projects: ReadonlyMap<string, string>, selection: string | null) => void
   onBack: () => void
   onForward: () => void
   onOpenAuthorize: () => void
@@ -103,6 +103,8 @@ export function MainWindow({
   useSessionNotices(session.notice)
   const workspaces = useWorkspaces()
   const page = location.kind === "settings" ? location.page : null
+  const sessionId =
+    location.kind === "session" ? (location.sessionId ?? session.state.sessionId) : null
   const selection = useWorkspaceSelection(workspaces.add)
   const { selected: selectedWorkspace, projectOf } = selection
   const currentLocation = useRef(location)
@@ -119,10 +121,12 @@ export function MainWindow({
   const accounts = pool.accounts.map((account) => toPoolAccount(account, pool.proxies))
   const history = useSessionHistory({
     page,
+    selection: sessionId,
     summaries: session.summaries,
+    hostRemoved: session.removedSessions,
     refreshActive: session.refreshSummaries,
     report: (message) => toast(message, "alert"),
-    onSessionsDeleted,
+    onSessionsDeleted: (projects) => onSessionsDeleted(projects, sessionId),
   })
   const selectedProject = projectOf(selectedWorkspace)
   const routedProject = location.kind === "draft" ? location.projectId : undefined
@@ -136,11 +140,7 @@ export function MainWindow({
       ))
       ? selection.workspaceOf(routedProject)
       : (selectedWorkspace ?? workspaces.paths[0] ?? previewWorkbench?.root ?? null)
-  const sessionId =
-    location.kind === "session" ? (location.sessionId ?? session.state.sessionId) : null
-  const activeSummary = [...session.summaries, ...history.archived].find(
-    (item) => item.sessionId === sessionId,
-  )
+  const activeSummary = history.summaryForSession(sessionId)
   const sessionWorkspace =
     activeSummary?.workspace ??
     (sessionId === null ? null : history.workspaces.get(sessionId)) ??

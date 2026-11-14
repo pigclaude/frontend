@@ -11,8 +11,9 @@ import type { SessionEnvelope } from "../../../main/session/session-envelope"
 /** 每个会话独立保存回合、信封和审批，空键处理没有会话的界面操作。 */
 export type SessionCollection = ReadonlyMap<string | null, SessionUiState>
 
-/** 一个操作只改变其目标会话的状态。 */
-export type SessionCollectionAction = { sessionId: string | null; action: SessionAction }
+/** 一个操作只改变或清除其目标会话的状态。 */
+export type SessionCollectionAction =
+  { sessionId: string | null; action: SessionAction } | { removed: string }
 
 const empty = createSessionState()
 
@@ -24,8 +25,15 @@ export function sessionState(states: SessionCollection, sessionId: string | null
 /** 只归约事件或命令所指向的会话，其他会话保留原来对象。 */
 export function reduceSessionCollection(
   states: SessionCollection,
-  { sessionId, action }: SessionCollectionAction,
+  input: SessionCollectionAction,
 ): SessionCollection {
+  if ("removed" in input) {
+    if (!states.has(input.removed)) return states
+    const next = new Map(states)
+    next.delete(input.removed)
+    return next
+  }
+  const { sessionId, action } = input
   const current = sessionState(states, sessionId)
   const next = reduceSession(current, action)
   if (next === current) return states

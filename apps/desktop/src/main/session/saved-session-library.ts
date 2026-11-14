@@ -156,11 +156,15 @@ export class SavedSessionLibrary {
       .then(async () => {
         await this.options.stop(id)
         await this.options.persistence?.flush(id)
-        if (!store.get(id)) return
+        const index = store.get(id)
+        if (!index) return
         await reapRetainedClaudeProcess(store.paths(id).directory)
         await store.delete(id)
         this.options.removed(id)
-        this.options.notify({ type: "sessions-changed" })
+        this.options.notify({
+          type: "sessions-changed",
+          removed: { sessionId: id, projectPath: index.projectPath },
+        })
       })
       .finally(() => {
         this.#deleting.delete(id)

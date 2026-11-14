@@ -473,8 +473,8 @@ function DesktopGate() {
       claudeAccounts={claudeAccounts}
       browserProfiles={browserProfiles}
       onNavigate={navigate}
-      onSessionsDeleted={(projects) =>
-        setHistory((current) => replaceDeletedSessionLocations(current, projects))
+      onSessionsDeleted={(projects, selection) =>
+        setHistory((current) => replaceDeletedSessionLocations(current, projects, selection))
       }
       onBack={() => setHistory(goBack)}
       onForward={() => setHistory(goForward)}

@@ -5,6 +5,7 @@ import { lstat, mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 import { SessionHost } from "./session-host"
+import type { SessionEnvelope } from "./session-envelope"
 import { AdapterFactory, FakeMembership, FakeUsage } from "./session-host-fixtures"
 import { FakeRuntime } from "./session-runtime-fixture"
 import { SessionStore } from "./session-store"
@@ -77,6 +78,15 @@ describe("saved session library", () => {
 
   it("keeps sessions by default and automatically deletes only stopped sessions older than the chosen days", async () => {
     const { host, store, userDataPath, clock } = await launchHost()
+    const removals: Array<{ envelope: SessionEnvelope; indexPresent: boolean }> = []
+    host.subscribe((envelope) => {
+      if (envelope.event.type === "sessions-changed" && envelope.event.removed !== undefined) {
+        removals.push({
+          envelope,
+          indexPresent: store.get(envelope.event.removed.sessionId) !== null,
+        })
+      }
+    })
     const active = randomUUID()
     await host.start({ sessionId: active, workspace: userDataPath, permissionMode: "default" })
     await store.update(active, { lastActivityAt: new Date(now - 12 * day).toISOString() })
@@ -92,9 +102,23 @@ describe("saved session library", () => {
 
     await expect(host.history.setRetention(7)).resolves.toEqual({ days: 7 })
     expect(store.list().map((item) => item.id)).toEqual([active, "boundary"])
+    expect(removals).toMatchObject([
+      {
+        indexPresent: false,
+        envelope: {
+          sessionId: null,
+          seq: null,
+          event: {
+            type: "sessions-changed",
+            removed: { sessionId: "old", projectPath: "/Users/example/project" },
+          },
+        },
+      },
+    ])
     clock.advance(day)
     await host.history.sweep()
     expect(store.list().map((item) => item.id)).toEqual([active])
+    expect(removals[1]?.envelope.event).toMatchObject({ removed: { sessionId: "boundary" } })
 
     await host.history.setRetention(null)
     await host.history.clear()

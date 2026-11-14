@@ -58,6 +58,13 @@ async function launch() {
   const page = await application.firstWindow({ timeout: 25_000 })
   page.setDefaultTimeout(10_000)
   await page.waitForFunction(() => !!window.pigclaude?.membership, null, { timeout: 15_000 })
+  if (process.platform === "darwin") {
+    // 本机验收的窗口开在使用者的桌面上，真实鼠标划过会打乱拖动。
+    // macOS 上验收的指针操作都经 CDP 注入，不经过窗口系统，不受影响。
+    await application.evaluate(({ BrowserWindow }) => {
+      for (const window of BrowserWindow.getAllWindows()) window.setIgnoreMouseEvents(true)
+    })
+  }
   return page
 }
 

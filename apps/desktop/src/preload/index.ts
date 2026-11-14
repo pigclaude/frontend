@@ -105,6 +105,8 @@ export type PigclaudeBridge = {
   }
   workspaces: {
     list: () => Promise<string[]>
+    /** 只列出仍可读的最近项目，用于选择续接失败后的草稿目录。 */
+    available?: () => Promise<string[]>
     /** 工作台登记的 worktree 归属，供会话侧栏恢复项目分组。 */
     worktreeProjects?: () => Promise<Record<string, string>>
     add: (path: string) => Promise<string[]>
@@ -234,6 +236,10 @@ const bridge: PigclaudeBridge = {
   workspaces: {
     list: async () => {
       const value: unknown = await ipcRenderer.invoke("pigclaude:workspaces-list")
+      return Array.isArray(value) ? value.filter(isWorkspacePath) : []
+    },
+    available: async () => {
+      const value: unknown = await ipcRenderer.invoke("pigclaude:workspaces-available")
       return Array.isArray(value) ? value.filter(isWorkspacePath) : []
     },
     worktreeProjects: async () => {

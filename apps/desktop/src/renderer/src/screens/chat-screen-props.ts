@@ -1,6 +1,7 @@
 // 约定主窗口传入聊天页的会话、项目草稿、工作台和导航操作。
 
 import type { ReactNode } from "react"
+import type { ComposerThreadOption } from "@pigclaude/ui-composer"
 import type { ClaudeAccountView, ProxyView } from "@pigclaude/contracts/claude-account"
 import type { WorkbenchBridge } from "../../../workbench-contract"
 import type { ComposerReferenceRequest } from "../hooks/use-composer-reference"
@@ -29,12 +30,14 @@ export type ChatScreenProps = {
   projectDraft?: ProjectDraftEditor
   /** 当前选中的会话摘要；只有已保存会话有续接能力。 */
   summary?: SavedSessionSummary
-  /** 续接失败时在原项目打开新草稿。 */
-  onNewSession?: (projectId?: string) => void
+  /** 续接失败时选择项目并打开引用该会话的新草稿。 */
+  onRecoverReference?: (summary: SavedSessionSummary, workspaceMissing: boolean) => Promise<void>
   /** 当前草稿启动完成后，由窗口只有仍在这个草稿时切换。 */
   onDraftOpened?: (sessionId: string, project: string) => void
   /** 向这个聊天页的输入框插入侧栏选中的引用。 */
   referenceRequest?: ComposerReferenceRequest | undefined
+  /** 输入框 @ 搜索中的会话。 */
+  threadOptions?: readonly ComposerThreadOption[]
   onOpen: (location: NavLocation) => void
   smartPunctuation: boolean
   layoutControls?: ReactNode

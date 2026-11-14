@@ -66,7 +66,10 @@ const timeline = [
   recorded(7, { type: "ended", reason: "stopped" }),
 ]
 
-async function openSaved(send: SessionBridge["send"]): Promise<SessionBridge> {
+async function openSaved(
+  send: SessionBridge["send"],
+  available?: readonly string[],
+): Promise<SessionBridge> {
   installFakeDesktopBridge()
   const session = fakeSessionBridge({
     list: async () => [saved],
@@ -78,6 +81,9 @@ async function openSaved(send: SessionBridge["send"]): Promise<SessionBridge> {
   })
   if (!window.pigclaude) throw new Error("桌面桥尚未安装")
   window.pigclaude.session = session.bridge
+  if (available && window.pigclaude.workspaces) {
+    window.pigclaude.workspaces.available = async () => [...available]
+  }
   await act(async () => app.root.render(createElement(DesktopApp)))
   await flush()
   const project = [...app.container.querySelectorAll("button.proj")].find(
@@ -105,9 +111,9 @@ it("opens saved messages and sends the first new message to the existing session
   expect(bridge.start).not.toHaveBeenCalled()
 })
 
-it("keeps the original conversation and restores the editor when resume fails", async () => {
+it("keeps the original conversation and offers a new draft referencing it when resume fails", async () => {
   const send = vi.fn(async () => {
-    throw new Error("SESSION_RESUME_FAILED: 没有同环境的账号")
+    throw new Error("NO_AVAILABLE_ACCOUNT: 没有同环境的账号")
   })
   const bridge = await openSaved(send)
   await typeAndSend(app.container, "这段输入要保留")
@@ -120,7 +126,34 @@ it("keeps the original conversation and restores the editor when resume fails", 
     "completed",
   )
   const fallback = app.container.querySelector<HTMLButtonElement>(".session-resume-error button")
-  await clickButton(fallback ?? undefined, "新建会话")
+  expect(app.container.querySelector(".session-resume-error")?.textContent).toContain(
+    "没有可在原会话语言和时区下使用的 Claude 账号",
+  )
+  expect(fallback?.textContent).toBe("新建会话并引用本会话")
+  await clickButton(fallback ?? undefined, "新建会话并引用本会话")
+  await flush()
   expect(app.container.querySelector(".new-thread-view")).not.toBeNull()
+  expect(app.container.querySelector(".new-thread-view .mention-chip")?.textContent).toBe(
+    "@磁盘保存的会话",
+  )
+  expect(bridge.start).not.toHaveBeenCalled()
+})
+
+it("starts a referenced draft in a readable project when the saved workspace is gone", async () => {
+  const bridge = await openSaved(
+    vi.fn(async () => {
+      throw new Error("WORKSPACE_UNAVAILABLE: 工作区不存在")
+    }),
+    ["/work/web"],
+  )
+  await typeAndSend(app.container, "原工作目录已经不存在")
+  const fallback = app.container.querySelector<HTMLButtonElement>(".session-resume-error button")
+  expect(fallback?.textContent).toBe("新建会话并引用本会话")
+  await clickButton(fallback ?? undefined, "新建会话并引用本会话")
+  await flush()
+  expect(app.container.querySelector(".draft-project")?.textContent).toContain("web")
+  expect(app.container.querySelector(".new-thread-view .mention-chip")?.textContent).toBe(
+    "@磁盘保存的会话",
+  )
   expect(bridge.start).not.toHaveBeenCalled()
 })

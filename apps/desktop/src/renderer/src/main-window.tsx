@@ -1,6 +1,6 @@
 // 负责登录后的主窗口：把工作区、当前会话和账号状态接到 Pigcode 外壳，并按当前位置画内容区页面。
 // 聊天、账号、代理、环境、用量和托盘都接真实会话与本地数据；只有浏览器预览会传入演示工作台。
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import { OpenInButton, useToast } from "@pigclaude/ui-shell"
 import { PanelLayoutControls } from "@pigclaude/ui-workbench"
@@ -22,10 +22,13 @@ import { useComposerReferenceQueue } from "./hooks/use-composer-reference"
 import { useSessionNotices } from "./hooks/use-session-notices"
 import { useWorkspaces } from "./hooks/use-workspaces"
 import { useWorkspaceSelection } from "./hooks/use-workspace-selection"
+import { useWorkspaceShortcuts } from "./hooks/use-workspace-shortcuts"
 import { fill, useText } from "./locale/text"
-import { projectNameFromPath } from "./models/project-model"
+import { composerSessionOptions } from "./models/composer-session-options"
+import { projectNameFromPath, workspaceErrorMessage } from "./models/project-model"
 import { toPoolAccount } from "./models/claude-account-view"
 import type { NavLocation } from "./models/navigation"
+import { openSessionReferenceDraft } from "./screens/session-reference-recovery"
 import type { AppearanceController } from "./hooks/use-appearance"
 import type { ResolvedTheme } from "./models/theme-model"
 import { AddProjectDialog } from "./shell/add-project-dialog"
@@ -165,6 +168,16 @@ export function MainWindow({
   const bridge = window.pigclaude?.workbench ?? previewWorkbench?.bridge
   const sessionActive = session.state.started && !session.state.ended
   const chatWorkspace = sessionWorkspace ?? workspace
+  const chatProject = activeSummary?.projectPath ?? projectOf(chatWorkspace)
+  const threadOptions = composerSessionOptions({
+    summaries: session.summaries,
+    archived: history.archived,
+    deleted: history.deleted,
+    current: sessionId,
+    project: chatProject,
+    names: workspaces.names,
+    untitled: t("shell.session.untitled"),
+  })
   const draftProject = projectOf(workspace)
   const projectDraft = drafts.forProject(draftProject)
   const composerReferences = useComposerReferenceQueue(sessionId, projectDraft.key, (path) =>
@@ -174,45 +187,17 @@ export function MainWindow({
   currentDraft.current = draftProject
   const workbenchRoot = chatWorkspace
   const turnActive = sessionActive && session.state.activeTurnId !== null
-  const toggleRight = () => {
+  const toggleRight = useCallback(() => {
     setRightOpen((open) => !open)
     setRightMax(false)
-  }
-  function toggleTerminal() {
+  }, [])
+  const toggleTerminal = useCallback(() => {
     if (!workbenchRoot) return
     setTerminalMounted(true)
     setTerminalOpen((open) => !open)
-  }
+  }, [workbenchRoot])
 
-  useEffect(() => {
-    if (!bridge || !inChat) return
-    function onKey(event: KeyboardEvent) {
-      if (
-        event.ctrlKey &&
-        event.key === "`" &&
-        !event.altKey &&
-        workbenchRoot &&
-        !event.defaultPrevented &&
-        !document.querySelector("[role='dialog']")
-      ) {
-        event.preventDefault()
-        toggleTerminal()
-        return
-      }
-      if (
-        event.key.toLowerCase() === "j" &&
-        (event.metaKey || event.ctrlKey) &&
-        !event.altKey &&
-        !event.defaultPrevented &&
-        !document.querySelector("[role='dialog']")
-      ) {
-        event.preventDefault()
-        toggleRight()
-      }
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [bridge, inChat, workbenchRoot])
+  useWorkspaceShortcuts(!!bridge && inChat, workbenchRoot, toggleTerminal, toggleRight)
 
   useEffect(() => {
     const read = window.pigclaude?.appInfo
@@ -235,9 +220,13 @@ export function MainWindow({
     openDraft(path)
   }
 
-  function openDraft(path: string | null): string | null {
+  function openDraft(path: string | null, atProjectRoot = false): string | null {
     const projectId = projectOf(path)
-    if (!selectWorkspace(projectId === null ? null : selection.workspaceOf(projectId))) return null
+    const directory =
+      projectId === null || atProjectRoot ? projectId : selection.workspaceOf(projectId)
+    if (!canSelectWorkspace(directory)) return null
+    if (atProjectRoot && directory !== null) selection.selectWorktree(directory, directory)
+    else selection.select(directory)
     onNavigate({ kind: "draft", ...(projectId === null ? {} : { projectId }) })
     return drafts.forProject(projectId).key
   }
@@ -258,17 +247,13 @@ export function MainWindow({
         openDraft(path)
         toast(fill(t("shell.project.added"), { name: projectNameFromPath(path) }), "folder")
       })
-      .catch((error: unknown) => toast(workspaceErrorMessage(error, t), "info"))
+      .catch((error: unknown) =>
+        toast(workspaceErrorMessage(error, t("shell.project.unavailable")), "info"),
+      )
   }
 
   function canSelectWorkspace(path: string | null): boolean {
     return path === workbenchRoot || (workbench.current?.confirmSwitch() ?? true)
-  }
-
-  function selectWorkspace(path: string | null): boolean {
-    if (!canSelectWorkspace(path)) return false
-    selection.select(path)
-    return true
   }
 
   const renderSettingsPage = (page: string) => (
@@ -436,10 +421,11 @@ export function MainWindow({
           {...(chatWorkspace ? { openIn: <OpenInButton path={chatWorkspace} /> } : {})}
           fresh={location.kind === "draft"}
           referenceRequest={composerReferences.request}
+          threadOptions={threadOptions}
           key={sessionId ?? draftProject}
           session={session}
           workspace={chatWorkspace}
-          workspaceProject={activeSummary?.projectPath ?? projectOf(chatWorkspace)}
+          workspaceProject={chatProject}
           workspaceOptions={sidebarPaths}
           accounts={pool.accounts}
           proxies={pool.proxies}
@@ -449,7 +435,9 @@ export function MainWindow({
               .then((path) => {
                 if (path !== null) openDraft(path)
               })
-              .catch((error: unknown) => toast(workspaceErrorMessage(error, t), "info"))
+              .catch((error: unknown) =>
+                toast(workspaceErrorMessage(error, t("shell.project.unavailable")), "info"),
+              )
           }}
           onSelectWorkspace={openDraft}
           onWorkspaceUsed={(path, project, id) => {
@@ -463,7 +451,24 @@ export function MainWindow({
             if (currentDraft.current === project) onNavigate({ kind: "session", sessionId: id })
           }}
           {...(activeSummary === undefined ? {} : { summary: activeSummary })}
-          onNewSession={newSession}
+          onRecoverReference={(summary, missing) =>
+            openSessionReferenceDraft(summary, missing, {
+              projects: sidebarPaths,
+              isCurrent: () => {
+                const visible = currentLocation.current
+                return (
+                  visible.kind === "session" &&
+                  (visible.sessionId ?? sessionId) === summary.sessionId
+                )
+              },
+              pickWorkspace: workspaces.pick,
+              openDraft,
+              queue: composerReferences.queue,
+              untitled: t("shell.session.untitled"),
+            }).catch((error: unknown) =>
+              toast(workspaceErrorMessage(error, t("shell.project.unavailable")), "alert"),
+            )
+          }
           projectDraft={projectDraft}
           identifySessions
           onOpen={onNavigate}
@@ -490,10 +495,4 @@ export function MainWindow({
       {page !== null ? <SettingsContributionView page={page} /> : null}
     </PigclaudeShell>
   )
-}
-
-function workspaceErrorMessage(error: unknown, t: ReturnType<typeof useText>["t"]): string {
-  return error instanceof Error && error.message !== ""
-    ? error.message
-    : t("shell.project.unavailable")
 }

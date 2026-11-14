@@ -42,6 +42,18 @@ describe("workspace store", () => {
     await expect(store.list()).resolves.toEqual([beta, alpha])
   })
 
+  it("chooses readable directories for a new draft without rewriting recent projects", async () => {
+    const store = new WorkspaceStore({ filePath })
+    const current = await makeDirectory("current")
+    const missing = await makeDirectory("deleted")
+    await store.add(current)
+    await store.add(missing)
+    await rm(missing, { recursive: true })
+
+    await expect(store.available()).resolves.toEqual([current])
+    await expect(store.list()).resolves.toEqual([missing, current])
+  })
+
   it("stores at most ten paths and only stores paths", async () => {
     const store = new WorkspaceStore({ filePath })
     const paths: string[] = []

@@ -2,7 +2,8 @@
 // 最新在前、去重、最多 10 条，不写提示词、回复或任何凭据。
 
 import { randomUUID } from "node:crypto"
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises"
+import { constants } from "node:fs"
+import { access, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute } from "node:path"
 
 const defaultMaxEntries = 10
@@ -40,6 +41,21 @@ export class WorkspaceStore {
       if (paths.length >= this.#maxEntries) break
     }
     return paths
+  }
+
+  /** 只返回仍可读的最近工作区，保留顺序及原有的项目列表。 */
+  async available(): Promise<string[]> {
+    const paths = await this.list()
+    const accessible = await Promise.all(
+      paths.map(async (path) => {
+        const readable = await access(path, constants.R_OK).then(
+          () => true,
+          () => false,
+        )
+        return readable && (await isDirectory(path))
+      }),
+    )
+    return paths.filter((_, index) => accessible[index])
   }
 
   /** 把路径放到最前并去重；拒绝相对路径、不存在的路径和非目录，返回写入后的完整列表。 */

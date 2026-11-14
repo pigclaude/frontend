@@ -51,7 +51,10 @@ async function referenceFromSidebar(): Promise<void> {
 
 async function openApp(start?: SessionBridge["start"]): Promise<SessionBridge> {
   installFakeDesktopBridge()
-  const session = fakeSessionBridge({ ...(start ? { start } : {}), list: async () => [source] })
+  const session = fakeSessionBridge({
+    ...(start ? { start } : {}),
+    list: async (input) => (input?.archived ? [] : [source]),
+  })
   if (!window.pigclaude) throw new Error("桌面桥尚未安装")
   window.pigclaude.session = Object.assign(session.bridge, {
     rename: async () => undefined,

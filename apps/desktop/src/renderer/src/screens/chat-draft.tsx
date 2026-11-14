@@ -1,7 +1,11 @@
 // 把桌面会话草稿接到 Pigcode 的新会话页，保留项目控件与启动错误。
 
 import type { ReactNode } from "react"
-import type { ComposerCommand, ComposerSubmitOptions } from "@pigclaude/ui-composer"
+import type {
+  ComposerCommand,
+  ComposerSubmitOptions,
+  ComposerThreadOption,
+} from "@pigclaude/ui-composer"
 import { NewThreadView } from "@pigclaude/ui-chat"
 import { ToolRenderers } from "../components/tool-renderers"
 import type { ComposerConfig } from "../models/composer-config"
@@ -16,6 +20,7 @@ type Props = {
   projects: readonly string[]
   projectId: string | null
   commands: readonly ComposerCommand[]
+  threads: readonly ComposerThreadOption[]
   openIn: ReactNode
   layoutControls: ReactNode
   onSelectProject: (path: string) => void

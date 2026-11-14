@@ -37,6 +37,10 @@ export function registerWorkspaceIpc(input: {
     if (!input.isTrusted(event)) throw new Error("UNTRUSTED_WORKSPACE_REQUEST")
     return getStore().list()
   })
+  ipcMain.handle("pigclaude:workspaces-available", async (event) => {
+    if (!input.isTrusted(event)) throw new Error("UNTRUSTED_WORKSPACE_REQUEST")
+    return getStore().available()
+  })
   ipcMain.handle("pigclaude:workspaces-worktree-projects", async (event) => {
     if (!input.isTrusted(event)) throw new Error("UNTRUSTED_WORKSPACE_REQUEST")
     return getWorktrees().projects()

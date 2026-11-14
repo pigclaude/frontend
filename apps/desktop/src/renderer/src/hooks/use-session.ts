@@ -18,6 +18,7 @@ import {
   type SessionCollection,
 } from "../models/session-collection"
 import { SessionEnvelopeIntake } from "../models/session-envelope-intake"
+import { sessionErrorView, type SessionErrorView } from "../models/session-errors"
 import { sessionErrorText, type SessionAction, type SessionUiState } from "../models/session-model"
 import { sessionErrorFrom } from "../models/session-errors"
 
@@ -44,7 +45,7 @@ export type SessionController = {
     text: string,
     options?: SessionSendOptions,
     target?: string | SavedSessionSummary,
-    onError?: (message: string) => void,
+    onError?: (error: SessionErrorView) => void,
   ) => Promise<boolean>
   cancel: () => Promise<void>
   stop: () => Promise<void>
@@ -321,7 +322,7 @@ export function useSession(
       text: string,
       options?: SessionSendOptions,
       target?: string | SavedSessionSummary,
-      onError?: (message: string) => void,
+      onError?: (error: SessionErrorView) => void,
     ): Promise<boolean> => {
       const sessionId = typeof target === "object" ? target.sessionId : (target ?? commandTarget())
       if (resolved === null || resolved === undefined) {
@@ -356,7 +357,7 @@ export function useSession(
             apply(sessionId, { type: "resume-failed", message, at: now(), turnId })
           else apply(sessionId, { type: "failed", message, at: now() })
         }
-        onError?.(sessionErrorText(message))
+        onError?.(sessionErrorView(message))
         return false
       }
     },

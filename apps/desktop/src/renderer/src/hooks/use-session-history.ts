@@ -77,6 +77,10 @@ export function useSessionHistory({
   }, [bridge])
 
   useEffect(() => {
+    if (enabled && page !== "archived") void readArchived().catch(() => undefined)
+  }, [enabled, page, readArchived, summaries])
+
+  useEffect(() => {
     if (!enabled || !bridge) return
     let current = true
     const load =

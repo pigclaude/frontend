@@ -25,19 +25,23 @@ export function useComposerReferenceQueue(
     reference: next.reference,
     onInserted: () => setQueued((current) => current.filter((entry) => entry !== next)),
   }
+  function queue(key: string, reference: SessionReference): void {
+    setQueued((current) => [...current, { key, reference }])
+  }
   return {
     request,
+    /** 将恢复入口的引用投递给已选定项目的草稿。 */
+    queue,
     /** 记下侧栏选中的引用；只允许引用其他会话。 */
     reference(thread: Thread) {
       if (thread.id === sessionId) return
       const key = sessionId ?? resolveDraftKey(thread.projectId)
       if (key === null) return
-      const reference: SessionReference = {
+      queue(key, {
         kind: "thread",
         threadId: thread.id,
         title: thread.title,
-      }
-      setQueued((current) => [...current, { key, reference }])
+      })
     },
   }
 }

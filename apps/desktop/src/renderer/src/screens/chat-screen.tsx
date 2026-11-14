@@ -42,6 +42,7 @@ import { useSlashCommands } from "../shell/registry-slash-commands"
 import { useSessionDefaults } from "../hooks/use-session-defaults"
 import { needsSessionResume } from "../models/saved-session"
 import { SessionResumeError } from "./session-resume-error"
+import type { SessionErrorView } from "../models/session-errors"
 import { useText } from "../locale/text"
 import { ChatDraft } from "./chat-draft"
 import type { ChatScreenProps } from "./chat-screen-props"
@@ -86,9 +87,10 @@ export function ChatScreen({
   identifySessions = false,
   projectDraft,
   summary,
-  onNewSession,
+  onRecoverReference,
   onDraftOpened,
   referenceRequest,
+  threadOptions = [],
   onOpen,
   smartPunctuation,
   layoutControls,
@@ -114,7 +116,7 @@ export function ChatScreen({
   const startedAt = useRef(Date.now())
   const lastModelsError = useRef<string | null>(null)
   const [page, setPage] = useState<HTMLDivElement | null>(null)
-  const [resumeError, setResumeError] = useState<string | null>(null)
+  const [resumeError, setResumeError] = useState<SessionErrorView | null>(null)
   const submitting = useRef(false)
 
   // 同一时间只回答一张卡片；答完后下一张会顶上来。
@@ -324,8 +326,8 @@ export function ChatScreen({
     const ok = await startSession(directory, project, effort, fast, sessionId)
     if (!ok) return false
     if (sessionId === undefined) return session.send(text, sendOptions)
-    const sent = await session.send(text, sendOptions, sessionId, (error) =>
-      projectDraft?.update({ error }),
+    const sent = await session.send(text, sendOptions, sessionId, ({ message }) =>
+      projectDraft?.update({ error: message }),
     )
     if (sent && (projectDraft?.isCurrent() ?? true)) onDraftOpened?.(sessionId, project)
     return sent
@@ -414,6 +416,7 @@ export function ChatScreen({
         projects={workspaceOptions}
         projectId={workspaceProject}
         commands={commands}
+        threads={threadOptions}
         openIn={openIn}
         layoutControls={layoutControls}
         onSelectProject={onSelectWorkspace}
@@ -425,10 +428,14 @@ export function ChatScreen({
 
   return (
     <div className="chat-page" ref={setPage}>
-      {resumeError && onNewSession ? (
+      {resumeError ? (
         <SessionResumeError
           error={resumeError}
-          onNewSession={() => onNewSession(workspaceProject ?? undefined)}
+          onRecover={
+            summary && onRecoverReference
+              ? () => onRecoverReference(summary, resumeError.code === "WORKSPACE_UNAVAILABLE")
+              : undefined
+          }
         />
       ) : null}
       <ToolRenderers>
@@ -456,6 +463,7 @@ export function ChatScreen({
           onPermissionMode={composer.onPermissionMode}
           onPlanMode={composer.onPlanMode}
           files={composer.files}
+          threads={threadOptions}
         />
       </ToolRenderers>
       {/* 还没有一轮时对话组件显示问候页，没有输入区容器；第一轮出现后要重新挂上。 */}

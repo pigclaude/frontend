@@ -29,6 +29,7 @@ vi.mock("electron", () => ({
       }
       loadFile() {}
       once() {}
+      on() {}
       setBackgroundColor() {}
     },
     { getAllWindows: () => [] },
@@ -40,6 +41,7 @@ vi.mock("electron", () => ({
   safeStorage: {},
   shell: {},
 }))
+vi.mock("./login-shell-path", () => ({ applyLoginShellPath: async () => undefined }))
 vi.mock("./runtime-profile", () => ({ configureRuntimeProfile: () => true }))
 vi.mock("./runtime-endpoints", () => ({
   readDesktopRuntimeEndpoints: () => ({

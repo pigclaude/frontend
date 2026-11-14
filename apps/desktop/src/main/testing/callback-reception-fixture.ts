@@ -90,6 +90,7 @@ vi.mock("electron", () => ({
       }
       loadFile() {}
       once() {}
+      on() {}
       setBackgroundColor() {}
       show() {}
       focus() {
@@ -113,6 +114,7 @@ vi.mock("electron", () => ({
   safeStorage: {},
   shell: { openExternal: async () => undefined },
 }))
+vi.mock("../login-shell-path", () => ({ applyLoginShellPath: async () => undefined }))
 vi.mock("../runtime-profile", () => ({
   configureRuntimeProfile: () => fixture.hasLock,
 }))
@@ -194,6 +196,7 @@ vi.mock("../session/session-environment", () => ({
 vi.mock("../session/session-host", () => ({
   SessionHost: class {
     subscribe() {}
+    pendingWork = () => ({ turns: 0, approvals: 0 })
     stop = async () => undefined
     dispose = async () => fixture.shutdownGate!.promise
   },

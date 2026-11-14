@@ -30,6 +30,8 @@ import {
   sanitizeStartError,
   assertMembershipActive,
   buildStatusView,
+  pendingWorkOf,
+  type SessionPendingWork,
 } from "./session-host-support"
 import { createActiveSession, type ActiveSession } from "./session-host-active"
 import {
@@ -358,6 +360,11 @@ export class SessionHost {
   /** 返回脱敏会话快照；没有活动会话时所有 id 和模型为 null。 */
   status(): SessionStatusView {
     return buildStatusView(this.#session)
+  }
+
+  /** 退出前要确认的工作：进行中的回合和等待回答的权限；正在结束的会话不算。 */
+  pendingWork(): SessionPendingWork {
+    return pendingWorkOf(this.#session)
   }
 
   /** 停止会话并释放全部订阅；应用退出时调用。 */

@@ -53,7 +53,8 @@ import { SessionHost } from "./session/session-host"
 import { registerSessionIpc } from "./session/session-ipc"
 import { devProviderHostOptions } from "./session/dev-provider"
 import { accountSessionProfile } from "./session/account-session-profile"
-import { createQuitCoordinator } from "./shutdown"
+import { installQuitFlow } from "./quit-flow"
+import { applyLoginShellPath } from "./login-shell-path"
 import { shutdownDesktopResources } from "./shutdown-resources"
 import { UsageRecorder } from "./session/usage-recorder"
 import { FileSecretVault } from "./secret-vault"
@@ -96,6 +97,7 @@ let cleanupLiveEvents = () => {}
 if (!hasSingleInstanceLock) {
   app.quit()
 } else {
+  const loginShellPath = applyLoginShellPath()
   callbackReceiver = createAuthorizationCallbackReceiver({
     app,
     onCallback: handleCallbackUrl,
@@ -121,6 +123,8 @@ if (!hasSingleInstanceLock) {
         authorizationSetupError = errorMessage(error)
         console.error(authorizationSetupError)
       }
+      // 会话和工作台终端在窗口打开后才可能启动，它们要用合并后的 PATH。
+      await loginShellPath
       if (shutdownStarted) {
         closeStartupEvents()
         // 初始化可能晚于第一次关闭才建立服务；只清理，不重新开窗或放行回调。
@@ -145,28 +149,15 @@ if (!hasSingleInstanceLock) {
     })
 }
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit()
+const guardMainWindowClose = installQuitFlow({
+  pendingWork: () => sessionHost?.pendingWork() ?? { turns: 0, approvals: 0 },
+  mainWindow: () => mainWindow,
+  shutdown: shutdownDesktop,
+  onBeforeShutdown: () => {
+    shutdownStarted = true
+    closeStartupEvents()
+  },
 })
-
-app.on(
-  "before-quit",
-  createQuitCoordinator({
-    shutdown: shutdownDesktop,
-    quit: () => app.quit(),
-    onFailure: (reason) =>
-      dialog.showErrorBox(
-        "无法安全退出",
-        reason === "timeout"
-          ? "资源仍在关闭，请手动关闭浏览器并等待清理完成。"
-          : "浏览器或代理资源尚未关闭，请关闭相关浏览器后重试。",
-      ),
-    onBeforeShutdown: () => {
-      shutdownStarted = true
-      closeStartupEvents()
-    },
-  }),
-)
 
 function registerIpcHandlers(): void {
   ipcMain.handle("pigclaude:app-info", () => ({
@@ -479,6 +470,7 @@ function createWindow(): void {
     }),
   )
   forwardFullScreen(mainWindow)
+  guardMainWindowClose(mainWindow)
   workbench.track(mainWindow)
   const devRendererUrl = developmentRendererUrl(
     app.isPackaged,

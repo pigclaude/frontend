@@ -61,6 +61,85 @@ describe("createQuitCoordinator", () => {
     await vi.waitFor(() => expect(quit).toHaveBeenCalledTimes(1))
   })
 
+  it("asks first and starts shutting down only after the user confirms", async () => {
+    const answer: { give: (quit: boolean) => void } = { give: () => undefined }
+    const confirm = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          answer.give = resolve
+        }),
+    )
+    const shutdown = vi.fn(async () => undefined)
+    const quit = vi.fn()
+    const onBeforeShutdown = vi.fn()
+    const handle = createQuitCoordinator({
+      confirm,
+      shutdown,
+      quit,
+      onFailure: vi.fn(),
+      onBeforeShutdown,
+    })
+
+    const first = quitEvent()
+    handle(first)
+    const repeated = quitEvent()
+    handle(repeated)
+
+    expect(first.preventDefault).toHaveBeenCalledTimes(1)
+    expect(repeated.preventDefault).toHaveBeenCalledTimes(1)
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect(onBeforeShutdown).not.toHaveBeenCalled()
+    expect(shutdown).not.toHaveBeenCalled()
+
+    answer.give(true)
+    await vi.waitFor(() => expect(quit).toHaveBeenCalledTimes(1))
+    expect(onBeforeShutdown).toHaveBeenCalledTimes(1)
+    expect(shutdown).toHaveBeenCalledTimes(1)
+  })
+
+  it("starts shutting down at once when there is nothing to ask about", () => {
+    const shutdown = vi.fn(async () => undefined)
+    const onBeforeShutdown = vi.fn()
+    const handle = createQuitCoordinator({
+      confirm: () => true,
+      shutdown,
+      quit: vi.fn(),
+      onFailure: vi.fn(),
+      onBeforeShutdown,
+    })
+
+    handle(quitEvent())
+
+    expect(onBeforeShutdown).toHaveBeenCalledTimes(1)
+    expect(shutdown).toHaveBeenCalledTimes(1)
+  })
+
+  it("stays open and touches nothing when the user cancels, then asks again", async () => {
+    const confirm = vi.fn(async () => false)
+    const shutdown = vi.fn(async () => undefined)
+    const quit = vi.fn()
+    const onBeforeShutdown = vi.fn()
+    const handle = createQuitCoordinator({
+      confirm,
+      shutdown,
+      quit,
+      onFailure: vi.fn(),
+      onBeforeShutdown,
+    })
+
+    handle(quitEvent())
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(1))
+    await Promise.resolve()
+
+    expect(onBeforeShutdown).not.toHaveBeenCalled()
+    expect(shutdown).not.toHaveBeenCalled()
+    expect(quit).not.toHaveBeenCalled()
+    const again = quitEvent()
+    handle(again)
+    expect(again.preventDefault).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(2))
+  })
+
   it("reports a timeout without exiting while shutdown is still running", async () => {
     const quit = vi.fn()
     const onFailure = vi.fn()

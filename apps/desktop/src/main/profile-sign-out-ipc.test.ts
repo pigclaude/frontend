@@ -64,6 +64,7 @@ vi.mock("electron", () => ({
       }
       loadFile() {}
       once() {}
+      on() {}
       setBackgroundColor() {}
       show() {}
       focus() {}
@@ -109,6 +110,7 @@ vi.mock("electron", () => ({
     },
   },
 }))
+vi.mock("./login-shell-path", () => ({ applyLoginShellPath: async () => undefined }))
 vi.mock("./runtime-profile", () => ({ configureRuntimeProfile: () => true }))
 vi.mock("./device-identity", () => ({
   DeviceIdentityService: class {

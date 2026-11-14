@@ -50,6 +50,36 @@ describe("session model per session", () => {
     ])
   })
 
+  it("does not take a late envelope of the previous session for the new one", () => {
+    let state = receive(sent("session-1"), { type: "mode", permissionMode: "default" })
+    state = reduceSession(state, { type: "starting" })
+    state = reduceSession(state, from("session-1", 2, { type: "mode", permissionMode: "plan" }))
+    state = reduceSession(
+      state,
+      from("session-1", 3, { type: "error", code: "SDK_ERROR", message: "旧会话出错" }),
+    )
+
+    expect(state.sessionId).toBeNull()
+    expect(state.permissionMode).toBe("default")
+    expect(state.error).toBeNull()
+    expect(state.turns).toEqual([])
+
+    state = reduceSession(
+      state,
+      from("session-2", 1, {
+        type: "started",
+        sessionId: "native-2",
+        model: "claude-sonnet",
+        tools: [],
+        permissionMode: "default",
+      }),
+    )
+    state = reduceSession(state, from("session-2", 2, { type: "mode", permissionMode: "plan" }))
+
+    expect(state.sessionId).toBe("session-2")
+    expect(state.permissionMode).toBe("plan")
+  })
+
   it("follows the session its envelopes come from when no session is known yet", () => {
     const state = reduceSession(
       createSessionState(),

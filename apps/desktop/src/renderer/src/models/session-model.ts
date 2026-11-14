@@ -1,7 +1,8 @@
 // 负责聊天界面的会话状态：会话是否在运行、权限模式、模型和账号、哪一轮开着、用户发过的消息和
 // 对权限卡片的回答、界面先行结束的一轮、错误和提示，并把主进程错误码映射成中文文案。
-// 收到的信封交给按会话 id 组织的事件存储，开始新会话时别的会话的信封仍留在存储里；只有当前会话的信封
-// 改变界面状态。时间线的内容（文字、思考、工具、权限、换号）不在这里归并，由 session-timeline 从信封投影。一轮由主进程开闭：turn-ended 才结束这一轮，result 只留在信封里。
+// 收到的信封交给按会话 id 组织的事件存储，开始新会话时别的会话的信封仍留在存储里；
+// 只有当前会话的信封改变界面状态。时间线的内容（文字、思考、工具、权限、换号）不在这里归并，
+// 由 session-timeline 从信封投影。一轮由主进程开闭：turn-ended 才结束这一轮，result 只留在信封里。
 // 每个动作都带 ISO UTC 时间：事件取信封时间，界面操作取操作时的时间。
 
 import type { SessionEnvelope } from "../../../main/session/session-envelope"
@@ -160,14 +161,15 @@ function currentSeq(state: SessionUiState): number {
 }
 
 // 还不知道当前会话时（例如刷新后），跟随信封所属的会话。
+// 开始新会话之前已经收到过信封的会话不跟随，上一个会话迟到的信封不会被认成新会话的。
 function applyEnvelope(state: SessionUiState, envelope: SessionEnvelope): SessionUiState {
-  const events = storeEnvelope(state.events, envelope)
   const { sessionId, seq } = envelope
+  const seen = sessionId !== null && state.events[sessionId] !== undefined
+  const events = storeEnvelope(state.events, envelope)
   if (events === state.events && sessionId !== null && seq !== null) return state
-  if (sessionId !== null && state.sessionId !== null && sessionId !== state.sessionId) {
-    return { ...state, events }
-  }
-  return applyEvent({ ...state, events, sessionId: state.sessionId ?? sessionId }, envelope)
+  const current = state.sessionId ?? (seen ? null : sessionId)
+  if (sessionId !== null && sessionId !== current) return { ...state, events }
+  return applyEvent({ ...state, events, sessionId: current }, envelope)
 }
 
 // 一条信封之前已经收到的最大序号；只用于实时的信封按 0 算。

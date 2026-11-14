@@ -1,5 +1,5 @@
-// 负责验证会话错误：主进程错误码映射成中文文案、提示性错误不终止会话，以及权限询问超时把没回答的卡片
-// 结算为超时并记下致命错误。
+// 负责验证会话错误：主进程错误码映射成中文文案、提示性错误不终止会话，
+// 以及权限询问超时把没回答的卡片结算为超时并记下致命错误。
 
 import { describe, expect, it } from "vitest"
 import { receive } from "../test-support/session-envelopes"

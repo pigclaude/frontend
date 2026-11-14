@@ -1,8 +1,8 @@
-// 负责把一个会话的信封投影成 Pigcode 对话组件要的时间线事件：按回合分段后，消息里的思考、正文和工具调用、
-// 工具结果、权限请求与回答、换号各自成为线程事件，事件时间取信封时间；一轮的开始和结束取界面状态。
-// 进行中的一轮里，正在输出的正文和最后一段已落成消息的正文作为流式回答交给组件，这一轮结束后才落成回答，
-// 显示的位置不变。界面先行结束、主进程还没发来 turn-ended 的一轮，正在输出的正文先落在回答的位置，
-// 主进程补发的消息落在同一处。纯函数，不读桌面桥。
+// 负责把一个会话的信封投影成 Pigcode 对话组件要的时间线事件：按回合分段后，消息里的思考、正文、
+// 工具调用、工具结果、权限请求与回答、换号各自成为线程事件，事件时间取信封时间；
+// 一轮的开始和结束取界面状态。进行中的一轮里，正在输出的正文和最后一段已落成消息的正文作为流式回答
+// 交给组件，这一轮结束后才落成回答，显示的位置不变。界面先行结束、主进程还没发来 turn-ended 的
+// 一轮，正在输出的正文先落在回答的位置，主进程补发的消息落在同一处。纯函数，不读桌面桥。
 
 import type { ThreadEvent } from "@pigclaude/ui-contracts"
 import type { SessionHostEvent } from "../../../main/session/session-types"
@@ -176,23 +176,23 @@ function projectRun(
         break
     }
   }
-  return endRun(turn, drafts, push, tail.holdAnswer ? lastAnswer : null, tail.unlanded)
+  return endRun(turn, drafts, push, lastAnswer, tail)
 }
 
 function endRun(
   turn: SessionTurn,
   drafts: Draft[],
   push: PushDraft,
-  held: LastAnswer | null,
-  unlanded: string,
+  lastAnswer: LastAnswer | null,
+  tail: RunTail,
 ): RunDrafts {
   const endedAt = turn.endedAt ?? turn.startedAt
   if (turn.status === "streaming") {
-    if (held === null) return { drafts, heldText: null }
-    drafts.splice(held.index, 1)
-    return { drafts, heldText: held.text }
+    if (!tail.holdAnswer || lastAnswer === null) return { drafts, heldText: null }
+    drafts.splice(lastAnswer.index, 1)
+    return { drafts, heldText: lastAnswer.text }
   }
-  if (unlanded !== "") push("message.completed", { text: unlanded }, endedAt)
+  if (tail.unlanded !== "") push("message.completed", { text: tail.unlanded }, endedAt)
   switch (turn.status) {
     case "error": {
       const fallback = sessionErrorText(`${turn.endCode ?? "SDK_ERROR"}: 会话出错`)

@@ -1,5 +1,5 @@
-// 负责验证信封到时间线事件的投影：一轮里思考、正文、工具和子代理按信封顺序成为线程事件并带真实时间，
-// 消息和工具按 id 去重，权限请求与回答、换号和各种结束方式。
+// 负责验证信封到时间线事件的投影：一轮里思考、正文、工具和子代理按信封顺序成为线程事件，
+// 带真实时间；消息和工具按 id 去重，权限请求与回答、换号和各种结束方式。
 
 import { describe, expect, it } from "vitest"
 import type { SessionHostEvent } from "../../../main/session/session-types"

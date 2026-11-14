@@ -1,5 +1,6 @@
-// 负责验证会话模型：信封交给按会话组织的存储后，流式增量、消息和工具去重、权限卡片、换号在时间线上的结果，
-// 一轮的开闭、结果和结束和界面操作。错误码文案和超时见 session-model-errors.test.ts。
+// 负责验证会话模型：信封交给按会话组织的存储后，流式增量、消息和工具去重、权限卡片、
+// 换号在时间线上的结果，一轮的开闭、结果和结束和界面操作。
+// 错误码文案和超时见 session-model-errors.test.ts。
 
 import { describe, expect, it } from "vitest"
 import type { SessionHostEvent } from "../../../main/session/session-types"

@@ -1,26 +1,20 @@
 // 负责用 electron-vite 分别构建主进程、预加载和渲染进程。
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "electron-vite"
+import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import type { Plugin } from "vite"
 import { DevAuthorizationFixture } from "./src/dev/authorization-fixture"
 import { createAuthorizationMiddleware } from "./src/dev/authorization-middleware"
+import { mainBundledDependencies } from "./src/main/main-bundled-dependencies"
 import { rendererContentSecurityPolicy } from "./src/main/renderer-csp"
 
 const stripComments = { legalComments: "none" as const }
 
-// workspace 源码和安装包不携带的网络依赖必须打进产物，不能留给运行时解析。
-const bundledDependencies = [
-  "@pigclaude/contracts",
-  "@pigclaude/daemon",
-  "@pigclaude/local-store",
-  "@pigclaude/login-gate",
-  "@pigclaude/ui-primitives",
-  "@pigclaude/proxy-connection",
-  "@pigclaude/session-env",
-  "@pigclaude/switcher",
-  "undici",
-]
+const bundledDependencies = mainBundledDependencies(
+  JSON.parse(readFileSync(resolve(import.meta.dirname, "package.json"), "utf8")),
+  JSON.parse(readFileSync(resolve(import.meta.dirname, "electron-builder.json"), "utf8")),
+)
 
 /** 开发时让系统浏览器里的授权页通知桌面端。正式环境由权限服务接管。 */
 function devAuthorization(): Plugin {

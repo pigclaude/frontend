@@ -45,9 +45,7 @@ const git = (...args: string[]) =>
   })
 
 function call(name: string, ...args: unknown[]): Promise<unknown> {
-  const handler = handlers.get("pigclaude:workbench-" + name)
-  if (!handler) throw new Error("handler not registered: " + name)
-  return handler({ sender: trustedSender } as unknown as IpcMainInvokeEvent, ...args)
+  return callFrom(trustedSender, name, ...args)
 }
 
 function callFrom(sender: unknown, name: string, ...args: unknown[]): Promise<unknown> {

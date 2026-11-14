@@ -1,5 +1,5 @@
 // 负责新会话输入框上方的分支与 worktree 控件：显示当前分支，切换或新建分支，
-// 打开 worktree 开关后选择新 worktree 的起点。界面和文案跟随 Pigcode `ebeccf3`。
+// 打开 worktree 开关后选择新 worktree 的起点。
 import { useEffect, useId, useRef, useState } from "react"
 import { Check, ChevronDown, GitBranch, GitBranchPlus, Search } from "lucide-react"
 import type { WorkbenchBranches } from "../../../workbench-contract"

@@ -26,7 +26,7 @@ export async function copyWorktreeIncludes(source: string, target: string): Prom
   for (const name of await ignoredByGit(source, candidates)) {
     if (name.split("/").some((part) => part.toLowerCase() === ".git")) continue
     const from = join(source, ...name.split("/"))
-    if (!(await lstat(from)).isFile() || (await realpath(from)) !== from) continue
+    if (!(await lstat(from)).isFile() || !inside(source, await realpath(from))) continue
     await copyInto(target, from, join(target, ...name.split("/")))
   }
 }

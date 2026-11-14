@@ -8,7 +8,7 @@ const defaultMaxEntries = 200
 
 type Entry = { path: string; project: string }
 
-/** 登记文件的位置由 main 用 userData 拼出，测试可用临时目录。 */
+/** 登记文件的绝对路径和最多保留的条数。 */
 export type WorktreeRegistryOptions = { filePath: string; maxEntries?: number }
 
 /** worktree 到所属项目的登记。保证损坏或半写的文件按没有登记处理，条数不超过上限。 */

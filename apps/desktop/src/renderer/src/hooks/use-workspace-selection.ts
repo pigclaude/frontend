@@ -10,6 +10,7 @@ export type WorkspaceSelection = {
   session: string | null
   /** 目录所属的项目：登记过的 worktree 返回它的项目，其他目录原样返回。 */
   projectOf: (path: string | null) => string | null
+  /** 把 path 作为下一次会话的目录；为 null 时回到最近项目里的第一个。 */
   select: (path: string | null) => void
   /** 选用 from 所在项目的一个 worktree（或回到项目本身）作为下一次会话的目录。 */
   selectWorktree: (path: string, from: string | null) => void

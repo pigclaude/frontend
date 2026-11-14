@@ -110,13 +110,16 @@ export async function createWorkbenchWorktree(
   const first = (await listWorkbenchWorktrees(root))[0]
   if (!first) throw new Error("WORKBENCH_NOT_GIT")
   const gitRoot = await realpath(first.path)
+  const checkout = await realpath(
+    (await runWorkbenchGit(root, ["rev-parse", "--show-toplevel"])).trim(),
+  )
   const commit = await worktreeBase(root, baseRef)
   const suffix = randomUUID().slice(0, 8)
   const path = join(dirname(gitRoot), `${basename(gitRoot)}-worktree-${suffix}`)
   const branch = `pigclaude/worktree-${suffix}`
   await runWorkbenchGit(root, ["worktree", "add", "-b", branch, "--", path, commit])
   try {
-    await copyWorktreeIncludes(gitRoot, path)
+    await copyWorktreeIncludes(checkout, path)
   } catch (error: unknown) {
     await runWorkbenchGit(gitRoot, ["worktree", "remove", "--force", "--", path]).catch(
       () => undefined,

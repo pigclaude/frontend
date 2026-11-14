@@ -15,6 +15,7 @@ import {
   type ComposerSubmitOptions,
   type PermissionMode,
 } from "@pigclaude/ui-composer"
+import { useSlashCommands } from "../shell/registry-slash-commands"
 import { useToast } from "@pigclaude/ui-shell"
 import { PermissionDock } from "../components/permission-dock"
 import { PermissionPrompt, type PermissionChoice } from "../components/permission-prompt"
@@ -100,6 +101,7 @@ export function ChatScreen({
   onViewDiff,
 }: ChatScreenProps) {
   const toast = useToast()
+  const commands = useSlashCommands()
   const [modelId, setModelId] = useState("")
   const [accountId, setAccountId] = useState("")
   // 档位和计划开关分开记：计划打开期间档位不变，关掉计划或批准计划后回到这一档。
@@ -337,6 +339,7 @@ export function ChatScreen({
         <NewThreadView
           layoutControls={layoutControls}
           openIn={openIn}
+          commands={commands}
           projects={projects}
           projectId={workspace}
           onSelectProject={chooseWorkspace}
@@ -365,6 +368,7 @@ export function ChatScreen({
         <ChatView
           layoutControls={layoutControls}
           openIn={openIn}
+          commands={commands}
           {...(onOpenFile ? { onOpenFile } : {})}
           {...(onViewDiff ? { onViewDiff } : {})}
           thread={view.thread}

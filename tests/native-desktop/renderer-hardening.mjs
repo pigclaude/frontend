@@ -35,16 +35,8 @@ export async function verifyRendererHardening(application, page, violations) {
     document.addEventListener("securitypolicyviolation", (event) =>
       directives.add(event.effectiveDirective),
     )
-    const refused = (run) => {
-      try {
-        run()
-        return false
-      } catch (error) {
-        return error instanceof EvalError
-      }
-    }
-    const evalRefused = refused(() => (0, eval)("1"))
-    const functionRefused = refused(() => new Function("return 1")())
+    // page.evaluate 的代码来自调试协议，不受页面 CSP 的 eval 限制；字符串定时器到点时才按页面的 CSP 编译。
+    setTimeout("window.pigclaudeEvalProbe = true", 0)
     const inline = document.createElement("script")
     inline.textContent = "window.pigclaudeInlineProbe = true"
     document.head.append(inline)
@@ -57,21 +49,19 @@ export async function verifyRendererHardening(application, page, violations) {
     })
     await new Promise((resolve) => setTimeout(resolve, 100))
     return {
-      evalRefused,
-      functionRefused,
+      evalRan: Reflect.get(window, "pigclaudeEvalProbe") === true,
       inlineRan: Reflect.get(window, "pigclaudeInlineProbe") === true,
       remoteLoaded,
       directives: [...directives].sort(),
     }
   })
   assert.deepEqual(probes, {
-    evalRefused: true,
-    functionRefused: true,
+    evalRan: false,
     inlineRan: false,
     remoteLoaded: false,
     directives: ["script-src", "script-src-elem"],
   })
-  await expect.poll(() => violations.length).toBeGreaterThanOrEqual(4)
+  await expect.poll(() => violations.length).toBeGreaterThanOrEqual(3)
   const preferences = await application.evaluate(({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows().find((candidate) =>
       candidate.webContents.getURL().endsWith("/renderer/index.html"),

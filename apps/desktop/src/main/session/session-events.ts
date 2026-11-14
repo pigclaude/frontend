@@ -2,7 +2,7 @@
 
 import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk"
 import type { BackgroundTaskSignal } from "./background-tasks"
-import type { SubagentTaskSignal } from "./subagent-tasks"
+import type { TaskSignal } from "./task-signals"
 
 /** 应用允许的权限模式：四个档位加计划。 */
 export type SessionPermissionMode =
@@ -86,9 +86,9 @@ export type SessionEvent =
 /** 上下文压缩完成的信号；只在主进程内部使用，不发给渲染层。 */
 export type ContextCompactedSignal = { type: "context-compacted" }
 
-/** 适配器交给会话的全部输入：会话事件，加上只在主进程内部使用的后台任务、子代理和上下文压缩信号。 */
+/** 适配器交给会话的全部输入：会话事件，以及只在主进程使用的后台任务、任务进度和上下文压缩信号。 */
 export type AdapterEvent =
-  SessionEvent | BackgroundTaskSignal | SubagentTaskSignal | ContextCompactedSignal
+  SessionEvent | BackgroundTaskSignal | TaskSignal | ContextCompactedSignal
 
 /** 界面用的模型信息；第一行是 CLI 的默认选择。 */
 export type ClaudeModel = {

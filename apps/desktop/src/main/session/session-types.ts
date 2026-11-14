@@ -19,6 +19,7 @@ import type {
 } from "./session-events"
 import type { SubagentEndedEvent } from "./subagent-tasks"
 import type { UsageRange, UsageRecord, UsageSummary } from "./usage-recorder"
+import type { WorkflowEvent } from "./workflow-tasks"
 import type { ProfileEnvironment } from "./profile-environment"
 
 /** session.start 的输入；工作区必须是绝对目录，其余字段由 main 侧校验。 */
@@ -95,11 +96,12 @@ export type SessionTurnEvent =
       errorCode: string | null
     }
 
-/** SessionHost 发给 preload 的全部事件：适配器事件加回合开闭、子代理结束、权限、提问、换号、提示和上下文占用。 */
+/** SessionHost 发给 preload 的事件包括回合开闭、子代理结束、工作流、待答请求、换号、提示和上下文占用。 */
 export type SessionHostEvent =
   | SessionEvent
   | SessionTurnEvent
   | SubagentEndedEvent
+  | WorkflowEvent
   | PermissionRequestEvent
   | QuestionRequestEvent
   | QuestionResolvedEvent

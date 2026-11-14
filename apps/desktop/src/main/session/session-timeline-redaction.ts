@@ -76,6 +76,10 @@ const timelineRules: { [K in SessionHostEvent["type"]]: TimelineRule<EventOf<K>>
     ...event,
     summary: redactString(event.summary, "event.summary", marks),
   }),
+  workflow: (event, marks) => ({
+    ...event,
+    workflow: redactUnknown(event.workflow, "event.workflow", marks),
+  }),
   error: (event, marks) => ({
     ...event,
     message: redactString(event.message, "event.message", marks),

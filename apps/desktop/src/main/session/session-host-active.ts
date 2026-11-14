@@ -1,5 +1,5 @@
 // 负责会话宿主的活动会话：一份会话的全部可变状态，以及把待答队列、权限代理、提问代理、子代理、
-// 回合控制、适配器回调和启动模式装配到这份状态上。
+// 工作流、回合控制、适配器回调和启动模式装配到这份状态上。
 
 import {
   PendingAnswers,
@@ -16,6 +16,7 @@ import type { AdapterEvent } from "./session-events"
 import { launchPermissionMode } from "./session-host-modes"
 import { SessionTurns, type ClosedTurn } from "./session-turns"
 import { SubagentTasks } from "./subagent-tasks"
+import { WorkflowTasks } from "./workflow-tasks"
 import type {
   SessionAdapterFactory,
   SessionAdapterPort,
@@ -36,6 +37,8 @@ export type ActiveSession = {
   questions: QuestionBroker
   /** 这个会话开始过的子代理；权限询问和子代理结束事件据它找回归属。 */
   subagents: SubagentTasks
+  /** 这个会话主线程发起的工作流；任务信号据它得出工作流快照。 */
+  workflows: WorkflowTasks
   abort: AbortController
   model: string | null
   permissionMode: SessionPermissionMode
@@ -111,6 +114,7 @@ export function createActiveSession(
     broker,
     questions,
     subagents,
+    workflows: new WorkflowTasks(),
     abort: new AbortController(),
     model: input.model ?? null,
     permissionMode: launchPermissionMode(input.permissionMode),

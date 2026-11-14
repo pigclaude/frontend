@@ -1,4 +1,4 @@
-// 验证写进时间线前的脱敏：保存分类的穷举检查、64 KiB 截断与标记、截图占位和浏览器输入里的密码打码。
+// 验证写进时间线前的脱敏：保存分类的穷举检查、64 KiB 截断与标记（含工作流快照）、截图占位和浏览器输入里的密码打码。
 
 import { describe, expect, it } from "vitest"
 import { sessionEventKinds } from "./session-envelope"
@@ -78,6 +78,17 @@ const samples: EventSamples = {
     status: "completed",
     summary: "子代理做完了",
   },
+  workflow: {
+    type: "workflow",
+    workflow: {
+      toolCallId: "t-workflow",
+      name: "review",
+      script: "export const meta = { name: 'review' }",
+      status: "running",
+      phases: [{ index: 1, title: "Review" }],
+      agents: [{ index: 1, label: "review:a.ts", phase: "Review", state: "running" }],
+    },
+  },
   error: { type: "error", code: "SDK_ERROR", message: "出错了" },
   ended: { type: "ended", reason: "completed" },
 }
@@ -148,6 +159,25 @@ describe("timelineEnvelope 截断", () => {
     ])
     expect(tool?.truncated).toEqual([
       { path: "event.blocks.0.input.content", bytes: timelineContentLimitBytes + 10 },
+    ])
+  })
+
+  it("工作流快照里的长脚本和 agent 结论也截断", () => {
+    const long = "a".repeat(timelineContentLimitBytes + 10)
+    const { workflow } = samples.workflow
+    const agents = [
+      { ...workflow.agents[0], index: 1, label: "a", state: "done" as const, result: long },
+    ]
+    const event: SessionHostEvent = {
+      type: "workflow",
+      workflow: { ...workflow, script: long, agents },
+    }
+
+    const written = timelineEnvelope(envelopeOf("s-1", 6, event))
+
+    expect(written?.truncated).toEqual([
+      { path: "event.workflow.script", bytes: timelineContentLimitBytes + 10 },
+      { path: "event.workflow.agents.0.result", bytes: timelineContentLimitBytes + 10 },
     ])
   })
 })

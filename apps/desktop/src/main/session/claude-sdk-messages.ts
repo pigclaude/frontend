@@ -2,7 +2,8 @@
 
 import type { ModelUsage, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { readBackgroundTaskSignal } from "./background-tasks"
-import { readSubagentTaskSignal, subagentRef } from "./subagent-tasks"
+import { subagentRef } from "./subagent-tasks"
+import { readTaskSignal } from "./task-signals"
 import type {
   AdapterEvent,
   SessionContentBlock,
@@ -15,7 +16,7 @@ import type {
 export function normalizeSdkMessage(message: SDKMessage): AdapterEvent[] {
   switch (message.type) {
     case "system": {
-      const signals = [readBackgroundTaskSignal(message), readSubagentTaskSignal(message)]
+      const signals = [readBackgroundTaskSignal(message), readTaskSignal(message)]
       const read = signals.filter((signal) => signal !== null)
       if (read.length > 0) return read
       if (message.subtype === "init") {

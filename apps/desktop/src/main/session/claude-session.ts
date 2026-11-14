@@ -45,6 +45,7 @@ import type {
   SessionTurnEvent,
 } from "./session-types"
 import type { UsageRecord } from "./usage-recorder"
+import type { WorkflowEvent } from "./workflow-tasks"
 
 /** 构造一个会话所需的全部依赖；都只属于这一个会话。 */
 export type ClaudeSessionOptions = {
@@ -263,12 +264,17 @@ export class ClaudeSession {
       case "background-task-ended":
         active.turns.observe(event)
         return
-      case "subagent-task-started":
+      case "task-started":
         active.subagents.started(event)
+        this.#publishWorkflow(active.workflows.task(event))
         return
-      case "subagent-task-ended": {
+      case "task-progress":
+        this.#publishWorkflow(active.workflows.task(event))
+        return
+      case "task-ended": {
         const ended = active.subagents.ended(event)
         if (ended !== null) this.#publish(ended)
+        this.#publishWorkflow(active.workflows.task(event))
         return
       }
       case "context-compacted":
@@ -296,9 +302,14 @@ export class ClaudeSession {
         if (!active.stopping) void this.release()
         return
       case "message":
+        active.subagents.observe(event.subagent)
+        this.#publish(this.#reply.observe(event))
+        for (const workflow of active.workflows.called(event)) this.#publish(workflow)
+        return
       case "tool-result":
         active.subagents.observe(event.subagent)
         this.#publish(this.#reply.observe(event))
+        this.#publishWorkflow(active.workflows.toolResult(event))
         return
       default:
         this.#publish(this.#reply.observe(event))
@@ -347,6 +358,10 @@ export class ClaudeSession {
 
   #publish(event: SessionHostEvent): void {
     this.#options.emit(this.#log.append(event))
+  }
+
+  #publishWorkflow(event: WorkflowEvent | null): void {
+    if (event !== null) this.#publish(event)
   }
 
   #redact(message: string): string {

@@ -42,18 +42,8 @@ async function launch() {
       PIGCLAUDE_RUST_BASE_URL: fixture.origin,
     },
     timeout: 45_000,
-    ...(process.env.CI
-      ? {
-          logger: {
-            isEnabled: (name) => name === "browser",
-            log: (_name, _severity, message) => {
-              const marker = String(message).match(/Workbench IPC failed [a-z-]+ [A-Z0-9_]+/)
-              if (marker) console.error(marker[0])
-            },
-          },
-        }
-      : {}),
   })
+  if (process.env.CI) forwardWorkbenchFailures(application.process().stderr)
   applicationPid = await application.evaluate(() => process.pid)
   const page = await application.firstWindow({ timeout: 25_000 })
   page.setDefaultTimeout(10_000)
@@ -66,6 +56,21 @@ async function launch() {
     })
   }
   return page
+}
+
+/** 把主进程 stderr 里工作台失败的脱敏摘要转到验收输出；其余主进程输出可能带路径，不转。 */
+function forwardWorkbenchFailures(stderr) {
+  let pending = ""
+  stderr?.on("data", (chunk) => {
+    const lines = (pending + chunk).split(/\r?\n/)
+    pending = lines.pop() ?? ""
+    for (const line of lines) {
+      const marker = line.match(
+        /Workbench IPC failed [a-z-]+ (?:git [a-z-]+ code=-?\w+ signal=\w+|[A-Z0-9_]+)/,
+      )
+      if (marker) console.error(marker[0])
+    }
+  })
 }
 
 function processRunning(pid) {

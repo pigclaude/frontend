@@ -15,7 +15,6 @@ import {
   type ComposerSubmitOptions,
   type PermissionMode,
 } from "@pigclaude/ui-composer"
-import { useSlashCommands } from "../shell/registry-slash-commands"
 import { useToast } from "@pigclaude/ui-shell"
 import { PermissionDock } from "../components/permission-dock"
 import { PermissionPrompt, type PermissionChoice } from "../components/permission-prompt"
@@ -40,6 +39,7 @@ import { projectNameFromPath } from "../models/project-model"
 import type { NavLocation } from "../models/navigation"
 import { threadView } from "../models/thread-view"
 import type { SessionEffort } from "../../../main/session/session-types"
+import { useSlashCommands } from "../shell/registry-slash-commands"
 
 /** Claude 会话支持的 Agent 功能；界面据此显示计划、中断和审批等控件。 */
 const CLAUDE_FEATURES: AgentFeatures = {

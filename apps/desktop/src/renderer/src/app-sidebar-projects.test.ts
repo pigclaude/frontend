@@ -1,12 +1,11 @@
 // 负责验证侧栏项目接到桌面桥：右键重命名只改显示名、在文件管理器中显示、从侧栏移除，
 // 「查看文件」和「在应用中打开」，以及跑完一轮的会话行状态点和账号角标。
 // @vitest-environment jsdom
-import { act, createElement } from "react"
+import { act } from "react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
-import { DesktopApp } from "./app"
 import { typeAndSend } from "./test-support/chat-screen-harness"
-import { desktopAppRoot, flush, installFakeDesktopBridge } from "./test-support/desktop-app-harness"
+import { desktopAppRoot, flush, renderDesktopApp } from "./test-support/desktop-app-harness"
 import { projectRoot, treeRow } from "./test-support/workbench-harness"
 
 vi.mock("./hooks/use-appearance", () => ({
@@ -50,9 +49,8 @@ async function chooseFromMenu(name: string, item: string): Promise<void> {
 
 describe("sidebar project actions", () => {
   it("renames, reveals and removes a project through the desktop bridge", async () => {
-    const { calls } = installFakeDesktopBridge()
+    const { calls } = await renderDesktopApp(app)
     const user = userEvent.setup()
-    await act(async () => app.root.render(createElement(DesktopApp)))
     await flush()
 
     await chooseFromMenu("api", "重命名")
@@ -71,8 +69,7 @@ describe("sidebar project actions", () => {
   })
 
   it("shows the project's files in the workbench and opens the project in an installed app", async () => {
-    const { calls } = installFakeDesktopBridge(["/work/api", projectRoot])
-    await act(async () => app.root.render(createElement(DesktopApp)))
+    const { calls } = await renderDesktopApp(app, ["/work/api", projectRoot])
     await flush()
 
     const files = projectRow("app")
@@ -95,8 +92,7 @@ describe("sidebar project actions", () => {
   })
 
   it("marks the finished session row completed with the badge of the account it ran on", async () => {
-    installFakeDesktopBridge()
-    await act(async () => app.root.render(createElement(DesktopApp)))
+    await renderDesktopApp(app)
     await flush()
 
     await typeAndSend(app.container, "检查依赖")

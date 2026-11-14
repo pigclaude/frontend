@@ -371,7 +371,9 @@ export function MainWindow({
         setExpanded((current) => toggleExpanded(current, projectId, open))
       }
       onNewSession={newSession}
-      {...(bridge ? { onBrowseFiles: browseFiles, onToggleWorkbench: toggleRight } : {})}
+      {...(bridge
+        ? { onBrowseFiles: browseFiles, onToggleWorkbench: toggleRight, canToggleWorkbench: inChat }
+        : {})}
       onOpenThread={() => onNavigate({ kind: "session" })}
       onAddProject={() => setAddingProject(true)}
       {...projectActions({

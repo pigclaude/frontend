@@ -38,7 +38,12 @@ describe("registerShellCommands", () => {
   it("有工作台时登记开合右侧面板，输入框里是 /panel，快捷键与 ⌘J 相同", () => {
     const registry = createExtensionRegistry()
     const onToggleWorkbench = vi.fn()
-    registerShellCommands(registry, { ...actions(), onToggleWorkbench }, (key) => key)
+    let inChat = true
+    registerShellCommands(
+      registry,
+      { ...actions(), onToggleWorkbench, canToggleWorkbench: () => inChat },
+      (key) => key,
+    )
 
     const commands = registry.get("command")
     expect(commands.map((command) => command.id)).toEqual([
@@ -57,6 +62,9 @@ describe("registerShellCommands", () => {
     expect(commands.find((command) => command.id === "new-thread")?.slash).toBe("new")
     void panel?.run()
     expect(onToggleWorkbench).toHaveBeenCalledTimes(1)
+    expect(panel?.available?.()).toBe(true)
+    inChat = false
+    expect(panel?.available?.()).toBe(false)
   })
 
   it("注销后命令面板里没有这些命令", () => {

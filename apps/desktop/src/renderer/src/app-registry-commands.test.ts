@@ -1,12 +1,11 @@
 // 负责验证注册表命令接进输入框和命令面板：`/new` 与「新会话」、`/panel` 与 ⌘J 行为一致，
 // 命令面板里有开合右侧面板，输入框的 `/` 菜单列出的就是注册表里的命令。
 // @vitest-environment jsdom
-import { act, createElement } from "react"
+import { act } from "react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
-import { DesktopApp } from "./app"
 import { typeAndSend } from "./test-support/chat-screen-harness"
-import { desktopAppRoot, flush, installFakeDesktopBridge } from "./test-support/desktop-app-harness"
+import { desktopAppRoot, flush, renderDesktopApp } from "./test-support/desktop-app-harness"
 
 vi.mock("./hooks/use-appearance", () => ({
   useAppearance: () => ({
@@ -19,7 +18,7 @@ vi.mock("./hooks/use-appearance", () => ({
 const app = desktopAppRoot()
 
 function editor(): HTMLElement {
-  const found = app.container.querySelector<HTMLElement>(".composer .tiptap")
+  const found = app.container.querySelector<HTMLElement>('[contenteditable="true"]')
   if (!found) throw new Error("没有输入区")
   return found
 }
@@ -43,8 +42,25 @@ async function runSlash(name: string): Promise<string[]> {
 }
 
 function rightPanelOpen(): boolean {
-  const slot = app.container.querySelector(".right-panel-slot")
-  return slot !== null && !slot.hasAttribute("hidden")
+  const toggle = app.container.querySelector('button[aria-label="切换右侧面板"]')
+  return toggle?.getAttribute("aria-pressed") === "true"
+}
+
+function screen(): string | undefined {
+  return app.container.querySelector<HTMLElement>("[data-main-window]")?.dataset.screen
+}
+
+/** 打开命令面板并执行名字为 title 的命令。 */
+async function runFromPalette(title: string): Promise<void> {
+  const search = app.container.querySelector<HTMLButtonElement>('button[aria-label="搜索"]')
+  await act(async () => search?.click())
+  await flush()
+  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((item) =>
+    item.textContent?.includes(title),
+  )
+  if (!option) throw new Error(`命令面板里没有 ${title}`)
+  await act(async () => option.click())
+  await flush()
 }
 
 async function pressModJ(): Promise<void> {
@@ -57,9 +73,7 @@ async function pressModJ(): Promise<void> {
 }
 
 async function render(): Promise<void> {
-  installFakeDesktopBridge()
-  await act(async () => app.root.render(createElement(DesktopApp)))
-  await flush()
+  await renderDesktopApp(app)
 }
 
 describe("registry commands", () => {
@@ -89,31 +103,31 @@ describe("registry commands", () => {
     await typeAndSend(app.container, "检查依赖")
     await flush()
     await flush()
-    const screen = () => app.container.querySelector<HTMLElement>("[data-main-window]")?.dataset
     const openSession = async () => {
-      const row = app.container.querySelector<HTMLButtonElement>(".proj-sessions .sess")
+      const row = [...app.container.querySelectorAll<HTMLButtonElement>("button")].find(
+        (button) =>
+          button.getAttribute("aria-current") === null && button.textContent?.includes("检查依赖"),
+      )
       await act(async () => row?.click())
       await flush()
     }
-    expect(screen()?.screen).toBe("chat")
+    expect(screen()).toBe("chat")
 
     await runSlash("new")
-    expect(screen()?.screen).toBe("chat-new")
+    expect(screen()).toBe("chat-new")
 
     await openSession()
-    expect(screen()?.screen).toBe("chat")
-    const newSession = app.container.querySelector<HTMLButtonElement>("button.new-thread-btn")
-    await act(async () => newSession?.click())
-    await flush()
-    expect(screen()?.screen).toBe("chat-new")
+    expect(screen()).toBe("chat")
+    await runFromPalette("新会话")
+    expect(screen()).toBe("chat-new")
   })
 
-  it("offers toggling the right panel in the command palette", async () => {
+  it("toggles the right panel from the command palette like ⌘J", async () => {
     await render()
-    const search = app.container.querySelector<HTMLButtonElement>('button[aria-label="搜索"]')
-    await act(async () => search?.click())
-    await flush()
 
-    expect(document.body.textContent).toContain("显示或隐藏右侧面板")
+    await runFromPalette("显示或隐藏右侧面板")
+    expect(rightPanelOpen()).toBe(true)
+    await pressModJ()
+    expect(rightPanelOpen()).toBe(false)
   })
 })

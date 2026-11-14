@@ -1,9 +1,10 @@
 // 负责整窗页面测试的公共夹具：每个测试一个挂载点，以及只在内存里的桌面桥（会员、号池、最近工作区、
 // 项目操作、本机应用、工作台和一个跑完一轮就结束的假会话）。
-import { act } from "react"
+import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, vi } from "vitest"
 import type { MembershipView } from "@pigclaude/contracts/membership"
+import { DesktopApp } from "../app"
 import { installPigcodeNative } from "../lib/pigcode-native"
 import { initialMembershipView } from "../models/membership-view"
 import { chatAccount } from "./chat-screen-harness"
@@ -191,4 +192,15 @@ export function installFakeDesktopBridge(initial: string[] = ["/work/api", "/wor
   }
   installPigcodeNative(window)
   return { calls }
+}
+
+/** 装上内存桌面桥后在挂载点里渲染整窗，等首轮读取落定；返回桌面桥记下的项目操作。 */
+export async function renderDesktopApp(
+  app: DesktopAppRoot,
+  paths?: string[],
+): Promise<{ calls: string[] }> {
+  const bridge = installFakeDesktopBridge(paths)
+  await act(async () => app.root.render(createElement(DesktopApp)))
+  await flush()
+  return bridge
 }

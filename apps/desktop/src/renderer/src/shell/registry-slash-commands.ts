@@ -9,8 +9,8 @@ import { useLocale, type MessageKey } from "@pigclaude/ui-primitives"
 import type { ComposerCommand } from "@pigclaude/ui-composer"
 
 /**
- * 注册表命令 → 输入框命令：只取带 slash 的，触发名就是 `/slash`，执行的是同一个 run。
- * id 加前缀，不和输入框自己的命令（model、plan）撞上。
+ * 把注册表命令转成输入框命令：只取带 slash 的，触发名就是 `/slash`，执行的是同一个 run，
+ * 能不能执行也沿用注册表的判断。id 加前缀，不和输入框自己的命令（model、plan）撞上。
  */
 export function slashCommands(
   commands: readonly CommandContribution[],

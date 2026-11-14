@@ -16,6 +16,8 @@ export type ShellCommandActions = {
   onAddProject: () => void
   /** 开合右侧工作台，与 ⌘J 相同；没有工作台时不提供，面板和 `/panel` 都不出现。 */
   onToggleWorkbench?: () => void
+  /** 现在能不能开合右侧工作台；和 ⌘J 一样只在会话页和新会话页可用。缺省为能。 */
+  canToggleWorkbench?: () => boolean
 }
 
 const shell: ContributionOwner = { kind: "builtin", id: "shell" }
@@ -62,6 +64,7 @@ export function registerShellCommands(
             icon: "tray",
             shortcut: "Mod+j",
             slash: "panel",
+            available: () => actions.canToggleWorkbench?.() ?? true,
             run: () => actions.onToggleWorkbench?.(),
           } satisfies CommandContribution,
         ]

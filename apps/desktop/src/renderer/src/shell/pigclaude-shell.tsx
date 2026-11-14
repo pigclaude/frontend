@@ -62,6 +62,8 @@ export type PigclaudeShellProps = {
   onRemoveProject: (projectId: string) => void
   /** 开合右侧工作台，与 ⌘J 相同；没有工作台时不传，命令面板和 `/panel` 都不出现。 */
   onToggleWorkbench?: () => void
+  /** 现在能不能开合右侧工作台；和 ⌘J 一样只在会话页和新会话页为 true。 */
+  canToggleWorkbench?: boolean
   /** 项目行的「查看文件」：在工作台里打开这个项目的文件面板。 */
   onBrowseFiles?: (projectId: string) => void
   onOpenSettings: () => void
@@ -147,7 +149,7 @@ export function PigclaudeShell(props: PigclaudeShellProps) {
     !props.inSettings,
   )
 
-  // 命令通过 ref 调用最新的回调；语言变化（关键词跟着变）或工作台有无变化时才重新登记。
+  // 命令通过 ref 调用最新的回调，不随每次渲染重新登记。
   const commandActions = useRef({ props, toggleSidebar })
   useLayoutEffect(() => {
     commandActions.current = { props, toggleSidebar }

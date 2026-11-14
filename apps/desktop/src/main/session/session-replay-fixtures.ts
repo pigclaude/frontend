@@ -2,14 +2,15 @@
 // 夹具只保留回放需要的消息（去掉流式增量、思考 token 计数和请求状态）。
 
 import { readFileSync } from "node:fs"
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
+import type { CanUseTool, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { ClaudeAgentAdapter } from "./claude-agent-adapter"
 import { FakeQuery } from "./claude-agent-adapter-fixtures"
 import { createHarness, type SessionHarness } from "./session-host-fixtures"
-import type { SessionHostEvent } from "./session-types"
+import type { SessionHostEvent, SessionPermissionMode } from "./session-types"
 
 /** 可以回放的夹具；名字末尾是录制它的 Claude Code 版本，回放结果只对这个版本的消息格式成立。 */
 export type SdkFixture =
+  | "ask-plan-2.1.310"
   | "background-agent-2.1.310"
   | "background-interrupt-2.1.310"
   | "workflow-2.1.310"
@@ -24,18 +25,34 @@ export function loadSdkFixture(name: SdkFixture): SDKMessage[] {
     .map((line) => JSON.parse(line) as SDKMessage)
 }
 
-/** 接上假 SDK query 的会话宿主和已经启动的会话。 */
-export type ReplayHarness = SessionHarness & { query: FakeQuery; sessionId: string }
+/** 接上假 SDK query 的会话宿主和已经启动的会话；canUseTool 是适配器交给 SDK 的那一个。 */
+export type ReplayHarness = SessionHarness & {
+  query: FakeQuery
+  sessionId: string
+  canUseTool: CanUseTool
+}
 
 /** 启动一个会话：适配器是真实的 ClaudeAgentAdapter，SDK query 是可以手动推送消息的假实现。 */
-export async function startReplay(workspace: string): Promise<ReplayHarness> {
+export async function startReplay(
+  workspace: string,
+  permissionMode: SessionPermissionMode = "default",
+): Promise<ReplayHarness> {
   const query = new FakeQuery()
+  let canUseTool: CanUseTool | undefined
   const harness = createHarness({
     workspace,
-    createAdapter: (onEvent) => new ClaudeAgentAdapter({ onEvent, queryFn: () => query }),
+    createAdapter: (onEvent) =>
+      new ClaudeAgentAdapter({
+        onEvent,
+        queryFn: ({ options }) => {
+          canUseTool = options.canUseTool
+          return query
+        },
+      }),
   })
-  const { sessionId } = await harness.host.start({ workspace, permissionMode: "default" })
-  return { ...harness, query, sessionId }
+  const { sessionId } = await harness.host.start({ workspace, permissionMode })
+  if (canUseTool === undefined) throw new Error("canUseTool was not passed to the SDK")
+  return { ...harness, query, sessionId, canUseTool }
 }
 
 /** 把消息按顺序交给假 query。 */

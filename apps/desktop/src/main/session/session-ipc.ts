@@ -5,6 +5,7 @@ import type { SessionHost } from "./session-host"
 import {
   SessionHostError,
   type PermissionAnswer,
+  type QuestionAnswer,
   type SessionEffort,
   type SessionEventsInput,
   type SessionPermissionMode,
@@ -30,6 +31,9 @@ const effortLevels = new Set<SessionEffort>(["low", "medium", "high", "xhigh", "
 const maxUpdatedPermissions = 50
 const maxUpdatedPermissionsBytes = 64 * 1024
 const maxSessionIdLength = 200
+const maxRequestIdLength = 200
+const maxQuestionAnswers = 16
+const maxQuestionAnswerLength = 8 * 1024
 
 /** 会话 IPC 依赖；host 和用量记录器可能在窗口创建后仍未装配。 */
 export type SessionIpcOptions = {
@@ -63,6 +67,11 @@ export function registerSessionIpc(options: SessionIpcOptions): void {
     assertTrusted(options, event)
     const { sessionId } = readSessionTarget(value)
     await requireHost(options).respondPermission(sessionId, readPermissionAnswer(value))
+  })
+  ipcMain.handle("pigclaude:session-answer-question", async (event, value: unknown) => {
+    assertTrusted(options, event)
+    const { sessionId } = readSessionTarget(value)
+    requireHost(options).answerQuestion(sessionId, readQuestionAnswer(value))
   })
   ipcMain.handle("pigclaude:session-set-mode", async (event, value: unknown) => {
     assertTrusted(options, event)
@@ -179,6 +188,28 @@ export function readPermissionAnswer(value: unknown): PermissionAnswer {
     decision,
     ...(updatedPermissions === undefined ? {} : { updatedPermissions }),
   }
+}
+
+/**
+ * 解析 session.answerQuestion 输入：每个问题一条答案，最多 16 条，每条不超过 8 KiB 字符；
+ * 条数是否和问题数一致由提问代理核对。
+ */
+export function readQuestionAnswer(value: unknown): QuestionAnswer {
+  if (!isRecord(value)) throw invalidInput()
+  const requestId = readString(value.requestId)
+  if (requestId === null || requestId.length > maxRequestIdLength) throw invalidInput()
+  const answers = value.answers
+  if (!Array.isArray(answers) || answers.length === 0 || answers.length > maxQuestionAnswers) {
+    throw invalidInput()
+  }
+  if (
+    !answers.every(
+      (answer) => typeof answer === "string" && answer.length <= maxQuestionAnswerLength,
+    )
+  ) {
+    throw invalidInput()
+  }
+  return { requestId, answers: [...answers] as string[] }
 }
 
 /** 解析四档权限模式。 */

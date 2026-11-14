@@ -4,6 +4,7 @@
 import { constants } from "node:fs"
 import { access, stat } from "node:fs/promises"
 import { isAbsolute } from "node:path"
+import { routeCanUseTool } from "./can-use-tool"
 import type { ClaudeAgentStartOptions } from "./claude-query-options"
 import type { SessionEnvironmentInput } from "./session-environment"
 import type { SessionEvent } from "./session-events"
@@ -96,7 +97,7 @@ export function buildUsageRecord(
   }
 }
 
-/** 把活动会话和启动输入转换成适配器参数；按会话的启动模式启动，canUseTool 直接写入 PermissionBroker。 */
+/** 把活动会话和启动输入转换成适配器参数；按会话的启动模式启动，canUseTool 按工具名分给提问代理或权限代理。 */
 export function buildStartOptions(
   active: ActiveSession,
   input: SessionStartInput,
@@ -105,8 +106,7 @@ export function buildStartOptions(
     workspace: active.environment.workspace,
     env: active.environment.env,
     permissionMode: active.permissionMode,
-    canUseTool: (toolName, toolInput, options) =>
-      active.broker.request(toolName, toolInput, options),
+    canUseTool: routeCanUseTool(active.broker, active.questions),
     abortController: active.abort,
     binaryPath: active.environment.binaryPath,
     ...(input.model === undefined ? {} : { model: input.model }),
@@ -138,6 +138,7 @@ export function buildStatusView(active: ActiveSession | null): SessionStatusView
       permissionMode: "default",
       accountId: null,
       pendingPermissions: 0,
+      pendingQuestions: 0,
       turnId: null,
     }
   }
@@ -148,6 +149,7 @@ export function buildStatusView(active: ActiveSession | null): SessionStatusView
     permissionMode: active.permissionMode,
     accountId: active.accountId,
     pendingPermissions: active.broker.pendingCount,
+    pendingQuestions: active.questions.pendingCount,
     turnId: active.turns.turnId,
   }
 }

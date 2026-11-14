@@ -271,6 +271,7 @@ const bridge: PigclaudeBridge = {
     send: (input) => ipcRenderer.invoke("pigclaude:session-send", input),
     cancel: (input) => ipcRenderer.invoke("pigclaude:session-cancel", input),
     respondPermission: (input) => ipcRenderer.invoke("pigclaude:session-respond-permission", input),
+    answerQuestion: (input) => ipcRenderer.invoke("pigclaude:session-answer-question", input),
     setMode: (input) => ipcRenderer.invoke("pigclaude:session-set-mode", input),
     setModel: (input) => ipcRenderer.invoke("pigclaude:session-set-model", input),
     stop: (input) => ipcRenderer.invoke("pigclaude:session-stop", input),
@@ -331,6 +332,8 @@ function isSessionStatus(value: unknown): value is SessionStatusView {
     (value.accountId === null || typeof value.accountId === "string") &&
     typeof value.pendingPermissions === "number" &&
     Number.isFinite(value.pendingPermissions) &&
+    typeof value.pendingQuestions === "number" &&
+    Number.isFinite(value.pendingQuestions) &&
     (value.turnId === null || typeof value.turnId === "string")
   )
 }

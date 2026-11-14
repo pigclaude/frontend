@@ -17,6 +17,8 @@ export const sessionEventKinds: Readonly<Record<SessionHostEvent["type"], Sessio
   message: "persisted",
   "tool-result": "persisted",
   permission: "persisted",
+  question: "persisted",
+  "question-resolved": "persisted",
   "account-switched": "persisted",
   notice: "persisted",
   result: "persisted",

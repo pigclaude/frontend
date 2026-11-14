@@ -1,5 +1,5 @@
 // 负责验证 session IPC 的边界校验：会话 id、补拉事件的参数、非法输入、未知字段、超大权限更新、
-// 不可信发送者和未装配服务。
+// 提问回答的条数和大小、不可信发送者和未装配服务。
 
 import type { IpcMainInvokeEvent } from "electron"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -7,6 +7,7 @@ import type { SessionHost } from "./session-host"
 import {
   readPermissionAnswer,
   readPermissionMode,
+  readQuestionAnswer,
   readSessionSendInput,
   readSessionStartInput,
   readUsageRange,
@@ -43,6 +44,7 @@ function fakeHost(): SessionHost {
     send: vi.fn(async () => undefined),
     cancel: vi.fn(async () => undefined),
     respondPermission: vi.fn(async () => undefined),
+    answerQuestion: vi.fn(() => undefined),
     setMode: vi.fn(async () => undefined),
     setModel: vi.fn(async () => undefined),
     stop: vi.fn(async () => undefined),
@@ -101,6 +103,11 @@ describe("session IPC registration", () => {
       requestId: "permission-1",
       decision: "deny",
     })
+    await handler("pigclaude:session-answer-question")(event(), {
+      ...target,
+      requestId: "question-1",
+      answers: ["Blue", "macOS, Linux"],
+    })
     await handler("pigclaude:session-set-mode")(event(), { ...target, mode: "plan" })
     await handler("pigclaude:session-set-model")(event(), { ...target, model: "claude-opus" })
     await handler("pigclaude:session-stop")(event(), target)
@@ -111,6 +118,10 @@ describe("session IPC registration", () => {
     expect(host.respondPermission).toHaveBeenCalledWith("session-1", {
       requestId: "permission-1",
       decision: "deny",
+    })
+    expect(host.answerQuestion).toHaveBeenCalledWith("session-1", {
+      requestId: "question-1",
+      answers: ["Blue", "macOS, Linux"],
     })
     expect(host.setMode).toHaveBeenCalledWith("session-1", "plan")
     expect(host.setModel).toHaveBeenCalledWith("session-1", "claude-opus")
@@ -146,6 +157,20 @@ describe("session IPC registration", () => {
       )
     }
     expect(host.events).not.toHaveBeenCalled()
+  })
+
+  it("checks the sender and the answers before answering a question", async () => {
+    const { host } = register()
+    const answer = handler("pigclaude:session-answer-question")
+    const target = { sessionId: "session-1", requestId: "question-1" }
+
+    await expect(answer(event(false), { ...target, answers: ["Blue"] })).rejects.toThrow(
+      "UNTRUSTED_SESSION_REQUEST",
+    )
+    await expect(answer(event(), { requestId: "question-1", answers: ["Blue"] })).rejects.toThrow(
+      "INVALID_SESSION_INPUT",
+    )
+    expect(host.answerQuestion).not.toHaveBeenCalled()
   })
 
   it("rejects an untrusted sender before calling the host", async () => {
@@ -289,6 +314,38 @@ describe("readPermissionAnswer", () => {
         decision: "allow",
         updatedPermissions: [{ type: "setMode", payload: "x".repeat(65 * 1024) }],
       }),
+    ).toThrow("INVALID_SESSION_INPUT")
+  })
+})
+
+describe("readQuestionAnswer", () => {
+  it("keeps one string per question and drops unknown fields", () => {
+    expect(
+      readQuestionAnswer({ requestId: "question-1", answers: ["Blue", ""], extra: true }),
+    ).toEqual({ requestId: "question-1", answers: ["Blue", ""] })
+  })
+
+  it("rejects a missing request id and answers that are not a short list of strings", () => {
+    for (const value of [
+      null,
+      { answers: ["Blue"] },
+      { requestId: "x".repeat(201), answers: ["Blue"] },
+      { requestId: "question-1" },
+      { requestId: "question-1", answers: "Blue" },
+      { requestId: "question-1", answers: [] },
+      { requestId: "question-1", answers: ["Blue", 2] },
+      { requestId: "question-1", answers: Array.from({ length: 17 }, () => "Blue") },
+    ]) {
+      expect(() => readQuestionAnswer(value)).toThrow("INVALID_SESSION_INPUT")
+    }
+  })
+
+  it("rejects an oversized answer", () => {
+    expect(
+      readQuestionAnswer({ requestId: "q", answers: ["x".repeat(8 * 1024)] }).answers,
+    ).toHaveLength(1)
+    expect(() =>
+      readQuestionAnswer({ requestId: "q", answers: ["x".repeat(8 * 1024 + 1)] }),
     ).toThrow("INVALID_SESSION_INPUT")
   })
 })

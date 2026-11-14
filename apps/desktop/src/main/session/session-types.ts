@@ -5,6 +5,7 @@ import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { ClaudeModelsOptions } from "./claude-model-query"
 import type { ClaudeAgentStartOptions } from "./claude-query-options"
 import type { PermissionAnswer, PermissionRequestEvent } from "./permission-broker"
+import type { QuestionAnswer, QuestionRequestEvent, QuestionResolvedEvent } from "./question-broker"
 import type { SessionEnvelope } from "./session-envelope"
 import type { SessionEnvironmentInput } from "./session-environment"
 import type {
@@ -51,6 +52,7 @@ export type SessionStatusView = {
   permissionMode: SessionPermissionMode
   accountId: string | null
   pendingPermissions: number
+  pendingQuestions: number
   turnId: string | null
 }
 
@@ -91,11 +93,13 @@ export type SessionTurnEvent =
       errorCode: string | null
     }
 
-/** SessionHost 发给 preload 的全部事件：适配器事件加回合开闭、权限、换号和提示。 */
+/** SessionHost 发给 preload 的全部事件：适配器事件加回合开闭、权限、提问、换号和提示。 */
 export type SessionHostEvent =
   | SessionEvent
   | SessionTurnEvent
   | PermissionRequestEvent
+  | QuestionRequestEvent
+  | QuestionResolvedEvent
   | SessionAccountSwitchedEvent
   | SessionNoticeEvent
 
@@ -111,6 +115,7 @@ export type SessionErrorCode =
   | "NETWORK_UNAVAILABLE"
   | "AUTH_EXPIRED"
   | "PERMISSION_TIMEOUT"
+  | "QUESTION_TIMEOUT"
   | "SESSION_ALREADY_ACTIVE"
   | "SESSION_CANCELLED"
   | "SESSION_NOT_FOUND"
@@ -203,6 +208,8 @@ export type SessionBridge = {
   send: (input: SessionTarget & SessionSendInput) => Promise<void>
   cancel: (input: SessionTarget) => Promise<void>
   respondPermission: (input: SessionTarget & PermissionAnswer) => Promise<void>
+  /** 回答一次提问；每个问题一条答案，顺序和问题一致。 */
+  answerQuestion: (input: SessionTarget & QuestionAnswer) => Promise<void>
   setMode: (input: SessionTarget & { mode: SessionPermissionMode }) => Promise<void>
   setModel: (input: SessionTarget & { model: string }) => Promise<void>
   stop: (input: SessionTarget) => Promise<void>
@@ -222,6 +229,9 @@ export type {
   ClaudeModel,
   PermissionAnswer,
   PermissionRequestEvent,
+  QuestionAnswer,
+  QuestionRequestEvent,
+  QuestionResolvedEvent,
   SessionEffort,
   SessionEnvelope,
   SessionEvent,

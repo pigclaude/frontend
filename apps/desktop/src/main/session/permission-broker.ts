@@ -1,5 +1,6 @@
 // 负责把 SDK 的 canUseTool 转成 renderer 可回答的权限请求；
 // 处理 allow/deny 写回、取消、窗口关闭、会员失效和 10 分钟超时，工具输入不落盘也不写日志。
+// 请求放在会话共用的待答队列里，和提问一起计时、一起被整体拒绝。
 
 import { randomUUID } from "node:crypto"
 import type {
@@ -9,6 +10,7 @@ import type {
   PermissionUpdate,
   PermissionUpdateDestination,
 } from "@anthropic-ai/claude-agent-sdk"
+import { PendingAnswers, type PendingOutcome } from "./pending-answers"
 
 const defaultTimeoutMs = 10 * 60 * 1_000
 const cancelledMessage = "权限请求已取消"
@@ -32,10 +34,14 @@ export type PermissionAnswer = {
   updatedPermissions?: unknown[]
 }
 
-/** 权限代理依赖；emit 负责把请求送到 renderer，onTimeout 负责结束当前 turn。 */
+/**
+ * 权限代理依赖；emit 负责把请求送到 renderer，onTimeout 负责结束当前 turn。
+ * 给了 queue 时请求放进这个共用队列，timeoutMs 和定时器以队列为准。
+ */
 export type PermissionBrokerOptions = {
   emit: (request: PermissionRequestEvent) => void
   onTimeout?: (request: PermissionRequestEvent) => void
+  queue?: PendingAnswers
   timeoutMs?: number
   newRequestId?: () => string
   setTimer?: (callback: () => void, ms: number) => ReturnType<typeof setTimeout>
@@ -49,37 +55,31 @@ export type PermissionRequestOptions = {
   blockedPath?: string
 }
 
-type PendingRequest = {
-  request: PermissionRequestEvent
-  resolve: (result: PermissionResult) => void
-  timer: ReturnType<typeof setTimeout>
-  signal: AbortSignal
-  abortListener: () => void
-}
-
-/** 权限请求的内存队列。保证每个请求只结算一次；取消、窗口关闭和会员失效时立即 deny 全部未回答请求。 */
+/** 权限请求的代理。保证每个请求只结算一次；取消、窗口关闭和会员失效时立即 deny 全部未回答请求。 */
 export class PermissionBroker {
   readonly #emit: (request: PermissionRequestEvent) => void
   readonly #onTimeout: ((request: PermissionRequestEvent) => void) | undefined
-  readonly #timeoutMs: number
   readonly #newRequestId: () => string
-  readonly #setTimer: (callback: () => void, ms: number) => ReturnType<typeof setTimeout>
-  readonly #clearTimer: (handle: ReturnType<typeof setTimeout>) => void
-  readonly #pending = new Map<string, PendingRequest>()
+  readonly #queue: PendingAnswers
+  readonly #inputs = new Map<string, Record<string, unknown>>()
 
   /** 创建权限代理；默认每个请求 10 分钟后自动拒绝，请求 id 是全局唯一的 UUID。 */
   constructor(options: PermissionBrokerOptions) {
     this.#emit = options.emit
     this.#onTimeout = options.onTimeout
-    this.#timeoutMs = options.timeoutMs ?? defaultTimeoutMs
     this.#newRequestId = options.newRequestId ?? (() => randomUUID())
-    this.#setTimer = options.setTimer ?? ((callback, ms) => setTimeout(callback, ms))
-    this.#clearTimer = options.clearTimer ?? ((handle) => clearTimeout(handle))
+    this.#queue =
+      options.queue ??
+      new PendingAnswers({
+        timeoutMs: options.timeoutMs ?? defaultTimeoutMs,
+        setTimer: options.setTimer ?? ((callback, ms) => setTimeout(callback, ms)),
+        clearTimer: options.clearTimer ?? ((handle) => clearTimeout(handle)),
+      })
   }
 
-  /** 当前未回答请求数，只用于脱敏状态展示。 */
+  /** 当前未回答的权限请求数，只用于脱敏状态展示。 */
   get pendingCount(): number {
-    return this.#pending.size
+    return this.#queue.count("permission")
   }
 
   /** 发起一次权限请求并等待 renderer 回答；signal 已中止时直接拒绝且不发事件。 */
@@ -100,18 +100,16 @@ export class PermissionBroker {
       ...(options.blockedPath === undefined ? {} : { blockedPath: options.blockedPath }),
     }
     return new Promise<PermissionResult>((resolve) => {
-      const abortListener = (): void => {
-        this.#settle(request.requestId, { behavior: "deny", message: cancelledMessage })
-      }
-      const pending: PendingRequest = {
-        request,
-        resolve,
-        timer: this.#setTimer(() => this.#handleTimeout(request), this.#timeoutMs),
+      this.#inputs.set(request.requestId, input)
+      this.#queue.add(request.requestId, {
+        kind: "permission",
         signal: options.signal,
-        abortListener,
-      }
-      options.signal.addEventListener("abort", abortListener, { once: true })
-      this.#pending.set(request.requestId, pending)
+        settle: (outcome) => {
+          this.#inputs.delete(request.requestId)
+          resolve(permissionResult(outcome))
+        },
+        onTimeout: () => this.#onTimeout?.(request),
+      })
       this.#emitSafely(request)
     })
   }
@@ -121,54 +119,28 @@ export class PermissionBroker {
     if (answer.decision !== "allow" && answer.decision !== "deny") {
       throw new Error("invalid permission decision")
     }
-    const pending = this.#pending.get(answer.requestId)
-    if (pending === undefined) return false
+    const input = this.#inputs.get(answer.requestId)
+    if (input === undefined) return false
     if (answer.decision === "deny") {
-      this.#settle(answer.requestId, { behavior: "deny", message: deniedMessage })
-      return true
+      return this.#queue.answer(answer.requestId, "permission", {
+        behavior: "deny",
+        message: deniedMessage,
+      })
     }
     const updatedPermissions =
       answer.updatedPermissions === undefined
         ? undefined
         : readPermissionUpdates(answer.updatedPermissions)
-    this.#settle(answer.requestId, {
+    return this.#queue.answer(answer.requestId, "permission", {
       behavior: "allow",
-      updatedInput: pending.request.input,
+      updatedInput: input,
       ...(updatedPermissions === undefined ? {} : { updatedPermissions }),
     })
-    return true
   }
 
-  /** 立即拒绝所有未回答请求；用于停止、取消、窗口关闭和会员失效。 */
+  /** 立即拒绝队列里所有未回答的请求（含共用队列里的提问）；用于停止、取消、窗口关闭和会员失效。 */
   rejectAll(message: string): void {
-    for (const requestId of [...this.#pending.keys()]) {
-      this.#settle(requestId, { behavior: "deny", message })
-    }
-  }
-
-  /** 清理定时器和监听器；拒绝仍挂起的请求。 */
-  dispose(): void {
-    this.rejectAll(cancelledMessage)
-  }
-
-  #handleTimeout(request: PermissionRequestEvent): void {
-    if (!this.#pending.has(request.requestId)) return
-    this.#settle(request.requestId, { behavior: "deny", message: timeoutMessage })
-    try {
-      this.#onTimeout?.(request)
-    } catch {
-      // 超时回调失败不能留下未结算的权限 Promise。
-    }
-  }
-
-  // 所有路径共用：先从队列移除，再清理定时器和 abort 监听，最后 resolve。
-  #settle(requestId: string, result: PermissionResult): void {
-    const pending = this.#pending.get(requestId)
-    if (pending === undefined) return
-    this.#pending.delete(requestId)
-    this.#clearTimer(pending.timer)
-    pending.signal.removeEventListener("abort", pending.abortListener)
-    pending.resolve(result)
+    this.#queue.rejectAll(message)
   }
 
   #emitSafely(request: PermissionRequestEvent): void {
@@ -177,6 +149,18 @@ export class PermissionBroker {
     } catch {
       // 单个事件订阅者失败不能挂起 SDK 的 canUseTool。
     }
+  }
+}
+
+function permissionResult(outcome: PendingOutcome): PermissionResult {
+  if (outcome.type === "answered") return outcome.result
+  switch (outcome.reason) {
+    case "aborted":
+      return { behavior: "deny", message: cancelledMessage }
+    case "timeout":
+      return { behavior: "deny", message: timeoutMessage }
+    case "rejected":
+      return { behavior: "deny", message: outcome.message }
   }
 }
 

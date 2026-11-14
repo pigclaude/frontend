@@ -372,6 +372,7 @@ describe("SessionHost events and usage", () => {
       permissionMode: "default",
       accountId: null,
       pendingPermissions: 0,
+      pendingQuestions: 0,
       turnId: null,
     })
     await harness.host.dispose()

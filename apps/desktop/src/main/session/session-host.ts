@@ -7,6 +7,7 @@ import type { ClaudeAgentStartOptions } from "./claude-query-options"
 import { ClaudeSession } from "./claude-session"
 import type { DevProviderOverride } from "./dev-provider"
 import type { PermissionAnswer } from "./permission-broker"
+import type { QuestionAnswer } from "./question-broker"
 import { hostEnvelope, type SessionEnvelope } from "./session-envelope"
 import { SessionEnvironment } from "./session-environment"
 import type { ActiveSession, SessionTimers } from "./session-host-active"
@@ -228,6 +229,17 @@ export class SessionHost {
   /** 写回指定会话的一次权限回答；未知会话或未知 requestId 都忽略。 */
   async respondPermission(sessionId: string, answer: PermissionAnswer): Promise<void> {
     this.#sessionFor(sessionId)?.respondPermission(answer)
+  }
+
+  /**
+   * 写回指定会话的一次提问回答；未知会话或未知 requestId 都忽略。会员无效时抛 MEMBERSHIP_REQUIRED，
+   * 答案条数和问题数不一致时抛 INVALID_SESSION_INPUT。
+   */
+  answerQuestion(sessionId: string, answer: QuestionAnswer): void {
+    if (this.#membership.view().state !== "active") {
+      throw new SessionHostError("MEMBERSHIP_REQUIRED", "会员状态不可用")
+    }
+    this.#sessionFor(sessionId)?.answerQuestion(answer)
   }
 
   /** 切换后续工具调用的权限模式；等待中的权限请求保持原模式。自动审批被拒时不抛错，改发提示。 */

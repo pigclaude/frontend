@@ -8,6 +8,7 @@ let targetConnections = 0
 const bridge = createServer((socket) => {
   let phase = 0
   let data = Buffer.alloc(0)
+  socket.on("error", () => undefined)
   socket.on("data", (chunk) => {
     data = Buffer.concat([data, chunk])
     if (phase === 0 && data.length >= 2 && data.length >= 2 + data[1]) {
@@ -37,10 +38,12 @@ try {
     bridgeUrl: `socks5://127.0.0.1:${bridgePort}`,
     upstreamProxyUrl: `http://127.0.0.1:${upstreamPort}`,
     checkUrl: `http://127.0.0.1:${targetPort}/trace`,
-    timeoutMs: 250,
+    // 必须长于用例等待退出的 3 秒：核对残留的时限计时器这时才会表现为进程不退出。
+    timeoutMs: 10_000,
   })
-  console.log(JSON.stringify({ ok: result.ok, upstreamConnections, targetConnections }))
-  if (result.ok || upstreamConnections !== 0 || targetConnections !== 0) process.exitCode = 1
+  const { ok, reason } = result
+  console.log(JSON.stringify({ ok, reason, upstreamConnections, targetConnections }))
+  if (ok || upstreamConnections !== 0 || targetConnections !== 0) process.exitCode = 1
 } finally {
   await Promise.all([close(bridge), close(upstream), close(target)])
 }

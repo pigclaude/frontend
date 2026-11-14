@@ -5,8 +5,8 @@
 [`pigbrowser-artifacts.json`](../pigbrowser-artifacts.json)。这是集成用开发产物，正式发布及安装态验收另行完成。
 
 三个原始包是 `pigbrowser/pigbrowser` 的 Release `v<版本>` 的附件（不能是草稿），附件名与 `archive` 完全一致。
-有该仓库读权限时，从 frontend 根目录运行
-`PIGBROWSER_READ_TOKEN=<令牌> node apps/desktop/download-pigbrowser.cjs --target <平台> --dir <目录>`
+有该仓库读权限时，先在环境里设置 `PIGBROWSER_READ_TOKEN`（例如 `export PIGBROWSER_READ_TOKEN="$(gh auth token)"`），
+再从 frontend 根目录运行 `node apps/desktop/download-pigbrowser.cjs --target <平台> --dir <目录>`
 下载并核对 SHA-256。发布工作流用同一个脚本，令牌取 frontend 的 secret `PIGBROWSER_READ_TOKEN`。
 
 先将对应压缩包的 SHA-256 与固定值核对，再按原格式解压。macOS 使用 `ditto -x -k`，保留完整应用、权限和符号链接；Windows 使用 ZIP 解压，Linux 使用 `tar -xf`。

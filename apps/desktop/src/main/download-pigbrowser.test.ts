@@ -14,7 +14,12 @@ type Run = (
 ) => { status: number; stdout: string; stderr: string }
 type DownloadPigbrowser = {
   pigbrowserRelease(target: string): Release
-  fetchPigbrowserArchive(input: { release: Release; dir: string; token?: string; run: Run }): string
+  fetchPigbrowserArchive(input: {
+    release: Release
+    dir: string
+    token?: string
+    run: Run
+  }): Promise<string>
 }
 
 const script = createRequire(import.meta.url)(
@@ -42,6 +47,7 @@ afterEach(async () => {
 /** 模拟 gh：view 返回给定的附件名，download 把给定内容写进 --dir。 */
 function fakeGh(options: {
   assets?: string[]
+  downloadError?: string
   draft?: boolean
   viewError?: string
   body?: string
@@ -61,6 +67,7 @@ function fakeGh(options: {
         stderr: "",
       }
     }
+    if (options.downloadError) return { status: 1, stdout: "", stderr: options.downloadError }
     const target = args[args.indexOf("--dir") + 1]!
     const name = args[args.indexOf("--pattern") + 1]!
     writeFileSync(join(target, name), options.body ?? content)
@@ -82,39 +89,48 @@ describe("PigBrowser 开发包的下载来源", () => {
 })
 
 describe("从私有 Release 下载 PigBrowser 开发包", () => {
-  it("缺少令牌时不调用 gh，报出要配置的 secret", () => {
+  it("缺少令牌时不调用 gh，报出要配置的 secret", async () => {
     const gh = fakeGh({})
-    expect(() => script.fetchPigbrowserArchive({ release, dir, token: " ", run: gh.run })).toThrow(
-      "缺少 secret PIGBROWSER_READ_TOKEN",
-    )
+    await expect(
+      script.fetchPigbrowserArchive({ release, dir, token: " ", run: gh.run }),
+    ).rejects.toThrow("缺少 secret PIGBROWSER_READ_TOKEN")
     expect(gh.calls).toHaveLength(0)
   })
 
-  it("Release 不存在时报出仓库和 tag，并带上 gh 的原话", () => {
+  it("Release 不存在时报出仓库和 tag，并带上 gh 的原话", async () => {
     const gh = fakeGh({ viewError: "release not found\n" })
-    expect(() => script.fetchPigbrowserArchive({ release, dir, token: "t", run: gh.run })).toThrow(
-      "读取 pigbrowser/pigbrowser 的 Release v1.2.3 失败：release not found",
-    )
+    await expect(
+      script.fetchPigbrowserArchive({ release, dir, token: "t", run: gh.run }),
+    ).rejects.toThrow("读取 pigbrowser/pigbrowser 的 Release v1.2.3 失败：release not found")
   })
 
-  it("Release 还是草稿时说明要先发布，不去下载", () => {
+  it("Release 还是草稿时说明要先发布，不去下载", async () => {
     const gh = fakeGh({ draft: true })
-    expect(() => script.fetchPigbrowserArchive({ release, dir, token: "t", run: gh.run })).toThrow(
-      "pigbrowser/pigbrowser 的 Release v1.2.3 还是草稿",
-    )
+    await expect(
+      script.fetchPigbrowserArchive({ release, dir, token: "t", run: gh.run }),
+    ).rejects.toThrow("pigbrowser/pigbrowser 的 Release v1.2.3 还是草稿")
     expect(gh.calls).toHaveLength(1)
   })
 
-  it("Release 里没有该平台的附件时报出附件名", () => {
+  it("Release 里没有该平台的附件时报出附件名", async () => {
     const gh = fakeGh({ assets: ["other.zip"] })
-    expect(() => script.fetchPigbrowserArchive({ release, dir, token: "t", run: gh.run })).toThrow(
-      `pigbrowser/pigbrowser 的 Release v1.2.3 里没有附件 ${release.archive}`,
+    await expect(
+      script.fetchPigbrowserArchive({ release, dir, token: "t", run: gh.run }),
+    ).rejects.toThrow(`pigbrowser/pigbrowser 的 Release v1.2.3 里没有附件 ${release.archive}`)
+  })
+
+  it("下载失败时报出附件名和 gh 的原话", async () => {
+    const gh = fakeGh({ downloadError: "HTTP 403\n" })
+    await expect(
+      script.fetchPigbrowserArchive({ release, dir, token: "t", run: gh.run }),
+    ).rejects.toThrow(
+      `下载 pigbrowser/pigbrowser 的 Release v1.2.3 的附件 ${release.archive} 失败：HTTP 403`,
     )
   })
 
-  it("用令牌按 tag 和附件名下载，sha256 一致时返回包的路径", () => {
+  it("用令牌按 tag 和附件名下载，sha256 一致时返回包的路径", async () => {
     const gh = fakeGh({})
-    const path = script.fetchPigbrowserArchive({ release, dir, token: "secret", run: gh.run })
+    const path = await script.fetchPigbrowserArchive({ release, dir, token: "secret", run: gh.run })
     expect(path).toBe(join(dir, release.archive))
     expect(gh.calls.map((call) => call.args)).toEqual([
       ["release", "view", "v1.2.3", "--repo", "pigbrowser/pigbrowser", "--json", "assets,isDraft"],
@@ -136,9 +152,9 @@ describe("从私有 Release 下载 PigBrowser 开发包", () => {
 
   it("下载的包和固定的 sha256 对不上时删掉它并失败", async () => {
     const gh = fakeGh({ body: "tampered" })
-    expect(() => script.fetchPigbrowserArchive({ release, dir, token: "t", run: gh.run })).toThrow(
-      "PigBrowser 包校验失败",
-    )
+    await expect(
+      script.fetchPigbrowserArchive({ release, dir, token: "t", run: gh.run }),
+    ).rejects.toThrow("PigBrowser 包校验失败")
     expect(await readdir(dir)).toEqual([])
   })
 })

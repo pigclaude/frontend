@@ -67,6 +67,7 @@ async function verifyPigbrowserPackage(root, target) {
   return { executable: join(root, artifact.executable), entries: actual.length }
 }
 
+/** 按流计算文件的 SHA-256，大包也不整个读进内存。 */
 async function hashFile(path) {
   const hash = createHash("sha256")
   for await (const chunk of createReadStream(path)) hash.update(chunk)
@@ -83,4 +84,4 @@ async function listFiles(root, prefix = "") {
   return paths
 }
 
-module.exports = { pigbrowserArtifact, pigbrowserVersion, verifyPigbrowserPackage }
+module.exports = { hashFile, pigbrowserArtifact, pigbrowserVersion, verifyPigbrowserPackage }

@@ -279,7 +279,7 @@ it("cleans late-created setup resources without reopening reception after quit",
   emitCallbackReceptionUrl(valid)
   fixture.ready!.resolve(undefined)
   await vi.advanceTimersByTimeAsync(0)
-  expect(fixture.setupGateWaits).toBe(1)
+  expect(fixture.callbackServerEntries).toBe(1)
   await disposeCallbackReceptionFixture()
 
   gate.resolve(undefined)

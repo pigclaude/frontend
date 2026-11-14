@@ -389,7 +389,7 @@ it("does not revive startup input when a blocked setup finishes after quit", asy
   await import("./index")
   fixture.ready!.resolve(undefined)
   await vi.advanceTimersByTimeAsync(0)
-  expect(fixture.setupGateWaits).toBe(1)
+  expect(fixture.callbackServerEntries).toBe(1)
   await disposeCallbackReceptionFixture()
   gate.resolve(undefined)
   await vi.advanceTimersByTimeAsync(0)

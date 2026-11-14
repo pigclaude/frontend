@@ -34,7 +34,7 @@ const fixture = vi.hoisted(() => ({
   readinessFailure: null as Error | null,
   screenFailure: false,
   setupGate: null as ReturnType<typeof deferred<void>> | null,
-  setupGateWaits: 0,
+  callbackServerEntries: 0,
   deviceReads: 0,
   setupEntered: 0,
   quitCalls: 0,
@@ -143,7 +143,7 @@ vi.mock("../secret-vault", () => ({
 }))
 vi.mock("../authorization/callback-server", () => ({
   createCallbackServer: async () => {
-    fixture.setupGateWaits++
+    fixture.callbackServerEntries++
     await fixture.setupGate?.promise
     if (fixture.setupFailure) throw new Error("fixture initialization failed")
     fixture.callbackCreates++
@@ -215,7 +215,7 @@ export function createCallbackReceptionFixture() {
   fixture.readinessFailure = null
   fixture.screenFailure = false
   fixture.setupGate = null
-  fixture.setupGateWaits = 0
+  fixture.callbackServerEntries = 0
   fixture.deviceReads = 0
   fixture.setupEntered = 0
   fixture.quitCalls = 0

@@ -1,5 +1,5 @@
 // 负责验证设置页的新会话默认值：模型、权限和账号的选择写进桌面桥，设为完全访问要先确认，
-// 保存失败时提示且界面保持原值，关于页显示读到的 Claude Code 版本。
+// 保存失败时提示且界面保持原值。
 
 // @vitest-environment jsdom
 import { act, createElement, type ReactNode } from "react"
@@ -18,8 +18,6 @@ import {
 } from "../../../../session-defaults-contract"
 import { SwitchingSettings } from "./settings-account-pages"
 import { SessionSettings } from "./settings-app-pages"
-import { AboutSettings } from "./settings-system-pages"
-
 const models: ClaudeModel[] = [
   { id: "claude-sonnet", displayName: "Sonnet", description: "", isDefault: true },
   { id: "claude-opus", displayName: "Opus", description: "", isDefault: false },
@@ -153,13 +151,5 @@ describe("new session defaults in settings", () => {
     await chooseSelect(trigger("新会话账号"), "自动选择账号")
 
     expect(bridge.saves).toEqual([{ accountId: "acc-home" }, { accountId: null }])
-  })
-
-  it("shows the Claude Code version read from the bundled binary", async () => {
-    await render(
-      createElement(AboutSettings, { appVersion: "1.2.3", claudeCodeVersion: "2.1.310" }),
-    )
-
-    expect(container.textContent).toContain("内置 Claude Code2.1.310")
   })
 })

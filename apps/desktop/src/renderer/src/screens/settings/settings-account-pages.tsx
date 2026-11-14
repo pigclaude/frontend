@@ -82,10 +82,10 @@ function formatDateTime(value: string): string {
 
 /** 切换规则：新会话用哪个账号，以及什么时候从一个 Claude 账号换到下一个；未接入用量的阈值显示「—」。 */
 export function SwitchingSettings({
-  accounts = [],
+  accounts,
   onNavigate,
 }: {
-  accounts?: readonly ClaudeAccountView[]
+  accounts: readonly ClaudeAccountView[]
   onNavigate: (location: NavLocation) => void
 }) {
   return (

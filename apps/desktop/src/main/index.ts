@@ -162,12 +162,16 @@ const guardMainWindowClose = installQuitFlow({
 })
 
 function registerIpcHandlers(): void {
-  let claudeCodeVersion: string | null = null
-  ipcMain.handle("pigclaude:app-info", async () => ({
-    appVersion: app.getVersion(),
-    userDataPath: app.getPath("userData"),
-    claudeCodeVersion: (claudeCodeVersion ??= await readClaudeCodeVersion()),
-  }))
+  let claudeCodeVersion = readClaudeCodeVersion()
+  ipcMain.handle("pigclaude:app-info", async () => {
+    const version = await claudeCodeVersion
+    if (version === null) claudeCodeVersion = readClaudeCodeVersion()
+    return {
+      appVersion: app.getVersion(),
+      userDataPath: app.getPath("userData"),
+      claudeCodeVersion: version,
+    }
+  })
   let sessionDefaults: SessionDefaultsStore | null = null
   registerSessionDefaultsIpc(ipcMain, {
     isTrusted: isTrustedSender,

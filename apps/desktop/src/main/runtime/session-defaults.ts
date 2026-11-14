@@ -14,6 +14,7 @@ import {
 /** 默认设置文件。保证读出的每一项都合法；写入先写临时文件再改名。 */
 export class SessionDefaultsStore {
   readonly #filePath: string
+  #writes: Promise<unknown> = Promise.resolve()
 
   /** 创建绑定到固定文件的存储；文件路径由 main 用 userData 拼出，测试可用临时目录。 */
   constructor(options: { filePath: string }) {
@@ -29,8 +30,14 @@ export class SessionDefaultsStore {
     }
   }
 
-  /** 合并已校验的修改并保存，返回保存后的完整设置。 */
-  async update(patch: SessionDefaultsPatch): Promise<SessionDefaults> {
+  /** 合并已校验的修改并保存，返回保存后的完整设置；同时到来的修改依次合并，不互相覆盖。 */
+  update(patch: SessionDefaultsPatch): Promise<SessionDefaults> {
+    const result = this.#writes.then(() => this.#write(patch))
+    this.#writes = result.catch(() => undefined)
+    return result
+  }
+
+  async #write(patch: SessionDefaultsPatch): Promise<SessionDefaults> {
     const next = { ...(await this.get()), ...patch }
     await mkdir(dirname(this.#filePath), { recursive: true, mode: 0o700 })
     const temporary = `${this.#filePath}.${randomUUID()}.tmp`

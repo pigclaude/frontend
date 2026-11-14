@@ -46,6 +46,21 @@ describe("session defaults store", () => {
     expect((await stat(filePath)).mode & 0o777).toBe(0o600)
   })
 
+  it("keeps both changes when two updates arrive together", async () => {
+    const store = new SessionDefaultsStore({ filePath })
+
+    await Promise.all([
+      store.update({ model: "claude-opus" }),
+      store.update({ permissionMode: "auto" }),
+    ])
+
+    await expect(new SessionDefaultsStore({ filePath }).get()).resolves.toEqual({
+      ...builtinSessionDefaults,
+      model: "claude-opus",
+      permissionMode: "auto",
+    })
+  })
+
   it("clears a preference back to following Claude Code and automatic accounts", async () => {
     const store = new SessionDefaultsStore({ filePath })
     await store.update({ model: "claude-opus", accountId: "acc-work" })
@@ -92,6 +107,7 @@ describe("session defaults patch", () => {
       { proxy: "http://127.0.0.1:7890" },
       { model: "" },
       { model: "   " },
+      { model: " claude-opus" },
       { model: "m".repeat(201) },
       { model: "a\nb" },
       { accountId: 7 },

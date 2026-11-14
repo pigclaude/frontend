@@ -217,10 +217,10 @@ export function installFakeDesktopBridge(
     },
   }
   installPigcodeNative(window)
-  return { calls, starts, defaults: () => defaults }
+  return { calls, starts }
 }
 
-/** 装上内存桌面桥后在挂载点里渲染整窗，等首轮读取落定；返回桌面桥记下的调用和当前默认设置。 */
+/** 装上内存桌面桥后在挂载点里渲染整窗，等首轮读取落定；返回桌面桥记下的项目操作和启动参数。 */
 export async function renderDesktopApp(
   app: DesktopAppRoot,
   paths?: string[],

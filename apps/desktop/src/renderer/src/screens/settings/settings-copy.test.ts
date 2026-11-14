@@ -37,7 +37,7 @@ describe("settings proxy copy", () => {
     expect(container.textContent).toContain("已绑定代理的请求失败，不会回退到系统网络直连")
   })
 
-  it("shows a dash for unavailable runtime facts and renders the actual app version", async () => {
+  it("shows a dash for unavailable runtime facts and renders the actual versions", async () => {
     await act(async () =>
       root.render(
         createElement(AppProviders, {
@@ -47,6 +47,17 @@ describe("settings proxy copy", () => {
     )
     expect(container.textContent).toContain("1.2.3")
     expect(container.textContent).toContain("Claude Code—")
+    await act(async () =>
+      root.render(
+        createElement(AppProviders, {
+          children: createElement(AboutSettings, {
+            appVersion: "1.2.3",
+            claudeCodeVersion: "2.1.310",
+          }),
+        }),
+      ),
+    )
+    expect(container.textContent).toContain("内置 Claude Code2.1.310")
     expect(container.textContent).toContain("更新状态—")
     expect(container.textContent).not.toContain("已是最新版本")
     await act(async () =>

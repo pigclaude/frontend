@@ -34,8 +34,8 @@ const maxModelLength = 200
 const maxAccountIdLength = 128
 
 /**
- * 校验页面发来的修改。只接受 model、permissionMode、accountId 三项；模型和账号是不含控制字符的
- * 非空字符串或 null，权限只能是四个档位之一。不合法时抛 SESSION_DEFAULTS_INVALID。
+ * 校验页面发来的修改。只接受 model、permissionMode、accountId 三项；模型和账号是不含控制字符、
+ * 首尾没有空白的非空字符串或 null，权限只能是四个档位之一。不合法时抛 SESSION_DEFAULTS_INVALID。
  */
 export function readSessionDefaultsPatch(value: unknown): SessionDefaultsPatch {
   if (!isRecord(value)) throw invalid()
@@ -82,7 +82,8 @@ function isNullableId(value: unknown, maxLength: number): value is string | null
   if (value === null) return true
   return (
     typeof value === "string" &&
-    value.trim() !== "" &&
+    value !== "" &&
+    value === value.trim() &&
     value.length <= maxLength &&
     !/\p{Cc}/u.test(value)
   )

@@ -91,9 +91,23 @@ describe("「通用」页的更新", () => {
     expect(container.textContent).toContain("可以更新到 1.1.0")
   })
 
-  it("没有桌面桥时开关和检查都不可用", async () => {
+  it("更新失败时可以打开主进程给出的下载页", async () => {
+    const updates = installUpdates({
+      ...idle,
+      phase: "failed",
+      error: "check",
+      url: "https://github.com/pigclaude/release/releases/latest",
+      action: "open-release",
+    })
+    await render(createElement(GeneralSettings, { appVersion: "1.0.0" }))
+    await act(async () => button("打开下载页").click())
+    expect(updates.openReleaseNotes).toHaveBeenCalledTimes(1)
+  })
+
+  it("没有桌面桥时开关显示占位符，检查不可用", async () => {
     await render(createElement(GeneralSettings, { appVersion: null }))
-    expect(control('[aria-label="自动检查更新"]').getAttribute("aria-disabled")).toBe("true")
+    expect(container.querySelector('[aria-label="自动检查更新"]')).toBeNull()
+    expect(container.textContent).toContain("自动检查更新当前版本 ——")
     expect(button("检查更新").disabled).toBe(true)
   })
 })
@@ -104,5 +118,11 @@ describe("「关于」页的更新状态", () => {
     await render(createElement(AboutSettings, { appVersion: "1.0.0" }))
     expect(container.textContent).toContain("PigClaude1.0.0")
     expect(container.textContent).toContain("更新状态正在下载 42%")
+  })
+
+  it("没有待安装的更新时不声称检查过", async () => {
+    installUpdates(idle)
+    await render(createElement(AboutSettings, { appVersion: "1.0.0" }))
+    expect(container.textContent).toContain("更新状态没有待安装的更新")
   })
 })

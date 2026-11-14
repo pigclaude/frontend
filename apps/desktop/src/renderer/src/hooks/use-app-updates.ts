@@ -10,6 +10,8 @@ export type AppUpdates = {
   check: () => Promise<UpdateResult>
   perform: () => Promise<void>
   setAutoCheck: (value: boolean) => Promise<void>
+  /** 打开主进程当前持有的发布页或下载页。 */
+  openReleasePage: () => Promise<void>
 }
 
 /** 读取主进程的更新状态并跟随推送；推送先到时不被较早发出的读取覆盖。 */
@@ -52,6 +54,9 @@ export function useAppUpdates(): AppUpdates {
     async setAutoCheck(value) {
       const next = await bridge?.setAutoCheck(value)
       if (next) setState(next)
+    },
+    async openReleasePage() {
+      await bridge?.openReleaseNotes()
     },
   }
 }

@@ -8,7 +8,10 @@ import { desktopText } from "../../locale/text"
 import type { UpdateResult } from "../../../../main/updates/update-service"
 import { SettingRow, SettingSection } from "./setting-page"
 
-/** 「通用」页的更新一节：开关和检查都走主进程；没有桌面桥时两者都不可用。 */
+/**
+ * 「通用」页的更新一节：开关和检查都走主进程；更新失败时可以打开主进程给出的下载页。
+ * 没有桌面桥时开关显示占位符，检查不可用。
+ */
 export function UpdateSettingsSection({ appVersion }: { appVersion: string | null }) {
   const updates = useAppUpdates()
   const [result, setResult] = useState<UpdateResult | null>(null)
@@ -21,17 +24,25 @@ export function UpdateSettingsSection({ appVersion }: { appVersion: string | nul
           value1: String(appVersion ?? "—"),
         })}
       >
-        <Switch
-          aria-label={desktopText("settings.settings-app-pages.8")}
-          checked={updates.state?.autoCheck ?? true}
-          disabled={unavailable}
-          onCheckedChange={(value) => void updates.setAutoCheck(value)}
-        />
+        {updates.state ? (
+          <Switch
+            aria-label={desktopText("settings.settings-app-pages.8")}
+            checked={updates.state.autoCheck}
+            onCheckedChange={(value) => void updates.setAutoCheck(value)}
+          />
+        ) : (
+          "—"
+        )}
       </SettingRow>
       <SettingRow
         title={desktopText("appSettings.checkUpdates")}
         description={checkResultText(updates.checking, result)}
       >
+        {updates.state?.phase === "failed" && updates.state.url ? (
+          <Button size="sm" variant="ghost" onClick={() => void updates.openReleasePage()}>
+            {desktopText("appSettings.downloadPage")}
+          </Button>
+        ) : null}
         <Button
           size="sm"
           disabled={unavailable || updates.checking}
@@ -66,5 +77,5 @@ export function updateStatusText(state: DesktopUpdateState | null): string | nul
   if (state.phase === "available") {
     return desktopText("appSettings.updateAvailable", { version: state.version ?? "—" })
   }
-  return desktopText("appSettings.updateCurrent")
+  return desktopText("appSettings.updateIdle")
 }

@@ -10,6 +10,7 @@ type MenuItems = Parameters<NonNullable<PigcodeNative["popupMenu"]>>[0]
 export function pigcodeNativeFrom(bridge: PigclaudeBridge): PigcodeNative {
   const native = bridge.window
   const workspaces = bridge.workspaces
+  const updates = bridge.updates
   return {
     platform: bridge.platform,
     ...(bridge.systemVersion ? { systemVersion: bridge.systemVersion } : {}),
@@ -36,9 +37,7 @@ export function pigcodeNativeFrom(bridge: PigclaudeBridge): PigcodeNative {
           openFolder: (path: string) => workspaces.reveal(path),
         }
       : {}),
-    ...(bridge.updates
-      ? { openExternal: (url: string) => openReleaseNotes(bridge.updates, url) }
-      : {}),
+    ...(updates ? { openExternal: (url: string) => openReleaseNotes(updates, url) } : {}),
     ...(bridge.pickFolder
       ? {
           pickFolder: (labels?: { title?: string; buttonLabel?: string }) =>
@@ -51,9 +50,12 @@ export function pigcodeNativeFrom(bridge: PigclaudeBridge): PigcodeNative {
 }
 
 /** 页面只能打开主进程当前持有的发布页；地址对不上时拒绝，不交给系统浏览器。 */
-async function openReleaseNotes(updates: PigclaudeBridge["updates"], url: string): Promise<void> {
-  const state = await updates?.state()
-  if (!updates || !state?.url || state.url !== url) throw new Error("EXTERNAL_LINK_BLOCKED")
+async function openReleaseNotes(
+  updates: NonNullable<PigclaudeBridge["updates"]>,
+  url: string,
+): Promise<void> {
+  const state = await updates.state()
+  if (!state?.url || state.url !== url) throw new Error("EXTERNAL_LINK_BLOCKED")
   await updates.openReleaseNotes()
 }
 

@@ -1,8 +1,9 @@
 // 负责把一个会话的信封投影成 Pigcode 对话组件要的时间线事件：按回合分段后，消息里的思考、正文、
 // 工具调用、工具结果、权限请求与回答、提问与回答、换号各自成为线程事件，事件时间取信封时间；
-// 一轮的开始和结束取界面状态。进行中的一轮里，正在输出的正文和最后一段已落成消息的正文作为流式回答
-// 交给组件，这一轮结束后才落成回答，显示的位置不变。界面先行结束、主进程还没发来 turn-ended 的
-// 一轮，正在输出的正文先落在回答的位置，主进程补发的消息落在同一处。纯函数，不读桌面桥。
+// 一轮的开始和结束取界面状态。子代理的消息和工具调用带上父工具调用 id，只进它的子代理卡。
+// 进行中的一轮里，正在输出的正文和最后一段已落成消息的正文作为流式回答交给组件，这一轮结束后才
+// 落成回答，显示的位置不变。界面先行结束、主进程还没发来 turn-ended 的一轮，正在输出的正文先落在
+// 回答的位置，主进程补发的消息落在同一处。纯函数，不读桌面桥。
 
 import type { ThreadEvent } from "@pigclaude/ui-contracts"
 import type { SessionHostEvent } from "../../../main/session/session-types"
@@ -11,6 +12,7 @@ import type { SessionEventRecord } from "./session-event-store"
 import type { SessionTurn } from "./session-model"
 import { permissionCards, type SessionPermissionAnswers } from "./session-permissions"
 import { sessionRuns, type SessionRun } from "./session-runs"
+import { isSubagentTool, SubagentCards, subagentStartPayload } from "./session-timeline-subagents"
 
 /** 投影的输入：一个会话的信封和实时文字、界面上的各轮，以及用户对权限卡片的回答。 */
 export type SessionTimelineInput = {
@@ -94,6 +96,7 @@ function projectRun(
   const blocks = new Set<string>()
   const tools = new Map<string, string>()
   const finished = new Set<string>()
+  const subagents = new SubagentCards()
   const cards = new Map(permissionCards(run, answers).map((card) => [card.requestId, card]))
   let lastSwitch: string | null = null
   let lastAnswer: LastAnswer | null = null
@@ -105,39 +108,63 @@ function projectRun(
   for (const envelope of run.envelopes) {
     const { event, at } = envelope
     switch (event.type) {
-      case "message":
+      case "message": {
+        // 子代理的事件只进它的子代理卡，不改变主线程留在流式回答位置的那段正文。
+        const main = event.parentToolUseId === null
+        const scope = scopeOf(event.parentToolUseId ?? undefined)
         for (const block of event.blocks) {
           if (block.type === "tool-use") {
             if (tools.has(block.id)) continue
             tools.set(block.id, block.name)
-            pushToolStart(push, block.id, block.name, block.input, at)
-            lastAnswer = null
+            if (main && isSubagentTool(block.name)) {
+              subagents.start(block.id)
+              push("subagent.started", subagentStartPayload(block.id, block.input), at)
+            } else {
+              push(
+                "tool.started",
+                { toolCallId: block.id, name: block.name, input: block.input, ...scope },
+                at,
+              )
+            }
+            if (main) lastAnswer = null
             continue
           }
           const key = `${event.messageId}\u0000${block.type}\u0000${block.text}`
           if (block.text === "" || blocks.has(key)) continue
           blocks.add(key)
           if (block.type === "thinking") {
-            push("reasoning.completed", reasoningPayload(block.text, event), at)
-            lastAnswer = null
+            push("reasoning.completed", { ...reasoningPayload(block.text, event), ...scope }, at)
+            if (main) lastAnswer = null
           } else {
-            push("message.completed", { text: block.text }, at)
-            lastAnswer =
-              event.parentToolUseId === null ? { index: drafts.length - 1, text: block.text } : null
+            push("message.completed", { text: block.text, ...scope }, at)
+            if (main) lastAnswer = { index: drafts.length - 1, text: block.text }
           }
         }
         break
+      }
       case "tool-result": {
         if (finished.has(event.toolUseId)) break
         finished.add(event.toolUseId)
+        const scope = scopeOf(event.parentToolUseId)
         let name = tools.get(event.toolUseId)
         if (name === undefined) {
           name = "工具结果"
           tools.set(event.toolUseId, name)
-          pushToolStart(push, event.toolUseId, name, null, at)
+          push("tool.started", { toolCallId: event.toolUseId, name, input: null, ...scope }, at)
         }
-        pushToolEnd(push, event, name, at)
-        lastAnswer = null
+        if (subagents.owns(event.toolUseId)) {
+          const completion = subagents.toolResult(event)
+          if (completion !== null) push("subagent.completed", completion, at)
+        } else {
+          const { toolUseId: toolCallId, content: output, isError } = event
+          push("tool.completed", { toolCallId, name, output, isError, ...scope }, at)
+        }
+        if (event.parentToolUseId === undefined) lastAnswer = null
+        break
+      }
+      case "subagent-ended": {
+        const completion = subagents.ended(event)
+        if (completion !== null) push("subagent.completed", completion, at)
         break
       }
       case "permission": {
@@ -183,7 +210,7 @@ function projectRun(
         break
     }
   }
-  return endRun(turn, drafts, push, lastAnswer, tail)
+  return endRun(turn, drafts, push, lastAnswer, tail, subagents)
 }
 
 function endRun(
@@ -192,12 +219,16 @@ function endRun(
   push: PushDraft,
   lastAnswer: LastAnswer | null,
   tail: RunTail,
+  subagents: SubagentCards,
 ): RunDrafts {
   const endedAt = turn.endedAt ?? turn.startedAt
   if (turn.status === "streaming") {
     if (!tail.holdAnswer || lastAnswer === null) return { drafts, heldText: null }
     drafts.splice(lastAnswer.index, 1)
     return { drafts, heldText: lastAnswer.text }
+  }
+  for (const completion of subagents.settle(turn.status)) {
+    push("subagent.completed", completion, endedAt)
   }
   if (tail.unlanded !== "") push("message.completed", { text: tail.unlanded }, endedAt)
   switch (turn.status) {
@@ -219,45 +250,7 @@ function reasoningPayload(text: string, event: MessageEvent): Record<string, unk
   return event.thinkingMs === undefined ? { text } : { text, durationMs: event.thinkingMs }
 }
 
-function isSubagentTool(name: string): boolean {
-  return name === "Task" || name === "Agent"
-}
-
-function pushToolStart(
-  push: PushDraft,
-  id: string,
-  name: string,
-  input: unknown,
-  at: string,
-): void {
-  if (!isSubagentTool(name)) {
-    push("tool.started", { toolCallId: id, name, input }, at)
-    return
-  }
-  const fields = (input ?? {}) as Record<string, unknown>
-  push(
-    "subagent.started",
-    {
-      toolCallId: id,
-      name: typeof fields.subagent_type === "string" ? fields.subagent_type : "子代理",
-      ...(typeof fields.description === "string" ? { description: fields.description } : {}),
-      ...(typeof fields.prompt === "string" ? { prompt: fields.prompt } : {}),
-    },
-    at,
-  )
-}
-
-function pushToolEnd(
-  push: PushDraft,
-  event: Extract<SessionHostEvent, { type: "tool-result" }>,
-  name: string,
-  at: string,
-): void {
-  const { toolUseId: toolCallId, content: output, isError } = event
-  if (isSubagentTool(name)) {
-    const status = isError ? "failed" : "completed"
-    push("subagent.completed", { toolCallId, output, isError, status }, at)
-  } else {
-    push("tool.completed", { toolCallId, name, output, isError }, at)
-  }
+// 对话组件按 payload 里的 parentToolUseId 把事件收进子代理卡，主时间线不再显示它们。
+function scopeOf(parentToolUseId: string | undefined): { parentToolUseId?: string } {
+  return parentToolUseId === undefined ? {} : { parentToolUseId }
 }

@@ -107,6 +107,39 @@ it("巡检在时区变化后按新本地时间重排未来触发", async () => {
   expect(f.run).not.toHaveBeenCalled()
 })
 
+it("每三十秒编辑另一个暂停任务时，仍在原定的一分钟截止巡检时区", async () => {
+  vi.stubEnv("TZ", "UTC")
+  const f = await fixture()
+  const daily = await f.service.create({ ...f.input, rule: { kind: "daily", time: "09:00" } })
+  const pausedConfig = { ...f.input, enabled: false }
+  const paused = await f.service.create(pausedConfig)
+  await f.service.start()
+  vi.stubEnv("TZ", "Asia/Shanghai")
+
+  const observed: Array<string | null | undefined> = []
+  for (let edit = 0; edit < 5; edit++) {
+    f.clock.advance(minute / 2)
+    await f.service.update(paused.id, { ...pausedConfig, prompt: "暂停任务编辑 " + edit })
+    observed.push(f.service.summary().next?.nextRunAt)
+  }
+
+  expect(observed).toEqual([daily.nextRunAt, ...Array(4).fill("2026-11-16T01:00:00.000Z")])
+  expect(f.run).not.toHaveBeenCalled()
+})
+
+it("配置新增的触发时间比巡检截止早时，仍按触发时间运行", async () => {
+  const f = await fixture()
+  await f.service.start()
+  f.clock.advance(10_000)
+  const task = await f.service.create({
+    ...f.input,
+    rule: { kind: "everyMinutes", every: 15, anchor: "2026-11-15T08:00:20.000Z" },
+  })
+  f.clock.advance(10_000)
+  await vi.waitFor(() => expect(f.run).toHaveBeenCalledOnce())
+  expect(f.run.mock.calls[0]?.[0].run.scheduledAt).toBe(task.nextRunAt)
+})
+
 it("切换时区时不用旧时刻补跑，新本地时刻未到就继续等待", async () => {
   vi.stubEnv("TZ", "Asia/Shanghai")
   const f = await fixture()

@@ -61,6 +61,7 @@ export class ScheduledTaskService {
   #disposing: Promise<void> | undefined
   #started = false
   #cancelTimer: (() => void) | undefined
+  #pollDeadline: number | undefined
   #sample: { wall: number; elapsed: number } | null = null
 
   /** 构造服务时没有任务触发，调用 start 后启动巡检。 */
@@ -237,6 +238,7 @@ export class ScheduledTaskService {
   #poll(force: boolean): Promise<void> {
     return this.#enqueue(async () => {
       if (this.#abort.signal.aborted) return
+      this.#pollDeadline = this.#clock.monotonicNow() + scheduledTaskPollMs
       try {
         await this.#refresh(force, false)
         this.#arm()
@@ -335,9 +337,12 @@ export class ScheduledTaskService {
   #arm(retry = false): void {
     this.#cancelTimer?.()
     if (!this.#started || this.#abort.signal.aborted) return
+    // 保存配置时沿用已安排的巡检截止，再和任务触发时间一起选择定时器。
+    const elapsed = this.#clock.monotonicNow()
+    const pollAfter = (this.#pollDeadline ??= elapsed + scheduledTaskPollMs) - elapsed
     const next = this.summary().next?.nextRunAt
-    const until = next == null ? scheduledTaskPollMs : Date.parse(next) - this.#clock.now()
-    const delay = retry ? scheduledTaskPollMs : Math.max(1, Math.min(scheduledTaskPollMs, until))
+    const until = next == null ? pollAfter : Date.parse(next) - this.#clock.now()
+    const delay = Math.max(1, retry ? pollAfter : Math.min(pollAfter, until))
     this.#cancelTimer = this.#clock.after(delay, () => {
       this.#cancelTimer = undefined
       void this.#poll(false).catch((error: unknown) => this.#report(error))

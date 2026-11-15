@@ -13,13 +13,18 @@ export type DesktopShutdownResources = {
 /** 账号与浏览器清理成功后才关闭 Xray；失败时保留代理并报告错误。 */
 export async function shutdownDesktopResources(resources: DesktopShutdownResources): Promise<void> {
   const initial = await Promise.allSettled([
-    Promise.resolve().then(() => resources.accounts?.()),
-    Promise.resolve().then(() => resources.sessions?.()),
-    Promise.resolve().then(() => resources.workbench?.()),
+    start(resources.sessions),
+    start(resources.accounts),
+    start(resources.workbench),
   ])
   const failure = initial.find((result) => result.status === "rejected")
   if (failure?.status === "rejected") throw failure.reason
   await resources.composition?.()
   await resources.xray()
   await resources.callback?.()
+}
+
+// Windows 的会话结束事件返回后系统可以终止进程。首批关停操作要在事件回调内开始。
+async function start(operation?: () => Promise<void>): Promise<void> {
+  await operation?.()
 }

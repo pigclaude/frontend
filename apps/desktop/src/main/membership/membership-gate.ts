@@ -40,6 +40,7 @@ export class MembershipGate {
   #view: MembershipView = initialView()
   #revision = 0
   #reads = 0
+  #lastVerifiedRead = 0
   #disposed = false
   #visibleOwner: number | null = null
   #actionContext: { owner: number; id: string } | null = null
@@ -78,7 +79,8 @@ export class MembershipGate {
     const read = ++this.#reads
     const owner = this.#tokens.owner
     const superseded = (verified = false): MembershipView => {
-      if (options.authorize && !verified) throw new Error("MEMBERSHIP_REQUIRED")
+      if (options.authorize && (!verified || this.#disposed || !this.#tokens.isCurrent(owner)))
+        throw new Error("MEMBERSHIP_REQUIRED")
       return this.view()
     }
     if (this.#disposed) return superseded()
@@ -129,15 +131,14 @@ export class MembershipGate {
           ? { ...checked, account: recovered.account, recovery: recovered.recovery }
           : checked
       })
-      if (!this.current(read, owner))
-        return superseded(
-          remote.state === "active" &&
-            (remote.bindingEpoch === null || remote.bindingEpoch === identity?.record.bindingEpoch),
-        )
+      const wrongBinding =
+        remote.bindingEpoch !== null && remote.bindingEpoch !== identity?.record.bindingEpoch
+      const active = remote.state === "active" && !wrongBinding
+      if (!this.recordVerification(read, owner) || (active && !this.current(read, owner)))
+        return superseded(active)
       this.#visibleOwner = owner
-      if (remote.bindingEpoch !== null && remote.bindingEpoch !== identity?.record.bindingEpoch) {
+      if (wrongBinding)
         return this.clearSession(owner, "DEVICE_REVOKED", "AUTHORIZATION_BINDING_STALE")
-      }
       return this.publish(this.normalizeRemote(remote))
     } catch (error: unknown) {
       const code = codeOf(error)
@@ -148,7 +149,6 @@ export class MembershipGate {
         (code === "ACCOUNT_BANNED" || code === "DEVICE_REVOKED" || code === "invalid_grant")
       )
         return this.clearSession(owner, code)
-      if (!this.current(read, owner)) return superseded()
       const view = recovered ?? (identity ? this.identityView(identity) : initialView())
       const state =
         code === "SAFE_STORAGE_UNAVAILABLE"
@@ -164,10 +164,17 @@ export class MembershipGate {
                 code === "access_denied"
               ? "verification_required"
               : "error"
+      if (
+        state === "verification_required"
+          ? !this.recordVerification(read, owner)
+          : !this.current(read, owner)
+      )
+        return superseded()
       if (state === "error" && isMembershipNetworkFailure(error) && this.#visibleOwner === owner) {
         if (this.#view.state === "active" || this.#view.state === "network_grace")
           return this.publishNetworkFailure(owner, code)
-        if (this.#view.state === "expired") return this.view()
+        if (["expired", "device_revoked", "verification_required"].includes(this.#view.state))
+          return this.view()
       }
       this.#visibleOwner = owner
       return this.publish({ ...view, state, errorCode: code, serverReason: code })
@@ -361,6 +368,14 @@ export class MembershipGate {
 
   private current(read: number, owner: number): boolean {
     return !this.#disposed && read === this.#reads && this.#tokens.isCurrent(owner)
+  }
+
+  // 明确结果只被较新的明确结果或新登录覆盖。待处理和网络失败的核验不改变此顺序。
+  private recordVerification(read: number, owner: number): boolean {
+    if (this.#disposed || !this.#tokens.isCurrent(owner) || read < this.#lastVerifiedRead)
+      return false
+    this.#lastVerifiedRead = read
+    return true
   }
 
   private async clearSession(

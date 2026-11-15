@@ -3,9 +3,11 @@
 import { downloadMarketplaceBytes, loadMarketplaceArchive } from "./plugin-marketplace-download"
 import { pluginMarketplaceCatalogBytesLimit } from "./plugin-marketplace-parser"
 
-const repo = "pigclaude/plugs"
+/** 官方目录和签名文件所在的固定公开仓库。 */
+export const officialPluginMarketplaceRepository = "pigclaude/plugs"
 // List commits 未指定 sha 时使用仓库默认分支。
-const defaultBranchHead = "https://api.github.com/repos/" + repo + "/commits?per_page=1"
+const defaultBranchHead =
+  "https://api.github.com/repos/" + officialPluginMarketplaceRepository + "/commits?per_page=1"
 const catalogFile = ".claude-plugin/marketplace.json"
 const commitResponseLimit = 128 * 1024
 const signatureLimit = 4096
@@ -20,7 +22,10 @@ export async function downloadOfficialPluginMarketplace(
       byteLimit: commitResponseLimit,
     })
     const commit = readCommit(response)
-    const { files } = await loadMarketplaceArchive({ kind: "github", repo, commit }, fetcher)
+    const { files } = await loadMarketplaceArchive(
+      { kind: "github", repo: officialPluginMarketplaceRepository, commit },
+      fetcher,
+    )
     const catalog = files.get(catalogFile)
     const signature = files.get(catalogFile + ".sig")
     if (

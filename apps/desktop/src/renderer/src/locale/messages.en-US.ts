@@ -6,7 +6,7 @@ import { fingerprintExtraZhCN } from "./fingerprint-extra.messages"
 import { fingerprintZhCN } from "./fingerprint.messages"
 import { poolZhCN } from "./pool.messages"
 import { flowsZhCN } from "./flows.messages"
-import { settingsZhCN } from "./settings.messages"
+import { settingsZhCN, startupSettingsEnUS } from "./settings.messages"
 import { appSettingsZhCN } from "./app-settings.messages"
 import { appearanceEnUS } from "./appearance.messages"
 import { workbenchEnUS } from "./workbench.messages"
@@ -20,6 +20,7 @@ export const enUS = {
   ...poolZhCN,
   ...flowsZhCN,
   ...settingsZhCN,
+  ...startupSettingsEnUS,
   ...appSettingsZhCN,
   ...appearanceEnUS,
   ...workbenchEnUS,

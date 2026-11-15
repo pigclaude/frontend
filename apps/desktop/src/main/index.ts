@@ -40,8 +40,10 @@ import { createDesktopComposition, type DesktopComposition } from "./composition
 import { DeviceIdentityService } from "./device-identity"
 import { readDeviceInfo } from "./device-identity/device-info"
 import { createDesktopTray } from "./desktop-tray"
+import { createDesktopStartup } from "./desktop-startup"
 import { createDesktopNotifications } from "./notifications/desktop-notifications"
 import { registerDesktopWindowIpc } from "./desktop-window-ipc"
+import { registerStartupPreferencesIpc } from "./startup-preferences-ipc"
 import { createMainWindowVisibility } from "./main-window-visibility"
 import { configureRuntimeProfile } from "./runtime-profile"
 import { registerMembershipIpc } from "./membership/ipc"
@@ -82,6 +84,7 @@ const { rustBaseUrl, authOrigin, websiteOrigin } = readDesktopRuntimeEndpoints(
   bundleMetadata,
 )
 const hasSingleInstanceLock = configureRuntimeProfile(app, process.env["PIGCLAUDE_USER_DATA"])
+const startup = createDesktopStartup()
 const hostArch = runtimeHostArch(app.runningUnderARM64Translation)
 const startProxyRuntime = createXrayRuntimeStarter({
   hostArch,
@@ -126,7 +129,8 @@ if (!hasSingleInstanceLock) {
   callbackReceiver = createAuthorizationCallbackReceiver({
     app,
     onCallback: handleCallbackUrl,
-    onSecondInstance: windowVisibility.restoreExisting,
+    onSecondInstance: (argv) =>
+      startup.reopenFromSecondInstance(argv, windowVisibility.restoreExisting),
   })
   if (process.platform === "win32" || process.platform === "linux") {
     callbackReceiver.receiveArguments(process.argv)
@@ -146,7 +150,7 @@ if (!hasSingleInstanceLock) {
         console.error(authorizationSetupError)
       }
       // 会话和工作台终端在窗口打开后才可能启动，它们要用合并后的 PATH。
-      await Promise.all([loginShellPath, closePreference.get()])
+      await Promise.all([loginShellPath, closePreference.get(), startup.prepare(process.argv)])
       if (windowVisibility.shutdownStarted()) {
         closeStartupEvents()
         // 初始化可能晚于第一次关闭才建立服务；只清理，不重新开窗或放行回调。
@@ -200,6 +204,7 @@ const guardMainWindowClose = installQuitFlow({
 
 function registerIpcHandlers(): void {
   registerDesktopWindowIpc(() => mainWindow, isTrustedSender, closePreference, windowNavigation)
+  registerStartupPreferencesIpc(ipcMain, isTrustedSender, startup)
   let sessionDefaults: SessionDefaultsStore | null = null
   registerSessionDefaultsIpc(ipcMain, {
     isTrusted: isTrustedSender,
@@ -474,7 +479,7 @@ function createWindow(): void {
     void mainWindow.loadFile(join(__dirname, "../renderer/index.html"))
   }
   applyGlassBackground(mainWindow, process.platform, nativeTheme.shouldUseDarkColors)
-  mainWindow.once("ready-to-show", () => mainWindow?.show())
+  startup.attachWindow(mainWindow)
   mainWindow.once("closed", () => {
     mainWindow = null
   })

@@ -1,12 +1,12 @@
 // 组装桌面窗口的偏好、外观、原生菜单、目录选择与系统导航桥。
 
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme } from "electron"
+import { registerAppInfoIpc } from "./app-info"
 import { readDockIconDataUrl } from "./dock-icon"
 import { errorMessage } from "./error-message"
 import { registerFolderPickerIpc } from "./folder-picker"
 import { applyGlassBackground } from "./glass-background"
 import { electronMenuFactory } from "./native-menu"
-import { readClaudeCodeVersion } from "./session/claude-version"
 import {
   registerWindowClosePreference,
   type WindowClosePreference,
@@ -24,16 +24,7 @@ export function registerDesktopWindowIpc(
 ): void {
   registerWindowClosePreference(ipcMain, isTrusted, closePreference)
   navigation.register(ipcMain, isTrusted)
-  let claudeCodeVersion = readClaudeCodeVersion()
-  ipcMain.handle("pigclaude:app-info", async () => {
-    const version = await claudeCodeVersion
-    if (version === null) claudeCodeVersion = readClaudeCodeVersion()
-    return {
-      appVersion: app.getVersion(),
-      userDataPath: app.getPath("userData"),
-      claudeCodeVersion: version,
-    }
-  })
+  registerAppInfoIpc()
   registerFolderPickerIpc(ipcMain, (options) => {
     const target = window()
     return target ? dialog.showOpenDialog(target, options) : dialog.showOpenDialog(options)

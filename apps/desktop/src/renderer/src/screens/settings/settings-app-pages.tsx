@@ -10,16 +10,14 @@ import type { SessionHistoryController } from "../../hooks/use-session-history"
 import { SessionRetentionSettings } from "./session-retention-settings"
 import { ProjectPermissionRules } from "./project-permission-rules"
 import { WindowCloseSetting } from "./window-close-setting"
+import { StartupSettings } from "./startup-settings"
 
 /** 通用：启动、Dock、快捷键、更新和侧栏会话分组。 */
 export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
   const [grouping, setGrouping] = useSidebarGrouping()
   return (
     <SettingPage title={desktopText("settings.settings-app-pages.1")}>
-      <SettingSection title={desktopText("settings.settings-app-pages.2")}>
-        <SettingRow title={desktopText("settings.settings-app-pages.3")} value="—" />
-        <SettingRow title={desktopText("settings.settings-app-pages.4")} value="—" />
-      </SettingSection>
+      <StartupSettings />
       <SettingSection title={desktopText("settings.settings-app-pages.5")}>
         <SettingRow title={desktopText("settings.settings-app-pages.6")} value="—" />
       </SettingSection>

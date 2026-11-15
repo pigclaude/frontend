@@ -36,6 +36,7 @@ export const settingsZhCN = {
   "settings.settings-app-pages.2": "启动",
   "settings.settings-app-pages.3": "开机自动启动",
   "settings.settings-app-pages.4": "在 Dock 中显示",
+  "settings.startupPreferenceFailed": "启动设置暂不可用，请重试。",
   "settings.settings-app-pages.5": "快捷键",
   "settings.settings-app-pages.6": "呼出托盘面板",
   "settings.settings-app-pages.7": "更新",
@@ -162,4 +163,11 @@ export const settingsZhCN = {
   "settings.environment-screen.45": "检测中…",
   "settings.environment-screen.46": "尚未检测",
   "settings.environment-screen.47": "出口 IP {value1}",
+} as const
+
+/** 通用设置中登录启动和 Dock 的英文文案。 */
+export const startupSettingsEnUS = {
+  "settings.settings-app-pages.3": "Launch at login",
+  "settings.settings-app-pages.4": "Show in the Dock",
+  "settings.startupPreferenceFailed": "Startup settings are temporarily unavailable. Try again.",
 } as const

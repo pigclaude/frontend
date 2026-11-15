@@ -75,6 +75,33 @@ describe("permission prompt", () => {
     expect(container.textContent).not.toContain("始终允许")
   })
 
+  it("shows the browser operation and never offers to save its approval", async () => {
+    const url = "http://127.0.0.1:5173/dev/path"
+    await render(
+      card({
+        toolName: "mcp__pigclaude_workbench__browser_open",
+        input: { url },
+        browser: { kind: "open", url },
+        suggestions: [{ index: 0, label: "browser_open", canSaveProject: true }],
+      }),
+    )
+    const target = container.querySelector(".perm-prompt-target")
+    expect(target?.textContent).toBe(url)
+    expect(target?.querySelector("strong")?.textContent).toBe("http://127.0.0.1:5173")
+    expect(options()).toHaveLength(2)
+    expect(container.textContent).not.toContain("始终允许")
+
+    await render(
+      card({
+        toolName: "mcp__pigclaude_workbench__browser_snapshot",
+        input: {},
+        browser: { kind: "snapshot" },
+      }),
+    )
+    expect(container.textContent).toContain("读取当前本机页面的标题和可见正文，并发送给 Claude")
+    expect(options()).toHaveLength(2)
+  })
+
   it("shows the command and the numbered choices", async () => {
     await render(card())
 

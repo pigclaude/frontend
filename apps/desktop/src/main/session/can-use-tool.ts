@@ -4,17 +4,19 @@
 import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
 import type { CapabilityPluginToolApprovals } from "../plugins/capability-plugin-tools"
 import { parseQuestions } from "./ask-user-question"
+import { builtinWorkbenchBrowserTool, type BrowserApprovalPort } from "./browser-tool-approval"
 import type { PermissionBroker } from "./permission-broker"
 import type { QuestionBroker } from "./question-broker"
 import { isBuiltinThreadRead } from "./thread-read"
 
-/** 内置 thread_read 在自身作用域内执行；插件逐次审批留给 MCP 调用，其余由会话回答。 */
+/** 内置 thread_read 在自身作用域内执行；工作台和插件的逐次审批由各自 MCP 处理函数发起。 */
 export function routeCanUseTool(
   permissions: PermissionBroker,
   questions: QuestionBroker,
   hasThreadRead = false,
   denyUnattended?: () => void,
   pluginApprovals?: CapabilityPluginToolApprovals,
+  browser?: BrowserApprovalPort,
 ): CanUseTool {
   return (toolName, input, options) => {
     if (
@@ -31,6 +33,18 @@ export function routeCanUseTool(
         message: "Scheduled runs cannot request approvals. Continue without this operation.",
         interrupt: false,
       })
+    }
+    const browserTool = browser && builtinWorkbenchBrowserTool(toolName, options.mcpServer)
+    if (browser && browserTool) {
+      const denied = options.signal.aborted
+        ? "The browser action was cancelled."
+        : browser.denial(browserTool)
+      // 真正的审批由工作台回调发起，SDK 的检查不再生成第二张卡。
+      return Promise.resolve(
+        denied === null
+          ? { behavior: "allow", updatedInput: input }
+          : { behavior: "deny", message: denied },
+      )
     }
     const plugin = pluginApprovals?.lookup(toolName, options.mcpServer)
     if (plugin !== undefined) {

@@ -278,7 +278,8 @@ describe("workbench IPC", () => {
 
     first.close()
 
-    expect(Object.keys(first.servers ?? {})).toEqual(["pigclaude_workbench"])
+    const approval = { denial: () => null, request: async () => false }
+    expect(Object.keys(first.browser?.create(approval) ?? {})).toEqual(["pigclaude_workbench"])
     expect(browsers()["closeAgent"]).toHaveBeenCalledTimes(1)
     second.close()
     const ids = browsers()["closeAgent"]?.mock.calls.map(([id]) => id)

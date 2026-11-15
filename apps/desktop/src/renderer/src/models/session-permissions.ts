@@ -2,6 +2,7 @@
 // 按拒绝结算，权限询问超时结束的一轮按超时结算。卡片带请求和结算的时间，以及发起它的子代理。
 
 import type { SessionEnvelope } from "../../../main/session/session-envelope"
+import type { BrowserPermissionContext } from "../../../browser-permission-contract"
 import type { SubagentRef } from "../../../main/session/session-events"
 import type { CapabilityPluginPermissionSource } from "../../../capability-plugin-contract"
 import {
@@ -32,6 +33,8 @@ export type SessionPermissionCard = {
   blockedPath: string | null
   /** 已登记能力插件的来源，来自主进程的权限事件。 */
   plugin?: CapabilityPluginPermissionSource
+  /** 由主进程绑定到这次工作台浏览器调用的操作详情。 */
+  browser?: BrowserPermissionContext
   /** 发起请求的子代理；主线程为 null。 */
   subagent: SubagentRef | null
   status: SessionPermissionStatus
@@ -112,6 +115,7 @@ function cardOf(
     ...(event.defaultToNo ? { defaultToNo: true } : {}),
     blockedPath: event.blockedPath ?? null,
     ...(event.plugin === undefined ? {} : { plugin: event.plugin }),
+    ...(event.browser === undefined ? {} : { browser: event.browser }),
     subagent: event.subagent,
     requestedAt: at,
   }

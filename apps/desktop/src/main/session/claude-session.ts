@@ -4,6 +4,7 @@
 
 import { ContextUsageQuery } from "./context-usage-query"
 import type { CapabilityPluginToolApprovals } from "../plugins/capability-plugin-tools"
+import type { BrowserToolRegistration } from "./browser-tool-approval"
 import type { PendingAnswerKind } from "./pending-answers"
 import { cancelledPermissionMessage, type PermissionAnswer } from "./permission-broker"
 import type { QuestionAnswer } from "./question-broker"
@@ -57,6 +58,7 @@ export class ClaudeSession {
   readonly #stall: TurnStallWatchdog
   readonly #flags: SessionTurnFlags
   #started = false
+  #sdkDontAsk = false
   readonly #context = new ContextUsageQuery({
     read: () => this.state.adapter.contextUsage(),
     emit: (event) => this.#publish(event),
@@ -113,20 +115,18 @@ export class ClaudeSession {
   async launch(
     mcpServers: ClaudeAgentStartOptions["mcpServers"],
     pluginApprovals?: CapabilityPluginToolApprovals,
+    browserTools?: BrowserToolRegistration,
   ): Promise<void> {
-    const options: ClaudeAgentStartOptions = {
-      ...buildStartOptions(
-        this.state,
-        this.#options.input,
-        this.#options.references !== undefined,
-        this.#options.denyUnattended,
-        pluginApprovals,
-      ),
-      ...(mcpServers ? { mcpServers } : {}),
-      ...(this.#options.persistence === undefined
-        ? {}
-        : { persistence: this.#options.persistence }),
-    }
+    const options = buildStartOptions(
+      this.state,
+      this.#options,
+      mcpServers,
+      pluginApprovals,
+      browserTools && {
+        tools: browserTools,
+        mode: () => (this.#sdkDontAsk ? "dontAsk" : this.state.permissionMode),
+      },
+    )
     const project = this.#options.projectPermissions
     if (project === undefined) await this.state.adapter.start(options)
     else {
@@ -386,6 +386,7 @@ export class ClaudeSession {
       case "context-compacted":
         return
       case "started": {
+        this.#sdkDontAsk = event.permissionMode === "dontAsk"
         active.model = event.model
         active.turns.observe(event)
         followReportedMode(active, event.permissionMode, "init", this.#emitModeEvent)
@@ -403,6 +404,7 @@ export class ClaudeSession {
         return
       }
       case "mode":
+        this.#sdkDontAsk = event.permissionMode === "dontAsk"
         followReportedMode(active, event.permissionMode, "status", this.#emitModeEvent)
         return
       case "result":

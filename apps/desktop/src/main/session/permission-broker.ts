@@ -5,12 +5,14 @@
 import { randomUUID } from "node:crypto"
 import type { PermissionResult, PermissionUpdate } from "@anthropic-ai/claude-agent-sdk"
 import type { CapabilityPluginPermissionSource } from "../../capability-plugin-contract"
+import type { BrowserPermissionContext } from "../../browser-permission-contract"
 import type {
   PermissionSuggestionSelection,
   PermissionSuggestionView,
   ProjectPermissionGrant,
 } from "../../project-permissions-contract"
 import { projectPermissionGrants } from "./project-permission-grants"
+import { workbenchBrowserRule } from "./browser-tool-approval"
 import type { PendingAnswers, PendingOutcome } from "./pending-answers"
 import type { SubagentRef } from "./session-events"
 
@@ -30,6 +32,7 @@ export type PermissionRequestEvent = {
   blockedPath?: string
   /** 已登记的进程内工具标注能力插件来源。 */
   plugin?: CapabilityPluginPermissionSource
+  browser?: BrowserPermissionContext
   /** 子代理发起的请求是它的归属；主线程为 null。 */
   subagent: SubagentRef | null
 }
@@ -107,20 +110,24 @@ export class PermissionBroker {
     return this.#queue.count("permission")
   }
 
-  /** 发起一次权限请求并等待 renderer 回答；signal 已中止时直接拒绝且不发事件。 */
+  /** 等待 renderer 回答；浏览器上下文由工作台单独提供，信号已中止时不发事件。 */
   request(
     toolName: string,
     input: Record<string, unknown>,
     options: PermissionRequestOptions,
+    browser?: BrowserPermissionContext,
   ): Promise<PermissionResult> {
     if (options.signal.aborted) {
       return Promise.resolve({ behavior: "deny", message: cancelledPermissionMessage })
     }
-    const suggestions = options.suppressAlwaysAllowRule
-      ? []
-      : structuredClone(options.suggestions ?? []).map((update) =>
-          projectPermissionGrants(update).length === 0 ? undefined : sessionOnly(update),
-        )
+    const suggestions =
+      options.suppressAlwaysAllowRule || browser !== undefined || workbenchBrowserRule(toolName)
+        ? []
+        : structuredClone(options.suggestions ?? []).map((update) =>
+            withoutBrowserRule(update) && projectPermissionGrants(update).length > 0
+              ? sessionOnly(update)
+              : undefined,
+          )
     const choices = suggestions.flatMap((suggestion, index) =>
       suggestion === undefined ? [] : [this.#suggestion(suggestion, index)],
     )
@@ -133,6 +140,7 @@ export class PermissionBroker {
       ...(options.defaultToNo ? { defaultToNo: true } : {}),
       ...(options.blockedPath === undefined ? {} : { blockedPath: options.blockedPath }),
       ...(options.plugin === undefined ? {} : { plugin: options.plugin }),
+      ...(browser === undefined ? {} : { browser }),
       subagent: this.#subagentOf(options.agentID),
     }
     return new Promise<PermissionResult>((resolve) => {
@@ -223,4 +231,8 @@ function permissionResult(outcome: PendingOutcome): PermissionResult {
 
 function sessionOnly(update: PermissionUpdate): PermissionUpdate {
   return { ...update, destination: "session" }
+}
+
+function withoutBrowserRule(update: PermissionUpdate): boolean {
+  return !("rules" in update && update.rules.some(({ toolName }) => workbenchBrowserRule(toolName)))
 }

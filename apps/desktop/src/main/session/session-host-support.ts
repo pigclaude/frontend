@@ -4,9 +4,12 @@
 import { constants } from "node:fs"
 import { access, realpath, stat } from "node:fs/promises"
 import { isAbsolute } from "node:path"
+import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk"
 import type { CapabilityPluginToolApprovals } from "../plugins/capability-plugin-tools"
 import { routeCanUseTool } from "./can-use-tool"
+import { createBrowserApproval, type BrowserToolRegistration } from "./browser-tool-approval"
 import type { ClaudeAgentStartOptions } from "./claude-query-options"
+import type { ClaudeSessionOptions } from "./claude-session-options"
 import type { SessionEnvironmentInput } from "./session-environment"
 import type { SessionEvent } from "./session-events"
 import type { ActiveSession } from "./session-host-active"
@@ -16,7 +19,6 @@ import type {
   SessionEnvironmentPort,
   SessionErrorCode,
   SessionMembership,
-  SessionStartInput,
   SessionStatusView,
 } from "./session-types"
 import { classifyDaemonError } from "./session-error-mapping"
@@ -100,14 +102,33 @@ export function buildUsageRecord(
   }
 }
 
-/** 把活动会话和启动输入转换成适配器参数；按会话的启动模式启动，canUseTool 按工具名分给提问代理或权限代理。 */
+/** 构造适配器启动参数，保留浏览器与插件的独立审批、无人值守限制和续接选项。 */
 export function buildStartOptions(
   active: ActiveSession,
-  input: SessionStartInput,
-  hasThreadRead: boolean,
-  denyUnattended?: () => void,
+  {
+    input,
+    references,
+    persistence,
+    denyUnattended,
+  }: Pick<ClaudeSessionOptions, "input" | "references" | "persistence" | "denyUnattended">,
+  mcpServers: ClaudeAgentStartOptions["mcpServers"],
   pluginApprovals?: CapabilityPluginToolApprovals,
+  browser?: { tools: BrowserToolRegistration; mode(): PermissionMode },
 ): ClaudeAgentStartOptions {
+  const unattended = denyUnattended !== undefined || browser?.tools.unattended === true
+  const browserApproval =
+    browser &&
+    createBrowserApproval({
+      broker: active.broker,
+      mode: browser.mode,
+      canUse: () => !active.released && !active.stopping,
+      sessionSignal: active.abort.signal,
+      unattended,
+    })
+  const servers =
+    browser && browserApproval && !unattended
+      ? { ...mcpServers, ...browser.tools.create(browserApproval) }
+      : mcpServers
   return {
     workspace: active.environment.workspace,
     env: active.environment.env,
@@ -121,9 +142,10 @@ export function buildStartOptions(
     canUseTool: routeCanUseTool(
       active.broker,
       active.questions,
-      hasThreadRead,
+      references !== undefined,
       denyUnattended,
       pluginApprovals,
+      browserApproval,
     ),
     abortController: active.abort,
     binaryPath: active.environment.binaryPath,
@@ -131,6 +153,8 @@ export function buildStartOptions(
     ...(input.thinking === undefined ? {} : { thinking: input.thinking }),
     ...(input.effort === undefined ? {} : { effort: input.effort }),
     ...(input.fast === undefined ? {} : { fast: input.fast }),
+    ...(servers ? { mcpServers: servers } : {}),
+    ...(persistence === undefined ? {} : { persistence }),
   }
 }
 

@@ -1,0 +1,83 @@
+// 负责会话内置浏览器工具的来源识别和逐次审批策略。
+
+import type { McpSdkServerConfigWithInstance, PermissionMode } from "@anthropic-ai/claude-agent-sdk"
+import type { BrowserPermissionContext } from "../../browser-permission-contract"
+import type { PermissionBroker } from "./permission-broker"
+
+/** 主进程给 Claude SDK 注册的工作台服务名。 */
+export const workbenchBrowserServer = "pigclaude_workbench"
+const qualifiedServer = `mcp__${workbenchBrowserServer}`
+
+/** 当前工作台注册的两个浏览器工具。 */
+export type WorkbenchBrowserTool = "browser_open" | "browser_snapshot"
+
+/** 会话给工作台的逐次审批能力；拒绝返回给模型的英文说明。 */
+export type BrowserApprovalPort = {
+  denial(tool: WorkbenchBrowserTool): string | null
+  request(context: BrowserPermissionContext, invocationSignal?: AbortSignal): Promise<boolean>
+}
+
+/** 会话创建工作台服务时注入权限代理；无人值守时根本不注册。 */
+export type BrowserToolRegistration = {
+  create(approval: BrowserApprovalPort): Record<string, McpSdkServerConfigWithInstance>
+  unattended?: boolean
+}
+
+/** 只信任 SDK 标记为进程内且服务键与完整工具名均匹配的内置浏览器工具。 */
+export function builtinWorkbenchBrowserTool(
+  name: string,
+  server: { name: string; source: string } | undefined,
+): WorkbenchBrowserTool | null {
+  if (server?.source !== "sdk" || server.name !== workbenchBrowserServer) return null
+  if (name === browserToolName("browser_open")) return "browser_open"
+  if (name === browserToolName("browser_snapshot")) return "browser_snapshot"
+  return null
+}
+
+/** 判断 SDK 规则是否会直接授予整个工作台服务或其中的工具。 */
+export function workbenchBrowserRule(value: string): boolean {
+  const tool = value.split("(")[0]?.trim()
+  return tool === qualifiedServer || (tool?.startsWith(qualifiedServer + "__") ?? false)
+}
+
+/** 工具审批成功只允许这一调用，执行前再次确认会话和权限档仍有效。 */
+export function createBrowserApproval(options: {
+  broker: PermissionBroker
+  mode(): PermissionMode
+  canUse(): boolean
+  sessionSignal: AbortSignal
+  unattended: boolean
+}): BrowserApprovalPort {
+  const denial = (tool: WorkbenchBrowserTool): string | null => {
+    if (!options.canUse() || options.sessionSignal.aborted)
+      return "The browser is unavailable for this session."
+    if (options.unattended || options.mode() === "dontAsk")
+      return "Browser tools require an interactive session and explicit approval."
+    if (tool === "browser_open" && options.mode() === "plan")
+      return "Plan mode does not allow opening a page. You may request a snapshot of the current page."
+    return null
+  }
+  return {
+    denial,
+    async request(context, invocationSignal) {
+      const tool = context.kind === "open" ? "browser_open" : "browser_snapshot"
+      const signal =
+        invocationSignal === undefined
+          ? options.sessionSignal
+          : AbortSignal.any([options.sessionSignal, invocationSignal])
+      if (signal.aborted || denial(tool) !== null) return false
+      const input = context.kind === "open" ? { url: context.url } : {}
+      const answer = await options.broker.request(
+        browserToolName(tool),
+        input,
+        { signal, defaultToNo: true, suppressAlwaysAllowRule: true },
+        context,
+      )
+      return answer.behavior === "allow" && !signal.aborted && denial(tool) === null
+    },
+  }
+}
+
+function browserToolName(tool: WorkbenchBrowserTool): string {
+  return `${qualifiedServer}__${tool}`
+}

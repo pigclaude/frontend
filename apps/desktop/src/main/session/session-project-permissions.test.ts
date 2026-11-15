@@ -1,7 +1,7 @@
 // 从会话权限请求验证授权保存、会话间隔离、完整 flag 更新与撤销。
 
 import { execFile } from "node:child_process"
-import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { promisify } from "node:util"
@@ -206,3 +206,26 @@ it.each(["success", "process", "environment"] as const)(
     }
   },
 )
+
+it("不会给工作台浏览器写入或重新加载长期规则", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "pigclaude-browser-rules-"))
+  const rule = "mcp__pigclaude_workbench__browser_open"
+  const file = join(workspace, "project-permissions.json")
+  const store = new ProjectPermissionStore(file)
+  try {
+    await expect(
+      store.grant(workspace, [{ kind: "allow", value: rule }], () => true),
+    ).rejects.toThrow("INVALID_SESSION_INPUT")
+    expect(await store.list()).toEqual([])
+    await writeFile(
+      file,
+      JSON.stringify([
+        { id: "old-browser-rule", projectPath: workspace, kind: "allow", value: rule },
+        { id: "ordinary-rule", projectPath: workspace, kind: "allow", value: "Read" },
+      ]),
+    )
+    expect(await store.settings(workspace)).toEqual({ allow: ["Read"], additionalDirectories: [] })
+  } finally {
+    await rm(workspace, { recursive: true, force: true })
+  }
+})

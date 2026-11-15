@@ -48,12 +48,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15
-            target: darwin-arm64
-            package: --mac dmg zip --arm64
-            xray_archive: Xray-macos-arm64-v8a.zip
-            xray_sha256: 0a05dca3bd311b0bc5a89c7ce56350cab1e829e131e4b2bcd48eb304fac07e9a
-            executable: release/mac-arm64/PigClaude.app/Contents/MacOS/PigClaude
           - os: windows-2022
             target: win32-x64
             package: --win nsis --x64

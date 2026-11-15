@@ -20,9 +20,7 @@ const installerName = (await readdir(release)).find((file) =>
 assert(installerName)
 const installer = join(release, installerName)
 const mount = join(root, "mount")
-const installDir = win
-  ? join(process.env.LOCALAPPDATA, "Programs", "PigClaude")
-  : join(root, "Applications")
+const installDir = win ? join(root, "installed-pigclaude") : join(root, "Applications")
 const installed = win ? installDir : join(installDir, "PigClaude.app")
 const userData = join(root, "profile")
 const executable = win
@@ -87,8 +85,8 @@ async function freePort() {
 async function installArtifact() {
   if (win) {
     await windows(
-      "$p = Start-Process -FilePath $env:QA_INSTALLER -ArgumentList '/S' -PassThru -Wait; exit $p.ExitCode",
-      { QA_INSTALLER: installer },
+      "$argsForInstaller = '/S /D=' + $env:QA_INSTALL_DESTINATION; $p = Start-Process -FilePath $env:QA_INSTALLER -ArgumentList $argsForInstaller -PassThru -Wait; exit $p.ExitCode",
+      { QA_INSTALLER: installer, QA_INSTALL_DESTINATION: installed },
     )
     assert((await stat(executable)).isFile())
     const launched = await pid()
@@ -204,6 +202,9 @@ try {
     assert.equal(await info("CFBundleShortVersionString"), "0.0.1")
     assert.equal(await info("CFBundleURLTypes:0:CFBundleURLSchemes:0"), "pigclaude")
   } else {
+    await launch()
+    await expect(page.getByRole("heading", { name: "欢迎使用 PigClaude" })).toBeVisible()
+    await close()
     const registration = await windows(
       "Get-ItemPropertyValue -Path 'HKCU:\\Software\\Classes\\pigclaude\\shell\\open\\command' -Name '(default)'",
     )

@@ -46,6 +46,7 @@ export type PluginMarketplaceEntryView = PluginMarketplaceEntryInfo & {
 export type PluginMarketplaceView = {
   developerMode: boolean
   thirdPartyEnabled: boolean
+  thirdPartyError?: string
   sources: PluginMarketplaceSourceView[]
   entries: PluginMarketplaceEntryView[]
 }

@@ -95,16 +95,18 @@ function processRunning(pid) {
   }
 }
 
-async function closeApplication(allowForce = true) {
+async function closeApplication({ allowForce = true, requestQuit = true } = {}) {
   if (!application) return
   const current = application
   const pid = applicationPid
-  void current
-    .evaluate(({ app, session }) => {
-      session.defaultSession.flushStorageData()
-      app.quit()
-    })
-    .catch(() => {})
+  if (requestQuit) {
+    void current
+      .evaluate(({ app, session }) => {
+        session.defaultSession.flushStorageData()
+        app.quit()
+      })
+      .catch(() => {})
+  }
   const until = Date.now() + 5000
   while (processRunning(pid) && Date.now() < until) {
     await new Promise((resolve) => setTimeout(resolve, 100))
@@ -121,6 +123,21 @@ async function closeApplication(allowForce = true) {
   // 主进程已退出，Playwright 的传输连接可能要等到测试宿主结束才返回。
   void current.close().catch(() => {})
   application = undefined
+}
+
+async function closeMainWithHiddenHelper() {
+  const mainId = await application.evaluate(({ app, BrowserWindow, session }) => {
+    const main = BrowserWindow.getAllWindows().find((candidate) => candidate.isVisible())
+    if (!main) throw new Error("缺少可见主窗口")
+    const helper = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
+    Reflect.set(app, "acceptanceHiddenPluginWindow", helper)
+    session.defaultSession.flushStorageData()
+    return main.id
+  })
+  void application
+    .evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)?.close(), mainId)
+    .catch(() => undefined)
+  await closeApplication({ allowForce: false, requestQuit: false })
 }
 
 async function openTerminalForQuit(page) {
@@ -433,7 +450,8 @@ try {
     pass("dark theme updates actual native title bar overlay")
   }
   const terminalPid = await openTerminalForQuit(page)
-  await closeApplication(false)
+  await closeMainWithHiddenHelper()
+  pass("closing the main window exits with a hidden helper still present")
   await expect.poll(() => processRunning(terminalPid)).toBe(false)
   pass("quitting the app closes its live PTY without forced cleanup")
   page = await launch()
@@ -469,13 +487,9 @@ try {
   report.rendererHardening = await verifyRendererHardening(application, page, policyViolations)
   pass("sandboxed main window under a CSP that refuses eval, inline and remote scripts")
   if (platform !== "darwin") {
-    await application.evaluate(({ app, BrowserWindow }) => {
-      const helper = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
-      Reflect.set(app, "acceptanceHiddenPluginWindow", helper)
-    })
     await verifySystemClose(application, page, out)
     await expect.poll(() => processRunning(applicationPid)).toBe(false)
-    pass("system close button exits with a hidden helper when close-to-tray is off")
+    pass("system close button exits when close-to-tray is off")
   }
 } catch (error) {
   report.error = String(error)

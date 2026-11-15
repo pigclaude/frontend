@@ -9,10 +9,12 @@ import { SettingRow } from "./setting-page"
 export function PluginMarketplaceThirdPartySwitch({
   enabled,
   disabled,
+  error,
   onChange,
 }: {
   enabled: boolean
   disabled: boolean
+  error: string | null
   onChange: (enabled: boolean) => void
 }) {
   const { t } = useText()
@@ -27,6 +29,11 @@ export function PluginMarketplaceThirdPartySwitch({
           onCheckedChange={onChange}
         />
       </SettingRow>
+      {error ? (
+        <p className="marketplace-policy-error error-text" role="alert">
+          {error}
+        </p>
+      ) : null}
     </div>
   )
 }

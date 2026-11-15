@@ -51,6 +51,8 @@ export const pluginSettingsZhCN = {
   "pluginSettings.uninstallClaudeHint": "卸载会删除 PigClaude 保存的插件副本。",
   "pluginSettings.settings": "{plugin} 的设置",
   "pluginSettings.incompatible": "此版本的插件与当前 PigClaude 不兼容。",
+  "pluginSettings.revoked": "此插件已被官方吊销，无法启用。",
+  "pluginSettings.revokedReason": "已吊销 · {reason}",
   "pluginSettings.directoryDisabled": "仅开发者模式支持从本地目录安装。",
   "pluginSettings.confirmationExpired": "安装确认已失效。请重新选择插件。",
   "pluginSettings.alreadyInstalled": "已安装此插件。",
@@ -124,6 +126,8 @@ export const pluginSettingsEnUS = {
   "pluginSettings.settings": "Settings for {plugin}",
   "pluginSettings.incompatible":
     "This plugin version is incompatible with the current PigClaude version.",
+  "pluginSettings.revoked": "This plugin was revoked by the publisher and can't be enabled.",
+  "pluginSettings.revokedReason": "Revoked · {reason}",
   "pluginSettings.directoryDisabled": "Installing from a local folder requires developer mode.",
   "pluginSettings.confirmationExpired":
     "The installation confirmation expired. Select the plugin again.",

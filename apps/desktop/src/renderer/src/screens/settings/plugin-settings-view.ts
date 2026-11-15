@@ -8,7 +8,7 @@ import type {
   DesktopPluginInstallDisclosure,
   InstalledDesktopPlugin,
 } from "../../../../capability-plugin-contract"
-import type { TextKey } from "../../locale/text"
+import { fill, type TextKey } from "../../locale/text"
 
 const permissions: Record<CapabilityPluginPermission, TextKey> = {
   "workspace-read": "pluginSettings.permissionWorkspace",
@@ -71,7 +71,14 @@ export function pluginInstallDisclosure(
   }
 }
 
-/** 适配 Pigcode 的通用插件卡片数据，详情只显示本机来源类型。 */
+/** 有吊销记录时读取宿主提供的原因，旧记录仍可照常使用。 */
+export function pluginRevocationReason(plugin: InstalledDesktopPlugin): string | null {
+  return "revocationReason" in plugin && typeof plugin.revocationReason === "string"
+    ? plugin.revocationReason
+    : null
+}
+
+/** 适配 Pigcode 的通用插件卡片数据，并在详情显示安装记录的吊销原因。 */
 export function installedPluginSummary(
   plugin: InstalledDesktopPlugin,
   t: (key: TextKey) => string,
@@ -79,6 +86,7 @@ export function installedPluginSummary(
 ): PluginSummary {
   const { manifest } = plugin
   const capability = plugin.type === "capability" ? plugin.manifest : null
+  const revoked = pluginRevocationReason(plugin)
   return {
     id: manifest.id,
     name: manifest.id,
@@ -92,9 +100,14 @@ export function installedPluginSummary(
     provides: capability?.tools.map((tool) => tool.name) ?? [],
     contributes: {},
     conflict: null,
-    error: plugin.compatible ? null : t("pluginSettings.incompatible"),
+    error:
+      revoked !== null
+        ? fill(t("pluginSettings.revokedReason"), { reason: revoked })
+        : plugin.compatible
+          ? null
+          : t("pluginSettings.incompatible"),
     originLabel: t(sources[plugin.sourceKind]),
-    ...(capability && hasSettings ? { settingsPage: manifest.id } : {}),
+    ...(capability && hasSettings && revoked === null ? { settingsPage: manifest.id } : {}),
   }
 }
 
@@ -105,6 +118,7 @@ const errors = new Map<string, TextKey>([
   ["PLUGIN_CONFIRMATION_INVALID", "pluginSettings.confirmationExpired"],
   ["PLUGIN_ALREADY_INSTALLED", "pluginSettings.alreadyInstalled"],
   ["PLUGIN_NOT_INSTALLED", "pluginSettings.noLongerInstalled"],
+  ["PLUGIN_MARKETPLACE_PLUGIN_REVOKED", "pluginSettings.revoked"],
   ["PLUGIN_VERSION_INCOMPATIBLE", "pluginSettings.incompatible"],
   ["PLUGIN_API_UNSUPPORTED", "pluginSettings.incompatible"],
   ["PLUGIN_MANIFEST_INVALID", "pluginSettings.invalidManifest"],

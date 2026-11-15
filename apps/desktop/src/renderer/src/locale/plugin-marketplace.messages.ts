@@ -7,6 +7,7 @@ export const pluginMarketplaceZhCN = {
   "pluginMarketplace.thirdParty": "第三方市场",
   "pluginMarketplace.thirdPartyDescription": "浏览和安装未经 PigClaude 审核的插件。",
   "pluginMarketplace.thirdPartyOff": "第三方市场已关闭",
+  "pluginMarketplace.thirdPartyCacheInvalid": "无法读取本机的第三方市场缓存。",
   "pluginMarketplace.thirdPartyConsentTitle": "开启第三方市场？",
   "pluginMarketplace.thirdPartyRisk":
     "第三方市场及其插件未经 PigClaude 审核。请核对来源和安装披露。",
@@ -14,6 +15,26 @@ export const pluginMarketplaceZhCN = {
     "Claude Code 插件的 Skill 可执行命令及文件头 hooks。能力插件可使用你确认的权限和域名。",
   "pluginMarketplace.thirdPartyEnable": "开启第三方市场",
   "pluginMarketplace.unreviewed": "未审核",
+  "pluginMarketplace.reviewed": "已审核",
+  "pluginMarketplace.official": "官方目录",
+  "pluginMarketplace.blocked": "不可用",
+  "pluginMarketplace.blockedExpired": "目录已过期",
+  "pluginMarketplace.blockedRevoked": "已吊销",
+  "pluginMarketplace.blockedReason": "此插件当前无法安装或更新。",
+  "pluginMarketplace.officialExpired": "官方目录已过期。请刷新目录后再安装或更新。",
+  "pluginMarketplace.officialRevoked": "该插件已被官方吊销，无法安装或更新。",
+  "pluginMarketplace.officialUnavailable": "无法读取官方目录，请稍后刷新。",
+  "pluginMarketplace.officialCacheInvalid": "本机缓存的官方目录无效，请刷新目录。",
+  "pluginMarketplace.officialCatalogInvalid": "官方目录格式无效，已拒绝使用。",
+  "pluginMarketplace.officialSignatureInvalid": "官方目录签名无效，已拒绝这次更新。",
+  "pluginMarketplace.officialKeyUntrusted": "官方目录使用了未受信任的签名密钥。",
+  "pluginMarketplace.officialKeyRevoked": "官方目录的签名密钥已吊销。",
+  "pluginMarketplace.officialTrustInvalid": "无法读取本机保存的官方目录信任记录。",
+  "pluginMarketplace.officialRollback": "官方目录序号低于已验证版本，已拒绝回退。",
+  "pluginMarketplace.officialSerialConflict":
+    "官方目录与已验证版本序号相同但内容不同，已拒绝这次更新。",
+  "pluginMarketplace.officialPackageMismatch": "插件包与已验证的官方目录条目不一致。",
+  "pluginMarketplace.officialRevokeFailed": "无法应用官方目录的吊销信息，请刷新目录。",
   "pluginMarketplace.fileHashChanged": "插件包文件指纹已变化。请核对来源和披露后再确认更新。",
   "pluginMarketplace.installed": "已安装",
   "pluginMarketplace.search": "搜索市场插件",
@@ -88,6 +109,8 @@ export const pluginMarketplaceEnUS = {
   "pluginMarketplace.thirdPartyDescription":
     "Browse and install plugins that PigClaude hasn't reviewed.",
   "pluginMarketplace.thirdPartyOff": "Third-party marketplaces are off",
+  "pluginMarketplace.thirdPartyCacheInvalid":
+    "Couldn't read the local third-party marketplace cache.",
   "pluginMarketplace.thirdPartyConsentTitle": "Enable third-party marketplaces?",
   "pluginMarketplace.thirdPartyRisk":
     "PigClaude hasn't reviewed these marketplaces or their plugins. Check the source and installation disclosure.",
@@ -95,6 +118,37 @@ export const pluginMarketplaceEnUS = {
     "Claude Code plugin skills can run commands and frontmatter hooks. Capability plugins can use the permissions and domains you approve.",
   "pluginMarketplace.thirdPartyEnable": "Enable third-party marketplaces",
   "pluginMarketplace.unreviewed": "Unreviewed",
+  "pluginMarketplace.reviewed": "Reviewed",
+  "pluginMarketplace.official": "Official catalog",
+  "pluginMarketplace.blocked": "Unavailable",
+  "pluginMarketplace.blockedExpired": "Catalog expired",
+  "pluginMarketplace.blockedRevoked": "Revoked",
+  "pluginMarketplace.blockedReason":
+    "This plugin is currently unavailable for installation or update.",
+  "pluginMarketplace.officialExpired":
+    "The official catalog has expired. Refresh it before installing or updating.",
+  "pluginMarketplace.officialRevoked":
+    "The publisher revoked this plugin. Installation and updates are blocked.",
+  "pluginMarketplace.officialUnavailable":
+    "Couldn't read the official catalog. Try refreshing later.",
+  "pluginMarketplace.officialCacheInvalid":
+    "The cached official catalog is invalid. Refresh the catalog.",
+  "pluginMarketplace.officialCatalogInvalid":
+    "The official catalog format is invalid. The catalog was rejected.",
+  "pluginMarketplace.officialSignatureInvalid":
+    "The official catalog signature is invalid. The update was rejected.",
+  "pluginMarketplace.officialKeyUntrusted": "The official catalog uses an untrusted signing key.",
+  "pluginMarketplace.officialKeyRevoked": "The official catalog's signing key was revoked.",
+  "pluginMarketplace.officialTrustInvalid":
+    "Couldn't read the locally saved official catalog trust records.",
+  "pluginMarketplace.officialRollback":
+    "The official catalog serial is older than a verified version. The rollback was rejected.",
+  "pluginMarketplace.officialSerialConflict":
+    "The official catalog has different content at an already verified serial. The update was rejected.",
+  "pluginMarketplace.officialPackageMismatch":
+    "The plugin package doesn't match the verified official catalog entry.",
+  "pluginMarketplace.officialRevokeFailed":
+    "Couldn't apply the official catalog's revocations. Refresh the catalog.",
   "pluginMarketplace.fileHashChanged":
     "The plugin package fingerprint changed. Review the source and disclosure before confirming the update.",
   "pluginMarketplace.installed": "Installed",

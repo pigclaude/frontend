@@ -93,6 +93,52 @@ const marketplace: PluginMarketplaceView = {
   ],
 }
 
+const officialSnapshot: Pick<PluginMarketplaceView, "sources" | "entries"> = {
+  sources: [
+    {
+      id: "pigclaude-official",
+      kind: "official",
+      label: "pigclaude/plugs",
+      catalogName: "PigClaude 官方目录",
+      enabled: true,
+      pin: null,
+      refreshedAt: "2026-11-15T03:00:00.000Z",
+      entryCount: 2,
+      error: "PLUGIN_MARKETPLACE_OFFICIAL_EXPIRED",
+    },
+  ],
+  entries: [
+    {
+      id: "docs-index",
+      sourceId: "pigclaude-official",
+      name: "文档索引",
+      type: "capability",
+      description: "为项目文档提供检索工具",
+      version: "1.3.0",
+      author: "文档团队",
+      permissions: ["workspace-read"],
+      domains: [],
+      action: "blocked",
+      blockedBy: "expired",
+      reviewStatus: "reviewed",
+    },
+    {
+      id: "release-guide",
+      sourceId: "pigclaude-official",
+      name: "发布指南",
+      type: "claude-code",
+      description: "发布流程的技能与审查命令",
+      version: "1.0.0",
+      author: "发布团队",
+      permissions: [],
+      domains: [],
+      action: "blocked",
+      blockedBy: "revoked",
+      reviewStatus: "reviewed",
+    },
+  ],
+}
+
 const update: PluginMarketplaceUpdateResult = {
   kind: "review",
   additionalPermissions: ["network"],
@@ -124,7 +170,12 @@ const update: PluginMarketplaceUpdateResult = {
 }
 
 /** 装入可读取的缓存和待确认包，所有操作仅在预览夹具内处理。 */
-export async function installPluginMarketplacePreview(page: Page, enabled = true): Promise<void> {
+export async function installPluginMarketplacePreview(
+  page: Page,
+  enabled = true,
+  official = false,
+): Promise<void> {
+  const view = { ...marketplace, thirdPartyEnabled: enabled, ...(official ? officialSnapshot : {}) }
   await page.addInitScript(
     ({ membership, marketplace, update }) => {
       const unavailable = async () => {
@@ -171,6 +222,6 @@ export async function installPluginMarketplacePreview(page: Page, enabled = true
         },
       }
     },
-    { membership, marketplace: { ...marketplace, thirdPartyEnabled: enabled }, update },
+    { membership, marketplace: view, update },
   )
 }

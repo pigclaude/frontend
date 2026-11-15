@@ -2,17 +2,18 @@
 
 import { formatRelativeTime, type Locale } from "@pigclaude/ui-primitives"
 import type {
-  PluginMarketplaceSourceInput,
+  PluginMarketplaceEntryView,
   PluginMarketplaceSourceView,
 } from "../../../../plugin-marketplace-contract"
 import { fill, type TextKey } from "../../locale/text"
 import { pluginPermissionText, pluginSettingsError } from "./plugin-settings-view"
 
 /** 来源选择器和来源行共用的标签。 */
-export const marketplaceSourceLabels: Record<PluginMarketplaceSourceInput["kind"], TextKey> = {
+export const marketplaceSourceLabels: Record<PluginMarketplaceSourceView["kind"], TextKey> = {
   github: "pluginMarketplace.github",
   https: "pluginMarketplace.https",
   directory: "pluginMarketplace.directory",
+  official: "pluginMarketplace.official",
 }
 
 /** 固定提交和 SHA-256 在提交前规范为对应长度的小写十六进制。 */
@@ -41,6 +42,7 @@ const errors = new Map<string, TextKey>([
   ["MEMBERSHIP_REQUIRED", "pluginMarketplace.membership"],
   ["PLUGIN_MARKETPLACE_UNAVAILABLE", "pluginMarketplace.loadFailed"],
   ["PLUGIN_MARKETPLACE_THIRD_PARTY_DISABLED", "pluginMarketplace.thirdPartyOff"],
+  ["PLUGIN_MARKETPLACE_CACHE_INVALID", "pluginMarketplace.thirdPartyCacheInvalid"],
   ["PLUGIN_MARKETPLACE_REFRESH_FAILED", "pluginMarketplace.refreshFailed"],
   ["PLUGIN_MARKETPLACE_SOURCE_DISABLED", "pluginMarketplace.sourceDisabled"],
   ["PLUGIN_MARKETPLACE_SOURCE_NOT_FOUND", "pluginMarketplace.sourceDisabled"],
@@ -53,7 +55,37 @@ const errors = new Map<string, TextKey>([
   ["PLUGIN_MARKETPLACE_PACKAGE_MISMATCH", "pluginMarketplace.packageMismatch"],
   ["PLUGIN_MARKETPLACE_CATALOG_INVALID", "pluginMarketplace.sourceInvalid"],
   ["PLUGIN_MARKETPLACE_INSTALLATION_MISMATCH", "pluginMarketplace.sourceInvalid"],
+  ["PLUGIN_MARKETPLACE_OFFICIAL_UNAVAILABLE", "pluginMarketplace.officialUnavailable"],
+  ["PLUGIN_MARKETPLACE_OFFICIAL_CACHE_INVALID", "pluginMarketplace.officialCacheInvalid"],
+  ["PLUGIN_MARKETPLACE_OFFICIAL_CATALOG_INVALID", "pluginMarketplace.officialCatalogInvalid"],
+  ["PLUGIN_MARKETPLACE_OFFICIAL_SIGNATURE_INVALID", "pluginMarketplace.officialSignatureInvalid"],
+  ["PLUGIN_MARKETPLACE_OFFICIAL_KEY_UNTRUSTED", "pluginMarketplace.officialKeyUntrusted"],
+  ["PLUGIN_MARKETPLACE_OFFICIAL_KEY_REVOKED", "pluginMarketplace.officialKeyRevoked"],
+  ["PLUGIN_MARKETPLACE_OFFICIAL_TRUST_INVALID", "pluginMarketplace.officialTrustInvalid"],
+  ["PLUGIN_MARKETPLACE_OFFICIAL_ROLLBACK", "pluginMarketplace.officialRollback"],
+  ["PLUGIN_MARKETPLACE_OFFICIAL_SERIAL_CONFLICT", "pluginMarketplace.officialSerialConflict"],
+  ["PLUGIN_MARKETPLACE_OFFICIAL_EXPIRED", "pluginMarketplace.officialExpired"],
+  ["PLUGIN_MARKETPLACE_OFFICIAL_REVOKED", "pluginMarketplace.officialRevoked"],
+  ["PLUGIN_MARKETPLACE_OFFICIAL_PACKAGE_MISMATCH", "pluginMarketplace.officialPackageMismatch"],
+  ["PLUGIN_MARKETPLACE_OFFICIAL_REVOKE_FAILED", "pluginMarketplace.officialRevokeFailed"],
 ])
+
+const blockedMessages = {
+  expired: {
+    title: "pluginMarketplace.blockedExpired",
+    reason: "pluginMarketplace.officialExpired",
+  },
+  revoked: {
+    title: "pluginMarketplace.blockedRevoked",
+    reason: "pluginMarketplace.officialRevoked",
+  },
+  unknown: { title: "pluginMarketplace.blocked", reason: "pluginMarketplace.blockedReason" },
+} satisfies Record<string, { title: TextKey; reason: TextKey }>
+
+/** 卡片显示简短状态，详情和失效的披露显示具体的限制原因。 */
+export function marketplaceBlockedMessage(blockedBy: PluginMarketplaceEntryView["blockedBy"]) {
+  return blockedMessages[blockedBy ?? "unknown"]
+}
 
 /** 将主进程和缓存中的固定错误码本地化，无匹配时使用指定的可重试提示。 */
 export function marketplaceErrorKey(

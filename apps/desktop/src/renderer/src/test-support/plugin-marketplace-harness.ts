@@ -30,7 +30,8 @@ export const originalSource: PluginMarketplaceSourceView = {
   pin: null,
 }
 
-const installedPlugin: InstalledCapabilityPlugin = {
+/** 本机安装记录，供插件页与市场组合夹具使用。 */
+export const installedPlugin: InstalledCapabilityPlugin = {
   type: "capability",
   manifest: {
     apiVersion: 1,
@@ -166,7 +167,7 @@ export function marketplaceFixture(
     prepare: unavailable,
     confirm: vi.fn<CapabilityPluginsBridge["confirm"]>(async () => installedPlugin),
     cancel: vi.fn<CapabilityPluginsBridge["cancel"]>(async () => undefined),
-    setEnabled: unavailable,
+    setEnabled: vi.fn<CapabilityPluginsBridge["setEnabled"]>(unavailable),
     setToolApproval: unavailable,
     uninstall: vi.fn<CapabilityPluginsBridge["uninstall"]>(unavailable),
     subscribe: () => () => undefined,

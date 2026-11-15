@@ -5,14 +5,21 @@ import { installPluginMarketplacePreview } from "./plugin-marketplace-fixture"
 
 const screenshot = { threshold: 0.1, maxDiffPixels: 0, animations: "disabled" } as const
 
-async function openMarketplace(page: Page, theme: "light" | "dark", enabled = true) {
-  await installPluginMarketplacePreview(page, enabled)
+async function openMarketplace(
+  page: Page,
+  theme: "light" | "dark",
+  enabled = true,
+  official = false,
+) {
+  await installPluginMarketplacePreview(page, enabled, official)
   await page.clock.install({ time: new Date("2026-11-15T04:00:00Z") })
   await page.goto(`/?screen=plugins&theme=${theme}`)
   await page.getByRole("radio", { name: "插件市场" }).click()
-  const state = enabled
-    ? page.getByRole("heading", { name: "团队工具目录" })
-    : page.getByText("第三方市场已关闭", { exact: true })
+  const state = official
+    ? page.getByRole("heading", { name: "PigClaude 官方目录" })
+    : enabled
+      ? page.getByRole("heading", { name: "团队工具目录" })
+      : page.getByText("第三方市场已关闭", { exact: true })
   await expect(state).toBeVisible()
   await page.evaluate(() => document.fonts.ready)
 }
@@ -61,4 +68,18 @@ test("plugin marketplace third-party consent", async ({ page }) => {
     "plugin-marketplace-third-party-consent-light.png",
     screenshot,
   )
+})
+
+test("plugin marketplace official reviewed catalog and blocked entries", async ({ page }) => {
+  await openMarketplace(page, "light", false, true)
+  await expect(page.getByRole("switch", { name: "第三方市场" })).not.toBeChecked()
+  await expect(page.getByText("官方目录已过期。", { exact: false })).toBeVisible()
+  await expect(page.getByText("已审核", { exact: true })).toHaveCount(2)
+  await expect(page.getByRole("button", { name: "安装 文档索引" })).toHaveCount(0)
+  await expect(page).toHaveScreenshot("plugin-marketplace-official-light.png", screenshot)
+
+  await page.getByRole("button", { name: "查看 发布指南 的市场详情" }).click()
+  const detail = page.getByRole("dialog", { name: "发布指南" })
+  await expect(detail.getByText("该插件已被官方吊销", { exact: false })).toBeVisible()
+  await expect(page).toHaveScreenshot("plugin-marketplace-official-blocked-light.png", screenshot)
 })

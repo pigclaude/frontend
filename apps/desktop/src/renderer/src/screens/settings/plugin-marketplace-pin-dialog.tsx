@@ -24,7 +24,7 @@ export function PluginMarketplacePinDialog({
   const fieldId = useId()
   const [value, setValue] = useState(source.pin ?? "")
   const { kind } = source
-  if (kind === "directory") return null
+  if (kind !== "github" && kind !== "https") return null
   const isGitHub = kind === "github"
   const pin = marketplaceSourcePin(kind, value)
   const canApply = pin !== null && pin !== source.pin && !busy

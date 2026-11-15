@@ -2,8 +2,10 @@
 
 import { Badge, Button, Dialog } from "@pigclaude/ui-primitives"
 import { TriangleAlert } from "lucide-react"
+import type { PluginMarketplaceEntryView } from "../../../../plugin-marketplace-contract"
 import { useText } from "../../locale/text"
 import { ClaudeCodePluginFacts } from "./claude-code-plugin-facts"
+import { MarketplaceReviewBadge } from "./plugin-marketplace-catalog"
 import { marketplacePermissionChangeText } from "./plugin-marketplace-view"
 import type { PluginDisclosureFacts } from "./plugin-settings-view"
 
@@ -18,7 +20,7 @@ export type PluginUpdateDisclosure = {
 export function PluginInstallDisclosure({
   facts,
   sourceName,
-  unreviewed = false,
+  reviewStatus,
   update,
   busy,
   onCancel,
@@ -26,7 +28,7 @@ export function PluginInstallDisclosure({
 }: {
   facts: PluginDisclosureFacts
   sourceName?: string | undefined
-  unreviewed?: boolean
+  reviewStatus?: PluginMarketplaceEntryView["reviewStatus"]
   update?: PluginUpdateDisclosure | undefined
   busy: boolean
   onCancel: () => void
@@ -44,9 +46,9 @@ export function PluginInstallDisclosure({
         closeDisabled={busy}
       >
         <Dialog.Body className="plugin-dialog-body">
-          {unreviewed ? (
+          {reviewStatus ? (
             <div>
-              <Badge variant="warn">{t("pluginMarketplace.unreviewed")}</Badge>
+              <MarketplaceReviewBadge status={reviewStatus} />
             </div>
           ) : null}
           {update?.fileHashChanged ? (

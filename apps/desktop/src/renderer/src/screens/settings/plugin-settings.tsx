@@ -21,7 +21,11 @@ import { fill, useText, type TextKey } from "../../locale/text"
 import { ClaudeCodePluginFacts } from "./claude-code-plugin-facts"
 import { PluginInstallControls } from "./plugin-install-controls"
 import { PluginMarketplaceSettings } from "./plugin-marketplace-settings"
-import { installedPluginSummary, pluginSettingsError } from "./plugin-settings-view"
+import {
+  installedPluginSummary,
+  pluginRevocationReason,
+  pluginSettingsError,
+} from "./plugin-settings-view"
 import { SettingPage } from "./setting-page"
 import "../../styles/plugin-settings.css"
 
@@ -98,6 +102,7 @@ export function PluginSettings({
       plugin.type === "capability" &&
       membershipActive &&
       plugin.enabled &&
+      pluginRevocationReason(plugin) === null &&
       plugin.compatible &&
       renderSettings?.(plugin)
     if (content) settings.set(plugin.manifest.id, content)
@@ -119,7 +124,12 @@ export function PluginSettings({
     const plugin = entries.get(id)
     return (
       pendingId === null &&
-      Boolean(bridge && plugin && (plugin.enabled || (membershipActive && plugin.compatible)))
+      Boolean(
+        bridge &&
+        plugin &&
+        (plugin.enabled ||
+          (membershipActive && plugin.compatible && pluginRevocationReason(plugin) === null)),
+      )
     )
   }
 

@@ -8,13 +8,32 @@ import type {
   PluginMarketplaceSourceView,
 } from "../../../../plugin-marketplace-contract"
 import { fill, useText, type TextKey } from "../../locale/text"
-import { marketplaceErrorKey, marketplaceSourceMeta } from "./plugin-marketplace-view"
+import {
+  marketplaceBlockedMessage,
+  marketplaceErrorKey,
+  marketplaceSourceMeta,
+} from "./plugin-marketplace-view"
 import { pluginPermissionText } from "./plugin-settings-view"
 
 type EntryAction = (entry: PluginMarketplaceEntryView) => void
 
 function typeLabel(type: PluginMarketplaceEntryView["type"]): TextKey {
   return type === "claude-code" ? "pluginSettings.claudeCode" : "pluginSettings.capability"
+}
+
+/** 标注主进程确认的审核状态，市场目录和安装披露使用同样的标识。 */
+export function MarketplaceReviewBadge({
+  status,
+}: {
+  status: PluginMarketplaceEntryView["reviewStatus"]
+}) {
+  const { t } = useText()
+  const reviewed = status === "reviewed"
+  return (
+    <Badge variant={reviewed ? "ok" : "warn"}>
+      {t(reviewed ? "pluginMarketplace.reviewed" : "pluginMarketplace.unreviewed")}
+    </Badge>
+  )
 }
 
 /** 目录按来源分组，不从显示名称或版本推测安装状态。 */
@@ -150,9 +169,7 @@ function MarketplaceSection({
                 <span className="market-tile-text">
                   <span className="market-tile-name">
                     <span className="truncate">{entry.name}</span>
-                    {entry.reviewStatus === "unreviewed" ? (
-                      <Badge variant="warn">{t("pluginMarketplace.unreviewed")}</Badge>
-                    ) : null}
+                    <MarketplaceReviewBadge status={entry.reviewStatus} />
                   </span>
                   <span className="market-tile-desc truncate">
                     {t(typeLabel(entry.type))}
@@ -212,14 +229,18 @@ export function PluginMarketplaceEntryDialog({
         description={
           <span className="plugin-dialog-meta">
             <Badge>{t(typeLabel(entry.type))}</Badge>
-            {entry.reviewStatus === "unreviewed" ? (
-              <Badge variant="warn">{t("pluginMarketplace.unreviewed")}</Badge>
-            ) : null}
+            <MarketplaceReviewBadge status={entry.reviewStatus} />
             {entry.version}
           </span>
         }
       >
         <Dialog.Body className="plugin-dialog-body">
+          {entry.action === "blocked" ? (
+            <p className="marketplace-risk">
+              <TriangleAlert className="ic ic-sm" aria-hidden="true" />
+              <span>{t(marketplaceBlockedMessage(entry.blockedBy).reason)}</span>
+            </p>
+          ) : null}
           {entry.description ? <p className="agent-description">{entry.description}</p> : null}
           <dl className="ext-facts">
             <dt>{t("pluginMarketplace.marketplace")}</dt>
@@ -250,9 +271,11 @@ export function PluginMarketplaceEntryDialog({
             </p>
           ) : null}
         </Dialog.Body>
-        <Dialog.Footer>
-          <MarketplaceApplyButton entry={entry} disabled={disabled} primary onApply={onApply} />
-        </Dialog.Footer>
+        {entry.action !== "blocked" ? (
+          <Dialog.Footer>
+            <MarketplaceApplyButton entry={entry} disabled={disabled} primary onApply={onApply} />
+          </Dialog.Footer>
+        ) : null}
       </Dialog.Content>
     </Dialog.Root>
   )
@@ -270,6 +293,12 @@ function MarketplaceApplyButton({
   onApply: EntryAction
 }) {
   const { t } = useText()
+  if (entry.action === "blocked")
+    return (
+      <span className="market-installed">
+        {t(marketplaceBlockedMessage(entry.blockedBy).title)}
+      </span>
+    )
   if (entry.action === "installed")
     return <span className="market-installed">{t("pluginMarketplace.installed")}</span>
   const update = entry.action === "update"

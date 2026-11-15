@@ -1,7 +1,16 @@
 // 显示市场源的缓存状态、启停、刷新和删除确认。
 
 import { useState } from "react"
-import { Folder, GitBranch, Link2, Plus, RefreshCw, Trash2, TriangleAlert } from "lucide-react"
+import {
+  Folder,
+  GitBranch,
+  Link2,
+  Plus,
+  RefreshCw,
+  ShieldCheck,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react"
 import { Button, Dialog, Switch } from "@pigclaude/ui-primitives"
 import type { PluginMarketplaceSourceView } from "../../../../plugin-marketplace-contract"
 import { fill, useText } from "../../locale/text"
@@ -11,7 +20,7 @@ import {
   marketplaceSourceMeta,
 } from "./plugin-marketplace-view"
 
-const sourceIcons = { github: GitBranch, https: Link2, directory: Folder }
+const sourceIcons = { github: GitBranch, https: Link2, directory: Folder, official: ShieldCheck }
 
 /** 市场管理对话框保留停用的来源，经过用户确认才删除。 */
 export function PluginMarketplaceSourceDialog({
@@ -20,6 +29,7 @@ export function PluginMarketplaceSourceDialog({
   membershipActive,
   thirdPartyEnabled,
   error,
+  thirdPartyError,
   onClose,
   onAdd,
   onRefresh,
@@ -32,6 +42,7 @@ export function PluginMarketplaceSourceDialog({
   membershipActive: boolean
   thirdPartyEnabled: boolean
   error: string | null
+  thirdPartyError: string | null
   onClose: () => void
   onAdd: () => void
   onRefresh: (sourceId: string) => void
@@ -58,6 +69,11 @@ export function PluginMarketplaceSourceDialog({
               {t("pluginMarketplace.addSource")}
             </Button>
           </div>
+          {thirdPartyError && thirdPartyError !== error ? (
+            <p className="error-text" role="alert">
+              {thirdPartyError}
+            </p>
+          ) : null}
           {error ? (
             <p className="error-text" role="alert">
               {error}
@@ -68,7 +84,9 @@ export function PluginMarketplaceSourceDialog({
           ) : (
             <ul className="marketplace-source-list">
               {sources.map((source) => {
-                const { id, kind, enabled, label, catalogName } = source
+                const { id, kind, label, catalogName } = source
+                const official = kind === "official"
+                const enabled = official || source.enabled
                 const Icon = sourceIcons[kind]
                 const values = { market: catalogName }
                 return (
@@ -131,13 +149,15 @@ export function PluginMarketplaceSourceDialog({
                       ) : null}
                     </div>
                     <div className="marketplace-source-actions">
-                      <Switch
-                        aria-label={fill(t("pluginMarketplace.enableSource"), values)}
-                        checked={enabled}
-                        disabled={disabled}
-                        onCheckedChange={(checked) => onSetEnabled(id, checked)}
-                      />
-                      {kind !== "directory" ? (
+                      {!official ? (
+                        <Switch
+                          aria-label={fill(t("pluginMarketplace.enableSource"), values)}
+                          checked={enabled}
+                          disabled={disabled}
+                          onCheckedChange={(checked) => onSetEnabled(id, checked)}
+                        />
+                      ) : null}
+                      {kind === "github" || kind === "https" ? (
                         <Button
                           type="button"
                           size="sm"
@@ -153,22 +173,24 @@ export function PluginMarketplaceSourceDialog({
                         type="button"
                         size="icon"
                         variant="ghost"
-                        disabled={sourceActionsDisabled}
+                        disabled={official ? disabled : sourceActionsDisabled}
                         aria-label={fill(t("pluginMarketplace.refreshSource"), values)}
                         onClick={() => onRefresh(id)}
                       >
                         <RefreshCw className="ic ic-sm" aria-hidden="true" />
                       </Button>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        disabled={disabled}
-                        aria-label={fill(t("pluginMarketplace.removeSource"), values)}
-                        onClick={() => setConfirming(id)}
-                      >
-                        <Trash2 className="ic ic-sm" aria-hidden="true" />
-                      </Button>
+                      {!official ? (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          disabled={disabled}
+                          aria-label={fill(t("pluginMarketplace.removeSource"), values)}
+                          onClick={() => setConfirming(id)}
+                        >
+                          <Trash2 className="ic ic-sm" aria-hidden="true" />
+                        </Button>
+                      ) : null}
                     </div>
                   </li>
                 )

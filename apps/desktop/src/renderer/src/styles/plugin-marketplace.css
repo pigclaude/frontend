@@ -8,6 +8,10 @@
   margin-bottom: var(--space-5);
 }
 
+.marketplace-policy-error {
+  padding: var(--space-2) var(--space-5) var(--space-4);
+}
+
 [data-motion="reduce"] .dialog:is(.marketplace-sources, .marketplace-dialog) {
   transform: translate(-50%, -50%);
 }

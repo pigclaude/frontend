@@ -12,6 +12,8 @@ export type PluginMarketplaceSourceInput =
 export type PluginMarketplaceSourceView = {
   id: string
   kind: PluginMarketplaceSourceInput["kind"]
+  /** GitHub 提交或 HTTPS 归档摘要，本地目录为 null。 */
+  pin: string | null
   label: string
   catalogName: string
   enabled: boolean
@@ -61,7 +63,7 @@ export type PluginMarketplaceBridge = {
   list(): Promise<PluginMarketplaceView>
   selectDirectory(): Promise<string | null>
   add(input: PluginMarketplaceSourceInput): Promise<void>
-  refresh(sourceId: string): Promise<void>
+  refresh(sourceId: string, pin?: string): Promise<void>
   setEnabled(sourceId: string, enabled: boolean): Promise<void>
   remove(sourceId: string): Promise<void>
   prepareInstall(sourceId: string, entryId: string): Promise<DesktopPluginInstallDisclosure>

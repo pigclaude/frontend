@@ -45,3 +45,23 @@ it("会话关闭完成后才关闭后台服务", async () => {
   await shutdown
   expect(composition).toHaveBeenCalledTimes(1)
 })
+
+it("在系统退出回调返回前开始关停会话、账号和终端", async () => {
+  const accounts = vi.fn(() => Promise.resolve())
+  const sessions = vi.fn(() => Promise.resolve())
+  const workbench = vi.fn(() => Promise.resolve())
+  const composition = vi.fn(() => Promise.resolve())
+  const shutdown = shutdownDesktopResources({
+    accounts,
+    sessions,
+    workbench,
+    composition,
+    xray: async () => undefined,
+  })
+  expect(sessions).toHaveBeenCalledOnce()
+  expect(accounts).toHaveBeenCalledOnce()
+  expect(workbench).toHaveBeenCalledOnce()
+  expect(composition).not.toHaveBeenCalled()
+  await shutdown
+  expect(composition).toHaveBeenCalledOnce()
+})

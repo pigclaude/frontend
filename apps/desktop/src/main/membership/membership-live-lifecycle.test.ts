@@ -309,3 +309,87 @@ it("a failed request cannot borrow a concurrent request's successful check", asy
     await f.composition.dispose()
   }
 })
+
+it.each(["earlier-denial-first", "later-network-failure-first"])(
+  "keeps a definitive same-owner check with a concurrent network failure: %s",
+  async (order) => {
+    const earlierEntered = deferred<void>()
+    const earlierRelease = deferred<void>()
+    const laterEntered = deferred<void>()
+    const laterRelease = deferred<void>()
+    let reads = 0
+    const f = await setup({
+      inspectMembership: async () => {
+        if (++reads === 2) {
+          earlierEntered.resolve(undefined)
+          await earlierRelease.promise
+          return membershipView("verification_required")
+        }
+        if (reads === 3) {
+          laterEntered.resolve(undefined)
+          await laterRelease.promise
+          throw Object.assign(new Error(), { code: "SERVER_UNAVAILABLE" })
+        }
+        return membershipView()
+      },
+    })
+    try {
+      await f.gate.inspect()
+      const earlier = f.gate.inspect()
+      await earlierEntered.promise
+      const later = f.gate.inspect()
+      await laterEntered.promise
+
+      if (order === "later-network-failure-first") {
+        laterRelease.resolve(undefined)
+        expect(await later).toMatchObject({ state: "network_grace" })
+      }
+      earlierRelease.resolve(undefined)
+      expect(await earlier).toMatchObject({ state: "verification_required" })
+      expect(f.gate.view().state).toBe("verification_required")
+
+      if (order === "earlier-denial-first") {
+        laterRelease.resolve(undefined)
+        expect(await later).toMatchObject({ state: "verification_required" })
+      }
+    } finally {
+      earlierRelease.resolve(undefined)
+      laterRelease.resolve(undefined)
+      await f.composition.dispose()
+    }
+  },
+)
+
+it.each(["verified", "new-login", "signed-out"] as const)(
+  "a settled newer authority supersedes an older denied check: %s",
+  async (newer) => {
+    const enter = deferred<void>()
+    const release = deferred<void>()
+    let reads = 0
+    const f = await setup({
+      inspectMembership: async () => {
+        if (++reads === 2) {
+          enter.resolve(undefined)
+          await release.promise
+          return membershipView("expired")
+        }
+        return membershipView()
+      },
+    })
+    try {
+      await f.gate.inspect()
+      const earlier = f.gate.inspect()
+      await enter.promise
+      if (newer === "new-login") await f.gate.acceptAuthorization(oauthSessionFixture())
+      if (newer === "signed-out") await f.composition.signOut()
+      else await f.gate.inspect()
+      release.resolve(undefined)
+      const expected = newer === "signed-out" ? "signed_out" : "active"
+      expect(await earlier).toMatchObject({ state: expected })
+      expect(f.gate.view().state).toBe(expected)
+    } finally {
+      release.resolve(undefined)
+      await f.composition.dispose()
+    }
+  },
+)

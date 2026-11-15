@@ -43,7 +43,7 @@ import { DeviceIdentityService } from "./device-identity"
 import { readDeviceInfo } from "./device-identity/device-info"
 import { readDockIconDataUrl } from "./dock-icon"
 import { createDesktopTray } from "./desktop-tray"
-import { showMainWindow } from "./main-window-visibility"
+import { createMainWindowVisibility } from "./main-window-visibility"
 import { configureRuntimeProfile } from "./runtime-profile"
 import { registerMembershipIpc } from "./membership/ipc"
 import { readDesktopRuntimeEndpoints } from "./runtime-endpoints"
@@ -103,7 +103,7 @@ let projectPermissions: ProjectPermissionStore | null = null
 let callbackServer: Awaited<ReturnType<typeof createCallbackServer>> | null = null
 let callbackReceiver: AuthorizationCallbackReceiver | null = null
 let authorizationReady = false
-let shutdownStarted = false
+const windowVisibility = createMainWindowVisibility(() => mainWindow, createWindow)
 let cleanupLiveEvents = () => {}
 let appUpdates: UpdateService | null = null
 const closePreference = new WindowClosePreference(
@@ -119,9 +119,7 @@ if (!hasSingleInstanceLock) {
   callbackReceiver = createAuthorizationCallbackReceiver({
     app,
     onCallback: handleCallbackUrl,
-    onSecondInstance: () => {
-      if (!shutdownStarted) showMainWindow(mainWindow)
-    },
+    onSecondInstance: windowVisibility.restoreExisting,
   })
   if (process.platform === "win32" || process.platform === "linux") {
     callbackReceiver.receiveArguments(process.argv)
@@ -130,7 +128,7 @@ if (!hasSingleInstanceLock) {
   void app
     .whenReady()
     .then(async () => {
-      if (shutdownStarted) return
+      if (windowVisibility.shutdownStarted()) return
       let initialized = false
       try {
         await setupAuthorization()
@@ -142,14 +140,14 @@ if (!hasSingleInstanceLock) {
       }
       // 会话和工作台终端在窗口打开后才可能启动，它们要用合并后的 PATH。
       await Promise.all([loginShellPath, closePreference.get()])
-      if (shutdownStarted) {
+      if (windowVisibility.shutdownStarted()) {
         closeStartupEvents()
         // 初始化可能晚于第一次关闭才建立服务；只清理，不重新开窗或放行回调。
         void shutdownDesktop()
         return
       }
       createWindow()
-      tray = createDesktopTray(restoreMainWindow)
+      tray = createDesktopTray(windowVisibility.restore)
       if (initialized) {
         authorizationReady = true
         callbackReceiver?.ready()
@@ -157,7 +155,7 @@ if (!hasSingleInstanceLock) {
         void reportDeviceInfoOnStartup()
       }
       startAppUpdates()
-      app.on("activate", restoreMainWindow)
+      app.on("activate", windowVisibility.restore)
     })
     .catch(() => {
       closeStartupEvents()
@@ -174,10 +172,11 @@ const guardMainWindowClose = installQuitFlow({
   ...(hasSingleInstanceLock ? { watchPowerShutdown } : {}),
   shutdown: shutdownDesktop,
   onBeforeShutdown: () => {
-    shutdownStarted = true
+    windowVisibility.startShutdown()
     appUpdates?.stop()
     closeStartupEvents()
   },
+  onShutdownFailure: windowVisibility.shutdownFailed,
   onCancel: () => appUpdates?.cancelRestart(),
   finishQuit: (mode) => {
     if (mode === "system") return app.exit()
@@ -424,11 +423,12 @@ async function setupAuthorization(): Promise<void> {
 
 async function handleCallbackUrl(url: string): Promise<AuthorizationStateEvent | null> {
   // loopback 继续直接返回既有结果；部分初始化不能成为可用授权服务。
-  if (!authorizationReady || shutdownStarted || !authorizationService) return null
+  if (!authorizationReady || windowVisibility.shutdownStarted() || !authorizationService)
+    return null
   const result = await authorizationService.handleCallback(url)
-  if (result.sessionId && authorizationReady && !shutdownStarted) {
+  if (result.sessionId && authorizationReady && !windowVisibility.shutdownStarted()) {
     sendAuthorizationState(result)
-    showMainWindow(mainWindow)
+    windowVisibility.restoreExisting()
   }
   return result
 }
@@ -464,10 +464,6 @@ function isTrustedSender(event: Electron.IpcMainInvokeEvent): boolean {
     event.sender === mainWindow.webContents &&
     event.senderFrame === mainWindow.webContents.mainFrame
   )
-}
-
-function restoreMainWindow(): void {
-  if (!shutdownStarted && !showMainWindow(mainWindow)) createWindow()
 }
 
 function createWindow(): void {

@@ -23,6 +23,8 @@ export type QuitFlowOptions = {
   watchPowerShutdown?: (listener: (event: QuitEvent) => void) => void
   shutdown: () => Promise<void>
   onBeforeShutdown: () => void
+  /** 清理报错后恢复应用操作，允许用户再次退出。 */
+  onShutdownFailure?: () => void
   finishQuit: (mode: QuitMode) => void
   onCancel: () => void
 }
@@ -85,7 +87,10 @@ export function installQuitFlow(options: QuitFlowOptions): (window: BrowserWindo
     shutdown: options.shutdown,
     quit: options.finishQuit,
     onFailure: (reason) => {
-      if (reason === "failed") confirmation.reset()
+      if (reason === "failed") {
+        confirmation.reset()
+        options.onShutdownFailure?.()
+      }
       showQuitFailure(reason)
     },
     onBeforeShutdown: options.onBeforeShutdown,
@@ -102,6 +107,7 @@ export function installQuitFlow(options: QuitFlowOptions): (window: BrowserWindo
   })
   return (window) => {
     confirmation.guardClose(window, options.closeToTray)
+    // Windows 可能取消会话结束查询；只在系统确认注销或关机后才清理。
     window.on("session-end", systemQuit)
     guardReload(window.webContents, {
       leaving: () => confirmation.leaving(),

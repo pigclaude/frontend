@@ -5,7 +5,8 @@ import { basename, dirname, extname, join } from "node:path"
 import { randomUUID } from "node:crypto"
 import { setTimeout as delay } from "node:timers/promises"
 import type { WorkbenchListing, WorkbenchSearch, WorkbenchFile } from "../../workbench-contract"
-import { listWorkspaceFiles } from "../runtime/workspace-files"
+import { listWorkspaceFiles, WORKSPACE_FILE_LIMIT } from "../runtime/workspace-files"
+import { protectedWorkbenchPath } from "./hidden-paths"
 import { visibleWorkspaceEntry, workspaceFileInfo, workspacePath } from "./workspace-path"
 
 const maxTextBytes = 512 * 1024
@@ -29,7 +30,9 @@ export async function listWorkbenchDirectory(
 ): Promise<WorkbenchListing> {
   const absolute = await workspacePath(root, path)
   const entries = (await readdir(absolute, { withFileTypes: true }))
-    .filter((entry) => visibleWorkspaceEntry(entry.name) && (entry.isDirectory() || entry.isFile()))
+    .filter(
+      (entry) => visibleWorkspaceEntry(path, entry.name) && (entry.isDirectory() || entry.isFile()),
+    )
     .map((entry) => ({
       name: entry.name,
       path: path ? path + "/" + entry.name : entry.name,
@@ -48,11 +51,18 @@ export async function listWorkbenchDirectory(
   }
 }
 
-/** 在与聊天 @ 引用相同的有限文件集合中查找路径，并补齐祖先目录。 */
+/** 在有限的可见文件中搜索路径，包含项目配置并补齐匹配的祖先目录。 */
 export async function searchWorkbenchFiles(root: string, query: string): Promise<WorkbenchSearch> {
   const matches = new Map<string, "directory" | "file">()
   const terms = query.trim().toLowerCase().split(/\s+/)
-  for (const file of await listWorkspaceFiles(root)) {
+  const files = await listWorkspaceFiles(
+    root,
+    WORKSPACE_FILE_LIMIT,
+    (path, name) =>
+      !protectedWorkbenchPath(path) &&
+      (!name.startsWith(".") || /^\.(claude|mcp\.json)$/i.test(name)),
+  )
+  for (const file of files) {
     const parts = file.split("/")
     for (let depth = 1; depth <= parts.length; depth += 1) {
       const path = parts.slice(0, depth).join("/")

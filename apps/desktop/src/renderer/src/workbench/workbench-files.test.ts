@@ -30,6 +30,27 @@ async function openFiles(files: Record<string, string>) {
 }
 
 describe("workbench files", () => {
+  it("explains project trust when opening settings or MCP configuration", async () => {
+    await openFiles({
+      ".claude/settings.local.json": "{}\n",
+      ".mcp.json": '{ "mcpServers": {} }\n',
+      "notes.txt": "ordinary project file",
+    })
+    const notice = "此文件仅在完全信任此项目后生效。"
+
+    await click(treeRow(".claude"))
+    await click(treeRow("settings.local.json"))
+    expect(screen.container.textContent).toContain(notice)
+    expect(fileEditor()?.value).toBe("{}\n")
+
+    await click(treeRow(".mcp.json"))
+    expect(screen.container.textContent).toContain(notice)
+    expect(fileEditor()?.value).toBe('{ "mcpServers": {} }\n')
+
+    await click(treeRow("notes.txt"))
+    expect(screen.container.textContent).not.toContain(notice)
+  })
+
   it("opens a clicked file in a preview tab that the next click replaces", async () => {
     await openFiles({ "notes.txt": "first\n", "todo.txt": "second\n" })
 

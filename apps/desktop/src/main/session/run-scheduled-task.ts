@@ -99,6 +99,7 @@ export async function executeScheduledTurn(
       await park()
     } catch {
       outcome = { status: "failed", reason: "SESSION_STOP_FAILED" }
+      sessionNoticeHandled = false
     }
     const snapshot = savedOrLiveStatus(host, sessionId)
     return {

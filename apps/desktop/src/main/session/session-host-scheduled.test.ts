@@ -8,8 +8,10 @@ import { afterEach, expect, it, vi } from "vitest"
 import type { ScheduledTaskInput } from "../../scheduled-tasks-contract"
 import { ClaudeAgentAdapter } from "./claude-agent-adapter"
 import { collectPrompt, FakeQuery } from "./claude-agent-adapter-fixtures"
+import { SessionClaudeExitError } from "./session-claude-launch"
 import { ManualClock } from "./session-clock-fixture"
 import { retainedClaudeProject } from "./session-environment"
+import type { AdapterEvent } from "./session-events"
 import { createHarness, fixedNow, waitUntil } from "./session-host-fixtures"
 import { loadSdkFixture } from "./session-replay-fixtures"
 import { SessionStore } from "./session-store"
@@ -18,6 +20,15 @@ import { threadReadServerName } from "./thread-read"
 
 const minute = 60_000
 const model = "claude-sonnet-4"
+const successfulResult: AdapterEvent = {
+  type: "result",
+  subtype: "success",
+  isError: false,
+  durationMs: 2 * minute,
+  numTurns: 1,
+  stopReason: "end_turn",
+  usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
+}
 const harnesses: ReturnType<typeof createHarness>[] = []
 
 afterEach(async () => {
@@ -166,22 +177,24 @@ it("在十五分钟内得到名额后，原来的等待截止不会截断后台�
   )
   f.clock.advance(2 * minute)
   expect(f.host.status().turnId).not.toBeNull()
-  f.adapters.last.emit({
-    type: "result",
-    subtype: "success",
-    isError: false,
-    durationMs: 2 * minute,
-    numTurns: 1,
-    stopReason: "end_turn",
-    usage: {
-      inputTokens: 1,
-      outputTokens: 1,
-      cacheReadTokens: 0,
-      cacheCreationTokens: 0,
-    },
-  })
+  f.adapters.last.emit(successfulResult)
   await expect(done).resolves.toMatchObject({ status: "succeeded", sessionNoticeHandled: true })
   expect(f.adapters.last.stops).toBe(1)
+})
+
+it("回合成功后停放失败时，先前的通知不能替代清理失败通知", async () => {
+  const f = await fixture()
+  const done = f.host.runScheduledTask(f.task, new AbortController().signal)
+  await waitUntil(() => f.host.status().turnId !== null)
+  vi.spyOn(f.adapters.last, "stop").mockRejectedValueOnce(new SessionClaudeExitError())
+  f.adapters.last.emit(successfulResult)
+
+  const outcome = await done
+  expect(outcome).toMatchObject({ status: "failed", reason: "SESSION_STOP_FAILED" })
+  expect(outcome.sessionNoticeHandled).toBeUndefined()
+  expect(f.events).toContainEqual(
+    expect.objectContaining({ type: "turn-ended", status: "completed" }),
+  )
 })
 
 it("消息发送失败时保留已启动会话，结果不会认领没有发出的通知事件", async () => {

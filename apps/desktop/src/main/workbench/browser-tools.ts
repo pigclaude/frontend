@@ -135,7 +135,13 @@ export function browserSessionTools(
       {},
       (_input, extra) =>
         run("browser_screenshot", extra, async (window, signal) => {
-          const { context, capture } = await browsers.prepareAgentScreenshot(window, id, signal)
+          const { context, capture } = await browsers.prepareAgentScreenshot(
+            window,
+            id,
+            signal,
+            () =>
+              !owner.isDestroyed() && canUse() && approval.denial("browser_screenshot") === null,
+          )
           return {
             context,
             async execute(invocation) {

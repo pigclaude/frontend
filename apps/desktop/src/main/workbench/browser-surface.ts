@@ -1,5 +1,5 @@
 // 内置浏览器使用独立沙箱和 WebContentsView，页面没有桌面 preload 或 Node 能力。
-import { WebContentsView, screen, shell, type BrowserWindow } from "electron"
+import { WebContentsView, shell, type BrowserWindow } from "electron"
 import type { BrowserNavigationTarget } from "../../browser-permission-contract"
 import type {
   WorkbenchBrowserAction,
@@ -39,7 +39,10 @@ import {
 } from "./browser-references"
 import {
   BrowserScreenshotError,
+  browserViewPixelSize,
+  captureBrowserView,
   prepareBrowserScreenshot,
+  releaseBrowserCaptureView,
   type PreparedBrowserScreenshot,
 } from "./browser-screenshot"
 
@@ -219,6 +222,7 @@ export class WorkbenchBrowsers {
     window: BrowserWindow,
     id: string,
     signal?: AbortSignal,
+    canUse: () => boolean = () => true,
   ): Promise<PreparedBrowserScreenshot> {
     const entry = this.#surfaces.get(id)
     const missingPage = "Open a local page in this session before requesting a screenshot."
@@ -226,6 +230,7 @@ export class WorkbenchBrowsers {
       return Promise.reject(new BrowserScreenshotError(missingPage))
     const assertScope = () => {
       if (
+        !canUse() ||
         window.isDestroyed() ||
         entry.error ||
         entry.crashed ||
@@ -237,14 +242,9 @@ export class WorkbenchBrowsers {
     return prepareBrowserScreenshot(
       entry.view.webContents,
       assertScope,
-      () => {
-        const bounds = entry.view.getBounds()
-        const scale = screen.getDisplayMatching(window.getBounds()).scaleFactor
-        return {
-          width: Math.round(bounds.width * scale),
-          height: Math.round(bounds.height * scale),
-        }
-      },
+      () => browserViewPixelSize(window, entry.view),
+      (validate, invocation) =>
+        captureBrowserView(window, entry.view, () => entry.attached, validate, invocation),
       signal,
     )
   }
@@ -297,6 +297,7 @@ export class WorkbenchBrowsers {
       entry.scale = bounds.scale
     }
     if (!entry.attached) {
+      releaseBrowserCaptureView(entry.view)
       window.contentView.addChildView(entry.view)
       entry.attached = true
       this.#publish(id, entry)
@@ -331,6 +332,7 @@ export class WorkbenchBrowsers {
     const entry = this.#surfaces.get(id)
     if (entry?.window !== window) return
     this.#surfaces.delete(id)
+    releaseBrowserCaptureView(entry.view)
     if (!window.isDestroyed() && entry.attached) window.contentView.removeChildView(entry.view)
     if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close()
     if (entry.agent) {

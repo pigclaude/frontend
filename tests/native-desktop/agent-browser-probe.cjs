@@ -1,6 +1,6 @@
 // 使用进程内的合成网页检查原生 Chromium 的 Agent 分区，不访问远程或真实账号。
 
-const { app, BrowserWindow, webContents } = require("electron")
+const { app, BrowserWindow, nativeImage, webContents } = require("electron")
 const { createServer } = require("node:http")
 const { networkInterfaces } = require("node:os")
 const { mkdirSync } = require("node:fs")
@@ -590,17 +590,83 @@ async function actionProbe() {
   }
 }
 
+async function screenshotProbe() {
+  const local = await listen("127.0.0.1", (_request, response) => {
+    response.setHeader("Content-Type", "text/html")
+    response.end(
+      '<!doctype html><title>JPEG fixture</title><body style="background:#249"><h1>Screenshot fixture</h1></body>',
+    )
+  })
+  const owner = new BrowserWindow({
+    width: 960,
+    height: 720,
+    show: false,
+    webPreferences: { sandbox: true },
+  })
+  const browsers = new WorkbenchBrowsers()
+  const id = "agent-screenshot-probe"
+  try {
+    await owner.loadURL(
+      "data:text/html,<title>Workbench fixture</title><main>Workbench fixture</main>",
+    )
+    owner.showInactive()
+    await browsers.agentPage(owner, id, local.url)
+    browsers.present(owner, id, { x: 0, y: 0, width: 800, height: 600, scale: 1 })
+    const shown = await browsers.prepareAgentScreenshot(owner, id)
+    assert.equal((await shown.capture()).mimeType, "image/jpeg")
+    browsers.present(owner, id, null)
+    const originallyAttached = owner.contentView.children.length
+    const prepared = await browsers.prepareAgentScreenshot(owner, id)
+    assert(prepared.context.width > 0 && prepared.context.height > 0)
+    assert(Math.max(prepared.context.width, prepared.context.height) <= 1280)
+    assert(prepared.context.width * prepared.context.height <= 1_200_000)
+    const shot = await prepared.capture()
+    assert.equal(shot.mimeType, "image/jpeg")
+    const bytes = Buffer.from(shot.data, "base64")
+    assert.equal(bytes.readUInt16BE(), 0xffd8)
+    const decoded = nativeImage.createFromBuffer(bytes)
+    assert.equal(decoded.isEmpty(), false)
+    assert.deepEqual(decoded.getSize(), {
+      width: prepared.context.width,
+      height: prepared.context.height,
+    })
+    const { width, height } = decoded.getSize()
+    const pixel = 4 * (Math.floor(height * 0.75) * width + Math.floor(width / 2))
+    const channels = [...decoded.toBitmap().subarray(pixel, pixel + 3)].sort((a, b) => a - b)
+    assert.equal(channels.length, 3)
+    assert(channels.every((value, index) => Math.abs(value - [34, 68, 153][index]) < 15))
+    assert.equal(owner.contentView.children.length, originallyAttached)
+
+    await browsers.agentPage(owner, id, local.url + "/new-document")
+    await assert.rejects(prepared.capture(), /new screenshot approval/i)
+    process.stdout.write(
+      "PASS hidden Agent tab JPEG matches approved size and rejects a changed document\n",
+    )
+  } finally {
+    browsers.closeWindow(owner)
+    owner.destroy()
+    local.close()
+  }
+}
+
 app
   .whenReady()
   .then(async () => {
-    if (!process.argv.includes("--snapshot-only") && !process.argv.includes("--actions-only")) {
+    if (process.argv.includes("--screenshot-only")) {
+      await screenshotProbe()
+      return
+    }
+    const snapshotOnly = process.argv.includes("--snapshot-only")
+    const actionsOnly = process.argv.includes("--actions-only")
+    if (!snapshotOnly && !actionsOnly) {
       await verifyPostPopupBlocked()
       await verifyAgentWebRtcBlocked()
       await verifyMalformedAllowlistBlocked()
       await probe()
     }
-    if (!process.argv.includes("--actions-only")) await snapshotProbe()
-    if (!process.argv.includes("--snapshot-only")) await actionProbe()
+    if (!actionsOnly) await snapshotProbe()
+    if (!snapshotOnly) await actionProbe()
+    if (!snapshotOnly && !actionsOnly) await screenshotProbe()
   })
   .then(
     () => app.exit(0),

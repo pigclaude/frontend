@@ -1,6 +1,13 @@
 // 在批准前读取页面尺寸，批准后截取同一 Agent 页面并限制 JPEG 的体积和像素尺寸。
 
-import { nativeImage, type NativeImage, type WebContents } from "electron"
+import {
+  type BrowserWindow,
+  nativeImage,
+  screen,
+  type NativeImage,
+  type WebContents,
+  type WebContentsView,
+} from "electron"
 import type { BrowserPermissionContext } from "../../browser-permission-contract"
 import { isAgentBrowserAddress } from "./agent-browser-network"
 
@@ -28,6 +35,8 @@ const documentOriginScript = "performance.timeOrigin"
 const changed = "The local page or viewport changed. Request a new screenshot approval."
 const unavailable =
   "Couldn't capture this local page. Open or reload the Agent browser tab and try again."
+const pendingCaptures = new WeakMap<WebContentsView, Promise<NativeImage>>()
+const temporaryAttachments = new WeakMap<WebContentsView, BrowserWindow>()
 
 /** 长边至多 1280 像素，总面积至多 120 万像素，按照原比例缩放。 */
 export function boundedBrowserScreenshotSize({ width, height }: Size): Size {
@@ -42,11 +51,19 @@ export function boundedBrowserScreenshotSize({ width, height }: Size): Size {
   }
 }
 
+/** 用标签保留的原生尺寸和实际显示器倍率计算像素大小。 */
+export function browserViewPixelSize(window: BrowserWindow, view: WebContentsView): Size {
+  const { width, height } = view.getBounds()
+  const scale = screen.getDisplayMatching(window.getBounds()).scaleFactor
+  return { width: Math.round(width * scale), height: Math.round(height * scale) }
+}
+
 /** 核对已有页的范围，执行时只取同一页裁剪后的 JPEG。 */
 export async function prepareBrowserScreenshot(
   contents: WebContents,
   assertScope: () => void,
   readSize: () => Size,
+  readPixels: (validate: () => Promise<void>, signal?: AbortSignal) => Promise<NativeImage>,
   signal?: AbortSignal,
 ): Promise<PreparedBrowserScreenshot> {
   assertScope()
@@ -57,13 +74,95 @@ export async function prepareBrowserScreenshot(
     context: { kind: "screenshot", url: initial.url, ...size },
     async capture(invocation = signal) {
       await waitForPage(contents, invocation)
-      assertSameViewport(initial, await viewport(contents, assertScope, readSize))
-      if (invocation?.aborted) throw new BrowserScreenshotError("The screenshot was cancelled.")
-      const image = await contents.capturePage(undefined, { stayHidden: true, stayAwake: true })
+      const validate = async () => {
+        if (invocation?.aborted) throw new BrowserScreenshotError("The screenshot was cancelled.")
+        assertSameViewport(initial, await viewport(contents, assertScope, readSize))
+      }
+      const image = await readPixels(validate, invocation)
       if (invocation?.aborted) throw new BrowserScreenshotError("The screenshot was cancelled.")
       assertSameViewport(initial, await viewport(contents, assertScope, readSize))
       return { type: "image", mimeType: "image/jpeg", data: encodeJpeg(image, size) }
     },
+  }
+}
+
+/** 提升或关闭用户可见标签时，先解除正在捕获的隐藏挂载。 */
+export function releaseBrowserCaptureView(view: WebContentsView): void {
+  const owner = temporaryAttachments.get(view)
+  temporaryAttachments.delete(view)
+  if (owner && !owner.isDestroyed()) owner.contentView.removeChildView(view)
+}
+
+/** 已脱离的标签只在截取时暂挂到主窗口内容区之外，同一标签按批准顺序读取像素。 */
+export async function captureBrowserView(
+  owner: BrowserWindow,
+  view: WebContentsView,
+  attached: () => boolean,
+  validate: () => Promise<void>,
+  signal?: AbortSignal,
+): Promise<NativeImage> {
+  const previous = pendingCaptures.get(view)?.catch(() => undefined) ?? Promise.resolve()
+  const work = previous.then(async () => {
+    await validate()
+    if (attached()) return captureWithTimeout(view.webContents, validate, signal)
+    const bounds = view.getBounds()
+    temporaryAttachments.set(view, owner)
+    try {
+      view.setBounds({ ...bounds, x: owner.getContentBounds().width, y: 0 })
+      owner.contentView.addChildView(view)
+      return await captureWithTimeout(view.webContents, validate, signal)
+    } finally {
+      if (temporaryAttachments.get(view) === owner) {
+        releaseBrowserCaptureView(view)
+        if (!attached() && !view.webContents.isDestroyed()) view.setBounds(bounds)
+      }
+    }
+  })
+  pendingCaptures.set(view, work)
+  try {
+    return await work
+  } finally {
+    if (pendingCaptures.get(view) === work) pendingCaptures.delete(view)
+  }
+}
+
+async function captureWithTimeout(
+  contents: WebContents,
+  validate: () => Promise<void>,
+  signal?: AbortSignal,
+): Promise<NativeImage> {
+  const deadline = AbortSignal.timeout(loadingTimeoutMs)
+  const interrupted = signal ? AbortSignal.any([signal, deadline]) : deadline
+  const failure = () =>
+    new BrowserScreenshotError(signal?.aborted ? "The screenshot was cancelled." : unavailable)
+  if (interrupted.aborted || contents.isDestroyed()) throw failure()
+  let rejectCapture: (error: Error) => void = () => undefined
+  const cancelled = new Promise<never>((_resolve, reject) => {
+    rejectCapture = reject
+  })
+  const abort = () => rejectCapture(failure())
+  interrupted.addEventListener("abort", abort, { once: true })
+  contents.once("destroyed", abort)
+  const previousThrottling = contents.backgroundThrottling
+  try {
+    contents.backgroundThrottling = false
+    await Promise.race([
+      contents.executeJavaScriptInIsolatedWorld(screenshotWorld, [
+        {
+          code: "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))",
+        },
+      ]),
+      cancelled,
+    ])
+    await Promise.race([validate(), cancelled])
+    return await Promise.race([
+      contents.capturePage(undefined, { stayHidden: true, stayAwake: true }),
+      cancelled,
+    ])
+  } finally {
+    if (!contents.isDestroyed()) contents.backgroundThrottling = previousThrottling
+    interrupted.removeEventListener("abort", abort)
+    contents.removeListener("destroyed", abort)
   }
 }
 

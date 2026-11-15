@@ -10,8 +10,10 @@ import { ClaudeAgentAdapter } from "../session/claude-agent-adapter"
 import { FakeQuery } from "../session/claude-agent-adapter-fixtures"
 import { createHarness } from "../session/session-host-fixtures"
 import type { SessionPermissionMode } from "../session/session-types"
+import { syntheticJpegBase64 } from "../../test-support/synthetic-jpeg"
 import { BrowserActionError, type PreparedBrowserAction } from "./browser-action-request"
 import { connectBrowserClient } from "./browser-approval-mcp-fixture"
+import type { PreparedBrowserScreenshot } from "./browser-screenshot"
 import type { WorkbenchBrowsers } from "./browser-surface"
 import { browserSessionTools } from "./browser-tools"
 
@@ -31,6 +33,12 @@ const clickContext = {
   name: "Verified synthetic action",
 } as const
 const historyContext = { kind: "navigate", action: "back", url: target } as const
+const screenshotContext = { kind: "screenshot", url: target, width: 2, height: 2 } as const
+const screenshotImage = {
+  type: "image",
+  mimeType: "image/jpeg",
+  data: syntheticJpegBase64,
+} as const
 
 afterEach(async () => {
   while (shutdown.length) await shutdown.pop()?.()
@@ -73,7 +81,16 @@ async function fixture(permissionMode: SessionPermissionMode = "default") {
     context: historyContext,
     execute: navigate,
   }))
-  const browsers = { prepareAgentClick, prepareAgentNavigation } as unknown as WorkbenchBrowsers
+  const capture = vi.fn(async () => screenshotImage)
+  const prepareAgentScreenshot = vi.fn(async (): Promise<PreparedBrowserScreenshot> => ({
+    context: screenshotContext,
+    capture,
+  }))
+  const browsers = {
+    prepareAgentClick,
+    prepareAgentNavigation,
+    prepareAgentScreenshot,
+  } as unknown as WorkbenchBrowsers
   const owner = { isDestroyed: () => false } as unknown as WebContents
   const window = { id: native.size + 1 } as unknown as BrowserWindow
   native.set(owner, window)
@@ -104,6 +121,7 @@ async function fixture(permissionMode: SessionPermissionMode = "default") {
     cards,
     navigate,
     click,
+    capture,
     prepareAgentNavigation,
     prepareAgentClick,
     loseMembership: () => {
@@ -166,6 +184,37 @@ it("计划档从 SDK 和实际工具入口都拒绝导航和点击", async () =>
   expect(f.prepareAgentClick).not.toHaveBeenCalled()
   expect(f.navigate).not.toHaveBeenCalled()
   expect(f.click).not.toHaveBeenCalled()
+})
+
+it("计划档的截图仍经实际工具单独审批，批准后才返回 JPEG", async () => {
+  const f = await fixture("plan")
+  const toolName = "mcp__pigclaude_workbench__browser_screenshot"
+  const toolUseID = "plan-screenshot"
+  await expect(f.canUseTool(toolName, {}, sdkRequest(toolUseID))).resolves.toMatchObject({
+    behavior: "allow",
+  })
+  expect(f.cards()).toHaveLength(0)
+  const call = f.client.callTool({
+    name: "browser_screenshot",
+    arguments: {},
+    _meta: { "claudecode/toolUseId": toolUseID },
+  })
+  void call.catch(() => undefined)
+  await vi.waitFor(() => expect(f.cards()).toHaveLength(1))
+  const [card] = f.cards()
+  if (!card) throw new Error("缺少截图审批")
+  expect(card).toMatchObject({
+    toolName,
+    browser: screenshotContext,
+    input: { width: 2, height: 2 },
+  })
+  expect(f.capture).not.toHaveBeenCalled()
+
+  await f.decide(card.requestId, "allow")
+  await expect(call).resolves.toMatchObject({
+    content: [{ type: "text", text: "Browser screenshot (2 × 2)." }, screenshotImage],
+  })
+  expect(f.capture).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal))
 })
 
 it("同参点击各自绑定子代理和目标；会员撤销时批准也不会执行", async () => {

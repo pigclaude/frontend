@@ -1,4 +1,4 @@
-// 沙箱页面只管理 Worker 与消息端口，遇到取消、超时或崩溃时终止 Worker。
+// 沙箱页面管理 Worker 和专用消息端口，每次调用结束时先终止当前 Worker。
 function attach(event) {
   if (
     event.source !== window ||
@@ -9,81 +9,107 @@ function attach(event) {
   const main = event.ports[0]
   if (!main) return
   window.removeEventListener("message", attach)
-  let worker
-  let broker
+  let configuration
+  let active
   let current
   let expiry
-  let started = false
+  let acceptingCalls = false
 
-  function stop() {
+  function retire() {
     clearTimeout(expiry)
-    worker?.terminate()
-    broker?.close()
-    worker = undefined
-    broker = undefined
-    started = false
+    const retired = active
+    active = undefined
+    retired?.worker.terminate()
+    retired?.broker.close()
+  }
+
+  function complete(response) {
+    current = undefined
+    // 主进程收到结果后可以立即给下一次调用分配网络权限。
+    retire()
+    main.postMessage(response)
+  }
+
+  function fatal(code) {
+    acceptingCalls = false
+    complete({ type: "fatal", code })
   }
 
   function crash() {
-    stop()
-    main.postMessage({ type: "fatal", code: "PLUGIN_SANDBOX_CRASHED" })
+    fatal("PLUGIN_SANDBOX_CRASHED")
   }
 
-  function start(entry, limit) {
-    if (worker) return
+  function sendCall(generation) {
+    if (!current) return
+    const { id, operation, payload } = current
+    try {
+      generation.broker.postMessage({ id, operation, payload })
+    } catch {
+      crash()
+    }
+  }
+
+  function start() {
     const link = new MessageChannel()
-    worker = new Worker("/runtime/worker.mjs", { type: "module" })
-    broker = link.port1
+    const worker = new Worker("/runtime/worker.mjs", { type: "module" })
+    const broker = link.port1
+    const generation = { worker, broker, ready: false }
+    active = generation
+    const onError = () => {
+      if (active === generation) crash()
+    }
     broker.onmessage = ({ data }) => {
-      if (!data || typeof data !== "object") return
-      if (data.type === "ready" && !started) {
-        started = true
-        main.postMessage({ type: "ready" })
+      if (active !== generation || !data || typeof data !== "object") return
+      if (data.type === "ready" && !generation.ready) {
+        generation.ready = true
+        if (!acceptingCalls) {
+          acceptingCalls = true
+          main.postMessage({ type: "ready" })
+        }
+        sendCall(generation)
       } else if (data.type === "fatal") {
-        stop()
-        main.postMessage({
-          type: "fatal",
-          code: data.code === "PLUGIN_SANDBOX_UNAVAILABLE" ? data.code : "PLUGIN_LOAD_FAILED",
-        })
+        fatal(data.code === "PLUGIN_SANDBOX_UNAVAILABLE" ? data.code : "PLUGIN_LOAD_FAILED")
       } else if (
         current &&
-        data.id === current &&
+        data.id === current.id &&
         (data.type === "result" || data.type === "failure")
       ) {
-        clearTimeout(expiry)
-        current = undefined
-        main.postMessage(data)
+        complete(data)
       }
     }
-    broker.onmessageerror = crash
-    worker.onerror = crash
-    worker.onmessageerror = crash
-    worker.postMessage({ entry, limit }, [link.port2])
+    broker.onmessageerror = onError
+    worker.onerror = onError
+    worker.onmessageerror = onError
+    worker.postMessage(configuration, [link.port2])
   }
 
   main.onmessage = ({ data }) => {
     if (!data || typeof data !== "object") return
-    if (data.type === "init") {
+    if (data.type === "init" && !configuration) {
+      configuration = { entry: data.entry, limit: data.limit }
       try {
-        start(data.entry, data.limit)
+        start()
       } catch {
         crash()
       }
-    } else if (data.type === "invoke" && started && broker && !current) {
-      current = data.id
+    } else if (data.type === "invoke" && acceptingCalls && !current) {
+      current = data
       expiry = setTimeout(() => {
-        const id = current
-        current = undefined
-        stop()
-        main.postMessage({ type: "failure", id, code: "PLUGIN_TIMEOUT" })
+        acceptingCalls = false
+        complete({ type: "failure", id: data.id, code: "PLUGIN_TIMEOUT" })
       }, data.timeout)
-      broker.postMessage({ id: data.id, operation: data.operation, payload: data.payload })
-    } else if (data.type === "cancel" && data.id === current) {
-      current = undefined
-      stop()
-      main.postMessage({ type: "failure", id: data.id, code: "PLUGIN_CANCELLED" })
+      try {
+        if (!active) start()
+        else if (active.ready) sendCall(active)
+      } catch {
+        crash()
+      }
+    } else if (data.type === "cancel" && current && data.id === current.id) {
+      acceptingCalls = false
+      complete({ type: "failure", id: data.id, code: "PLUGIN_CANCELLED" })
     } else if (data.type === "close") {
-      stop()
+      current = undefined
+      retire()
       main.close()
     }
   }

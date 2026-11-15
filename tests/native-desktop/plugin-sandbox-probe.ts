@@ -281,7 +281,22 @@ async function verifyIsolation(host: PluginSandboxHost): Promise<void> {
 
 async function verifyRecovery(host: PluginSandboxHost): Promise<void> {
   assert.equal(await host.invoke(source, counter), 1)
-  assert.equal(await host.invoke(source, counter), 2)
+  const shared = BrowserWindow.getAllWindows()[0]
+  if (!shared) throw new Error("缺少复用窗口")
+  // 记录合成调用返回前，受信监督页是否已要求本代 Worker 终止。
+  await shared.webContents.executeJavaScript(`
+    (() => {
+      const terminate = Worker.prototype.terminate
+      window.fixtureWorkerTerminations = 0
+      Worker.prototype.terminate = function () {
+        window.fixtureWorkerTerminations++
+        return terminate.call(this)
+      }
+    })()
+  `)
+  assert.equal(await host.invoke(source, counter), 1)
+  assert.equal(BrowserWindow.getAllWindows()[0]?.id, shared.id)
+  assert.equal(await shared.webContents.executeJavaScript("window.fixtureWorkerTerminations"), 1)
   assert.equal(await host.invoke({ ...source, egressId: "isolated-route" }, counter), 1)
   assert.equal(BrowserWindow.getAllWindows().length, 2)
   await assert.rejects(host.invoke(source, { operation: "raise", input: null }), {
@@ -290,6 +305,7 @@ async function verifyRecovery(host: PluginSandboxHost): Promise<void> {
   await assert.rejects(host.invoke(source, { operation: "large", input: null }), {
     message: "PLUGIN_RESULT_INVALID",
   })
+  assert.equal(await shared.webContents.executeJavaScript("window.fixtureWorkerTerminations"), 3)
   await assert.rejects(host.invoke(source, busy, { timeoutMs: 100 }), { message: "PLUGIN_TIMEOUT" })
   assert.equal(await host.invoke(source, counter), 1)
 

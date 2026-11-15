@@ -92,6 +92,12 @@ vi.mock("electron", () => ({
       once() {}
       on() {}
       setBackgroundColor() {}
+      isDestroyed() {
+        return false
+      }
+      isMinimized() {
+        return false
+      }
       show() {}
       focus() {
         fixture.focusCalls++

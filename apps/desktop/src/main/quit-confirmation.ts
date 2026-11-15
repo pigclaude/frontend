@@ -25,6 +25,7 @@ export type QuitConfirmationOptions = {
 export type GuardedWindow = {
   on(event: "close", listener: (event: { preventDefault(): void }) => void): unknown
   close(): void
+  hide(): void
   isDestroyed(): boolean
 }
 
@@ -32,10 +33,12 @@ export type GuardedWindow = {
 export type QuitConfirmation = {
   /** 没有要处理的事时立即得到 true；否则问用户，可以离开时得到 true。不会失败。 */
   confirm(action: LeaveAction): true | Promise<boolean>
-  /** 主窗口关闭前确认；用户取消或保存失败时窗口保持打开，会话、审批和文件都不受影响。 */
-  guardClose(window: GuardedWindow): void
+  /** 关窗可按偏好隐藏；真正关闭时才确认会话、审批和未保存的文件。 */
+  guardClose(window: GuardedWindow, closeToTray?: () => boolean): void
   /** 用户已经同意离开：之后的关窗和页面卸载不再询问。 */
   leaving(): boolean
+  /** 系统要求退出时放行关闭；迟到的对话框回答不会触发保存或丢弃。 */
+  allowSystemShutdown(): void
   /** 离开没有完成（例如退出时资源没能关闭）时撤回同意，下次离开重新询问。 */
   reset(): void
 }
@@ -45,15 +48,20 @@ export function createQuitConfirmation(options: QuitConfirmationOptions): QuitCo
   let asking: Promise<boolean> | null = null
   let approved = false
   const settle = async (answer: LeaveAnswer, work: LeaveWork): Promise<boolean> => {
+    if (approved) return true
     if (answer === "stay") return false
     if (answer === "save") return options.saveFiles().catch(() => false)
     if (work.unsavedFiles > 0) await options.discardFiles().catch(() => undefined)
     return true
   }
   const confirm = (action: LeaveAction): true | Promise<boolean> => {
+    if (approved) return true
     if (asking !== null) return asking
     const work = options.pendingWork()
-    if (!hasPendingWork(work)) return true
+    if (!hasPendingWork(work)) {
+      approved = true
+      return true
+    }
     // 问不出答案时放行，不能让用户退不出应用；未保存的文件仍由页面拦下刷新和关闭。
     const question = options
       .ask(work, action)
@@ -62,8 +70,8 @@ export function createQuitConfirmation(options: QuitConfirmationOptions): QuitCo
         () => true,
       )
       .then((leave) => {
-        approved = leave
-        return leave
+        approved ||= leave
+        return approved
       })
       .finally(() => {
         asking = null
@@ -74,15 +82,23 @@ export function createQuitConfirmation(options: QuitConfirmationOptions): QuitCo
   return {
     confirm,
     leaving: () => approved,
+    allowSystemShutdown() {
+      approved = true
+    },
     reset() {
       approved = false
     },
-    guardClose(window) {
+    guardClose(window, closeToTray) {
       let confirmed = false
       approved = false
       window.on("close", (event) => {
         if (approved || confirmed) {
           confirmed = false
+          return
+        }
+        if (asking === null && closeToTray?.()) {
+          event.preventDefault()
+          window.hide()
           return
         }
         if (asking === null && !hasPendingWork(options.pendingWork())) return

@@ -1,8 +1,6 @@
 // 负责「通用」「会话」「托盘与菜单栏」三个应用设置页；「外观」见 appearance/appearance-page.tsx。
 import { desktopText } from "../../locale/text"
 import { useSidebarGrouping } from "@pigclaude/ui-primitives"
-import { Button } from "../../components/ui/button"
-import type { NavLocation } from "../../models/navigation"
 import type { ClaudeModel } from "../../../../main/session/session-types"
 import { LockedValue, Segmented } from "./setting-controls"
 import { SettingPage, SettingRow, SettingSection } from "./setting-page"
@@ -10,6 +8,7 @@ import { DefaultModelRow, DefaultPermissionRow } from "./session-default-rows"
 import { UpdateSettingsSection } from "./update-settings"
 import type { SessionHistoryController } from "../../hooks/use-session-history"
 import { SessionRetentionSettings } from "./session-retention-settings"
+import { WindowCloseSetting } from "./window-close-setting"
 
 /** 通用：启动、Dock、快捷键、更新和侧栏会话分组。 */
 export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
@@ -90,17 +89,11 @@ export function SessionSettings({
 }
 
 /** 托盘与菜单栏：菜单栏文字和托盘面板内容。 */
-export function MenubarSettings({ onNavigate }: { onNavigate: (location: NavLocation) => void }) {
+export function MenubarSettings() {
   return (
-    <SettingPage
-      title={desktopText("settings.settings-app-pages.39")}
-      actions={
-        <Button variant="ghost" onClick={() => onNavigate({ kind: "tray" })}>
-          {desktopText("settings.settings-app-pages.40")}
-        </Button>
-      }
-    >
+    <SettingPage title={desktopText("settings.settings-app-pages.39")}>
       <SettingSection>
+        <WindowCloseSetting />
         <SettingRow
           title={desktopText("settings.settings-app-pages.41")}
           description={desktopText("settings.settings-app-pages.42")}

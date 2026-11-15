@@ -41,6 +41,8 @@ import { createDesktopComposition, type DesktopComposition } from "./composition
 import { DeviceIdentityService } from "./device-identity"
 import { readDeviceInfo } from "./device-identity/device-info"
 import { readDockIconDataUrl } from "./dock-icon"
+import { createDesktopTray } from "./desktop-tray"
+import { showMainWindow } from "./main-window-visibility"
 import { configureRuntimeProfile } from "./runtime-profile"
 import { registerMembershipIpc } from "./membership/ipc"
 import { readDesktopRuntimeEndpoints } from "./runtime-endpoints"
@@ -54,7 +56,7 @@ import { startSessionStore } from "./session/session-store-startup"
 import type { SessionHost } from "./session/session-host"
 import { assembleSessionServices } from "./session/session-assembly"
 import { registerSessionIpc } from "./session/session-ipc"
-import { installQuitFlow } from "./quit-flow"
+import { installQuitFlow, watchPowerShutdown } from "./quit-flow"
 import { noPendingWork } from "./session/session-host-support"
 import { applyLoginShellPath } from "./login-shell-path"
 import { shutdownDesktopResources } from "./shutdown-resources"
@@ -62,6 +64,7 @@ import type { UsageRecorder } from "./session/usage-recorder"
 import { FileSecretVault } from "./secret-vault"
 import { registerFolderPickerIpc } from "./folder-picker"
 import { forwardFullScreen, registerWindowIpc } from "./window-ipc"
+import { registerWindowClosePreference, WindowClosePreference } from "./window-close-preference"
 import { electronMenuFactory } from "./native-menu"
 import { errorMessage } from "./error-message"
 import { applyGlassBackground } from "./glass-background"
@@ -99,6 +102,11 @@ let authorizationReady = false
 let shutdownStarted = false
 let cleanupLiveEvents = () => {}
 let appUpdates: UpdateService | null = null
+const closePreference = new WindowClosePreference(
+  join(app.getPath("userData"), "window-preferences.json"),
+  process.platform,
+)
+let tray: ReturnType<typeof createDesktopTray> = null
 
 if (!hasSingleInstanceLock) {
   app.quit()
@@ -108,8 +116,7 @@ if (!hasSingleInstanceLock) {
     app,
     onCallback: handleCallbackUrl,
     onSecondInstance: () => {
-      mainWindow?.show()
-      mainWindow?.focus()
+      if (!shutdownStarted) showMainWindow(mainWindow)
     },
   })
   if (process.platform === "win32" || process.platform === "linux") {
@@ -130,7 +137,7 @@ if (!hasSingleInstanceLock) {
         console.error(authorizationSetupError)
       }
       // 会话和工作台终端在窗口打开后才可能启动，它们要用合并后的 PATH。
-      await loginShellPath
+      await Promise.all([loginShellPath, closePreference.get()])
       if (shutdownStarted) {
         closeStartupEvents()
         // 初始化可能晚于第一次关闭才建立服务；只清理，不重新开窗或放行回调。
@@ -138,6 +145,7 @@ if (!hasSingleInstanceLock) {
         return
       }
       createWindow()
+      tray = createDesktopTray(restoreMainWindow)
       if (initialized) {
         authorizationReady = true
         callbackReceiver?.ready()
@@ -145,9 +153,7 @@ if (!hasSingleInstanceLock) {
         void reportDeviceInfoOnStartup()
       }
       startAppUpdates()
-      app.on("activate", () => {
-        if (!shutdownStarted && BrowserWindow.getAllWindows().length === 0) createWindow()
-      })
+      app.on("activate", restoreMainWindow)
     })
     .catch(() => {
       closeStartupEvents()
@@ -160,6 +166,8 @@ const guardMainWindowClose = installQuitFlow({
   pendingWork: () => sessionHost?.pendingWork() ?? noPendingWork,
   unsaved: workbench.unsaved,
   mainWindow: () => mainWindow,
+  closeToTray: () => tray !== null && closePreference.current(),
+  ...(hasSingleInstanceLock ? { watchPowerShutdown } : {}),
   shutdown: shutdownDesktop,
   onBeforeShutdown: () => {
     shutdownStarted = true
@@ -167,13 +175,15 @@ const guardMainWindowClose = installQuitFlow({
     closeStartupEvents()
   },
   onCancel: () => appUpdates?.cancelRestart(),
-  finishQuit: () => {
+  finishQuit: (mode) => {
+    if (mode === "system") return app.exit()
     if (!appUpdates?.restartRequested()) return app.quit()
     void appUpdates.installAndRestart().finally(() => app.quit())
   },
 })
 
 function registerIpcHandlers(): void {
+  registerWindowClosePreference(ipcMain, isTrustedSender, closePreference)
   let claudeCodeVersion = readClaudeCodeVersion()
   ipcMain.handle("pigclaude:app-info", async () => {
     const version = await claudeCodeVersion
@@ -278,6 +288,8 @@ async function shutdownDesktop(): Promise<void> {
     xray: () => startProxyRuntime.dispose(),
     callback: () => callbackServer?.close() ?? Promise.resolve(),
   })
+  tray?.destroy()
+  tray = null
 }
 
 /** 窗口打开后开始检查更新；更新服务建不起来只记日志，不影响应用其余部分。 */
@@ -407,8 +419,7 @@ async function handleCallbackUrl(url: string): Promise<AuthorizationStateEvent |
   const result = await authorizationService.handleCallback(url)
   if (result.sessionId && authorizationReady && !shutdownStarted) {
     sendAuthorizationState(result)
-    mainWindow?.show()
-    mainWindow?.focus()
+    showMainWindow(mainWindow)
   }
   return result
 }
@@ -446,6 +457,10 @@ function isTrustedSender(event: Electron.IpcMainInvokeEvent): boolean {
   )
 }
 
+function restoreMainWindow(): void {
+  if (!shutdownStarted && !showMainWindow(mainWindow)) createWindow()
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow(
     createMainWindowOptions({
@@ -470,7 +485,6 @@ function createWindow(): void {
   applyGlassBackground(mainWindow, process.platform, nativeTheme.shouldUseDarkColors)
   mainWindow.once("ready-to-show", () => mainWindow?.show())
   mainWindow.once("closed", () => {
-    void sessionHost?.stop().catch(() => undefined)
     mainWindow = null
   })
 }

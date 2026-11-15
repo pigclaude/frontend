@@ -173,6 +173,7 @@ function fakeWindow(): FakeWindow {
       window.closes += 1
       window.requestClose()
     },
+    hide() {},
     isDestroyed: () => destroyed,
     requestClose() {
       let prevented = false

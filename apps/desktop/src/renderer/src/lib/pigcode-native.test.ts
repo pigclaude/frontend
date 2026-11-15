@@ -9,6 +9,8 @@ function bridge(): PigclaudeBridge {
     setTheme: vi.fn(async () => undefined),
     pickFolder: vi.fn(async () => "/work/demo"),
     window: {
+      getCloseToTray: vi.fn(async () => false),
+      setCloseToTray: vi.fn(async (value) => value),
       control: vi.fn(async () => undefined),
       isMaximized: vi.fn(async () => true),
       isFullScreen: vi.fn(async () => false),

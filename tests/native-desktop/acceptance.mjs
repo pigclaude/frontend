@@ -9,7 +9,11 @@ import { promisify } from "node:util"
 import { _electron, expect } from "@playwright/test"
 import { startMembershipFixture } from "./membership-fixture.mjs"
 import { collectPolicyViolations, verifyRendererHardening } from "./renderer-hardening.mjs"
-import { verifySystemClose, verifySystemControls } from "./window-controls.mjs"
+import {
+  verifyBackgroundClose,
+  verifySystemClose,
+  verifySystemControls,
+} from "./window-controls.mjs"
 import { systemInput } from "./system-pointer.mjs"
 import { verifyWorkbench } from "./workbench.mjs"
 
@@ -327,6 +331,8 @@ try {
     Boolean(process.env.PIGCLAUDE_DEV_PROVIDER_BASE_URL),
   )
   pass("native workbench")
+  await verifyBackgroundClose(application, page)
+  pass("closing the window hides it and the same window reopens")
 
   if (platform !== "darwin") {
     await page.evaluate(() => window.pigclaude.window.control("minimize"))
@@ -393,6 +399,8 @@ try {
   await expect(screen(page, "chat")).toBeVisible()
   assert.equal(await page.evaluate(() => localStorage.getItem("pigclaude.sidebarWidth")), "322")
   pass("full Electron restart retains encrypted login and sidebar width")
+  assert.equal(await page.evaluate(() => window.pigclaude.window.getCloseToTray()), false)
+  pass("window-close preference retained after restart")
   await page.getByRole("button", { name: "设置", exact: true }).click()
   await expect(screen(page, "general")).toBeVisible()
   await page.getByRole("button", { name: "Claude 账号", exact: true }).click()
@@ -419,7 +427,8 @@ try {
   pass("sandboxed main window under a CSP that refuses eval, inline and remote scripts")
   if (platform !== "darwin") {
     await verifySystemClose(application, page, out)
-    pass("system close button emits native window close")
+    await expect.poll(() => processRunning(applicationPid)).toBe(false)
+    pass("system close button exits when close-to-tray is off")
   }
 } catch (error) {
   report.error = String(error)

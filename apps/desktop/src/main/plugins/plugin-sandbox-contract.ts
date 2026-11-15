@@ -47,8 +47,34 @@ export function pluginSandboxKey(source: PluginSandboxSource): string {
 /** Worker 将操作名与输入交给入口模块的默认导出。 */
 export type PluginSandboxCall = { readonly operation: string; readonly input: PluginSandboxJson }
 
-/** 调用方可取消一次调用或缩短它的最长执行时间。 */
-export type PluginSandboxCallOptions = { signal?: AbortSignal; timeoutMs?: number }
+/** Worker 在当前调用中可申请的白名单操作。 */
+export type PluginSandboxCapabilityMethod =
+  | "storage.get"
+  | "storage.set"
+  | "storage.delete"
+  | "secrets.get"
+  | "secrets.set"
+  | "secrets.delete"
+  | "workspace.readText"
+  | "notifications.show"
+  | "composer.insert"
+
+/** 一次调用可以使用的能力与主进程实现，只有名称和 JSON 跨过端口。 */
+export type PluginSandboxCapabilityScope = {
+  readonly methods: readonly PluginSandboxCapabilityMethod[]
+  request(
+    method: PluginSandboxCapabilityMethod,
+    args: readonly PluginSandboxJson[],
+    signal: AbortSignal,
+  ): Promise<PluginSandboxJson>
+}
+
+/** 调用方可以取消、限制时间或为本次调用附加已经授权的能力。 */
+export type PluginSandboxCallOptions = {
+  signal?: AbortSignal
+  timeoutMs?: number
+  capabilities?: PluginSandboxCapabilityScope
+}
 
 /** 进程边界只返回固定错误码，不转发 Chromium 错误、文件路径、堆栈或插件抛出的字符串。 */
 export type PluginSandboxErrorCode =
@@ -64,6 +90,7 @@ export type PluginSandboxErrorCode =
   | "PLUGIN_CANCELLED"
   | "PLUGIN_PAYLOAD_INVALID"
   | "PLUGIN_RESULT_INVALID"
+  | "PLUGIN_CAPABILITY_DENIED"
 
 /** 主进程使用固定错误码报告沙箱故障。 */
 export class PluginSandboxError extends Error {

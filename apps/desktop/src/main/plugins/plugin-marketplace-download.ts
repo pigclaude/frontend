@@ -23,25 +23,29 @@ export async function loadMarketplaceArchive(
     source.kind === "github"
       ? `https://codeload.github.com/${source.repo}/tar.gz/${source.commit}`
       : source.url
-  const bytes = await download(url, source.kind === "https", fetcher)
+  const bytes = await downloadMarketplaceBytes(url, fetcher, {
+    byteLimit: pluginArchiveLimits.inputBytes,
+    allowHttpsRedirects: source.kind === "https",
+  })
   return readPluginArchiveBytes(bytes, expected)
 }
 
-async function download(
+/** 有界读取 HTTPS 响应，可由普通归档来源选择是否接受 HTTPS 跳转。 */
+export async function downloadMarketplaceBytes(
   initial: string,
-  followHttps: boolean,
   fetcher: typeof fetch,
+  { byteLimit, allowHttpsRedirects }: { byteLimit: number; allowHttpsRedirects?: boolean },
 ): Promise<Buffer> {
   const signal = AbortSignal.timeout(downloadTimeoutMs)
-  let url = initial
   try {
+    let url = normalizeMarketplaceHttpsUrl(initial)
     for (let hop = 0; hop <= maximumRedirects; hop += 1) {
       const response = await fetcher(url, {
         redirect: "manual",
         credentials: "omit",
         signal,
       })
-      if (followHttps && redirects.has(response.status) && !response.redirected) {
+      if (allowHttpsRedirects && redirects.has(response.status) && !response.redirected) {
         const location = response.headers.get("location")
         await closeResponse(response)
         if (location === null || hop === maximumRedirects) throw unavailable()
@@ -52,7 +56,7 @@ async function download(
         await closeResponse(response)
         throw unavailable()
       }
-      return await responseBytes(response)
+      return await responseBytes(response, byteLimit)
     }
   } catch (error) {
     if (error instanceof PluginArchiveError) throw error
@@ -61,8 +65,7 @@ async function download(
   throw unavailable()
 }
 
-async function responseBytes(response: Response): Promise<Buffer> {
-  const limit = pluginArchiveLimits.inputBytes
+async function responseBytes(response: Response, limit: number): Promise<Buffer> {
   if (Number(response.headers.get("content-length")) > limit) {
     await closeResponse(response)
     throw new PluginArchiveError("PLUGIN_ARCHIVE_TOO_LARGE")

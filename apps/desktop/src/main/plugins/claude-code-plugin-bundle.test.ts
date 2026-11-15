@@ -89,6 +89,83 @@ it("由同一份源码原样保留技能和子树资源，排除顶层运行配�
   const cached = synthesizeClaudeCodePlugin(bundle.files, "review-kit")
   expect(cached.files).toEqual(bundle.files)
   expect(cached.manifest).toEqual({ ...bundle.manifest, ignoredComponents: [] })
+  expect(cached.executionClaims).toEqual(bundle.executionClaims)
+})
+
+it("同名 skill 扩大 YAML allowlist 会增加一条声明指纹，重排和重复不增加声明", () => {
+  const key = "skill-allowed-tools:fixture:review"
+  const pack = (tools: string) =>
+    synthesizeClaudeCodePlugin(
+      files({
+        "skills/review/SKILL.md": "---\nallowed-tools: " + tools + "\n---\nRead a local fixture.",
+      }),
+      "fixture",
+    )
+  const original = pack("[Read, Grep]")
+  const reordered = pack("[Grep, Read, Grep]")
+  const expanded = pack("[Read, Grep, Glob]")
+  expect(original.manifest.skillExecution).toEqual(expanded.manifest.skillExecution)
+  expect(reordered.executionClaims).toEqual(original.executionClaims)
+  expect(pack("Read, Grep").executionClaims).toEqual(original.executionClaims)
+  expect(original.executionClaims[key]).toHaveLength(2)
+  expect(expanded.executionClaims[key]).toEqual(
+    expect.arrayContaining([...(original.executionClaims[key] ?? [])]),
+  )
+  expect(expanded.executionClaims[key]).toHaveLength(3)
+  expect(expanded.executionClaims[key]?.every((claim) => /^[0-9a-f]{64}$/.test(claim))).toBe(true)
+})
+
+it("带括号的标量工具规则保持为一个声明，修改规则会更换指纹", () => {
+  const pack = (tool: string) =>
+    synthesizeClaudeCodePlugin(
+      files({
+        "skills/review/SKILL.md":
+          "---\nallowed-tools: " + JSON.stringify(tool) + "\n---\nRead the local example.",
+      }),
+      "fixture",
+    )
+  const key = "skill-allowed-tools:fixture:review"
+  const first = pack("Read(example, one.txt) Grep")
+  const changed = pack("Read(example, two.txt) Grep")
+  expect(first.executionClaims[key]).toHaveLength(1)
+  expect(changed.executionClaims[key]).toHaveLength(1)
+  expect(changed.executionClaims[key]).not.toEqual(first.executionClaims[key])
+})
+
+it("inline 和文件头 hooks 对合成的执行内容留指纹，普通正文不产生声明", () => {
+  const pack = (inline: string, hook: string, summary: string) =>
+    synthesizeClaudeCodePlugin(
+      files({
+        "skills/review/SKILL.md": [
+          "---",
+          "hooks:",
+          "  PreToolUse:",
+          "    - hooks:",
+          "        - type: command",
+          "          command: " + JSON.stringify(hook),
+          "---",
+          summary,
+          "!\u0060" + inline + "\u0060",
+        ].join("\n"),
+      }),
+      "fixture",
+    )
+  const first = pack("printf one", "printf first", "Fixture description.")
+  const changed = pack("printf two", "printf second", "Fixture description.")
+  const proseOnly = pack("printf one", "printf first", "Updated fixture description.")
+  for (const key of ["skill-inline:fixture:review", "skill-hooks:fixture:review"]) {
+    expect(first.executionClaims[key]).toHaveLength(1)
+    expect(changed.executionClaims[key]).not.toEqual(first.executionClaims[key])
+  }
+  expect(proseOnly.executionClaims).toEqual(first.executionClaims)
+  expect(
+    synthesizeClaudeCodePlugin(
+      files({
+        "skills/review/SKILL.md": "Read the plain fixture.",
+      }),
+      "fixture",
+    ).executionClaims,
+  ).toEqual({})
 })
 
 it("按锁定 CLI 的规则保留自定义命令路径、额外技能和显式代理", () => {
@@ -190,7 +267,29 @@ it("只输出命名文件命令和内联命令的受支持字段", () => {
   expect(bundle.manifest.skillExecution).toEqual([
     { name: "fixture:inline", inline: false, hooks: false, allowedTools: true },
   ])
+  expect(bundle.executionClaims["skill-allowed-tools:fixture:inline"]).toEqual([
+    expect.stringMatching(/^[0-9a-f]{64}$/),
+  ])
   expect(synthesizeClaudeCodePlugin(bundle.files, "fixture").files).toEqual(bundle.files)
+})
+
+it("移除命名命令的清单工具字段后重新比较留存的文件头工具声明", () => {
+  const pack = (allowedTools?: string[]) =>
+    synthesizeClaudeCodePlugin(
+      files({
+        [manifestFile]: JSON.stringify({
+          name: "fixture",
+          commands: { read: { source: "./custom/read.md", allowedTools } },
+        }),
+        "custom/read.md": "---\nallowed-tools: [Read, Grep]\n---\nRead the local fixture.",
+      }),
+      "unused",
+    )
+  const key = "skill-allowed-tools:fixture:read"
+  const before = pack(["Read"]).executionClaims[key]
+  const after = pack().executionClaims[key]
+  expect(after).toHaveLength(2)
+  expect(after?.filter((fingerprint) => !before?.includes(fingerprint))).toHaveLength(2)
 })
 
 it("把无清单的根 skill 与其资源归入标准目录", () => {

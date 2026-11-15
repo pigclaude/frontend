@@ -6,6 +6,7 @@ import type {
   ClaudeCodePluginSkillExecution,
 } from "../../capability-plugin-contract"
 import { readClaudeMarkdown, skillExecutionOf } from "../session/claude-markdown"
+import { claudeCodeExecutionClaims } from "./claude-code-execution-claims"
 import {
   claudeCodePluginManifestFile,
   isPluginHookFile,
@@ -23,13 +24,19 @@ export type ClaudeCodePluginBundle = {
   manifest: ClaudeCodePluginManifest
   files: ReadonlyMap<string, Buffer>
   menuCommands: string[]
+  /** 给主进程更新比较使用的执行声明内容指纹。 */
+  executionClaims: Readonly<Record<string, readonly string[]>>
 }
 
 type PluginFiles = ReadonlyMap<string, Buffer>
-type ReadMarkdown = ReturnType<typeof readClaudeMarkdown>
+type ReadMarkdown = ReturnType<typeof readClaudeMarkdown> & { header: string }
 type AddFile = (path: string, contents: Buffer) => void
 type Execution = ReturnType<typeof skillExecutionOf>
-type DiscloseExecution = (name: string, markdown: ReadMarkdown, allowedTools?: boolean) => void
+type DiscloseExecution = (
+  name: string,
+  markdown: ReadMarkdown,
+  manifestTools?: readonly string[],
+) => void
 
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
 const privateSegments = new Set([".claude-plugin", ".git", "node_modules"])
@@ -56,16 +63,29 @@ export function synthesizeClaudeCodePlugin(
   const approved = new Map([...original].filter(([path]) => permitted(path, source)))
   const generated = new Map<string, Buffer>()
   const executions = new Map<string, Execution>()
+  const claims = new Map<string, Set<string>>()
   const menu = new Map<string, boolean>()
   const addFile: AddFile = (path, contents) => {
     const existing = generated.get(path)
     if (existing && !existing.equals(contents)) throw new Error("PLUGIN_BUNDLE_UNSAFE")
     if (!existing) generated.set(path, Buffer.from(contents))
   }
-  const disclose: DiscloseExecution = (name, markdown, allowedTools = false) => {
+  const disclose: DiscloseExecution = (name, markdown, manifestTools) => {
     menu.set(name, markdown.frontmatter["user-invocable"] !== false)
+    const allowedTools = Boolean(manifestTools?.length)
     const execution = skillExecutionOf(markdown)
     if (!execution.inline && !execution.hooks && !execution.allowedTools && !allowedTools) return
+    const componentClaims = claudeCodeExecutionClaims(
+      qualify(source.name, name),
+      markdown,
+      markdown.header,
+      manifestTools,
+    )
+    for (const [key, hashes] of Object.entries(componentClaims)) {
+      const values = claims.get(key) ?? new Set<string>()
+      for (const hash of hashes) values.add(hash)
+      claims.set(key, values)
+    }
     const existing = executions.get(name)
     executions.set(name, {
       inline: execution.inline || existing?.inline === true,
@@ -110,6 +130,9 @@ export function synthesizeClaudeCodePlugin(
       name,
       [...menu].flatMap(([command, visible]) => (visible ? [command] : [])),
     ),
+    executionClaims: Object.fromEntries(
+      sortedEntries(claims).map(([key, hashes]) => [key, sorted(hashes)]),
+    ),
   }
 }
 
@@ -135,18 +158,14 @@ function commands(
     qualify(source.name, name)
     if (declared.has(name)) throw new Error("PLUGIN_BUNDLE_UNSAFE")
     if (command.source === undefined) {
-      disclose(
-        name,
-        markdown(Buffer.from(command.content ?? "")),
-        Boolean(command.allowedTools?.length),
-      )
+      disclose(name, markdown(Buffer.from(command.content ?? "")), command.allowedTools)
       declared.set(name, command)
       return
     }
     const original = referencePath(command.source)
     if (!original.endsWith(".md")) throw invalid()
     const contents = requireFile(files, original)
-    disclose(name, markdown(contents), Boolean(command.allowedTools?.length))
+    disclose(name, markdown(contents), command.allowedTools)
     const target = "commands/" + name.replaceAll(":", "/") + ".md"
     addFile(target, contents)
     declared.set(name, { ...command, source: "./" + target })
@@ -325,7 +344,9 @@ function requireFile(files: PluginFiles, path: string): Buffer {
 
 function markdown(bytes: Buffer): ReadMarkdown {
   try {
-    return readClaudeMarkdown(decoder.decode(bytes))
+    const text = decoder.decode(bytes)
+    const contents = readClaudeMarkdown(text)
+    return { ...contents, header: text.slice(0, text.length - contents.body.length) }
   } catch {
     throw invalid()
   }

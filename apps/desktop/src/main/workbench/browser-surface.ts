@@ -8,6 +8,11 @@ import type {
   WorkbenchBrowserPage,
   WorkbenchEvent,
 } from "../../workbench-contract"
+import {
+  installAgentBrowserNetwork,
+  isAgentBrowserAddress,
+  type AgentBrowserNetwork,
+} from "./agent-browser-network"
 
 const partition = "persist:pigclaude-workbench-browser"
 const loopback = new Set(["localhost", "127.0.0.1", "[::1]"])
@@ -18,8 +23,7 @@ type Surface = {
   error?: WorkbenchBrowserPage["error"]
   crashed?: WorkbenchBrowserPage["crashed"]
   pickVersion: number
-  agent: boolean
-  agentOrigin: string | null
+  agent: AgentBrowserNetwork | null
   attached: boolean
   scale: number
 }
@@ -46,23 +50,37 @@ function allowed(target: string, local: boolean): boolean {
 function configureContents(
   contents: WebContents,
   local = false,
-  origin = (): string | null => null,
+  agent?: AgentBrowserNetwork,
+  openInSameTab?: (url: string) => void,
 ): void {
-  function canNavigate(target: string): boolean {
-    if (!allowed(target, local)) return false
-    const restricted = origin()
-    return restricted === null || new URL(target).origin === restricted
+  if (agent) contents.setWebRTCIPHandlingPolicy("disable_non_proxied_udp")
+  function canNavigate(target: string, isFrame = false): boolean {
+    if (agent) return (isFrame && target === "about:srcdoc") || isAgentBrowserAddress(target)
+    return (isFrame && target === "about:blank") || allowed(target, local)
   }
   contents.on("will-navigate", (event) => {
-    if (!canNavigate(event.url)) event.preventDefault()
+    if (!canNavigate(event.url)) {
+      agent?.markBlocked()
+      event.preventDefault()
+    }
   })
   contents.on("will-redirect", (event) => {
-    if (!canNavigate(event.url)) event.preventDefault()
+    if (!canNavigate(event.url, !event.isMainFrame)) {
+      agent?.markBlocked()
+      event.preventDefault()
+    }
   })
   contents.on("will-frame-navigate", (event) => {
-    if (event.url !== "about:blank" && !canNavigate(event.url)) event.preventDefault()
+    if (!event.isMainFrame && !canNavigate(event.url, true)) {
+      agent?.markBlocked()
+      event.preventDefault()
+    }
   })
-  contents.setWindowOpenHandler(() => ({ action: "deny" }))
+  contents.setWindowOpenHandler(({ url }) => {
+    if (agent && isAgentBrowserAddress(url)) openInSameTab?.(url)
+    else agent?.markBlocked()
+    return { action: "deny" }
+  })
 }
 
 function browserSession() {
@@ -89,8 +107,8 @@ export class WorkbenchBrowsers {
   async navigate(window: BrowserWindow, id: string, input: unknown): Promise<void> {
     const url = workbenchBrowserUrl(input)
     const entry = this.#entry(window, id)
-    if (entry.agentOrigin && url.origin !== entry.agentOrigin)
-      throw new Error("PREVIEW_URL_NOT_ALLOWED")
+    if (entry.agent && !isAgentBrowserAddress(url.href)) throw new Error("PREVIEW_URL_NOT_ALLOWED")
+    await entry.agent?.ready
     entry.error = undefined
     entry.crashed = undefined
     entry.pickVersion += 1
@@ -108,9 +126,8 @@ export class WorkbenchBrowsers {
   async agentPage(window: BrowserWindow, id: string, input?: string): Promise<string> {
     if (input !== undefined) {
       const url = workbenchBrowserUrl(input)
-      if (!loopback.has(url.hostname)) throw new Error("PREVIEW_URL_NOT_ALLOWED")
+      if (!isAgentBrowserAddress(url.href)) throw new Error("PREVIEW_URL_NOT_ALLOWED")
       const entry = this.#entry(window, id, true)
-      entry.agentOrigin = url.origin
       await this.navigate(window, id, url.href)
       if (this.#surfaces.get(id) !== entry || entry.error)
         throw new Error("WORKBENCH_PREVIEW_FAILED")
@@ -121,7 +138,7 @@ export class WorkbenchBrowsers {
       throw new Error("WORKBENCH_PREVIEW_FAILED")
     const contents = entry.view.webContents
     const current = workbenchBrowserUrl(contents.getURL())
-    if (current.origin !== entry.agentOrigin) throw new Error("PREVIEW_URL_NOT_ALLOWED")
+    if (!isAgentBrowserAddress(current.href)) throw new Error("PREVIEW_URL_NOT_ALLOWED")
     const text: unknown = await contents.executeJavaScriptInIsolatedWorld(1001, [
       { code: "(document.body?.innerText ?? '').trim().slice(0, 6000)" },
     ])
@@ -129,6 +146,7 @@ export class WorkbenchBrowsers {
       url: current.href,
       title: contents.getTitle(),
       text: typeof text === "string" ? text : "",
+      blockedRequests: entry.agent.blockedRequests,
     })
   }
 
@@ -283,11 +301,16 @@ export class WorkbenchBrowsers {
 
   #entry(window: BrowserWindow, id: string, agent = false): Surface {
     const existing = this.#surfaces.get(id)
-    if (existing?.window === window) return existing
+    if (existing?.window === window) {
+      if (agent && existing.agent === null) throw new Error("WORKBENCH_PREVIEW_FAILED")
+      return existing
+    }
     if (existing || this.#surfaces.size >= maxBrowsers) throw new Error("WORKBENCH_BROWSER_LIMIT")
+    const partition = agent ? agentSession(id) : browserSession()
+    const network = agent ? installAgentBrowserNetwork(partition) : null
     const view = new WebContentsView({
       webPreferences: {
-        session: agent ? agentSession(id) : browserSession(),
+        session: partition,
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
@@ -300,12 +323,16 @@ export class WorkbenchBrowsers {
       pickVersion: 0,
       attached: false,
       scale: 1,
-      agent,
-      agentOrigin: null,
+      agent: network,
     }
     this.#surfaces.set(id, entry)
     const contents = view.webContents
-    configureContents(contents, agent, () => entry.agentOrigin)
+    configureContents(contents, agent, network ?? undefined, (url) => {
+      queueMicrotask(() => {
+        if (this.#surfaces.get(id) === entry)
+          void this.navigate(window, id, url).catch(() => undefined)
+      })
+    })
     const publish = () => this.#publish(id, entry)
     contents.on("did-finish-load", () => contents.setZoomFactor(entry.scale))
     contents.on("did-start-loading", () => {

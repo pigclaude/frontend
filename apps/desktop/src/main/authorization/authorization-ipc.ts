@@ -22,6 +22,10 @@ export type AuthorizationIpcOptions = {
 
 /** 注册授权开始和取消。保证只打开 Rust 服务 allowlist 内的地址；打开失败时取消授权，除非已在提交。 */
 export function registerAuthorizationIpc(options: AuthorizationIpcOptions): void {
+  ipcMain.handle("pigclaude:open-external", async (_event, value: unknown) => {
+    if (typeof value !== "string" || !isAllowedAuthorizationUrl(value, options.authOrigin)) return
+    await shell.openExternal(value)
+  })
   ipcMain.handle("pigclaude:authorization-start", async (event, value: unknown) => {
     const request = readAuthorizationRequest(value)
     const ready = options.ready()

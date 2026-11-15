@@ -14,7 +14,6 @@ import {
 import type { AuthorizationService } from "./authorization/service"
 import type { AuthorizationStateEvent } from "./authorization/types"
 import { registerAuthorizationIpc } from "./authorization/authorization-ipc"
-import { isAllowedAuthorizationUrl } from "./authorization/url-policy"
 import { ClaudeAccountService } from "./claude/account-service"
 import { ClaudeAccountError } from "./claude/errors"
 import { FingerprintChromiumAdapter } from "./claude/fingerprint-chromium"
@@ -75,13 +74,9 @@ import { createMainWindowOptions, developmentRendererUrl } from "./window-option
 import { startDesktopUpdates } from "./updates/desktop-updates"
 import { registerUpdateIpc } from "./updates/update-ipc"
 import type { UpdateService } from "./updates/update-service"
-import {
-  createElectronPluginSandboxLaunch,
-  registerPluginSandboxScheme,
-} from "./plugins/plugin-sandbox-window"
+import { prepareDesktopPluginSandbox } from "./plugins/plugin-sandbox-window"
 
-if (process.type === "browser") registerPluginSandboxScheme()
-const preloadDir = join(__dirname, "../preload")
+const launchPluginSandbox = prepareDesktopPluginSandbox()
 const bundleMetadata: unknown = app.isPackaged
   ? JSON.parse(readFileSync(join(app.getAppPath(), "package.json"), "utf8"))
   : undefined
@@ -230,10 +225,6 @@ function registerIpcHandlers(): void {
     store: () => sessionDefaults,
   })
   registerUpdateIpc({ ipcMain, service: () => appUpdates, isTrusted: isTrustedSender })
-  ipcMain.handle("pigclaude:open-external", async (_event, value: unknown) => {
-    if (typeof value !== "string" || !isAllowedAuthorizationUrl(value, authOrigin)) return
-    await shell.openExternal(value)
-  })
   registerMembershipIpc({
     getComposition: () => desktopComposition,
     isTrusted: isTrustedSender,
@@ -327,7 +318,7 @@ async function setupAuthorization(): Promise<void> {
     onAuthorizationState: sendAuthorizationState,
     localStore,
     profileUsage,
-    launchPluginSandbox: createElectronPluginSandboxLaunch(join(preloadDir, "plugin-sandbox.js")),
+    launchPluginSandbox,
   })
   desktopComposition = composition
   authorizationService = composition.authorizationService
@@ -474,7 +465,7 @@ function createWindow(): void {
   mainWindow = new BrowserWindow(
     createMainWindowOptions({
       platform: process.platform,
-      preloadPath: join(preloadDir, "index.js"),
+      preloadPath: join(__dirname, "../preload/index.js"),
       isPackaged: app.isPackaged,
       dark: nativeTheme.shouldUseDarkColors,
     }),

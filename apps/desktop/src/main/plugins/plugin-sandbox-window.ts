@@ -1,5 +1,6 @@
 // 装配隐藏的沙箱窗口和专用内存分区，验证预加载与 Worker 后才接受调用。
 import { randomUUID } from "node:crypto"
+import { join } from "node:path"
 import {
   app,
   BrowserWindow,
@@ -34,6 +35,12 @@ const attachChannel = "pigclaude:plugin-sandbox-attach"
 const launchTimeoutMs = 12_000
 const superviseDelayMs = 200
 const httpsHandlers = new WeakSet<Session>()
+
+/** 在主进程启动时注册插件方案与随包预加载位置。 */
+export function prepareDesktopPluginSandbox(): PluginSandboxLaunch {
+  if (process.type === "browser") registerPluginSandboxScheme()
+  return createElectronPluginSandboxLaunch(join(__dirname, "../preload/plugin-sandbox.js"))
+}
 
 /** 必须在 Electron ready 前注册方案；不在默认分区挂任何可访问的资源处理器。 */
 export function registerPluginSandboxScheme(): void {

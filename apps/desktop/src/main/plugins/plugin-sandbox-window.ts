@@ -10,6 +10,7 @@ import {
   type Session,
 } from "electron"
 import {
+  pluginSandboxKey,
   pluginSandboxPayloadLimit,
   PluginSandboxError,
   type PluginSandboxCall,
@@ -17,6 +18,10 @@ import {
   type PluginSandboxJson,
 } from "./plugin-sandbox-contract"
 import type { PluginSandboxContext, PluginSandboxLaunch } from "./plugin-sandbox-host"
+import {
+  PluginSandboxPartitions,
+  type PluginSandboxPartitionLease,
+} from "./plugin-sandbox-partitions"
 import {
   createPluginSandboxResources,
   pluginSandboxScheme,
@@ -47,6 +52,7 @@ export function registerPluginSandboxScheme(): void {
 
 /** 创建实际运行能力插件的 Electron 装配器；禁用沙箱时在创建窗口前拒绝。 */
 export function createElectronPluginSandboxLaunch(preload: string): PluginSandboxLaunch {
+  const partitions = new PluginSandboxPartitions(createSession, clearSession)
   return async (source, crashed, signal) => {
     if (signal.aborted) throw new PluginSandboxError("PLUGIN_CANCELLED")
     if (
@@ -58,11 +64,13 @@ export function createElectronPluginSandboxLaunch(preload: string): PluginSandbo
 
     const id = randomUUID()
     const resources = createPluginSandboxResources(source, id)
-    let profile: Session | undefined
+    let lease: PluginSandboxPartitionLease<Session> | undefined
     let window: BrowserWindow | undefined
     let context: WindowContext | undefined
     try {
-      profile = session.fromPartition(`pigclaude-plugin-${id}`, { cache: false })
+      lease = await partitions.acquire(pluginSandboxKey(source), signal)
+      if (signal.aborted) throw new PluginSandboxError("PLUGIN_CANCELLED")
+      const { profile } = lease
       configureSession(profile, resources)
       window = new BrowserWindow({
         show: false,
@@ -90,14 +98,14 @@ export function createElectronPluginSandboxLaunch(preload: string): PluginSandbo
       window.webContents.on("will-attach-webview", (event) => event.preventDefault())
 
       const { port1, port2 } = new MessageChannelMain()
-      context = new WindowContext(window, profile, port1, crashed)
+      context = new WindowContext(window, lease.release, port1, crashed)
       await context.start(resources, port2, signal)
       return context
     } catch (error) {
-      if (context) await context.close()
+      if (context) await context.close().catch(() => undefined)
       else {
         if (window && !window.isDestroyed()) window.destroy()
-        if (profile) await clearSession(profile)
+        await lease?.release().catch(() => undefined)
       }
       if (error instanceof PluginSandboxError) throw error
       throw new PluginSandboxError("PLUGIN_SANDBOX_UNAVAILABLE")
@@ -105,12 +113,17 @@ export function createElectronPluginSandboxLaunch(preload: string): PluginSandbo
   }
 }
 
-function configureSession(profile: Session, resources: PluginSandboxResources): void {
+function createSession(): Session {
+  const profile = session.fromPartition(`pigclaude-plugin-${randomUUID()}`, { cache: false })
   if (profile.isPersistent()) throw new PluginSandboxError("PLUGIN_SANDBOX_UNAVAILABLE")
   profile.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
   profile.setPermissionCheckHandler(() => false)
   profile.setDevicePermissionHandler(() => false)
   profile.on("will-download", (event) => event.preventDefault())
+  return profile
+}
+
+function configureSession(profile: Session, resources: PluginSandboxResources): void {
   profile.webRequest.onBeforeRequest((details, done) =>
     done({ cancel: !resources.permits(details.url) }),
   )
@@ -121,11 +134,14 @@ async function clearSession(profile: Session): Promise<void> {
   profile.webRequest.onBeforeRequest((_details, done) => done({ cancel: true }))
   if (profile.protocol.isProtocolHandled(pluginSandboxScheme))
     profile.protocol.unhandle(pluginSandboxScheme)
-  await Promise.allSettled([
+  const cleanup = await Promise.allSettled([
     profile.closeAllConnections(),
     profile.clearStorageData(),
     profile.clearCache(),
+    profile.clearAuthCache(),
   ])
+  if (cleanup.some((result) => result.status === "rejected"))
+    throw new PluginSandboxError("PLUGIN_SANDBOX_UNAVAILABLE")
 }
 
 type PendingCall = {
@@ -143,7 +159,7 @@ class WindowContext implements PluginSandboxContext {
 
   constructor(
     private readonly window: BrowserWindow,
-    private readonly profile: Session,
+    private readonly releasePartition: () => Promise<void>,
     private readonly port: MessagePortMain,
     private readonly crashed: () => void,
   ) {
@@ -245,7 +261,7 @@ class WindowContext implements PluginSandboxContext {
     this.#call?.complete(error)
     this.port.close()
     if (!this.window.isDestroyed()) this.window.destroy()
-    this.#closing = clearSession(this.profile)
+    this.#closing = this.releasePartition()
     return this.#closing
   }
 

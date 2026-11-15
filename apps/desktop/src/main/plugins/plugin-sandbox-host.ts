@@ -1,5 +1,6 @@
 // 按插件版本和网络出口管理独立实例，同一实例串行调用，空闲或崩溃后安全回收。
 import {
+  pluginSandboxKey,
   PluginSandboxError,
   type PluginSandboxCall,
   type PluginSandboxCallOptions,
@@ -72,7 +73,7 @@ export class PluginSandboxHost {
     const timeout = options.timeoutMs ?? callTimeoutMs
     if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > maximumTimeoutMs)
       throw new PluginSandboxError("PLUGIN_PAYLOAD_INVALID")
-    const key = JSON.stringify([source.pluginId, source.revision, source.egressId])
+    const key = pluginSandboxKey(source)
     const entry = this.#entry(key)
     clearTimeout(entry.idle)
     entry.users += 1

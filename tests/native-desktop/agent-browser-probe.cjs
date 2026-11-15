@@ -62,9 +62,9 @@ async function verifyPostPopupBlocked() {
   })
   const owner = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
   const browsers = new WorkbenchBrowsers()
-  const id = "agent-post-popup-probe"
+  const scope = { id: "agent-post-popup-probe", sessionId: "popup-session" }
   try {
-    const first = JSON.parse(await browsers.agentPage(owner, id, site.url))
+    const first = JSON.parse(await browsers.agentPage(owner, scope, site.url))
     let last = first
     submit = true
     for (
@@ -73,7 +73,7 @@ async function verifyPostPopupBlocked() {
       index += 1
     ) {
       await new Promise((resolve) => setTimeout(resolve, 75))
-      last = JSON.parse(await browsers.agentPage(owner, id))
+      last = JSON.parse(await browsers.agentPage(owner, scope))
     }
     assert.equal(targetRequests, 0, "POST popup must not request its target")
     assert.equal(last.blockedRequests, first.blockedRequests + 1)

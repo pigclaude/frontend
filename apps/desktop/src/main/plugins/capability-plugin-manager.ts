@@ -18,6 +18,7 @@ import {
 import { isCapabilityPluginCompatible } from "./capability-plugin-manifest"
 import { capabilityPluginStoragePaths, isCapabilityPluginId } from "./capability-plugin-paths"
 import { CapabilityPluginRecords, type CapabilityPluginRecord } from "./capability-plugin-records"
+import { PluginSandboxError } from "./plugin-sandbox-contract"
 
 type Pending = {
   disclosure: CapabilityPluginInstallDisclosure
@@ -241,6 +242,30 @@ export class CapabilityPluginManager {
       record?.revision === revision &&
       isCapabilityPluginCompatible(record.manifest, this.options.appVersion)
     )
+  }
+
+  /** 串行检查一次能力请求与安装修订；发布数据前必须再次通过回调中的核验。 */
+  runCapability<T>(
+    pluginId: string,
+    revision: string,
+    signal: AbortSignal,
+    operation: (assertCurrent: () => void) => T | Promise<T>,
+  ): Promise<T> {
+    const epoch = this.#epoch
+    return this.#enqueue(async () => {
+      const assertCurrent = () => {
+        if (signal.aborted) throw new PluginSandboxError("PLUGIN_CANCELLED")
+        if (epoch !== this.#epoch || this.options.membership() !== "active")
+          throw new PluginSandboxError("PLUGIN_CAPABILITY_DENIED")
+      }
+      assertCurrent()
+      if (!(await this.canInvoke(pluginId, revision)))
+        throw new PluginSandboxError("PLUGIN_CAPABILITY_DENIED")
+      assertCurrent()
+      const result = await operation(assertCurrent)
+      assertCurrent()
+      return result
+    })
   }
 
   /** 会员失效撤销待确认安装并停止全部实例；短暂网络宽限保留现有实例。 */

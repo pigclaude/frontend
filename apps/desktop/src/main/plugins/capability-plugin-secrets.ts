@@ -3,6 +3,7 @@ import { FileSecretVault, type SafeStoragePort } from "../secret-vault"
 import { capabilityPluginStoragePaths } from "./capability-plugin-paths"
 
 type PlatformStorage = SafeStoragePort & { getSelectedStorageBackend(): string }
+const maximumVaultBytes = 1024 * 1024
 
 /** 每次桌面装配持有一份，调用方须先校验插件身份与密钥权限。 */
 export class CapabilityPluginSecrets {
@@ -25,19 +26,24 @@ export class CapabilityPluginSecrets {
     return this.#vault(pluginId).get(key)
   }
 
-  /** 原子保存或清除一个字段。相同插件文件的表单和 Worker 写入共享队列。 */
-  async write(pluginId: string, key: string, value: string | null): Promise<void> {
+  /** 原子保存或清除一个字段；Worker 可在提交前复核当次授权。 */
+  async write(
+    pluginId: string,
+    key: string,
+    value: string | null,
+    beforePublish?: () => void,
+  ): Promise<void> {
     this.#requireEncryption()
     const vault = this.#vault(pluginId)
-    if (value === null) await vault.delete(key)
-    else await vault.set(key, value)
+    if (value === null) await vault.delete(key, beforePublish)
+    else await vault.set(key, value, beforePublish)
   }
 
   #vault(pluginId: string): FileSecretVault {
     const cached = this.#vaults.get(pluginId)
     if (cached) return cached
     const { secretsFile } = capabilityPluginStoragePaths(this.root, pluginId)
-    const vault = new FileSecretVault(secretsFile, this.secureStorage)
+    const vault = new FileSecretVault(secretsFile, this.secureStorage, maximumVaultBytes)
     this.#vaults.set(pluginId, vault)
     return vault
   }

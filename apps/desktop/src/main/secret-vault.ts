@@ -26,17 +26,21 @@ export class FileSecretVault implements SecretVault {
   #writes: Promise<void> = Promise.resolve()
 
   /** 创建绑定到指定加密文件的秘密仓库。 */
-  constructor(path: string, safeStorage: SafeStoragePort) {
+  constructor(
+    path: string,
+    safeStorage: SafeStoragePort,
+    private readonly maximumBytes = Number.POSITIVE_INFINITY,
+  ) {
     this.#path = path
     this.#safeStorage = safeStorage
   }
 
   /** 加密并保存一个秘密，保证同一时刻只替换完整 JSON。 */
-  async set(key: string, value: string): Promise<void> {
+  async set(key: string, value: string, beforePublish?: () => void): Promise<void> {
     this.assertAvailable()
     await this.enqueue(async () => {
       const secrets = await this.readSecrets()
-      await this.writeSecrets({ ...secrets, [key]: this.encode(value) })
+      await this.writeSecrets({ ...secrets, [key]: this.encode(value) }, beforePublish)
     })
   }
 
@@ -56,13 +60,13 @@ export class FileSecretVault implements SecretVault {
   }
 
   /** 删除一个秘密，保证删除后磁盘文件不再包含该 key。 */
-  async delete(key: string): Promise<void> {
+  async delete(key: string, beforePublish?: () => void): Promise<void> {
     this.assertAvailable()
     await this.enqueue(async () => {
       const secrets = await this.readSecrets()
       if (!Object.hasOwn(secrets, key)) return
       delete secrets[key]
-      await this.writeSecrets(secrets)
+      await this.writeSecrets(secrets, beforePublish)
     })
   }
 
@@ -102,11 +106,17 @@ export class FileSecretVault implements SecretVault {
     }
   }
 
-  private async writeSecrets(secrets: Record<string, string>): Promise<void> {
+  private async writeSecrets(
+    secrets: Record<string, string>,
+    beforePublish?: () => void,
+  ): Promise<void> {
+    const contents = JSON.stringify(secrets)
+    if (Buffer.byteLength(contents) > this.maximumBytes) throw new Error("秘密文件超过大小限制")
     await mkdir(dirname(this.#path), { recursive: true })
     const temporary = join(dirname(this.#path), `.${basename(this.#path)}.${randomUUID()}.tmp`)
     try {
-      await writeFile(temporary, JSON.stringify(secrets), { encoding: "utf8", mode: 0o600 })
+      await writeFile(temporary, contents, { encoding: "utf8", mode: 0o600 })
+      beforePublish?.()
       await rename(temporary, this.#path)
     } catch (error: unknown) {
       await rm(temporary, { force: true })

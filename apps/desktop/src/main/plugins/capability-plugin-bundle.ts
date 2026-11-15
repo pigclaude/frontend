@@ -1,7 +1,6 @@
 // 将开发目录或现成归档的清单和 ES 模块读入有界快照，安装期间不执行插件代码。
 
-import { constants } from "node:fs"
-import { open, readdir, realpath, stat } from "node:fs/promises"
+import { readdir, realpath, stat } from "node:fs/promises"
 import { join, relative } from "node:path"
 import {
   capabilityPluginManifestFile,
@@ -9,6 +8,7 @@ import {
 } from "../../capability-plugin-contract"
 import { validateCapabilityPluginManifest } from "./capability-plugin-manifest"
 import { isCapabilityPluginModulePath } from "./capability-plugin-paths"
+import { readBoundedPluginFile } from "./plugin-bounded-file"
 
 const manifestLimit = 256 * 1024
 const moduleLimit = 2 * 1024 * 1024
@@ -52,7 +52,7 @@ export async function readCapabilityPluginDirectory(
           await visit(name)
         } else if (wanted(name)) {
           if (!entry.isFile()) throw new Error("PLUGIN_BUNDLE_UNSAFE")
-          const content = await readRegularFile(
+          const content = await readBoundedPluginFile(
             join(root, name),
             name === capabilityPluginManifestFile ? manifestLimit : moduleLimit,
           )
@@ -122,37 +122,5 @@ function checkPath(path: string, names: Map<string, { path: string; file: boolea
     if (earlier && (earlier.path !== prefix || earlier.file !== file))
       throw new Error("PLUGIN_BUNDLE_UNSAFE")
     names.set(key, { path: prefix, file })
-  }
-}
-
-async function readRegularFile(path: string, limit: number): Promise<Buffer> {
-  if (relative(path, await realpath(path)) !== "") throw new Error("PLUGIN_BUNDLE_UNSAFE")
-  const handle = await open(
-    path,
-    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
-  )
-  try {
-    const info = await handle.stat()
-    const resolved = await realpath(path)
-    const observed = await stat(resolved)
-    if (
-      !info.isFile() ||
-      relative(path, resolved) !== "" ||
-      info.dev !== observed.dev ||
-      info.ino !== observed.ino
-    )
-      throw new Error("PLUGIN_BUNDLE_UNSAFE")
-    if (info.size > limit) throw new Error("PLUGIN_BUNDLE_TOO_LARGE")
-    const bytes = Buffer.alloc(info.size + 1)
-    let used = 0
-    while (used < bytes.length) {
-      const { bytesRead } = await handle.read(bytes, used, bytes.length - used, null)
-      if (bytesRead === 0) break
-      used += bytesRead
-    }
-    if (used !== info.size) throw new Error("PLUGIN_BUNDLE_INVALID")
-    return bytes.subarray(0, used)
-  } finally {
-    await handle.close()
   }
 }

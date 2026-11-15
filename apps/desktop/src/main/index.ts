@@ -40,7 +40,7 @@ import { createDesktopComposition, type DesktopComposition } from "./composition
 import { DeviceIdentityService } from "./device-identity"
 import { readDeviceInfo } from "./device-identity/device-info"
 import { createDesktopTray } from "./desktop-tray"
-import { createDesktopStartup } from "./desktop-startup"
+import { createDesktopStartup, registerDesktopActivation } from "./desktop-startup"
 import { createDesktopNotifications } from "./notifications/desktop-notifications"
 import { registerDesktopWindowIpc } from "./desktop-window-ipc"
 import { registerStartupPreferencesIpc } from "./startup-preferences-ipc"
@@ -135,6 +135,7 @@ if (!hasSingleInstanceLock) {
   if (process.platform === "win32" || process.platform === "linux") {
     callbackReceiver.receiveArguments(process.argv)
   }
+  const allowWindowRestore = registerDesktopActivation(startup, windowVisibility)
   registerIpcHandlers()
   void app
     .whenReady()
@@ -158,6 +159,7 @@ if (!hasSingleInstanceLock) {
         return
       }
       createWindow()
+      allowWindowRestore()
       tray = createDesktopTray({
         openWindow: windowVisibility.restore,
         navigate: (command) => windowNavigation.open(command),
@@ -172,7 +174,6 @@ if (!hasSingleInstanceLock) {
         void reportDeviceInfoOnStartup()
       }
       startAppUpdates()
-      app.on("activate", windowVisibility.restore)
     })
     .catch(() => {
       closeStartupEvents()

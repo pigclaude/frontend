@@ -49,9 +49,13 @@ export class StartupPreferences {
 
   /** 正常再次启动可唤回主窗口。启动项重复执行不会唤醒已有窗口。 */
   reopenFromSecondInstance(argv: readonly string[], restore: () => unknown): void {
-    if (hasAutostartArgument(argv)) return
+    if (!hasAutostartArgument(argv)) this.requestForeground(restore)
+  }
+
+  /** 记住用户要求显示窗口；已存在的窗口使用原有唤回入口。 */
+  requestForeground(restoreExisting: () => unknown): void {
     this.#openRequested = true
-    restore()
+    restoreExisting()
   }
 
   /** 返回刚读取的系统自启状态及生效的本机 Dock 偏好。 */

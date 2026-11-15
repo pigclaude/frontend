@@ -29,3 +29,15 @@ export function createDesktopStartup(): StartupPreferences {
       : null,
   )
 }
+
+/** 记录初始化期间的 Dock 唤回请求，主窗口创建后按正常方式唤回。 */
+export function registerDesktopActivation(
+  startup: StartupPreferences,
+  visibility: { restoreExisting: () => unknown; restore: () => void },
+): () => void {
+  let activate = () => startup.requestForeground(visibility.restoreExisting)
+  app.on("activate", () => activate())
+  return () => {
+    activate = visibility.restore
+  }
+}

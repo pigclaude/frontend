@@ -1,7 +1,14 @@
 // 负责执行真实主进程入口，以 Electron 边界替身验证远程检查不会阻止窗口出现。
 import { expect, it, vi } from "vitest"
+import { deferred } from "./testing/profile-fixture"
 const fixture = vi.hoisted(() => ({
   windows: 0,
+  activate: null as (() => void) | null,
+  readyToShow: null as (() => void) | null,
+  beginAuthorization: () => {},
+  authorizationReady: Promise.resolve(),
+  show: vi.fn(),
+  focus: vi.fn(),
   inspect: vi.fn(() => new Promise<void>(() => {})),
   snapshot: vi.fn(async () => null),
   reportDeviceInfo: vi.fn(async () => undefined),
@@ -11,7 +18,9 @@ vi.mock("electron", () => ({
   app: {
     isPackaged: false,
     whenReady: () => Promise.resolve(),
-    on: vi.fn(),
+    on: vi.fn((name: string, listener: () => void) => {
+      if (name === "activate") fixture.activate = listener
+    }),
     removeListener: vi.fn(),
     getPath: () => "/fixture",
     quit: vi.fn(),
@@ -28,8 +37,14 @@ vi.mock("electron", () => ({
         fixture.windows++
       }
       loadFile() {}
-      once() {}
+      once(name: string, listener: () => void) {
+        if (name === "ready-to-show") fixture.readyToShow = listener
+      }
       on() {}
+      isDestroyed = () => false
+      isMinimized = () => false
+      show = fixture.show
+      focus = fixture.focus
       setBackgroundColor() {}
     },
     { getAllWindows: () => [] },
@@ -57,8 +72,26 @@ vi.mock("./device-identity", () => ({
 }))
 vi.mock("./secret-vault", () => ({ FileSecretVault: class {} }))
 vi.mock("./authorization/callback-server", () => ({
-  createCallbackServer: async () => ({ close: vi.fn() }),
+  createCallbackServer: async () => {
+    fixture.beginAuthorization()
+    await fixture.authorizationReady
+    return { close: vi.fn() }
+  },
 }))
+vi.mock("./desktop-startup", async () => {
+  const { StartupPreferences } = await import("./startup-preferences")
+  return {
+    createDesktopStartup: () =>
+      new StartupPreferences(
+        {
+          enabled: async () => true,
+          set: async (enabled) => enabled,
+          openedAutomatically: () => true,
+        },
+        null,
+      ),
+  }
+})
 vi.mock("./composition", () => ({
   createDesktopComposition: () => ({
     authorizationService: {},
@@ -73,9 +106,29 @@ vi.mock("./window-options", () => ({
   glassBackgroundColor: () => undefined,
   readThemeSource: () => undefined,
 }))
-it("creates checking window before an existing profile's remote inspect settles", async () => {
-  await import("./index")
-  await vi.waitFor(() => expect(fixture.inspect).toHaveBeenCalledOnce())
-  expect(fixture.reportDeviceInfo).not.toHaveBeenCalled()
-  expect(fixture.windows).toBe(1)
+it("honors a macOS reopen during login startup and shows the checking window before membership inspection finishes", async () => {
+  const started = deferred<void>()
+  const proceed = deferred<void>()
+  fixture.beginAuthorization = () => started.resolve(undefined)
+  fixture.authorizationReady = proceed.promise
+  try {
+    await import("./index")
+    await started.promise
+    expect(fixture.activate).toBeTypeOf("function")
+    fixture.activate?.()
+    expect(fixture.windows).toBe(0)
+    expect(fixture.show).not.toHaveBeenCalled()
+
+    proceed.resolve(undefined)
+    await vi.waitFor(() => expect(fixture.inspect).toHaveBeenCalledOnce())
+    expect(fixture.reportDeviceInfo).not.toHaveBeenCalled()
+    expect(fixture.windows).toBe(1)
+    fixture.readyToShow?.()
+    expect(fixture.show).toHaveBeenCalledOnce()
+
+    fixture.activate?.()
+    expect(fixture.focus).toHaveBeenCalledOnce()
+  } finally {
+    proceed.resolve(undefined)
+  }
 })

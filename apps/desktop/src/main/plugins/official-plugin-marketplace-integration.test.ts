@@ -1,5 +1,5 @@
 // 贯穿已验签目录、包字节核验和现有安装管理器，所有网络由合成夹具替代。
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, it, vi } from "vitest"
@@ -117,8 +117,10 @@ it("官方市场独立于第三方，核对归档摘要，过期保留安装且�
   )
   const owner = {}
   try {
+    await writeFile(join(root, "sources.json"), "{坏掉的第三方目录")
     await expect(market.list()).resolves.toMatchObject({
       thirdPartyEnabled: false,
+      thirdPartyError: "PLUGIN_MARKETPLACE_CACHE_INVALID",
       sources: [{ id: officialPluginMarketplaceId, kind: "official" }],
       entries: [{ id, reviewStatus: "reviewed", action: "install" }],
     })
@@ -157,7 +159,11 @@ it("官方市场独立于第三方，核对归档摘要，过期保留安装且�
       entries: [{ id, action: "blocked", blockedBy: "revoked" }],
     })
     expect(changed).toHaveBeenCalledOnce()
-    expect(announceRevocation).toHaveBeenCalledExactlyOnceWith(entry.info.name, reason)
+    expect(announceRevocation).toHaveBeenCalledExactlyOnceWith({
+      id,
+      name: entry.info.name,
+      reason,
+    })
     expect(stop).toHaveBeenCalledExactlyOnceWith(id)
     await expect(manager.canInvoke(id, installed.revision)).resolves.toBe(false)
     await expect(manager.list()).resolves.toMatchObject([

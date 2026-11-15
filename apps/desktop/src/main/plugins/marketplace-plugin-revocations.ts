@@ -13,7 +13,9 @@ export type PluginMarketplaceRevocation = Readonly<{
 }>
 
 type OfficialRevocations = { sourceId: string; entries: readonly PluginMarketplaceRevocation[] }
-type RevokedPlugin = { name: string; reason: string }
+
+/** 吊销后的通知沿用已装插件的名称，按其稳定标识去重。 */
+export type MarketplacePluginRevocationNotice = { id: string; name: string; reason: string }
 
 /** 区分当前目录规则与已撤销的具体安装版本。 */
 export class MarketplacePluginRevocations {
@@ -92,7 +94,7 @@ export class MarketplacePluginRevocations {
     records: CapabilityPluginRecords,
     stopInstances: (id: string) => Promise<void> | void,
     publishChange: () => void,
-  ): Promise<readonly RevokedPlugin[]> {
+  ): Promise<readonly MarketplacePluginRevocationNotice[]> {
     try {
       const changes = (await records.list()).flatMap((record) => {
         const reason = matchingReason(update, record.marketplace)
@@ -112,7 +114,7 @@ export class MarketplacePluginRevocations {
             }
           }
           await records.setRecord({ ...record, enabled: false, revocationReason: reason })
-          return { name: record.manifest.id, reason }
+          return { id: record.manifest.id, name: record.manifest.name, reason }
         }),
       )
       publishChange()

@@ -285,7 +285,7 @@ it("只吊销官方来源的同名仓库与提交，停止旧 Worker 并保留�
 
   f.stopInstances.mockRejectedValueOnce(new Error("合成关闭异常"))
   await expect(f.manager.applyMarketplaceRevocations(sourceId, [revoked])).resolves.toEqual([
-    { name: id, reason: revoked.reason },
+    { id, name: "合成市场能力插件", reason: revoked.reason },
   ])
   expect(f.stopInstances).toHaveBeenCalledExactlyOnceWith(id)
   await expect(f.manager.canInvoke(id, installed.revision)).resolves.toBe(false)
@@ -346,7 +346,7 @@ it("已在执行的能力请求在落盘前看到吊销，重开保留记录且�
     release()
   }
   await denied
-  await expect(applied).resolves.toEqual([{ name: id, reason: revoked.reason }])
+  await expect(applied).resolves.toEqual([{ id, name: "合成市场能力插件", reason: revoked.reason }])
 
   const reopened = f.reopen()
   await expect(reopened.canInvoke(id, installed.revision)).resolves.toBe(false)
@@ -385,7 +385,7 @@ it("仓库级吊销挡住候选和新会话，已经交给 Claude SDK 的合成�
 
   const revoked = { name: devPlugin, repo: "Fixture/Repo", reason: "合成仓库撤回" }
   await expect(f.manager.applyMarketplaceRevocations(sourceId, [revoked])).resolves.toEqual([
-    { name: devPlugin, reason: revoked.reason },
+    { id: devPlugin, name: devPlugin, reason: revoked.reason },
   ])
   expect(f.stopInstances).not.toHaveBeenCalled()
   await expect(f.manager.stageClaudeCodePlugins(before)).resolves.toEqual([])

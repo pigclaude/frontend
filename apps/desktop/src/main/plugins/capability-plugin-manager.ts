@@ -177,7 +177,7 @@ export class CapabilityPluginManager {
   applyMarketplaceRevocations(
     sourceId: string,
     revocations: readonly PluginMarketplaceRevocation[],
-  ): Promise<readonly { name: string; reason: string }[]> {
+  ): Promise<readonly { id: string; name: string; reason: string }[]> {
     const update = this.#revocations.accept(sourceId, revocations)
     return this.#enqueue(() =>
       this.#revocations.persist(update, this.#records, this.options.stopInstances, () =>

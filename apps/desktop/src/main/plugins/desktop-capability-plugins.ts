@@ -102,8 +102,8 @@ export function setupDesktopCapabilityPlugins(
     {
       cache: official,
       changed: () => send(pluginMarketplaceChangedChannel),
-      announceRevocation: (name, reason) => {
-        notices.show("official:" + name, name, reason)
+      announceRevocation: ({ id, name, reason }) => {
+        notices.show("official:" + id, name, reason)
       },
     },
   )

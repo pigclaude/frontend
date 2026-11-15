@@ -10,6 +10,7 @@ import type {
 import type { CapabilityPluginManager } from "./capability-plugin-manager"
 import { validateDesktopPluginBundle } from "./desktop-plugin-bundle"
 import type { PluginMarketplaceInstallRequest } from "./desktop-plugin-installation"
+import type { MarketplacePluginRevocationNotice } from "./marketplace-plugin-revocations"
 import {
   officialPluginMarketplaceId,
   type OfficialPluginMarketplace,
@@ -26,7 +27,7 @@ import type { PluginMarketplaceThirdParty } from "./plugin-marketplace-third-par
 type OfficialMarketplace = {
   cache: Pick<OfficialPluginMarketplace, "get" | "refresh" | "resolve">
   changed(): void
-  announceRevocation(name: string, reason: string): void
+  announceRevocation(notice: MarketplacePluginRevocationNotice): void
 }
 
 type OfficialSnapshot = NonNullable<Awaited<ReturnType<OfficialMarketplace["cache"]["get"]>>>
@@ -50,11 +51,16 @@ export class PluginMarketplace {
   async list(): Promise<PluginMarketplaceView> {
     const installed = await this.manager.marketplaceInstallations()
     const official = await this.#readOfficial()
-    const directory = await this.sources.list()
+    const directory = await this.sources.list().catch((error: unknown) => {
+      if (!(error instanceof Error) || error.message !== "PLUGIN_MARKETPLACE_CACHE_INVALID")
+        throw error
+      return { developerMode: false, sources: [], entries: [], thirdPartyError: error.message }
+    })
     const thirdPartyEnabled = await this.thirdParty.enabled()
     return {
       developerMode: directory.developerMode,
       thirdPartyEnabled,
+      ...("thirdPartyError" in directory ? { thirdPartyError: directory.thirdPartyError } : {}),
       sources: this.official
         ? [this.#officialSource(official), ...directory.sources]
         : directory.sources,
@@ -222,7 +228,7 @@ export class PluginMarketplace {
       officialPluginMarketplaceId,
       verified.revoked,
     )
-    for (const { name, reason } of notices) this.official?.announceRevocation(name, reason)
+    for (const notice of notices) this.official?.announceRevocation(notice)
   }
 }
 

@@ -63,6 +63,7 @@ vi.mock("electron", () => ({
     removeListener: (name: string, listener: (...args: unknown[]) => void) =>
       fixture.appEvents!.removeListener(name, listener),
     getPath: () => fixture.userData,
+    getVersion: () => "0.0.1",
     getLoginItemSettings: () => ({ openAtLogin: false, wasOpenedAtLogin: false }),
     setAppUserModelId: vi.fn(),
     getAppPath: () => fileURLToPath(new URL("../../../", import.meta.url)),
@@ -211,6 +212,7 @@ vi.mock("../session/session-host", () => ({
     pendingWork = () => ({ runningSessions: 0, turns: 0, approvals: 0 })
     stop = async () => undefined
     dispose = async () => fixture.shutdownGate!.promise
+    runScheduledTask = async () => ({ status: "stopped" as const })
   },
 }))
 

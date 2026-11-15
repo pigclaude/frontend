@@ -50,6 +50,7 @@ vi.mock("electron", () => ({
       fixture.appEvents.set(name, listener),
     removeListener: (name: string) => fixture.appEvents.delete(name),
     getPath: () => fixture.directory,
+    getVersion: () => "0.0.1",
     quit: () => {},
   },
   BrowserWindow: Object.assign(

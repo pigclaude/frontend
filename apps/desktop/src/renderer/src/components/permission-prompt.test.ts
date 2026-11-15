@@ -178,28 +178,41 @@ describe("permission prompt", () => {
     expect(choices[1]?.textContent).toContain("继续完善")
   })
 
-  it("offers a lasting allow only when the SDK suggests one", async () => {
-    const suggestion = {
-      type: "addRules",
-      rules: [{ toolName: "Bash", ruleContent: "pnpm test" }],
-      behavior: "allow",
-      destination: "session",
-    }
+  it("uses the suggestion index for both authorization scopes", async () => {
+    const suggestion = { index: 2, label: "Bash(pnpm test)", canSaveProject: true }
     const onDecide = vi.fn()
     await render(card({ suggestions: [suggestion] }), onDecide)
 
     const choices = options()
-    expect(choices.length).toBe(3)
+    expect(choices.length).toBe(4)
     expect(choices[1]?.textContent).toContain("始终允许此命令")
     expect(choices[1]?.textContent).toContain("后续相同请求不再询问")
+    expect(choices[2]?.textContent).toContain("此项目始终允许")
 
-    // 第一次点击只是选中，再点一次才回答。
-    await act(async () => choices[1]?.click())
+    await act(async () => choices[2]?.click())
     expect(onDecide).not.toHaveBeenCalled()
-    await act(async () => choices[1]?.click())
+    await act(async () => choices[2]?.click())
     expect(onDecide).toHaveBeenCalledWith("permission-1", {
       decision: "allow",
-      suggestions: [suggestion],
+      suggestion: { index: 2, scope: "project" },
     })
+  })
+
+  it("focuses the decline choice and disables digit shortcuts when required", async () => {
+    const onDecide = vi.fn()
+    await render(card({ defaultToNo: true }), onDecide)
+    expect(document.activeElement).toBe(options()[1])
+    await act(async () => {
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "1", bubbles: true, cancelable: true }),
+      )
+    })
+    expect(document.activeElement).toBe(options()[1])
+    await act(async () => {
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      )
+    })
+    expect(onDecide).toHaveBeenCalledWith("permission-1", { decision: "deny" })
   })
 })

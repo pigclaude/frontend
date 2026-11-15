@@ -3,6 +3,10 @@
 
 import type { SessionEnvelope } from "../../../main/session/session-envelope"
 import type { SubagentRef } from "../../../main/session/session-events"
+import {
+  isPermissionSuggestionView,
+  type PermissionSuggestionView,
+} from "../../../project-permissions-contract"
 import { sessionRecord } from "./session-event-store"
 import type { SessionUiState } from "./session-model"
 import { sessionRuns, type SessionRun } from "./session-runs"
@@ -21,7 +25,9 @@ export type SessionPermissionCard = {
   requestId: string
   toolName: string
   input: Record<string, unknown>
-  suggestions: unknown[]
+  suggestions: PermissionSuggestionView[]
+  /** 需要额外确认时，卡片默认选择拒绝并停用数字键。 */
+  defaultToNo?: boolean
   blockedPath: string | null
   /** 发起请求的子代理；主线程为 null。 */
   subagent: SubagentRef | null
@@ -99,7 +105,8 @@ function cardOf(
     requestId: event.requestId,
     toolName: event.toolName,
     input: event.input,
-    suggestions: event.suggestions ?? [],
+    suggestions: (event.suggestions ?? []).filter(isPermissionSuggestionView),
+    ...(event.defaultToNo ? { defaultToNo: true } : {}),
     blockedPath: event.blockedPath ?? null,
     subagent: event.subagent,
     requestedAt: at,

@@ -12,11 +12,13 @@ import { prepareSavedSession, type PersistedSessionLaunch } from "./session-pers
 import { sessionInstance, type SessionIndex } from "./session-index"
 import { SessionReferenceAccess } from "./session-reference-access"
 import type { SessionStore } from "./session-store"
-import type { SessionSavedSettings } from "./claude-session"
+import type { SessionSavedSettings } from "./claude-session-options"
 import { createThreadReadServer, threadReadServerName } from "./thread-read"
 import type { SessionTimers } from "./session-host-active"
 import { mapStartError } from "./session-host-support"
 import type { SessionCancelCode } from "./session-registry"
+import type { ProjectPermissionStore } from "./project-permission-store"
+import { permissionProjectPath, SessionProjectPermissions } from "./session-project-permissions"
 import {
   checkSessionStart,
   prepareSessionStart,
@@ -46,6 +48,7 @@ export type SessionLaunchDeps = {
   userDataPath: string
   usage: SessionUsagePort
   permissionTimeoutMs: number
+  projectPermissions?: ProjectPermissionStore
   timers: SessionTimers
   now: () => number
   newId: () => string
@@ -70,6 +73,9 @@ export function createSessionLaunchDeps(
     userDataPath: options.userDataPath,
     usage: options.usage,
     permissionTimeoutMs: options.permissionTimeoutMs ?? 10 * 60_000,
+    ...(options.projectPermissions === undefined
+      ? {}
+      : { projectPermissions: options.projectPermissions }),
     timers,
     now,
     newId,
@@ -143,6 +149,7 @@ export async function launchSession(
   let canonicalWorkspace: string
   let prepared: PreparedSessionStart
   let persistence: PersistedSessionLaunch | undefined
+  let projectPermissions: SessionProjectPermissions | undefined
   try {
     const queued = await hooks.checkBeforeQueue(async () => ({
       workspace: await checkSessionStart(startDeps, input),
@@ -152,6 +159,13 @@ export async function launchSession(
       ? await checkSessionStart(startDeps, input)
       : queued.workspace
     const canonicalInput = { ...input, workspace: canonicalWorkspace }
+    if (deps.projectPermissions !== undefined) {
+      const path = await permissionProjectPath(canonicalWorkspace, input.projectPath).catch(
+        () => null,
+      )
+      if (path !== null)
+        projectPermissions = new SessionProjectPermissions(deps.projectPermissions, path)
+    }
     prepared = await prepareSessionStart(
       startDeps,
       canonicalInput,
@@ -178,6 +192,7 @@ export async function launchSession(
     storage && saved ? new SessionReferenceAccess(storage.store, sessionInstance(saved)) : undefined
   const session = new ClaudeSession({
     ...prepared,
+    ...(projectPermissions === undefined ? {} : { projectPermissions }),
     ...(references === undefined ? {} : { references }),
     ...(persistence === undefined ? {} : { persistence }),
     ...(hooks.saveSettings === undefined ? {} : { saveSettings: hooks.saveSettings }),
@@ -196,7 +211,10 @@ export async function launchSession(
     timers: deps.timers,
     now: deps.now,
     newId: deps.newId,
-    onReleased: () => hooks.released(),
+    onReleased: () => {
+      projectPermissions?.close()
+      return hooks.released()
+    },
   })
   hooks.opened(session, canonicalWorkspace)
   try {

@@ -3,7 +3,7 @@
 import { stat } from "node:fs/promises"
 import { join } from "node:path"
 import type { ClaudePersistenceOptions } from "./claude-query-options"
-import type { SessionSavedSettings } from "./claude-session"
+import type { SessionSavedSettings } from "./claude-session-options"
 import { retainedClaudeProject } from "./session-environment"
 import type { SessionEnvelope } from "./session-envelope"
 import type { SessionUsage } from "./session-events"

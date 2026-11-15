@@ -355,50 +355,33 @@ describe("readSessionSendInput", () => {
 })
 
 describe("readPermissionAnswer", () => {
-  it("validates the decision and keeps valid updates", () => {
+  it("accepts a suggestion index and scope without copying extra fields", () => {
     expect(
       readPermissionAnswer({
         requestId: "permission-1",
         decision: "allow",
-        updatedPermissions: [
-          { type: "addRules", rules: [], behavior: "allow", destination: "session" },
-        ],
+        suggestion: { index: 1, scope: "project", rule: "Bash(*)" },
       }),
-    ).toMatchObject({ requestId: "permission-1", decision: "allow" })
-    expect(() => readPermissionAnswer({ requestId: "permission-1", decision: "maybe" })).toThrow(
-      "INVALID_SESSION_INPUT",
-    )
+    ).toEqual({
+      requestId: "permission-1",
+      decision: "allow",
+      suggestion: { index: 1, scope: "project" },
+    })
   })
 
-  it("rejects malformed or oversized updatedPermissions", () => {
-    expect(() =>
-      readPermissionAnswer({
-        requestId: "permission-1",
-        decision: "allow",
-        updatedPermissions: "all",
-      }),
-    ).toThrow("INVALID_SESSION_INPUT")
-    expect(() =>
-      readPermissionAnswer({
-        requestId: "permission-1",
-        decision: "allow",
-        updatedPermissions: ["not-an-object"],
-      }),
-    ).toThrow("INVALID_SESSION_INPUT")
-    expect(() =>
-      readPermissionAnswer({
-        requestId: "permission-1",
-        decision: "allow",
-        updatedPermissions: Array.from({ length: 51 }, () => ({ type: "setMode" })),
-      }),
-    ).toThrow("INVALID_SESSION_INPUT")
-    expect(() =>
-      readPermissionAnswer({
-        requestId: "permission-1",
-        decision: "allow",
-        updatedPermissions: [{ type: "setMode", payload: "x".repeat(65 * 1024) }],
-      }),
-    ).toThrow("INVALID_SESSION_INPUT")
+  it("rejects direct rule submission and malformed selections", () => {
+    for (const answer of [
+      { decision: "allow", updatedPermissions: [{ type: "addRules" }] },
+      { decision: "allow", suggestion: { index: -1, scope: "session" } },
+      { decision: "allow", suggestion: { index: 0.5, scope: "session" } },
+      { decision: "allow", suggestion: { index: 0, scope: "userSettings" } },
+      { decision: "deny", suggestion: { index: 0, scope: "session" } },
+      { decision: "maybe" },
+    ]) {
+      expect(() => readPermissionAnswer({ requestId: "permission-1", ...answer })).toThrow(
+        "INVALID_SESSION_INPUT",
+      )
+    }
   })
 })
 

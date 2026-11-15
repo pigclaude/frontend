@@ -8,8 +8,6 @@ import type {
   createSdkMcpServer,
   McpSdkServerConfigWithInstance,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Client } from "@modelcontextprotocol/sdk/client/index.js"
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import type { WebContents } from "electron"
 import type { BrowserApprovalPort } from "../session/browser-tool-approval"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -17,6 +15,7 @@ import { ClaudeAgentAdapter } from "../session/claude-agent-adapter"
 import { FakeQuery } from "../session/claude-agent-adapter-fixtures"
 import { createHarness } from "../session/session-host-fixtures"
 import type { SessionPermissionMode } from "../session/session-types"
+import { connectBrowserClient, withoutAttribution } from "./browser-approval-mcp-fixture"
 import type { WorkbenchBrowsers } from "./browser-surface"
 import { browserSessionTools } from "./browser-tools"
 
@@ -91,10 +90,12 @@ describe("browser session tools", () => {
     })
 
     const invocation = call("browser_open", { url: "http://127.0.0.1:5173/" })
-    expect(request).toHaveBeenCalledWith(
-      { kind: "open", url: "http://127.0.0.1:5173/" },
-      undefined,
-      undefined,
+    await vi.waitFor(() =>
+      expect(request).toHaveBeenCalledWith(
+        { kind: "open", url: "http://127.0.0.1:5173/" },
+        undefined,
+        undefined,
+      ),
     )
     expect(agentPage).not.toHaveBeenCalled()
 
@@ -103,7 +104,7 @@ describe("browser session tools", () => {
     expect(agentPage).toHaveBeenCalledOnce()
   })
 
-  it("declares both read-only browser tools as always asking the host before each call", () => {
+  it("declares every browser tool as always asking the host before each call", () => {
     const config = browserSessionTools(
       owner(),
       browsers(async () => ""),
@@ -116,10 +117,14 @@ describe("browser session tools", () => {
     expect(config.pigclaude_workbench?.tools).toEqual([
       { name: "browser_open", permission_policy: "always_ask" },
       { name: "browser_snapshot", permission_policy: "always_ask" },
+      { name: "browser_navigate", permission_policy: "always_ask" },
+      { name: "browser_click", permission_policy: "always_ask" },
     ])
     expect(servers.at(-1)?.tools?.map((tool) => tool.name)).toEqual([
       "browser_open",
       "browser_snapshot",
+      "browser_navigate",
+      "browser_click",
     ])
     expect(servers.at(-1)?.tools?.every((tool) => tool.annotations?.destructiveHint)).toBe(true)
   })
@@ -242,7 +247,7 @@ async function startBrowserSession(permissionMode: SessionPermissionMode, unatte
     view,
     query,
     hasBrowser: sdk.browser !== undefined,
-    connect: () => connectBrowserClient(sdk.browser),
+    connect: () => connectBrowserClient(sdk.browser, (close) => approvals.push(close)),
     canUseTool,
     cards,
     respond: async (decision: "allow" | "deny") => {
@@ -265,7 +270,7 @@ describe("browser tools through a session with a fake SDK", () => {
       expect(session.cards()).toHaveLength(0)
 
       const first = call("browser_open", { url: target })
-      expect(session.cards()).toHaveLength(1)
+      await vi.waitFor(() => expect(session.cards()).toHaveLength(1))
       const request = session.cards().at(-1)
       if (!request) throw new Error("等待审批时没有权限卡")
       expect(request.browser).toEqual({ kind: "open", url: target })
@@ -284,7 +289,7 @@ describe("browser tools through a session with a fake SDK", () => {
       expect(await first).toEqual({ content: [{ type: "text", text: "local page text" }] })
 
       const second = call("browser_open", { url: target })
-      expect(session.cards()).toHaveLength(2)
+      await vi.waitFor(() => expect(session.cards()).toHaveLength(2))
       expect(session.view).toHaveBeenCalledOnce()
       await session.respond("deny")
       expect((await second).isError).toBe(true)
@@ -330,7 +335,7 @@ describe("browser tools through a session with a fake SDK", () => {
       behavior: "allow",
     })
     const snapshot = call("browser_snapshot")
-    expect(session.cards()).toHaveLength(1)
+    await vi.waitFor(() => expect(session.cards()).toHaveLength(1))
     expect(session.cards()[0]?.browser).toEqual({ kind: "snapshot" })
     await session.respond("allow")
     expect((await snapshot).isError).toBeUndefined()
@@ -370,7 +375,7 @@ describe("browser tools through a session with a fake SDK", () => {
   it("discards an approval when the session switches to plan before the tool runs", async () => {
     const session = await startBrowserSession("default")
     const pending = call("browser_open", { url: target })
-    expect(session.cards()).toHaveLength(1)
+    await vi.waitFor(() => expect(session.cards()).toHaveLength(1))
     await session.host.setMode(session.sessionId, "plan")
     await session.respond("allow")
     expect((await pending).isError).toBe(true)
@@ -446,30 +451,3 @@ it("浏览器通过真实 MCP 为并发同参数审批保留一次性、按会�
   expect(session.view).toHaveBeenCalledTimes(1)
   await withoutAttribution(client, session, open(1))
 })
-
-async function connectBrowserClient(server: McpSdkServerConfigWithInstance | undefined) {
-  if (!server) throw new Error("缺少进程内浏览器工具服务")
-  const client = new Client({ name: "browser-approval-fixture", version: "1" })
-  const [remote, local] = InMemoryTransport.createLinkedPair()
-  approvals.push(async () => {
-    await client.close()
-    await server.instance.close()
-  })
-  await server.instance.connect(local)
-  await client.connect(remote)
-  return client
-}
-
-async function withoutAttribution(
-  client: Client,
-  session: Awaited<ReturnType<typeof startBrowserSession>>,
-  params: Parameters<Client["callTool"]>[0],
-): Promise<void> {
-  const count = session.cards().length
-  const call = client.callTool(params)
-  void call.catch(() => undefined)
-  await vi.waitFor(() => expect(session.cards()).toHaveLength(count + 1))
-  expect(session.cards()[count]?.subagent).toBeNull()
-  await session.respond("deny")
-  await expect(call).resolves.toMatchObject({ isError: true })
-}

@@ -9,8 +9,20 @@ import type { PermissionBroker } from "./permission-broker"
 export const workbenchBrowserServer = "pigclaude_workbench"
 const qualifiedServer = `mcp__${workbenchBrowserServer}`
 
-/** 当前工作台注册的两个浏览器工具。 */
-export type WorkbenchBrowserTool = "browser_open" | "browser_snapshot"
+const toolByContext = {
+  open: "browser_open",
+  snapshot: "browser_snapshot",
+  navigate: "browser_navigate",
+  click: "browser_click",
+} as const satisfies Record<BrowserPermissionContext["kind"], string>
+
+/** 当前工作台注册的浏览器工具名。 */
+export type WorkbenchBrowserTool = (typeof toolByContext)[BrowserPermissionContext["kind"]]
+
+/** 将经过主进程核验的审批内容绑定到唯一注册工具。 */
+export function browserToolForContext(context: BrowserPermissionContext): WorkbenchBrowserTool {
+  return toolByContext[context.kind]
+}
 
 /** 会话给工作台的逐次审批能力；拒绝返回给模型的英文说明。 */
 export type BrowserApprovalPort = {
@@ -35,9 +47,7 @@ export function builtinWorkbenchBrowserTool(
   server: { name: string; source: string } | undefined,
 ): WorkbenchBrowserTool | null {
   if (server?.source !== "sdk" || server.name !== workbenchBrowserServer) return null
-  if (name === browserToolName("browser_open")) return "browser_open"
-  if (name === browserToolName("browser_snapshot")) return "browser_snapshot"
-  return null
+  return Object.values(toolByContext).find((tool) => browserToolName(tool) === name) ?? null
 }
 
 /** 判断 SDK 规则是否会直接授予整个工作台服务或其中的工具。 */
@@ -60,8 +70,8 @@ export function createBrowserApproval(options: {
       return "The browser is unavailable for this session."
     if (options.unattended || options.mode() === "dontAsk")
       return "Browser tools require an interactive session and explicit approval."
-    if (tool === "browser_open" && options.mode() === "plan")
-      return "Plan mode does not allow opening a page. You may request a snapshot of the current page."
+    if (options.mode() === "plan" && tool !== "browser_snapshot")
+      return "Plan mode only allows reading a browser snapshot."
     return null
   }
   return {
@@ -70,13 +80,13 @@ export function createBrowserApproval(options: {
       attribution.remember(browserToolName(tool), caller)
     },
     async request(context, invocationSignal, metadata) {
-      const tool = context.kind === "open" ? "browser_open" : "browser_snapshot"
+      const { kind, ...input } = context
+      const tool = toolByContext[kind]
       const signal =
         invocationSignal === undefined
           ? options.sessionSignal
           : AbortSignal.any([options.sessionSignal, invocationSignal])
       if (signal.aborted || denial(tool) !== null) return false
-      const input = context.kind === "open" ? { url: context.url } : {}
       const name = browserToolName(tool)
       const agentID = attribution.take(name, metadata)
       const answer = await options.broker.request(

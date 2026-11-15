@@ -328,6 +328,7 @@ async function setupAuthorization(): Promise<void> {
   })
   desktopComposition = composition
   capabilityPlugins = setupDesktopCapabilityPlugins(composition, sendToMainWindow)
+  await capabilityPlugins?.officialReady
   authorizationService = composition.authorizationService
 
   const browser = new FingerprintChromiumAdapter({

@@ -14,6 +14,12 @@ import { CapabilityPluginManager, type CapabilityPluginSnapshot } from "./capabi
 import { CapabilityPluginNotices } from "./capability-plugin-notices"
 import { createCapabilityPluginSecrets } from "./capability-plugin-secrets"
 import { CapabilityPluginSettings } from "./capability-plugin-settings"
+import { OfficialPluginMarketplace } from "./official-plugin-marketplace"
+import { downloadOfficialPluginMarketplace } from "./official-plugin-marketplace-download"
+import {
+  parseOfficialMarketplaceTrustState,
+  verifyOfficialPluginMarketplace,
+} from "./official-plugin-marketplace-verification"
 import { readCapabilityPluginArchive } from "./plugin-archive"
 import { PluginMarketplace } from "./plugin-marketplace"
 import { registerPluginMarketplaceIpc } from "./plugin-marketplace-ipc"
@@ -77,12 +83,29 @@ export function setupDesktopCapabilityPlugins(
       send(pluginMarketplaceChangedChannel)
     },
   )
+  const official = new OfficialPluginMarketplace({
+    path: join(root, "marketplace-official.json"),
+    active: () => membership() === "active",
+    download: downloadOfficialPluginMarketplace,
+    verify: verifyOfficialPluginMarketplace,
+    parseTrust: parseOfficialMarketplaceTrustState,
+  })
+  const notices = new CapabilityPluginNotices((notice) =>
+    send(capabilityPluginNoticeChannel, notice),
+  )
   const marketplace = new PluginMarketplace(
     sources,
     manager,
     loadPluginMarketplaceEntry,
     appVersion,
     thirdParty,
+    {
+      cache: official,
+      changed: () => send(pluginMarketplaceChangedChannel),
+      announceRevocation: (name, reason) => {
+        notices.show("official:" + name, name, reason)
+      },
+    },
   )
   const stopMarkets = sources.subscribe(() => send(pluginMarketplaceChangedChannel))
   const stopPlugins = manager.subscribe(() => {
@@ -90,9 +113,6 @@ export function setupDesktopCapabilityPlugins(
     send(pluginMarketplaceChangedChannel)
   })
   const secrets = createCapabilityPluginSecrets(root, safeStorage)
-  const notices = new CapabilityPluginNotices((notice) =>
-    send(capabilityPluginNoticeChannel, notice),
-  )
   const capabilities = (
     snapshot: CapabilityPluginSnapshot,
     workspace: string | null,
@@ -119,6 +139,9 @@ export function setupDesktopCapabilityPlugins(
   return {
     manager,
     marketplace,
+    officialReady: marketplace
+      .reconcileCachedOfficialRevocations()
+      .catch(() => console.error("PLUGIN_MARKETPLACE_OFFICIAL_REVOKE_FAILED")),
     sessionOptions: runtime
       ? {
           claudeCodePlugins: {
@@ -148,6 +171,7 @@ export function setupDesktopCapabilityPlugins(
     /** 推进插件的会员生命周期，清理异常使用固定诊断码。 */
     membershipChanged(state: MembershipState): void {
       sources.membershipChanged(state)
+      official.membershipChanged(state)
       void manager
         .membershipChanged(state)
         .catch(() => console.error("CAPABILITY_PLUGIN_LIFECYCLE_FAILED"))

@@ -16,7 +16,10 @@ export async function verifyPluginMarketplace(page, userData) {
     sourceId = await page.evaluate(
       async ({ source, name }) => {
         const market = window.pigclaude.pluginMarketplace
-        if ((await market.list()).thirdPartyEnabled) throw new Error("第三方市场应默认关闭")
+        const initial = await market.list()
+        if (initial.thirdPartyEnabled) throw new Error("第三方市场应默认关闭")
+        if (!initial.sources.some(({ kind }) => kind === "official"))
+          throw new Error("第三方市场关闭时应保留官方目录")
         await market.setThirdPartyEnabled(true)
         await market.add({ kind: "directory", path: source })
         const view = await market.list()

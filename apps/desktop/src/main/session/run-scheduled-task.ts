@@ -12,9 +12,6 @@ export type ScheduledLaunch = {
   denied(): void
 }
 
-/** 现场信封已经经过普通会话通知通道时，标记这一次运行。 */
-export type ScheduledHostOutcome = ScheduledTaskOutcome & { sessionNoticeHandled?: true }
-
 type Ports = {
   host: Pick<SessionHost, "start" | "stop" | "status" | "subscribe">
   active: Set<string>
@@ -36,7 +33,7 @@ export async function executeScheduledTurn(
   { host, active, send }: Ports,
   task: ScheduledTaskInput,
   signal: AbortSignal,
-): Promise<ScheduledHostOutcome> {
+): Promise<ScheduledTaskOutcome> {
   if (signal.aborted) return stopped
 
   const sessionId = randomUUID()

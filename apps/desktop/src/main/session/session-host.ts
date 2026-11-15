@@ -1,6 +1,6 @@
 // 负责一个窗口内的 Claude 会话启动、并发名额、命令路由、停放和历史管理。
 import { randomUUID } from "node:crypto"
-import type { ScheduledTaskInput } from "../../scheduled-tasks-contract"
+import type { ScheduledTaskInput, ScheduledTaskOutcome } from "../../scheduled-tasks-contract"
 import type { ClaudeSession } from "./claude-session"
 import type { PermissionAnswer } from "./permission-broker"
 import type { QuestionAnswer } from "./question-broker"
@@ -10,11 +10,7 @@ import { hostEnvelope, notifySessionListeners, type SessionEnvelope } from "./se
 import type { ActiveSession, SessionTimers } from "./session-host-active"
 import type { SessionPendingWork } from "./session-host-support"
 import type { SessionHostOptions } from "./session-host-options"
-import {
-  executeScheduledTurn,
-  type ScheduledHostOutcome,
-  type ScheduledLaunch,
-} from "./run-scheduled-task"
+import { executeScheduledTurn, type ScheduledLaunch } from "./run-scheduled-task"
 import {
   createSessionLaunchDeps,
   launchSession,
@@ -233,7 +229,7 @@ export class SessionHost {
   }
 
   /** 为本次定时运行新建、执行并停放会话，首轮由定时入口独占。 */
-  runScheduledTask(task: ScheduledTaskInput, signal: AbortSignal): Promise<ScheduledHostOutcome> {
+  runScheduledTask(task: ScheduledTaskInput, signal: AbortSignal): Promise<ScheduledTaskOutcome> {
     return executeScheduledTurn(
       {
         host: this,

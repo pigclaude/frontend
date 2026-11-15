@@ -51,6 +51,11 @@ import { readDesktopRuntimeEndpoints } from "./runtime-endpoints"
 import { registerWorkspaceIpc } from "./runtime/workspace-ipc"
 import { SessionDefaultsStore } from "./runtime/session-defaults"
 import { registerSessionDefaultsIpc } from "./runtime/session-defaults-ipc"
+import {
+  createDesktopScheduledTaskService,
+  reportScheduledTasksError,
+} from "./scheduled-tasks/desktop-service"
+import type { ScheduledTaskService } from "./scheduled-tasks/service"
 import { WorkbenchIpc } from "./workbench/workbench-ipc"
 import { cleanupStaleSessionDirs } from "./session/session-environment"
 import { startSessionStore } from "./session/session-store-startup"
@@ -85,6 +90,9 @@ const { rustBaseUrl, authOrigin, websiteOrigin } = readDesktopRuntimeEndpoints(
 )
 const hasSingleInstanceLock = configureRuntimeProfile(app, process.env["PIGCLAUDE_USER_DATA"])
 const startup = createDesktopStartup()
+const sessionDefaults = new SessionDefaultsStore({
+  filePath: join(app.getPath("userData"), "session-defaults.json"),
+})
 const hostArch = runtimeHostArch(app.runningUnderARM64Translation)
 const startProxyRuntime = createXrayRuntimeStarter({
   hostArch,
@@ -108,6 +116,7 @@ const windowVisibility = createMainWindowVisibility(() => mainWindow, createWind
 const windowNavigation = new WindowNavigation(windowVisibility.restore, sendToMainWindow)
 let cleanupLiveEvents = () => {}
 let appUpdates: UpdateService | null = null
+let scheduledTasks: ScheduledTaskService | null = null
 const closePreference = new WindowClosePreference(
   join(app.getPath("userData"), "window-preferences.json"),
   process.platform,
@@ -166,6 +175,7 @@ if (!hasSingleInstanceLock) {
         membership: () => desktopComposition?.membershipGate.view().state ?? "connecting",
         sessions: () => sessionHost?.livePreviews() ?? [],
         accounts: async () => (await claudeAccountService?.list()) ?? [],
+        ...(scheduledTasks === null ? {} : { scheduledTasks }),
       })
       if (initialized) {
         authorizationReady = true
@@ -174,6 +184,7 @@ if (!hasSingleInstanceLock) {
         void reportDeviceInfoOnStartup(desktopComposition)
       }
       startAppUpdates()
+      void scheduledTasks?.start().then(() => tray?.refresh(), reportScheduledTasksError)
     })
     .catch(() => {
       closeStartupEvents()
@@ -184,6 +195,7 @@ if (!hasSingleInstanceLock) {
 
 const guardMainWindowClose = installQuitFlow({
   pendingWork: () => sessionHost?.pendingWork() ?? noPendingWork,
+  scheduledTasks: () => scheduledTasks?.summary().enabled ?? [],
   unsaved: workbench.unsaved,
   mainWindow: () => mainWindow,
   closeToTray: () => tray !== null && closePreference.current(),
@@ -202,13 +214,9 @@ const guardMainWindowClose = installQuitFlow({
 function registerIpcHandlers(): void {
   registerDesktopWindowIpc(() => mainWindow, isTrustedSender, closePreference, windowNavigation)
   registerStartupPreferencesIpc(ipcMain, isTrustedSender, startup)
-  let sessionDefaults: SessionDefaultsStore | null = null
   registerSessionDefaultsIpc(ipcMain, {
     isTrusted: isTrustedSender,
-    store: () =>
-      (sessionDefaults ??= new SessionDefaultsStore({
-        filePath: join(app.getPath("userData"), "session-defaults.json"),
-      })),
+    store: () => sessionDefaults,
   })
   registerUpdateIpc({ ipcMain, service: () => appUpdates, isTrusted: isTrustedSender })
   ipcMain.handle("pigclaude:open-external", async (_event, value: unknown) => {
@@ -265,6 +273,7 @@ async function shutdownDesktop(): Promise<void> {
       appUpdates?.stop()
       closeStartupEvents()
       notifications.dispose()
+      return scheduledTasks?.dispose()
     },
     accounts: () => claudeAccountService?.dispose() ?? Promise.resolve(),
     sessions: () => sessionHost?.dispose() ?? Promise.resolve(),
@@ -373,9 +382,23 @@ async function setupAuthorization(): Promise<void> {
   usageRecorder = sessions.usage
   sessionHost = sessions.host
   projectPermissions = sessions.projectPermissions
+  const host = sessions.host
+  if (composition.runtime && host) {
+    scheduledTasks = createDesktopScheduledTaskService({
+      userDataPath: app.getPath("userData"),
+      authorization: composition,
+      runtime: composition.runtime,
+      defaults: sessionDefaults,
+      usesDevProvider: sessions.usesDevProvider,
+      runSession: (task, signal) => host.runScheduledTask(task, signal),
+      presentation: { refreshTray: () => tray?.refresh(), announce: notifications.announce },
+    })
+  }
   const checkLive = () => void desktopComposition?.resume()
-  const resumeAfterSleep = () =>
+  const resumeAfterSleep = () => {
     desktopComposition?.membershipGate.resumeAfterWake(() => net.isOnline())
+    void scheduledTasks?.wake().catch(reportScheduledTasksError)
+  }
   app.on("browser-window-focus", checkLive)
   powerMonitor.on("resume", resumeAfterSleep)
   const unsubscribeAccounts = localStore.subscribeAccounts(() => tray?.accountsChanged())

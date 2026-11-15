@@ -51,6 +51,7 @@ export type PigclaudeShellProps = {
   threads: Thread[]
   activeThreadId: string | null
   threadStatus: Record<string, ThreadStatus>
+  threadLabels?: Readonly<Record<string, string>>
   agentNames: Readonly<Record<string, string>>
   expandedProjects: Record<string, boolean>
   canGoBack: boolean
@@ -240,6 +241,7 @@ export function PigclaudeShell(props: PigclaudeShellProps) {
             threads={props.threads}
             activeThreadId={props.activeThreadId}
             threadStatus={props.threadStatus}
+            threadLabels={props.threadLabels}
             agentNames={props.agentNames}
             expandedProjects={props.expandedProjects}
             onAddProject={props.onAddProject}

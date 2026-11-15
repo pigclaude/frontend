@@ -5,6 +5,10 @@ import type { DesktopComposition } from "../composition"
 import type { LocalRuntime } from "../runtime/local-runtime"
 import type { SessionDefaultsStore } from "../runtime/session-defaults"
 import { assertWorkspace } from "../session/session-host-support"
+import {
+  observeScheduledTaskPresentation,
+  type ScheduledTaskPresentationOptions,
+} from "./presentation"
 import { createScheduledTaskRunner, type ScheduledTaskRunnerPorts } from "./runner"
 import { ScheduledTaskService } from "./service"
 
@@ -16,6 +20,7 @@ export function createDesktopScheduledTaskService(options: {
   defaults: Pick<SessionDefaultsStore, "get">
   usesDevProvider: boolean
   runSession: ScheduledTaskRunnerPorts["runSession"]
+  presentation: Omit<ScheduledTaskPresentationOptions, "service">
 }): ScheduledTaskService {
   const runner = createScheduledTaskRunner({
     checkMembership: () => options.authorization.runAuthorized(async () => true),
@@ -32,11 +37,13 @@ export function createDesktopScheduledTaskService(options: {
     defaultModel: async () => (await options.defaults.get()).model,
     runSession: options.runSession,
   })
-  return new ScheduledTaskService({
+  const service = new ScheduledTaskService({
     filePath: join(options.userDataPath, "scheduled-tasks.json"),
     run: ({ task }, signal) => runner(task, signal),
     reportError: reportScheduledTasksError,
   })
+  observeScheduledTaskPresentation({ ...options.presentation, service })
+  return service
 }
 
 /** 调度失败只记固定错误码，避免把本机任务内容带入日志。 */

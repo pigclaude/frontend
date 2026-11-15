@@ -19,6 +19,7 @@ export const shellZhCN = {
   "shell.notice.sessionDirect": "系统网络",
   "shell.notice.sessionProxyMissing": "绑定的代理已不存在",
   "shell.session.untitled": "新会话",
+  "shell.session.scheduled": "定时",
   "shell.session.recoverReference": "新建会话并引用本会话",
   "shell.session.noOriginalAccount": "没有可在原会话语言和时区下使用的 Claude 账号",
   "shell.session.archived": "已归档",
@@ -104,6 +105,7 @@ export const shellEnUS = {
   "shell.notice.sessionDirect": "System network",
   "shell.notice.sessionProxyMissing": "The bound proxy no longer exists",
   "shell.session.untitled": "New session",
+  "shell.session.scheduled": "Scheduled",
   "shell.session.recoverReference": "Start a new session with this reference",
   "shell.session.noOriginalAccount":
     "No Claude account is available for the original session’s language and time zone",

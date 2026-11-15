@@ -74,7 +74,7 @@ async function menu(action: string): Promise<void> {
   await flush()
 }
 
-async function openApp(status: SavedSessionSummary["status"] = "parked") {
+async function openApp(status: SavedSessionSummary["status"] = "parked", scheduled = false) {
   installFakeDesktopBridge()
   let saved: (SavedSessionSummary & { archivedAt: string | null }) | null = {
     sessionId: id,
@@ -91,6 +91,7 @@ async function openApp(status: SavedSessionSummary["status"] = "parked") {
     accountId: null,
     model: "claude-sonnet",
     lastActivityAt: at,
+    ...(scheduled ? { origin: "scheduled" as const } : {}),
   }
   let retention: number | null = null
   const session = fakeSessionBridge({
@@ -171,6 +172,17 @@ async function openApp(status: SavedSessionSummary["status"] = "parked") {
     bridge: session.bridge,
   }
 }
+
+it("定时标签与标题独立显示，重命名仍读取原始标题", async () => {
+  await openApp("parked", true)
+  const row = app.container.querySelector(".proj-sessions .sess")
+  expect(row?.querySelector(".sess-title")?.textContent).toBe("原会话")
+  expect(row?.textContent).toContain("定时")
+  await menu("重命名")
+  expect(app.container.querySelector<HTMLInputElement>('input[aria-label="会话名称"]')?.value).toBe(
+    "原会话",
+  )
+})
 
 it(
   "renames and archives from the sidebar and resumes through the archive",

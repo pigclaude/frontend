@@ -1,6 +1,6 @@
 // 负责登录后的主窗口：把工作区、当前会话和账号状态接到 Pigcode 外壳，并按当前位置画内容区页面。
 // 聊天、账号、代理、环境和用量接真实会话与本地数据；只有浏览器预览会传入演示工作台。
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useRef, useState } from "react"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import { OpenInButton, useToast } from "@pigclaude/ui-shell"
 import { PanelLayoutControls } from "@pigclaude/ui-workbench"
@@ -11,7 +11,7 @@ import { workspaceRevision } from "./models/workspace-revision"
 import { ChatScreen } from "./screens/chat-screen"
 import { MainWindowSettings } from "./screens/main-window-settings"
 import type { BrowserProfilesController } from "./hooks/use-browser-profiles"
-import type { AppInfo } from "../../preload/index"
+import { useDesktopAppInfo } from "./hooks/use-desktop-app-info"
 import type { ClaudeAccountsController } from "./hooks/use-claude-accounts"
 import { sessionAccountId, useSession } from "./hooks/use-session"
 import { useSessionHistory } from "./hooks/use-session-history"
@@ -123,7 +123,7 @@ export function MainWindow({
   const [filesRequest, setFilesRequest] = useState<FilesRequest | null>(null)
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [terminalMounted, setTerminalMounted] = useState(false)
-  const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
+  const appInfo = useDesktopAppInfo()
   const accounts = pool.accounts.map((account) => toPoolAccount(account, pool.proxies))
   const history = useSessionHistory({
     page,
@@ -158,6 +158,7 @@ export function MainWindow({
     hidden: history.hidden,
     projectOf,
     untitled: t("shell.session.untitled"),
+    scheduledLabel: t("shell.session.scheduled"),
     accounts: pool.accounts,
   })
   const sidebarPaths = sidebarProjectPaths(
@@ -208,14 +209,6 @@ export function MainWindow({
   }, [workbenchRoot])
 
   useWorkspaceShortcuts(!!bridge && inChat, workbenchRoot, toggleTerminal, toggleRight)
-
-  useEffect(() => {
-    const read = window.pigclaude?.appInfo
-    if (!read) return
-    void read()
-      .then(setAppInfo)
-      .catch(() => undefined)
-  }, [])
 
   function settings(next: string): void {
     onNavigate(settingsLocation(next))
@@ -337,6 +330,7 @@ export function MainWindow({
       threads={sidebar.threads}
       activeThreadId={sessionId}
       threadStatus={sidebar.statuses}
+      threadLabels={sidebar.labels}
       agentNames={sessionAgentNames(pool.accounts)}
       expandedProjects={expanded}
       canGoBack={canGoBack}

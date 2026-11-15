@@ -91,12 +91,14 @@ export function workspaceThreads(input: {
   hidden?: ReadonlySet<string>
   projectOf: (workspace: string) => string | null
   untitled: string
+  scheduledLabel: string
   accounts: readonly BadgeAccount[]
-}): { threads: Thread[]; statuses: Record<string, ThreadStatus> } {
+}): { threads: Thread[]; statuses: Record<string, ThreadStatus>; labels: Record<string, string> } {
   const summaries = new Map(input.summaries.map((item) => [item.sessionId, item]))
   const ids = new Set([...summaries.keys(), ...input.workspaces.keys()])
   const threads: Thread[] = []
   const statuses: Record<string, ThreadStatus> = {}
+  const labels: Record<string, string> = {}
   for (const id of ids) {
     if (input.hidden?.has(id)) continue
     const summary = summaries.get(id)
@@ -121,9 +123,10 @@ export function workspaceThreads(input: {
     if (thread === null) continue
     threads.push(summary?.title ? { ...thread, title: summary.title } : thread)
     statuses[id] = summaryStatus(summary, state)
+    if (summary?.origin === "scheduled") labels[id] = input.scheduledLabel
   }
   threads.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-  return { threads, statuses }
+  return { threads, statuses, labels }
 }
 
 function summaryStatus(summary: SessionSummary | undefined, state: SessionUiState): ThreadStatus {

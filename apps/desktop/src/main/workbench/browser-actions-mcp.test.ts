@@ -6,6 +6,7 @@ import { join } from "node:path"
 import type { CanUseTool, McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk"
 import type { BrowserWindow, WebContents } from "electron"
 import { afterEach, expect, it, vi } from "vitest"
+import { browserTypeToolName, type BrowserTypeInput } from "../../browser-permission-contract"
 import { ClaudeAgentAdapter } from "../session/claude-agent-adapter"
 import { FakeQuery } from "../session/claude-agent-adapter-fixtures"
 import { createHarness } from "../session/session-host-fixtures"
@@ -31,6 +32,14 @@ const clickContext = {
   name: "Verified synthetic action",
 } as const
 const historyContext = { kind: "navigate", action: "back", url: target } as const
+const passwordContext = {
+  kind: "type",
+  url: target,
+  ref,
+  role: "textbox",
+  name: "Synthetic password field",
+  isPassword: true,
+} as const
 
 afterEach(async () => {
   while (shutdown.length) await shutdown.pop()?.()
@@ -59,11 +68,9 @@ async function fixture(permissionMode: SessionPermissionMode = "default") {
     await rm(workspace, { recursive: true, force: true })
   })
 
-  const click = vi
-    .fn<(signal?: AbortSignal) => Promise<string>>()
-    .mockResolvedValue("click snapshot")
+  const click = vi.fn<PreparedBrowserAction["execute"]>().mockResolvedValue("click snapshot")
   const navigate = vi
-    .fn<(signal?: AbortSignal) => Promise<string>>()
+    .fn<PreparedBrowserAction["execute"]>()
     .mockResolvedValue("navigation snapshot")
   const prepareAgentClick = vi.fn(async (): Promise<PreparedBrowserAction> => ({
     context: clickContext,
@@ -73,7 +80,27 @@ async function fixture(permissionMode: SessionPermissionMode = "default") {
     context: historyContext,
     execute: navigate,
   }))
-  const browsers = { prepareAgentClick, prepareAgentNavigation } as unknown as WorkbenchBrowsers
+  const executeType = vi.fn<PreparedBrowserAction["execute"]>().mockResolvedValue("{}")
+  const prepareAgentType = vi.fn(
+    async (
+      _window: BrowserWindow,
+      _id: string,
+      input: BrowserTypeInput,
+    ): Promise<PreparedBrowserAction> => ({
+      context: {
+        ...passwordContext,
+        characterCount: [...input.text].length,
+        clear: input.clear,
+        submit: input.submit,
+      },
+      execute: executeType,
+    }),
+  )
+  const browsers = {
+    prepareAgentClick,
+    prepareAgentNavigation,
+    prepareAgentType,
+  } as unknown as WorkbenchBrowsers
   const owner = { isDestroyed: () => false } as unknown as WebContents
   const window = { id: native.size + 1 } as unknown as BrowserWindow
   native.set(owner, window)
@@ -106,6 +133,8 @@ async function fixture(permissionMode: SessionPermissionMode = "default") {
     click,
     prepareAgentNavigation,
     prepareAgentClick,
+    prepareAgentType,
+    executeType,
     loseMembership: () => {
       member = false
     },
@@ -135,7 +164,7 @@ it("先把历史导航的已核对目标交给所属会话审批，批准后才�
   await expect(invocation).resolves.toMatchObject({
     content: [{ type: "text", text: "navigation snapshot" }],
   })
-  expect(f.navigate).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal))
+  expect(f.navigate).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal), expect.any(Function))
 })
 
 function sdkRequest(toolUseID: string): Parameters<CanUseTool>[2] {
@@ -147,11 +176,12 @@ function sdkRequest(toolUseID: string): Parameters<CanUseTool>[2] {
   }
 }
 
-it("计划档从 SDK 和实际工具入口都拒绝导航和点击", async () => {
+it("计划档从 SDK 和实际工具入口都拒绝导航、点击和输入", async () => {
   const f = await fixture("plan")
   const actions = [
     ["browser_navigate", { url: target }],
     ["browser_click", { ref }],
+    ["browser_type", { ref, text: "synthetic input" }],
   ] as const
   for (const [name, args] of actions) {
     await expect(
@@ -164,8 +194,132 @@ it("计划档从 SDK 和实际工具入口都拒绝导航和点击", async () =>
   expect(f.cards()).toEqual([])
   expect(f.prepareAgentNavigation).not.toHaveBeenCalled()
   expect(f.prepareAgentClick).not.toHaveBeenCalled()
+  expect(f.prepareAgentType).not.toHaveBeenCalled()
+  expect(f.executeType).not.toHaveBeenCalled()
   expect(f.navigate).not.toHaveBeenCalled()
   expect(f.click).not.toHaveBeenCalled()
+})
+
+it("逐次批准真实输入，密码回显脱敏且快照引用保持可用", async () => {
+  const f = await fixture("bypassPermissions")
+  expect((await f.client.listTools()).tools.map(({ name }) => name)).toContain("browser_type")
+  const text = 'fixture  "local" 🔑'
+  const visibleEcho = 'fixture "local" 🔑'
+  const snapshot = {
+    url: target,
+    title: "Synthetic: " + text,
+    headings: [{ level: 1, text: visibleEcho }],
+    elements: [{ ref, role: "textbox", type: "password", name: "Echo " + visibleEcho }],
+    text: visibleEcho + " / " + visibleEcho,
+    blockedRequests: 2,
+  }
+  f.executeType.mockResolvedValue(JSON.stringify(snapshot))
+  await f.host.send(f.sessionId, { text: "合成浏览器输入审批" })
+  const actor = { agentId: "type-fixture-agent", parentToolUseId: "type-parent" }
+  f.query.emit({
+    type: "system",
+    subtype: "task_started",
+    task_id: actor.agentId,
+    tool_use_id: actor.parentToolUseId,
+    description: "本机合成输入",
+    task_type: "local_agent",
+    uuid: randomUUID(),
+    session_id: f.sessionId,
+  })
+  const args = { ref, text, clear: true, submit: true }
+  const toolUseID = "fixture-password-type"
+  await expect(
+    f.canUseTool(browserTypeToolName, args, { ...sdkRequest(toolUseID), agentID: actor.agentId }),
+  ).resolves.toMatchObject({ behavior: "allow" })
+  expect(f.cards()).toHaveLength(0)
+  const invocation = f.client.callTool({
+    name: "browser_type",
+    arguments: args,
+    _meta: { "claudecode/toolUseId": toolUseID },
+  })
+  void invocation.catch(() => undefined)
+  await vi.waitFor(() => expect(f.cards()).toHaveLength(1))
+  expect(f.prepareAgentType).toHaveBeenCalledExactlyOnceWith(f.window, f.id, args)
+  expect(f.executeType).not.toHaveBeenCalled()
+  const [card] = f.cards()
+  if (!card) throw new Error("缺少输入审批卡")
+  expect(card).toMatchObject({
+    toolName: browserTypeToolName,
+    subagent: actor,
+    input: { text },
+  })
+  expect(card.browser).toEqual({
+    ...passwordContext,
+    characterCount: 18,
+    clear: true,
+    submit: true,
+  })
+  expect(card.input).toEqual({ text })
+  await f.decide(card.requestId, "allow")
+  const guarded = {
+    ...snapshot,
+    title: "Synthetic: ••••",
+    headings: [{ level: 1, text: "••••" }],
+    elements: [{ ref, role: "textbox", type: "password", name: "Echo ••••" }],
+    text: "•••• / ••••",
+  }
+  await expect(invocation).resolves.toMatchObject({
+    content: [{ type: "text", text: JSON.stringify(guarded) }],
+  })
+  expect(f.executeType).toHaveBeenCalledExactlyOnceWith(
+    expect.any(AbortSignal),
+    expect.any(Function),
+  )
+})
+
+it("超出 UTF-16 上限不会准备输入，刚好达到上限的输入补上默认动作", async () => {
+  const f = await fixture()
+  const text = "🚀".repeat(2048)
+  await expect(
+    f.client.callTool({ name: "browser_type", arguments: { ref, text: text + "x" } }),
+  ).resolves.toMatchObject({ isError: true })
+  expect(f.prepareAgentType).not.toHaveBeenCalled()
+  expect(f.cards()).toHaveLength(0)
+
+  const call = f.client.callTool({ name: "browser_type", arguments: { ref, text } })
+  void call.catch(() => undefined)
+  await vi.waitFor(() => expect(f.cards()).toHaveLength(1))
+  expect(f.prepareAgentType).toHaveBeenCalledExactlyOnceWith(f.window, f.id, {
+    ref,
+    text,
+    clear: false,
+    submit: false,
+  })
+  const [card] = f.cards()
+  if (!card) throw new Error("缺少输入审批卡")
+  expect(card.browser).toMatchObject({ characterCount: 2048, clear: false, submit: false })
+  await f.decide(card.requestId, "deny")
+  await expect(call).resolves.toMatchObject({ isError: true })
+  expect(f.executeType).not.toHaveBeenCalled()
+})
+
+it.each(["会员", "权限档"])("批准后原生写入前 %s 失效会中止", async (state) => {
+  const f = await fixture()
+  const write = vi.fn()
+  f.executeType.mockImplementation(async (_signal, assertAllowed) => {
+    if (state === "会员") f.loseMembership()
+    else await f.host.setMode(f.sessionId, "plan")
+    assertAllowed?.()
+    write()
+    return "{}"
+  })
+  const call = f.client.callTool({
+    name: "browser_type",
+    arguments: { ref, text: "synthetic input" },
+  })
+  void call.catch(() => undefined)
+  await vi.waitFor(() => expect(f.cards()).toHaveLength(1))
+  const [card] = f.cards()
+  if (!card) throw new Error("缺少输入审批卡")
+  await f.decide(card.requestId, "allow")
+  await expect(call).resolves.toMatchObject({ isError: true })
+  expect(f.executeType).toHaveBeenCalledOnce()
+  expect(write).not.toHaveBeenCalled()
 })
 
 it("同参点击各自绑定子代理和目标；会员撤销时批准也不会执行", async () => {
@@ -224,7 +378,7 @@ it("同参点击各自绑定子代理和目标；会员撤销时批准也不会�
   await expect(first).resolves.toMatchObject({
     content: [{ type: "text", text: "click snapshot" }],
   })
-  expect(f.click).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal))
+  expect(f.click).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal), expect.any(Function))
 
   f.loseMembership()
   await f.decide(secondCard.requestId, "allow")

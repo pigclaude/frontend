@@ -119,12 +119,14 @@ describe("browser session tools", () => {
       { name: "browser_snapshot", permission_policy: "always_ask" },
       { name: "browser_navigate", permission_policy: "always_ask" },
       { name: "browser_click", permission_policy: "always_ask" },
+      { name: "browser_type", permission_policy: "always_ask" },
     ])
     expect(servers.at(-1)?.tools?.map((tool) => tool.name)).toEqual([
       "browser_open",
       "browser_snapshot",
       "browser_navigate",
       "browser_click",
+      "browser_type",
     ])
     expect(servers.at(-1)?.tools?.every((tool) => tool.annotations?.destructiveHint)).toBe(true)
   })

@@ -8,7 +8,10 @@ import {
   type McpServerToolPolicy,
 } from "@anthropic-ai/claude-agent-sdk"
 import { z } from "zod"
-import type { BrowserPermissionContext } from "../../browser-permission-contract"
+import {
+  browserTypeTextLimit,
+  type BrowserPermissionContext,
+} from "../../browser-permission-contract"
 import {
   browserToolForContext,
   workbenchBrowserServer,
@@ -17,6 +20,10 @@ import {
 } from "../session/browser-tool-approval"
 import { BrowserActionError, type PreparedBrowserAction } from "./browser-action-request"
 import { workbenchAgentBrowserUrl, type WorkbenchBrowsers } from "./browser-surface"
+
+const unavailableMessage =
+  "The local preview is unavailable. Use an HTTP(S) loopback development page."
+const passwordEchoFields = new Set(["url", "title", "text", "name"])
 
 type BrowserAction = {
   context: BrowserPermissionContext
@@ -38,27 +45,38 @@ export function browserSessionTools(
     actionTool: WorkbenchBrowserTool,
     extra: unknown,
     prepare: (window: BrowserWindow) => BrowserAction | Promise<BrowserAction>,
+    typedText?: string,
   ) {
     const invocation = record(extra)
     const signal = invocation?.signal instanceof AbortSignal ? invocation.signal : undefined
     const window = owner.isDestroyed() ? null : BrowserWindow.fromWebContents(owner)
-    const active = () => !owner.isDestroyed() && !signal?.aborted && canUse()
-    try {
-      if (!window || !active()) return unavailable()
+    const assertAllowed = () => {
+      if (owner.isDestroyed() || signal?.aborted || !canUse())
+        throw new BrowserActionError(unavailableMessage)
       const denied = approval.denial(actionTool)
-      if (denied !== null) return failure(denied)
-
+      if (denied !== null) throw new BrowserActionError(denied)
+    }
+    try {
+      if (!window) return unavailable()
+      assertAllowed()
       const action = await prepare(window)
-      if (!active() || browserToolForContext(action.context) !== actionTool) return unavailable()
-      if (!(await approval.request(action.context, signal, record(invocation?._meta))))
-        return failure("The user did not approve this browser action.")
-      if (!active()) return unavailable()
-      const blocked = approval.denial(actionTool)
-      if (blocked !== null) return failure(blocked)
+      if (browserToolForContext(action.context) !== actionTool) return unavailable()
+      assertAllowed()
+      const metadata = record(invocation?._meta)
+      const approved =
+        typedText === undefined
+          ? await approval.request(action.context, signal, metadata)
+          : await approval.request(action.context, signal, metadata, { text: typedText })
+      if (!approved) return failure("The user did not approve this browser action.")
 
-      const content = await action.execute(signal)
-      if (!active()) return unavailable()
-      return { content: [{ type: "text" as const, text: content }] }
+      assertAllowed()
+      const snapshot = await action.execute(signal, assertAllowed)
+      assertAllowed()
+      const text =
+        action.context.kind === "type" && action.context.isPassword && typedText !== undefined
+          ? maskPasswordEcho(snapshot, typedText)
+          : snapshot
+      return { content: [{ type: "text" as const, text }] }
     } catch (error) {
       return error instanceof BrowserActionError ? failure(error.message) : unavailable()
     }
@@ -118,6 +136,31 @@ export function browserSessionTools(
         run("browser_click", extra, (window) => browsers.prepareAgentClick(window, id, ref)),
       { annotations: { destructiveHint: true } },
     ),
+    tool(
+      "browser_type",
+      "Type into an editable element in this conversation's local preview using a ref from its latest snapshot. Optionally clear it first or press Enter after typing. Returns the updated snapshot after approval.",
+      {
+        ref: z.string().min(1).max(64),
+        // JSON Schema 的 maxLength 按码点计数，原生输入的上限按 UTF-16 代码单元复核。
+        text: z
+          .string()
+          .max(browserTypeTextLimit)
+          .refine(
+            (value) => value.length <= browserTypeTextLimit,
+            `Browser input must be at most ${browserTypeTextLimit} UTF-16 code units.`,
+          ),
+        clear: z.boolean().optional(),
+        submit: z.boolean().optional(),
+      },
+      ({ ref, text, clear = false, submit = false }, extra) =>
+        run(
+          "browser_type",
+          extra,
+          (window) => browsers.prepareAgentType(window, id, { ref, text, clear, submit }),
+          text,
+        ),
+      { annotations: { destructiveHint: true } },
+    ),
   ]
   const server = createSdkMcpServer({ name: workbenchBrowserServer, tools })
   const toolPolicies: McpServerToolPolicy[] = tools.map(({ name }) => ({
@@ -133,8 +176,26 @@ function record(value: unknown): Record<string, unknown> | undefined {
     : undefined
 }
 
+function maskPasswordEcho(snapshot: string, text: string): string {
+  if (text === "") return snapshot
+  // 快照会压缩可见文本中的空白，引用和角色等结构字段保持原样。
+  const visibleText = text.replace(/\s+/g, " ").trim()
+  const masked: unknown = JSON.parse(snapshot, (key, value: unknown) => {
+    if (typeof value !== "string" || !passwordEchoFields.has(key)) return value
+    const redacted = value.replaceAll(text, "••••")
+    return visibleText && visibleText !== text && key !== "url"
+      ? redacted.replaceAll(visibleText, "••••")
+      : redacted
+  })
+  if (!record(masked))
+    throw new BrowserActionError(
+      "The browser did not return a valid snapshot. Take a new snapshot.",
+    )
+  return JSON.stringify(masked)
+}
+
 function unavailable() {
-  return failure("The local preview is unavailable. Use an HTTP(S) loopback development page.")
+  return failure(unavailableMessage)
 }
 
 function failure(text: string) {

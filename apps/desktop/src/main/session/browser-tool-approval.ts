@@ -14,6 +14,7 @@ const toolByContext = {
   snapshot: "browser_snapshot",
   navigate: "browser_navigate",
   click: "browser_click",
+  type: "browser_type",
 } as const satisfies Record<BrowserPermissionContext["kind"], string>
 
 /** 当前工作台注册的浏览器工具名。 */
@@ -32,6 +33,7 @@ export type BrowserApprovalPort = {
     context: BrowserPermissionContext,
     invocationSignal?: AbortSignal,
     metadata?: Record<string, unknown>,
+    privateInput?: { text: string },
   ): Promise<boolean>
 }
 
@@ -79,9 +81,11 @@ export function createBrowserApproval(options: {
     rememberCaller(tool, caller) {
       attribution.remember(browserToolName(tool), caller)
     },
-    async request(context, invocationSignal, metadata) {
-      const { kind, ...input } = context
+    async request(context, invocationSignal, metadata, privateInput) {
+      const { kind, ...details } = context
       const tool = toolByContext[kind]
+      const input = kind === "type" ? privateInput : details
+      if (input === undefined) return false
       const signal =
         invocationSignal === undefined
           ? options.sessionSignal

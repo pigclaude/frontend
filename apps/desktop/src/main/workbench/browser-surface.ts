@@ -13,6 +13,11 @@ import {
   isAgentBrowserAddress,
   type AgentBrowserNetwork,
 } from "./agent-browser-network"
+import {
+  BrowserReferences,
+  StaleBrowserReference,
+  type AgentBrowserElement,
+} from "./browser-references"
 
 const partition = "persist:pigclaude-workbench-browser"
 const loopback = new Set(["localhost", "127.0.0.1", "[::1]"])
@@ -24,6 +29,7 @@ type Surface = {
   crashed?: WorkbenchBrowserPage["crashed"]
   pickVersion: number
   agent: AgentBrowserNetwork | null
+  references: BrowserReferences | null
   attached: boolean
   scale: number
 }
@@ -119,6 +125,7 @@ export class WorkbenchBrowsers {
     entry.error = undefined
     entry.crashed = undefined
     entry.pickVersion += 1
+    entry.references?.invalidate()
     try {
       await entry.view.webContents.loadURL(url.href)
     } catch (error: unknown) {
@@ -129,7 +136,7 @@ export class WorkbenchBrowsers {
     }
   }
 
-  /** 在会话自己的浏览器中打开本机开发页；只返回标题和正文，不读取存储或页面脚本。 */
+  /** 在会话自己的浏览器中打开本机开发页，或读取当前页的可见快照。 */
   async agentPage(window: BrowserWindow, id: string, input?: string): Promise<string> {
     if (input !== undefined) {
       const url = workbenchAgentBrowserUrl(input)
@@ -140,20 +147,42 @@ export class WorkbenchBrowsers {
       this.#send(window, { type: "browser-open", id, url: url.href })
     }
     const entry = this.#surfaces.get(id)
-    if (entry?.window !== window || !entry.agent || entry.error)
+    if (entry?.window !== window || !entry.agent || !entry.references || entry.error)
       throw new Error("WORKBENCH_PREVIEW_FAILED")
     const contents = entry.view.webContents
     const current = workbenchBrowserUrl(contents.getURL())
     if (!isAgentBrowserAddress(current.href)) throw new Error("PREVIEW_URL_NOT_ALLOWED")
-    const text: unknown = await contents.executeJavaScriptInIsolatedWorld(1001, [
-      { code: "(document.body?.innerText ?? '').trim().slice(0, 6000)" },
-    ])
+    const snapshot =
+      input === undefined
+        ? await entry.references.snapshot()
+        : {
+            text: (await contents.executeJavaScriptInIsolatedWorld(1001, [
+              { code: "(document.body?.innerText ?? '').trim().slice(0, 6000)" },
+            ])) as unknown,
+          }
     return JSON.stringify({
       url: current.href,
       title: contents.getTitle(),
-      text: typeof text === "string" ? text : "",
+      ...snapshot,
+      text: typeof snapshot.text === "string" ? snapshot.text : "",
       blockedRequests: entry.agent.blockedRequests,
     })
+  }
+
+  /** 用当前 Agent 标签的引用表读取元素；页面已导航或引用无效时提示重新快照。 */
+  async agentElement(
+    window: BrowserWindow,
+    id: string,
+    ref: string,
+  ): Promise<AgentBrowserElement & { url: string }> {
+    const entry = this.#surfaces.get(id)
+    if (entry?.window !== window || !entry.references || entry.error)
+      throw new StaleBrowserReference()
+    const url = entry.view.webContents.getURL()
+    if (!isAgentBrowserAddress(url)) throw new StaleBrowserReference()
+    const element = await entry.references.resolve(ref)
+    if (this.#surfaces.get(id) !== entry) throw new StaleBrowserReference()
+    return { ...element, url }
   }
 
   /** 执行白名单中的浏览器导航命令。 */
@@ -323,6 +352,7 @@ export class WorkbenchBrowsers {
         webSecurity: true,
       },
     })
+    const contents = view.webContents
     const entry: Surface = {
       window,
       view,
@@ -330,9 +360,9 @@ export class WorkbenchBrowsers {
       attached: false,
       scale: 1,
       agent: network,
+      references: network ? new BrowserReferences(contents) : null,
     }
     this.#surfaces.set(id, entry)
-    const contents = view.webContents
     configureContents(contents, agent, network ?? undefined, (url) => {
       queueMicrotask(() => {
         if (this.#surfaces.get(id) === entry)

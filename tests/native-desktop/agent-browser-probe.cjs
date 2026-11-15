@@ -14,6 +14,7 @@ configureAgentBrowserRuntime(app.commandLine)
 const userData = join(__dirname, "user-data")
 mkdirSync(userData)
 app.setPath("userData", userData)
+// 各轮探针分别销毁自己的窗口，等全部通过后再退出。
 app.on("window-all-closed", () => {})
 
 async function listen(host, handler) {
@@ -321,11 +322,12 @@ async function probe() {
     for (let index = 0; index < 20 && downloadsRequested === 0; index += 1)
       await new Promise((resolve) => setTimeout(resolve, 50))
     openNext = true
-    let last = first
-    for (let index = 0; index < 40 && last.title !== "Second loopback"; index += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 100))
-      last = JSON.parse(await browsers.agentPage(owner, id))
-    }
+    const last = await waitForSnapshot(
+      browsers,
+      owner,
+      id,
+      (page) => page.title === "Second loopback",
+    )
     assert.equal(last.title, "Second loopback")
     assert.equal(last.url, next.url + "/")
     assert.equal(downloadsRequested, 1)
@@ -345,12 +347,144 @@ async function probe() {
   }
 }
 
+async function waitForSnapshot(browsers, owner, id, condition) {
+  for (let index = 0; index < 40; index += 1) {
+    const previous = await browsers.agentPage(owner, id).then(JSON.parse, () => null)
+    if (previous && condition(previous)) return previous
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  throw new Error("未看到测试页面的快照变化")
+}
+
+async function snapshotProbe() {
+  const password = "fixture-password-omitted-from-snapshots"
+  let change = { ref: "", navigate: false }
+  const local = await listen("127.0.0.1", (request, response) => {
+    if (request.url === "/change") {
+      response.setHeader("Content-Type", "application/json")
+      response.end(JSON.stringify(change))
+      return
+    }
+    response.setHeader("Content-Type", "text/html")
+    response.end(`<!doctype html><title>Ref test page</title>
+      <h1>Snapshot heading</h1><h2>Form controls</h2><h3 hidden>Hidden heading</h3>
+      <button id="original">Original action</button>
+      <button id="decoy" data-ref="forged-ref">Decoy action</button>
+      <button hidden>Hidden action</button>
+      <div style="opacity:0"><button>Invisible action</button></div>
+      <label>Password <input type="password" value="${password}"></label>
+      <p>Visible page copy</p><span style="display:contents">Text without a wrapper box</span>
+      <p>${"x".repeat(6200)}</p>
+      <script>
+        const timer = setInterval(async () => {
+          const current = await fetch("/change").then((response) => response.json());
+          if (!current.ref) return;
+          const decoy = document.querySelector("#decoy");
+          if (decoy) {
+            const original = document.querySelector("#original");
+            const key = Symbol.for("pigclaude.agent-browser-refs");
+            const exposed = globalThis[key];
+            if (Object.keys(original.dataset).length || exposed?.byRef?.has(current.ref)) {
+              exposed?.byRef?.set(current.ref, decoy);
+              document.title = "Page reached reference table";
+              clearInterval(timer);
+              return;
+            }
+            decoy.id = current.ref;
+            decoy.setAttribute("data-ref", current.ref);
+            globalThis[key] = {
+              byRef: new Map([[current.ref, decoy]])
+            };
+          }
+          if (current.navigate && location.pathname === "/first") {
+            history.pushState(null, "", "/changed");
+          }
+          document.title = "Page attributes changed";
+        }, 60);
+      </script>`)
+  })
+  const owner = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
+  const browsers = new WorkbenchBrowsers()
+  const id = "agent-snapshot-probe"
+  try {
+    await browsers.agentPage(owner, id, local.url + "/first")
+    browsers.present(owner, id, { x: 0, y: 0, width: 800, height: 600, scale: 1 })
+    const initial = JSON.parse(await browsers.agentPage(owner, id))
+    assert.equal(initial.url, local.url + "/first")
+    assert.equal(initial.title, "Ref test page")
+    assert.deepEqual(initial.headings, [
+      { level: 1, text: "Snapshot heading" },
+      { level: 2, text: "Form controls" },
+    ])
+    assert(initial.text.includes("Visible page copy"))
+    assert(initial.text.includes("Text without a wrapper box"))
+    assert(initial.text.length <= 6000)
+    assert(!initial.text.includes("Invisible action"))
+    assert.equal(
+      initial.elements.some((element) => /Hidden|Invisible/.test(element.name)),
+      false,
+    )
+    assert(initial.elements.some((element) => element.type === "password"))
+    assert(!JSON.stringify(initial).includes(password))
+    const original = initial.elements.find((element) => element.name === "Original action")
+    assert(original)
+    assert(original.ref && original.ref !== "forged-ref")
+    await assert.rejects(browsers.agentElement(owner, id, "forged-ref"), /new browser snapshot/i)
+
+    change = { ref: original.ref, navigate: false }
+    const changed = await waitForSnapshot(
+      browsers,
+      owner,
+      id,
+      (page) =>
+        page.title === "Page attributes changed" || page.title === "Page reached reference table",
+    )
+    assert.equal(changed.title, "Page attributes changed")
+    assert.equal(
+      changed.elements.find((element) => element.name === "Original action")?.ref,
+      original.ref,
+    )
+    assert.equal((await browsers.agentElement(owner, id, original.ref)).name, "Original action")
+    assert.notEqual(
+      changed.elements.find((element) => element.name === "Decoy action")?.ref,
+      original.ref,
+    )
+
+    change = { ...change, navigate: true }
+    const navigated = await waitForSnapshot(
+      browsers,
+      owner,
+      id,
+      (page) => page.url === local.url + "/changed",
+    )
+    const newRef = navigated.elements.find((element) => element.name === "Original action")?.ref
+    assert(newRef && newRef !== original.ref)
+    await assert.rejects(browsers.agentElement(owner, id, original.ref), /new browser snapshot/i)
+    assert.equal((await browsers.agentElement(owner, id, newRef)).name, "Original action")
+
+    await browsers.agentPage(owner, id, local.url + "/fresh-document")
+    await assert.rejects(browsers.agentElement(owner, id, newRef), /new browser snapshot/i)
+    process.stdout.write(
+      "PASS agent snapshot heading levels, isolated refs and navigation invalidation\n",
+    )
+  } finally {
+    browsers.closeWindow(owner)
+    owner.destroy()
+    local.close()
+  }
+}
+
 app
   .whenReady()
-  .then(verifyPostPopupBlocked)
-  .then(verifyAgentWebRtcBlocked)
-  .then(verifyMalformedAllowlistBlocked)
-  .then(probe)
+  .then(async () => {
+    if (!process.argv.includes("--snapshot-only")) {
+      await verifyPostPopupBlocked()
+      await verifyAgentWebRtcBlocked()
+      await verifyMalformedAllowlistBlocked()
+      await probe()
+    }
+    await snapshotProbe()
+  })
   .then(
     () => app.exit(0),
     (error) => {

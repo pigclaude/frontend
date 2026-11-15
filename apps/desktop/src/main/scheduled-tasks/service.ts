@@ -10,6 +10,7 @@ import type {
   ScheduledTaskRunsPage,
   ScheduledTaskSummary,
 } from "../../scheduled-tasks-contract"
+import { claimRun, completedRun, finishRun } from "./run-history"
 import {
   maximumScheduledTaskRuns,
   newestScheduledRunFirst,
@@ -432,66 +433,6 @@ function nextForTask(saved: SavedScheduledTask, now: number): string | null {
 function resetPlan(saved: SavedScheduledTask, now: number): void {
   saved.eligibleFrom = timestamp(now)
   saved.task.nextRunAt = nextForTask(saved, now)
-}
-
-function claimRun(
-  saved: SavedScheduledTask,
-  scheduledAt: string | null,
-  missed: boolean,
-  now: number,
-): ScheduledTaskRun {
-  const reason = missed ? "MISSED" : saved.active === null ? null : "TASK_BUSY"
-  const at = timestamp(now)
-  const triggerSequence = saved.task.runCount + 1
-  const run: ScheduledTaskRun = {
-    id: randomUUID(),
-    taskId: saved.task.id,
-    triggerSequence,
-    source: scheduledAt === null ? "manual" : "schedule",
-    status: reason === null ? "running" : "skipped",
-    scheduledAt,
-    triggeredAt: at,
-    finishedAt: reason === null ? null : at,
-    reason,
-    sessionId: null,
-    accountId: null,
-    deniedApprovals: 0,
-  }
-  saved.task.lastRunAt = at
-  saved.task.runCount = triggerSequence
-  if (run.status === "running") saved.active = run
-  else saved.history.unshift(run)
-  trimHistory(saved)
-  return run
-}
-
-function completedRun(
-  run: ScheduledTaskRun,
-  outcome: ScheduledTaskOutcome,
-  now: number,
-): ScheduledTaskRun {
-  return {
-    ...run,
-    status: outcome.status,
-    reason: outcome.reason ?? null,
-    sessionId: outcome.sessionId ?? null,
-    accountId: outcome.accountId ?? null,
-    deniedApprovals: outcome.deniedApprovals ?? 0,
-    ...(outcome.sessionNoticeHandled === true ? { sessionNoticeHandled: true } : {}),
-    finishedAt: timestamp(Math.max(now, Date.parse(run.triggeredAt))),
-  }
-}
-
-function finishRun(saved: SavedScheduledTask, run: ScheduledTaskRun): void {
-  saved.active = null
-  if (run.sessionId !== null) saved.task.lastSessionId = run.sessionId
-  saved.history.unshift(run)
-  saved.history.sort(newestScheduledRunFirst)
-  trimHistory(saved)
-}
-
-function trimHistory(saved: SavedScheduledTask): void {
-  saved.history = saved.history.slice(0, maximumScheduledTaskRuns - (saved.active === null ? 0 : 1))
 }
 
 function timestamp(ms: number): string {

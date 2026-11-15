@@ -20,7 +20,7 @@ const platforms = [
   {
     platform: "Linux",
     architecture: "x64",
-    filename: () => "PigClaude-x64.AppImage",
+    filename: () => "PigClaude-x86_64.AppImage",
   },
 ]
 
@@ -51,8 +51,9 @@ type UploadedAsset = Record<string, unknown> & { name: string; size: number }
 
 const request = {
   credentials: "omit",
-  next: { revalidate: 300 },
+  cache: "no-store",
 } as const
+const checksumLimit = 64_000
 
 /** 匿名读取最新正式版本，下载地址固定在官方仓库，安装文件按产物命名精确匹配。 */
 export async function latestDesktopRelease(fetcher: typeof fetch = fetch): Promise<DesktopRelease> {
@@ -68,13 +69,14 @@ export async function latestDesktopRelease(fetcher: typeof fetch = fetch): Promi
     const tag = payload.tag_name
     const version = typeof tag === "string" ? /^v(\d+\.\d+\.\d+)$/.exec(tag)?.[1] : undefined
     if (
-      payload.draft !== false ||
-      payload.prerelease !== false ||
+      payload.draft === true ||
+      payload.prerelease === true ||
       !version ||
       typeof tag !== "string"
     ) {
       return { status: "unreleased" }
     }
+    if (payload.draft !== false || payload.prerelease !== false) return { status: "unavailable" }
     const assets = payload.assets.filter(isUploaded)
     const checksums = assets.find(({ name }) => name === "SHA256SUMS.txt")
     const assetBase = `${desktopReleasesPage}/download/${tag}`
@@ -86,11 +88,12 @@ export async function latestDesktopRelease(fetcher: typeof fetch = fetch): Promi
     }))
     const fallback =
       checksums &&
-      checksums.size <= 64_000 &&
+      checksums.size <= checksumLimit &&
       checksumsUrl &&
       files.some(({ file }) => file !== undefined && !sha256FromDigest(file.digest))
         ? await readChecksums(fetcher, checksumsUrl)
         : new Map<string, string>()
+    if (!fallback) return { status: "unavailable" }
     return {
       status: "available",
       tag,
@@ -113,26 +116,48 @@ export async function latestDesktopRelease(fetcher: typeof fetch = fetch): Promi
   }
 }
 
-async function readChecksums(fetcher: typeof fetch, url: string): Promise<Map<string, string>> {
+async function readChecksums(
+  fetcher: typeof fetch,
+  url: string,
+): Promise<Map<string, string> | null> {
+  const response = await fetcher(url, { ...request, signal: AbortSignal.timeout(5_000) })
+  if (!response.ok || !response.body) return null
+  const text = await readChecksumText(response.body)
+  if (text === null) return null
   const checksums = new Map<string, string>()
   const repeated = new Set<string>()
-  try {
-    const response = await fetcher(url, { ...request, signal: AbortSignal.timeout(5_000) })
-    if (!response.ok) return checksums
-    for (const line of (await response.text()).split(/\r?\n/)) {
-      const [, hash, name] = /^([\da-f]{64}) [ *]([\w.-]+)$/i.exec(line) ?? []
-      if (!hash || !name || repeated.has(name)) continue
-      if (checksums.has(name)) {
-        repeated.add(name)
-        checksums.delete(name)
-      } else {
-        checksums.set(name, hash.toLowerCase())
-      }
+  for (const line of text.split(/\r?\n/)) {
+    const [, hash, name] = /^([\da-f]{64}) [ *]([\w.-]+)$/i.exec(line) ?? []
+    if (!hash || !name || repeated.has(name)) continue
+    if (checksums.has(name)) {
+      repeated.add(name)
+      checksums.delete(name)
+    } else {
+      checksums.set(name, hash.toLowerCase())
     }
-  } catch {
-    // 附件的 GitHub 摘要仍可使用，缺校验值的平台继续显示状态。
   }
   return checksums
+}
+
+async function readChecksumText(body: ReadableStream<Uint8Array>): Promise<string | null> {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let text = ""
+  let bytes = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) return text + decoder.decode()
+      bytes += value.byteLength
+      if (bytes > checksumLimit) {
+        await reader.cancel()
+        return null
+      }
+      text += decoder.decode(value, { stream: true })
+    }
+  } finally {
+    reader.releaseLock()
+  }
 }
 
 function sha256FromDigest(digest: unknown): string | undefined {

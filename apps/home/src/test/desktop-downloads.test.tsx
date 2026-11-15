@@ -8,12 +8,13 @@ import { latestDesktopRelease } from "@/lib/desktop-downloads"
 
 vi.mock("@/components/nav", () => ({ Nav: () => <nav aria-label="主导航" /> }))
 vi.mock("@/components/landing/footer", () => ({ Footer: () => null }))
+vi.mock("next/cache", () => ({ unstable_cache: (load: unknown) => load }))
 
 const api = "https://api.github.com/repos/pigclaude/release/releases/latest"
 const tag = "v1.2.3"
 const base = `https://github.com/pigclaude/release/releases/download/${tag}`
 const hashes = ["a".repeat(64), "b".repeat(64), "c".repeat(64)]
-const files = ["PigClaude-1.2.3-arm64.dmg", "PigClaude-1.2.3-x64.exe", "PigClaude-x64.AppImage"]
+const files = ["PigClaude-1.2.3-arm64.dmg", "PigClaude-1.2.3-x64.exe", "PigClaude-x86_64.AppImage"]
 const checksumFile = { name: "SHA256SUMS.txt", state: "uploaded", size: 500 }
 const assets = [
   ...files.map((name, index) => ({
@@ -54,7 +55,7 @@ describe("官网公开下载", () => {
     expect(screen.queryByText("PigClaude-1.2.3-arm64.zip")).toBeNull()
     expect(fetcher).toHaveBeenCalledExactlyOnceWith(
       api,
-      expect.objectContaining({ credentials: "omit", next: { revalidate: 300 } }),
+      expect.objectContaining({ credentials: "omit", cache: "no-store" }),
     )
   })
 
@@ -109,5 +110,13 @@ describe("官网公开下载", () => {
     render(await DownloadPage())
     expect(screen.getByText("暂时无法读取发布信息")).toBeTruthy()
     expect(screen.queryByText(/private error/)).toBeNull()
+  })
+
+  it("校验清单的实际内容超出上限时，拒绝用它生成下载数据", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(published({ assets: [{ ...assets[0], digest: null }, checksumFile] }))
+      .mockResolvedValueOnce(new Response(`${hashes[0]}  ${files[0]}\n` + " ".repeat(64_000)))
+    expect(await latestDesktopRelease(fetcher)).toEqual({ status: "unavailable" })
   })
 })

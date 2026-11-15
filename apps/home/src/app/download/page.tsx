@@ -1,6 +1,7 @@
 // 负责渲染不依赖登录的官网安装包下载页。
 
 import type { Metadata } from "next"
+import { unstable_cache } from "next/cache"
 import { Download, ExternalLink } from "lucide-react"
 import { Button } from "@pigclaude/web-ui/components/button"
 import { Footer } from "@/components/landing/footer"
@@ -9,6 +10,7 @@ import {
   desktopReleasesPage,
   latestDesktopRelease,
   type DesktopDownload,
+  type DesktopRelease,
 } from "@/lib/desktop-downloads"
 
 /** 告知搜索和浏览器当前页面是 PigClaude 安装包入口。 */
@@ -17,12 +19,22 @@ export const metadata: Metadata = {
   description: "下载适用于 macOS、Windows 或 Linux 的 PigClaude 安装包。",
 }
 
-/** 允许公开页面定期获取首个或更新的正式版本。 */
-export const revalidate = 300
+/** 每次访问渲染页面，下载数据由独立缓存控制。 */
+export const revalidate = 0
+
+const cachedRelease = unstable_cache(
+  async () => {
+    const release = await latestDesktopRelease()
+    if (release.status === "unavailable") throw new Error("暂时无法读取发布信息")
+    return release
+  },
+  ["pigclaude-desktop-downloads"],
+  { revalidate: 300 },
+)
 
 /** 直接展示公开发布记录和该版本的三个平台，无需网站会话。 */
 export default async function DownloadPage() {
-  const release = await latestDesktopRelease()
+  const release = await cachedRelease().catch((): DesktopRelease => ({ status: "unavailable" }))
   return (
     <>
       <Nav variant="marketing" />

@@ -44,6 +44,7 @@ describe("ClaudeAgentAdapter", () => {
       pathToClaudeCodeExecutable: "/resolved/claude",
       env: { ANTHROPIC_BASE_URL: "http://127.0.0.1:47821" },
       settingSources: [],
+      systemPrompt: { type: "preset", preset: "claude_code" },
       persistSession: false,
       includePartialMessages: true,
       forwardSubagentText: true,

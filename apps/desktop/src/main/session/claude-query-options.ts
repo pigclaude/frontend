@@ -70,6 +70,7 @@ export function buildQueryOptions(
   }
   return {
     ...isolatedQueryOptions(options.workspace, binaryPath, options.env),
+    systemPrompt: { type: "preset", preset: "claude_code" },
     ...(projectConfiguration === undefined ? {} : { strictMcpConfig: true }),
     ...(projectConfiguration?.directory
       ? { projectConfigRoot: projectConfiguration.directory, settingSources: ["project"] }

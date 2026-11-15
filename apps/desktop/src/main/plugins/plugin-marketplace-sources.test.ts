@@ -9,6 +9,13 @@ import type { PluginMarketplaceCatalog } from "./plugin-marketplace-catalog"
 import { PluginMarketplaceSources } from "./plugin-marketplace-sources"
 
 const remote = { kind: "github", repo: "fixture/market", commit: "a".repeat(40) } as const
+const nextRemote = { ...remote, commit: "b".repeat(40) }
+const https = {
+  kind: "https",
+  url: "https://fixture.invalid/market.zip",
+  sha256: "c".repeat(64),
+} as const
+const nextHttps = { ...https, sha256: "d".repeat(64) }
 const local = { kind: "directory", path: join(tmpdir(), "fictional-marketplace") } as const
 
 function catalog(version: string): PluginMarketplaceCatalog {
@@ -38,7 +45,7 @@ async function fixture() {
   let member: MembershipState = "active"
   let developer = true
   const normalize = (input: unknown): PluginMarketplaceSourceInput => {
-    const selected = [remote, local].find(
+    const selected = [remote, nextRemote, https, nextHttps, local].find(
       (source) => JSON.stringify(source) === JSON.stringify(input),
     )
     if (!selected) throw new Error("PLUGIN_MARKETPLACE_SOURCE_INVALID")
@@ -240,6 +247,66 @@ it("原子保存失败时保留旧内存和磁盘快照，后续可以重试", a
     await f.sources.refresh(id)
     expect(prepared.assertCurrent).toThrow("PLUGIN_MARKETPLACE_SOURCE_CHANGED")
     expect((await f.reopen().resolve(id, "fixture")).entry.info.version).toBe("2.0.0")
+  } finally {
+    await f.close()
+  }
+})
+
+it.each([
+  [remote, nextRemote, remote.commit, nextRemote.commit],
+  [https, nextHttps, https.sha256, nextHttps.sha256],
+] as const)("远程源手动换 pin，失败守旧且成功时撤回旧确认", async (first, next, oldPin, newPin) => {
+  const f = await fixture()
+  try {
+    await f.sources.add(first)
+    const id = await firstId(f.sources)
+    const prepared = await f.sources.resolve(id, "fixture")
+    const initial = await f.sources.list()
+    expect(initial.sources).toMatchObject([{ id, pin: oldPin, enabled: true }])
+
+    f.load.mockRejectedValueOnce(new Error("合成远程源读取失败"))
+    await expect(f.sources.refresh(id, newPin)).rejects.toThrow()
+    await expect(f.sources.list()).resolves.toMatchObject({
+      sources: [{ id, pin: oldPin, enabled: true }],
+      entries: initial.entries,
+    })
+    expect(prepared.assertCurrent).not.toThrow()
+
+    // 两次发布的解析目录完全相同，单独换 pin 也使旧的安装授权过期。
+    await f.sources.refresh(id, newPin)
+    expect(f.load).toHaveBeenLastCalledWith(next)
+    expect(prepared.assertCurrent).toThrow("PLUGIN_MARKETPLACE_SOURCE_CHANGED")
+    await expect(f.reopen().list()).resolves.toMatchObject({
+      sources: [{ id, pin: newPin, enabled: true, error: null }],
+      entries: initial.entries,
+    })
+    const current = await f.sources.resolve(id, "fixture")
+    expect(current.input).toEqual(next)
+    expect(current.assertCurrent).not.toThrow()
+  } finally {
+    await f.close()
+  }
+})
+
+it("停用源换 pin 保持隐藏，本地目录默认没有 pin", async () => {
+  const f = await fixture()
+  try {
+    await f.sources.add(local)
+    const localId = await firstId(f.sources)
+    await expect(f.sources.list()).resolves.toMatchObject({ sources: [{ id: localId, pin: null }] })
+    await expect(f.sources.refresh(localId, "a".repeat(40))).rejects.toThrow(
+      "PLUGIN_MARKETPLACE_SOURCE_INVALID",
+    )
+    await f.sources.remove(localId)
+
+    await f.sources.add(remote)
+    const id = await firstId(f.sources)
+    await f.sources.setEnabled(id, false)
+    await f.sources.refresh(id, nextRemote.commit)
+    await expect(f.reopen().list()).resolves.toMatchObject({
+      sources: [{ id, pin: nextRemote.commit, enabled: false }],
+      entries: [],
+    })
   } finally {
     await f.close()
   }

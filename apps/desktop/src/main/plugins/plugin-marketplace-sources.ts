@@ -115,8 +115,7 @@ export class PluginMarketplaceSources {
     this.#assertSourceMode(input)
     const catalog = await this.#load(input)
     await this.#change(epoch, async (records) => {
-      if (records.some((record) => sourceKey(record.input) === sourceKey(input)))
-        throw new Error("PLUGIN_MARKETPLACE_SOURCE_EXISTS")
+      assertUniqueSource(records, input)
       const record = {
         id: randomUUID(),
         revision: randomUUID(),
@@ -131,30 +130,37 @@ export class PluginMarketplaceSources {
     })
   }
 
-  /** 显式重读来源。失败记录刷新状态，保留旧的条目、摘要和成功时间。 */
-  async refresh(id: string): Promise<void> {
+  /** 重读同一来源，可为远程源换固定修订；失败保留旧 pin、目录与成功时间。 */
+  async refresh(id: string, pin?: string): Promise<void> {
     const epoch = this.#captureMembership()
     const before = findSource(await this.#read(), id)
     this.#assertMember(epoch)
     this.#assertSourceMode(before.input)
-    const result = await this.#load(before.input).then(
+    const input = this.#withPin(before.input, pin)
+    const result = await this.#load(input).then(
       (catalog) => ({ ok: true, catalog }) as const,
       (error: unknown) => ({ ok: false, error }) as const,
     )
     await this.#change(epoch, async (records) => {
       const current = findSource(records, id)
       if (current.revision !== before.revision) throw new Error("PLUGIN_MARKETPLACE_SOURCE_CHANGED")
+      if (result.ok) assertUniqueSource(records, input, id)
       const next: SourceRecord = result.ok
         ? {
             ...current,
+            input,
             catalog: result.catalog,
             catalogDigest: catalogDigest(result.catalog),
             refreshedAt: new Date().toISOString(),
             error: null,
           }
         : { ...current, error: refreshFailed }
-      if (next.catalogDigest !== current.catalogDigest) next.revision = randomUUID()
-      await this.#publish(replace(records, next), epoch, current.input)
+      if (
+        next.catalogDigest !== current.catalogDigest ||
+        sourcePin(next.input) !== sourcePin(current.input)
+      )
+        next.revision = randomUUID()
+      await this.#publish(replace(records, next), epoch, next.input)
     })
     if (!result.ok) throw result.error
   }
@@ -235,6 +241,20 @@ export class PluginMarketplaceSources {
   #assertSourceMode(input: PluginMarketplaceSourceInput): void {
     if (input.kind === "directory" && !this.options.developerMode())
       throw new Error("PLUGIN_DEVELOPER_MODE_REQUIRED")
+  }
+
+  #withPin(
+    input: PluginMarketplaceSourceInput,
+    pin: string | undefined,
+  ): PluginMarketplaceSourceInput {
+    if (pin === undefined) return input
+    if (input.kind === "directory") throw new Error("PLUGIN_MARKETPLACE_SOURCE_INVALID")
+    const next = this.options.normalize(
+      input.kind === "github" ? { ...input, commit: pin } : { ...input, sha256: pin },
+    )
+    if (next.kind !== input.kind || sourceLocation(next) !== sourceLocation(input))
+      throw new Error("PLUGIN_MARKETPLACE_SOURCE_INVALID")
+    return structuredClone(next)
   }
 
   async #load(input: PluginMarketplaceSourceInput): Promise<PluginMarketplaceCatalog> {
@@ -352,15 +372,29 @@ function replace(records: readonly SourceRecord[], next: SourceRecord): SourceRe
   return records.map((record) => (record.id === next.id ? next : record))
 }
 
-function sourceKey(input: PluginMarketplaceSourceInput): string {
-  switch (input.kind) {
-    case "github":
-      return JSON.stringify([input.kind, input.repo, input.commit])
-    case "https":
-      return JSON.stringify([input.kind, input.url, input.sha256])
-    case "directory":
-      return JSON.stringify([input.kind, input.path])
-  }
+function sourcePin(input: PluginMarketplaceSourceInput): string | null {
+  return input.kind === "github" ? input.commit : input.kind === "https" ? input.sha256 : null
+}
+
+function sourceLocation(input: PluginMarketplaceSourceInput): string {
+  return input.kind === "github" ? input.repo : input.kind === "https" ? input.url : input.path
+}
+
+function assertUniqueSource(
+  records: readonly SourceRecord[],
+  input: PluginMarketplaceSourceInput,
+  exceptId?: string,
+): void {
+  if (
+    records.some(
+      (record) =>
+        record.id !== exceptId &&
+        record.input.kind === input.kind &&
+        sourceLocation(record.input) === sourceLocation(input) &&
+        sourcePin(record.input) === sourcePin(input),
+    )
+  )
+    throw new Error("PLUGIN_MARKETPLACE_SOURCE_EXISTS")
 }
 
 function sourceLabel(input: PluginMarketplaceSourceInput): string {
@@ -380,6 +414,7 @@ function viewOf(record: SourceRecord): PluginMarketplaceSourceView {
   return {
     id: record.id,
     kind: record.input.kind,
+    pin: sourcePin(record.input),
     label: sourceLabel(record.input),
     catalogName: record.catalog.name,
     enabled: record.enabled,

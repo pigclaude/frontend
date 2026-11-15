@@ -8,6 +8,7 @@ import { expect, it, vi } from "vitest"
 import type {
   CapabilityPluginsBridge,
   InstalledCapabilityPlugin,
+  InstalledClaudeCodePlugin,
 } from "../../../../capability-plugin-contract"
 import { SessionSettings } from "./settings-app-pages"
 
@@ -37,8 +38,27 @@ it("会话设置展示已安装的插件并只保存用户选择的插件偏好"
     approvedDomains: [],
     toolApproval: "always_ask",
   }
+  const claudeCode: InstalledClaudeCodePlugin = {
+    type: "claude-code",
+    manifest: {
+      id: "project-guide",
+      name: "工程手册",
+      version: "1.0.0",
+      commands: ["project-guide:overview"],
+      skills: [],
+      agents: [],
+      ignoredComponents: [],
+      skillExecution: [],
+    },
+    revision: "revision-2",
+    enabled: true,
+    installedAt: "2026-11-14T01:00:00.000Z",
+    sourceKind: "directory",
+    sha256: null,
+    compatible: true,
+  }
   const bridge = {
-    list: vi.fn().mockResolvedValue([plugin]),
+    list: vi.fn<CapabilityPluginsBridge["list"]>().mockResolvedValue([plugin, claudeCode]),
     setToolApproval: vi.fn().mockResolvedValue({ ...plugin, toolApproval: "follow_session" }),
     subscribe: () => () => undefined,
   } satisfies Pick<CapabilityPluginsBridge, "list" | "setToolApproval" | "subscribe">
@@ -57,6 +77,7 @@ it("会话设置展示已安装的插件并只保存用户选择的插件偏好"
       ),
     )
     expect(container.textContent).toContain("下次启动会话时生效")
+    expect(container.querySelector('[aria-label="工程手册的工具询问"]')).toBeNull()
     const group = container.querySelector('[aria-label="标签插件的工具询问"]')
     const choices = [...(group?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [])]
     const [alwaysAsk, follow] = choices

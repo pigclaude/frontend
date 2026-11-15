@@ -1,4 +1,4 @@
-// 定义安装确认、插件运行时和声明式设置共用的能力插件数据，无代码或密钥内容进入主窗口桥。
+// 定义本机插件安装确认、能力插件运行时和声明式设置的数据，无代码或密钥内容进入主窗口桥。
 
 import type { PluginSandboxJson } from "./main/plugins/plugin-sandbox-contract"
 
@@ -175,7 +175,7 @@ export const capabilityPluginsChangedChannel = capabilityPluginChannelPrefix + "
 /** 可信设置页的插件管理桥，只有披露确认后才写入本机。 */
 export type CapabilityPluginsBridge = {
   status(): Promise<{ developerMode: boolean }>
-  list(): Promise<InstalledCapabilityPlugin[]>
+  list(): Promise<InstalledDesktopPlugin[]>
   listDeclarations(): Promise<CapabilityPluginDeclarations[]>
   readSettings(plugin: CapabilityPluginRevision): Promise<CapabilityPluginSettingsView>
   setSetting(
@@ -188,10 +188,10 @@ export type CapabilityPluginsBridge = {
     commandId: string,
   ): Promise<CapabilityPluginCommandResult>
   pick(kind: CapabilityPluginInstallSource["kind"]): Promise<string | null>
-  prepare(input: CapabilityPluginInstallSource): Promise<CapabilityPluginInstallDisclosure>
-  confirm(confirmationId: string): Promise<InstalledCapabilityPlugin>
+  prepare(input: CapabilityPluginInstallSource): Promise<DesktopPluginInstallDisclosure>
+  confirm(confirmationId: string): Promise<InstalledDesktopPlugin>
   cancel(confirmationId: string): Promise<void>
-  setEnabled(pluginId: string, enabled: boolean): Promise<InstalledCapabilityPlugin>
+  setEnabled(pluginId: string, enabled: boolean): Promise<InstalledDesktopPlugin>
   /** 保存该插件下次会话启动时使用的询问档。 */
   setToolApproval(
     pluginId: string,

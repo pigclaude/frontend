@@ -59,6 +59,10 @@ export interface PluginDetailsDialogProps {
   confirmUninstall?: boolean | undefined
   /** 在确认卸载时显示宿主提供的选项。 */
   uninstallOptions?: ReactNode
+  /** 当前类型的自定义显示名称。 */
+  kindLabel?: string | undefined
+  /** 宿主提供的详情行，替换默认的 API、权限与服务行。 */
+  runtimeFacts?: ReactNode
   onClose: () => void
   /** 卸载用户安装的插件；缺省或内置插件时没有卸载按钮。 */
   onUninstall?: ((id: string) => void) | undefined
@@ -72,6 +76,8 @@ function DetailsBody({
   pending,
   confirmUninstall,
   uninstallOptions,
+  kindLabel,
+  runtimeFacts,
   onClose,
   onUninstall,
   onUpdate,
@@ -120,7 +126,7 @@ function DetailsBody({
         <span className="plugin-dialog-meta" data-tone={status.tone}>
           <StatusDot tone={status.tone} />
           <span>{t(status.label)}</span>
-          <Badge>{t(kindKeys[plugin.kind])}</Badge>
+          <Badge>{kindLabel ?? t(kindKeys[plugin.kind])}</Badge>
           {plugin.builtin ? <Badge>{t("plugins.builtin")}</Badge> : null}
           <span className="plugin-dialog-version">{plugin.version}</span>
         </span>
@@ -132,23 +138,27 @@ function DetailsBody({
           <dt>{t("plugins.facts.package")}</dt>
           <dd className="mono">{plugin.name}</dd>
           <dt>{t("plugins.facts.kind")}</dt>
-          <dd>{t(kindKeys[plugin.kind])}</dd>
-          <dt>{t("plugins.facts.api")}</dt>
-          <dd>{plugin.apiVersion}</dd>
-          <dt>{t("plugins.permissions")}</dt>
-          <dd>
-            {plugin.permissions.length > 0
-              ? plugin.permissions.map((permission) => (
-                  <Badge key={permission} variant="warn">
-                    {permission}
-                  </Badge>
-                ))
-              : t("plugins.facts.none")}
-          </dd>
-          <dt>{t("plugins.facts.provides")}</dt>
-          <dd className="mono">
-            {plugin.provides.length > 0 ? plugin.provides.join(", ") : t("plugins.facts.none")}
-          </dd>
+          <dd>{kindLabel ?? t(kindKeys[plugin.kind])}</dd>
+          {runtimeFacts ?? (
+            <>
+              <dt>{t("plugins.facts.api")}</dt>
+              <dd>{plugin.apiVersion}</dd>
+              <dt>{t("plugins.permissions")}</dt>
+              <dd>
+                {plugin.permissions.length > 0
+                  ? plugin.permissions.map((permission) => (
+                      <Badge key={permission} variant="warn">
+                        {permission}
+                      </Badge>
+                    ))
+                  : t("plugins.facts.none")}
+              </dd>
+              <dt>{t("plugins.facts.provides")}</dt>
+              <dd className="mono">
+                {plugin.provides.length > 0 ? plugin.provides.join(", ") : t("plugins.facts.none")}
+              </dd>
+            </>
+          )}
           {plugin.originLabel ? (
             <>
               <dt>{t("plugins.facts.origin")}</dt>

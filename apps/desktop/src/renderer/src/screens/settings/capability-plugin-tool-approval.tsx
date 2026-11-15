@@ -56,7 +56,12 @@ export function CapabilityPluginToolApprovalSettings({
         .list()
         .then((next) => {
           if (read === generation)
-            setPlugins(next.filter(({ manifest }) => manifest.tools.length > 0))
+            setPlugins(
+              next.filter(
+                (plugin): plugin is InstalledCapabilityPlugin =>
+                  plugin.type === "capability" && plugin.manifest.tools.length > 0,
+              ),
+            )
         })
         .catch(() => undefined)
     }

@@ -2,10 +2,11 @@
 
 import type { PluginSummary } from "@pigclaude/ui-plugin-manager"
 import type {
-  CapabilityPluginInstallDisclosure,
   CapabilityPluginInstallSource,
   CapabilityPluginPermission,
-  InstalledCapabilityPlugin,
+  ClaudeCodePluginManifest,
+  DesktopPluginInstallDisclosure,
+  InstalledDesktopPlugin,
 } from "../../../../capability-plugin-contract"
 import type { TextKey } from "../../locale/text"
 
@@ -23,58 +24,70 @@ const sources: Record<CapabilityPluginInstallSource["kind"], TextKey> = {
   directory: "pluginSettings.sourceDirectory",
 }
 
-/** 安装前公开展示的事实；之后可接入 Claude Code 插件的组件与 Skill 元数据。 */
+/** 两类安装披露共有名称和版本；各自的事实只取经过宿主校验的数据。 */
 export type PluginDisclosureFacts = {
   name: string
   version: string
   typeLabel: string
-  permissions: readonly string[]
-  domains: readonly string[]
-  tools: ReadonlyArray<{ name: string; description: string }>
-  ignoredComponents: readonly string[]
-  skillExecution: readonly string[]
-}
+} & (
+  | {
+      type: "capability"
+      permissions: readonly string[]
+      domains: readonly string[]
+      tools: ReadonlyArray<{ name: string; description: string }>
+    }
+  | { type: "claude-code"; manifest: ClaudeCodePluginManifest }
+)
 
-/** 能力插件披露只使用经过宿主校验的清单，它没有 Claude Code 组件或 Skill。 */
-export function capabilityPluginDisclosure(
-  { manifest }: CapabilityPluginInstallDisclosure,
+/** 从待确认的安装数据提取与插件类型相符的可见事实。 */
+export function pluginInstallDisclosure(
+  prepared: DesktopPluginInstallDisclosure,
   t: (key: TextKey) => string,
 ): PluginDisclosureFacts {
+  const { name, version } = prepared.manifest
+  if (prepared.type === "claude-code")
+    return {
+      type: prepared.type,
+      name,
+      version,
+      typeLabel: t("pluginSettings.claudeCode"),
+      manifest: prepared.manifest,
+    }
   return {
-    name: manifest.name,
-    version: manifest.version,
+    type: prepared.type,
+    name,
+    version,
     typeLabel: t("pluginSettings.capability"),
-    permissions: manifest.permissions.map((permission) => t(permissions[permission])),
-    domains: manifest.networkDomains,
-    tools: manifest.tools,
-    ignoredComponents: [],
-    skillExecution: [],
+    permissions: prepared.manifest.permissions.map((permission) => t(permissions[permission])),
+    domains: prepared.manifest.networkDomains,
+    tools: prepared.manifest.tools,
   }
 }
 
 /** 适配 Pigcode 的通用插件卡片数据，详情只显示本机来源类型。 */
 export function installedPluginSummary(
-  plugin: InstalledCapabilityPlugin,
+  plugin: InstalledDesktopPlugin,
   t: (key: TextKey) => string,
   hasSettings: boolean,
 ): PluginSummary {
   const { manifest } = plugin
+  const capability = plugin.type === "capability" ? plugin.manifest : null
   return {
     id: manifest.id,
     name: manifest.id,
     displayName: manifest.name,
     description: manifest.description ?? null,
     version: manifest.version,
-    kind: "capability",
+    kind: capability ? "capability" : "agent",
     enabled: plugin.enabled,
-    apiVersion: manifest.apiVersion,
-    permissions: manifest.permissions.map((permission) => t(permissions[permission])),
-    provides: manifest.tools.map((tool) => tool.name),
+    apiVersion: capability?.apiVersion ?? 0,
+    permissions: capability?.permissions.map((permission) => t(permissions[permission])) ?? [],
+    provides: capability?.tools.map((tool) => tool.name) ?? [],
     contributes: {},
     conflict: null,
     error: plugin.compatible ? null : t("pluginSettings.incompatible"),
     originLabel: t(sources[plugin.sourceKind]),
-    ...(hasSettings ? { settingsPage: manifest.id } : {}),
+    ...(capability && hasSettings ? { settingsPage: manifest.id } : {}),
   }
 }
 

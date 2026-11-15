@@ -5,10 +5,11 @@ import { act, createElement } from "react"
 import userEvent from "@testing-library/user-event"
 import { expect, it, vi } from "vitest"
 import type {
-  CapabilityPluginInstallDisclosure,
   CapabilityPluginManifest,
   CapabilityPluginsBridge,
-  InstalledCapabilityPlugin,
+  ClaudeCodePluginManifest,
+  DesktopPluginInstallDisclosure,
+  InstalledDesktopPlugin,
 } from "../../capability-plugin-contract"
 import type { MembershipState, MembershipView } from "@pigclaude/contracts/membership"
 import { DesktopApp } from "./app"
@@ -35,10 +36,26 @@ const manifest: CapabilityPluginManifest = {
   toolResultTemplates: [],
 }
 
-function fakePlugins(developerMode = false) {
-  let prepared: CapabilityPluginInstallDisclosure | null = null
+const claudeManifest: ClaudeCodePluginManifest = {
+  id: "project-guide",
+  name: "工程手册",
+  version: "2.0.0",
+  commands: ["project-guide:overview"],
+  skills: ["project-guide:checklist"],
+  agents: ["project-guide:reviewer"],
+  ignoredComponents: ["hooks", "mcp", "lsp"],
+  skillExecution: [
+    { name: "project-guide:checklist", inline: true, hooks: true, allowedTools: true },
+  ],
+}
+
+function fakePlugins(
+  developerMode = false,
+  selectType: () => DesktopPluginInstallDisclosure["type"] = () => "capability",
+) {
+  let prepared: DesktopPluginInstallDisclosure | null = null
   let sequence = 0
-  let plugins: InstalledCapabilityPlugin[] = []
+  let plugins: InstalledDesktopPlugin[] = []
   const events = new Set<() => void>()
   const changed = () => events.forEach((listener) => listener())
   return {
@@ -55,32 +72,40 @@ function fakePlugins(developerMode = false) {
       kind === "archive" ? archive : "/fixtures/word-count",
     ),
     prepare: vi.fn<CapabilityPluginsBridge["prepare"]>(async (source) => {
-      prepared = {
-        type: "capability",
+      const details = {
         confirmationId: `prepared-${++sequence}`,
-        manifest,
         sourceKind: source.kind,
         sha256: source.kind === "archive" ? source.sha256 : null,
       }
+      prepared =
+        selectType() === "claude-code"
+          ? { ...details, type: "claude-code", manifest: claudeManifest }
+          : { ...details, type: "capability", manifest }
       return prepared
     }),
     confirm: vi.fn<CapabilityPluginsBridge["confirm"]>(async (id) => {
       if (!prepared || prepared.confirmationId !== id)
         throw new Error("PLUGIN_CONFIRMATION_INVALID")
-      const plugin: InstalledCapabilityPlugin = {
-        type: "capability",
-        manifest: prepared.manifest,
+      const details = {
         sourceKind: prepared.sourceKind,
         sha256: prepared.sha256,
         revision: "test-revision",
         installedAt: "2026-11-15T01:00:00.000Z",
-        approvedDomains: manifest.networkDomains,
         enabled: true,
         compatible: true,
-        toolApproval: "always_ask",
       }
+      const plugin: InstalledDesktopPlugin =
+        prepared.type === "claude-code"
+          ? { ...details, type: "claude-code", manifest: prepared.manifest }
+          : {
+              ...details,
+              type: "capability",
+              manifest: prepared.manifest,
+              approvedDomains: prepared.manifest.networkDomains,
+              toolApproval: "always_ask",
+            }
       prepared = null
-      plugins = [plugin]
+      plugins = [...plugins, plugin]
       changed()
       return plugin
     }),
@@ -91,15 +116,15 @@ function fakePlugins(developerMode = false) {
       const plugin = plugins.find((item) => item.manifest.id === id)
       if (!plugin) throw new Error("PLUGIN_NOT_INSTALLED")
       const updated = { ...plugin, enabled }
-      plugins = [updated]
+      plugins = plugins.map((item) => (item.manifest.id === id ? updated : item))
       changed()
       return updated
     }),
     setToolApproval: vi.fn<CapabilityPluginsBridge["setToolApproval"]>(async (id, toolApproval) => {
       const plugin = plugins.find((item) => item.manifest.id === id)
-      if (!plugin) throw new Error("PLUGIN_NOT_INSTALLED")
+      if (!plugin || plugin.type !== "capability") throw new Error("PLUGIN_NOT_INSTALLED")
       const updated = { ...plugin, toolApproval }
-      plugins = [updated]
+      plugins = plugins.map((item) => (item.manifest.id === id ? updated : item))
       changed()
       return updated
     }),
@@ -293,4 +318,58 @@ it("进入会员网络宽限时放弃尚未确认的安装，会员恢复后重�
   await click("从目录安装", app.container)
   await click("确认安装", dialog())
   expect(bridge.confirm).toHaveBeenCalledExactlyOnceWith("prepared-2")
+})
+
+it("Claude Code 插件在确认前披露忽略项和 Skill 执行项，确认后和能力插件分组显示", async () => {
+  let type: DesktopPluginInstallDisclosure["type"] = "capability"
+  const bridge = fakePlugins(true, () => type)
+  await openSettings(bridge)
+  await click("从目录安装", app.container)
+  await click("确认安装", dialog())
+  bridge.confirm.mockClear()
+
+  type = "claude-code"
+  const disclosure = await prepareArchive()
+  expect(disclosure.textContent).toContain("Claude Code 插件")
+  expect(disclosure.textContent).toContain("project-guide:overview")
+  expect(disclosure.textContent).toContain("project-guide:reviewer")
+  const facts = (panel: ParentNode, title: string) =>
+    [...panel.querySelectorAll("dt")].find((item) => item.textContent === title)?.nextElementSibling
+      ?.textContent
+  expect(facts(disclosure, "被忽略的组件")).toBe("插件 hooks, MCP 服务器, LSP 配置")
+  expect(facts(disclosure, "Skill 执行项")).toContain("project-guide:checklist")
+  expect(facts(disclosure, "Skill 执行项")).toContain("! 内联命令 · 文件头 hooks · allowed-tools")
+  expect(bridge.confirm).not.toHaveBeenCalled()
+  await click("确认安装", disclosure)
+  expect(bridge.confirm).toHaveBeenCalledExactlyOnceWith("prepared-2")
+
+  const groups = [...app.container.querySelectorAll("h2")].map((heading) => heading.textContent)
+  expect(groups).toContain("Claude Code 插件")
+  expect(groups).toContain("能力")
+  expect(app.container.querySelector('[aria-label="打开 工程手册 的设置"]')).toBeNull()
+  expect(app.container.querySelector('[aria-label="打开 文档字数 的设置"]')).not.toBeNull()
+  const detail = app.container.querySelector<HTMLElement>('[aria-label="工程手册 的详情"]')
+  await clickButton(detail ?? undefined, "工程手册 的详情")
+  expect(dialog().textContent).toContain("Claude Code 插件")
+  expect(facts(dialog(), "被忽略的组件")).toContain("MCP 服务器")
+  expect(facts(dialog(), "Skill 执行项")).toContain("文件头 hooks")
+  expect(facts(dialog(), "API 版本")).toBeUndefined()
+  const close = dialog().querySelector<HTMLElement>('button[aria-label="关闭"]')
+  await clickButton(close ?? undefined, "关闭插件详情")
+  const toggle = app.container.querySelector<HTMLElement>(
+    '[role="switch"][aria-label="启用 工程手册"]',
+  )
+  await clickButton(toggle ?? undefined, "停用 Claude Code 插件")
+  await flush()
+  expect(bridge.setEnabled).toHaveBeenCalledExactlyOnceWith("project-guide", false)
+  expect(toggle?.getAttribute("aria-checked")).toBe("false")
+
+  await clickButton(detail ?? undefined, "重新打开 Claude Code 插件详情")
+  await click("卸载", dialog())
+  expect(dialog().textContent).toContain("卸载会删除 PigClaude 保存的插件副本。")
+  expect(dialog().querySelector('[role="checkbox"]')).toBeNull()
+  await click("确认卸载", dialog())
+  expect(bridge.uninstall).toHaveBeenCalledExactlyOnceWith("project-guide", false)
+  expect(app.container.querySelector('[aria-label="工程手册 的详情"]')).toBeNull()
+  expect(app.container.querySelector('[aria-label="文档字数 的详情"]')).not.toBeNull()
 })

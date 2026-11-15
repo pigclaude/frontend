@@ -48,6 +48,8 @@ interface TileActions {
 /** 插件卡片区需要的状态与事件。 */
 export interface PluginListProps extends TileActions {
   plugins: PluginSummary[]
+  /** 为宿主支持的插件分组提供显示名称。 */
+  kindLabels?: Partial<Record<PluginKind, string>> | undefined
   /** 搜索词；非空时只留名称、说明或包名里有它的插件，各组全部展开。 */
   query?: string | undefined
   /** 打开安装对话框；给了它，没有插件时空状态里出现「安装插件」。 */
@@ -173,11 +175,11 @@ function PluginTile({
 }
 
 function PluginSection({
-  kind,
+  heading,
   plugins,
   expandAll,
   ...actions
-}: TileActions & { kind: PluginKind; plugins: readonly PluginSummary[]; expandAll: boolean }) {
+}: TileActions & { heading: string; plugins: readonly PluginSummary[]; expandAll: boolean }) {
   const { t } = useLocale()
   const headingId = useId()
   const [expanded, setExpanded] = useState(false)
@@ -186,7 +188,7 @@ function PluginSection({
   return (
     <section className="market-section" aria-labelledby={headingId}>
       <h2 id={headingId} className="market-section-title">
-        {t(kindKeys[kind])}
+        {heading}
       </h2>
       <div className="market-grid">
         {visible.map((plugin) => (
@@ -210,7 +212,13 @@ function PluginSection({
 }
 
 /** 渲染按类型分组的插件卡片；没有插件或搜索没有结果时显示空状态。 */
-export function PluginList({ plugins, query = "", onInstall, ...actions }: PluginListProps) {
+export function PluginList({
+  plugins,
+  query = "",
+  onInstall,
+  kindLabels,
+  ...actions
+}: PluginListProps) {
   const { t, locale } = useLocale()
   const needle = query.trim().toLowerCase()
   const shown = needle
@@ -251,7 +259,7 @@ export function PluginList({ plugins, query = "", onInstall, ...actions }: Plugi
         return items.length > 0 ? (
           <PluginSection
             key={kind}
-            kind={kind}
+            heading={kindLabels?.[kind] ?? t(kindKeys[kind])}
             plugins={items}
             expandAll={needle !== ""}
             {...actions}

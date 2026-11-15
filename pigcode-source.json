@@ -1,7 +1,7 @@
 {
   "repository": "pigcode/pigcode",
   "commit": "ebeccf382df85ca2a2c594f56c1bb1edd641c447",
-  "rule": "@pigcode/contracts → @pigclaude/ui-contracts，选取声明和纯函数；定时规则测试选取已拷入功能的测试组；工作区侧栏增加通用会话角标槽；插件列表和详情增加启停可用性、卸载选项插槽；其余 @pigcode/<package> → @pigclaude/<package>；\"pigcode.<key>\" 存储键 → \"pigclaude.<key>\"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
+  "rule": "@pigcode/contracts → @pigclaude/ui-contracts，选取声明和纯函数；定时规则测试选取已拷入功能的测试组；工作区侧栏增加通用会话角标槽；插件列表和详情增加类型标签、详情内容、启停可用性和卸载选项插槽；其余 @pigcode/<package> → @pigclaude/<package>；\"pigcode.<key>\" 存储键 → \"pigclaude.<key>\"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
   "files": [
     {
       "path": "packages/ui-contracts/src/index.ts",
@@ -1363,13 +1363,13 @@
       "path": "packages/ui-plugin-manager/src/plugin-details.tsx",
       "source": "packages/ui-plugin-manager/src/plugin-details.tsx",
       "sourceSha256": "f17dff45784fc62f06dbfb8c4d2647ec905792c62da0d4f8cba26f60a6bc44d5",
-      "sha256": "9d750ac0c221edc4b162a4b9752be25db6e578b1ff1e94c2069d5c33ffc60c30"
+      "sha256": "2a05e0321e0dc183ee302ad909569846403d83304b35ec210ae22a0b9525b5cc"
     },
     {
       "path": "packages/ui-plugin-manager/src/plugin-list.tsx",
       "source": "packages/ui-plugin-manager/src/plugin-list.tsx",
       "sourceSha256": "fa267562ec6b1698185300b97804017fe619c84ff86286fe240dae53d9285e70",
-      "sha256": "db5e14d29ba06bad04d594eef1cb5ada10d79152cce9533fa4894df092ec8933"
+      "sha256": "405e23bef9a9eb37097b2b584fbac176b11d9bbe2fc0d7a28389c599442caebd"
     },
     {
       "path": "packages/ui-plugin-manager/src/plugin-summary.ts",

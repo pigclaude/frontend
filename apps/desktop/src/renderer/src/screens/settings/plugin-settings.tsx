@@ -7,14 +7,16 @@ import { PluginDetailsDialog, PluginList } from "@pigclaude/ui-plugin-manager"
 import type {
   CapabilityPluginsBridge,
   InstalledCapabilityPlugin,
+  InstalledDesktopPlugin,
 } from "../../../../capability-plugin-contract"
 import { fill, useText, type TextKey } from "../../locale/text"
+import { ClaudeCodePluginFacts } from "./claude-code-plugin-facts"
 import { PluginInstallControls } from "./plugin-install-controls"
 import { installedPluginSummary, pluginSettingsError } from "./plugin-settings-view"
 import { SettingPage } from "./setting-page"
 import "../../styles/plugin-settings.css"
 
-type PluginData = { developerMode: boolean; installed: InstalledCapabilityPlugin[] }
+type PluginData = { developerMode: boolean; installed: InstalledDesktopPlugin[] }
 type Details = { id: string; confirmUninstall: boolean; keepData: boolean }
 
 /** 已安装的插件及管理动作；设置插槽只挂载宿主提供的声明式内容。 */
@@ -80,11 +82,18 @@ export function PluginSettings({
   const settings = new Map<string, ReactNode>()
   const plugins = [...entries.values()].map((plugin) => {
     const content =
-      membershipActive && plugin.enabled && plugin.compatible && renderSettings?.(plugin)
+      plugin.type === "capability" &&
+      membershipActive &&
+      plugin.enabled &&
+      plugin.compatible &&
+      renderSettings?.(plugin)
     if (content) settings.set(plugin.manifest.id, content)
     return installedPluginSummary(plugin, t, Boolean(content))
   })
   const selected = details ? plugins.find((plugin) => plugin.id === details.id) : undefined
+  const selectedEntry = details ? entries.get(details.id) : undefined
+  const claudeCode = selectedEntry?.type === "claude-code" ? selectedEntry.manifest : null
+  const claudeCodeLabel = t("pluginSettings.claudeCode")
   const settingsEntry = settingsId ? entries.get(settingsId) : undefined
   const settingsContent = settingsId ? settings.get(settingsId) : null
   const hasOpenSettings = Boolean(settingsContent)
@@ -157,6 +166,7 @@ export function PluginSettings({
               />
               <PluginList
                 plugins={plugins}
+                kindLabels={{ agent: claudeCodeLabel }}
                 query={query}
                 pendingId={pendingId}
                 canToggle={canToggle}
@@ -183,17 +193,23 @@ export function PluginSettings({
           key={selected.id}
           plugin={selected}
           plugins={plugins}
+          kindLabel={claudeCode ? claudeCodeLabel : undefined}
+          runtimeFacts={claudeCode ? <ClaudeCodePluginFacts manifest={claudeCode} /> : undefined}
           pending={pendingId !== null}
           confirmUninstall={details.confirmUninstall}
           uninstallOptions={
-            <KeepDataOption
-              checked={details.keepData}
-              onChange={(keepData) => setDetails({ ...details, keepData })}
-            />
+            claudeCode ? (
+              <p className="hint">{t("pluginSettings.uninstallClaudeHint")}</p>
+            ) : (
+              <KeepDataOption
+                checked={details.keepData}
+                onChange={(keepData) => setDetails({ ...details, keepData })}
+              />
+            )
           }
           onClose={() => setDetails(null)}
           onUninstall={(id) =>
-            void modify(id, (service) => service.uninstall(id, details.keepData))
+            void modify(id, (service) => service.uninstall(id, !claudeCode && details.keepData))
           }
         />
       ) : null}

@@ -2,7 +2,10 @@
 
 import type { Page } from "@playwright/test"
 import type { MembershipView } from "@pigclaude/contracts/membership"
-import type { InstalledCapabilityPlugin } from "../src/capability-plugin-contract"
+import type {
+  ClaudeCodePluginManifest,
+  InstalledCapabilityPlugin,
+} from "../src/capability-plugin-contract"
 
 const membership: MembershipView = {
   startupPhase: "settled",
@@ -73,7 +76,11 @@ const summary: InstalledCapabilityPlugin = {
 }
 
 /** 让真实设置页面通过隔离的预览桥读取已安装插件及准备安装结果。 */
-export async function installPluginSettingsPreview(page: Page, settings = false): Promise<void> {
+export async function installPluginSettingsPreview(
+  page: Page,
+  settings = false,
+  claudeCode?: ClaudeCodePluginManifest,
+): Promise<void> {
   const documentPlugin: InstalledCapabilityPlugin = settings
     ? {
         ...docs,
@@ -88,7 +95,7 @@ export async function installPluginSettingsPreview(page: Page, settings = false)
       }
     : docs
   await page.addInitScript(
-    ({ membership, docs, summary }) => {
+    ({ membership, docs, summary, claudeCode }) => {
       const unavailable = async () => {
         throw new Error("PLUGIN_MANAGEMENT_FAILED")
       }
@@ -112,9 +119,10 @@ export async function installPluginSettingsPreview(page: Page, settings = false)
           runCommand: unavailable,
           pick: async (kind) => (kind === "directory" ? "/fixtures/docs" : "/fixtures/docs.zip"),
           prepare: async (source) => ({
-            type: "capability",
+            ...(claudeCode
+              ? ({ type: "claude-code", manifest: claudeCode } as const)
+              : ({ type: "capability", manifest: docs.manifest } as const)),
             confirmationId: "plugin-preview",
-            manifest: docs.manifest,
             sourceKind: source.kind,
             sha256: source.kind === "archive" ? source.sha256 : null,
           }),
@@ -127,6 +135,6 @@ export async function installPluginSettingsPreview(page: Page, settings = false)
         },
       }
     },
-    { membership, docs: documentPlugin, summary },
+    { membership, docs: documentPlugin, summary, claudeCode },
   )
 }

@@ -4,17 +4,17 @@ import { useEffect, useId, useRef, useState } from "react"
 import { Download, FolderOpen } from "lucide-react"
 import { Button, InstallDialog } from "@pigclaude/ui-primitives"
 import type {
-  CapabilityPluginInstallDisclosure,
   CapabilityPluginInstallSource,
   CapabilityPluginsBridge,
+  DesktopPluginInstallDisclosure,
 } from "../../../../capability-plugin-contract"
 import { useText, type TextKey } from "../../locale/text"
 import { PluginInstallDisclosure } from "./plugin-install-disclosure"
-import { capabilityPluginDisclosure, pluginSettingsError } from "./plugin-settings-view"
+import { pluginInstallDisclosure, pluginSettingsError } from "./plugin-settings-view"
 
 type InstallStep =
   | { kind: "archive"; path: string }
-  | { kind: "disclosure"; prepared: CapabilityPluginInstallDisclosure }
+  | { kind: "disclosure"; prepared: DesktopPluginInstallDisclosure }
 
 type InstallOwner = { closed: boolean; busy: boolean; preparedId: string | null }
 
@@ -166,7 +166,7 @@ export function PluginInstallControls({
       ) : null}
       {step?.kind === "disclosure" ? (
         <PluginInstallDisclosure
-          facts={capabilityPluginDisclosure(step.prepared, t)}
+          facts={pluginInstallDisclosure(step.prepared, t)}
           busy={busy}
           onCancel={dismissDisclosure}
           onConfirm={confirm}

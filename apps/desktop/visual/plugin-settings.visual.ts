@@ -42,3 +42,32 @@ test("host-rendered plugin settings", async ({ page }) => {
     animations: "disabled",
   })
 })
+
+test("Claude Code plugin installation disclosure", async ({ page }) => {
+  await installPluginSettingsPreview(page, false, {
+    id: "release-guide",
+    name: "发布手册",
+    version: "1.4.0",
+    commands: ["release-guide:notes"],
+    skills: ["release-guide:checklist"],
+    agents: ["release-guide:reviewer"],
+    ignoredComponents: ["hooks", "mcp", "lsp"],
+    skillExecution: [
+      { name: "release-guide:checklist", inline: true, hooks: true, allowedTools: true },
+    ],
+  })
+  await page.goto("/?screen=plugins&theme=dark")
+  await page.getByRole("button", { name: "从目录安装" }).click()
+  const dialog = page.getByRole("dialog", { name: "安装披露" })
+  await expect(dialog.getByText("Claude Code 插件", { exact: true })).toBeVisible()
+  await expect(dialog.getByText("插件 hooks, MCP 服务器, LSP 配置", { exact: true })).toBeVisible()
+  await expect(
+    dialog.getByText("! 内联命令 · 文件头 hooks · allowed-tools", { exact: true }),
+  ).toBeVisible()
+  await page.evaluate(() => document.fonts.ready)
+  await expect(page).toHaveScreenshot("claude-code-plugin-disclosure-dark.png", {
+    threshold: 0.1,
+    maxDiffPixels: 0,
+    animations: "disabled",
+  })
+})

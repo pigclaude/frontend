@@ -378,6 +378,7 @@ async function setupAuthorization(): Promise<void> {
     isPackaged: app.isPackaged,
     env: process.env,
     onEvent: (event) => sendSessionEvent(event, sessionStore),
+    ...capabilityPlugins?.sessionOptions,
   })
   usageRecorder = sessions.usage
   sessionHost = sessions.host

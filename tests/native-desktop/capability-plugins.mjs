@@ -37,6 +37,7 @@ export async function verifyCapabilityPlugins(page, userData) {
     reveal.confirmationId,
   )
   assert.equal(installed.manifest.id, id)
+  assert.equal(installed.toolApproval, "always_ask")
   try {
     await page.evaluate(async (pluginId) => {
       const plugins = window.pigclaude.capabilityPlugins
@@ -44,6 +45,8 @@ export async function verifyCapabilityPlugins(page, userData) {
       if (!present) throw new Error("未读到已安装插件")
       if ((await plugins.setEnabled(pluginId, false)).enabled) throw new Error("停用未生效")
       if (!(await plugins.setEnabled(pluginId, true)).enabled) throw new Error("启用未生效")
+      const updated = await plugins.setToolApproval(pluginId, "follow_session")
+      if (updated.toolApproval !== "follow_session") throw new Error("工具审批偏好保存失败")
     }, id)
   } finally {
     await page.evaluate(

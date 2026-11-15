@@ -15,6 +15,7 @@ export function setupDesktopCapabilityPlugins(
 ) {
   const sandbox = composition.pluginSandbox
   if (!sandbox) return null
+  const { runtime } = composition
   const manager = new CapabilityPluginManager({
     root: join(app.getPath("userData"), "capability-plugins"),
     appVersion: app.getVersion(),
@@ -25,6 +26,15 @@ export function setupDesktopCapabilityPlugins(
   })
   return {
     manager,
+    sessionOptions: runtime
+      ? {
+          capabilityPluginTools: {
+            manager,
+            sandbox,
+            pluginNetwork: runtime.pluginNetwork.bind(runtime),
+          },
+        }
+      : {},
     stopEvents: manager.subscribe(() => send(capabilityPluginsChangedChannel)),
     /** 推进插件的会员生命周期，清理异常使用固定诊断码。 */
     membershipChanged(state: MembershipState): void {

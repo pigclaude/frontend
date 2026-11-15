@@ -146,8 +146,6 @@ export class SessionEnvironment {
           input.workspace,
           retained?.claudeTmpDir ?? sessionDir,
         )
-        // 工具、skill 和 hooks 的子进程不继承 daemon 会话令牌头。
-        env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB = "1"
       }
       await writeFile(preloadPath, preloadSource, { mode: sessionDirectoryMode })
       const organizationModels = normalized.provider

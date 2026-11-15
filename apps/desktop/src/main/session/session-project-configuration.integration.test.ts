@@ -45,7 +45,6 @@ it("加载工作目录与 Git 根之间的项目扩展，保持原工作目录�
       cwd: workspace,
       settingSources: ["project"],
       strictMcpConfig: true,
-      env: { CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1" },
       settings: {
         claudeMdExcludes: expect.arrayContaining([
           join(directory, "CLAUDE.md").replaceAll("\\", "/"),

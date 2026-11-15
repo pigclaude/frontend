@@ -42,7 +42,7 @@ import { registerWorkspaceIpc } from "./runtime/workspace-ipc"
 import { SessionDefaultsStore } from "./runtime/session-defaults"
 import { registerSessionDefaultsIpc } from "./runtime/session-defaults-ipc"
 import {
-  createDesktopScheduledTaskService,
+  setupDesktopScheduledTasks,
   reportScheduledTasksError,
 } from "./scheduled-tasks/desktop-service"
 import { registerScheduledTasksIpc } from "./scheduled-tasks/ipc"
@@ -383,23 +383,19 @@ async function setupAuthorization(): Promise<void> {
   sessionHost = sessions.host
   projectPermissions = sessions.projectPermissions
   sessionHost?.subscribe((envelope) => keepAwake.observe(envelope))
-  if (composition.runtime && sessions.host) {
-    scheduledTasks = createDesktopScheduledTaskService({
-      userDataPath: app.getPath("userData"),
-      authorization: composition,
-      runtime: composition.runtime,
-      defaults: sessionDefaults,
-      usesDevProvider: sessions.usesDevProvider,
-      runSession: sessions.host.runScheduledTask.bind(sessions.host),
-      presentation: {
-        refreshTray: () => {
-          sendToMainWindow(scheduledTasksChangedChannel)
-          tray?.refresh()
-        },
-        announce: notifications.announce,
+  scheduledTasks = setupDesktopScheduledTasks({
+    userDataPath: app.getPath("userData"),
+    composition,
+    sessions,
+    defaults: sessionDefaults,
+    presentation: {
+      refreshTray: () => {
+        sendToMainWindow(scheduledTasksChangedChannel)
+        tray?.refresh()
       },
-    })
-  }
+      announce: notifications.announce,
+    },
+  })
   const checkLive = () => void desktopComposition?.resume()
   app.on("browser-window-focus", checkLive)
   const stopWake = trackDesktopWake(composition.membershipGate, scheduledTasks)

@@ -4,6 +4,7 @@ import { join } from "node:path"
 import type { DesktopComposition } from "../composition"
 import type { LocalRuntime } from "../runtime/local-runtime"
 import type { SessionDefaultsStore } from "../runtime/session-defaults"
+import type { SessionServices } from "../session/session-assembly"
 import { assertWorkspace } from "../session/session-host-support"
 import {
   observeScheduledTaskPresentation,
@@ -11,6 +12,29 @@ import {
 } from "./presentation"
 import { createScheduledTaskRunner, type ScheduledTaskRunnerPorts } from "./runner"
 import { ScheduledTaskService } from "./service"
+
+/** 会话宿主与本机 runtime 就绪后，从同一套桌面依赖装配调度器。 */
+export function setupDesktopScheduledTasks(options: {
+  userDataPath: string
+  composition: DesktopComposition
+  sessions: SessionServices
+  defaults: Pick<SessionDefaultsStore, "get">
+  presentation: Omit<ScheduledTaskPresentationOptions, "service">
+}): ScheduledTaskService | null {
+  const { userDataPath, composition, sessions, defaults, presentation } = options
+  const { runtime } = composition
+  const { host, usesDevProvider } = sessions
+  if (!runtime || !host) return null
+  return createDesktopScheduledTaskService({
+    userDataPath,
+    authorization: composition,
+    runtime,
+    defaults,
+    usesDevProvider,
+    runSession: host.runScheduledTask.bind(host),
+    presentation,
+  })
+}
 
 /** 为当前桌面配置建立一个调度服务，启动时间和关停顺序由应用管理。 */
 export function createDesktopScheduledTaskService(options: {

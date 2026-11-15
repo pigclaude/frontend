@@ -70,7 +70,9 @@ export class WorkbenchIpc {
   tools(owner: Electron.WebContents, canUse: () => boolean): SessionTools {
     const id = randomUUID()
     return {
-      servers: browserSessionTools(owner, this.#browsers, canUse, id),
+      browser: {
+        create: (approval) => browserSessionTools(owner, this.#browsers, canUse, approval, id),
+      },
       close: () => this.#browsers.closeAgent(id),
     }
   }

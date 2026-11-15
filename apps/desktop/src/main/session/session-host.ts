@@ -183,12 +183,7 @@ export class SessionHost {
     checkFreshSessionId(store, sessionId, tools)
     const entry = this.#registry.add(sessionId, input.workspace, this.#now())
     entry.closeTools = tools?.close ?? null
-    const launch = this.#launch(
-      entry,
-      input,
-      tools?.servers,
-      store ? { store, index: null } : undefined,
-    )
+    const launch = this.#launch(entry, input, tools, store ? { store, index: null } : undefined)
     entry.launch = launch
     try {
       return await launch
@@ -200,7 +195,7 @@ export class SessionHost {
   async #launch(
     entry: SessionEntry,
     input: SessionStartInput,
-    servers: SessionTools["servers"],
+    tools: SessionTools | undefined,
     storage?: SessionLaunchStorage,
   ): Promise<{ sessionId: string }> {
     try {
@@ -231,7 +226,7 @@ export class SessionHost {
           ? {}
           : { saveSettings: (settings) => this.#persistence?.settings(entry.sessionId, settings) }),
       }
-      await launchSession(this.#launchDeps, input, entry.sessionId, hooks, servers, storage)
+      await launchSession(this.#launchDeps, input, entry.sessionId, hooks, tools, storage)
     } catch (error) {
       await this.#persistence?.flush(entry.sessionId)
       if (error instanceof SessionClaudeExitError) {
@@ -282,7 +277,7 @@ export class SessionHost {
       tools,
       (input, scoped) => {
         entry.closeTools = scoped?.close ?? null
-        return this.#launch(entry, input, scoped?.servers, { store, index })
+        return this.#launch(entry, input, scoped, { store, index })
       },
       () => this.#emitHost({ type: "notice", message: "原模型当前不可用，已使用默认模型续接" }),
     )

@@ -31,6 +31,8 @@ export type PermissionOption = {
 export type PermissionTarget = {
   kind: "file" | "url" | "query"
   text: string
+  /** 工作台浏览器网址中需要突出显示的来源。 */
+  origin?: string
 }
 
 /** 一次写入：旧内容用于展示被替换或被删除的部分，新建文件时为空。 */
@@ -149,6 +151,26 @@ export function permissionDetail(
   request: SessionPermissionCard,
   t: (key: TextKey) => string,
 ): PermissionDetail {
+  if (request.browser !== undefined) {
+    let target: PermissionTarget | null = null
+    if (request.browser.kind === "open") {
+      const url = request.browser.url
+      const origin = URL.canParse(url) ? new URL(url).origin : ""
+      target = { kind: "url", text: url, ...(origin && url.startsWith(origin) ? { origin } : {}) }
+    }
+    return {
+      summary: t(
+        request.browser.kind === "open"
+          ? "permission.summary.browserOpen"
+          : "permission.summary.browserSnapshot",
+      ),
+      command: null,
+      target,
+      changes: [],
+      blockedPath: null,
+      plan: null,
+    }
+  }
   const plan = planText(request)
   if (plan !== null) {
     return {
@@ -213,7 +235,7 @@ export function permissionOptions(
       choice: { decision: "allow" },
     },
   ]
-  if (request.suggestions.length !== 0) {
+  if (request.browser === undefined && request.suggestions.length !== 0) {
     const family = toolFamily(request.toolName)
     const label =
       family === "shell"
@@ -320,7 +342,10 @@ export function PermissionPrompt({ request, onDecide }: PermissionPromptProps) {
         {detail.target === null ? null : (
           <p className="perm-prompt-target">
             <TargetIcon kind={detail.target.kind} />
-            <span>{detail.target.text}</span>
+            <span>
+              {detail.target.origin ? <strong>{detail.target.origin}</strong> : null}
+              {detail.target.text.slice(detail.target.origin?.length ?? 0)}
+            </span>
           </p>
         )}
         {detail.command === null ? null : <pre className="perm-prompt-code">{detail.command}</pre>}

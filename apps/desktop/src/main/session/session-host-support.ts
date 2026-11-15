@@ -5,6 +5,7 @@ import { constants } from "node:fs"
 import { access, realpath, stat } from "node:fs/promises"
 import { isAbsolute } from "node:path"
 import { routeCanUseTool } from "./can-use-tool"
+import type { BrowserApprovalPort } from "./browser-tool-approval"
 import type { ClaudeAgentStartOptions } from "./claude-query-options"
 import type { SessionEnvironmentInput } from "./session-environment"
 import type { SessionEvent } from "./session-events"
@@ -104,6 +105,7 @@ export function buildStartOptions(
   active: ActiveSession,
   input: SessionStartInput,
   hasThreadRead: boolean,
+  browser?: BrowserApprovalPort,
 ): ClaudeAgentStartOptions {
   return {
     workspace: active.environment.workspace,
@@ -112,7 +114,7 @@ export function buildStartOptions(
       ? {}
       : { projectConfiguration: active.environment.projectConfiguration }),
     permissionMode: active.permissionMode,
-    canUseTool: routeCanUseTool(active.broker, active.questions, hasThreadRead),
+    canUseTool: routeCanUseTool(active.broker, active.questions, hasThreadRead, browser),
     abortController: active.abort,
     binaryPath: active.environment.binaryPath,
     ...(input.model === undefined ? {} : { model: input.model }),

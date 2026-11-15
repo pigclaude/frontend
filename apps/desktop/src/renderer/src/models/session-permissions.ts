@@ -2,6 +2,7 @@
 // 按拒绝结算，权限询问超时结束的一轮按超时结算。卡片带请求和结算的时间，以及发起它的子代理。
 
 import type { SessionEnvelope } from "../../../main/session/session-envelope"
+import type { BrowserPermissionContext } from "../../../browser-permission-contract"
 import type { SubagentRef } from "../../../main/session/session-events"
 import {
   isPermissionSuggestionView,
@@ -29,6 +30,8 @@ export type SessionPermissionCard = {
   /** 需要额外确认时，卡片默认选择拒绝并停用数字键。 */
   defaultToNo?: boolean
   blockedPath: string | null
+  /** 由主进程绑定到这次工作台浏览器调用的操作详情。 */
+  browser?: BrowserPermissionContext
   /** 发起请求的子代理；主线程为 null。 */
   subagent: SubagentRef | null
   status: SessionPermissionStatus
@@ -108,6 +111,7 @@ function cardOf(
     suggestions: (event.suggestions ?? []).filter(isPermissionSuggestionView),
     ...(event.defaultToNo ? { defaultToNo: true } : {}),
     blockedPath: event.blockedPath ?? null,
+    ...(event.browser === undefined ? {} : { browser: event.browser }),
     subagent: event.subagent,
     requestedAt: at,
   }

@@ -53,6 +53,8 @@ import { cleanupStaleSessionDirs } from "./session/session-environment"
 import { startSessionStore } from "./session/session-store-startup"
 import type { SessionHost } from "./session/session-host"
 import { assembleSessionServices } from "./session/session-assembly"
+import { registerProjectPermissionsIpc } from "./session/project-permissions-ipc"
+import type { ProjectPermissionStore } from "./session/project-permission-store"
 import { registerSessionIpc } from "./session/session-ipc"
 import { installQuitFlow } from "./quit-flow"
 import { noPendingWork } from "./session/session-host-support"
@@ -93,6 +95,7 @@ let proxyService: ProxyService | null = null
 let browserProfileService: BrowserProfileService | null = null
 let sessionHost: SessionHost | null = null
 let usageRecorder: UsageRecorder | null = null
+let projectPermissions: ProjectPermissionStore | null = null
 let callbackServer: Awaited<ReturnType<typeof createCallbackServer>> | null = null
 let callbackReceiver: AuthorizationCallbackReceiver | null = null
 let authorizationReady = false
@@ -259,6 +262,10 @@ function registerIpcHandlers(): void {
     isTrusted: isTrustedSender,
     tools: (event) => workbench.tools(event.sender, hasActiveMembership),
   })
+  registerProjectPermissionsIpc(ipcMain, {
+    getStore: () => projectPermissions,
+    isTrusted: isTrustedSender,
+  })
   registerWorkspaceIpc({
     filePath: () => join(app.getPath("userData"), "workspaces.json"),
     isTrusted: isTrustedSender,
@@ -389,6 +396,7 @@ async function setupAuthorization(): Promise<void> {
   })
   usageRecorder = sessions.usage
   sessionHost = sessions.host
+  projectPermissions = sessions.projectPermissions
   const checkLive = () => {
     void desktopComposition?.resume()
   }

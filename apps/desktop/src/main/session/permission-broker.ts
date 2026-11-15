@@ -3,13 +3,13 @@
 // 请求放在会话共用的待答队列里，和提问一起计时、一起被整体拒绝。
 
 import { randomUUID } from "node:crypto"
+import type { PermissionResult, PermissionUpdate } from "@anthropic-ai/claude-agent-sdk"
 import type {
-  PermissionBehavior,
-  PermissionMode,
-  PermissionResult,
-  PermissionUpdate,
-  PermissionUpdateDestination,
-} from "@anthropic-ai/claude-agent-sdk"
+  PermissionSuggestionSelection,
+  PermissionSuggestionView,
+  ProjectPermissionGrant,
+} from "../../project-permissions-contract"
+import { projectPermissionGrants } from "./project-permission-grants"
 import type { PendingAnswers, PendingOutcome } from "./pending-answers"
 import type { SubagentRef } from "./session-events"
 
@@ -24,17 +24,18 @@ export type PermissionRequestEvent = {
   requestId: string
   toolName: string
   input: Record<string, unknown>
-  suggestions?: unknown[]
+  suggestions?: PermissionSuggestionView[]
+  defaultToNo?: boolean
   blockedPath?: string
   /** 子代理发起的请求是它的归属；主线程为 null。 */
   subagent: SubagentRef | null
 }
 
-/** renderer 的权限回答；updatedPermissions 来自不可信输入，写回前会校验。 */
+/** renderer 的权限回答；只能引用主进程保留的建议序号。 */
 export type PermissionAnswer = {
   requestId: string
   decision: "allow" | "deny"
-  updatedPermissions?: unknown[]
+  suggestion?: PermissionSuggestionSelection
 }
 
 /**
@@ -48,6 +49,11 @@ export type PermissionBrokerOptions = {
   newRequestId?: () => string
   /** 按 SDK 给的 agent id 找回子代理归属；没有 agent id 时是主线程。 */
   subagentOf: (agentId: string | undefined) => SubagentRef | null
+  /** 保存一条已经明确确认的项目授权。 */
+  saveProjectGrants?: (
+    grants: ProjectPermissionGrant[],
+    stillPending: () => boolean,
+  ) => Promise<void>
 }
 
 /** canUseTool 中权限代理用到的选项；SDK 多给的字段会被忽略。 */
@@ -55,8 +61,16 @@ export type PermissionRequestOptions = {
   signal: AbortSignal
   suggestions?: PermissionUpdate[]
   blockedPath?: string
+  defaultToNo?: boolean
+  suppressAlwaysAllowRule?: boolean
   /** 请求来自子代理时，SDK 给出的子代理 agent id。 */
   agentID?: string
+}
+
+type PendingPermission = {
+  input: Record<string, unknown>
+  suggestions: PermissionUpdate[]
+  saving: boolean
 }
 
 /** 权限请求的代理。保证每个请求只结算一次；中止、超时和整体拒绝时按拒绝写回。 */
@@ -66,7 +80,8 @@ export class PermissionBroker {
   readonly #newRequestId: () => string
   readonly #subagentOf: (agentId: string | undefined) => SubagentRef | null
   readonly #queue: PendingAnswers
-  readonly #inputs = new Map<string, Record<string, unknown>>()
+  readonly #requests = new Map<string, PendingPermission>()
+  readonly #saveProjectGrants: PermissionBrokerOptions["saveProjectGrants"]
 
   /** 创建权限代理；请求 id 是全局唯一的 UUID。 */
   constructor(options: PermissionBrokerOptions) {
@@ -75,6 +90,7 @@ export class PermissionBroker {
     this.#newRequestId = options.newRequestId ?? (() => randomUUID())
     this.#subagentOf = options.subagentOf
     this.#queue = options.queue
+    this.#saveProjectGrants = options.saveProjectGrants
   }
 
   /** 当前未回答的权限请求数，只用于脱敏状态展示。 */
@@ -91,22 +107,32 @@ export class PermissionBroker {
     if (options.signal.aborted) {
       return Promise.resolve({ behavior: "deny", message: cancelledPermissionMessage })
     }
+    const suggestions = options.suppressAlwaysAllowRule
+      ? []
+      : structuredClone(options.suggestions ?? []).map(sessionOnly)
     const request: PermissionRequestEvent = {
       type: "permission",
       requestId: this.#newRequestId(),
       toolName,
       input,
-      ...(options.suggestions === undefined ? {} : { suggestions: options.suggestions }),
+      ...(suggestions.length === 0
+        ? {}
+        : {
+            suggestions: suggestions.map((suggestion, index) =>
+              this.#suggestion(suggestion, index),
+            ),
+          }),
+      ...(options.defaultToNo ? { defaultToNo: true } : {}),
       ...(options.blockedPath === undefined ? {} : { blockedPath: options.blockedPath }),
       subagent: this.#subagentOf(options.agentID),
     }
     return new Promise<PermissionResult>((resolve) => {
-      this.#inputs.set(request.requestId, input)
+      this.#requests.set(request.requestId, { input, suggestions, saving: false })
       this.#queue.add(request.requestId, {
         kind: "permission",
         signal: options.signal,
         settle: (outcome) => {
-          this.#inputs.delete(request.requestId)
+          this.#requests.delete(request.requestId)
           resolve(permissionResult(outcome))
         },
         onTimeout: () => this.#onTimeout?.(request),
@@ -116,27 +142,51 @@ export class PermissionBroker {
   }
 
   /** 写回一次回答；未知或已结算的 requestId 直接忽略，避免超时后的迟到点击报错。 */
-  respond(answer: PermissionAnswer): boolean {
+  async respond(answer: PermissionAnswer): Promise<boolean> {
     if (answer.decision !== "allow" && answer.decision !== "deny") {
       throw new Error("invalid permission decision")
     }
-    const input = this.#inputs.get(answer.requestId)
-    if (input === undefined) return false
+    const pending = this.#requests.get(answer.requestId)
+    if (pending === undefined || pending.saving) return false
     if (answer.decision === "deny") {
       return this.#queue.answer(answer.requestId, "permission", {
         behavior: "deny",
         message: deniedMessage,
       })
     }
-    const updatedPermissions =
-      answer.updatedPermissions === undefined
-        ? undefined
-        : readPermissionUpdates(answer.updatedPermissions)
+    const selection = answer.suggestion
+    const suggestion = selection === undefined ? undefined : pending.suggestions[selection.index]
+    if (selection !== undefined && suggestion === undefined)
+      throw new Error("INVALID_SESSION_INPUT")
+    if (selection?.scope === "project" && suggestion !== undefined) {
+      const grants = projectPermissionGrants(suggestion)
+      if (!this.#saveProjectGrants || grants.length === 0) throw new Error("INVALID_SESSION_INPUT")
+      pending.saving = true
+      try {
+        await this.#saveProjectGrants(
+          grants,
+          () => this.#requests.get(answer.requestId) === pending,
+        )
+      } finally {
+        pending.saving = false
+      }
+    }
     return this.#queue.answer(answer.requestId, "permission", {
       behavior: "allow",
-      updatedInput: input,
-      ...(updatedPermissions === undefined ? {} : { updatedPermissions }),
+      updatedInput: pending.input,
+      ...(suggestion !== undefined && selection?.scope === "session"
+        ? { updatedPermissions: [suggestion] }
+        : {}),
     })
+  }
+
+  #suggestion(update: PermissionUpdate, index: number): PermissionSuggestionView {
+    const grants = projectPermissionGrants(update)
+    return {
+      index,
+      label: grants.map(({ value }) => value).join(" · "),
+      canSaveProject: this.#saveProjectGrants !== undefined && grants.length > 0,
+    }
   }
 
   #emitSafely(request: PermissionRequestEvent): void {
@@ -160,85 +210,6 @@ function permissionResult(outcome: PendingOutcome): PermissionResult {
   }
 }
 
-function readPermissionUpdates(value: unknown[]): PermissionUpdate[] {
-  return value.map((item) => readPermissionUpdate(item))
-}
-
-function readPermissionUpdate(value: unknown): PermissionUpdate {
-  if (!isRecord(value)) throw new Error("invalid permission update")
-  const destination = readDestination(value.destination)
-  switch (value.type) {
-    case "addRules":
-    case "replaceRules":
-    case "removeRules":
-      return {
-        type: value.type,
-        rules: readRules(value.rules),
-        behavior: readBehavior(value.behavior),
-        destination,
-      }
-    case "setMode":
-      return { type: "setMode", mode: readMode(value.mode), destination }
-    case "addDirectories":
-    case "removeDirectories":
-      return { type: value.type, directories: readStrings(value.directories), destination }
-    default:
-      throw new Error("invalid permission update")
-  }
-}
-
-function readRules(value: unknown): { toolName: string; ruleContent?: string }[] {
-  if (!Array.isArray(value)) throw new Error("invalid permission rules")
-  return value.map((rule) => {
-    if (!isRecord(rule) || typeof rule.toolName !== "string") {
-      throw new Error("invalid permission rules")
-    }
-    return {
-      toolName: rule.toolName,
-      ...(typeof rule.ruleContent === "string" ? { ruleContent: rule.ruleContent } : {}),
-    }
-  })
-}
-
-function readStrings(value: unknown): string[] {
-  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
-    throw new Error("invalid permission directories")
-  }
-  return [...value]
-}
-
-function readBehavior(value: unknown): PermissionBehavior {
-  if (value === "allow" || value === "deny" || value === "ask") return value
-  throw new Error("invalid permission behavior")
-}
-
-function readDestination(value: unknown): PermissionUpdateDestination {
-  switch (value) {
-    case "userSettings":
-    case "projectSettings":
-    case "localSettings":
-    case "session":
-    case "cliArg":
-      return value
-    default:
-      throw new Error("invalid permission destination")
-  }
-}
-
-function readMode(value: unknown): PermissionMode {
-  switch (value) {
-    case "default":
-    case "acceptEdits":
-    case "bypassPermissions":
-    case "plan":
-    case "dontAsk":
-    case "auto":
-      return value
-    default:
-      throw new Error("invalid permission mode")
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+function sessionOnly(update: PermissionUpdate): PermissionUpdate {
+  return { ...update, destination: "session" }
 }

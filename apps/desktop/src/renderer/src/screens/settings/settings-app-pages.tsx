@@ -10,6 +10,7 @@ import { DefaultModelRow, DefaultPermissionRow } from "./session-default-rows"
 import { UpdateSettingsSection } from "./update-settings"
 import type { SessionHistoryController } from "../../hooks/use-session-history"
 import { SessionRetentionSettings } from "./session-retention-settings"
+import { ProjectPermissionRules } from "./project-permission-rules"
 
 /** 通用：启动、Dock、快捷键、更新和侧栏会话分组。 */
 export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
@@ -51,6 +52,7 @@ export function SessionSettings({
   models?: readonly ClaudeModel[]
   history?: SessionHistoryController
 }) {
+  const permissions = window.pigclaude?.session?.projectPermissions
   return (
     <SettingPage
       title={desktopText("settings.settings-app-pages.16")}
@@ -85,6 +87,7 @@ export function SessionSettings({
         </SettingRow>
       </SettingSection>
       {history?.enabled ? <SessionRetentionSettings history={history} /> : null}
+      {permissions ? <ProjectPermissionRules bridge={permissions} /> : null}
     </SettingPage>
   )
 }

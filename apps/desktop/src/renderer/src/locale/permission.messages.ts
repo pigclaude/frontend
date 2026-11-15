@@ -16,7 +16,9 @@ export const permissionZhCN = {
   "permission.allowAlways.command": "始终允许此命令",
   "permission.allowAlways.file": "始终允许此文件",
   "permission.allowAlways.generic": "始终允许此操作",
-  "permission.allowAlways.description": "后续相同请求不再询问",
+  "permission.allowAlways.description": "本次会话中，后续相同请求不再询问",
+  "permission.allowProject": "此项目始终允许",
+  "permission.allowProject.description": "同一项目的其他会话也会应用",
   "permission.deny": "拒绝",
   "permission.deny.description": "这次先拒绝",
   "permission.plan.title": "计划已就绪",
@@ -27,6 +29,11 @@ export const permissionZhCN = {
   "permission.plan.keep.description": "留在计划模式继续修改",
   "permission.confirm": "确认",
   "permission.keyboardHint": "↑↓ 选择 · Enter 确认 · 数字键直达",
+  "permission.keyboardHint.noDigits": "↑↓ 选择 · Enter 确认",
+  "permission.rules.title": "项目授权",
+  "permission.rules.empty": "没有已保存的项目授权",
+  "permission.rules.revoke": "撤销",
+  "permission.rules.error": "无法读取或撤销项目授权，请重试。",
 }
 
 /** 英文；键与简体中文一致，缺键时编译失败。 */
@@ -45,7 +52,9 @@ export const permissionEnUS = {
   "permission.allowAlways.command": "Always allow this command",
   "permission.allowAlways.file": "Always allow this file",
   "permission.allowAlways.generic": "Always allow this action",
-  "permission.allowAlways.description": "The same request won't ask again",
+  "permission.allowAlways.description": "Skip this confirmation in the current session",
+  "permission.allowProject": "Always allow in this project",
+  "permission.allowProject.description": "Also applies to other sessions in this project",
   "permission.deny": "Deny",
   "permission.deny.description": "Deny this request",
   "permission.plan.title": "Plan ready",
@@ -56,4 +65,9 @@ export const permissionEnUS = {
   "permission.plan.keep.description": "Stay in plan mode and keep editing",
   "permission.confirm": "Confirm",
   "permission.keyboardHint": "↑↓ to choose · Enter to confirm · number keys jump",
+  "permission.keyboardHint.noDigits": "↑↓ to choose · Enter to confirm",
+  "permission.rules.title": "Project permissions",
+  "permission.rules.empty": "No saved project permissions",
+  "permission.rules.revoke": "Revoke",
+  "permission.rules.error": "Couldn't load or revoke project permissions. Try again.",
 } satisfies Record<keyof typeof permissionZhCN, string>

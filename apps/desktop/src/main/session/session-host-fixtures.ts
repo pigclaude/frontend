@@ -138,6 +138,8 @@ export class EnvironmentFactory {
 /** 记录调用并允许手动广播 SDK 事件的假适配器。 */
 export class FakeAdapter implements SessionAdapterPort {
   readonly startCalls: ClaudeAgentStartOptions[] = []
+  /** 记录实际交给 SDK 的会话级设置更新。 */
+  readonly flagSettings: import("./claude-query").SessionFlagSettings[] = []
   readonly sent: string[] = []
   readonly modelCalls: ClaudeModelsOptions[] = []
   readonly modes: SessionPermissionMode[] = []
@@ -240,7 +242,9 @@ export class FakeAdapter implements SessionAdapterPort {
   }
 
   /** 假适配器直接确认设置；实际 SDK 调用顺序由回放测试验证。 */
-  async applyFlagSettings(): Promise<void> {}
+  async applyFlagSettings(settings: import("./claude-query").SessionFlagSettings): Promise<void> {
+    this.flagSettings.push(structuredClone(settings))
+  }
 
   /** 缺省按查询失败处理，不发 context 事件。 */
   async contextUsage(): Promise<unknown> {
@@ -341,7 +345,7 @@ export type HarnessOptions = {
   /** 并发上限、排队上限和空闲停放时长；省略时用宿主的默认值。 */
   limits?: Pick<SessionHostOptions, "maxRunningSessions" | "maxQueuedSessions" | "idleParkMs">
   timers?: SessionHostOptions["timers"]
-}
+} & Pick<SessionHostOptions, "projectPermissions">
 
 export type SessionHarness = {
   host: SessionHost
@@ -402,6 +406,9 @@ export function createHarness(options: HarnessOptions): SessionHarness {
     newId: () => `id-${(nextId += 1)}`,
     ...(options.useRealEnvironment ? {} : { createEnvironment: environments.create }),
     ...options.limits,
+    ...(options.projectPermissions === undefined
+      ? {}
+      : { projectPermissions: options.projectPermissions }),
     ...(options.timers === undefined ? {} : { timers: options.timers }),
   }
   const host = new SessionHost(hostOptions)

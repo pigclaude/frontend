@@ -292,6 +292,8 @@ export type SessionBridge = Partial<SessionHistoryBridge> & {
     workspace: string
     sessionId?: string
   }) => Promise<readonly import("@pigclaude/ui-contracts").AgentCommand[]>
+  /** 本机项目授权的查看和撤销。 */
+  projectPermissions?: import("../../project-permissions-contract").ProjectPermissionsBridge
   start: (input: SessionStartInput) => Promise<{ sessionId: string }>
   send: (input: SessionTarget & SessionSendInput) => Promise<void>
   cancel: (input: SessionTarget) => Promise<void>

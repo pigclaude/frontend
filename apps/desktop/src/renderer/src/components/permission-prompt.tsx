@@ -7,15 +7,17 @@ import { MessageText, toolFamily, type ToolFamily } from "@pigclaude/ui-chat"
 import { Button } from "@pigclaude/ui-primitives"
 import { fill, useText, type TextKey } from "../locale/text"
 import type { SessionPermissionCard } from "../models/session-permissions"
+import type { PermissionSuggestionSelection } from "../../../project-permissions-contract"
 
-/** 用户对一张权限卡的回答；suggestions 是 SDK 建议的长期规则，允许时一起写回。 */
+/** 用户对一张权限卡的回答；只引用主进程给出的建议序号。 */
 export type PermissionChoice = {
   decision: "allow" | "deny"
-  suggestions?: unknown[]
+  suggestion?: PermissionSuggestionSelection
 }
 
 /** 选项 id；界面只用来生成稳定的列表键。 */
-type PermissionOptionId = "allow-once" | "allow-always" | "deny"
+type PermissionOptionId =
+  "allow-once" | `allow-session:${number}` | `allow-project:${number}` | "deny"
 
 /** 一个可选的回答；label 是加粗标题，description 是下面一行说明。 */
 export type PermissionOption = {
@@ -211,7 +213,7 @@ export function permissionOptions(
       choice: { decision: "allow" },
     },
   ]
-  if (request.suggestions.length > 0) {
+  if (request.suggestions.length !== 0) {
     const family = toolFamily(request.toolName)
     const label =
       family === "shell"
@@ -219,12 +221,21 @@ export function permissionOptions(
         : family === "file-write"
           ? t("permission.allowAlways.file")
           : t("permission.allowAlways.generic")
-    options.push({
-      id: "allow-always",
-      label,
-      description: t("permission.allowAlways.description"),
-      choice: { decision: "allow", suggestions: request.suggestions },
-    })
+    for (const { index, label: rule, canSaveProject } of request.suggestions) {
+      options.push({
+        id: `allow-session:${index}`,
+        label,
+        description: [t("permission.allowAlways.description"), rule].filter(Boolean).join(" · "),
+        choice: { decision: "allow", suggestion: { index, scope: "session" } },
+      })
+      if (canSaveProject)
+        options.push({
+          id: `allow-project:${index}`,
+          label: t("permission.allowProject"),
+          description: [t("permission.allowProject.description"), rule].filter(Boolean).join(" · "),
+          choice: { decision: "allow", suggestion: { index, scope: "project" } },
+        })
+    }
   }
   options.push({
     id: "deny",
@@ -247,16 +258,16 @@ export function PermissionPrompt({ request, onDecide }: PermissionPromptProps) {
   const { t } = useText()
   const detail = useMemo(() => permissionDetail(request, t), [request, t])
   const options = useMemo(() => permissionOptions(request, t), [request, t])
-  const [selected, setSelected] = useState(0)
+  const defaultIndex = request.defaultToNo ? options.length - 1 : 0
+  const [selected, setSelected] = useState(defaultIndex)
   const buttons = useRef<(HTMLButtonElement | null)[]>([])
   const active = Math.min(selected, options.length - 1)
   const selectedOption = options[active]
 
-  // 新的请求从第一项开始，并把焦点交给选项列表，键盘可以立刻作答。
   useEffect(() => {
-    setSelected(0)
-    buttons.current[0]?.focus()
-  }, [request.requestId])
+    setSelected(defaultIndex)
+    buttons.current[defaultIndex]?.focus()
+  }, [defaultIndex, request.requestId])
 
   function choose(index: number): void {
     setSelected(index)
@@ -285,7 +296,7 @@ export function PermissionPrompt({ request, onDecide }: PermissionPromptProps) {
       return
     }
     const digit = Number(event.key)
-    if (Number.isInteger(digit) && digit >= 1 && digit <= options.length) {
+    if (!request.defaultToNo && Number.isInteger(digit) && digit >= 1 && digit <= options.length) {
       event.preventDefault()
       choose(digit - 1)
     }
@@ -370,7 +381,7 @@ export function PermissionPrompt({ request, onDecide }: PermissionPromptProps) {
       <footer className="perm-prompt-foot">
         <span className="perm-prompt-hint">
           <Keyboard className="ic ic-xs" aria-hidden="true" />
-          {t("permission.keyboardHint")}
+          {t(request.defaultToNo ? "permission.keyboardHint.noDigits" : "permission.keyboardHint")}
         </span>
         <Button
           variant="primary"

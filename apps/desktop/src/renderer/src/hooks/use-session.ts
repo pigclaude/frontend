@@ -21,6 +21,7 @@ import { SessionEnvelopeIntake } from "../models/session-envelope-intake"
 import { sessionErrorView, type SessionErrorView } from "../models/session-errors"
 import { sessionErrorText, type SessionAction, type SessionUiState } from "../models/session-model"
 import { sessionErrorFrom } from "../models/session-errors"
+import type { PermissionSuggestionSelection } from "../../../project-permissions-contract"
 
 /** 聊天页和环境页共用的会话控制器。 */
 export type SessionController = {
@@ -49,11 +50,10 @@ export type SessionController = {
   ) => Promise<boolean>
   cancel: () => Promise<void>
   stop: () => Promise<void>
-  /** updatedPermissions 是“始终允许”要写回的 SDK 规则；只允许一次时省略。 */
   respondPermission: (
     requestId: string,
     decision: "allow" | "deny",
-    updatedPermissions?: unknown[],
+    suggestion?: PermissionSuggestionSelection,
   ) => Promise<void>
   /** 回答一次提问；answers 每个问题一条，提问卡等主进程发来结束事件后才换成历史行。 */
   answerQuestion: (requestId: string, answers: string[]) => Promise<void>
@@ -394,20 +394,18 @@ export function useSession(
     async (
       requestId: string,
       decision: "allow" | "deny",
-      updatedPermissions?: unknown[],
+      suggestion?: PermissionSuggestionSelection,
     ): Promise<void> => {
       const sessionId = commandTarget()
       if (sessionId === null) return
-      apply(sessionId, { type: "permission-answered", requestId, decision, at: now() })
       try {
         await resolved?.respondPermission({
           sessionId,
           requestId,
           decision,
-          ...(updatedPermissions === undefined || updatedPermissions.length === 0
-            ? {}
-            : { updatedPermissions }),
+          ...(suggestion === undefined ? {} : { suggestion }),
         })
+        apply(sessionId, { type: "permission-answered", requestId, decision, at: now() })
       } catch (error: unknown) {
         apply(sessionId, { type: "failed", message: sessionErrorFrom(error), at: now() })
       } finally {

@@ -3,7 +3,6 @@
 // 只依赖这一个会话的适配器、事件出口、时钟和定时器，不引用会话宿主或模块级单例。
 
 import { ContextUsageQuery } from "./context-usage-query"
-import type { DevProviderOverride } from "./dev-provider"
 import type { PendingAnswerKind } from "./pending-answers"
 import { cancelledPermissionMessage, type PermissionAnswer } from "./permission-broker"
 import type { QuestionAnswer } from "./question-broker"
@@ -13,7 +12,7 @@ import { LiveReply } from "./live-reply"
 import { SessionEventLog } from "./session-event-log"
 import { SessionClaudeExitError } from "./session-claude-launch"
 import { SessionTurnFlags, type FastModeNoticeKey } from "./session-flags"
-import { createActiveSession, type ActiveSession, type SessionTimers } from "./session-host-active"
+import { createActiveSession, type ActiveSession } from "./session-host-active"
 import {
   enterRequestedMode,
   followReportedMode,
@@ -32,65 +31,21 @@ import {
   sanitizeSessionEvent,
   type SessionPendingWork,
 } from "./session-host-support"
-import type { ClaudeAgentStartOptions, ClaudePersistenceOptions } from "./claude-query-options"
-import type { SessionEventCursor } from "./session-event-log"
-import type { AdapterEvent, SessionUsage } from "./session-events"
-import type {
-  FinishReferenceDelivery,
-  PreparedSessionReferences,
-  SessionReferenceAccess,
-} from "./session-reference-access"
+import type { ClaudeAgentStartOptions } from "./claude-query-options"
+import type { ClaudeSessionOptions, SessionSavedSettings } from "./claude-session-options"
+import type { AdapterEvent } from "./session-events"
+import type { FinishReferenceDelivery, PreparedSessionReferences } from "./session-reference-access"
 import type { ClosedTurn } from "./session-turns"
 import type {
-  SessionAdapterFactory,
-  SessionEnvironmentPort,
   SessionHostEvent,
   SessionPermissionMode,
   SessionRuntimeEvent,
   SessionSendInput,
-  SessionStartInput,
   SessionStatusView,
   SessionTurnEvent,
 } from "./session-types"
-import type { UsageRecord } from "./usage-recorder"
 import { TurnStallWatchdog, turnStallMs } from "./turn-stall-watchdog"
 import type { WorkflowEvent } from "./workflow-tasks"
-
-/** 构造一个会话所需的全部依赖；都只属于这一个会话。 */
-export type ClaudeSessionOptions = {
-  sessionId: string
-  /** 已按开发期供应商固定过模型的启动输入。 */
-  input: SessionStartInput
-  environment: SessionEnvironmentPort
-  createAdapter: SessionAdapterFactory
-  /** 事件出口；收到的事件都已脱敏，并已盖上这个会话的时间和序号。 */
-  emit: (envelope: SessionEnvelope) => void
-  recordUsage: (record: UsageRecord) => void
-  /** 当前 daemon 会话令牌，只用于从错误文本里去掉它。 */
-  sessionToken: () => string
-  provider: DevProviderOverride | null
-  permissionTimeoutMs: number
-  timers: SessionTimers
-  now: () => number
-  newId: () => string
-  /** 会话释放后调用一次，宿主据此放下对它的引用。 */
-  onReleased: (session: ClaudeSession) => unknown
-  /** 保存会话用的 SDK 选项和磁盘时间线起点。 */
-  persistence?: ClaudePersistenceOptions & {
-    cursor: SessionEventCursor
-    usageBaseline?: SessionUsage
-  }
-  /** 已确认的模型或回合设置改变时保存索引。 */
-  saveSettings?: (settings: SessionSavedSettings) => void
-  references?: SessionReferenceAccess
-}
-
-/** 会话实际生效的模型与 SDK 已确认的设置。 */
-export type SessionSavedSettings = {
-  model: string | null
-  effort: NonNullable<SessionStartInput["effort"]> | null
-  fast: boolean
-}
 
 /** 一个 Claude 会话。保证结束路径只走一次；释放后忽略迟到的适配器事件和权限超时；发出的事件时间不倒退、序号连续。 */
 export class ClaudeSession {
@@ -126,6 +81,9 @@ export class ClaudeSession {
     )
     this.state = createActiveSession(options.sessionId, options.input, options.environment, {
       createAdapter: options.createAdapter,
+      ...(options.projectPermissions === undefined
+        ? {}
+        : { saveProjectGrants: options.projectPermissions.save }),
       permissionTimeoutMs: options.permissionTimeoutMs,
       timers: options.timers,
       now: options.now,
@@ -150,13 +108,20 @@ export class ClaudeSession {
 
   /** 启动 Claude Code 并进入用户选的权限模式；模式进不去时只提示，启动失败照常抛出。 */
   async launch(mcpServers: ClaudeAgentStartOptions["mcpServers"]): Promise<void> {
-    await this.state.adapter.start({
+    const options: ClaudeAgentStartOptions = {
       ...buildStartOptions(this.state, this.#options.input, this.#options.references !== undefined),
       ...(mcpServers ? { mcpServers } : {}),
       ...(this.#options.persistence === undefined
         ? {}
         : { persistence: this.#options.persistence }),
-    })
+    }
+    const project = this.#options.projectPermissions
+    if (project === undefined) await this.state.adapter.start(options)
+    else {
+      await project.start(this.state.adapter, options, () =>
+        this.#publish({ type: "notice", message: "当前会话未能应用最新项目授权，请重新打开会话" }),
+      )
+    }
     await enterRequestedMode(this.state, this.#options.input.permissionMode, this.#emitModeEvent)
   }
 
@@ -229,8 +194,8 @@ export class ClaudeSession {
   }
 
   /** 写回一次权限回答；未知 requestId 由 PermissionBroker 忽略。 */
-  respondPermission(answer: PermissionAnswer): void {
-    this.state.broker.respond(answer)
+  async respondPermission(answer: PermissionAnswer): Promise<void> {
+    await this.state.broker.respond(answer)
   }
 
   /** 写回一次提问的回答；未知 requestId 忽略，答案条数和问题数不一致时抛 INVALID_SESSION_INPUT。 */

@@ -365,7 +365,7 @@ export function ChatScreen({
       pending.toolName === "ExitPlanMode"
     // 顺序不能换：先切档位，回到自动审批时才会经过 Claude Code 核实。
     if (approvesPlan) await session.setMode(sessionPermissionMode(level, false))
-    await session.respondPermission(requestId, choice.decision, choice.suggestions)
+    await session.respondPermission(requestId, choice.decision, choice.suggestion)
   }
 
   const view = useMemo(

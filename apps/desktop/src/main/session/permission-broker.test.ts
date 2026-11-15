@@ -26,10 +26,15 @@ describe("PermissionBroker", () => {
     const broker = createBroker({ emit: (request) => events.push(request) })
     const signal = new AbortController().signal
 
+    const original: PermissionUpdate = { ...allowOnce, destination: "localSettings" }
     const pending = broker.request(
       "Bash",
       { command: "ls" },
-      { signal, suggestions: [allowOnce], blockedPath: "/tmp/outside" },
+      {
+        signal,
+        suggestions: [{ ...original, rules: [{ toolName: "Bash" }] }, original],
+        blockedPath: "/tmp/outside",
+      },
     )
 
     expect(events).toHaveLength(1)
@@ -37,14 +42,13 @@ describe("PermissionBroker", () => {
       requestId: "permission-1",
       toolName: "Bash",
       input: { command: "ls" },
-      suggestions: [allowOnce],
       blockedPath: "/tmp/outside",
     })
 
-    broker.respond({
+    await broker.respond({
       requestId: events[0]?.requestId ?? "",
       decision: "allow",
-      updatedPermissions: [allowOnce],
+      suggestion: { index: 1, scope: "session" },
     })
 
     await expect(pending).resolves.toEqual({
@@ -144,18 +148,36 @@ describe("PermissionBroker", () => {
     expect(broker.pendingCount).toBe(0)
   })
 
-  it("rejects malformed updatedPermissions instead of forwarding them to the SDK", () => {
+  it("拒绝关闭了始终允许的请求上的建议索引，并保留一次允许", async () => {
     const events: PermissionRequestEvent[] = []
-    const broker = createBroker({ emit: (request) => events.push(request) })
-    void broker.request("Bash", {}, { signal: new AbortController().signal })
-
-    expect(() =>
-      broker.respond({
-        requestId: events[0]?.requestId ?? "",
-        decision: "allow",
-        updatedPermissions: [{ type: "not-a-permission-update" }],
-      }),
-    ).toThrow(/permission/i)
+    const saveProjectGrants = vi.fn()
+    const broker = createBroker({ emit: (request) => events.push(request), saveProjectGrants })
+    const pending = broker.request(
+      "Bash",
+      {},
+      {
+        signal: new AbortController().signal,
+        suggestions: [allowOnce],
+        suppressAlwaysAllowRule: true,
+        defaultToNo: true,
+      },
+    )
+    const requestId = events[0]?.requestId ?? ""
+    expect(events[0]).toMatchObject({ defaultToNo: true })
+    expect(events[0]).not.toHaveProperty("suggestions")
+    for (const scope of ["session", "project"] as const) {
+      await expect(
+        broker.respond({
+          requestId,
+          decision: "allow",
+          suggestion: { index: 0, scope },
+        }),
+      ).rejects.toThrow("INVALID_SESSION_INPUT")
+    }
+    expect(broker.pendingCount).toBe(1)
+    expect(saveProjectGrants).not.toHaveBeenCalled()
+    await broker.respond({ requestId, decision: "allow" })
+    await expect(pending).resolves.toEqual({ behavior: "allow", updatedInput: {} })
   })
 
   it("does not include internal handles or secrets in the emitted request", () => {

@@ -1,213 +1,30 @@
 // 通过真实应用设置入口核对市场源管理、安装披露和手动更新。
 // @vitest-environment jsdom
 
-import type {
-  CapabilityPluginsBridge,
-  DesktopPluginInstallDisclosure,
-  InstalledCapabilityPlugin,
-} from "../../capability-plugin-contract"
-import type {
-  PluginMarketplaceBridge,
-  PluginMarketplaceEntryView,
-  PluginMarketplaceSourceView,
-} from "../../plugin-marketplace-contract"
-import { act, createElement } from "react"
-import userEvent from "@testing-library/user-event"
-import { expect, it, vi } from "vitest"
-import { DesktopApp } from "./app"
-import { buttonNamed, clickButton } from "./test-support/chat-screen-harness"
-import { desktopAppRoot, flush, installFakeDesktopBridge } from "./test-support/desktop-app-harness"
+import type { DesktopPluginInstallDisclosure } from "../../capability-plugin-contract"
+import { act } from "react"
+import { expect, it } from "vitest"
+import { buttonNamed } from "./test-support/chat-screen-harness"
+import { desktopAppRoot } from "./test-support/desktop-app-harness"
+import {
+  capabilityDisclosure,
+  capabilityEntry,
+  claudeDisclosure,
+  dialog,
+  fieldByLabel,
+  fillField,
+  marketEntry,
+  marketplaceFixture as fixture,
+  openMarketplace,
+  originalSource,
+  select,
+} from "./test-support/plugin-marketplace-harness"
 
 const app = desktopAppRoot()
 
-const originalSource: PluginMarketplaceSourceView = {
-  id: "team-market",
-  kind: "directory",
-  label: "/market/team",
-  catalogName: "团队目录",
-  enabled: true,
-  refreshedAt: "2026-11-15T00:00:00.000Z",
-  entryCount: 2,
-  error: null,
-  pin: null,
-}
-
-const installedPlugin: InstalledCapabilityPlugin = {
-  type: "capability",
-  manifest: {
-    apiVersion: 1,
-    id: "local-tool",
-    name: "本地工具",
-    version: "1.0.0",
-    pigclaudeVersion: "*",
-    entry: "index.mjs",
-    tools: [],
-    permissions: [],
-    networkDomains: [],
-    settings: [],
-    commands: [],
-    toolResultTemplates: [],
-  },
-  revision: "local-revision",
-  installedAt: "2026-11-15T00:00:00.000Z",
-  sourceKind: "directory",
-  sha256: null,
-  approvedDomains: [],
-  toolApproval: "always_ask",
-  enabled: true,
-  compatible: true,
-}
-
-const marketEntry: PluginMarketplaceEntryView = {
-  id: "guide",
-  name: "工程手册",
-  sourceId: "team-market",
-  type: "claude-code",
-  description: "工程项目的规则与指引",
-  version: "2.0.0",
-  author: "文档团队",
-  permissions: [],
-  domains: [],
-  action: "install",
-}
-
-const capabilityEntry: PluginMarketplaceEntryView = {
-  ...marketEntry,
-  id: "metrics",
-  name: "度量助手",
-  type: "capability",
-  permissions: ["network"],
-  domains: ["catalog.example.org"],
-}
-
-const claudeDisclosure: DesktopPluginInstallDisclosure = {
-  type: "claude-code",
-  confirmationId: "prepared-guide",
-  sourceKind: "directory",
-  sha256: null,
-  manifest: {
-    id: "guide",
-    name: "工程手册",
-    version: "2.0.0",
-    commands: ["guide:overview"],
-    skills: ["guide:check"],
-    agents: [],
-    ignoredComponents: ["mcp"],
-    skillExecution: [{ name: "guide:check", inline: false, hooks: true, allowedTools: false }],
-  },
-}
-
-const capabilityDisclosure: DesktopPluginInstallDisclosure = {
-  type: "capability",
-  confirmationId: "prepared-metrics",
-  sourceKind: "archive",
-  sha256: "d".repeat(64),
-  manifest: {
-    ...installedPlugin.manifest,
-    id: "metrics",
-    name: "度量助手",
-    permissions: ["network"],
-    networkDomains: ["verified.example.org"],
-  },
-}
-
-const unavailable = async () => {
-  throw new Error("FIXTURE_UNEXPECTED_CALL")
-}
-
-function fixture(developerMode = true, entries = [marketEntry], initialSources = [originalSource]) {
-  let sources = initialSources
-  const market = {
-    list: vi.fn<PluginMarketplaceBridge["list"]>(async () => ({
-      developerMode,
-      sources,
-      entries,
-    })),
-    selectDirectory: vi.fn<PluginMarketplaceBridge["selectDirectory"]>(async () => "/market/local"),
-    add: vi.fn<PluginMarketplaceBridge["add"]>(async () => undefined),
-    refresh: vi.fn<PluginMarketplaceBridge["refresh"]>(async (id, pin) => {
-      if (pin !== undefined)
-        sources = sources.map((source) => (source.id === id ? { ...source, pin } : source))
-    }),
-    setEnabled: vi.fn<PluginMarketplaceBridge["setEnabled"]>(async (id, enabled) => {
-      sources = sources.map((source) => (source.id === id ? { ...source, enabled } : source))
-    }),
-    remove: vi.fn<PluginMarketplaceBridge["remove"]>(async (id) => {
-      sources = sources.filter((source) => source.id !== id)
-    }),
-    prepareInstall: vi.fn<PluginMarketplaceBridge["prepareInstall"]>(unavailable),
-    prepareUpdate: vi.fn<PluginMarketplaceBridge["prepareUpdate"]>(unavailable),
-    subscribe: () => () => undefined,
-  } satisfies PluginMarketplaceBridge
-  const plugins = {
-    status: async () => ({ developerMode }),
-    list: async () => [installedPlugin],
-    listDeclarations: async () => [],
-    readSettings: unavailable,
-    setSetting: unavailable,
-    runCommand: unavailable,
-    pick: unavailable,
-    prepare: unavailable,
-    confirm: vi.fn<CapabilityPluginsBridge["confirm"]>(async () => installedPlugin),
-    cancel: vi.fn<CapabilityPluginsBridge["cancel"]>(async () => undefined),
-    setEnabled: unavailable,
-    setToolApproval: unavailable,
-    uninstall: vi.fn<CapabilityPluginsBridge["uninstall"]>(unavailable),
-    subscribe: () => () => undefined,
-  } satisfies CapabilityPluginsBridge
-  return { market, plugins }
-}
-
-async function openMarket({ market, plugins }: ReturnType<typeof fixture>): Promise<void> {
-  installFakeDesktopBridge()
-  if (!window.pigclaude) throw new Error("桌面桥未初始化")
-  window.pigclaude.pluginMarketplace = market
-  window.pigclaude.capabilityPlugins = plugins
-  window.history.replaceState({}, "", "/?screen=general")
-  await act(async () => app.root.render(createElement(DesktopApp)))
-  await flush()
-  await select("插件", app.container)
-  await select("插件市场", app.container, '[role="radio"]')
-}
-
-async function select(name: string, scope: ParentNode, selector?: string): Promise<void> {
-  await clickButton(
-    selector
-      ? [...scope.querySelectorAll<HTMLElement>(selector)].find(
-          (node) => (node.getAttribute("aria-label") ?? node.textContent?.trim()) === name,
-        )
-      : buttonNamed(name, scope),
-    name,
-  )
-  await flush()
-}
-
-function dialog(): HTMLElement {
-  const open = document.querySelector<HTMLElement>('[role="dialog"]:not([data-ending-style])')
-  if (!open) throw new Error("没有打开对话框")
-  return open
-}
-
-function fieldByLabel(label: string): HTMLInputElement {
-  const field = [...dialog().querySelectorAll("label")].find((item) => item.textContent === label)
-  const input = field?.control
-  if (!(input instanceof HTMLInputElement)) throw new Error("没有输入框 " + label)
-  return input
-}
-
-async function fillField(label: string, value: string): Promise<void> {
-  const input = fieldByLabel(label)
-  await act(async () => {
-    const user = userEvent.setup()
-    await user.clear(input)
-    await user.paste(value)
-  })
-  expect(input.value).toBe(value)
-}
-
 it("停用市场源会隐藏目录条目，已安装列表保持可用", async () => {
   const f = fixture()
-  await openMarket(f)
+  await openMarketplace(app, f)
   expect(app.container.textContent).toContain("工程手册")
   await select("市场源", app.container)
   await select("启用 团队目录", dialog(), '[role="switch"]')
@@ -224,7 +41,7 @@ it("停用市场源会隐藏目录条目，已安装列表保持可用", async (
 
 it("市场添加表单要求固定提交或 SHA，开发目录使用原生选择", async () => {
   const f = fixture()
-  await openMarket(f)
+  await openMarketplace(app, f)
   await select("市场源", app.container)
   await select("添加市场源", dialog())
   await fillField("GitHub 仓库", "sample/team-market")
@@ -261,7 +78,7 @@ it("市场添加表单要求固定提交或 SHA，开发目录使用原生选择
 it("正式模式隐藏开发目录，刷新错误保留来源，删除先确认且保留已安装插件", async () => {
   const f = fixture(false)
   f.market.refresh.mockRejectedValueOnce(new Error("private refresh path /internal/fixture"))
-  await openMarket(f)
+  await openMarketplace(app, f)
   await select("市场源", app.container)
   await select("添加市场源", dialog())
   expect(dialog().querySelector('[role="radio"][value="directory"]')).toBeNull()
@@ -285,7 +102,7 @@ it("两类市场插件用原安装桥确认；目录权限与实际包披露区�
   f.market.prepareInstall
     .mockResolvedValueOnce(claudeDisclosure)
     .mockResolvedValueOnce(capabilityDisclosure)
-  await openMarket(f)
+  await openMarketplace(app, f)
 
   await select("安装 工程手册", app.container, "button[aria-label]")
   expect(f.market.prepareInstall).toHaveBeenNthCalledWith(1, "team-market", "guide")
@@ -333,7 +150,7 @@ it("依据主进程动作手动更新，扩权时显示实际差异及独立确�
     })
     .mockResolvedValueOnce({ kind: "unchanged" })
     .mockResolvedValueOnce({ kind: "updated" })
-  await openMarket(f)
+  await openMarketplace(app, f)
   expect(f.market.prepareUpdate).not.toHaveBeenCalled()
   expect(app.container.querySelector('[aria-label="更新 已有工具"]')).toBeNull()
 
@@ -374,7 +191,7 @@ it("离开市场后收到的准备结果会放弃原令牌", async () => {
         finish = resolve
       }),
   )
-  await openMarket(f)
+  await openMarketplace(app, f)
   await select("安装 工程手册", app.container, "button[aria-label]")
   expect(app.container.textContent).toContain("正在读取插件…")
   await select("已安装", app.container, '[role="radio"]')
@@ -396,7 +213,7 @@ it.each([
     [marketEntry],
     [{ ...originalSource, kind, pin: previous, enabled: false }],
   )
-  await openMarket(f)
+  await openMarketplace(app, f)
   expect(app.container.textContent).not.toContain("工程手册")
   await select("市场源", app.container)
   await select("更换 团队目录 的版本", dialog(), "button[aria-label]")

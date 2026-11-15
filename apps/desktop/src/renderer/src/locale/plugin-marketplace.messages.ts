@@ -4,6 +4,17 @@
 export const pluginMarketplaceZhCN = {
   "pluginMarketplace.view": "插件视图",
   "pluginMarketplace.catalog": "插件市场",
+  "pluginMarketplace.thirdParty": "第三方市场",
+  "pluginMarketplace.thirdPartyDescription": "浏览和安装未经 PigClaude 审核的插件。",
+  "pluginMarketplace.thirdPartyOff": "第三方市场已关闭",
+  "pluginMarketplace.thirdPartyConsentTitle": "开启第三方市场？",
+  "pluginMarketplace.thirdPartyRisk":
+    "第三方市场及其插件未经 PigClaude 审核。请核对来源和安装披露。",
+  "pluginMarketplace.thirdPartyRuntimeRisk":
+    "Claude Code 插件的 Skill 可执行命令及文件头 hooks。能力插件可使用你确认的权限和域名。",
+  "pluginMarketplace.thirdPartyEnable": "开启第三方市场",
+  "pluginMarketplace.unreviewed": "未审核",
+  "pluginMarketplace.fileHashChanged": "插件包文件指纹已变化。请核对来源和披露后再确认更新。",
   "pluginMarketplace.installed": "已安装",
   "pluginMarketplace.search": "搜索市场插件",
   "pluginMarketplace.sources": "市场源",
@@ -73,6 +84,19 @@ export const pluginMarketplaceZhCN = {
 export const pluginMarketplaceEnUS = {
   "pluginMarketplace.view": "Plugin view",
   "pluginMarketplace.catalog": "Plugin marketplace",
+  "pluginMarketplace.thirdParty": "Third-party marketplaces",
+  "pluginMarketplace.thirdPartyDescription":
+    "Browse and install plugins that PigClaude hasn't reviewed.",
+  "pluginMarketplace.thirdPartyOff": "Third-party marketplaces are off",
+  "pluginMarketplace.thirdPartyConsentTitle": "Enable third-party marketplaces?",
+  "pluginMarketplace.thirdPartyRisk":
+    "PigClaude hasn't reviewed these marketplaces or their plugins. Check the source and installation disclosure.",
+  "pluginMarketplace.thirdPartyRuntimeRisk":
+    "Claude Code plugin skills can run commands and frontmatter hooks. Capability plugins can use the permissions and domains you approve.",
+  "pluginMarketplace.thirdPartyEnable": "Enable third-party marketplaces",
+  "pluginMarketplace.unreviewed": "Unreviewed",
+  "pluginMarketplace.fileHashChanged":
+    "The plugin package fingerprint changed. Review the source and disclosure before confirming the update.",
   "pluginMarketplace.installed": "Installed",
   "pluginMarketplace.search": "Search marketplace plugins",
   "pluginMarketplace.sources": "Marketplace sources",

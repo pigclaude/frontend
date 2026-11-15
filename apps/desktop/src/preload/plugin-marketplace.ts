@@ -13,6 +13,7 @@ export function pluginMarketplaceBridge(): PluginMarketplaceBridge {
     ipcRenderer.invoke(pluginMarketplaceChannelPrefix + name, ...args)
   return {
     list: () => invoke("list"),
+    setThirdPartyEnabled: (enabled) => invoke("set-third-party-enabled", enabled),
     selectDirectory: () => invoke("select-directory"),
     add: (input) => invoke("add", input),
     refresh: (sourceId, pin) =>

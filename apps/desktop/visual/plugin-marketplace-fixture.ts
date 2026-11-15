@@ -25,6 +25,7 @@ const membership: MembershipView = {
 
 const marketplace: PluginMarketplaceView = {
   developerMode: true,
+  thirdPartyEnabled: true,
   sources: [
     {
       id: "docs-market",
@@ -61,6 +62,7 @@ const marketplace: PluginMarketplaceView = {
       permissions: ["workspace-read", "network"],
       domains: ["docs.example.org"],
       action: "update",
+      reviewStatus: "unreviewed",
     },
     {
       id: "release-guide",
@@ -73,6 +75,7 @@ const marketplace: PluginMarketplaceView = {
       permissions: [],
       domains: [],
       action: "install",
+      reviewStatus: "unreviewed",
     },
     {
       id: "issue-summary",
@@ -85,6 +88,7 @@ const marketplace: PluginMarketplaceView = {
       permissions: ["storage"],
       domains: [],
       action: "installed",
+      reviewStatus: "unreviewed",
     },
   ],
 }
@@ -93,6 +97,7 @@ const update: PluginMarketplaceUpdateResult = {
   kind: "review",
   additionalPermissions: ["network"],
   additionalDomains: ["docs.example.org"],
+  fileHashChanged: true,
   disclosure: {
     type: "capability",
     confirmationId: "review-preview",
@@ -119,12 +124,13 @@ const update: PluginMarketplaceUpdateResult = {
 }
 
 /** 装入可读取的缓存和待确认包，所有操作仅在预览夹具内处理。 */
-export async function installPluginMarketplacePreview(page: Page): Promise<void> {
+export async function installPluginMarketplacePreview(page: Page, enabled = true): Promise<void> {
   await page.addInitScript(
     ({ membership, marketplace, update }) => {
       const unavailable = async () => {
         throw new Error("FIXTURE_UNEXPECTED_CALL")
       }
+      let thirdPartyEnabled = marketplace.thirdPartyEnabled
       window.pigclaude = {
         platform: "darwin",
         membership: {
@@ -150,7 +156,10 @@ export async function installPluginMarketplacePreview(page: Page): Promise<void>
           subscribe: () => () => undefined,
         },
         pluginMarketplace: {
-          list: async () => marketplace,
+          list: async () => ({ ...marketplace, thirdPartyEnabled }),
+          setThirdPartyEnabled: async (next) => {
+            thirdPartyEnabled = next
+          },
           selectDirectory: unavailable,
           add: unavailable,
           refresh: unavailable,
@@ -162,6 +171,6 @@ export async function installPluginMarketplacePreview(page: Page): Promise<void>
         },
       }
     },
-    { membership, marketplace, update },
+    { membership, marketplace: { ...marketplace, thirdPartyEnabled: enabled }, update },
   )
 }

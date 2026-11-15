@@ -21,18 +21,24 @@ import {
 } from "./plugin-marketplace-catalog"
 import { PluginMarketplacePinDialog } from "./plugin-marketplace-pin-dialog"
 import { PluginMarketplaceSourceDialog } from "./plugin-marketplace-source-dialog"
+import {
+  PluginMarketplaceThirdPartyConsent,
+  PluginMarketplaceThirdPartySwitch,
+} from "./plugin-marketplace-third-party"
 import { marketplaceErrorKey } from "./plugin-marketplace-view"
 import { pluginInstallDisclosure } from "./plugin-settings-view"
 import "../../styles/plugin-marketplace.css"
 
 type MarketDialog =
   | { kind: "sources" }
+  | { kind: "third-party-consent" }
   | { kind: "add" }
   | { kind: "pin"; sourceId: string }
   | { kind: "details"; sourceId: string; entryId: string }
   | {
       kind: "review"
       sourceId: string
+      reviewStatus: PluginMarketplaceEntryView["reviewStatus"]
       disclosure: DesktopPluginInstallDisclosure
       update?: PluginUpdateDisclosure
     }
@@ -66,22 +72,24 @@ export function PluginMarketplaceSettings({
   const [dialog, setDialog] = useState<MarketDialog | null>(null)
   const [query, setQuery] = useState("")
   const owner = useRef<MarketLifetime | null>(null)
+  const reads = useRef(0)
 
   useEffect(() => bridge.subscribe(refresh), [bridge])
   useEffect(() => {
-    let current = true
+    const read = ++reads.current
     void bridge.list().then(
       (next) => {
-        if (!current) return
+        if (read !== reads.current) return
         setView(next)
         setReadError(null)
       },
       (cause: unknown) => {
-        if (current) setReadError(marketplaceErrorKey(cause, "pluginMarketplace.loadFailed"))
+        if (read === reads.current)
+          setReadError(marketplaceErrorKey(cause, "pluginMarketplace.loadFailed"))
       },
     )
     return () => {
-      current = false
+      reads.current += 1
     }
   }, [bridge, revision, membershipActive])
   useEffect(() => {
@@ -99,13 +107,24 @@ export function PluginMarketplaceSettings({
   }, [bridge, installer, membershipActive])
 
   const sources = view?.sources ?? []
+  const thirdPartyEnabled = view?.thirdPartyEnabled === true
   const enabled = sources.filter((source) => source.enabled)
   const sourcesById = new Map(enabled.map((source) => [source.id, source]))
   const pinSource =
     dialog?.kind === "pin"
       ? sources.find(({ id, kind }) => id === dialog.sourceId && kind !== "directory")
       : undefined
-  const entries = view?.entries.filter(({ sourceId }) => sourcesById.has(sourceId)) ?? []
+  const entries =
+    view?.entries.filter(
+      ({ sourceId, reviewStatus }) =>
+        sourcesById.has(sourceId) && (thirdPartyEnabled || reviewStatus === "reviewed"),
+    ) ?? []
+  const visibleIds = new Set(entries.map(({ sourceId }) => sourceId))
+  const catalogSources = thirdPartyEnabled
+    ? enabled
+    : enabled.filter(({ id }) => visibleIds.has(id))
+  const reviewAllowed =
+    dialog?.kind === "review" && (thirdPartyEnabled || dialog.reviewStatus === "reviewed")
   const dialogSource =
     dialog?.kind === "details" || dialog?.kind === "review"
       ? sourcesById.get(dialog.sourceId)
@@ -120,17 +139,31 @@ export function PluginMarketplaceSettings({
   useEffect(() => {
     if (busy || view === null) return
     if (dialog?.kind === "pin" && !pinSource) setDialog({ kind: "sources" })
+    if (!thirdPartyEnabled && (dialog?.kind === "add" || dialog?.kind === "pin"))
+      setDialog({ kind: "sources" })
     if (dialog?.kind === "details" && !selected) setDialog(null)
-    if (dialog?.kind === "review" && !dialogSource) {
+    if (dialog?.kind === "review" && (!dialogSource || !reviewAllowed)) {
       const current = owner.current
       if (current?.preparedId === dialog.disclosure.confirmationId) {
         current.preparedId = null
         discard(installer, dialog.disclosure.confirmationId)
       }
       setDialog(null)
-      setError("pluginMarketplace.sourceDisabled")
+      setError(
+        dialogSource ? "pluginMarketplace.thirdPartyOff" : "pluginMarketplace.sourceDisabled",
+      )
     }
-  }, [busy, view, dialog, dialogSource, selected, pinSource, installer])
+  }, [
+    busy,
+    view,
+    dialog,
+    dialogSource,
+    selected,
+    pinSource,
+    installer,
+    reviewAllowed,
+    thirdPartyEnabled,
+  ])
 
   async function run(operate: (current: MarketLifetime) => Promise<void>): Promise<void> {
     const current = owner.current
@@ -157,6 +190,20 @@ export function PluginMarketplaceSettings({
     setDialog(next)
   }
 
+  function saveThirdParty(enabled: boolean): void {
+    void run(async (current) => {
+      await bridge.setThirdPartyEnabled(enabled)
+      if (current.closed) return
+      reads.current += 1
+      setView((snapshot) => snapshot && { ...snapshot, thirdPartyEnabled: enabled })
+      setDialog(null)
+    })
+  }
+
+  function openAdd(): void {
+    if (thirdPartyEnabled && !disabled) show({ kind: "add" })
+  }
+
   function showReview(
     current: MarketLifetime,
     review: Extract<MarketDialog, { kind: "review" }>,
@@ -171,12 +218,17 @@ export function PluginMarketplaceSettings({
   }
 
   function apply(entry: PluginMarketplaceEntryView): void {
-    const { sourceId, id, action } = entry
-    if (action === "installed" || !sourcesById.has(sourceId)) return
+    const { sourceId, id, action, reviewStatus } = entry
+    if (
+      action === "installed" ||
+      !sourcesById.has(sourceId) ||
+      (!thirdPartyEnabled && reviewStatus !== "reviewed")
+    )
+      return
     void run(async (current) => {
       if (action === "install") {
         const disclosure = await bridge.prepareInstall(sourceId, id)
-        showReview(current, { kind: "review", sourceId, disclosure })
+        showReview(current, { kind: "review", sourceId, reviewStatus, disclosure })
         return
       }
       const result = await bridge.prepareUpdate(sourceId, id)
@@ -184,6 +236,7 @@ export function PluginMarketplaceSettings({
         showReview(current, {
           kind: "review",
           sourceId,
+          reviewStatus,
           disclosure: result.disclosure,
           update: result,
         })
@@ -209,7 +262,11 @@ export function PluginMarketplaceSettings({
 
   function confirmReview(review: Extract<MarketDialog, { kind: "review" }>): void {
     const { confirmationId } = review.disclosure
-    if (!sourcesById.has(review.sourceId)) return
+    if (
+      !sourcesById.has(review.sourceId) ||
+      (!thirdPartyEnabled && review.reviewStatus !== "reviewed")
+    )
+      return
     void run(async (current) => {
       if (current.preparedId !== confirmationId) return
       current.preparedId = null
@@ -232,14 +289,25 @@ export function PluginMarketplaceSettings({
 
   return (
     <div className="plugin-market">
-      <div className="market-toolbar">
-        <SearchField
-          className="market-search"
-          value={query}
-          onValueChange={setQuery}
-          placeholder={t("pluginMarketplace.search")}
-          clearLabel={t("pluginSettings.clearSearch")}
+      {view ? (
+        <PluginMarketplaceThirdPartySwitch
+          enabled={thirdPartyEnabled}
+          disabled={disabled}
+          onChange={(enabled) =>
+            enabled ? show({ kind: "third-party-consent" }) : saveThirdParty(false)
+          }
         />
+      ) : null}
+      <div className="market-toolbar">
+        {thirdPartyEnabled || entries.length > 0 ? (
+          <SearchField
+            className="market-search"
+            value={query}
+            onValueChange={setQuery}
+            placeholder={t("pluginMarketplace.search")}
+            clearLabel={t("pluginSettings.clearSearch")}
+          />
+        ) : null}
         <Button
           type="button"
           className="market-sources-btn"
@@ -285,16 +353,17 @@ export function PluginMarketplaceSettings({
       ) : null}
       {view ? (
         <PluginMarketplaceCatalog
-          sources={enabled}
+          sources={catalogSources}
           entries={entries}
           query={query}
           disabled={disabled}
           hasDisabledSources={sources.length > 0 && enabled.length === 0}
+          thirdPartyEnabled={thirdPartyEnabled}
           onDetails={(entry) =>
             show({ kind: "details", sourceId: entry.sourceId, entryId: entry.id })
           }
           onApply={apply}
-          onAdd={() => show({ kind: "add" })}
+          onAdd={openAdd}
         />
       ) : null}
       {dialog?.kind === "sources" ? (
@@ -302,16 +371,29 @@ export function PluginMarketplaceSettings({
           sources={sources}
           busy={busy}
           membershipActive={membershipActive}
+          thirdPartyEnabled={thirdPartyEnabled}
           error={errorText}
           onClose={() => show(null)}
-          onAdd={() => show({ kind: "add" })}
-          onRefresh={(id) => void run(() => bridge.refresh(id))}
-          onChangePin={(sourceId) => show({ kind: "pin", sourceId })}
+          onAdd={openAdd}
+          onRefresh={(id) => {
+            if (thirdPartyEnabled) void run(() => bridge.refresh(id))
+          }}
+          onChangePin={(sourceId) => {
+            if (thirdPartyEnabled) show({ kind: "pin", sourceId })
+          }}
           onSetEnabled={(id, enabled) => void run(() => bridge.setEnabled(id, enabled))}
           onRemove={(id) => void run(() => bridge.remove(id))}
         />
       ) : null}
-      {pinSource && membershipActive ? (
+      {dialog?.kind === "third-party-consent" && membershipActive ? (
+        <PluginMarketplaceThirdPartyConsent
+          busy={busy}
+          error={errorText}
+          onCancel={() => show(null)}
+          onConfirm={() => saveThirdParty(true)}
+        />
+      ) : null}
+      {pinSource && membershipActive && thirdPartyEnabled ? (
         <PluginMarketplacePinDialog
           key={pinSource.id}
           source={pinSource}
@@ -326,7 +408,7 @@ export function PluginMarketplaceSettings({
           }
         />
       ) : null}
-      {dialog?.kind === "add" && view && membershipActive ? (
+      {dialog?.kind === "add" && view && membershipActive && thirdPartyEnabled ? (
         <PluginMarketplaceAddSource
           developerMode={view.developerMode}
           busy={busy}
@@ -352,10 +434,11 @@ export function PluginMarketplaceSettings({
           onApply={apply}
         />
       ) : null}
-      {dialog?.kind === "review" && dialogSource && membershipActive ? (
+      {dialog?.kind === "review" && dialogSource && membershipActive && reviewAllowed ? (
         <PluginInstallDisclosure
           facts={pluginInstallDisclosure(dialog.disclosure, t)}
           sourceName={dialogSource.catalogName}
+          unreviewed={dialog.reviewStatus === "unreviewed"}
           update={dialog.update}
           busy={busy}
           onCancel={cancelReview}

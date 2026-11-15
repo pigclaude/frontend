@@ -40,6 +40,7 @@ export function marketplaceSourceMeta(
 const errors = new Map<string, TextKey>([
   ["MEMBERSHIP_REQUIRED", "pluginMarketplace.membership"],
   ["PLUGIN_MARKETPLACE_UNAVAILABLE", "pluginMarketplace.loadFailed"],
+  ["PLUGIN_MARKETPLACE_THIRD_PARTY_DISABLED", "pluginMarketplace.thirdPartyOff"],
   ["PLUGIN_MARKETPLACE_REFRESH_FAILED", "pluginMarketplace.refreshFailed"],
   ["PLUGIN_MARKETPLACE_SOURCE_DISABLED", "pluginMarketplace.sourceDisabled"],
   ["PLUGIN_MARKETPLACE_SOURCE_NOT_FOUND", "pluginMarketplace.sourceDisabled"],

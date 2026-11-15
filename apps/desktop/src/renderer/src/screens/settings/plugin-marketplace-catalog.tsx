@@ -24,6 +24,7 @@ export function PluginMarketplaceCatalog({
   query,
   disabled,
   hasDisabledSources,
+  thirdPartyEnabled,
   onDetails,
   onApply,
   onAdd,
@@ -33,6 +34,7 @@ export function PluginMarketplaceCatalog({
   query: string
   disabled: boolean
   hasDisabledSources: boolean
+  thirdPartyEnabled: boolean
   onDetails: EntryAction
   onApply: EntryAction
   onAdd: () => void
@@ -54,15 +56,18 @@ export function PluginMarketplaceCatalog({
   }
 
   if (sources.length === 0) {
+    const title = !thirdPartyEnabled
+      ? "pluginMarketplace.thirdPartyOff"
+      : hasDisabledSources
+        ? "pluginMarketplace.noEnabledSources"
+        : "pluginMarketplace.noSources"
     return (
       <EmptyState
         className="market-empty"
         icon={<Store className="ic" aria-hidden="true" />}
-        title={t(
-          hasDisabledSources ? "pluginMarketplace.noEnabledSources" : "pluginMarketplace.noSources",
-        )}
+        title={t(title)}
         actions={
-          !hasDisabledSources && !disabled ? (
+          thirdPartyEnabled && !hasDisabledSources && !disabled ? (
             <Button type="button" size="sm" onClick={onAdd}>
               {t("pluginMarketplace.addSource")}
             </Button>
@@ -145,6 +150,9 @@ function MarketplaceSection({
                 <span className="market-tile-text">
                   <span className="market-tile-name">
                     <span className="truncate">{entry.name}</span>
+                    {entry.reviewStatus === "unreviewed" ? (
+                      <Badge variant="warn">{t("pluginMarketplace.unreviewed")}</Badge>
+                    ) : null}
                   </span>
                   <span className="market-tile-desc truncate">
                     {t(typeLabel(entry.type))}
@@ -204,6 +212,9 @@ export function PluginMarketplaceEntryDialog({
         description={
           <span className="plugin-dialog-meta">
             <Badge>{t(typeLabel(entry.type))}</Badge>
+            {entry.reviewStatus === "unreviewed" ? (
+              <Badge variant="warn">{t("pluginMarketplace.unreviewed")}</Badge>
+            ) : null}
             {entry.version}
           </span>
         }

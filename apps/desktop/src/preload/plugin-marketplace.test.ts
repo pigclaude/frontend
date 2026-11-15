@@ -19,6 +19,7 @@ it("按契约转发操作并清理同一个刷新订阅", async () => {
   const market = pluginMarketplaceBridge()
   const source = { kind: "github", repo: "sample/catalog", commit: "a".repeat(40) } as const
   await market.list()
+  await market.setThirdPartyEnabled(true)
   await market.selectDirectory()
   await market.add(source)
   await market.refresh("source")
@@ -29,6 +30,7 @@ it("按契约转发操作并清理同一个刷新订阅", async () => {
   await market.prepareUpdate("source", "entry")
   const operations = [
     ["list"],
+    ["set-third-party-enabled", true],
     ["select-directory"],
     ["add", source],
     ["refresh", "source"],

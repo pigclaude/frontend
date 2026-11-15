@@ -18,6 +18,7 @@ export function PluginMarketplaceSourceDialog({
   sources,
   busy,
   membershipActive,
+  thirdPartyEnabled,
   error,
   onClose,
   onAdd,
@@ -29,6 +30,7 @@ export function PluginMarketplaceSourceDialog({
   sources: readonly PluginMarketplaceSourceView[]
   busy: boolean
   membershipActive: boolean
+  thirdPartyEnabled: boolean
   error: string | null
   onClose: () => void
   onAdd: () => void
@@ -40,6 +42,7 @@ export function PluginMarketplaceSourceDialog({
   const { locale, t } = useText()
   const [confirming, setConfirming] = useState<string | null>(null)
   const disabled = busy || !membershipActive
+  const sourceActionsDisabled = disabled || !thirdPartyEnabled
   return (
     <Dialog.Root open onOpenChange={(open) => !open && !busy && onClose()}>
       <Dialog.Content
@@ -50,7 +53,7 @@ export function PluginMarketplaceSourceDialog({
       >
         <Dialog.Body>
           <div className="marketplace-sources-bar">
-            <Button type="button" size="sm" disabled={disabled} onClick={onAdd}>
+            <Button type="button" size="sm" disabled={sourceActionsDisabled} onClick={onAdd}>
               <Plus className="ic ic-sm" aria-hidden="true" />
               {t("pluginMarketplace.addSource")}
             </Button>
@@ -139,7 +142,7 @@ export function PluginMarketplaceSourceDialog({
                           type="button"
                           size="sm"
                           variant="ghost"
-                          disabled={disabled}
+                          disabled={sourceActionsDisabled}
                           aria-label={fill(t("pluginMarketplace.changeSourcePin"), values)}
                           onClick={() => onChangePin(id)}
                         >
@@ -150,7 +153,7 @@ export function PluginMarketplaceSourceDialog({
                         type="button"
                         size="icon"
                         variant="ghost"
-                        disabled={disabled}
+                        disabled={sourceActionsDisabled}
                         aria-label={fill(t("pluginMarketplace.refreshSource"), values)}
                         onClick={() => onRefresh(id)}
                       >

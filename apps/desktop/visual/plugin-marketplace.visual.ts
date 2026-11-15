@@ -5,12 +5,15 @@ import { installPluginMarketplacePreview } from "./plugin-marketplace-fixture"
 
 const screenshot = { threshold: 0.1, maxDiffPixels: 0, animations: "disabled" } as const
 
-async function openMarketplace(page: Page, theme: "light" | "dark") {
-  await installPluginMarketplacePreview(page)
+async function openMarketplace(page: Page, theme: "light" | "dark", enabled = true) {
+  await installPluginMarketplacePreview(page, enabled)
   await page.clock.install({ time: new Date("2026-11-15T04:00:00Z") })
   await page.goto(`/?screen=plugins&theme=${theme}`)
   await page.getByRole("radio", { name: "插件市场" }).click()
-  await expect(page.getByRole("heading", { name: "团队工具目录" })).toBeVisible()
+  const state = enabled
+    ? page.getByRole("heading", { name: "团队工具目录" })
+    : page.getByText("第三方市场已关闭", { exact: true })
+  await expect(state).toBeVisible()
   await page.evaluate(() => document.fonts.ready)
 }
 
@@ -40,6 +43,22 @@ test("plugin marketplace update expansion disclosure", async ({ page }) => {
   const disclosure = page.getByRole("dialog", { name: "更新披露" })
   await expect(disclosure.getByText("新增权限")).toBeVisible()
   await expect(disclosure.getByText("新增域名")).toBeVisible()
+  await expect(disclosure.getByText("插件包文件指纹已变化", { exact: false })).toBeVisible()
   await expect(disclosure.getByRole("button", { name: "确认更新" })).toBeVisible()
   await expect(page).toHaveScreenshot("plugin-marketplace-update-dark.png", screenshot)
+})
+
+test("plugin marketplace third-party consent", async ({ page }) => {
+  await openMarketplace(page, "light", false)
+  await expect(page.getByRole("switch", { name: "第三方市场" })).not.toBeChecked()
+  await expect(page.getByRole("button", { name: "安装 发布指南" })).toHaveCount(0)
+  await expect(page).toHaveScreenshot("plugin-marketplace-third-party-off-light.png", screenshot)
+  await page.getByRole("switch", { name: "第三方市场" }).click()
+  const consent = page.getByRole("dialog", { name: "开启第三方市场？" })
+  await expect(consent.getByText("未经 PigClaude 审核", { exact: false })).toBeVisible()
+  await expect(consent.getByRole("button", { name: "开启第三方市场" })).toBeVisible()
+  await expect(page).toHaveScreenshot(
+    "plugin-marketplace-third-party-consent-light.png",
+    screenshot,
+  )
 })

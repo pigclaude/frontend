@@ -1,21 +1,24 @@
 // 在用户确认前展示本机插件的类型、权限、域名、工具和执行项。
 
 import { Badge, Button, Dialog } from "@pigclaude/ui-primitives"
+import { TriangleAlert } from "lucide-react"
 import { useText } from "../../locale/text"
 import { ClaudeCodePluginFacts } from "./claude-code-plugin-facts"
 import { marketplacePermissionChangeText } from "./plugin-marketplace-view"
 import type { PluginDisclosureFacts } from "./plugin-settings-view"
 
-/** 宿主对手动更新计算出的新增权限和网络范围。 */
+/** 宿主对手动更新计算出的新增范围和插件包变化。 */
 export type PluginUpdateDisclosure = {
   additionalPermissions: readonly string[]
   additionalDomains: readonly string[]
+  fileHashChanged?: true
 }
 
 /** 披露对话框只展示已准备的事实，由宿主处理确认和放弃。 */
 export function PluginInstallDisclosure({
   facts,
   sourceName,
+  unreviewed = false,
   update,
   busy,
   onCancel,
@@ -23,6 +26,7 @@ export function PluginInstallDisclosure({
 }: {
   facts: PluginDisclosureFacts
   sourceName?: string | undefined
+  unreviewed?: boolean
   update?: PluginUpdateDisclosure | undefined
   busy: boolean
   onCancel: () => void
@@ -40,7 +44,20 @@ export function PluginInstallDisclosure({
         closeDisabled={busy}
       >
         <Dialog.Body className="plugin-dialog-body">
-          {update ? <UpdateFacts update={update} /> : null}
+          {unreviewed ? (
+            <div>
+              <Badge variant="warn">{t("pluginMarketplace.unreviewed")}</Badge>
+            </div>
+          ) : null}
+          {update?.fileHashChanged ? (
+            <p className="marketplace-risk">
+              <TriangleAlert className="ic ic-sm" aria-hidden="true" />
+              <span>{t("pluginMarketplace.fileHashChanged")}</span>
+            </p>
+          ) : null}
+          {update && (update.additionalPermissions.length || update.additionalDomains.length) ? (
+            <UpdateFacts update={update} />
+          ) : null}
           <dl className="ext-facts">
             <dt>{t("pluginSettings.type")}</dt>
             <dd>{facts.typeLabel}</dd>

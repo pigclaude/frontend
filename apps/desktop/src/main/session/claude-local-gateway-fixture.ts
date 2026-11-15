@@ -9,15 +9,18 @@ export type ClaudeLocalGateway = {
     body: string
     hasSessionHeader: boolean
     hasPlaceholderCredential: boolean
+    hasExpectedOAuthCredential?: boolean
   }>
   close(): Promise<void>
 }
 
 /** 开启合成消息端点，不转发流量。关闭时停止监听并回收连接。 */
-export async function startClaudeLocalGateway(): Promise<ClaudeLocalGateway> {
+export async function startClaudeLocalGateway(
+  expectedOAuthToken?: string,
+): Promise<ClaudeLocalGateway> {
   const messages: ClaudeLocalGateway["messages"] = []
   const server = createServer((request, response) => {
-    void reply(request, response, messages).catch(() => response.destroy())
+    void reply(request, response, messages, expectedOAuthToken).catch(() => response.destroy())
   })
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject)
@@ -40,6 +43,7 @@ async function reply(
   request: IncomingMessage,
   response: ServerResponse,
   messages: ClaudeLocalGateway["messages"],
+  expectedOAuthToken: string | undefined,
 ): Promise<void> {
   const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname
   if (path !== "/v1/messages") {
@@ -61,6 +65,13 @@ async function reply(
     hasPlaceholderCredential:
       request.headers.authorization === "Bearer pigclaude-local" &&
       request.headers["x-api-key"] === undefined,
+    ...(expectedOAuthToken === undefined
+      ? {}
+      : {
+          hasExpectedOAuthCredential:
+            request.headers.authorization === `Bearer ${expectedOAuthToken}` &&
+            request.headers["x-api-key"] === undefined,
+        }),
   })
   const input: unknown = JSON.parse(body)
   const model =

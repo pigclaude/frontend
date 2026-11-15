@@ -126,6 +126,7 @@ function blockWebRtc(headers: Record<string, string[]> | undefined): Record<stri
   for (const key of matching) delete response[key]
   const value = existing || defaultConnectionAllowlist
   // Chromium 只读 structured field 的首个列表成员，同名参数取最后一个值。
+  // 当前 Chromium 对非空畸形列表保留默认的 WebRTC 拒绝策略，原生验收覆盖解析失败的分支。
   const first = /^(?:[^",]|"(?:[^"\\]|\\.)*")*/.exec(value)?.[0] ?? ""
   response["Connection-Allowlist"] = [first.trimEnd() + ";webrtc=block" + value.slice(first.length)]
   return response

@@ -154,9 +154,10 @@ describe("SessionHost active turns by workspace", () => {
       usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
     })
 
+    const canonical = await realpath(harness.workspace)
     expect(checkpoints).toEqual([
-      [harness.workspace, "baseline", "id-2"],
-      [harness.workspace, "final", "id-2"],
+      [canonical, "baseline", "id-2"],
+      [canonical, "final", "id-2"],
     ])
     await harness.host.dispose()
   })

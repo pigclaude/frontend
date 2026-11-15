@@ -1,7 +1,7 @@
 // 验证宿主用真实会话存储和假的 SDK 启动、停放和续接会话，打开历史时不创建查询进程。
 
 import { randomUUID } from "node:crypto"
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises"
+import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { afterEach, describe, expect, it } from "vitest"
@@ -53,10 +53,11 @@ describe("SessionHost 保存与续接", () => {
     }
     await expect(original.host.start(firstStart)).resolves.toEqual({ sessionId })
     const paths = fixture.store.paths(sessionId)
+    const canonicalWorkspace = await realpath(fixture.workspace)
     expect(original.queries[0]?.options).toMatchObject({
       sessionId,
       persistSession: true,
-      cwd: fixture.workspace,
+      cwd: canonicalWorkspace,
       env: {
         CLAUDE_CONFIG_DIR: paths.claudeConfigDir,
         CLAUDE_CODE_PROJECT_DIR_NAME: retainedClaudeProject(sessionId),
@@ -82,7 +83,7 @@ describe("SessionHost 保存与续接", () => {
       status: "parked",
       title: firstText,
       projectPath: fixture.project,
-      workspace: fixture.workspace,
+      workspace: canonicalWorkspace,
       effort: "high",
       fast: true,
       permissionMode: "bypassPermissions",
@@ -117,7 +118,7 @@ describe("SessionHost 保存与续接", () => {
         status: "parked",
         title: firstText,
         projectPath: fixture.project,
-        workspace: fixture.workspace,
+        workspace: canonicalWorkspace,
         restorable: true,
       }),
     )
@@ -129,7 +130,7 @@ describe("SessionHost 保存与续接", () => {
     expect(resumed?.options).toMatchObject({
       persistSession: true,
       resume: sessionId,
-      cwd: fixture.workspace,
+      cwd: canonicalWorkspace,
       permissionMode: "default",
       model: savedModel,
       effort: "high",

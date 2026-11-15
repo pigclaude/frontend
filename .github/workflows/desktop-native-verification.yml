@@ -63,7 +63,10 @@ jobs:
           src/main/session/claude-agent-adapter-retained-process.test.ts
       - name: Verify native Electron on Windows
         if: runner.os == 'Windows'
-        run: node tests/native-desktop/acceptance.mjs test-results/native-desktop
+        run: |
+          node tests/native-desktop/agent-browser-network.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/native-desktop/acceptance.mjs test-results/native-desktop
       - name: Verify native Electron on Linux
         if: runner.os == 'Linux'
         timeout-minutes: 3
@@ -73,6 +76,7 @@ jobs:
             export GNOME_KEYRING_CONTROL
             openbox >/tmp/pigclaude-openbox.log 2>&1 &
             sleep 1
+            node tests/native-desktop/agent-browser-network.mjs
             node tests/native-desktop/acceptance.mjs test-results/native-desktop
           '
       - uses: actions/upload-artifact@v4

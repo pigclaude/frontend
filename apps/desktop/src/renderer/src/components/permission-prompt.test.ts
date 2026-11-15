@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { LocaleProvider, type Locale } from "@pigclaude/ui-primitives"
 import type { SessionPermissionCard } from "../models/session-permissions"
 import { PermissionPrompt } from "./permission-prompt"
+import type { BrowserPermissionContext } from "../../../browser-permission-contract"
 
 let root: Root
 let container: HTMLDivElement
@@ -42,6 +43,23 @@ function card(overrides: Partial<SessionPermissionCard> = {}): SessionPermission
 
 function options(): HTMLElement[] {
   return [...container.querySelectorAll<HTMLElement>('[role="option"]')]
+}
+
+const textInput = {
+  kind: "type",
+  url: "http://localhost:4173/search",
+  ref: "e7",
+  role: "textbox",
+  name: "Search",
+  isPassword: false,
+  clear: true,
+  submit: false,
+} satisfies BrowserPermissionContext
+
+function passwordVisibilityButton(): HTMLButtonElement | undefined {
+  return [...container.querySelectorAll("button")].find((button) =>
+    ["显示密码", "隐藏密码", "Show password", "Hide password"].includes(button.textContent ?? ""),
+  )
 }
 
 async function render(
@@ -171,6 +189,92 @@ describe("permission prompt", () => {
     ])
     expect(dialog?.textContent).not.toContain("untrusted")
     expect(options()).toHaveLength(2)
+  })
+
+  it("shows ordinary input, the verified character count, and both browser input options", async () => {
+    await render(
+      card({
+        toolName: "mcp__pigclaude_workbench__browser_type",
+        input: { text: "查\n👍", clear: false, submit: true },
+        browser: { ...textInput, characterCount: 3 },
+      }),
+      undefined,
+      "en-US",
+    )
+
+    const dialog = container.querySelector('[role="dialog"]')
+    expect(dialog?.textContent).toContain("Claude wants to type into this page element")
+    expect(dialog?.textContent).toContain("Search")
+    expect(dialog?.querySelector("pre")?.textContent).toBe("查\n👍")
+    expect(dialog?.textContent).toContain("3 characters")
+    const flagValues = [...(dialog?.querySelectorAll("dt") ?? [])].map((label) => [
+      label.textContent,
+      label.nextElementSibling?.textContent,
+    ])
+    expect(flagValues).toContainEqual(["Clear first", "Yes"])
+    expect(flagValues).toContainEqual(["Press Enter after typing", "No"])
+    expect(passwordVisibilityButton()).toBeUndefined()
+    expect(options()).toHaveLength(2)
+  })
+
+  it("reveals a masked password only on demand and resets visibility for a new request", async () => {
+    const fixture = "sYn-9"
+    const request = card({
+      toolName: "mcp__pigclaude_workbench__browser_type",
+      input: { text: fixture },
+      browser: {
+        ...textInput,
+        name: "登录密码",
+        isPassword: true,
+        characterCount: 5,
+        clear: false,
+        submit: true,
+      },
+      defaultToNo: true,
+      suggestions: [{ index: 0, label: "browser_type", canSaveProject: true }],
+    })
+    const onDecide = vi.fn()
+    await render(request, onDecide)
+
+    expect(container.innerHTML).not.toContain(fixture)
+    expect(container.textContent).toContain("[已打码]")
+    expect(container.textContent).toContain("5 个字符")
+    expect(options()).toHaveLength(2)
+    expect(document.activeElement).toBe(options()[1])
+
+    const reveal = passwordVisibilityButton()
+    expect(reveal?.textContent).toBe("显示密码")
+    expect(reveal?.type).toBe("button")
+    expect(reveal?.tabIndex).toBe(0)
+    await act(async () => reveal?.click())
+    expect(container.querySelector("pre")?.textContent).toBe(fixture)
+    expect(passwordVisibilityButton()?.textContent).toBe("隐藏密码")
+    await render({ ...request }, onDecide)
+    expect(container.querySelector("pre")?.textContent).toBe(fixture)
+
+    await act(async () => passwordVisibilityButton()?.click())
+    expect(container.innerHTML).not.toContain(fixture)
+    await act(async () => passwordVisibilityButton()?.click())
+    expect(container.querySelector("pre")?.textContent).toBe(fixture)
+
+    await render({ ...request, requestId: "permission-2" }, onDecide)
+    expect(container.innerHTML).not.toContain(fixture)
+    expect(passwordVisibilityButton()?.textContent).toBe("显示密码")
+    expect(onDecide).not.toHaveBeenCalled()
+  })
+
+  it("shows only a fixed mask for a saved password disclosure", async () => {
+    await render(
+      card({
+        toolName: "mcp__pigclaude_workbench__browser_type",
+        input: { text: "[已打码]" },
+        browser: { ...textInput, isPassword: true },
+      }),
+    )
+
+    expect(container.textContent).toContain("[已打码]")
+    expect(container.textContent).not.toContain("个字符")
+    expect(passwordVisibilityButton()).toBeUndefined()
   })
 
   it("shows the command and the numbered choices", async () => {

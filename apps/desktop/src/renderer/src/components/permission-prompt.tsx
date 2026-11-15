@@ -9,6 +9,7 @@ import { fill, useText, type TextKey } from "../locale/text"
 import type { SessionPermissionCard } from "../models/session-permissions"
 import type { BrowserPermissionContext } from "../../../browser-permission-contract"
 import type { PermissionSuggestionSelection } from "../../../project-permissions-contract"
+import { BrowserTypeDisclosure } from "./browser-type-disclosure"
 
 /** 用户对一张权限卡的回答；只引用主进程给出的建议序号。 */
 export type PermissionChoice = {
@@ -43,14 +44,14 @@ export type PermissionFileChange = {
   added: string | null
 }
 
-type BrowserClick = Extract<BrowserPermissionContext, { kind: "click" }>
+type BrowserElement = Extract<BrowserPermissionContext, { kind: "click" | "type" }>
 
 /** 卡片正文：一句话说明这次操作，再按工具族给出命令、目标、文件改动或计划正文。 */
 export type PermissionDetail = {
   summary: string
   command: string | null
   target: PermissionTarget | null
-  browserElement?: BrowserClick
+  browserElement?: BrowserElement
   changes: PermissionFileChange[]
   blockedPath: string | null
   plan: string | null
@@ -154,6 +155,7 @@ const browserSummary = {
   open: "permission.summary.browserOpen",
   snapshot: "permission.summary.browserSnapshot",
   click: "permission.summary.browserClick",
+  type: "permission.summary.browserType",
 } satisfies Record<Exclude<BrowserPermissionContext["kind"], "navigate">, TextKey>
 
 const navigationSummary = {
@@ -196,7 +198,7 @@ export function permissionDetail(
       ),
       command: null,
       target,
-      ...(browser.kind === "click" ? { browserElement: browser } : {}),
+      ...(browser.kind === "click" || browser.kind === "type" ? { browserElement: browser } : {}),
       changes: [],
       blockedPath: null,
       plan: null,
@@ -398,6 +400,13 @@ export function PermissionPrompt({ request, onDecide }: PermissionPromptProps) {
             <dt>{t("permission.browser.elementName")}</dt>
             <dd dir="auto">{detail.browserElement.name || t("permission.browser.unnamed")}</dd>
           </dl>
+        ) : null}
+        {request.browser?.kind === "type" ? (
+          <BrowserTypeDisclosure
+            key={request.requestId}
+            context={request.browser}
+            text={typeof request.input.text === "string" ? request.input.text : undefined}
+          />
         ) : null}
         {detail.command === null ? null : <pre className="perm-prompt-code">{detail.command}</pre>}
         {detail.changes.map((change, index) => (

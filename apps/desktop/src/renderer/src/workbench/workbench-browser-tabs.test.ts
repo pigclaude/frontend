@@ -95,6 +95,13 @@ it("shows and clears approved activity on the browser toolbar for that resource"
   await fake.emit({ type: "browser-open", id: "agent", url: page.url })
   expect(activity()?.textContent).toBe("Agent · 点击 · 保存设置")
 
+  await fake.emit({
+    type: "browser-page",
+    id: "agent",
+    page: { ...page, activity: { kind: "type", target: "搜索栏 e7" } },
+  })
+  expect(activity()?.textContent).toBe("Agent · 输入 · 搜索栏 e7")
+
   await fake.emit({ type: "browser-page", id: "agent", page })
   expect(activity()).toBeNull()
 })

@@ -12,8 +12,8 @@ import {
   type BackgroundNotificationPorts,
 } from "./background-notifications"
 
-// Windows 通知中心按先进先出为每个应用保留至多 20 条。
-const windowsNotificationLimit = 20
+// 保留最近 20 条原生通知的点击句柄；系统静默清除通知时可能不发关闭事件。
+const retainedNotificationLimit = 20
 
 type DesktopNotificationPorts = Omit<BackgroundNotificationPorts, "show"> & { userDataPath: string }
 
@@ -52,7 +52,7 @@ export function createDesktopNotifications(ports: DesktopNotificationPorts) {
       } catch {
         if (live.delete(native)) failed()
       }
-      if (ports.platform === "win32" && live.size > windowsNotificationLimit) {
+      if (live.size > retainedNotificationLimit) {
         const oldest = live.values().next().value
         if (oldest) close(oldest)
       }

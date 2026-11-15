@@ -148,6 +148,21 @@ it("Windows 按通知中心的 20 条上限释放最旧的超时通知，仍可�
   notifications.dispose()
 })
 
+it("macOS 未收到关闭事件时也淘汰最旧通知并保留新通知的点击", async () => {
+  const { notifications, openSession } = await harness("darwin")
+  for (let id = 0; id < 21; id += 1) {
+    notifications.announce({ kind: "completed", sessionId: `session-${id}` })
+  }
+  expect(fixture.items[0]?.close).toHaveBeenCalledOnce()
+  fixture.items[0]?.emit("click")
+  fixture.items[20]?.emit("click")
+  expect(openSession).toHaveBeenCalledExactlyOnceWith("session-20")
+  notifications.dispose()
+  expect(fixture.items[0]?.close).toHaveBeenCalledOnce()
+  expect(fixture.items[1]?.close).toHaveBeenCalledOnce()
+  expect(fixture.items[20]?.close).not.toHaveBeenCalled()
+})
+
 it("已安装的 Windows 应用使用 NSIS 开始菜单的身份发送通知", async () => {
   fixture.packaged = true
   const { notifications } = await harness("win32")

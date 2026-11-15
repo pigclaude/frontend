@@ -35,6 +35,7 @@ export function createBackgroundNotifications(ports: BackgroundNotificationPorts
   let badge = false
   let memberWasActive = false
   let membershipState: MembershipState | null = null
+  const failedTurns = new Map<string, number>()
 
   const canShow = () => !disposed && !isForeground(ports.window())
   const setBadge = (enabled: boolean): void => {
@@ -75,8 +76,21 @@ export function createBackgroundNotifications(ports: BackgroundNotificationPorts
       envelope: SessionEnvelope,
       describe: (id: string) => Promise<NotificationSession | null>,
     ): Promise<void> {
+      if (disposed) return
+      const { event, sessionId, seq } = envelope
+      if (sessionId === null) return
+      // 在途回合随 CLI 一起失败时，同一会话的终止信封紧跟回合失败。
+      const precedingFailure = failedTurns.get(sessionId)
+      if (seq !== null) {
+        if (event.type === "turn-ended" && event.status === "error") failedTurns.set(sessionId, seq)
+        else failedTurns.delete(sessionId)
+      }
       if (!canShow()) return
-      const { event } = envelope
+      if (
+        event.type === "ended" &&
+        ((seq !== null && precedingFailure === seq - 1) || isDefiniteLoss(membershipState))
+      )
+        return
       if (
         event.type === "turn-ended" &&
         event.errorCode === "MEMBERSHIP_REQUIRED" &&
@@ -103,6 +117,7 @@ export function createBackgroundNotifications(ports: BackgroundNotificationPorts
     /** 退出清理后禁止发送和处理旧通知的点击。 */
     dispose(): void {
       disposed = true
+      failedTurns.clear()
       setBadge(false)
     },
   }

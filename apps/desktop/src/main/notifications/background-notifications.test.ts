@@ -1,9 +1,13 @@
 // 用合成通知器验证发送条件、点击跳转和失败时托盘反馈，不向系统发送通知。
 
-import { expect, it, vi } from "vitest"
+import { afterEach, expect, it, vi } from "vitest"
 import { createBackgroundNotifications } from "./background-notifications"
 import type { SessionEnvelope } from "../session/session-envelope"
+import { createHarness, waitUntil } from "../session/session-host-fixtures"
+import { removeTemporaryDirs, temporaryDir } from "../session/session-store-fixtures"
 import type { SessionHostEvent } from "../session/session-types"
+
+afterEach(removeTemporaryDirs)
 
 function envelope(event: SessionHostEvent, sessionId = "session-a"): SessionEnvelope {
   return { version: 1, sessionId, seq: 8, at: "2026-11-15T00:00:00Z", event }
@@ -92,6 +96,43 @@ it("失败通知不会泄漏首条提示词产生的标题、回复、失败原�
   ])
 })
 
+it("SDK 异常退出时，进行中的回合和空闲会话分别只提醒一次", async () => {
+  const directory = await temporaryDir()
+  const { host, adapters, envelopes } = createHarness({
+    workspace: directory,
+    userDataPath: directory,
+  })
+  const { controller, window, shown, openSession } = harness()
+  window.isFocused = () => false
+  const pending: Promise<void>[] = []
+  const unsubscribe = host.subscribe((event) => {
+    pending.push(controller.session(event, async () => null))
+  })
+  try {
+    const input = { workspace: directory, permissionMode: "default" as const }
+    const active = await host.start(input)
+    const idle = await host.start(input)
+    await host.send(active.sessionId, { text: "合成提示词" })
+    for (const adapter of adapters.instances) {
+      adapter.emit({ type: "error", code: "SDK_ERROR", message: "合成错误内容" })
+      adapter.emit({ type: "ended", reason: "error" })
+    }
+    await waitUntil(() => host.list().every((item) => item.status === "failed"))
+    await Promise.all(pending)
+
+    const activeEvents = envelopes.filter((item) => item.sessionId === active.sessionId)
+    expect(activeEvents.slice(-2).map(({ event }) => event.type)).toEqual(["turn-ended", "ended"])
+    expect(shown.map(({ body }) => body)).toEqual(["回合失败", "会话失败"])
+    shown[0]?.click()
+    shown[1]?.click()
+    expect(openSession.mock.calls).toEqual([[active.sessionId], [idle.sessionId]])
+  } finally {
+    unsubscribe()
+    controller.dispose()
+    await host.dispose()
+  }
+})
+
 it("跳过的运行支持指定会话，未建立会话时只唤回窗口", () => {
   const { controller, window, shown, openSession, openWindow } = harness()
   window.isFocused = () => false
@@ -124,6 +165,7 @@ it.each(["expired", "device_revoked", "signed_out", "verification_required"] as 
       }),
       async () => null,
     )
+    await controller.session(envelope({ type: "ended", reason: "error" }), async () => null)
     expect(shown.map(({ body }) => body)).toEqual(["会员已失效"])
     shown[0]?.click()
     expect(openWindow).toHaveBeenCalledOnce()

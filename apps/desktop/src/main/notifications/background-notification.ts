@@ -10,7 +10,7 @@ export type BackgroundNotice =
   SessionBackgroundNotice | { kind: "skipped"; sessionId: string | null } | { kind: "membership" }
 
 type SessionBackgroundNotice =
-  | { kind: "completed" | "failed" | "interrupted"; sessionId: string }
+  | { kind: "completed" | "failed" | "interrupted" | "session-failed"; sessionId: string }
   | { kind: "approval"; sessionId: string; toolName: string }
 
 /** 通知可以读取的会话索引字段；自动标题需要按来源区别处理。 */
@@ -26,12 +26,13 @@ const noticeLabel: Record<BackgroundNotice["kind"], string> = {
   completed: "回合已完成",
   approval: "需要审批",
   failed: "回合失败",
+  "session-failed": "会话失败",
   interrupted: "回合已中断",
   skipped: "已跳过",
   membership: "会员已失效",
 }
 
-/** 只使用现场权限请求及主进程确认结束的回合，忽略正文、增量和中间结果。 */
+/** 从现场权限请求、回合结束或会话异常退出生成通知，忽略中间错误与正文。 */
 export function backgroundNoticeFromSession(
   envelope: SessionEnvelope,
 ): SessionBackgroundNotice | null {
@@ -39,6 +40,8 @@ export function backgroundNoticeFromSession(
   if (sessionId === null) return null
   if (event.type === "permission") return { kind: "approval", sessionId, toolName: event.toolName }
   if (event.type === "turn-ended") return { kind: turnKind[event.status], sessionId }
+  if (event.type === "ended" && event.reason === "error")
+    return { kind: "session-failed", sessionId }
   return null
 }
 

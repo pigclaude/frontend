@@ -22,7 +22,7 @@ const command = z
   .refine(({ source, content }) => (source === undefined) !== (content === undefined))
 const manifest = z.object({
   name: z.string().optional(),
-  version: z.string().optional(),
+  version: z.string().trim().min(1).optional(),
   description: z.string().optional(),
   commands: z.union([paths, z.record(z.string(), command)]).optional(),
   skills: paths.optional(),

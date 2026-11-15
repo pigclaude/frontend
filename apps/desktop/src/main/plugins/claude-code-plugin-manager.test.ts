@@ -25,9 +25,11 @@ const components = new Map([
     }),
   ],
   ["commands/overview.md", "展示本机合成标题。\n"],
+  ["commands/model-notes.md", "---\nuser-invocable: false\n---\n只供模型参考。\n"],
   ["agents/reader.md", "---\nname: reader\ndescription: 读取合成文字\n---\n读取合成文字。\n"],
   [skill, "---\r\nname: lookup\r\nallowed-tools: Read\r\n---\r\n读取本机合成数据。\r\n"],
   ["skills/lookup/notes.txt", "技能自己的资源。\n"],
+  ["skills/background/SKILL.md", "---\nuser-invocable: false\n---\n背景说明。\n"],
   ["hooks/hooks.json", "{}"],
   [".mcp.json", "{}"],
   [".lsp.json", "{}"],
@@ -60,6 +62,7 @@ async function fixture() {
   return {
     directory,
     origin,
+    userData,
     manager,
     owner: {},
     membershipChanged(state: MembershipState) {
@@ -76,8 +79,8 @@ it("确认当时披露的 Claude Code 副本，启停和卸载只影响下一次
     type: "claude-code",
     manifest: {
       id,
-      commands: [id + ":overview"],
-      skills: [id + ":lookup"],
+      commands: [id + ":model-notes", id + ":overview"],
+      skills: [id + ":background", id + ":lookup"],
       agents: [id + ":reader"],
       ignoredComponents: expect.arrayContaining(["hooks", "mcp", "lsp"]),
       skillExecution: [{ name: id + ":lookup", inline: false, hooks: false, allowedTools: true }],
@@ -88,8 +91,8 @@ it("确认当时披露的 Claude Code 副本，启停和卸载只影响下一次
   await expect(f.manager.list()).resolves.toMatchObject([{ type: "claude-code", enabled: true }])
   await expect(f.manager.snapshotEnabled()).resolves.toEqual([])
   await expect(f.manager.claudeCodePluginCommands()).resolves.toEqual([
-    id + ":overview",
     id + ":lookup",
+    id + ":overview",
   ])
 
   const current = join(f.directory, "current-session")
@@ -109,6 +112,13 @@ it("确认当时披露的 Claude Code 副本，启停和卸载只影响下一次
   await expect(readFile(join(packageDirectory, "skills/lookup/notes.txt"), "utf8")).resolves.toBe(
     components.get("skills/lookup/notes.txt"),
   )
+
+  const replaced = join(f.userData, "installed", id, "package", skill)
+  await writeFile(replaced, "文件内容已偏离确认的副本。")
+  const changed = join(f.directory, "changed-session")
+  await mkdir(changed)
+  await expect(f.manager.stageClaudeCodePlugins(changed)).resolves.toEqual([])
+  await expect(readdir(changed)).resolves.toEqual([])
 
   await f.manager.setEnabled(id, false)
   const next = join(f.directory, "next-session")
@@ -144,4 +154,13 @@ it("归档按真实 SHA-256 绑定披露，会员无效后拒绝确认及会话�
   const session = join(f.directory, "session")
   await mkdir(session)
   await expect(f.manager.stageClaudeCodePlugins(session)).resolves.toEqual([])
+})
+
+it("披露时拒绝会让已安装记录失效的空版本", async () => {
+  const f = await fixture()
+  await writeFile(join(f.origin, packageManifest), JSON.stringify({ name: id, version: " " }))
+  await expect(f.manager.prepare({ kind: "directory", path: f.origin }, f.owner)).rejects.toThrow(
+    "PLUGIN_MANIFEST_INVALID",
+  )
+  await expect(f.manager.list()).resolves.toEqual([])
 })

@@ -1,5 +1,6 @@
 // 按包根的格式选择读取器和安装校验，披露前取得独立的文件快照。
 
+import { createHash } from "node:crypto"
 import { lstat } from "node:fs/promises"
 import { join } from "node:path"
 import { capabilityPluginManifestFile } from "../../capability-plugin-contract"
@@ -42,4 +43,16 @@ export function validateDesktopPluginBundle(
   return files.has(capabilityPluginManifestFile)
     ? { type: "capability", ...validateCapabilityPluginBundle(files, appVersion) }
     : { type: "claude-code", ...synthesizeClaudeCodePlugin(files, fallbackId) }
+}
+
+/** 对按路径排序的已校验文件名、长度和原始正文绑定摘要。 */
+export function pluginBundleFilesDigest(files: ReadonlyMap<string, Buffer>): string {
+  const digest = createHash("sha256")
+  for (const path of [...files.keys()].sort()) {
+    const content = files.get(path)
+    if (content === undefined) throw new Error("PLUGIN_BUNDLE_INVALID")
+    digest.update(JSON.stringify([path, content.length]))
+    digest.update(content)
+  }
+  return digest.digest("hex")
 }

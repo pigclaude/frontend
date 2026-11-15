@@ -15,14 +15,19 @@ import {
   readClaudeCodePluginDirectory,
   synthesizeClaudeCodePlugin,
 } from "./claude-code-plugin-bundle"
-import type { DesktopPluginBundle } from "./desktop-plugin-bundle"
+import { pluginBundleFilesDigest, type DesktopPluginBundle } from "./desktop-plugin-bundle"
 
 /** 持久安装元数据；兼容性从当前应用版本计算，不写入记录。 */
 export type CapabilityPluginRecord = Omit<InstalledCapabilityPlugin, "compatible">
 
+/** Claude Code 每次启动只使用和已确认文件表摘要一致的合成副本。 */
+export type ClaudeCodePluginRecord = Omit<InstalledClaudeCodePlugin, "compatible"> & {
+  packageDigest: string
+  menuCommands: string[]
+}
+
 /** 包类型决定记录可以发布到 Worker 还是 Claude SDK。 */
-export type DesktopPluginRecord =
-  CapabilityPluginRecord | Omit<InstalledClaudeCodePlugin, "compatible">
+export type DesktopPluginRecord = CapabilityPluginRecord | ClaudeCodePluginRecord
 
 const sha256 = /^[0-9a-f]{64}$/
 const installedFields = {
@@ -42,6 +47,8 @@ const savedCapability = z.strictObject({
 const savedClaudeCode = z.strictObject({
   ...installedFields,
   type: z.literal("claude-code"),
+  packageDigest: z.string().regex(sha256),
+  menuCommands: z.array(z.string()),
   manifest: z.strictObject({
     id: z.string().refine(isCapabilityPluginId),
     name: z.string().min(1),
@@ -145,10 +152,12 @@ export class CapabilityPluginRecords {
   }
 
   /** 为当次 SDK 进程重建已安装插件，净化后发布独立的会话副本。 */
-  async stageClaudeCodePlugin(id: string, directory: string): Promise<string> {
+  async stageClaudeCodePlugin(record: ClaudeCodePluginRecord, directory: string): Promise<string> {
+    const { id } = record.manifest
     const installed = await readClaudeCodePluginDirectory(this.packageDirectory(id))
     const { manifest, files } = synthesizeClaudeCodePlugin(installed, id)
-    if (manifest.id !== id) throw new Error("PLUGIN_RECORD_INVALID")
+    if (manifest.id !== id || pluginBundleFilesDigest(files) !== record.packageDigest)
+      throw new Error("PLUGIN_RECORD_INVALID")
     const destination = join(directory, id)
     await mkdir(destination, { mode: 0o700 })
     await writePluginFiles(destination, files)

@@ -20,10 +20,12 @@ import { capabilityPluginStoragePaths, isCapabilityPluginId } from "./capability
 import {
   CapabilityPluginRecords,
   type CapabilityPluginRecord,
+  type ClaudeCodePluginRecord,
   type DesktopPluginRecord,
 } from "./capability-plugin-records"
 import type { CapabilityPluginSnapshot } from "./capability-plugin-snapshot"
 import {
+  pluginBundleFilesDigest,
   readDesktopPluginDirectory,
   validateDesktopPluginBundle,
   type DesktopPluginBundle,
@@ -140,7 +142,13 @@ export class CapabilityPluginManager {
       }
       const record: DesktopPluginRecord =
         bundle.type === "claude-code"
-          ? { ...installed, type: bundle.type, manifest: bundle.manifest }
+          ? {
+              ...installed,
+              type: bundle.type,
+              manifest: bundle.manifest,
+              packageDigest: pluginBundleFilesDigest(bundle.files),
+              menuCommands: bundle.menuCommands,
+            }
           : {
               ...installed,
               type: bundle.type,
@@ -269,11 +277,9 @@ export class CapabilityPluginManager {
     return this.#enqueue(async () => {
       const epoch = this.#epoch
       const paths: string[] = []
-      for (const { manifest } of await this.#enabledClaudeCodePlugins()) {
+      for (const record of await this.#enabledClaudeCodePlugins()) {
         if (this.options.membership() !== "active" || epoch !== this.#epoch) return []
-        const path = await this.#records
-          .stageClaudeCodePlugin(manifest.id, directory)
-          .catch(() => null)
+        const path = await this.#records.stageClaudeCodePlugin(record, directory).catch(() => null)
         if (path !== null) paths.push(path)
       }
       return epoch === this.#epoch && this.options.membership() === "active" ? paths : []
@@ -286,7 +292,7 @@ export class CapabilityPluginManager {
       const epoch = this.#epoch
       const enabled = await this.#enabledClaudeCodePlugins()
       if (epoch !== this.#epoch || this.options.membership() !== "active") return []
-      return enabled.flatMap(({ manifest: { commands, skills } }) => [...commands, ...skills])
+      return enabled.flatMap(({ menuCommands }) => menuCommands)
     })
   }
 
@@ -361,6 +367,19 @@ export class CapabilityPluginManager {
   #describe(record: CapabilityPluginRecord): InstalledCapabilityPlugin
   #describe(record: DesktopPluginRecord): InstalledDesktopPlugin
   #describe(record: DesktopPluginRecord): InstalledDesktopPlugin {
+    if (record.type === "claude-code") {
+      const { type, manifest, revision, installedAt, sourceKind, sha256, enabled } = record
+      return {
+        type,
+        manifest,
+        revision,
+        installedAt,
+        sourceKind,
+        sha256,
+        enabled,
+        compatible: true,
+      }
+    }
     return { ...record, compatible: this.#compatible(record) }
   }
 
@@ -374,8 +393,7 @@ export class CapabilityPluginManager {
   async #enabledClaudeCodePlugins() {
     if (this.options.membership() !== "active") return []
     return (await this.#installed()).filter(
-      (record): record is Extract<DesktopPluginRecord, { type: "claude-code" }> =>
-        record.type === "claude-code" && record.enabled,
+      (record): record is ClaudeCodePluginRecord => record.type === "claude-code" && record.enabled,
     )
   }
 

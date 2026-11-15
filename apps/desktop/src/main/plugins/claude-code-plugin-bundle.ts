@@ -22,6 +22,7 @@ export { readClaudeCodePluginDirectory } from "./claude-code-plugin-source"
 export type ClaudeCodePluginBundle = {
   manifest: ClaudeCodePluginManifest
   files: ReadonlyMap<string, Buffer>
+  menuCommands: string[]
 }
 
 type PluginFiles = ReadonlyMap<string, Buffer>
@@ -55,12 +56,14 @@ export function synthesizeClaudeCodePlugin(
   const approved = new Map([...original].filter(([path]) => permitted(path, source)))
   const generated = new Map<string, Buffer>()
   const executions = new Map<string, Execution>()
+  const menu = new Map<string, boolean>()
   const addFile: AddFile = (path, contents) => {
     const existing = generated.get(path)
     if (existing && !existing.equals(contents)) throw new Error("PLUGIN_BUNDLE_UNSAFE")
     if (!existing) generated.set(path, Buffer.from(contents))
   }
   const disclose: DiscloseExecution = (name, markdown, allowedTools = false) => {
+    menu.set(name, markdown.frontmatter["user-invocable"] !== false)
     const execution = skillExecutionOf(markdown)
     if (!execution.inline && !execution.hooks && !execution.allowedTools && !allowedTools) return
     const existing = executions.get(name)
@@ -103,6 +106,10 @@ export function synthesizeClaudeCodePlugin(
       skillExecution: execution,
     },
     files: new Map(sortedEntries(output)),
+    menuCommands: qualifiedNames(
+      name,
+      [...menu].flatMap(([command, visible]) => (visible ? [command] : [])),
+    ),
   }
 }
 

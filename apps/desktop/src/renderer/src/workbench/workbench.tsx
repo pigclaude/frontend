@@ -21,6 +21,7 @@ import {
   closeSurface,
   openFileSurface,
   updateSurface,
+  type PanelSurface,
 } from "@pigclaude/ui-workbench"
 import type { WorkbenchBridge } from "../../../workbench-contract"
 import { fill, useText } from "../locale/text"
@@ -30,6 +31,7 @@ import { keepSurface, markUnsaved, openNavigationFile } from "./file-tabs"
 import { FilesSurface } from "./files-surface"
 import { CheckpointsPane, DiffPane, PullRequestPane, Worktrees } from "./git-panes"
 import { TerminalPane } from "./terminal-pane"
+import { useAgentBrowserTabs } from "./use-agent-browser-tabs"
 import type { FileDraft } from "./use-file-document"
 import { useUnsavedFiles } from "./use-unsaved-files"
 import { workbenchRelativePath } from "./workbench-path"
@@ -83,6 +85,18 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
     const [drafts, setDrafts] = useState<ReadonlyMap<string, FileDraft>>(() => new Map())
     const [revision, setRevision] = useState(0)
     const { bridge, root } = props
+    const agentTabs = useAgentBrowserTabs(bridge, props.sessionId, props.visible, props.onShow)
+    const selectAgentTab = agentTabs.select
+    const visibleTabs: PanelSurface[] = [
+      ...state.surfaces,
+      ...agentTabs.tabs.map(({ id, page }) => ({
+        id,
+        kind: "browser",
+        title: page.title || page.url || t("workbench.browser"),
+        url: page.url,
+      })),
+    ]
+    const activeId = agentTabs.activeId ?? state.activeId
     const toast = useToast()
     const hasDraft = (path: string) => drafts.has(path)
 
@@ -114,28 +128,8 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
           if (event.type === "checkpoints-changed" && event.id === root) {
             setRevision((value) => value + 1)
           }
-          if (event.type === "browser-close") {
-            setState((current) => closeSurface(current, event.id))
-          }
-          if (event.type === "browser-open") {
-            setState((current) => {
-              if (current.surfaces.some((tab) => tab.id === event.id)) {
-                return { ...current, activeId: event.id }
-              }
-              const added = addSurface(
-                current,
-                "browser",
-                event.id,
-                (index) =>
-                  index > 1 ? `${t("workbench.browser")} ${index}` : t("workbench.browser"),
-                { multiInstance: true },
-              )
-              return updateSurface(added, event.id, { url: event.url })
-            })
-            props.onShow()
-          }
         }),
-      [bridge, root, props.onShow, t],
+      [bridge, root],
     )
 
     const handledFiles = useRef<number | null>(null)
@@ -144,16 +138,18 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
       if (!filesRequest || filesRequest.root !== root || handledFiles.current === filesRequest.id)
         return
       handledFiles.current = filesRequest.id
+      selectAgentTab(null)
       setState((current) =>
         addSurface(current, "files", crypto.randomUUID(), () => t("workbench.files")),
       )
-    }, [filesRequest, root, t])
+    }, [filesRequest, root, selectAgentTab, t])
 
     function add(kind: string): void {
       const surface = surfaces.find(([id]) => id === kind)
       if (!surface || !bridge || (!root && kind !== "browser")) return
       const [, key, , , multiple] = surface
       const id = crypto.randomUUID()
+      selectAgentTab(null)
       setState((current) =>
         addSurface(
           current,
@@ -188,7 +184,10 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
       onSaveFailed: (paths) => {
         toast(fill(text("workbench.unsavedSaveFailed"), { files: paths.join("、") }), "alert")
         const [first] = paths
-        if (first) setState((current) => openFileSurface(current, first, crypto.randomUUID()))
+        if (first) {
+          selectAgentTab(null)
+          setState((current) => openFileSurface(current, first, crypto.randomUUID()))
+        }
       },
     })
 
@@ -209,11 +208,12 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
           : text("workbench.discardDraft")
       if (unsaved.length > 0 && !window.confirm(question)) return
       for (const tab of unsaved) if (tab.path) setDraft(tab.path, null)
+      for (const tab of agentTabs.tabs) if (ids.includes(tab.id)) agentTabs.close(tab.id)
       setState((current) => ids.reduce((next, id) => closeSurface(next, id), current))
     }
 
     async function showTabMenu(id: string, point: { x: number; y: number }): Promise<void> {
-      const ids = state.surfaces.map((tab) => tab.id)
+      const ids = visibleTabs.map((tab) => tab.id)
       const choice = await showFileTabMenu(point, ids.length, t)
       if (choice === "close") close([id])
       else if (choice === "close-others") close(ids.filter((other) => other !== id))
@@ -235,11 +235,13 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
       const relative = workbenchRelativePath(root, path)
       if (!relative) return
       const id = crypto.randomUUID()
+      selectAgentTab(null)
       setState((current) => openFileSurface(current, relative, id))
     }
 
     function openFromNavigation(path: string, preview: boolean): void {
       const id = crypto.randomUUID()
+      selectAgentTab(null)
       setState((current) => openNavigationFile(current, path, id, { preview, hasDraft }))
     }
 
@@ -254,6 +256,7 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
         if (!root) return
         const relative = path ? workbenchRelativePath(root, path) : ""
         if (relative === null) return
+        selectAgentTab(null)
         setState((current) => {
           const next = addSurface(current, "diff", crypto.randomUUID(), () => t("workbench.diff"))
           return next.activeId ? updateSurface(next, next.activeId, { path: relative }) : next
@@ -273,19 +276,25 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
     if (!bridge) return <EmptyState title={text("workbench.unavailable")} />
 
     const shared = root ? { bridge, root, revision: revision + props.workspaceRevision } : null
-    const activeTab = state.surfaces.find((tab) => tab.id === state.activeId)
+    const activeTab = visibleTabs.find((tab) => tab.id === activeId)
     const fileTab = activeTab?.kind === "files" || activeTab?.kind === FILE_SURFACE_KIND
     return (
       <div className="workbench" onDoubleClick={keepDoubleClickedTab}>
         <RightPanel
           threadId={props.sessionId}
-          surfaces={markUnsaved(state.surfaces, hasDraft)}
-          activeId={state.activeId}
+          surfaces={markUnsaved(visibleTabs, hasDraft)}
+          activeId={activeId}
           unavailable={(kind) => (kind !== "browser" && !root ? "project.add.pickerTitle" : null)}
           onAdd={add}
           onClose={(id) => close([id])}
           onFileTabMenu={(id, point) => void showTabMenu(id, point)}
-          onActivate={(id) => setState((current) => ({ ...current, activeId: id }))}
+          onActivate={(id) => {
+            if (agentTabs.tabs.some((tab) => tab.id === id)) selectAgentTab(id)
+            else {
+              selectAgentTab(null)
+              setState((current) => ({ ...current, activeId: id }))
+            }
+          }}
           controls={controls}
         >
           {activeTab && fileTab && shared ? (
@@ -313,19 +322,22 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
               />
             </div>
           ) : null}
-          {state.surfaces.map((tab) => {
-            const active = state.activeId === tab.id
+          {visibleTabs.map((tab) => {
+            const active = activeId === tab.id
             let content: ReactNode = null
             if (tab.kind === "browser") {
+              const agent = agentTabs.tabs.find(({ id }) => id === tab.id)
               content = (
                 <BrowserPane
                   bridge={bridge}
                   id={tab.id}
                   initialUrl={tab.url}
+                  agent={agent}
                   active={active && props.visible}
-                  onTitle={(title) =>
-                    setState((current) => updateSurface(current, tab.id, { title }))
-                  }
+                  onTitle={(title) => {
+                    if (agent) agentTabs.setTitle(tab.id, title)
+                    else setState((current) => updateSurface(current, tab.id, { title }))
+                  }}
                 />
               )
             } else if (shared) {

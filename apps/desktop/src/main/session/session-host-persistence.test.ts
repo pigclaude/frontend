@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto"
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { ClaudeAgentAdapter } from "./claude-agent-adapter"
 import { collectPrompt, FakeQuery, type CapturedQuery } from "./claude-agent-adapter-fixtures"
 import type { SessionFlagSettings } from "./claude-query"
@@ -38,6 +38,48 @@ afterEach(async () => {
 })
 
 describe("SessionHost 保存与续接", () => {
+  it("等待 Agent 浏览器回收才完成停放，续接给新工具同一个实际会话 id", async () => {
+    const fixture = await workspaceFixture()
+    const { host } = hostFixture(fixture, async () => savedProfile)
+    const sessionId = randomUUID()
+    const ids: string[] = []
+    const create = (_approval: unknown, id: string) => {
+      ids.push(id)
+      return {}
+    }
+    let finish = () => {}
+    const cleanup = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    await host.start(
+      { sessionId, workspace: fixture.workspace, permissionMode: "default" },
+      {
+        browser: { create },
+        close: cleanup,
+      },
+    )
+    await writeTranscript(fixture.store, sessionId)
+    let parked = false
+    const stopping = host.stop(sessionId).then(() => {
+      parked = true
+    })
+    try {
+      await vi.waitFor(() => expect(cleanup).toHaveBeenCalledOnce())
+      expect(parked).toBe(false)
+    } finally {
+      finish()
+      await stopping
+    }
+    await host.send(sessionId, { text: "继续这个会话" }, undefined, () => ({
+      browser: { create },
+      close: () => undefined,
+    }))
+    expect(ids).toEqual([sessionId, sessionId])
+  })
+
   it("保存用户正文，停放后重开可只读历史，下一次发送用原环境打开同一个会话", async () => {
     const fixture = await workspaceFixture()
     const original = hostFixture(fixture, async () => savedProfile)

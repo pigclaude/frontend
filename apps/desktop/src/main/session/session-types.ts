@@ -277,7 +277,7 @@ export type SessionTools = {
   servers?: ClaudeAgentStartOptions["mcpServers"]
   /** 浏览器服务只有绑定到实际会话的权限代理后才创建。 */
   browser?: import("./browser-tool-approval").BrowserToolRegistration
-  close(): void
+  close(): void | Promise<void>
 }
 
 /** 用量记录器端口；真实实现是 UsageRecorder。 */

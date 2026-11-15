@@ -8,8 +8,10 @@ import { createCapabilityPluginSecrets } from "./capability-plugin-secrets"
 const fixtureStorage = () => ({
   getSelectedStorageBackend: vi.fn(() => "gnome_libsecret"),
   isEncryptionAvailable: () => true,
-  encryptString: vi.fn((value: string) => Buffer.from(value).map((byte) => byte ^ 0xa5)),
-  decryptString: vi.fn((value: Buffer) => value.map((byte) => byte ^ 0xa5).toString()),
+  encryptString: vi.fn((value: string) =>
+    Buffer.from(Buffer.from(value).map((byte) => byte ^ 0xa5)),
+  ),
+  decryptString: vi.fn((value: Buffer) => Buffer.from(value.map((byte) => byte ^ 0xa5)).toString()),
 })
 
 it("两个使用方共享写队列，另一个插件和普通设置视图读不到值", async () => {

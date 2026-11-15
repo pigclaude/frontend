@@ -9,7 +9,8 @@ export const permissionZhCN = {
   "permission.summary.fetch": "Claude 想要访问这个地址",
   "permission.summary.browser": "Claude 想要操作浏览器",
   "permission.summary.browserOpen": "Claude 想要打开这个本机地址",
-  "permission.summary.browserSnapshot": "读取当前本机页面的标题和可见正文，并发送给 Claude",
+  "permission.summary.browserSnapshot":
+    "读取当前本机页面的标题、标题层级、可交互元素和可见正文，并发送给 Claude",
   "permission.summary.search": "Claude 想要搜索",
   "permission.summary.generic": "Claude 请求使用 {tool}",
   "permission.summary.plugin": "Claude 请求调用插件 {plugin} 的 {tool}",
@@ -52,7 +53,7 @@ export const permissionEnUS = {
   "permission.summary.browser": "Claude wants to drive the browser",
   "permission.summary.browserOpen": "Claude wants to open this local URL",
   "permission.summary.browserSnapshot":
-    "Read the current local page's title and visible text and send them to Claude",
+    "Read the current local page's title, heading hierarchy, interactive elements, and visible text, then send them to Claude",
   "permission.summary.search": "Claude wants to search",
   "permission.summary.generic": "Claude requests to use {tool}",
   "permission.summary.plugin": "Claude requests {tool} from the {plugin} plugin",

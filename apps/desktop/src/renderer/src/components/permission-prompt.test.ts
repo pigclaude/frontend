@@ -5,7 +5,7 @@
 import { act, createElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { LocaleProvider } from "@pigclaude/ui-primitives"
+import { LocaleProvider, type Locale } from "@pigclaude/ui-primitives"
 import type { SessionPermissionCard } from "../models/session-permissions"
 import { PermissionPrompt } from "./permission-prompt"
 
@@ -44,11 +44,15 @@ function options(): HTMLElement[] {
   return [...container.querySelectorAll<HTMLElement>('[role="option"]')]
 }
 
-async function render(request: SessionPermissionCard, onDecide = vi.fn()): Promise<void> {
+async function render(
+  request: SessionPermissionCard,
+  onDecide = vi.fn(),
+  locale: Locale = "zh-CN",
+): Promise<void> {
   await act(async () =>
     root.render(
       createElement(LocaleProvider, {
-        locale: "zh-CN",
+        locale,
         children: createElement(PermissionPrompt, { request, onDecide }),
       }),
     ),
@@ -90,15 +94,25 @@ describe("permission prompt", () => {
     expect(target?.querySelector("strong")?.textContent).toBe("http://127.0.0.1:5173")
     expect(options()).toHaveLength(2)
     expect(container.textContent).not.toContain("始终允许")
+  })
 
+  it.each([
+    ["zh-CN", "读取当前本机页面的标题、标题层级、可交互元素和可见正文，并发送给 Claude"],
+    [
+      "en-US",
+      "Read the current local page's title, heading hierarchy, interactive elements, and visible text, then send them to Claude",
+    ],
+  ] as const)("discloses the browser snapshot contents in %s", async (locale, summary) => {
     await render(
       card({
         toolName: "mcp__pigclaude_workbench__browser_snapshot",
         input: {},
         browser: { kind: "snapshot" },
       }),
+      undefined,
+      locale,
     )
-    expect(container.textContent).toContain("读取当前本机页面的标题和可见正文，并发送给 Claude")
+    expect(container.textContent).toContain(summary)
     expect(options()).toHaveLength(2)
   })
 

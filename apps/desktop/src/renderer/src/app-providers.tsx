@@ -5,6 +5,7 @@ import { ExtensionRegistryScope, createExtensionRegistry } from "@pigclaude/clie
 import { LocaleProvider, Tooltip } from "@pigclaude/ui-primitives"
 import { ToastProvider } from "@pigclaude/ui-shell"
 
+import { CapabilityPluginNoticeListener } from "./components/capability-plugin-notice-listener"
 import { desktopLocale } from "./locale/text"
 
 /** 提供整窗共用的上下文；注册表在应用存续期间只建一次。 */
@@ -14,7 +15,10 @@ export function AppProviders({ children }: { children: ReactNode }) {
     <LocaleProvider locale={desktopLocale}>
       <ExtensionRegistryScope registry={registry}>
         <Tooltip.Provider>
-          <ToastProvider>{children}</ToastProvider>
+          <ToastProvider>
+            <CapabilityPluginNoticeListener />
+            {children}
+          </ToastProvider>
         </Tooltip.Provider>
       </ExtensionRegistryScope>
     </LocaleProvider>

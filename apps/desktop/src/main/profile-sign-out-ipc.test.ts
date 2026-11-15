@@ -24,6 +24,8 @@ const fixture = vi.hoisted(() => ({
     ) => unknown
   >(),
   listeners: new Map<string, (event: unknown, value: unknown) => void>(),
+  windowFocused: true,
+  shownNotifications: vi.fn(),
   windows: [] as {
     webContents: { mainFrame: object; send: (channel: string, value: unknown) => void }
   }[],
@@ -73,11 +75,29 @@ vi.mock("electron", () => ({
       isMinimized() {
         return false
       }
+      isVisible() {
+        return true
+      }
+      isFocused() {
+        return fixture.windowFocused
+      }
       show() {}
       focus() {}
     },
     { getAllWindows: () => fixture.windows },
   ),
+  Notification: class {
+    static isSupported() {
+      return true
+    }
+    constructor(private readonly content: { title: string; body: string }) {}
+    once() {}
+    on() {}
+    show() {
+      fixture.shownNotifications(this.content)
+    }
+    close() {}
+  },
   dialog: {},
   ipcMain: {
     handle: (
@@ -369,6 +389,7 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     expect(await bridge.membership.signOut()).toMatchObject({ state: "signed_out" })
     expect(await bridge.membership.inspect()).toMatchObject({ state: "signed_out" })
     expect(events.at(-1)).toBe("signed_out")
+    expect(fixture.shownNotifications).not.toHaveBeenCalled()
     expect(await vault.get("membership:session")).toBeNull()
     expect(await vault.get("authorization:pigclaude-login:old-user")).toBeNull()
     expect(await vault.get("authorization:claude-account:other-account")).toBe("old-claude-secret")
@@ -396,10 +417,15 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
       else fixture.appEvents.get(event)?.({ preventDefault: () => undefined })
       await entered
     }
+    fixture.windowFocused = false
     inactive = true
     expect(await bridge.membership.inspect()).toMatchObject({
       state: "verification_required",
       account: { userId: "user-fixture" },
+    })
+    expect(fixture.shownNotifications).toHaveBeenCalledExactlyOnceWith({
+      title: "PigClaude",
+      body: "会员已失效",
     })
     const handler = fixture.handlers.get("pigclaude:membership-withdraw")!
     await expect(handler({ sender: { send: () => {} } })).rejects.toThrow(
@@ -430,6 +456,7 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
       state: "signed_out",
     })
     expect(withdrawals).toBe(1)
+    expect(fixture.shownNotifications).toHaveBeenCalledOnce()
     expect(await vault.get("authorization:claude-account:other-account")).toBe("old-claude-secret")
     fixture.appEvents.get("before-quit")?.({ preventDefault: () => undefined })
     expect(fixture.powerEvents.has("resume")).toBe(false)

@@ -40,6 +40,7 @@ import { createDesktopComposition, type DesktopComposition } from "./composition
 import { DeviceIdentityService } from "./device-identity"
 import { readDeviceInfo } from "./device-identity/device-info"
 import { createDesktopTray } from "./desktop-tray"
+import { createDesktopNotifications } from "./notifications/desktop-notifications"
 import { registerDesktopWindowIpc } from "./desktop-window-ipc"
 import { createMainWindowVisibility } from "./main-window-visibility"
 import { configureRuntimeProfile } from "./runtime-profile"
@@ -109,6 +110,14 @@ const closePreference = new WindowClosePreference(
   process.platform,
 )
 let tray: ReturnType<typeof createDesktopTray> = null
+const notifications = createDesktopNotifications({
+  userDataPath: app.getPath("userData"),
+  platform: process.platform,
+  window: () => mainWindow,
+  openSession: (id) => windowNavigation.openSession(id),
+  openWindow: windowVisibility.restore,
+  trayBadge: (active) => tray?.setNotificationBadge(active),
+})
 
 if (!hasSingleInstanceLock) {
   app.quit()
@@ -249,6 +258,7 @@ function registerIpcHandlers(): void {
 
 /** 应用退出时先关闭浏览器和账号资源，再关闭 Xray。 */
 async function shutdownDesktop(): Promise<void> {
+  notifications.dispose()
   await shutdownDesktopResources({
     accounts: () => claudeAccountService?.dispose() ?? Promise.resolve(),
     sessions: () => sessionHost?.dispose() ?? Promise.resolve(),
@@ -366,7 +376,7 @@ async function setupAuthorization(): Promise<void> {
     systemLocale,
     isPackaged: app.isPackaged,
     env: process.env,
-    onEvent: sendSessionEvent,
+    onEvent: (event) => sendSessionEvent(event, sessionStore),
   })
   usageRecorder = sessions.usage
   sessionHost = sessions.host
@@ -413,12 +423,17 @@ function hasActiveMembership(): boolean {
 }
 
 function sendMembershipView(view: MembershipView): void {
+  notifications.membership(view.state)
   workbench.membershipChanged(view)
   sendToMainWindow("pigclaude:membership-state", view)
   tray?.refresh()
 }
 
-function sendSessionEvent(envelope: SessionEnvelope): void {
+function sendSessionEvent(
+  envelope: SessionEnvelope,
+  store: ReturnType<typeof startSessionStore>,
+): void {
+  notifications.session(envelope, store)
   sendToMainWindow("pigclaude:session-event", envelope)
   tray?.sessionChanged(envelope.event.type)
 }
@@ -445,6 +460,7 @@ function createWindow(): void {
       dark: nativeTheme.shouldUseDarkColors,
     }),
   )
+  mainWindow.on("focus", notifications.windowFocused)
   forwardFullScreen(mainWindow)
   guardMainWindowClose(mainWindow)
   workbench.track(mainWindow)

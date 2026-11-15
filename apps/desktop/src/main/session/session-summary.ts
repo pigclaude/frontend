@@ -46,6 +46,13 @@ export type LiveSessionPreview = {
   pendingApprovals: number
 }
 
+/** 返回允许展示在系统入口中的手动标题；自动标题来自第一条提示词。 */
+export function manualSessionTitle(
+  index: Pick<SessionIndex, "title" | "titleSource"> | null | undefined,
+): string | null {
+  return index?.titleSource === "user" ? index.title : null
+}
+
 /** 只给系统入口提供公开摘要；自动标题来自第一条提示词。 */
 export function liveSessionPreview(
   entry: SessionEntry,
@@ -54,7 +61,7 @@ export function liveSessionPreview(
   return {
     sessionId: entry.sessionId,
     projectName: basename(saved?.projectPath ?? entry.workspace),
-    title: saved?.titleSource === "user" ? saved.title : null,
+    title: manualSessionTitle(saved),
     pendingApprovals: entry.session?.status().pendingPermissions ?? 0,
   }
 }

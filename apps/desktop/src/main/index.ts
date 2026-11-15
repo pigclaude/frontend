@@ -39,7 +39,7 @@ import { BrowserProfileUsage } from "./claude/browser-profile-usage"
 import { registerBrowserProfileIpc } from "./claude/browser-profile-ipc"
 import { createDesktopComposition, type DesktopComposition } from "./composition"
 import { DeviceIdentityService } from "./device-identity"
-import { readDeviceInfo } from "./device-identity/device-info"
+import { reportDeviceInfoOnStartup } from "./device-identity/startup-device-report"
 import { createDesktopTray } from "./desktop-tray"
 import { createDesktopStartup, registerDesktopActivation } from "./desktop-startup"
 import { createDesktopNotifications } from "./notifications/desktop-notifications"
@@ -181,7 +181,7 @@ if (!hasSingleInstanceLock) {
         authorizationReady = true
         callbackReceiver?.ready()
         void desktopComposition?.membershipGate.inspect()
-        void reportDeviceInfoOnStartup()
+        void reportDeviceInfoOnStartup(desktopComposition)
       }
       startAppUpdates()
     })
@@ -302,22 +302,6 @@ function startAppUpdates(): void {
       onState: (state) => sendToMainWindow("pigclaude:update-state", state),
     })
     appUpdates.start()
-  } catch (error: unknown) {
-    console.error(errorMessage(error))
-  }
-}
-
-/** 启动后已有授权时上报一次设备版本；失败只记日志，不重试也不提示用户。 */
-async function reportDeviceInfoOnStartup(): Promise<void> {
-  const composition = desktopComposition
-  if (!composition) return
-  try {
-    const snapshot = await composition.tokenManager.snapshot()
-    if (!snapshot) return
-    const info = await readDeviceInfo()
-    await composition.tokenManager.run((current) =>
-      composition.api.reportDeviceInfo(info, current.record.accessToken),
-    )
   } catch (error: unknown) {
     console.error(errorMessage(error))
   }

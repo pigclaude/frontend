@@ -39,7 +39,11 @@ export type OfficialPluginMarketplaceSnapshot = {
 }
 
 type Published = { view: OfficialPluginMarketplaceSnapshot; revision: symbol }
-type State = { published: Published | null; trust: OfficialMarketplaceTrustState | undefined }
+type State = {
+  published: Published | null
+  trust: OfficialMarketplaceTrustState | undefined
+  cacheError?: string
+}
 type VerifiedState = { published: Published; trust: OfficialMarketplaceTrustState }
 
 const unavailable = "PLUGIN_MARKETPLACE_OFFICIAL_UNAVAILABLE"
@@ -78,9 +82,10 @@ export class OfficialPluginMarketplace {
     this.#now = options.now ?? Date.now
   }
 
-  /** 读取已通过验签的本机缓存；无缓存时返回 null。 */
+  /** 读取已通过验签的本机缓存；无缓存返回 null，损坏时报告固定错误。 */
   async get(): Promise<OfficialPluginMarketplaceSnapshot | null> {
-    const { published } = await this.#read()
+    const { published, cacheError } = await this.#read()
+    if (cacheError !== undefined) throw new Error(cacheError)
     return published === null ? null : structuredClone(published.view)
   }
 
@@ -169,9 +174,9 @@ export class OfficialPluginMarketplace {
     }
     try {
       return this.#verifiedState(cachePayload.parse(stored), trust, null)
-    } catch {
+    } catch (error) {
       // 目录字节损坏后仍沿用已保存的信任状态，后续刷新不能回退。
-      return { published: null, trust }
+      return { published: null, trust, cacheError: fixedError(error, invalidCache).message }
     }
   }
 

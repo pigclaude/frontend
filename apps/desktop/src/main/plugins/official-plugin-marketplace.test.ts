@@ -87,22 +87,34 @@ it("拒绝刷新回退并保持已发布目录、信任上限和准备授权", a
   expect(() => selected.assertCurrent()).not.toThrow()
 })
 
-it("重启发现签名字节损坏时保留信任上限，后续下载仍不能回退", async () => {
+it.each([
+  {
+    field: "signature",
+    value: Buffer.from("Damaged fixture signature").toString("base64"),
+    error: "PLUGIN_MARKETPLACE_OFFICIAL_SIGNATURE_INVALID",
+  },
+  {
+    field: "catalog",
+    value: "Damaged fixture encoding",
+    error: "PLUGIN_MARKETPLACE_OFFICIAL_CACHE_INVALID",
+  },
+])("重启发现 $field 损坏时报告错误并保留信任上限", async ({ field, value, error }) => {
   const f = await fixture()
   f.offer(5)
   await f.market.refresh()
   const raw = JSON.parse(await readFile(f.path, "utf8")) as Record<string, unknown>
-  raw.signature = Buffer.from("Damaged fixture signature").toString("base64")
+  raw[field] = value
   await writeFile(f.path, JSON.stringify(raw))
 
   const restarted = new OfficialPluginMarketplace(f.options)
-  expect(await restarted.get()).toBeNull()
+  await expect(restarted.get()).rejects.toThrow(error)
   f.offer(4)
   await expect(restarted.refresh()).rejects.toThrow("PLUGIN_MARKETPLACE_OFFICIAL_ROLLBACK")
-  expect(await restarted.get()).toBeNull()
+  await expect(restarted.get()).rejects.toThrow(error)
   expect(await readFile(f.path, "utf8")).toBe(JSON.stringify(raw))
   f.offer(6)
   await expect(restarted.refresh()).resolves.toMatchObject({ verified: { serial: 6 } })
+  await expect(restarted.get()).resolves.toMatchObject({ verified: { serial: 6 } })
 })
 
 it("损坏的信任记录不能被刷新当作首次使用", async () => {

@@ -16,6 +16,7 @@ export async function verifyTerminalDrawer(page, root, output) {
     await expect(toggle).toHaveCount(1)
     await expect(toggle).toHaveAttribute("aria-pressed", "false")
     await toggle.click()
+    await expect(toggle).toHaveAttribute("aria-pressed", "true")
   }
 
   await openDrawer()

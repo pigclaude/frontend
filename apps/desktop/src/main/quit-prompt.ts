@@ -2,6 +2,7 @@
 // 以及资源没能关闭时的提示。
 import { dialog, type BrowserWindow } from "electron"
 import type { LeaveAction, LeaveAnswer, LeaveWork } from "./quit-confirmation"
+import { scheduledLocalTime, scheduledProjectName } from "./scheduled-tasks/presentation"
 import type { QuitFailure } from "./shutdown"
 
 const unsavedMessage = "有文件修改还没保存"
@@ -27,10 +28,24 @@ export async function askToLeave(
     detail.push(`${leaving}会结束 ${work.runningSessions} 个运行中的会话。`)
   if (work.turns > 0) detail.push(`有 ${work.turns} 个正在生成的回复会被中断。`)
   if (work.approvals > 0) detail.push(`${work.approvals} 个请求在等待你的审批。`)
+  const scheduledTasks = work.scheduledTasks ?? []
+  const onlyScheduledTasks = detail.length === 0 && scheduledTasks.length > 0
+  if (scheduledTasks.length > 0) {
+    detail.push(`已启用的定时任务（${scheduledTasks.length}）`)
+    for (const task of scheduledTasks) {
+      const lastRun =
+        task.lastRunAt === null ? "尚未运行" : `最近运行 ${scheduledLocalTime(task.lastRunAt)}`
+      detail.push(`${scheduledProjectName(task.projectPath)} · ${lastRun}`)
+    }
+  }
   const unsaved = work.unsavedFiles > 0
   const options: Electron.MessageBoxOptions = {
     type: "warning",
-    message: unsaved ? unsavedMessage : "还有工作在运行",
+    message: unsaved
+      ? unsavedMessage
+      : onlyScheduledTasks
+        ? "还有已启用的定时任务"
+        : "还有工作在运行",
     detail: detail.join("\n"),
     buttons: unsaved ? [`保存并${leaving}`, "不保存", "取消"] : [leaving, "继续运行"],
     defaultId: unsaved ? 0 : 1,

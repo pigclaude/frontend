@@ -1,6 +1,7 @@
 // 负责把退出流程接到 Electron：退出、关闭主窗口和刷新页面前确认进行中的工作和未保存的文件，
 // 确认后按顺序清理再退出。
 import { app, powerMonitor, type BrowserWindow } from "electron"
+import type { ScheduledTaskSummary } from "../scheduled-tasks-contract"
 import { showMainWindow } from "./main-window-visibility"
 import { createQuitConfirmation } from "./quit-confirmation"
 import { askBeforeReload, askToLeave, showQuitFailure } from "./quit-prompt"
@@ -15,6 +16,8 @@ import type { UnsavedFiles } from "./workbench/unsaved-files"
  */
 export type QuitFlowOptions = {
   pendingWork: () => SessionPendingWork
+  /** 退出前列出启用中的定时任务，与会话工作分别展示。 */
+  scheduledTasks?: () => ScheduledTaskSummary["enabled"]
   unsaved: UnsavedFiles
   mainWindow: () => BrowserWindow | null
   /** 用户关闭主窗口时是否只隐藏；真正退出仍走统一确认。 */
@@ -51,7 +54,11 @@ export function installQuitFlow(options: QuitFlowOptions): (window: BrowserWindo
     return window && !window.isDestroyed() ? window.webContents : null
   }
   const confirmation = createQuitConfirmation({
-    pendingWork: () => ({ ...options.pendingWork(), unsavedFiles: options.unsaved.count() }),
+    pendingWork: () => ({
+      ...options.pendingWork(),
+      unsavedFiles: options.unsaved.count(),
+      ...(options.scheduledTasks === undefined ? {} : { scheduledTasks: options.scheduledTasks() }),
+    }),
     ask: async (work, action) => {
       const window = options.mainWindow()
       if (action === "quit") showMainWindow(window)

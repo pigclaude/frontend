@@ -1,5 +1,6 @@
 // 验证退出流程的接线：确认通过并清理完成后才执行最后一步，用户取消退出时通知调用方且不清理。
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import type { ScheduledTaskSummaryItem } from "../scheduled-tasks-contract"
 import type { BrowserWindow } from "electron"
 import { createMainWindowVisibility } from "./main-window-visibility"
 import { installQuitFlow } from "./quit-flow"
@@ -58,6 +59,7 @@ function setup(background?: {
   ui: ReturnType<typeof fakeWindow>
   closeToTray: boolean
   work?: SessionPendingWork
+  scheduledTasks?: ScheduledTaskSummaryItem[]
 }) {
   const calls = {
     shutdown: vi.fn(async () => undefined),
@@ -71,6 +73,9 @@ function setup(background?: {
   let systemShutdown: ((event: { preventDefault(): void }) => void) | undefined
   const guard = installQuitFlow({
     pendingWork: () => background?.work ?? { runningSessions: 1, turns: 1, approvals: 0 },
+    ...(background?.scheduledTasks === undefined
+      ? {}
+      : { scheduledTasks: () => background.scheduledTasks ?? [] }),
     unsaved,
     mainWindow: () => window,
     closeToTray: () => background?.closeToTray ?? false,
@@ -99,6 +104,34 @@ describe("退出流程", () => {
     electron.ask.mockClear()
     electron.answer = "leave"
     vi.mocked(askBeforeReload).mockClear()
+  })
+
+  it("只有已启用的定时任务时也确认退出，正常关窗仍隐藏到托盘", async () => {
+    const ui = fakeWindow()
+    const scheduledTasks = [
+      { id: "task", projectPath: "/project", nextRunAt: null, lastRunAt: null },
+    ]
+    const { calls, quit, unsaved } = setup({
+      ui,
+      closeToTray: true,
+      work: noPendingWork,
+      scheduledTasks,
+    })
+    unsaved.report(ui.window.webContents, 0)
+    ui.closeEvents.get("close")?.({ preventDefault: vi.fn() })
+    expect(ui.window.hide).toHaveBeenCalledOnce()
+    expect(electron.ask).not.toHaveBeenCalled()
+
+    electron.answer = "stay"
+    quit()
+    expect(electron.ask).toHaveBeenCalledWith(
+      ui.window,
+      { ...noPendingWork, unsavedFiles: 0, scheduledTasks },
+      "quit",
+      expect.any(AbortSignal),
+    )
+    await vi.waitFor(() => expect(calls.onCancel).toHaveBeenCalledOnce())
+    expect(calls.shutdown).not.toHaveBeenCalled()
   })
 
   it("退出前唤回隐藏的窗口，确认两个没有运行中回合的会话", async () => {

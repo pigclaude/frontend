@@ -1,4 +1,5 @@
 // 负责验证退出确认对话框：列出会中断的工作和未保存的文件，按选中的按钮得到保存、离开或留下。
+import { resolve } from "node:path"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const shown = vi.hoisted(() => ({
@@ -109,4 +110,38 @@ describe("askBeforeReload", () => {
       cancelId: 2,
     })
   })
+})
+
+it("退出确认列出启用的定时任务和最近运行，只展示项目名", async () => {
+  const lastRunAt = "2026-11-15T09:00:00.000Z"
+  const scheduledTasks = [
+    {
+      id: "review",
+      projectPath: resolve("private-parent", "Report"),
+      prompt: "PRIVATE_PROMPT",
+      nextRunAt: null,
+      lastRunAt,
+    },
+    {
+      id: "build",
+      projectPath: resolve("private-parent", "Build"),
+      nextRunAt: null,
+      lastRunAt: null,
+    },
+  ]
+  await askToLeave(
+    null,
+    { runningSessions: 0, turns: 0, approvals: 0, unsavedFiles: 0, scheduledTasks },
+    "quit",
+  )
+  expect(shown.options[0]).toMatchObject({
+    message: "还有已启用的定时任务",
+    detail: [
+      "已启用的定时任务（2）",
+      "Report · 最近运行 " +
+        new Date(lastRunAt).toLocaleString("zh-CN", { dateStyle: "short", timeStyle: "short" }),
+      "Build · 尚未运行",
+    ].join("\n"),
+  })
+  expect(shown.options[0]?.detail).not.toMatch(/PRIVATE_PROMPT|private-parent/)
 })

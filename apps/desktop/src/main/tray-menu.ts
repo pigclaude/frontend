@@ -1,15 +1,21 @@
-// 从脱敏的会话、Claude 账号和会员摘要产生原生托盘菜单，不读文件或时钟。
+// 从脱敏的会话、Claude 账号、会员和定时任务摘要生成托盘菜单。
 
 import type { ClaudeAccountView } from "@pigclaude/contracts/claude-account"
 import type { MembershipState } from "@pigclaude/contracts/membership"
+import type { ScheduledTaskSummary } from "../scheduled-tasks-contract"
+import { scheduledLocalTime, scheduledProjectName } from "./scheduled-tasks/presentation"
 import type { WindowNavigationCommand } from "../window-navigation-contract"
 import type { LiveSessionPreview } from "./session/session-summary"
 
 /** Claude 账号只用来统计需要处理的状态。 */
 export type TrayAccount = Pick<ClaudeAccountView, "enabled" | "needsReauth" | "exhaustedUntil">
 
-/** 托盘项只允许导航、唤回或进入应用的正常退出流程。 */
-export type TrayMenuAction = WindowNavigationCommand | { kind: "open-window" } | { kind: "quit" }
+/** 托盘项可以导航、唤回、暂停排期或进入正常退出流程。 */
+export type TrayMenuAction =
+  | WindowNavigationCommand
+  | { kind: "open-window" }
+  | { kind: "quit" }
+  | { kind: "pause-scheduled-tasks" }
 
 /** Electron 之外的菜单数据；没有操作或子菜单的项展示为不可点击的状态。 */
 export type TrayMenuItem =
@@ -29,16 +35,18 @@ const membershipLabels: Record<MembershipState, string> = {
   error: "会员不可用",
 }
 
-/** 生成最多五条运行会话的菜单，待审批区域覆盖全部等待回答的会话。 */
+/** 生成运行会话、全部待审批以及可用的定时任务操作。 */
 export function buildTrayMenu({
   membership,
   sessions,
   accounts,
+  scheduledTasks,
   now,
 }: {
   membership: MembershipState
   sessions: readonly LiveSessionPreview[]
   accounts: readonly TrayAccount[]
+  scheduledTasks?: ScheduledTaskSummary
   now: number
 }): { items: TrayMenuItem[]; pendingApprovals: number } {
   const items: TrayMenuItem[] = [{ id: "membership", label: membershipLabels[membership] }]
@@ -88,6 +96,19 @@ export function buildTrayMenu({
     label: `Claude 账号需要处理（${attention}）`,
     ...(attention === 0 ? {} : { action: { kind: "accounts" } }),
   })
+  if (scheduledTasks) {
+    const next = scheduledTasks.next
+    if (next && next.nextRunAt !== null)
+      items.push({
+        id: "next-scheduled-task",
+        label: `下次定时任务 · ${scheduledProjectName(next.projectPath)} · ${scheduledLocalTime(next.nextRunAt)}`,
+      })
+    items.push({
+      id: "pause-scheduled-tasks",
+      label: "暂停全部定时任务",
+      ...(scheduledTasks.enabled.length > 0 ? { action: { kind: "pause-scheduled-tasks" } } : {}),
+    })
+  }
   items.push({ type: "separator" })
   if (membership === "active")
     items.push({ id: "new-session", label: "新会话", action: { kind: "new-session" } })

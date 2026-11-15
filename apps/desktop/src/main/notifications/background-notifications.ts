@@ -47,8 +47,8 @@ export function createBackgroundNotifications(ports: BackgroundNotificationPorts
       // 原生托盘不可用时不阻塞会话事件或应用退出。
     }
   }
-  const announce = (notice: BackgroundNotice, session?: NotificationSession | null): void => {
-    if (!canShow()) return
+  const announce = (notice: BackgroundNotice, session?: NotificationSession | null): boolean => {
+    if (!canShow()) return false
     const sessionId = "sessionId" in notice ? notice.sessionId : null
     let handled = false
     const failed = () => {
@@ -67,9 +67,10 @@ export function createBackgroundNotifications(ports: BackgroundNotificationPorts
     } catch {
       failed()
     }
+    return true
   }
   return {
-    /** 发送已经确定目标的后台通知，例如跳过的运行。 */
+    /** 将后台通知提交给系统。前台或已经销毁时返回 false。 */
     announce,
     /** 监听现场会话事件；读取标题期间窗口回到前台时取消发送。 */
     async session(

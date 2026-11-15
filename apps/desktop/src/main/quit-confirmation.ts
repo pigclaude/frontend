@@ -1,12 +1,16 @@
 // 负责退出应用和关闭主窗口前的确认：有运行中的会话、待处理的审批或未保存的文件时先问用户一次，
 // 选保存就先保存，选不保存就先放弃修改，取消就保持原样。
+import type { ScheduledTaskSummaryItem } from "../scheduled-tasks-contract"
 import type { SessionPendingWork } from "./session/session-host-support"
 
 /** 要确认的操作：退出应用，或关闭会结束会话的主窗口。 */
 export type LeaveAction = "quit" | "close"
 
-/** 离开前要处理的事：会中断的会话工作，以及工作台里没保存的文件数。 */
-export type LeaveWork = SessionPendingWork & { unsavedFiles: number }
+/** 离开时会中断的会话、未保存文件和当前已启用的定时任务。 */
+export type LeaveWork = SessionPendingWork & {
+  unsavedFiles: number
+  scheduledTasks?: readonly ScheduledTaskSummaryItem[]
+}
 
 /** 用户的回答：保存文件后离开、不保存直接离开，或者留下。 */
 export type LeaveAnswer = "save" | "leave" | "stay"
@@ -113,7 +117,13 @@ export function createQuitConfirmation(options: QuitConfirmationOptions): QuitCo
   }
 }
 
-/** 判断退出或关窗是否会影响会话、审批或未保存的文件。 */
+/** 判断退出或关窗是否会影响会话、审批、未保存的文件或启用的定时任务。 */
 export function hasPendingWork(work: LeaveWork): boolean {
-  return work.runningSessions > 0 || work.turns > 0 || work.approvals > 0 || work.unsavedFiles > 0
+  return (
+    work.runningSessions > 0 ||
+    work.turns > 0 ||
+    work.approvals > 0 ||
+    work.unsavedFiles > 0 ||
+    (work.scheduledTasks?.length ?? 0) > 0
+  )
 }

@@ -7,7 +7,13 @@ import { manualSessionTitle } from "../session/session-summary"
 
 /** 系统通知的事件和点击目标；回合正文、工具输入和错误详情不进入这个类型。 */
 export type BackgroundNotice =
-  SessionBackgroundNotice | { kind: "skipped"; sessionId: string | null } | { kind: "membership" }
+  | SessionBackgroundNotice
+  | { kind: "skipped"; sessionId: string | null }
+  | {
+      kind: "scheduled-completed" | "scheduled-failed" | "scheduled-skipped"
+      sessionId: string | null
+    }
+  | { kind: "membership" }
 
 type SessionBackgroundNotice =
   | { kind: "completed" | "failed" | "interrupted" | "session-failed"; sessionId: string }
@@ -29,6 +35,9 @@ const noticeLabel: Record<BackgroundNotice["kind"], string> = {
   "session-failed": "会话失败",
   interrupted: "回合已中断",
   skipped: "已跳过",
+  "scheduled-completed": "定时任务已完成",
+  "scheduled-failed": "定时任务失败",
+  "scheduled-skipped": "定时任务已跳过",
   membership: "会员已失效",
 }
 

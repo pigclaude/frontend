@@ -1,5 +1,7 @@
 // 从原生菜单的 Electron 调用核对导航、审批角标与通知提醒各自的生命周期。
 
+import { resolve } from "node:path"
+import type { ScheduledTaskSummary } from "../scheduled-tasks-contract"
 import type { MenuItemConstructorOptions } from "electron"
 import { expect, it, vi } from "vitest"
 import { createDesktopTray } from "./desktop-tray"
@@ -88,4 +90,46 @@ it("审批项只导航，会员变化后旧新会话菜单也无法启动；打�
   expect(show).toHaveBeenCalledOnce()
   expect(electron.beforeQuit).toHaveBeenCalledOnce()
   tray?.destroy()
+})
+
+it("托盘显示下一次定时任务，点击暂停全部后刷新菜单", async () => {
+  const task = {
+    id: "task",
+    projectPath: resolve("private-parent", "Report"),
+    prompt: "PRIVATE_PROMPT",
+    nextRunAt: "2026-11-15T09:00:00.000Z",
+    lastRunAt: null,
+  }
+  let summary: ScheduledTaskSummary = { next: task, enabled: [task] }
+  const pauseAll = vi.fn(async () => {
+    summary = { next: null, enabled: [] }
+  })
+  const tray = createDesktopTray({
+    openWindow: vi.fn(),
+    navigate: vi.fn(),
+    membership: () => "signed_out",
+    sessions: () => [],
+    accounts: async () => [],
+    scheduledTasks: { summary: () => summary, pauseAll },
+  })
+  const item = (id: string) => electron.template.find((entry) => entry.id === id)
+  try {
+    expect(item("next-scheduled-task")?.label).toBe(
+      "下次定时任务 · Report · " +
+        new Date(task.nextRunAt).toLocaleString("zh-CN", {
+          dateStyle: "short",
+          timeStyle: "short",
+        }),
+    )
+    expect(item("next-scheduled-task")?.enabled).toBe(false)
+    expect(JSON.stringify(electron.template)).not.toMatch(/PRIVATE_PROMPT|private-parent/)
+    const pause = item("pause-scheduled-tasks")?.click
+    expect(pause).toBeDefined()
+    if (pause) Reflect.apply(pause, undefined, [])
+    await vi.waitFor(() => expect(item("pause-scheduled-tasks")?.enabled).toBe(false))
+    expect(pauseAll).toHaveBeenCalledOnce()
+    expect(item("next-scheduled-task")).toBeUndefined()
+  } finally {
+    tray?.destroy()
+  }
 })

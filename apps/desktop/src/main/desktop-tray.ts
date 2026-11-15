@@ -1,9 +1,10 @@
-// 将会话、账号与会员状态接到原生托盘；唤回、导航和退出都沿用主窗口的入口。
+// 将会话、账号、会员与排期状态接到原生托盘，并转发菜单操作。
 
 import { isDeepStrictEqual } from "node:util"
 import { app, Menu, Tray, type MenuItemConstructorOptions } from "electron"
 import type { MembershipState } from "@pigclaude/contracts/membership"
 import type { WindowNavigationCommand } from "../window-navigation-contract"
+import type { ScheduledTaskService } from "./scheduled-tasks/service"
 import type { LiveSessionPreview } from "./session/session-summary"
 import type { SessionHostEvent } from "./session/session-types"
 import { createTrayImages } from "./tray-images"
@@ -20,6 +21,7 @@ type DesktopTrayOptions = {
   membership: () => MembershipState
   sessions: () => readonly LiveSessionPreview[]
   accounts: () => Promise<readonly TrayAccount[]>
+  scheduledTasks?: Pick<ScheduledTaskService, "summary" | "pauseAll">
 }
 
 const sessionChanges = new Set<SessionHostEvent["type"]>([
@@ -48,11 +50,13 @@ class DesktopTray {
   /** 从当前权威状态刷新菜单和待审批角标，只更新变更的原生属性。 */
   refresh(): void {
     if (this.#destroyed) return
+    const scheduledTasks = this.options.scheduledTasks?.summary()
     const { items, pendingApprovals } = buildTrayMenu({
       membership: this.options.membership(),
       sessions: this.options.sessions(),
       accounts: this.#accounts,
       now: Date.now(),
+      ...(scheduledTasks === undefined ? {} : { scheduledTasks }),
     })
     if (!isDeepStrictEqual(this.#menu, items)) {
       this.tray.setContextMenu(Menu.buildFromTemplate(this.#template(items)))
@@ -136,6 +140,11 @@ class DesktopTray {
     if (this.#destroyed) return
     if (action.kind === "open-window") this.options.openWindow()
     else if (action.kind === "quit") app.quit()
+    else if (action.kind === "pause-scheduled-tasks")
+      void this.options.scheduledTasks
+        ?.pauseAll()
+        .then(() => this.refresh())
+        .catch(() => undefined)
     else if (action.kind !== "new-session" || this.options.membership() === "active")
       this.options.navigate(action)
   }

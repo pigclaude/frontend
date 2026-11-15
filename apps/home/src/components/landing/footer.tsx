@@ -28,6 +28,9 @@ export function Footer() {
                 <a href="/#product">了解 PigClaude</a>
               </li>
               <li>
+                <Link href="/download">下载桌面端</Link>
+              </li>
+              <li>
                 <a href="/#workflow">使用流程</a>
               </li>
               <li>

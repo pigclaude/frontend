@@ -23,6 +23,7 @@ const accountLinks = [
 ]
 const marketingLinks = [
   { href: "/#product", label: "产品" },
+  { href: "/download", label: "下载" },
   { href: "/#workflow", label: "使用流程" },
   { href: "/#pricing", label: "会员权益" },
 ]

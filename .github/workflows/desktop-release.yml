@@ -120,7 +120,7 @@ jobs:
         working-directory: apps/desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: pnpm exec electron-builder --config electron-builder.json ${{ matrix.package }} --publish never
+        run: pnpm exec electron-builder --config electron-builder.release.json ${{ matrix.package }} --publish never
       - name: Linux 准备显示与沙箱
         if: runner.os == 'Linux'
         working-directory: apps/desktop

@@ -151,9 +151,10 @@ export async function launchSession(
     canonicalWorkspace = (await queued.slot)
       ? await checkSessionStart(startDeps, input)
       : queued.workspace
+    const canonicalInput = { ...input, workspace: canonicalWorkspace }
     prepared = await prepareSessionStart(
       startDeps,
-      input,
+      canonicalInput,
       sessionId,
       storage === undefined
         ? undefined
@@ -161,7 +162,7 @@ export async function launchSession(
             persistence = await prepareSavedSession(
               storage.store,
               sessionId,
-              input,
+              canonicalInput,
               profile,
               storage.index,
               deps.now(),

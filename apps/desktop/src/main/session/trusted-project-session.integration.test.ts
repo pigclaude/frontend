@@ -1,6 +1,6 @@
 // 从会话入口核对真实项目的信任快照，以及 SDK 收到的账号转发和环境固定项。
 
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, it } from "vitest"
@@ -9,11 +9,13 @@ import { ClaudeAgentAdapter } from "./claude-agent-adapter"
 import type { SessionFlagSettings } from "./claude-query"
 import { capture, FakeQuery, type CapturedQuery } from "./claude-agent-adapter-fixtures"
 import { placeholderOAuthToken } from "./session-environment"
+import { prepareProjectConfiguration } from "./project-configuration"
 import { createHarness } from "./session-host-fixtures"
 
 it("可信项目使用原生设置来源，撤销后新启动恢复隔离，当前会话的固定项保持有效", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "pigclaude-trusted-launch-")))
   const workspace = join(root, "project")
+  const alias = join(root, "entry")
   const userDataPath = join(root, "data")
   const trust = new ProjectTrustStore(projectTrustFilePath(userDataPath))
   const captured: CapturedQuery[] = []
@@ -37,6 +39,7 @@ it("可信项目使用原生设置来源，撤销后新启动恢复隔离，当�
   })
   try {
     await mkdir(join(workspace, ".claude"), { recursive: true })
+    await symlink(workspace, alias, process.platform === "win32" ? "junction" : "dir")
     await writeFile(
       join(workspace, ".claude", "settings.local.json"),
       JSON.stringify({
@@ -44,7 +47,7 @@ it("可信项目使用原生设置来源，撤销后新启动恢复隔离，当�
       }),
     )
     await trust.setTrusted(workspace, true)
-    await h.host.start({ workspace, permissionMode: "default" })
+    await h.host.start({ workspace: alias, permissionMode: "default" })
     const trusted = captured[0]?.options
     expect(trusted).toMatchObject({
       cwd: workspace,
@@ -76,7 +79,7 @@ it("可信项目使用原生设置来源，撤销后新启动恢复隔离，当�
     })
     expect(trusted?.settings).not.toHaveProperty("env.USER_PROJECT_TAG")
     await trust.setTrusted(workspace, false)
-    await h.host.start({ workspace, permissionMode: "default" })
+    await h.host.start({ workspace: alias, permissionMode: "default" })
     expect(captured[1]?.options).toMatchObject({
       settingSources: ["project"],
       strictMcpConfig: true,
@@ -86,5 +89,30 @@ it("可信项目使用原生设置来源，撤销后新启动恢复隔离，当�
   } finally {
     await h.host.dispose()
     await rm(root, { recursive: true, force: true })
+  }
+})
+
+it("工作区别名改指向时不会把以前的信任带到另一个项目", async () => {
+  const folder = await realpath(await mkdtemp(join(tmpdir(), "pigclaude-trusted-directory-")))
+  const trusted = join(folder, "trusted")
+  const other = join(folder, "other")
+  const alias = join(folder, "alias")
+  const directoryLink = process.platform === "win32" ? "junction" : "dir"
+  try {
+    await mkdir(trusted)
+    await mkdir(other)
+    await symlink(trusted, alias, directoryLink)
+    const store = new ProjectTrustStore(join(folder, "project-trust.json"))
+    await store.setTrusted(trusted, true)
+    const confirmed = await store.confirmedDirectory(alias)
+    expect(confirmed).toBe(trusted)
+    await unlink(alias)
+    await symlink(other, alias, directoryLink)
+    await expect(
+      prepareProjectConfiguration(alias, folder, undefined, confirmed ?? undefined),
+    ).rejects.toThrow("已确认信任的项目目录已变更")
+    await expect(store.isTrusted(alias)).resolves.toBe(false)
+  } finally {
+    await rm(folder, { recursive: true, force: true })
   }
 })

@@ -21,10 +21,15 @@ export class ProjectTrustStore {
 
   /** 未登记、已不存在或个人配置路径都不会得到信任。 */
   async isTrusted(path: string): Promise<boolean> {
+    return (await this.confirmedDirectory(path)) !== null
+  }
+
+  /** 返回用户已确认的规范目录；调用方使用此目录绑定当次已授权的配置。 */
+  async confirmedDirectory(path: string): Promise<string | null> {
     const project = await this.#project(path)
-    if (project === null) return false
+    if (project === null) return null
     await this.#writes
-    return (await this.#read()).some((item) => relative(item, project) === "")
+    return (await this.#read()).some((item) => relative(item, project) === "") ? project : null
   }
 
   /** 串行更新已确认的真实路径，不跟随写入前被替换的目录别名。 */

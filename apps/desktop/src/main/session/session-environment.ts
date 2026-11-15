@@ -3,8 +3,8 @@
 // 因此原生 CLI 的实际时区来源是 TZ，intl-preload.cjs 只是为 Node 运行时保留的兜底。
 
 import { createHash } from "node:crypto"
-import { chmod, mkdir, readdir, rm, writeFile } from "node:fs/promises"
-import { isAbsolute, join } from "node:path"
+import { chmod, mkdir, readdir, realpath, rm, writeFile } from "node:fs/promises"
+import { isAbsolute, join, relative } from "node:path"
 import { buildSessionEnv } from "@pigclaude/session-env"
 import { ProjectTrustStore, projectTrustFilePath } from "../runtime/project-trust-store"
 import { cliModelCache, type OrganizationModel } from "./claude-bootstrap"
@@ -143,13 +143,16 @@ export class SessionEnvironment {
       }
       await mkdir(configDir, { recursive: retained !== undefined, mode: sessionDirectoryMode })
       if (input.loadProjectConfiguration) {
+        await assertCanonicalSessionWorkspace(input.workspace)
         const trust = new ProjectTrustStore(projectTrustFilePath(userDataPath))
+        const trustedDirectory = await trust.confirmedDirectory(input.workspace)
         projectConfiguration = await prepareProjectConfiguration(
           input.workspace,
           retained?.claudeTmpDir ?? sessionDir,
           undefined,
-          await trust.isTrusted(input.workspace),
+          trustedDirectory ?? undefined,
         )
+        await assertCanonicalSessionWorkspace(input.workspace)
       }
       await writeFile(preloadPath, preloadSource, { mode: sessionDirectoryMode })
       const organizationModels = normalized.provider
@@ -190,6 +193,12 @@ export class SessionEnvironment {
     await this.projectConfiguration?.dispose()
     if (!this.#retained) await rm(this.sessionDir, { recursive: true, force: true })
     this.#cleaned = true
+  }
+}
+
+async function assertCanonicalSessionWorkspace(workspace: string): Promise<void> {
+  if (relative(workspace, await realpath(workspace)) !== "") {
+    throw new Error("会话工作目录在检查后发生了变更")
   }
 }
 

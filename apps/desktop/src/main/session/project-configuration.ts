@@ -2,7 +2,7 @@
 
 import { createWriteStream, watch, type FSWatcher, type Stats } from "node:fs"
 import { mkdir, mkdtemp, open, readdir, rename, rm, stat } from "node:fs/promises"
-import { dirname, join } from "node:path"
+import { dirname, join, relative } from "node:path"
 import { pipeline } from "node:stream/promises"
 import {
   canonicalProjectPath,
@@ -30,15 +30,23 @@ export async function prepareProjectConfiguration(
   workspace: string,
   temporaryDirectory: string,
   userHome?: string,
-  trusted = false,
+  trustedDirectory?: string,
 ): Promise<SessionProjectConfiguration> {
   const scope = await resolveProjectConfigurationScope(workspace, userHome)
   const { directories, claudeMdExcludes, personalDirectory } = scope
   const root = directories.at(-1)
+  const current = directories[0]
+  if (
+    trustedDirectory !== undefined &&
+    (current === undefined ||
+      relative(trustedDirectory, current) !== "" ||
+      relative(trustedDirectory, workspace) !== "")
+  )
+    throw new Error("已确认信任的项目目录已变更")
   if (root === undefined) return { directory: null, claudeMdExcludes, dispose: async () => {} }
-  if (trusted) {
+  if (trustedDirectory !== undefined) {
     return {
-      directory: directories[0] ?? root,
+      directory: trustedDirectory,
       claudeMdExcludes,
       trusted: await inspectTrustedSettings(scope),
       dispose: async () => {},

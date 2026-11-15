@@ -99,6 +99,49 @@ export type InstalledCapabilityPlugin = {
   compatible: boolean
 }
 
+/** 安装时披露但不加载的 Claude Code 插件组件类别。 */
+export type ClaudeCodePluginIgnoredComponent = "hooks" | "mcp" | "lsp"
+
+/** 保留的 skill 中交给 Claude Code 原有运行规则处理的声明。 */
+export type ClaudeCodePluginSkillExecution = {
+  name: string
+  inline: boolean
+  hooks: boolean
+  allowedTools: boolean
+}
+
+/** 只包含披露需要的元数据、可用组件和 skill 执行项，不携带可执行配置。 */
+export type ClaudeCodePluginManifest = {
+  id: string
+  name: string
+  version: string
+  description?: string | undefined
+  commands: string[]
+  skills: string[]
+  agents: string[]
+  ignoredComponents: ClaudeCodePluginIgnoredComponent[]
+  skillExecution: ClaudeCodePluginSkillExecution[]
+}
+
+/** 绑定当前受信窗口和所披露的 Claude Code 插件副本。 */
+export type ClaudeCodePluginInstallDisclosure = Pick<
+  CapabilityPluginInstallDisclosure,
+  "confirmationId" | "sourceKind" | "sha256"
+> & { type: "claude-code"; manifest: ClaudeCodePluginManifest }
+
+/** Claude Code 插件的安装记录，不含能力插件专用工具权限。 */
+export type InstalledClaudeCodePlugin = Pick<
+  InstalledCapabilityPlugin,
+  "revision" | "installedAt" | "sourceKind" | "sha256" | "enabled" | "compatible"
+> & { type: "claude-code"; manifest: ClaudeCodePluginManifest }
+
+/** 插件页统一列出两种本机安装记录。 */
+export type InstalledDesktopPlugin = InstalledCapabilityPlugin | InstalledClaudeCodePlugin
+
+/** 插件页按披露的类型展示权限、组件和执行项。 */
+export type DesktopPluginInstallDisclosure =
+  CapabilityPluginInstallDisclosure | ClaudeCodePluginInstallDisclosure
+
 /** 绑定命令或设置请求到一次安装，避免请求落到同 id 的新包。 */
 export type CapabilityPluginRevision = { pluginId: string; revision: string }
 

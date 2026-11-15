@@ -206,7 +206,7 @@ it("逐次批准真实输入，密码回显脱敏且快照引用保持可用", a
   const text = 'fixture  "local" 🔑'
   const visibleEcho = 'fixture "local" 🔑'
   const snapshot = {
-    url: target,
+    url: target + "?value=fixture++%22local%22+%F0%9F%94%91",
     title: "Synthetic: " + text,
     headings: [{ level: 1, text: visibleEcho }],
     elements: [{ ref, role: "textbox", type: "password", name: "Echo " + visibleEcho }],
@@ -258,6 +258,7 @@ it("逐次批准真实输入，密码回显脱敏且快照引用保持可用", a
   await f.decide(card.requestId, "allow")
   const guarded = {
     ...snapshot,
+    url: target + "?value=••••",
     title: "Synthetic: ••••",
     headings: [{ level: 1, text: "••••" }],
     elements: [{ ref, role: "textbox", type: "password", name: "Echo ••••" }],

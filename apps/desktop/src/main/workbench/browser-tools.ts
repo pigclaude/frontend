@@ -178,14 +178,17 @@ function record(value: unknown): Record<string, unknown> | undefined {
 
 function maskPasswordEcho(snapshot: string, text: string): string {
   if (text === "") return snapshot
-  // 快照会压缩可见文本中的空白，引用和角色等结构字段保持原样。
+  // 可见文本会压缩空白，提交表单还可能把同一值编码到当前地址。
   const visibleText = text.replace(/\s+/g, " ").trim()
+  const uriText = encodeURIComponent(text.toWellFormed())
+  const formText = new URLSearchParams([["", text]]).toString().slice(1)
+  const mask = "••••"
   const masked: unknown = JSON.parse(snapshot, (key, value: unknown) => {
     if (typeof value !== "string" || !passwordEchoFields.has(key)) return value
-    const redacted = value.replaceAll(text, "••••")
-    return visibleText && visibleText !== text && key !== "url"
-      ? redacted.replaceAll(visibleText, "••••")
-      : redacted
+    if (key === "url")
+      return value.replaceAll(formText, mask).replaceAll(uriText, mask).replaceAll(text, mask)
+    const redacted = value.replaceAll(text, mask)
+    return visibleText && visibleText !== text ? redacted.replaceAll(visibleText, mask) : redacted
   })
   if (!record(masked))
     throw new BrowserActionError(

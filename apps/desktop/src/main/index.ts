@@ -53,6 +53,7 @@ import { registerWorkspaceIpc } from "./runtime/workspace-ipc"
 import { SessionDefaultsStore } from "./runtime/session-defaults"
 import { registerSessionDefaultsIpc } from "./runtime/session-defaults-ipc"
 import { WorkbenchIpc } from "./workbench/workbench-ipc"
+import { configureAgentBrowserRuntime } from "./workbench/agent-browser-network"
 import { cleanupStaleSessionDirs } from "./session/session-environment"
 import { startSessionStore } from "./session/session-store-startup"
 import type { SessionHost } from "./session/session-host"
@@ -91,6 +92,7 @@ const { rustBaseUrl, authOrigin, websiteOrigin } = readDesktopRuntimeEndpoints(
   process.env,
   bundleMetadata,
 )
+configureAgentBrowserRuntime(app.commandLine)
 const hasSingleInstanceLock = configureRuntimeProfile(app, process.env["PIGCLAUDE_USER_DATA"])
 const startup = createDesktopStartup()
 const keepAwake = new KeepAwake(join(app.getPath("userData"), "keep-awake.json"), powerSaveBlocker)

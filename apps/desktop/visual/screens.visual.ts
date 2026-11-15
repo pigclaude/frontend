@@ -62,6 +62,10 @@ for (const screen of allScreens.filter((name) => !skipped.has(name))) {
                 get: async () => ({ openAtLogin: false, showInDock: true }),
                 set: async (_preference, value) => value,
               },
+              keepAwake: {
+                get: async () => false,
+                set: async (value) => value,
+              },
             }
           })
         }
@@ -72,6 +76,10 @@ for (const screen of allScreens.filter((name) => !skipped.has(name))) {
             "false",
           )
           await expect(page.getByRole("switch", { name: "在 Dock 中显示" })).toBeChecked()
+          await expect(page.getByRole("switch", { name: "保持电脑唤醒" })).toHaveAttribute(
+            "aria-checked",
+            "false",
+          )
         }
         await settle(page)
         await expect(page).toHaveScreenshot(`${screen}-${theme}-${glass}.png`, options)

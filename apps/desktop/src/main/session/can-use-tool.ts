@@ -40,11 +40,9 @@ export function routeCanUseTool(
         ? "The browser action was cancelled."
         : browser.denial(browserTool)
       // 真正的审批由工作台回调发起，SDK 的检查不再生成第二张卡。
-      return Promise.resolve(
-        denied === null
-          ? { behavior: "allow", updatedInput: input }
-          : { behavior: "deny", message: denied },
-      )
+      if (denied !== null) return Promise.resolve({ behavior: "deny", message: denied })
+      browser.rememberCaller(browserTool, options)
+      return Promise.resolve({ behavior: "allow", updatedInput: input })
     }
     const plugin = pluginApprovals?.lookup(toolName, options.mcpServer)
     if (plugin !== undefined) {

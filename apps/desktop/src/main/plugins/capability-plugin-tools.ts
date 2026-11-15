@@ -16,9 +16,9 @@ import type {
   CapabilityPluginPermissionSource,
   CapabilityPluginToolApproval,
 } from "../../capability-plugin-contract"
+import { McpApprovalAttribution } from "../session/mcp-approval-attribution"
 import type { PermissionBroker } from "../session/permission-broker"
 import type { SessionMembership } from "../session/session-types"
-import { CapabilityPluginApprovalAttribution } from "./capability-plugin-approval-attribution"
 import type { CapabilityPluginSnapshot } from "./capability-plugin-snapshot"
 import type { CapabilityPluginToolDependencies } from "./capability-plugin-tool-dependencies"
 import {
@@ -47,7 +47,7 @@ type Registration = {
 export type CapabilityPluginToolApprovals = {
   lookup(toolName: string, server: Parameters<CanUseTool>[2]["mcpServer"]): Registration | undefined
   available(): boolean
-  rememberCaller: CapabilityPluginApprovalAttribution["remember"]
+  rememberCaller: McpApprovalAttribution["remember"]
 }
 
 const unavailable = "This capability plugin is unavailable for this session."
@@ -69,7 +69,7 @@ export async function createSessionPluginTools(
   if (!available()) return undefined
   const servers: Record<string, McpSdkServerConfigWithInstance> = {}
   const registered = new Map<string, Registration & { serverName: string }>()
-  const attribution = new CapabilityPluginApprovalAttribution(context.signal)
+  const attribution = new McpApprovalAttribution(context.signal)
   for (const plugin of snapshots) {
     const { id, name, tools } = plugin.manifest
     const approval = plugin.toolApproval

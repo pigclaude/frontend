@@ -24,17 +24,15 @@ export function browserSessionTools(
   id: string = randomUUID(),
 ): Record<string, McpSdkServerConfigWithInstance> {
   async function run(context: BrowserPermissionContext, extra: unknown) {
-    const signal =
-      extra && typeof extra === "object" && "signal" in extra && extra.signal instanceof AbortSignal
-        ? extra.signal
-        : undefined
+    const invocation = record(extra)
+    const signal = invocation?.signal instanceof AbortSignal ? invocation.signal : undefined
     const window = owner.isDestroyed() ? null : BrowserWindow.fromWebContents(owner)
     try {
       if (!window || !canUse()) return unavailable()
       const tool = context.kind === "open" ? "browser_open" : "browser_snapshot"
       const denied = approval.denial(tool)
       if (denied !== null) return failure(denied)
-      if (!(await approval.request(context, signal)))
+      if (!(await approval.request(context, signal, record(invocation?._meta))))
         return failure("The user did not approve this browser action.")
       if (owner.isDestroyed() || !canUse() || signal?.aborted) return unavailable()
       const content = await browsers.agentPage(
@@ -77,6 +75,12 @@ export function browserSessionTools(
     permission_policy: "always_ask",
   }))
   return { [workbenchBrowserServer]: { ...server, tools: toolPolicies } }
+}
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
 }
 
 function unavailable() {

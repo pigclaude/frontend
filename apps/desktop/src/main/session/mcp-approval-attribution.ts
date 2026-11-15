@@ -2,7 +2,8 @@
 
 import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
 
-type ToolPermission = Pick<Parameters<CanUseTool>[2], "agentID" | "signal" | "toolUseID">
+/** SDK 工具审批回调里用于关联一次 MCP 调用的本地数据。 */
+export type McpApprovalCaller = Pick<Parameters<CanUseTool>[2], "agentID" | "signal" | "toolUseID">
 type Attribution = { agentId: string | undefined; release: () => void }
 
 const lifetimeMs = 60_000
@@ -10,7 +11,7 @@ const maximumPending = 256
 const toolUseMetadata = "claudecode/toolUseId"
 
 /** 按登记工具全名和 SDK 的调用 ID 保留一次性归属，缺少匹配时留给原审批流程。 */
-export class CapabilityPluginApprovalAttribution {
+export class McpApprovalAttribution {
   readonly #pending = new Map<string, Attribution>()
 
   /** 关联属于这个会话，停止时清除所有尚未收到 MCP 调用的记录。 */
@@ -25,7 +26,7 @@ export class CapabilityPluginApprovalAttribution {
   }
 
   /** 记录受信 SDK 回调的归属，到期或回调取消时释放。 */
-  remember(toolName: string, { toolUseID, agentID, signal }: ToolPermission): void {
+  remember(toolName: string, { toolUseID, agentID, signal }: McpApprovalCaller): void {
     if (this.session.aborted || signal.aborted || !toolUseID) return
     const key = JSON.stringify([toolName, toolUseID])
     const existing = this.#pending.get(key)

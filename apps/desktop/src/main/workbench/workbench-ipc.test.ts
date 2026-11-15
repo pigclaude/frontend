@@ -278,7 +278,11 @@ describe("workbench IPC", () => {
 
     first.close()
 
-    const approval = { denial: () => null, request: async () => false }
+    const approval = {
+      denial: () => null,
+      rememberCaller: () => undefined,
+      request: async () => false,
+    }
     expect(Object.keys(first.browser?.create(approval) ?? {})).toEqual(["pigclaude_workbench"])
     expect(browsers()["closeAgent"]).toHaveBeenCalledTimes(1)
     second.close()

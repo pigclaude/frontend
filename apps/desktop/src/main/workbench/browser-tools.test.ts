@@ -1,8 +1,15 @@
 // 负责验证会话浏览器工具：审批策略按 SDK 字段声明、页面按会话隔离、失败时返回错误内容而不抛出。
+import { randomUUID } from "node:crypto"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { CanUseTool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk"
+import type {
+  CanUseTool,
+  createSdkMcpServer,
+  McpSdkServerConfigWithInstance,
+} from "@anthropic-ai/claude-agent-sdk"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import type { WebContents } from "electron"
 import type { BrowserApprovalPort } from "../session/browser-tool-approval"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -36,7 +43,11 @@ vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => {
 })
 
 type ToolResult = { isError?: boolean; content: { type: string; text: string }[] }
-const approved: BrowserApprovalPort = { denial: () => null, request: async () => true }
+const approved: BrowserApprovalPort = {
+  denial: () => null,
+  rememberCaller: () => undefined,
+  request: async () => true,
+}
 
 function owner(destroyed = false): WebContents {
   const contents = { isDestroyed: () => destroyed } as unknown as WebContents
@@ -76,10 +87,15 @@ describe("browser session tools", () => {
     browserSessionTools(owner(), browsers(agentPage), () => true, {
       request,
       denial: () => null,
+      rememberCaller: () => undefined,
     })
 
     const invocation = call("browser_open", { url: "http://127.0.0.1:5173/" })
-    expect(request).toHaveBeenCalledWith({ kind: "open", url: "http://127.0.0.1:5173/" }, undefined)
+    expect(request).toHaveBeenCalledWith(
+      { kind: "open", url: "http://127.0.0.1:5173/" },
+      undefined,
+      undefined,
+    )
     expect(agentPage).not.toHaveBeenCalled()
 
     answer(true)
@@ -187,7 +203,7 @@ function sdkRequest(server = { name: "pigclaude_workbench", source: "sdk" }) {
 async function startBrowserSession(permissionMode: SessionPermissionMode, unattended = false) {
   const workspace = await mkdtemp(join(tmpdir(), "pigclaude-browser-approval-"))
   const query = new FakeQuery()
-  const sdk: { canUseTool?: CanUseTool; hasBrowser: boolean } = { hasBrowser: false }
+  const sdk: { canUseTool?: CanUseTool; browser?: McpSdkServerConfigWithInstance } = {}
   const harness = createHarness({
     workspace,
     createAdapter: (onEvent) =>
@@ -195,7 +211,8 @@ async function startBrowserSession(permissionMode: SessionPermissionMode, unatte
         onEvent,
         queryFn: ({ options }) => {
           if (options.canUseTool) sdk.canUseTool = options.canUseTool
-          sdk.hasBrowser = options.mcpServers?.pigclaude_workbench !== undefined
+          const server = options.mcpServers?.pigclaude_workbench
+          if (server?.type === "sdk" && "instance" in server) sdk.browser = server
           return query
         },
       }),
@@ -224,7 +241,8 @@ async function startBrowserSession(permissionMode: SessionPermissionMode, unatte
     sessionId,
     view,
     query,
-    hasBrowser: sdk.hasBrowser,
+    hasBrowser: sdk.browser !== undefined,
+    connect: () => connectBrowserClient(sdk.browser),
     canUseTool,
     cards,
     respond: async (decision: "allow" | "deny") => {
@@ -359,3 +377,99 @@ describe("browser tools through a session with a fake SDK", () => {
     expect(session.view).not.toHaveBeenCalled()
   })
 })
+
+it("浏览器通过真实 MCP 为并发同参数审批保留一次性、按会话和工具隔离的归属", async () => {
+  const session = await startBrowserSession("bypassPermissions")
+  const client = await session.connect()
+  const other = await startBrowserSession("bypassPermissions")
+  const remote = await other.connect()
+  await session.host.send(session.sessionId, { text: "读取本机合成页面" })
+  const input = { url: target }
+  const one = { agentId: "browser-agent-one", parentToolUseId: "browser-parent-one" }
+  const two = { agentId: "browser-agent-two", parentToolUseId: "browser-parent-two" }
+  const metadata = (index: number) => ({ "claudecode/toolUseId": "browser-invocation-" + index })
+  for (const [index, agent] of [one, two].entries()) {
+    session.query.emit({
+      type: "system",
+      subtype: "task_started",
+      task_id: agent.agentId,
+      tool_use_id: agent.parentToolUseId,
+      description: "读取本机合成页面",
+      task_type: "local_agent",
+      uuid: randomUUID(),
+      session_id: session.sessionId,
+    })
+    await expect(
+      session.canUseTool(fullOpen, input, {
+        ...sdkRequest(),
+        toolUseID: metadata(index)["claudecode/toolUseId"],
+        agentID: agent.agentId,
+      }),
+    ).resolves.toMatchObject({ behavior: "allow" })
+  }
+  expect(session.cards()).toHaveLength(0)
+  const open = (index: number) => ({
+    name: "browser_open",
+    arguments: input,
+    _meta: metadata(index),
+  })
+  await withoutAttribution(client, session, {
+    name: "browser_snapshot",
+    arguments: {},
+    _meta: metadata(0),
+  })
+  await withoutAttribution(remote, other, open(0))
+  await withoutAttribution(client, session, { name: "browser_open", arguments: input })
+
+  const second = client.callTool(open(1))
+  void second.catch(() => undefined)
+  await vi.waitFor(() => expect(session.cards()).toHaveLength(3))
+  const first = client.callTool(open(0))
+  void first.catch(() => undefined)
+  await vi.waitFor(() => expect(session.cards()).toHaveLength(4))
+  const [secondCard, firstCard] = session.cards().slice(2)
+  if (!secondCard || !firstCard) throw new Error("缺少工作台的子代理审批卡")
+  expect([secondCard.subagent, firstCard.subagent]).toEqual([two, one])
+  expect(session.view).not.toHaveBeenCalled()
+  await session.host.respondPermission(session.sessionId, {
+    requestId: firstCard.requestId,
+    decision: "deny",
+  })
+  await session.host.respondPermission(session.sessionId, {
+    requestId: secondCard.requestId,
+    decision: "allow",
+  })
+  await expect(first).resolves.toMatchObject({ isError: true })
+  await expect(second).resolves.toMatchObject({
+    content: [{ type: "text", text: "local page text" }],
+  })
+  expect(session.view).toHaveBeenCalledTimes(1)
+  await withoutAttribution(client, session, open(1))
+})
+
+async function connectBrowserClient(server: McpSdkServerConfigWithInstance | undefined) {
+  if (!server) throw new Error("缺少进程内浏览器工具服务")
+  const client = new Client({ name: "browser-approval-fixture", version: "1" })
+  const [remote, local] = InMemoryTransport.createLinkedPair()
+  approvals.push(async () => {
+    await client.close()
+    await server.instance.close()
+  })
+  await server.instance.connect(local)
+  await client.connect(remote)
+  return client
+}
+
+async function withoutAttribution(
+  client: Client,
+  session: Awaited<ReturnType<typeof startBrowserSession>>,
+  params: Parameters<Client["callTool"]>[0],
+): Promise<void> {
+  const count = session.cards().length
+  const call = client.callTool(params)
+  void call.catch(() => undefined)
+  await vi.waitFor(() => expect(session.cards()).toHaveLength(count + 1))
+  expect(session.cards()[count]?.subagent).toBeNull()
+  await session.respond("deny")
+  await expect(call).resolves.toMatchObject({ isError: true })
+}

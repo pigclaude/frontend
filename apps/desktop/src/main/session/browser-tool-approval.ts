@@ -2,6 +2,7 @@
 
 import type { McpSdkServerConfigWithInstance, PermissionMode } from "@anthropic-ai/claude-agent-sdk"
 import type { BrowserPermissionContext } from "../../browser-permission-contract"
+import { McpApprovalAttribution, type McpApprovalCaller } from "./mcp-approval-attribution"
 import type { PermissionBroker } from "./permission-broker"
 
 /** 主进程给 Claude SDK 注册的工作台服务名。 */
@@ -14,7 +15,12 @@ export type WorkbenchBrowserTool = "browser_open" | "browser_snapshot"
 /** 会话给工作台的逐次审批能力；拒绝返回给模型的英文说明。 */
 export type BrowserApprovalPort = {
   denial(tool: WorkbenchBrowserTool): string | null
-  request(context: BrowserPermissionContext, invocationSignal?: AbortSignal): Promise<boolean>
+  rememberCaller(tool: WorkbenchBrowserTool, caller: McpApprovalCaller): void
+  request(
+    context: BrowserPermissionContext,
+    invocationSignal?: AbortSignal,
+    metadata?: Record<string, unknown>,
+  ): Promise<boolean>
 }
 
 /** 会话创建工作台服务时注入权限代理；无人值守时根本不注册。 */
@@ -48,6 +54,7 @@ export function createBrowserApproval(options: {
   sessionSignal: AbortSignal
   unattended: boolean
 }): BrowserApprovalPort {
+  const attribution = new McpApprovalAttribution(options.sessionSignal)
   const denial = (tool: WorkbenchBrowserTool): string | null => {
     if (!options.canUse() || options.sessionSignal.aborted)
       return "The browser is unavailable for this session."
@@ -59,7 +66,10 @@ export function createBrowserApproval(options: {
   }
   return {
     denial,
-    async request(context, invocationSignal) {
+    rememberCaller(tool, caller) {
+      attribution.remember(browserToolName(tool), caller)
+    },
+    async request(context, invocationSignal, metadata) {
       const tool = context.kind === "open" ? "browser_open" : "browser_snapshot"
       const signal =
         invocationSignal === undefined
@@ -67,10 +77,17 @@ export function createBrowserApproval(options: {
           : AbortSignal.any([options.sessionSignal, invocationSignal])
       if (signal.aborted || denial(tool) !== null) return false
       const input = context.kind === "open" ? { url: context.url } : {}
+      const name = browserToolName(tool)
+      const agentID = attribution.take(name, metadata)
       const answer = await options.broker.request(
-        browserToolName(tool),
+        name,
         input,
-        { signal, defaultToNo: true, suppressAlwaysAllowRule: true },
+        {
+          signal,
+          defaultToNo: true,
+          suppressAlwaysAllowRule: true,
+          ...(agentID === undefined ? {} : { agentID }),
+        },
         context,
       )
       return answer.behavior === "allow" && !signal.aborted && denial(tool) === null

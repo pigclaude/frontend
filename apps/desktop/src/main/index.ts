@@ -1,14 +1,5 @@
 // 负责创建桌面窗口、承接浏览器授权回调并保存主进程秘密。
-import {
-  app,
-  BrowserWindow,
-  ipcMain,
-  nativeTheme,
-  powerSaveBlocker,
-  safeStorage,
-  screen,
-  shell,
-} from "electron"
+import { app, BrowserWindow, ipcMain, nativeTheme, safeStorage, screen, shell } from "electron"
 import { join } from "node:path"
 import { readFileSync } from "node:fs"
 import { scheduledTasksChangedChannel } from "../scheduled-tasks-contract"
@@ -70,7 +61,8 @@ import { registerSessionIpc } from "./session/session-ipc"
 import { installQuitFlow, watchPowerShutdown } from "./quit-flow"
 import { noPendingWork } from "./session/session-host-support"
 import { applyLoginShellPath } from "./login-shell-path"
-import { KeepAwake, registerKeepAwakeIpc } from "./keep-awake"
+import { createDesktopKeepAwake } from "./desktop-keep-awake"
+import { registerKeepAwakeIpc } from "./keep-awake"
 import { shutdownDesktopResources } from "./shutdown-resources"
 import type { UsageRecorder } from "./session/usage-recorder"
 import { FileSecretVault } from "./secret-vault"
@@ -96,7 +88,7 @@ const startup = createDesktopStartup()
 const sessionDefaults = new SessionDefaultsStore({
   filePath: join(app.getPath("userData"), "session-defaults.json"),
 })
-const keepAwake = new KeepAwake(join(app.getPath("userData"), "keep-awake.json"), powerSaveBlocker)
+const keepAwake = createDesktopKeepAwake(app.getPath("userData"))
 const hostArch = runtimeHostArch(app.runningUnderARM64Translation)
 const startProxyRuntime = createXrayRuntimeStarter({
   hostArch,

@@ -50,6 +50,17 @@ type Review = {
 /** 一次性安装披露只匹配发出请求的可信窗口。 */
 export class DesktopPluginInstallReview {
   #pending = new WeakMap<object, Review>()
+  #requests = new WeakMap<object, object>()
+
+  /** 发起准备时占用当前窗口；晚到的旧下载无法取代后来打开的披露。 */
+  begin(owner: object): () => void {
+    const request = {}
+    this.#requests.set(owner, request)
+    this.#pending.delete(owner)
+    return () => {
+      if (this.#requests.get(owner) !== request) throw new Error("PLUGIN_CONFIRMATION_INVALID")
+    }
+  }
 
   /** 保存独立快照；调用方核验会员、来源和旧版本后才能发布。 */
   prepare(owner: object, plan: DesktopPluginInstallPlan): DesktopPluginInstallDisclosure {
@@ -73,15 +84,15 @@ export class DesktopPluginInstallReview {
     return pending.plan
   }
 
-  /** 清除窗口待确认内容，也可仅取消当前 ID。 */
-  cancel(owner: object, confirmationId?: string): void {
-    if (confirmationId === undefined || this.#pending.get(owner)?.confirmationId === confirmationId)
-      this.#pending.delete(owner)
+  /** 只取消窗口当前且匹配的披露。 */
+  cancel(owner: object, confirmationId: string): void {
+    if (this.#pending.get(owner)?.confirmationId === confirmationId) this.#pending.delete(owner)
   }
 
   /** 会员代际变化使所有先前披露失效。 */
   reset(): void {
     this.#pending = new WeakMap()
+    this.#requests = new WeakMap()
   }
 }
 
@@ -106,6 +117,7 @@ export function createDesktopPluginRecord(
         manifest: bundle.manifest,
         packageDigest: pluginBundleFilesDigest(bundle.files),
         menuCommands: bundle.menuCommands,
+        executionClaims: bundle.executionClaims,
       }
     : {
         ...common,
@@ -134,13 +146,23 @@ function requestedAccess(plugin: PluginAccess): { permissions: string[]; domains
 }
 
 /** 依据实际校验的包比较能力和域名；Claude Code 同样披露新增的执行项。 */
-export function expandedPluginAccess(previous: PluginAccess, candidate: PluginAccess) {
+export function expandedPluginAccess(
+  previous: DesktopPluginRecord,
+  candidate: DesktopPluginBundle,
+) {
   const before = requestedAccess(previous)
   const after = requestedAccess(candidate)
+  const added = new Set(
+    after.permissions.filter((permission) => !before.permissions.includes(permission)),
+  )
+  if (previous.type === "claude-code" && candidate.type === "claude-code") {
+    const knownClaims = previous.executionClaims ?? {}
+    for (const [permission, claims] of Object.entries(candidate.executionClaims)) {
+      if (claims.some((claim) => !knownClaims[permission]?.includes(claim))) added.add(permission)
+    }
+  }
   return {
-    additionalPermissions: after.permissions.filter(
-      (permission) => !before.permissions.includes(permission),
-    ),
+    additionalPermissions: [...added],
     additionalDomains: after.domains.filter((domain) => !before.domains.includes(domain)),
   }
 }

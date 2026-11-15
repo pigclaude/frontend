@@ -43,7 +43,27 @@ const visibleErrors = new Set([
   "PLUGIN_ARCHIVE_TOO_LARGE",
   "PLUGIN_ARCHIVE_SHA256_INVALID",
   "PLUGIN_ARCHIVE_SHA256_MISMATCH",
+  "PLUGIN_MARKETPLACE_UNAVAILABLE",
+  "PLUGIN_MARKETPLACE_CATALOG_INVALID",
+  "PLUGIN_MARKETPLACE_SOURCE_INVALID",
+  "PLUGIN_MARKETPLACE_SOURCE_UNAVAILABLE",
+  "PLUGIN_MARKETPLACE_SOURCE_NOT_FOUND",
+  "PLUGIN_MARKETPLACE_SOURCE_DISABLED",
+  "PLUGIN_MARKETPLACE_SOURCE_CHANGED",
+  "PLUGIN_MARKETPLACE_SOURCE_EXISTS",
+  "PLUGIN_MARKETPLACE_ENTRY_NOT_FOUND",
+  "PLUGIN_MARKETPLACE_ENTRY_UNAVAILABLE",
+  "PLUGIN_MARKETPLACE_CACHE_INVALID",
+  "PLUGIN_MARKETPLACE_REFRESH_FAILED",
+  "PLUGIN_MARKETPLACE_INSTALLATION_MISMATCH",
+  "PLUGIN_MARKETPLACE_PACKAGE_MISMATCH",
 ])
+
+/** 对安装和市场请求只返回固定错误码，隐藏来源路径和传输错误正文。 */
+export function pluginManagementError(cause: unknown): Error {
+  const code = cause instanceof Error ? cause.message : ""
+  return new Error(visibleErrors.has(code) ? code : "PLUGIN_MANAGEMENT_FAILED")
+}
 
 /** 注册固定的管理命令；披露与确认绑定到发送请求的同一个受信 frame。 */
 export function registerCapabilityPluginIpc(options: CapabilityPluginIpcOptions): void {
@@ -64,8 +84,7 @@ export function registerCapabilityPluginIpc(options: CapabilityPluginIpcOptions)
       try {
         return await execute(manager, values, event, owner)
       } catch (cause: unknown) {
-        const code = cause instanceof Error ? cause.message : ""
-        throw new Error(visibleErrors.has(code) ? code : "PLUGIN_MANAGEMENT_FAILED")
+        throw pluginManagementError(cause)
       }
     })
   }

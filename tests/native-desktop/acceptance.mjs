@@ -18,6 +18,7 @@ import { systemInput } from "./system-pointer.mjs"
 import { verifyScheduledTasks } from "./scheduled-tasks.mjs"
 import { verifyCapabilityPlugins } from "./capability-plugins.mjs"
 import { verifyPluginDeclarations } from "./plugin-declarations.mjs"
+import { verifyPluginMarketplace } from "./plugin-marketplace.mjs"
 import { trackNativeTray, verifyTrayMembership, verifyTrayNavigation } from "./tray-menu.mjs"
 import { verifyWorkbench } from "./workbench.mjs"
 
@@ -362,6 +363,8 @@ try {
   pass("native scheduled-task IPC persists a skipped run for a missing project")
   await verifyCapabilityPlugins(page, userData)
   pass("native capability-plugin IPC discloses, installs, toggles and removes a bundled fixture")
+  await verifyPluginMarketplace(page, userData)
+  pass("native plugin marketplace caches both plugin types and confirms expanded updates")
   await page.getByPlaceholder("搜索设置").fill("时区")
   await expect(page.getByRole("button", { name: "浏览器指纹", exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: "代理", exact: true })).toBeHidden()

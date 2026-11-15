@@ -75,8 +75,10 @@ import { startDesktopUpdates } from "./updates/desktop-updates"
 import { registerUpdateIpc } from "./updates/update-ipc"
 import type { UpdateService } from "./updates/update-service"
 import { prepareDesktopPluginSandbox } from "./plugins/plugin-sandbox-window"
-import { registerCapabilityPluginIpc } from "./plugins/capability-plugin-ipc"
-import { setupDesktopCapabilityPlugins } from "./plugins/desktop-capability-plugins"
+import {
+  registerDesktopPluginIpc,
+  setupDesktopCapabilityPlugins,
+} from "./plugins/desktop-capability-plugins"
 
 const launchPluginSandbox = prepareDesktopPluginSandbox()
 const bundleMetadata: unknown = app.isPackaged
@@ -223,11 +225,7 @@ function registerIpcHandlers(): void {
   registerStartupPreferencesIpc(ipcMain, isTrustedSender, startup)
   registerScheduledTasksIpc({ getService: () => scheduledTasks, isTrusted: isTrustedSender })
   registerKeepAwakeIpc(ipcMain, keepAwake, isTrustedSender)
-  registerCapabilityPluginIpc({
-    getManager: () => capabilityPlugins?.manager ?? null,
-    getDeclarations: () => capabilityPlugins?.declarations ?? null,
-    isTrusted: isTrustedSender,
-  })
+  registerDesktopPluginIpc(() => capabilityPlugins, isTrustedSender)
   registerSessionDefaultsIpc(ipcMain, {
     isTrusted: isTrustedSender,
     store: () => sessionDefaults,

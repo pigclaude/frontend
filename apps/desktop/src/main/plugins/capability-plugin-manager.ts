@@ -84,7 +84,7 @@ export class CapabilityPluginManager {
   ): Promise<DesktopPluginInstallDisclosure> {
     this.#assertMayInstall(source.kind)
     const epoch = this.#epoch
-    this.#review.cancel(owner)
+    const assertCurrent = this.#review.begin(owner)
     if (!isAbsolute(source.path) || source.path.includes("\0"))
       throw new Error("PLUGIN_SOURCE_INVALID")
     if (source.kind === "archive" && typeof source.sha256 !== "string")
@@ -101,7 +101,13 @@ export class CapabilityPluginManager {
       sha256 === null ? sourceName : sourceName.replace(/\.(?:tar\.gz|tgz|zip)$/i, "")
     const bundle = validateDesktopPluginBundle(files, this.options.appVersion, fallbackId)
     this.#assertMayInstall(source.kind, epoch)
+    assertCurrent()
     return this.#review.prepare(owner, { bundle, sourceKind: source.kind, sha256, epoch })
+  }
+
+  /** 在市场读取前登记当前窗口，供后续发布复核。 */
+  beginInstallReview(owner: object): () => void {
+    return this.#review.begin(owner)
   }
 
   /** 市场列表用安装标识和确切来源判定安装或更新动作。 */
@@ -123,7 +129,6 @@ export class CapabilityPluginManager {
     owner: object,
   ): Promise<DesktopPluginInstallDisclosure> {
     return this.#enqueue(async () => {
-      this.#review.cancel(owner)
       const plan = marketplaceInstallPlan(request, this.#epoch)
       this.#assertInstallPlan(plan)
       if (await this.#records.read(plan.bundle.manifest.id))
@@ -139,7 +144,6 @@ export class CapabilityPluginManager {
     owner: object,
   ): Promise<PluginMarketplaceUpdateResult> {
     return this.#enqueue(async () => {
-      this.#review.cancel(owner)
       const plan = marketplaceInstallPlan(request, this.#epoch)
       this.#assertInstallPlan(plan)
       const current = await this.#records.read(plan.bundle.manifest.id)

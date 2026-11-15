@@ -196,3 +196,37 @@ it("市场安装 Claude Code 包并在手动更新后加载新的合成副本", 
   ])
   await expect(readFile(join(session, devPlugin, file), "utf8")).resolves.toBe("新正文")
 })
+
+it("同名 skill 增加 allowed-tools 后需要重新确认", async () => {
+  const f = await fixture()
+  const owner = {}
+  const packageRequest = (tools: string[]) =>
+    fromFiles(
+      new Map([
+        [
+          "skills/read/SKILL.md",
+          Buffer.from(
+            [
+              "---",
+              "name: read",
+              "allowed-tools:",
+              ...tools.map((tool) => "  - " + tool),
+              "---",
+              "合成说明。",
+            ].join("\n"),
+          ),
+        ],
+      ]),
+      devPlugin,
+      f.assertCurrent,
+    )
+  const disclosure = await f.manager.prepareMarketplaceInstall(packageRequest(["Read"]), owner)
+  await f.manager.confirm(disclosure.confirmationId, owner)
+  await expect(
+    f.manager.prepareMarketplaceUpdate(packageRequest(["Read", "Grep"]), owner),
+  ).resolves.toMatchObject({
+    kind: "review",
+    additionalPermissions: ["skill-allowed-tools:" + devPlugin + ":read"],
+    additionalDomains: [],
+  })
+})

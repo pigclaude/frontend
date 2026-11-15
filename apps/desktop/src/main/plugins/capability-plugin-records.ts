@@ -32,6 +32,7 @@ export type ClaudeCodePluginRecord = Omit<InstalledClaudeCodePlugin, "compatible
   PublishedPackage & {
     packageDigest: string
     menuCommands: string[]
+    executionClaims?: Readonly<Record<string, readonly string[]>> | undefined
   }
 
 /** 包类型决定记录可以发布到 Worker 还是 Claude SDK。 */
@@ -70,6 +71,7 @@ const savedClaudeCode = z.strictObject({
   type: z.literal("claude-code"),
   packageDigest: z.string().regex(sha256),
   menuCommands: z.array(z.string()),
+  executionClaims: z.record(z.string(), z.array(z.string().regex(sha256))).optional(),
   manifest: z.strictObject({
     id: z.string().refine(isCapabilityPluginId),
     name: z.string().min(1),

@@ -454,9 +454,11 @@ function sendSessionEvent(
   tray?.sessionChanged(envelope.event.type)
 }
 
-function sendToMainWindow(channel: string, payload?: unknown): void {
+function sendToMainWindow(channel: string, payload?: unknown): boolean {
   const contents = mainWindow?.webContents
-  if (contents && !contents.isDestroyed()) contents.send(channel, payload)
+  if (!contents || contents.isDestroyed()) return false
+  contents.send(channel, payload)
+  return true
 }
 
 function isTrustedSender(event: Electron.IpcMainInvokeEvent): boolean {

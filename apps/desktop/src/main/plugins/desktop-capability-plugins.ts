@@ -1,29 +1,53 @@
 // 将本机能力插件安装记录接到当前桌面的会员状态、沙箱和受信窗口事件。
 
-import { app } from "electron"
+import { app, safeStorage } from "electron"
 import { join } from "node:path"
 import type { MembershipState } from "@pigclaude/contracts/membership"
 import { capabilityPluginsChangedChannel } from "../../capability-plugin-contract"
+import { capabilityPluginNoticeChannel } from "../../capability-plugin-notice-contract"
 import type { DesktopComposition } from "../composition"
-import { CapabilityPluginManager } from "./capability-plugin-manager"
+import { createCapabilityPluginScope } from "./capability-plugin-capabilities"
+import { CapabilityPluginManager, type CapabilityPluginSnapshot } from "./capability-plugin-manager"
+import { CapabilityPluginNotices } from "./capability-plugin-notices"
+import { createCapabilityPluginSecrets } from "./capability-plugin-secrets"
 import { readCapabilityPluginArchive } from "./plugin-archive"
 
 /** 仅在沙箱宿主已装配时启用安装入口。源码运行态可以安装本地目录。 */
 export function setupDesktopCapabilityPlugins(
   composition: DesktopComposition,
-  send: (channel: string) => void,
+  send: (channel: string, payload?: unknown) => boolean,
 ) {
   const sandbox = composition.pluginSandbox
   if (!sandbox) return null
   const { runtime } = composition
+  const userDataPath = app.getPath("userData")
+  const root = join(userDataPath, "capability-plugins")
   const manager = new CapabilityPluginManager({
-    root: join(app.getPath("userData"), "capability-plugins"),
+    root,
     appVersion: app.getVersion(),
     membership: () => composition.membershipGate.view().state,
     developerMode: () => !app.isPackaged,
     readArchive: readCapabilityPluginArchive,
     stopInstances: (pluginId) => sandbox.stopInstances(pluginId),
   })
+  const secrets = createCapabilityPluginSecrets(root, safeStorage)
+  const notices = new CapabilityPluginNotices((notice) =>
+    send(capabilityPluginNoticeChannel, notice),
+  )
+  const capabilities = (
+    snapshot: CapabilityPluginSnapshot,
+    workspace: string | null,
+    insertText?: (text: string) => boolean,
+  ) =>
+    createCapabilityPluginScope({
+      snapshot,
+      manager,
+      secrets,
+      userDataPath,
+      workspace,
+      notify: (message) => notices.show(snapshot.manifest.id, snapshot.manifest.name, message),
+      ...(insertText === undefined ? {} : { insertText }),
+    })
   return {
     manager,
     sessionOptions: runtime
@@ -32,6 +56,7 @@ export function setupDesktopCapabilityPlugins(
             manager,
             sandbox,
             pluginNetwork: runtime.pluginNetwork.bind(runtime),
+            capabilities,
           },
         }
       : {},

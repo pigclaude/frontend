@@ -38,11 +38,13 @@ export type PluginMarketplaceEntryInfo = {
 export type PluginMarketplaceEntryView = PluginMarketplaceEntryInfo & {
   sourceId: string
   action: "install" | "installed" | "update"
+  reviewStatus: "unreviewed" | "reviewed"
 }
 
 /** 桌面市场页的缓存投影，未启用来源不出现在 entries 中。 */
 export type PluginMarketplaceView = {
   developerMode: boolean
+  thirdPartyEnabled: boolean
   sources: PluginMarketplaceSourceView[]
   entries: PluginMarketplaceEntryView[]
 }
@@ -56,11 +58,13 @@ export type PluginMarketplaceUpdateResult =
       disclosure: DesktopPluginInstallDisclosure
       additionalPermissions: string[]
       additionalDomains: string[]
+      fileHashChanged?: true
     }
 
 /** 可信窗口用本机缓存浏览，用显式操作刷新、安装或手动更新。 */
 export type PluginMarketplaceBridge = {
   list(): Promise<PluginMarketplaceView>
+  setThirdPartyEnabled(enabled: boolean): Promise<void>
   selectDirectory(): Promise<string | null>
   add(input: PluginMarketplaceSourceInput): Promise<void>
   refresh(sourceId: string, pin?: string): Promise<void>

@@ -47,6 +47,8 @@ const fixture = vi.hoisted(() => ({
   beforeCommit: null as (() => Promise<void>) | null,
   commits: 0,
   abandoned: null as (() => Promise<void>) | null,
+  userData: "/callback-reception-fixture",
+  powerBlocker: { start: vi.fn(() => 0), stop: vi.fn() },
 }))
 
 vi.mock("electron", () => ({
@@ -60,7 +62,7 @@ vi.mock("electron", () => ({
       fixture.appEvents!.on(name, listener),
     removeListener: (name: string, listener: (...args: unknown[]) => void) =>
       fixture.appEvents!.removeListener(name, listener),
-    getPath: () => "/callback-reception-fixture",
+    getPath: () => fixture.userData,
     getLoginItemSettings: () => ({ openAtLogin: false, wasOpenedAtLogin: false }),
     setAppUserModelId: vi.fn(),
     getAppPath: () => fileURLToPath(new URL("../../../", import.meta.url)),
@@ -111,6 +113,7 @@ vi.mock("electron", () => ({
     handle: (channel: string, handler: MainIpcHandler) => fixture.handlers.set(channel, handler),
   },
   dialog: {},
+  powerSaveBlocker: fixture.powerBlocker,
   nativeImage: {},
   nativeTheme: { on: () => {}, shouldUseDarkColors: false },
   screen: {
@@ -240,6 +243,9 @@ export function createCallbackReceptionFixture() {
   fixture.beforeCommit = null
   fixture.commits = 0
   fixture.abandoned = null
+  fixture.userData = "/callback-reception-fixture"
+  fixture.powerBlocker.start.mockClear()
+  fixture.powerBlocker.stop.mockClear()
   const vault = new ProfileVault()
   fixture.vault = vault
   const exchange = vi.fn(async (): Promise<AuthorizationToken> => callbackReceptionToken())

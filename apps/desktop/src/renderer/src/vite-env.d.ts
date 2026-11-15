@@ -7,6 +7,7 @@ interface PigclaudeBridge {
   systemVersion?: string
   window?: import("../../preload/window-bridge").WindowBridge
   appInfo?: () => Promise<import("../../preload/index").AppInfo>
+  keepAwake?: import("../../preload/keep-awake").KeepAwakeBridge
   openExternal?: (url: string) => Promise<void>
   setTheme?: (source: "light" | "dark" | "system") => Promise<void>
   setDockIcon?: (dataUrl: string) => Promise<void>

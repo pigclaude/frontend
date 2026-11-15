@@ -14,6 +14,7 @@ const fixture = vi.hoisted(() => ({
   reportDeviceInfo: vi.fn(async () => undefined),
 }))
 vi.mock("electron", () => ({
+  powerSaveBlocker: { start: () => 0, stop: () => {} },
   powerMonitor: { on: () => {}, removeListener: () => {} },
   app: {
     isPackaged: false,

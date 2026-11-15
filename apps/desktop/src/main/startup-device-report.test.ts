@@ -10,6 +10,7 @@ const fixture = vi.hoisted(() => ({
 const info = { name: "Lin 的 MacBook Pro", osVersion: "macOS 15.4", appVersion: "1.3.0" }
 
 vi.mock("electron", () => ({
+  powerSaveBlocker: { start: () => 0, stop: () => {} },
   powerMonitor: { on: () => {}, removeListener: () => {} },
   app: {
     isPackaged: false,

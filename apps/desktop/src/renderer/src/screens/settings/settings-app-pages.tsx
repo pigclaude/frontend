@@ -6,6 +6,7 @@ import { LockedValue, Segmented } from "./setting-controls"
 import { SettingPage, SettingRow, SettingSection } from "./setting-page"
 import { DefaultModelRow, DefaultPermissionRow } from "./session-default-rows"
 import { UpdateSettingsSection } from "./update-settings"
+import { KeepAwakeSetting } from "./keep-awake-setting"
 import type { SessionHistoryController } from "../../hooks/use-session-history"
 import { SessionRetentionSettings } from "./session-retention-settings"
 import { ProjectPermissionRules } from "./project-permission-rules"
@@ -19,6 +20,7 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
     <SettingPage title={desktopText("settings.settings-app-pages.1")}>
       <StartupSettings />
       <UpdateSettingsSection appVersion={appVersion} />
+      <KeepAwakeSetting />
       <SettingSection title={desktopText("settings.settings-app-pages.10")}>
         <SettingRow title={desktopText("settings.settings-app-pages.11")}>
           <Segmented

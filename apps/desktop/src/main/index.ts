@@ -1,5 +1,14 @@
 // 负责创建桌面窗口、承接浏览器授权回调并保存主进程秘密。
-import { app, BrowserWindow, ipcMain, nativeTheme, safeStorage, screen, shell } from "electron"
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  nativeTheme,
+  powerSaveBlocker,
+  safeStorage,
+  screen,
+  shell,
+} from "electron"
 import { join } from "node:path"
 import { readFileSync } from "node:fs"
 import { scheduledTasksChangedChannel } from "../scheduled-tasks-contract"
@@ -61,6 +70,7 @@ import { registerSessionIpc } from "./session/session-ipc"
 import { installQuitFlow, watchPowerShutdown } from "./quit-flow"
 import { noPendingWork } from "./session/session-host-support"
 import { applyLoginShellPath } from "./login-shell-path"
+import { KeepAwake, registerKeepAwakeIpc } from "./keep-awake"
 import { shutdownDesktopResources } from "./shutdown-resources"
 import type { UsageRecorder } from "./session/usage-recorder"
 import { FileSecretVault } from "./secret-vault"
@@ -70,7 +80,7 @@ import { WindowNavigation } from "./window-navigation"
 import { errorMessage } from "./error-message"
 import { applyGlassBackground } from "./glass-background"
 import { createMainWindowOptions, developmentRendererUrl } from "./window-options"
-import { createAppUpdates } from "./updates/app-updates"
+import { startDesktopUpdates } from "./updates/desktop-updates"
 import { registerUpdateIpc } from "./updates/update-ipc"
 import type { UpdateService } from "./updates/update-service"
 
@@ -86,6 +96,7 @@ const startup = createDesktopStartup()
 const sessionDefaults = new SessionDefaultsStore({
   filePath: join(app.getPath("userData"), "session-defaults.json"),
 })
+const keepAwake = new KeepAwake(join(app.getPath("userData"), "keep-awake.json"), powerSaveBlocker)
 const hostArch = runtimeHostArch(app.runningUnderARM64Translation)
 const startProxyRuntime = createXrayRuntimeStarter({
   hostArch,
@@ -143,6 +154,7 @@ if (!hasSingleInstanceLock) {
     .whenReady()
     .then(async () => {
       if (windowVisibility.shutdownStarted()) return
+      keepAwake.ready()
       let initialized = false
       try {
         await setupAuthorization()
@@ -176,7 +188,7 @@ if (!hasSingleInstanceLock) {
         void desktopComposition?.membershipGate.inspect()
         void reportDeviceInfoOnStartup(desktopComposition)
       }
-      startAppUpdates()
+      appUpdates = startDesktopUpdates((state) => sendToMainWindow("pigclaude:update-state", state))
       void scheduledTasks?.start().then(() => tray?.refresh(), reportScheduledTasksError)
     })
     .catch(() => {
@@ -198,7 +210,10 @@ const guardMainWindowClose = installQuitFlow({
   onShutdownFailure: windowVisibility.shutdownFailed,
   onCancel: () => appUpdates?.cancelRestart(),
   finishQuit: (mode) => {
-    if (mode === "system") return app.exit()
+    if (mode === "system") {
+      keepAwake.dispose()
+      return app.exit()
+    }
     if (!appUpdates?.restartRequested()) return app.quit()
     void appUpdates.installAndRestart().finally(() => app.quit())
   },
@@ -208,6 +223,7 @@ function registerIpcHandlers(): void {
   registerDesktopWindowIpc(() => mainWindow, isTrustedSender, closePreference, windowNavigation)
   registerStartupPreferencesIpc(ipcMain, isTrustedSender, startup)
   registerScheduledTasksIpc({ getService: () => scheduledTasks, isTrusted: isTrustedSender })
+  registerKeepAwakeIpc(ipcMain, keepAwake, isTrustedSender)
   registerSessionDefaultsIpc(ipcMain, {
     isTrusted: isTrustedSender,
     store: () => sessionDefaults,
@@ -275,24 +291,12 @@ async function shutdownDesktop(): Promise<void> {
     composition: () => desktopComposition?.dispose() ?? Promise.resolve(),
     xray: () => startProxyRuntime.dispose(),
     callback: () => callbackServer?.close() ?? Promise.resolve(),
+    releaseAwake: () => keepAwake.dispose(),
     destroyTray: () => {
       tray?.destroy()
       tray = null
     },
   })
-}
-
-/** 窗口打开后开始检查更新；更新服务建不起来只记日志，不影响应用其余部分。 */
-function startAppUpdates(): void {
-  try {
-    appUpdates = createAppUpdates({
-      requestQuit: () => app.quit(),
-      onState: (state) => sendToMainWindow("pigclaude:update-state", state),
-    })
-    appUpdates.start()
-  } catch (error: unknown) {
-    console.error(errorMessage(error))
-  }
 }
 
 async function setupAuthorization(): Promise<void> {
@@ -376,6 +380,7 @@ async function setupAuthorization(): Promise<void> {
   usageRecorder = sessions.usage
   sessionHost = sessions.host
   projectPermissions = sessions.projectPermissions
+  sessionHost?.subscribe((envelope) => keepAwake.observe(envelope))
   const host = sessions.host
   if (composition.runtime && host) {
     scheduledTasks = createDesktopScheduledTaskService({

@@ -1,4 +1,7 @@
 // 负责通过真实主进程接线验证回调收件的启动时限、失败与退出边界。
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import {
   createCallbackReceptionFixture,
@@ -20,6 +23,28 @@ afterEach(async () => {
   await disposeCallbackReceptionFixture()
   vi.clearAllTimers()
   vi.useRealTimers()
+})
+
+it("系统直接退出时也释放手动防休眠请求", async () => {
+  const { fixture } = createCallbackReceptionFixture()
+  const directory = await mkdtemp(join(tmpdir(), "pigclaude-awake-system-quit-"))
+  fixture.userData = directory
+  try {
+    await import("./index")
+    await finishCallbackReceptionStartup()
+    await expect(invokeCallbackReceptionIpc("pigclaude:keep-awake-set", true)).resolves.toBe(true)
+    expect(fixture.powerBlocker.start).toHaveBeenCalledExactlyOnceWith("prevent-app-suspension")
+
+    const preventDefault = vi.fn()
+    fixture.powerEvents!.emit("shutdown", { preventDefault })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(preventDefault).toHaveBeenCalledOnce()
+    expect(fixture.powerBlocker.stop).toHaveBeenCalledExactlyOnceWith(0)
+    expect(fixture.quitCalls).toBe(1)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
 })
 
 it("does not exchange a valid pending callback retained beyond the receiver's startup lifetime", async () => {

@@ -99,6 +99,7 @@ vi.mock("electron", () => ({
     close() {}
   },
   dialog: {},
+  powerSaveBlocker: { start: () => 0, stop: () => {} },
   ipcMain: {
     handle: (
       channel: string,

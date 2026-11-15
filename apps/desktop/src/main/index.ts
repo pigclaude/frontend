@@ -199,7 +199,10 @@ const guardMainWindowClose = installQuitFlow({
   ...(hasSingleInstanceLock ? { watchPowerShutdown } : {}),
   shutdown: shutdownDesktop,
   onBeforeShutdown: windowVisibility.startShutdown,
-  onShutdownFailure: windowVisibility.shutdownFailed,
+  onShutdownFailure: () => {
+    keepAwake.resumeAfterFailedShutdown()
+    windowVisibility.shutdownFailed()
+  },
   onCancel: () => appUpdates?.cancelRestart(),
   finishQuit: (mode) => {
     if (mode === "system") {
@@ -272,6 +275,7 @@ function registerIpcHandlers(): void {
 async function shutdownDesktop(): Promise<void> {
   await shutdownDesktopResources({
     stopBackgroundWork: () => {
+      keepAwake.holdForShutdown()
       appUpdates?.stop()
       closeStartupEvents()
       notifications.dispose()

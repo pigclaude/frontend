@@ -8,6 +8,8 @@ import { expect, it, vi } from "vitest"
 import { KeepAwake, registerKeepAwakeIpc } from "./keep-awake"
 import { createHarness, waitUntil } from "./session/session-host-fixtures"
 import type { AdapterEvent } from "./session/session-events"
+import { shutdownDesktopResources } from "./shutdown-resources"
+import { deferred } from "./testing/profile-fixture"
 
 const completed: AdapterEvent = {
   type: "result",
@@ -58,6 +60,51 @@ it("最后一个会话的后台任务完成后才释放阻止空闲睡眠的请�
     unsubscribe()
     awake.dispose()
     await host.dispose()
+    await rm(workspace, { recursive: true, force: true })
+  }
+})
+
+it.each([false, true])("退出中保持已有唤醒请求，清理失败=%s", async (fails) => {
+  const workspace = await mkdtemp(join(tmpdir(), "pigclaude-awake-shutdown-"))
+  const released = vi.fn()
+  const blocker = { start: vi.fn(() => 7), stop: released }
+  const awake = new KeepAwake(join(workspace, "keep-awake.json"), blocker)
+  const waiting = deferred<void>()
+  const sessionId = "session"
+  const turnId = "turn"
+  try {
+    awake.ready()
+    awake.observe({ sessionId, event: { type: "turn-started", turnId } })
+    const shutdown = shutdownDesktopResources({
+      stopBackgroundWork: () => awake.holdForShutdown(),
+      sessions: async () => {
+        awake.observe({
+          sessionId,
+          event: { type: "turn-ended", turnId, status: "interrupted", errorCode: null },
+        })
+      },
+      xray: async () => undefined,
+      callback: async () => {
+        await waiting.promise
+        if (fails) throw new Error("合成清理失败")
+      },
+      releaseAwake: () => awake.dispose(),
+    })
+    try {
+      expect(released).not.toHaveBeenCalled()
+    } finally {
+      waiting.resolve()
+    }
+    if (fails) {
+      await expect(shutdown).rejects.toThrow("合成清理失败")
+      expect(released).not.toHaveBeenCalled()
+      awake.resumeAfterFailedShutdown()
+    } else {
+      await shutdown
+    }
+    expect(released).toHaveBeenCalledExactlyOnceWith(7)
+  } finally {
+    awake.dispose()
     await rm(workspace, { recursive: true, force: true })
   }
 })

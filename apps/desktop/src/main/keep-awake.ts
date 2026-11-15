@@ -20,6 +20,7 @@ export class KeepAwake {
   #blockerId: number | null = null
   #ready = false
   #disposed = false
+  #holdExisting = false
   #writes = Promise.resolve()
 
   /** 从本机数据目录读取手动偏好。首次运行或文件损坏时默认关闭。 */
@@ -67,6 +68,17 @@ export class KeepAwake {
     this.#reconcile()
   }
 
+  /** 应用开始退出时保留已有请求，回合结束后也等资源清理完成。 */
+  holdForShutdown(): void {
+    this.#holdExisting = true
+  }
+
+  /** 退出失败时恢复日常判定，按当前回合和手动偏好决定是否继续持有。 */
+  resumeAfterFailedShutdown(): void {
+    this.#holdExisting = false
+    this.#reconcile()
+  }
+
   /** 应用确定退出时释放请求，保留手动开关供下次启动。 */
   dispose(): void {
     this.#disposed = true
@@ -75,7 +87,9 @@ export class KeepAwake {
   }
 
   #reconcile(): void {
-    const needed = this.#ready && !this.#disposed && (this.#manual || this.#turns.size > 0)
+    const heldForShutdown = this.#holdExisting && this.#blockerId !== null
+    const needed =
+      this.#ready && !this.#disposed && (this.#manual || this.#turns.size > 0 || heldForShutdown)
     try {
       if (needed && this.#blockerId === null)
         this.#blockerId = this.blocker.start("prevent-app-suspension")

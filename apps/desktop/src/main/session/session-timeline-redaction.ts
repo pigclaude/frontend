@@ -33,10 +33,17 @@ const timelineRules: { [K in SessionHostEvent["type"]]: TimelineRule<EventOf<K>>
     ...event,
     blocks: event.blocks.map((block, index) => redactBlock(block, `event.blocks.${index}`, marks)),
   }),
-  "tool-result": ({ image, ...event }, marks) => ({
-    ...event,
-    content: image ? screenshotPlaceholder : redactString(event.content, "event.content", marks),
-  }),
+  "tool-result": ({ image, ...event }, marks) => {
+    const limit = image
+      ? timelineContentLimitBytes - Buffer.byteLength("\n" + screenshotPlaceholder)
+      : timelineContentLimitBytes
+    const text = redactString(event.content, "event.content", marks, limit)
+    const content =
+      image && text !== screenshotPlaceholder
+        ? [text, screenshotPlaceholder].filter(Boolean).join("\n")
+        : text
+    return { ...event, content }
+  },
   permission: (event, marks) => ({
     ...event,
     input: redactToolInput(event.toolName, event.input, "event.input", marks),
@@ -167,15 +174,20 @@ function isImageObject(value: Record<string, unknown>): boolean {
   return typeof value.data === "string" && typeof mime === "string" && mime.startsWith("image/")
 }
 
-function redactString(value: string, path: string, marks: Marks): string {
+function redactString(
+  value: string,
+  path: string,
+  marks: Marks,
+  limit = timelineContentLimitBytes,
+): string {
   if (isBase64Image(value)) return screenshotPlaceholder
   const text = value
     .replace(dataUrlPattern, screenshotPlaceholder)
     .replace(base64ImagePattern, screenshotPlaceholder)
   const bytes = Buffer.byteLength(text, "utf8")
-  if (bytes <= timelineContentLimitBytes) return text
+  if (bytes <= limit) return text
   marks.push({ path, bytes })
-  return truncateUtf8(text, timelineContentLimitBytes)
+  return truncateUtf8(text, limit)
 }
 
 function truncateUtf8(text: string, limit: number): string {

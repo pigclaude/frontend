@@ -1,7 +1,10 @@
 // 内置浏览器使用独立沙箱和 WebContentsView，页面没有桌面 preload 或 Node 能力。
-import { BrowserWindow, WebContentsView, session, shell, type WebContents } from "electron"
+import { BrowserWindow, WebContentsView, session, shell, type Session } from "electron"
 import { randomUUID } from "node:crypto"
+import { agentBrowserIdPrefix } from "../../workbench-contract"
 import type {
+  AgentBrowserScope,
+  AgentBrowserTab,
   WorkbenchBrowserAction,
   WorkbenchBrowserBounds,
   WorkbenchBrowserElement,
@@ -13,6 +16,13 @@ import {
   isAgentBrowserAddress,
   type AgentBrowserNetwork,
 } from "./agent-browser-network"
+import { elementPicker } from "./browser-element-picker"
+import {
+  allowsWorkbenchBrowserAddress,
+  configureContents,
+  workbenchAgentBrowserUrl,
+  workbenchBrowserUrl,
+} from "./browser-navigation-policy"
 import {
   BrowserReferences,
   StaleBrowserReference,
@@ -20,7 +30,6 @@ import {
 } from "./browser-references"
 
 const partition = "persist:pigclaude-workbench-browser"
-const loopback = new Set(["localhost", "127.0.0.1", "[::1]"])
 const maxBrowsers = 12
 type Surface = {
   window: BrowserWindow
@@ -28,72 +37,15 @@ type Surface = {
   error?: WorkbenchBrowserPage["error"]
   crashed?: WorkbenchBrowserPage["crashed"]
   pickVersion: number
-  agent: AgentBrowserNetwork | null
-  references: BrowserReferences | null
+  agent: {
+    sessionId: string
+    network: AgentBrowserNetwork
+    partition: Session
+    opened: boolean
+    references: BrowserReferences
+  } | null
   attached: boolean
   scale: number
-}
-
-/** 解析允许的浏览器地址，只接受不带内嵌凭据的 HTTP 或 HTTPS。 */
-export function workbenchBrowserUrl(value: unknown): URL {
-  if (typeof value !== "string" || value.length > 4096) throw new Error("URL_NOT_ALLOWED")
-  const url = new URL(value)
-  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) {
-    throw new Error("URL_NOT_ALLOWED")
-  }
-  return url
-}
-
-/** Agent 浏览器在申请审批和打开页面前都使用既有的回环地址限制。 */
-export function workbenchAgentBrowserUrl(value: unknown): URL {
-  const url = workbenchBrowserUrl(value)
-  if (!isAgentBrowserAddress(url.href)) throw new Error("PREVIEW_URL_NOT_ALLOWED")
-  return url
-}
-
-function allowed(target: string, local: boolean): boolean {
-  try {
-    const url = workbenchBrowserUrl(target)
-    return !local || loopback.has(url.hostname)
-  } catch {
-    return false
-  }
-}
-
-function configureContents(
-  contents: WebContents,
-  local = false,
-  agent?: AgentBrowserNetwork,
-  openInSameTab?: (url: string) => void,
-): void {
-  if (agent) contents.setWebRTCIPHandlingPolicy("disable_non_proxied_udp")
-  function canNavigate(target: string, isFrame = false): boolean {
-    if (agent) return (isFrame && target === "about:srcdoc") || isAgentBrowserAddress(target)
-    return (isFrame && target === "about:blank") || allowed(target, local)
-  }
-  contents.on("will-navigate", (event) => {
-    if (!canNavigate(event.url)) {
-      agent?.markBlocked()
-      event.preventDefault()
-    }
-  })
-  contents.on("will-redirect", (event) => {
-    if (!canNavigate(event.url, !event.isMainFrame)) {
-      agent?.markBlocked()
-      event.preventDefault()
-    }
-  })
-  contents.on("will-frame-navigate", (event) => {
-    if (!event.isMainFrame && !canNavigate(event.url, true)) {
-      agent?.markBlocked()
-      event.preventDefault()
-    }
-  })
-  contents.setWindowOpenHandler(({ url, postBody }) => {
-    if (agent && postBody === undefined && isAgentBrowserAddress(url)) openInSameTab?.(url)
-    else agent?.markBlocked()
-    return { action: "deny" }
-  })
 }
 
 function browserSession() {
@@ -115,17 +67,61 @@ function restrictedSession(name: string) {
 export class WorkbenchBrowsers {
   readonly #surfaces = new Map<string, Surface>()
   readonly #previews = new Map<BrowserWindow, BrowserWindow>()
+  readonly #activeSessions = new Map<BrowserWindow, string>()
+  readonly #clearing = new Map<string, Promise<void>>()
+
+  /** 记住窗口正在显示的会话，并立即移开其他会话的 Agent 子视图。 */
+  setActiveSession(window: BrowserWindow, sessionId: string | null): void {
+    if (sessionId === null) this.#activeSessions.delete(window)
+    else this.#activeSessions.set(window, sessionId)
+    for (const entry of this.#surfaces.values()) {
+      if (entry.window === window && entry.agent && entry.agent.sessionId !== sessionId)
+        this.#detach(entry)
+    }
+  }
+
+  /** 只返回该窗口、该会话中已经打开的 Agent 标签。 */
+  listAgentTabs(window: BrowserWindow, sessionId: string): AgentBrowserTab[] {
+    return [...this.#surfaces].flatMap(([id, entry]) =>
+      entry.window === window &&
+      entry.agent?.sessionId === sessionId &&
+      entry.agent.opened &&
+      !entry.view.webContents.isDestroyed()
+        ? [{ id, sessionId, page: this.#page(entry) }]
+        : [],
+    )
+  }
+
+  /** 用户从 Agent 标签打开独立预览或系统浏览器时，也必须仍在该标签所属会话中。 */
+  requireActiveAgent(window: BrowserWindow, scope: AgentBrowserScope): void {
+    if (!this.#ownedView(window, scope.id, scope.sessionId))
+      throw new Error("WORKBENCH_PREVIEW_FAILED")
+  }
 
   /** 打开指定标签的地址，保留该标签的导航历史。 */
-  async navigate(window: BrowserWindow, id: string, input: unknown): Promise<void> {
+  async navigate(
+    window: BrowserWindow,
+    id: string,
+    input: unknown,
+    sessionId?: string,
+  ): Promise<void> {
     const url = workbenchBrowserUrl(input)
-    const entry = this.#entry(window, id)
+    const entry =
+      sessionId === undefined && !id.startsWith(agentBrowserIdPrefix)
+        ? this.#entry(window, id)
+        : this.#ownedView(window, id, sessionId)
+    if (!entry) throw new Error("WORKBENCH_PREVIEW_FAILED")
+    await this.#navigate(id, entry, url)
+  }
+
+  async #navigate(id: string, entry: Surface, url: URL): Promise<void> {
     if (entry.agent && !isAgentBrowserAddress(url.href)) throw new Error("PREVIEW_URL_NOT_ALLOWED")
-    await entry.agent?.ready
+    await entry.agent?.network.ready
+    if (!this.#isLive(id, entry)) return
     entry.error = undefined
     entry.crashed = undefined
     entry.pickVersion += 1
-    entry.references?.invalidate()
+    entry.agent?.references.invalidate()
     try {
       await entry.view.webContents.loadURL(url.href)
     } catch (error: unknown) {
@@ -137,58 +133,70 @@ export class WorkbenchBrowsers {
   }
 
   /** 在会话自己的浏览器中打开本机开发页，或读取当前页的可见快照。 */
-  async agentPage(window: BrowserWindow, id: string, input?: string): Promise<string> {
+  async agentPage(
+    window: BrowserWindow,
+    { id, sessionId }: AgentBrowserScope,
+    input?: string,
+  ): Promise<string> {
     if (input !== undefined) {
       const url = workbenchAgentBrowserUrl(input)
-      const entry = this.#entry(window, id, true)
-      await this.navigate(window, id, url.href)
-      if (this.#surfaces.get(id) !== entry || entry.error)
+      const entry = this.#entry(window, id, sessionId)
+      await this.#navigate(id, entry, url)
+      if (!this.#isLive(id, entry) || entry.error || !entry.agent)
         throw new Error("WORKBENCH_PREVIEW_FAILED")
-      this.#send(window, { type: "browser-open", id, url: url.href })
+      entry.agent.opened = true
+      this.#send(window, { type: "browser-open", id, sessionId, url: url.href })
     }
-    const entry = this.#surfaces.get(id)
-    if (entry?.window !== window || !entry.agent || !entry.references || entry.error)
+    const entry = this.#ownedView(window, id, sessionId, false)
+    if (!entry?.agent || entry.error || !this.#isLive(id, entry))
       throw new Error("WORKBENCH_PREVIEW_FAILED")
     const contents = entry.view.webContents
     const current = workbenchBrowserUrl(contents.getURL())
     if (!isAgentBrowserAddress(current.href)) throw new Error("PREVIEW_URL_NOT_ALLOWED")
     const snapshot =
       input === undefined
-        ? await entry.references.snapshot()
+        ? await entry.agent.references.snapshot()
         : {
             text: (await contents.executeJavaScriptInIsolatedWorld(1001, [
               { code: "(document.body?.innerText ?? '').trim().slice(0, 6000)" },
             ])) as unknown,
           }
+    if (!this.#isLive(id, entry) || current.href !== contents.getURL())
+      throw new Error("WORKBENCH_PREVIEW_FAILED")
     return JSON.stringify({
       url: current.href,
       title: contents.getTitle(),
       ...snapshot,
       text: typeof snapshot.text === "string" ? snapshot.text : "",
-      blockedRequests: entry.agent.blockedRequests,
+      blockedRequests: entry.agent.network.blockedRequests,
     })
   }
 
   /** 用当前 Agent 标签的引用表读取元素；页面已导航或引用无效时提示重新快照。 */
   async agentElement(
     window: BrowserWindow,
-    id: string,
+    { id, sessionId }: AgentBrowserScope,
     ref: string,
   ): Promise<AgentBrowserElement & { url: string }> {
-    const entry = this.#surfaces.get(id)
-    if (entry?.window !== window || !entry.references || entry.error)
-      throw new StaleBrowserReference()
-    const url = entry.view.webContents.getURL()
+    const entry = this.#ownedView(window, id, sessionId, false)
+    if (!entry?.agent || entry.error || !this.#isLive(id, entry)) throw new StaleBrowserReference()
+    const contents = entry.view.webContents
+    const url = contents.getURL()
     if (!isAgentBrowserAddress(url)) throw new StaleBrowserReference()
-    const element = await entry.references.resolve(ref)
-    if (this.#surfaces.get(id) !== entry) throw new StaleBrowserReference()
+    const element = await entry.agent.references.resolve(ref)
+    if (!this.#isLive(id, entry) || url !== contents.getURL()) throw new StaleBrowserReference()
     return { ...element, url }
   }
 
   /** 执行白名单中的浏览器导航命令。 */
-  command(window: BrowserWindow, id: string, action: WorkbenchBrowserAction): void {
-    const entry = this.#surfaces.get(id)
-    if (entry?.window !== window) return
+  command(
+    window: BrowserWindow,
+    id: string,
+    action: WorkbenchBrowserAction,
+    sessionId?: string,
+  ): void {
+    const entry = this.#ownedView(window, id, sessionId)
+    if (!entry) return
     const contents = entry.view.webContents
     if (action === "back" && contents.navigationHistory.canGoBack())
       contents.navigationHistory.goBack()
@@ -196,7 +204,7 @@ export class WorkbenchBrowsers {
       contents.navigationHistory.goForward()
     if (action === "reload") {
       const retry = entry.error?.url
-      if (retry) void this.navigate(window, id, retry)
+      if (retry) void this.navigate(window, id, retry, sessionId).catch(() => undefined)
       else {
         entry.crashed = undefined
         contents.reload()
@@ -207,18 +215,18 @@ export class WorkbenchBrowsers {
   }
 
   /** 将标签画在可信的内容区域，隐藏时把原生子视图从窗口移开。 */
-  present(window: BrowserWindow, id: string, bounds: WorkbenchBrowserBounds | null): void {
+  present(
+    window: BrowserWindow,
+    id: string,
+    bounds: WorkbenchBrowserBounds | null,
+    sessionId?: string,
+  ): void {
+    const entry = this.#ownedView(window, id, sessionId, bounds !== null)
+    if (!entry) return
     if (!bounds) {
-      const entry = this.#surfaces.get(id)
-      if (entry?.window === window && entry.attached) {
-        entry.pickVersion += 1
-        entry.attached = false
-        window.contentView.removeChildView(entry.view)
-      }
+      this.#detach(entry)
       return
     }
-    const entry = this.#surfaces.get(id)
-    if (entry?.window !== window) return
     const size = window.getContentBounds()
     const x = Math.min(Math.max(0, bounds.x), size.width)
     const y = Math.min(Math.max(0, bounds.y), size.height)
@@ -240,12 +248,12 @@ export class WorkbenchBrowsers {
   }
 
   /** 用户主动选择页面元素时只提取标识和文本，交由聊天输入框显式发送。 */
-  async pick(window: BrowserWindow, id: string): Promise<void> {
-    const entry = this.#surfaces.get(id)
-    if (entry?.window !== window || !entry.attached) return
+  async pick(window: BrowserWindow, id: string, sessionId?: string): Promise<void> {
+    const entry = this.#ownedView(window, id, sessionId)
+    if (!entry?.attached) return
     const contents = entry.view.webContents
     const url = contents.getURL()
-    if (!allowed(url, false)) return
+    if (!allowsWorkbenchBrowserAddress(url, false)) return
     const version = ++entry.pickVersion
     contents.focus()
     const result: unknown = await contents.executeJavaScriptInIsolatedWorld(
@@ -265,6 +273,7 @@ export class WorkbenchBrowsers {
     this.#send(window, {
       type: "browser-context",
       id,
+      ...(entry.agent ? { sessionId: entry.agent.sessionId } : {}),
       element: {
         url,
         selector: selected.selector.slice(0, 500),
@@ -274,37 +283,50 @@ export class WorkbenchBrowsers {
   }
 
   /** 从主窗口移除并销毁指定标签的 Chromium 内容。 */
-  close(window: BrowserWindow, id: string): void {
-    const entry = this.#surfaces.get(id)
-    if (entry?.window !== window) return
+  async close(window: BrowserWindow, id: string, sessionId?: string): Promise<void> {
+    const entry = this.#ownedView(window, id, sessionId)
+    if (entry) await this.#closeSurface(id, entry)
+  }
+
+  async #closeSurface(id: string, entry: Surface): Promise<void> {
     this.#surfaces.delete(id)
-    if (!window.isDestroyed() && entry.attached) window.contentView.removeChildView(entry.view)
+    this.#detach(entry)
     if (!entry.view.webContents.isDestroyed()) entry.view.webContents.close()
-    if (entry.agent) {
-      this.#send(window, { type: "browser-close", id })
-      void agentSession(id)
-        .clearStorageData()
-        .catch(() => undefined)
-    }
+    const agent = entry.agent
+    if (!agent) return
+    this.#send(entry.window, { type: "browser-close", id, sessionId: agent.sessionId })
+    const clearing = Promise.allSettled([
+      agent.partition.clearStorageData(),
+      agent.partition.clearCache(),
+    ]).then(() => {
+      this.#clearing.delete(id)
+    })
+    this.#clearing.set(id, clearing)
+    await clearing
   }
 
   /** 关闭一个会话的 Agent 浏览器并清空它的分区数据；这个会话没开过浏览器时什么也不做。 */
-  closeAgent(id: string): void {
+  async closeAgent(id: string): Promise<void> {
     const entry = this.#surfaces.get(id)
-    if (!entry?.agent) return
-    this.close(entry.window, id)
+    if (entry?.agent) await this.#closeSurface(id, entry)
+    else await this.#clearing.get(id)
   }
 
   /** 关闭属于该主窗口的标签和独立预览。 */
-  closeWindow(window: BrowserWindow): void {
-    for (const id of this.#surfaces.keys()) this.close(window, id)
+  async closeWindow(window: BrowserWindow): Promise<void> {
+    this.#activeSessions.delete(window)
     for (const [preview, owner] of this.#previews) if (owner === window) preview.destroy()
+    await Promise.all(
+      [...this.#surfaces].flatMap(([id, entry]) =>
+        entry.window === window ? [this.#closeSurface(id, entry)] : [],
+      ),
+    )
   }
 
   /** 在独立沙箱窗口预览本机开发地址。 */
   async preview(window: BrowserWindow, input: unknown): Promise<{ id: string }> {
     const url = workbenchBrowserUrl(input)
-    if (!loopback.has(url.hostname)) throw new Error("PREVIEW_URL_NOT_ALLOWED")
+    if (!allowsWorkbenchBrowserAddress(url.href, true)) throw new Error("PREVIEW_URL_NOT_ALLOWED")
     const preview = new BrowserWindow({
       width: 1100,
       height: 760,
@@ -334,15 +356,52 @@ export class WorkbenchBrowsers {
     await shell.openExternal(workbenchBrowserUrl(input).href)
   }
 
-  #entry(window: BrowserWindow, id: string, agent = false): Surface {
+  #ownedView(
+    window: BrowserWindow,
+    id: string,
+    sessionId?: string,
+    visible = true,
+  ): Surface | undefined {
+    const entry = this.#surfaces.get(id)
+    return entry?.window === window &&
+      entry.agent?.sessionId === sessionId &&
+      (!visible || sessionId === undefined || this.#activeSessions.get(window) === sessionId)
+      ? entry
+      : undefined
+  }
+
+  #detach(entry: Surface): void {
+    if (!entry.attached) return
+    entry.pickVersion += 1
+    entry.attached = false
+    if (!entry.window.isDestroyed()) entry.window.contentView.removeChildView(entry.view)
+  }
+
+  #isLive(id: string, entry: Surface): boolean {
+    return this.#surfaces.get(id) === entry && !entry.view.webContents.isDestroyed()
+  }
+
+  #entry(window: BrowserWindow, id: string, sessionId?: string): Surface {
     const existing = this.#surfaces.get(id)
-    if (existing?.window === window) {
-      if (agent && existing.agent === null) throw new Error("WORKBENCH_PREVIEW_FAILED")
-      return existing
-    }
-    if (existing || this.#surfaces.size >= maxBrowsers) throw new Error("WORKBENCH_BROWSER_LIMIT")
-    const partition = agent ? agentSession(id) : browserSession()
-    const network = agent ? installAgentBrowserNetwork(partition) : null
+    if (existing?.window === window && existing.agent?.sessionId === sessionId) return existing
+    if (
+      existing ||
+      this.#clearing.has(id) ||
+      id.startsWith(agentBrowserIdPrefix) !== (sessionId !== undefined)
+    )
+      throw new Error("WORKBENCH_PREVIEW_FAILED")
+    if (this.#surfaces.size + this.#clearing.size >= maxBrowsers)
+      throw new Error("WORKBENCH_BROWSER_LIMIT")
+    const partition = sessionId === undefined ? browserSession() : agentSession(id)
+    const agent =
+      sessionId === undefined
+        ? null
+        : {
+            sessionId,
+            network: installAgentBrowserNetwork(partition),
+            partition,
+            opened: false,
+          }
     const view = new WebContentsView({
       webPreferences: {
         session: partition,
@@ -359,14 +418,13 @@ export class WorkbenchBrowsers {
       pickVersion: 0,
       attached: false,
       scale: 1,
-      agent: network,
-      references: network ? new BrowserReferences(contents) : null,
+      agent: agent ? { ...agent, references: new BrowserReferences(contents) } : null,
     }
     this.#surfaces.set(id, entry)
-    configureContents(contents, agent, network ?? undefined, (url) => {
+    configureContents(contents, agent !== null, agent?.network, (url) => {
       queueMicrotask(() => {
-        if (this.#surfaces.get(id) === entry)
-          void this.navigate(window, id, url).catch(() => undefined)
+        if (this.#isLive(id, entry))
+          void this.#navigate(id, entry, workbenchAgentBrowserUrl(url)).catch(() => undefined)
       })
     })
     const publish = () => this.#publish(id, entry)
@@ -396,21 +454,26 @@ export class WorkbenchBrowsers {
   }
 
   #publish(id: string, entry: Surface): void {
-    const contents = entry.view.webContents
-    if (this.#surfaces.get(id) !== entry || contents.isDestroyed()) return
+    if (!this.#isLive(id, entry)) return
     this.#send(entry.window, {
       type: "browser-page",
       id,
-      page: {
-        url: contents.getURL() || entry.error?.url || "",
-        title: contents.getTitle(),
-        loading: contents.isLoading(),
-        canGoBack: contents.navigationHistory.canGoBack(),
-        canGoForward: contents.navigationHistory.canGoForward(),
-        ...(entry.error ? { error: entry.error } : {}),
-        ...(entry.crashed ? { crashed: entry.crashed } : {}),
-      },
+      ...(entry.agent ? { sessionId: entry.agent.sessionId } : {}),
+      page: this.#page(entry),
     })
+  }
+
+  #page(entry: Surface): WorkbenchBrowserPage {
+    const contents = entry.view.webContents
+    return {
+      url: contents.getURL() || entry.error?.url || "",
+      title: contents.getTitle(),
+      loading: contents.isLoading(),
+      canGoBack: contents.navigationHistory.canGoBack(),
+      canGoForward: contents.navigationHistory.canGoForward(),
+      ...(entry.error ? { error: entry.error } : {}),
+      ...(entry.crashed ? { crashed: entry.crashed } : {}),
+    }
   }
 
   #send(window: BrowserWindow, event: WorkbenchEvent): void {
@@ -419,29 +482,3 @@ export class WorkbenchBrowsers {
     }
   }
 }
-
-const elementPicker = `new Promise((resolve) => {
-  const cancelKey = (event) => { if (event.key === "Escape") finish(null) };
-  const select = (event) => {
-    if (!(event.target instanceof Element)) return finish(null);
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    const element = event.target;
-    const path = [];
-    for (let item = element; item && path.length < 5; item = item.parentElement) {
-      if (item.id) { path.unshift("#" + CSS.escape(item.id)); break; }
-      const index = item.parentElement ? Array.from(item.parentElement.children).indexOf(item) + 1 : 1;
-      path.unshift(item.localName + ":nth-child(" + index + ")");
-    }
-    finish({ selector: path.join(" > "), text: (element.textContent || "").trim().slice(0, 1000) });
-  };
-  const timer = setTimeout(() => finish(null), 15000);
-  function finish(value) {
-    clearTimeout(timer);
-    document.removeEventListener("click", select, true);
-    document.removeEventListener("keydown", cancelKey, true);
-    resolve(value);
-  }
-  document.addEventListener("click", select, true);
-  document.addEventListener("keydown", cancelKey, true);
-})`

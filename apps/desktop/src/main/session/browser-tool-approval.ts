@@ -25,7 +25,10 @@ export type BrowserApprovalPort = {
 
 /** 会话创建工作台服务时注入权限代理；无人值守时根本不注册。 */
 export type BrowserToolRegistration = {
-  create(approval: BrowserApprovalPort): Record<string, McpSdkServerConfigWithInstance>
+  create(
+    approval: BrowserApprovalPort,
+    sessionId: string,
+  ): Record<string, McpSdkServerConfigWithInstance>
   unattended?: boolean
 }
 

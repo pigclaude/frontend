@@ -1,6 +1,7 @@
 // 负责验证会话浏览器工具：审批策略按 SDK 字段声明、页面按会话隔离、失败时返回错误内容而不抛出。
 import { randomUUID } from "node:crypto"
 import { mkdtemp, rm } from "node:fs/promises"
+import { randomUUID } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type {
@@ -8,17 +9,17 @@ import type {
   createSdkMcpServer,
   McpSdkServerConfigWithInstance,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Client } from "@modelcontextprotocol/sdk/client/index.js"
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import type { WebContents } from "electron"
+import type { AgentBrowserScope } from "../../workbench-contract"
 import type { BrowserApprovalPort } from "../session/browser-tool-approval"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ClaudeAgentAdapter } from "../session/claude-agent-adapter"
 import { FakeQuery } from "../session/claude-agent-adapter-fixtures"
 import { createHarness } from "../session/session-host-fixtures"
 import type { SessionPermissionMode } from "../session/session-types"
+import { connectBrowserClient, withoutAttribution } from "./browser-approval-mcp-fixture"
 import type { WorkbenchBrowsers } from "./browser-surface"
-import { browserSessionTools } from "./browser-tools"
+import { browserSessionTools as createBrowserSessionTools } from "./browser-tools"
 
 type CreateSdkMcpServerOptions = Parameters<typeof createSdkMcpServer>[0]
 
@@ -59,6 +60,19 @@ function browsers(agentPage: WorkbenchBrowsers["agentPage"]): WorkbenchBrowsers 
   return { agentPage } as unknown as WorkbenchBrowsers
 }
 
+function browserSessionTools(
+  contents: WebContents,
+  views: WorkbenchBrowsers,
+  canUse: () => boolean,
+  approval: BrowserApprovalPort,
+  sessionId = "session-test",
+) {
+  return createBrowserSessionTools(contents, views, canUse, approval, {
+    id: "agent-" + randomUUID(),
+    sessionId,
+  })
+}
+
 async function call(
   name: string,
   args: Record<string, unknown> = {},
@@ -75,6 +89,16 @@ beforeEach(() => {
 })
 
 describe("browser session tools", () => {
+  it("tells the model which resource limit prevented the approved browser from opening", async () => {
+    const view = vi.fn(async () => {
+      throw new Error("WORKBENCH_BROWSER_LIMIT")
+    })
+    browserSessionTools(owner(), browsers(view), () => true, approved)
+    const result = await call("browser_open", { url: target })
+    expect(result.isError).toBe(true)
+    expect(result.content[0]?.text).toMatch(/12.+Close a browser tab/)
+  })
+
   it("does not touch the page until the invocation has been approved", async () => {
     let answer: (allow: boolean) => void = () => undefined
     const request = vi.fn(
@@ -126,7 +150,7 @@ describe("browser session tools", () => {
 
   it("opens the requested page and reads it back in the same session browser", async () => {
     const contents = owner()
-    const agentPage = vi.fn(async (_window: unknown, _id: string, url?: string) =>
+    const agentPage = vi.fn(async (_window: unknown, _scope: AgentBrowserScope, url?: string) =>
       url ? `Opened ${url}` : "Current page",
     )
     browserSessionTools(contents, browsers(agentPage), () => true, approved)
@@ -139,8 +163,11 @@ describe("browser session tools", () => {
     })
     const [first, second] = agentPage.mock.calls
     expect(first?.[0]).toBe(windows.get(contents))
-    expect(first?.[1]).toMatch(/^[0-9a-f-]{36}$/)
-    expect(second?.[1]).toBe(first?.[1])
+    expect(first?.[1]).toMatchObject({
+      id: expect.stringMatching(/^agent-[0-9a-f-]{36}$/),
+      sessionId: "session-test",
+    })
+    expect(second?.[1]).toEqual(first?.[1])
     expect(second?.[2]).toBeUndefined()
   })
 
@@ -228,7 +255,8 @@ async function startBrowserSession(permissionMode: SessionPermissionMode, unatte
     {
       browser: {
         unattended,
-        create: (approval) => browserSessionTools(contents, browsers(view), () => true, approval),
+        create: (approval, id) =>
+          browserSessionTools(contents, browsers(view), () => true, approval, id),
       },
       close: () => undefined,
     },
@@ -242,7 +270,7 @@ async function startBrowserSession(permissionMode: SessionPermissionMode, unatte
     view,
     query,
     hasBrowser: sdk.browser !== undefined,
-    connect: () => connectBrowserClient(sdk.browser),
+    connect: () => connectBrowserClient(sdk.browser, (close) => approvals.push(close)),
     canUseTool,
     cards,
     respond: async (decision: "allow" | "deny") => {
@@ -282,6 +310,14 @@ describe("browser tools through a session with a fake SDK", () => {
       }
       await session.respond("allow")
       expect(await first).toEqual({ content: [{ type: "text", text: "local page text" }] })
+      expect(session.view).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({
+          id: expect.stringMatching(/^agent-/),
+          sessionId: session.sessionId,
+        }),
+        target,
+      )
 
       const second = call("browser_open", { url: target })
       expect(session.cards()).toHaveLength(2)
@@ -446,30 +482,3 @@ it("浏览器通过真实 MCP 为并发同参数审批保留一次性、按会�
   expect(session.view).toHaveBeenCalledTimes(1)
   await withoutAttribution(client, session, open(1))
 })
-
-async function connectBrowserClient(server: McpSdkServerConfigWithInstance | undefined) {
-  if (!server) throw new Error("缺少进程内浏览器工具服务")
-  const client = new Client({ name: "browser-approval-fixture", version: "1" })
-  const [remote, local] = InMemoryTransport.createLinkedPair()
-  approvals.push(async () => {
-    await client.close()
-    await server.instance.close()
-  })
-  await server.instance.connect(local)
-  await client.connect(remote)
-  return client
-}
-
-async function withoutAttribution(
-  client: Client,
-  session: Awaited<ReturnType<typeof startBrowserSession>>,
-  params: Parameters<Client["callTool"]>[0],
-): Promise<void> {
-  const count = session.cards().length
-  const call = client.callTool(params)
-  void call.catch(() => undefined)
-  await vi.waitFor(() => expect(session.cards()).toHaveLength(count + 1))
-  expect(session.cards()[count]?.subagent).toBeNull()
-  await session.respond("deny")
-  await expect(call).resolves.toMatchObject({ isError: true })
-}

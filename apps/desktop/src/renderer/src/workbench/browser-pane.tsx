@@ -3,7 +3,11 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { copyText, useLocale } from "@pigclaude/ui-primitives"
 import { requestComposerContext } from "@pigclaude/ui-composer"
 import { BrowserView, fitViewport, type BrowserViewport } from "@pigclaude/ui-workbench"
-import type { WorkbenchBridge, WorkbenchBrowserPage } from "../../../workbench-contract"
+import type {
+  AgentBrowserTab,
+  WorkbenchBridge,
+  WorkbenchBrowserPage,
+} from "../../../workbench-contract"
 import { useText } from "../locale/text"
 import { workbenchError } from "./workbench-errors"
 
@@ -19,15 +23,20 @@ type Props = {
   bridge: WorkbenchBridge
   id: string
   initialUrl?: string | undefined
+  agent?: AgentBrowserTab | undefined
   active: boolean
   onTitle: (title: string) => void
 }
 
 /** 显示一个浏览器标签，隐藏标签和应用弹层时移开原生视图。 */
-export function BrowserPane({ bridge, id, initialUrl, active, onTitle }: Props) {
+export function BrowserPane({ bridge, id, initialUrl, agent, active, onTitle }: Props) {
   const { t } = useLocale()
   const { t: text } = useText()
-  const [page, setPage] = useState(() => (initialUrl ? { ...blank, url: initialUrl } : blank))
+  const sessionId = agent?.sessionId
+  const scope = sessionId === undefined ? undefined : { id, sessionId }
+  const [page, setPage] = useState(
+    () => agent?.page ?? (initialUrl ? { ...blank, url: initialUrl } : blank),
+  )
   const [viewport, setViewport] = useState<BrowserViewport | null>(null)
   const [scale, setScale] = useState(1)
   const [error, setError] = useState<string | null>(null)
@@ -35,16 +44,18 @@ export function BrowserPane({ bridge, id, initialUrl, active, onTitle }: Props) 
   const slot = useRef<HTMLDivElement>(null)
   const title = useRef(onTitle)
   title.current = onTitle
+  const visible = useRef(active)
+  visible.current = active
 
   useEffect(
     () =>
       bridge.subscribe((event) => {
         if (event.id !== id) return
-        if (event.type === "browser-page") {
+        if (event.type === "browser-page" && event.sessionId === sessionId) {
           setPage(event.page)
           title.current(event.page.title || event.page.url || t("workbench.browser"))
         }
-        if (event.type === "browser-context") {
+        if (event.type === "browser-context" && event.sessionId === sessionId && visible.current) {
           const { selector, text: content, url } = event.element
           requestComposerContext({
             id: `browser:${id}:${selector}`,
@@ -54,21 +65,21 @@ export function BrowserPane({ bridge, id, initialUrl, active, onTitle }: Props) 
           })
         }
       }),
-    [bridge, id, t, text],
+    [bridge, id, sessionId, t, text],
   )
 
   useEffect(
     () => () => {
-      void bridge.browserClose(id).catch(() => undefined)
+      if (sessionId === undefined) void bridge.browserClose(id).catch(() => undefined)
     },
-    [bridge, id],
+    [bridge, id, sessionId],
   )
 
   const renderPage = active && page.url !== "" && !page.error && !page.crashed
   useLayoutEffect(() => {
     const element = slot.current
     if (!renderPage || !element) {
-      void bridge.browserPresent(id, null).catch(() => undefined)
+      void bridge.browserPresent(id, null, sessionId).catch(() => undefined)
       return
     }
     let frame = 0
@@ -97,7 +108,7 @@ export function BrowserPane({ bridge, id, initialUrl, active, onTitle }: Props) 
         const key = JSON.stringify(bounds)
         if (key === previous) return
         previous = key
-        void bridge.browserPresent(id, bounds).catch(() => undefined)
+        void bridge.browserPresent(id, bounds, sessionId).catch(() => undefined)
       })
     }
     const observer = new ResizeObserver(measure)
@@ -118,9 +129,9 @@ export function BrowserPane({ bridge, id, initialUrl, active, onTitle }: Props) 
       observer.disconnect()
       mutations.disconnect()
       window.removeEventListener("resize", measure)
-      void bridge.browserPresent(id, null).catch(() => undefined)
+      void bridge.browserPresent(id, null, sessionId).catch(() => undefined)
     }
-  }, [bridge, id, renderPage, viewport])
+  }, [bridge, id, sessionId, renderPage, viewport])
 
   function run(action: Promise<unknown>): void {
     setError(null)
@@ -139,26 +150,26 @@ export function BrowserPane({ bridge, id, initialUrl, active, onTitle }: Props) 
         viewport={viewport}
         viewportScale={scale}
         picking={picking}
-        onNavigate={(url) => run(bridge.browserNavigate(id, url))}
-        onBack={() => run(bridge.browserCommand(id, "back"))}
-        onForward={() => run(bridge.browserCommand(id, "forward"))}
-        onReload={() => run(bridge.browserCommand(id, "reload"))}
-        onStop={() => run(bridge.browserCommand(id, "stop"))}
+        onNavigate={(url) => run(bridge.browserNavigate(id, url, sessionId))}
+        onBack={() => run(bridge.browserCommand(id, "back", sessionId))}
+        onForward={() => run(bridge.browserCommand(id, "forward", sessionId))}
+        onReload={() => run(bridge.browserCommand(id, "reload", sessionId))}
+        onStop={() => run(bridge.browserCommand(id, "stop", sessionId))}
         onViewportChange={setViewport}
-        onOpenDevTools={() => run(bridge.browserCommand(id, "devtools"))}
-        onOpenDefault={(url) => run(bridge.browserExternal(url))}
+        onOpenDevTools={() => run(bridge.browserCommand(id, "devtools", sessionId))}
+        onOpenDefault={(url) => run(bridge.browserExternal(url, scope))}
         onCopyUrl={(url) => run(copyText(url))}
         onTogglePicker={() => {
           if (picking || !renderPage) return
           setPicking(true)
           void bridge
-            .browserPick(id)
+            .browserPick(id, sessionId)
             .catch((failure: unknown) => {
               setError(workbenchError(failure, text))
             })
             .finally(() => setPicking(false))
         }}
-        openExternal={bridge.previewOpen}
+        openExternal={(url) => bridge.previewOpen(url, scope)}
         slot={<div className="browser-slot" ref={slot} />}
       />
     </>

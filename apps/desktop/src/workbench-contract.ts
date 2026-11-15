@@ -80,6 +80,15 @@ export type WorkbenchBrowserAction = "back" | "forward" | "reload" | "stop" | "d
 /** 页面选择器只返回用户选中的元素信息。 */
 export type WorkbenchBrowserElement = { selector: string; text: string; url: string }
 
+/** Agent 标签 ID 的前缀；即使标签已回收，也不得按普通浏览器重新创建。 */
+export const agentBrowserIdPrefix = "agent-"
+
+/** 会话宿主为一次启动分配的 Agent 浏览器标签。 */
+export type AgentBrowserScope = { id: string; sessionId: string }
+
+/** 从主进程读取的当前会话浏览器标签及其最新页面状态。 */
+export type AgentBrowserTab = AgentBrowserScope & { page: WorkbenchBrowserPage }
+
 /** 终端打开后的公开信息，用于展示 shell 名称与工作目录。 */
 export type WorkbenchTerminalInfo = { shell: string; cwd: string }
 
@@ -88,10 +97,10 @@ export type WorkbenchEvent =
   | { type: "terminal-data"; id: string; data: string }
   | { type: "terminal-exit"; id: string; exitCode: number }
   | { type: "checkpoints-changed"; id: string }
-  | { type: "browser-page"; id: string; page: WorkbenchBrowserPage }
-  | { type: "browser-open"; id: string; url: string }
-  | { type: "browser-close"; id: string }
-  | { type: "browser-context"; id: string; element: WorkbenchBrowserElement }
+  | { type: "browser-page"; id: string; page: WorkbenchBrowserPage; sessionId?: string }
+  | { type: "browser-open"; id: string; sessionId: string; url: string }
+  | { type: "browser-close"; id: string; sessionId: string }
+  | { type: "browser-context"; id: string; element: WorkbenchBrowserElement; sessionId?: string }
   | { type: "unsaved-files"; id: string; action: "save" | "discard" }
 
 /** 渲染进程可使用的工作区能力，文件路径均相对已添加的项目目录。 */
@@ -142,12 +151,20 @@ export type WorkbenchBridge = {
   terminalWrite: (id: string, data: string) => Promise<void>
   terminalResize: (id: string, cols: number, rows: number) => Promise<void>
   terminalClose: (id: string) => Promise<void>
-  browserNavigate: (id: string, url: string) => Promise<void>
-  browserCommand: (id: string, action: WorkbenchBrowserAction) => Promise<void>
-  browserPresent: (id: string, bounds: WorkbenchBrowserBounds | null) => Promise<void>
-  browserPick: (id: string) => Promise<void>
-  browserClose: (id: string) => Promise<void>
-  browserExternal: (url: string) => Promise<void>
-  previewOpen: (url: string) => Promise<{ id: string }>
+  /** 设置当前允许显示和操作 Agent 浏览器的会话；隐藏或显示草稿时传 null。 */
+  browserSetActiveSession: (sessionId: string | null) => Promise<void>
+  /** 查询这个会话实际拥有的已打开浏览器。 */
+  browserListAgentTabs: (sessionId: string) => Promise<AgentBrowserTab[]>
+  browserNavigate: (id: string, url: string, sessionId?: string) => Promise<void>
+  browserCommand: (id: string, action: WorkbenchBrowserAction, sessionId?: string) => Promise<void>
+  browserPresent: (
+    id: string,
+    bounds: WorkbenchBrowserBounds | null,
+    sessionId?: string,
+  ) => Promise<void>
+  browserPick: (id: string, sessionId?: string) => Promise<void>
+  browserClose: (id: string, sessionId?: string) => Promise<void>
+  browserExternal: (url: string, scope?: AgentBrowserScope) => Promise<void>
+  previewOpen: (url: string, scope?: AgentBrowserScope) => Promise<{ id: string }>
   subscribe: (listener: (event: WorkbenchEvent) => void) => () => void
 }

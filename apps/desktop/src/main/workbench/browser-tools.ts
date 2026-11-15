@@ -1,5 +1,4 @@
 // 提供会话专用的本机预览工具；每次调用先由会话的权限代理审批。
-import { randomUUID } from "node:crypto"
 import { BrowserWindow, type WebContents } from "electron"
 import {
   createSdkMcpServer,
@@ -9,19 +8,21 @@ import {
 } from "@anthropic-ai/claude-agent-sdk"
 import { z } from "zod"
 import type { BrowserPermissionContext } from "../../browser-permission-contract"
+import type { AgentBrowserScope } from "../../workbench-contract"
 import { workbenchBrowserServer, type BrowserApprovalPort } from "../session/browser-tool-approval"
-import { workbenchAgentBrowserUrl, type WorkbenchBrowsers } from "./browser-surface"
+import { workbenchAgentBrowserUrl } from "./browser-navigation-policy"
+import type { WorkbenchBrowsers } from "./browser-surface"
 
 /**
  * 将浏览器工具限定到此次会话的主窗口和临时浏览器；不共享个人浏览器会话，每个工具调用前都询问宿主。
- * id 是这个会话的浏览器标签 id，关闭时用它找到这个会话的浏览器。
+ * scope 由会话启动时绑定；停放和续接不会共用上一次的浏览器标签。
  */
 export function browserSessionTools(
   owner: WebContents,
   browsers: WorkbenchBrowsers,
   canUse: () => boolean,
   approval: BrowserApprovalPort,
-  id: string = randomUUID(),
+  scope: AgentBrowserScope,
 ): Record<string, McpSdkServerConfigWithInstance> {
   async function run(context: BrowserPermissionContext, extra: unknown) {
     const invocation = record(extra)
@@ -37,12 +38,17 @@ export function browserSessionTools(
       if (owner.isDestroyed() || !canUse() || signal?.aborted) return unavailable()
       const content = await browsers.agentPage(
         window,
-        id,
+        scope,
         context.kind === "open" ? context.url : undefined,
       )
       if (owner.isDestroyed() || !canUse() || signal?.aborted) return unavailable()
       return { content: [{ type: "text" as const, text: content }] }
-    } catch {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.message === "WORKBENCH_BROWSER_LIMIT") {
+        return failure(
+          "The shared limit of 12 workbench browsers is reached. Close a browser tab and try again.",
+        )
+      }
       return unavailable()
     }
   }

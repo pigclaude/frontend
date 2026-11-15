@@ -1,28 +1,33 @@
 // 在真实 Electron 中从工作台打开合成回环页，核对 Agent 分区、阻断计数和同标签打开。
 
 import { execFile } from "node:child_process"
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { promisify } from "node:util"
 import ts from "typescript"
 
 const require = createRequire(new URL("../../apps/desktop/package.json", import.meta.url))
 const temp = await mkdtemp(join(tmpdir(), "pigclaude-native-agent-browser-"))
 const files = [
-  "agent-browser-network",
-  "browser-references",
-  "browser-snapshot-world",
-  "browser-surface",
+  "main/workbench/agent-browser-network",
+  "main/workbench/browser-element-picker",
+  "main/workbench/browser-navigation-policy",
+  "main/workbench/browser-references",
+  "main/workbench/browser-snapshot-world",
+  "main/workbench/browser-surface",
+  "workbench-contract",
 ]
 try {
   for (const file of files) {
-    const original = new URL(`../../apps/desktop/src/main/workbench/${file}.ts`, import.meta.url)
+    const original = new URL(`../../apps/desktop/src/${file}.ts`, import.meta.url)
+    const target = join(temp, file + ".js")
     const compiled = ts.transpileModule(await readFile(original, "utf8"), {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
     })
-    await writeFile(join(temp, file + ".js"), compiled.outputText)
+    await mkdir(dirname(target), { recursive: true })
+    await writeFile(target, compiled.outputText)
   }
   await writeFile(join(temp, "package.json"), '{"type":"commonjs"}')
   await writeFile(

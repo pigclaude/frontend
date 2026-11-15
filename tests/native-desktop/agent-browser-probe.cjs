@@ -6,8 +6,8 @@ const { networkInterfaces } = require("node:os")
 const { mkdirSync } = require("node:fs")
 const { join } = require("node:path")
 const assert = require("node:assert/strict")
-const { WorkbenchBrowsers } = require("./browser-surface.js")
-const { configureAgentBrowserRuntime } = require("./agent-browser-network.js")
+const { WorkbenchBrowsers } = require("./main/workbench/browser-surface.js")
+const { configureAgentBrowserRuntime } = require("./main/workbench/agent-browser-network.js")
 
 configureAgentBrowserRuntime(app.commandLine)
 
@@ -81,7 +81,7 @@ async function verifyPostPopupBlocked() {
     assert.equal(BrowserWindow.getAllWindows().length, 1)
     process.stdout.write("PASS Agent POST popup blocked without a target request\n")
   } finally {
-    browsers.closeWindow(owner)
+    await browsers.closeWindow(owner)
     owner.destroy()
     site.close()
   }
@@ -116,18 +116,18 @@ async function verifyMalformedAllowlistBlocked() {
   })
   const owner = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
   const browsers = new WorkbenchBrowsers()
-  const id = "agent-malformed-policy-probe"
+  const scope = { id: "agent-malformed-policy-probe", sessionId: "malformed-policy-session" }
   try {
     for (const path of policies.keys()) {
-      await browsers.agentPage(owner, id, site.url + path)
+      await browsers.agentPage(owner, scope, site.url + path)
       const status = await readFixtureResult(
-        async () => JSON.parse(await browsers.agentPage(owner, id)).text,
+        async () => JSON.parse(await browsers.agentPage(owner, scope)).text,
       )
       assert.equal(status, "NotAllowedError", path)
     }
     process.stdout.write("PASS Agent malformed Connection-Allowlist fails closed\n")
   } finally {
-    browsers.closeWindow(owner)
+    await browsers.closeWindow(owner)
     owner.destroy()
     site.close()
   }
@@ -190,7 +190,7 @@ async function verifyAgentWebRtcBlocked() {
   })
   const owner = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
   const browsers = new WorkbenchBrowsers()
-  const id = "agent-webrtc-policy-probe"
+  const scope = { id: "agent-webrtc-policy-probe", sessionId: "webrtc-policy-session" }
   const normal = {
     main: "NotAllowedError",
     blank: "NotAllowedError",
@@ -202,12 +202,12 @@ async function verifyAgentWebRtcBlocked() {
     worker: "denied",
   }
   try {
-    const readAgent = async () => JSON.parse(await browsers.agentPage(owner, id)).text
-    await browsers.agentPage(owner, id, site.url + "/agent")
+    const readAgent = async () => JSON.parse(await browsers.agentPage(owner, scope)).text
+    await browsers.agentPage(owner, scope, site.url + "/agent")
     assert.deepEqual(await readFixtureResult(readAgent), normal)
-    await browsers.agentPage(owner, id, site.url + "/strict")
+    await browsers.agentPage(owner, scope, site.url + "/strict")
     assert.deepEqual(await readFixtureResult(readAgent), { ...normal, cross: "denied" })
-    await browsers.agentPage(owner, id, site.url + "/module")
+    await browsers.agentPage(owner, scope, site.url + "/module")
     assert.deepEqual(await readFixtureResult(readAgent), normal)
     assert.equal(agentWorkerRequests, 0)
 
@@ -239,7 +239,7 @@ async function verifyAgentWebRtcBlocked() {
       "PASS Agent native WebRTC and service worker restrictions, isolated from personal pages\n",
     )
   } finally {
-    browsers.closeWindow(owner)
+    await browsers.closeWindow(owner)
     owner.destroy()
     site.close()
     cross.close()
@@ -314,9 +314,9 @@ async function probe() {
   })
   const owner = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
   const browsers = new WorkbenchBrowsers()
-  const id = "agent-network-probe"
+  const scope = { id: "agent-network-probe", sessionId: "network-session" }
   try {
-    const first = JSON.parse(await browsers.agentPage(owner, id, initial.url))
+    const first = JSON.parse(await browsers.agentPage(owner, scope, initial.url))
     assert.equal(first.title, "Initial loopback")
     assert(first.blockedRequests >= 2)
     for (let index = 0; index < 20 && downloadsRequested === 0; index += 1)
@@ -325,21 +325,21 @@ async function probe() {
     const last = await waitForSnapshot(
       browsers,
       owner,
-      id,
+      scope,
       (page) => page.title === "Second loopback",
     )
     assert.equal(last.title, "Second loopback")
     assert.equal(last.url, next.url + "/")
     assert.equal(downloadsRequested, 1)
     assert(last.blockedRequests >= 3)
-    await assert.rejects(browsers.agentPage(owner, id, initial.url + "/redirect"))
+    await assert.rejects(browsers.agentPage(owner, scope, initial.url + "/redirect"))
     assert.equal(blockedTargetHits, 0)
     assert.equal(BrowserWindow.getAllWindows().length, 1)
     process.stdout.write(
       "PASS agent loopback partition, subresources, downloads and same-tab navigation\n",
     )
   } finally {
-    browsers.closeWindow(owner)
+    await browsers.closeWindow(owner)
     owner.destroy()
     initial.close()
     next.close()
@@ -347,9 +347,9 @@ async function probe() {
   }
 }
 
-async function waitForSnapshot(browsers, owner, id, condition) {
+async function waitForSnapshot(browsers, owner, scope, condition) {
   for (let index = 0; index < 40; index += 1) {
-    const previous = await browsers.agentPage(owner, id).then(JSON.parse, () => null)
+    const previous = await browsers.agentPage(owner, scope).then(JSON.parse, () => null)
     if (previous && condition(previous)) return previous
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
@@ -417,11 +417,18 @@ async function snapshotProbe() {
   })
   const owner = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
   const browsers = new WorkbenchBrowsers()
-  const id = "agent-snapshot-probe"
+  const scope = { id: "agent-snapshot-probe", sessionId: "snapshot-session" }
+  const other = { id: "agent-other-snapshot-probe", sessionId: "other-snapshot-session" }
   try {
-    await browsers.agentPage(owner, id, local.url + "/first")
-    browsers.present(owner, id, { x: 0, y: 0, width: 800, height: 600, scale: 1 })
-    const initial = JSON.parse(await browsers.agentPage(owner, id))
+    await browsers.agentPage(owner, scope, local.url + "/first")
+    browsers.setActiveSession(owner, scope.sessionId)
+    browsers.present(
+      owner,
+      scope.id,
+      { x: 0, y: 0, width: 800, height: 600, scale: 1 },
+      scope.sessionId,
+    )
+    const initial = JSON.parse(await browsers.agentPage(owner, scope))
     assert.equal(initial.url, local.url + "/first")
     assert.equal(initial.title, "Ref test page")
     assert.deepEqual(initial.headings, [
@@ -444,13 +451,24 @@ async function snapshotProbe() {
     const original = initial.elements.find((element) => element.name === "Original action")
     assert(original)
     assert(original.ref && original.ref !== "forged-ref")
-    await assert.rejects(browsers.agentElement(owner, id, "forged-ref"), /new browser snapshot/i)
+    await assert.rejects(browsers.agentElement(owner, scope, "forged-ref"), /new browser snapshot/i)
+    await assert.rejects(
+      browsers.agentElement(owner, { ...scope, sessionId: other.sessionId }, original.ref),
+      /new browser snapshot/i,
+    )
+    await browsers.agentPage(owner, other, local.url + "/other-session")
+    const otherSnapshot = JSON.parse(await browsers.agentPage(owner, other))
+    const otherRef = otherSnapshot.elements.find(
+      (element) => element.name === "Original action",
+    )?.ref
+    assert(otherRef && otherRef !== original.ref)
+    await assert.rejects(browsers.agentElement(owner, other, original.ref), /new browser snapshot/i)
 
     change = { ref: original.ref, navigate: false }
     const changed = await waitForSnapshot(
       browsers,
       owner,
-      id,
+      scope,
       (page) =>
         page.title === "Page attributes changed" || page.title === "Page reached reference table",
     )
@@ -459,7 +477,7 @@ async function snapshotProbe() {
       changed.elements.find((element) => element.name === "Original action")?.ref,
       original.ref,
     )
-    assert.equal((await browsers.agentElement(owner, id, original.ref)).name, "Original action")
+    assert.equal((await browsers.agentElement(owner, scope, original.ref)).name, "Original action")
     assert.notEqual(
       changed.elements.find((element) => element.name === "Decoy action")?.ref,
       original.ref,
@@ -469,21 +487,24 @@ async function snapshotProbe() {
     const navigated = await waitForSnapshot(
       browsers,
       owner,
-      id,
+      scope,
       (page) => page.url === local.url + "/changed",
     )
     const newRef = navigated.elements.find((element) => element.name === "Original action")?.ref
     assert(newRef && newRef !== original.ref)
-    await assert.rejects(browsers.agentElement(owner, id, original.ref), /new browser snapshot/i)
-    assert.equal((await browsers.agentElement(owner, id, newRef)).name, "Original action")
+    await assert.rejects(browsers.agentElement(owner, scope, original.ref), /new browser snapshot/i)
+    assert.equal((await browsers.agentElement(owner, scope, newRef)).name, "Original action")
 
-    await browsers.agentPage(owner, id, local.url + "/fresh-document")
-    await assert.rejects(browsers.agentElement(owner, id, newRef), /new browser snapshot/i)
+    await browsers.agentPage(owner, scope, local.url + "/fresh-document")
+    await assert.rejects(browsers.agentElement(owner, scope, newRef), /new browser snapshot/i)
+    await browsers.closeAgent(scope.id)
+    await assert.rejects(browsers.agentElement(owner, scope, newRef), /new browser snapshot/i)
+    assert.equal((await browsers.agentElement(owner, other, otherRef)).name, "Original action")
     process.stdout.write(
-      "PASS agent snapshot heading levels, isolated refs and navigation invalidation\n",
+      "PASS agent snapshot heading levels, isolated refs, navigation and session ownership\n",
     )
   } finally {
-    browsers.closeWindow(owner)
+    await browsers.closeWindow(owner)
     owner.destroy()
     local.close()
   }

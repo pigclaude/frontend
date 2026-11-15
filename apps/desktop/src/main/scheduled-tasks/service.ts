@@ -467,6 +467,7 @@ function completedRun(
     sessionId: outcome.sessionId ?? null,
     accountId: outcome.accountId ?? null,
     deniedApprovals: outcome.deniedApprovals ?? 0,
+    ...(outcome.sessionNoticeHandled === true ? { sessionNoticeHandled: true } : {}),
     finishedAt: timestamp(Math.max(now, Date.parse(run.triggeredAt))),
   }
 }

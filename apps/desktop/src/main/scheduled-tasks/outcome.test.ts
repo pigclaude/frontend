@@ -39,6 +39,11 @@ it.each([
     outcome: null,
     expected: { status: "failed", reason: "EXECUTION_FAILED" },
   },
+  {
+    name: "现场会话已处理终态通知",
+    outcome: { status: "succeeded", sessionId: "fake-session", sessionNoticeHandled: true },
+    expected: { status: "succeeded", sessionId: "fake-session", sessionNoticeHandled: true },
+  },
 ])("$name 的运行结果落盘后仍能被新进程读取", async ({ outcome, expected }) => {
   const f = await fixture()
   f.run.mockResolvedValueOnce(outcome as unknown as ScheduledTaskOutcome)

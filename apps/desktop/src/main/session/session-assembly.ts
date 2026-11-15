@@ -36,6 +36,8 @@ export type SessionServices = {
   usage: UsageRecorder
   host: SessionHost | null
   projectPermissions: ProjectPermissionStore
+  /** 未打包的开发供应商自行鉴权，不占用 Claude 账号。 */
+  usesDevProvider: boolean
 }
 
 /** 创建用量记录器和会话宿主，并订阅会话事件。保证没有运行时时不创建会话宿主。 */
@@ -44,7 +46,9 @@ export function assembleSessionServices(input: SessionAssemblyInput): SessionSer
   const projectPermissions = new ProjectPermissionStore(
     join(input.userDataPath, "project-permissions.json"),
   )
-  if (input.runtime === null) return { usage, host: null, projectPermissions }
+  if (input.runtime === null)
+    return { usage, host: null, projectPermissions, usesDevProvider: false }
+  const devProvider = devProviderHostOptions(input.isPackaged, input.env)
   const host = new SessionHost({
     membership: input.membership,
     runtime: input.runtime,
@@ -56,9 +60,9 @@ export function assembleSessionServices(input: SessionAssemblyInput): SessionSer
     resolveProfile: (accountId, required) =>
       accountSessionProfile(input.store, accountId, input.systemLocale, required),
     ...(input.sessionStore === undefined ? {} : { sessionStore: input.sessionStore }),
-    ...devProviderHostOptions(input.isPackaged, input.env),
+    ...devProvider,
   })
   trackSessionCommandCatalogs(host)
   host.subscribe(input.onEvent)
-  return { usage, host, projectPermissions }
+  return { usage, host, projectPermissions, usesDevProvider: devProvider.provider !== undefined }
 }

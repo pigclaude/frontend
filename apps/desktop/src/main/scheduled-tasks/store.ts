@@ -53,6 +53,7 @@ const run = z.object({
   sessionId: id.nullable(),
   accountId: id.nullable(),
   deniedApprovals: z.number().int().nonnegative(),
+  sessionNoticeHandled: z.boolean().optional(),
 })
 const runOutcome = z.object({
   status: run.shape.status.exclude(["running"]),
@@ -60,6 +61,7 @@ const runOutcome = z.object({
   sessionId: run.shape.sessionId.catch(null),
   accountId: run.shape.accountId.catch(null),
   deniedApprovals: run.shape.deniedApprovals.catch(0),
+  sessionNoticeHandled: run.shape.sessionNoticeHandled.catch(undefined),
 })
 const savedTask = z
   .object({

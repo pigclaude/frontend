@@ -2,7 +2,8 @@
 
 /** 桌面退出过程中需要释放的资源。 */
 export type DesktopShutdownResources = {
-  stopBackgroundWork?: () => void
+  /** 同步停下调度，并可返回尚需等待落盘的后台运行记录。 */
+  stopBackgroundWork?: () => void | Promise<void>
   accounts?: () => Promise<void>
   sessions?: () => Promise<void>
   workbench?: () => Promise<void>
@@ -15,8 +16,8 @@ export type DesktopShutdownResources = {
 
 /** 先停后台调度并等待会话、账号和终端关闭，再释放它们依赖的服务。 */
 export async function shutdownDesktopResources(resources: DesktopShutdownResources): Promise<void> {
-  resources.stopBackgroundWork?.()
   const initial = await Promise.allSettled([
+    start(resources.stopBackgroundWork),
     start(resources.sessions),
     start(resources.accounts),
     start(resources.workbench),
@@ -31,6 +32,6 @@ export async function shutdownDesktopResources(resources: DesktopShutdownResourc
 }
 
 // Windows 的会话结束事件返回后系统可以终止进程。首批关停操作要在事件回调内开始。
-async function start(operation?: () => Promise<void>): Promise<void> {
+async function start(operation?: () => void | Promise<void>): Promise<void> {
   await operation?.()
 }

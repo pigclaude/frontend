@@ -41,6 +41,8 @@ export type ScheduledTaskRun = {
   sessionId: string | null
   accountId: string | null
   deniedApprovals: number
+  /** 本次终态已由现场会话信封通知时为 true。 */
+  sessionNoticeHandled?: boolean | undefined
 }
 
 /** 会话入口返回一次运行的最终结果。reason 用稳定代码交给界面和通知。 */
@@ -50,6 +52,8 @@ export type ScheduledTaskOutcome = {
   sessionId?: string | null
   accountId?: string | null
   deniedApprovals?: number
+  /** 本次确有终态信封时标记，避免调度观察者重复通知。 */
+  sessionNoticeHandled?: boolean | undefined
 }
 
 /** 托盘和退出确认可直接使用的任务摘要。 */

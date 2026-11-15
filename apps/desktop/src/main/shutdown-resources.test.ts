@@ -1,6 +1,7 @@
 // 验证应用退出时先关闭浏览器和授权资源，再关闭 Xray。
 
 import { expect, it, vi } from "vitest"
+import { setImmediate } from "node:timers/promises"
 import { shutdownDesktopResources } from "./shutdown-resources"
 import { deferred } from "./testing/profile-fixture"
 
@@ -8,9 +9,11 @@ it("stops background work, drains parallel resources, then releases dependent re
   const order: string[] = []
   const sessions = deferred<void>()
   const workbench = deferred<void>()
+  const background = deferred<void>()
   const shutdown = shutdownDesktopResources({
     stopBackgroundWork: () => {
       order.push("timers")
+      return background.promise
     },
     sessions: async () => {
       order.push("sessions")
@@ -44,6 +47,9 @@ it("stops background work, drains parallel resources, then releases dependent re
   await Promise.resolve()
   expect(order).toHaveLength(4)
   workbench.resolve()
+  await setImmediate()
+  expect(order).toHaveLength(4)
+  background.resolve()
   await shutdown
   expect(order.slice(4)).toEqual(["daemon and heartbeat", "proxy", "callback", "awake", "tray"])
 })

@@ -80,6 +80,7 @@ it("原样公布清单的 JSON Schema，完全访问时每次仍等待插件的�
   })
   expect(card.suggestions).toBeUndefined()
   expect(fixture.invoke).not.toHaveBeenCalled()
+  expect(fixture.capabilities).not.toHaveBeenCalled()
   await fixture.host.respondPermission(sessionId, { requestId: card.requestId, decision: "allow" })
   await expect(first).resolves.toEqual({ content: [{ type: "text", text: "标签 AB" }] })
   expect(fixture.invoke).toHaveBeenCalledWith(
@@ -88,7 +89,15 @@ it("原样公布清单的 JSON Schema，完全访问时每次仍等待插件的�
       operation: tool,
       input: { arguments: args, context: { sessionId, workspace: fixture.workspace } },
     },
-    expect.objectContaining({ signal: expect.any(AbortSignal), timeoutMs: 15_000 }),
+    expect.objectContaining({
+      signal: expect.any(AbortSignal),
+      timeoutMs: 15_000,
+      capabilities: fixture.scope,
+    }),
+  )
+  expect(fixture.capabilities).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({ manifest: expect.objectContaining({ id: pluginId }) }),
+    fixture.workspace,
   )
   expect(fixture.pluginNetwork).not.toHaveBeenCalled()
 
@@ -338,6 +347,10 @@ async function pluginFixture(persist = false) {
     .mockResolvedValue(true)
   let snapshots = [pluginSnapshot(directory)]
   const pluginNetwork = vi.fn<CapabilityPluginToolDependencies["pluginNetwork"]>()
+  const scope = { methods: [], request: vi.fn().mockResolvedValue(null) }
+  const capabilities = vi
+    .fn<NonNullable<CapabilityPluginToolDependencies["capabilities"]>>()
+    .mockReturnValue(scope)
   const store = persist ? await SessionStore.open({ root: join(directory, "sessions") }) : undefined
   const calls: Array<{ options: Options; sdk: FakeQuery }> = []
   const prompts: SDKUserMessage[] = []
@@ -349,6 +362,7 @@ async function pluginFixture(persist = false) {
       manager: { snapshotEnabled: async () => structuredClone(snapshots), canInvoke },
       sandbox: { invoke },
       pluginNetwork,
+      capabilities,
     },
     createAdapter: (onEvent) =>
       new ClaudeAgentAdapter({
@@ -377,6 +391,8 @@ async function pluginFixture(persist = false) {
     invoke,
     canInvoke,
     pluginNetwork,
+    capabilities,
+    scope,
     query,
     prompts,
     cards: () => fixture.events.filter((event) => event.type === "permission"),

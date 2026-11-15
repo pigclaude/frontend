@@ -8,10 +8,12 @@ import {
 type Reply = { type: "capability-result"; requestId: number } & (
   { ok: true; value: PluginSandboxJson } | { ok: false }
 )
+const maximumPendingCapabilities = 32
 
 /** 将当前端口收到的请求限定在主进程为当次调用核准的方法和信号内。 */
 export class PluginSandboxCapabilityPort {
   #lastRequestId = 0
+  #pending = 0
 
   /** 响应通过原调用的端口发送，信号结束时丢弃挂起的响应。 */
   constructor(
@@ -38,13 +40,21 @@ export class PluginSandboxCapabilityPort {
     const selected = this.scope.methods.find((name) => name === method)
     const frame = { type: "capability-result" as const, requestId }
     let reply: Reply = { ...frame, ok: false }
-    try {
-      if (selected !== undefined && Array.isArray(args) && isBoundedJson(args)) {
+    if (
+      selected !== undefined &&
+      this.#pending < maximumPendingCapabilities &&
+      isBoundedJson(args) &&
+      Array.isArray(args)
+    ) {
+      this.#pending += 1
+      try {
         const value = await this.scope.request(selected, args, this.signal)
         if (isBoundedJson(value)) reply = { ...frame, ok: true, value }
+      } catch {
+        // 不跨端口发送主进程异常或插件提供的字符串。
+      } finally {
+        this.#pending -= 1
       }
-    } catch {
-      // 不跨端口发送主进程异常或插件提供的字符串。
     }
     if (!this.signal.aborted) this.send(reply)
   }

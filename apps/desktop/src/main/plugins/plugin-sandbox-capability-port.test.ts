@@ -68,4 +68,40 @@ describe("PluginSandboxCapabilityPort", () => {
     expect(request).toHaveBeenCalledTimes(2)
     expect(send).toHaveBeenCalledTimes(1)
   })
+
+  it("限制同时等待的能力请求，完成后允许新请求", async () => {
+    let finish = () => {}
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const request = vi.fn(async () => {
+      await pending
+      return true
+    })
+    const send = vi.fn()
+    const port = new PluginSandboxCapabilityPort(
+      { methods: ["storage.get"], request },
+      new AbortController().signal,
+      send,
+    )
+    for (let requestId = 1; requestId <= 33; requestId += 1)
+      port.receive({ requestId, method: "storage.get", args: ["key"] })
+    expect(request).toHaveBeenCalledTimes(32)
+    expect(send).toHaveBeenCalledExactlyOnceWith({
+      type: "capability-result",
+      requestId: 33,
+      ok: false,
+    })
+    finish()
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(33))
+    port.receive({ requestId: 34, method: "storage.get", args: ["key"] })
+    await vi.waitFor(() =>
+      expect(send).toHaveBeenLastCalledWith({
+        type: "capability-result",
+        requestId: 34,
+        ok: true,
+        value: true,
+      }),
+    )
+  })
 })

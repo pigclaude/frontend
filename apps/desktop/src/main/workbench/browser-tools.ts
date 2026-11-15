@@ -1,5 +1,4 @@
 // 提供会话专用的本机预览工具；每次调用先由会话的权限代理审批。
-import { randomUUID } from "node:crypto"
 import { BrowserWindow, type WebContents } from "electron"
 import {
   createSdkMcpServer,
@@ -10,6 +9,7 @@ import {
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
 import { z } from "zod"
 import type { BrowserPermissionContext } from "../../browser-permission-contract"
+import type { AgentBrowserScope } from "../../workbench-contract"
 import {
   browserToolForContext,
   workbenchBrowserServer,
@@ -22,19 +22,22 @@ import { workbenchAgentBrowserUrl, type WorkbenchBrowsers } from "./browser-surf
 
 type BrowserAction = {
   context: BrowserPermissionContext
-  execute(signal?: AbortSignal): Promise<string | CallToolResult["content"]>
+  execute(
+    signal?: AbortSignal,
+    assertAllowed?: () => void,
+  ): Promise<string | CallToolResult["content"]>
 }
 
 /**
  * 将浏览器工具限定到此次会话的主窗口和临时浏览器；不共享个人浏览器会话，每个工具调用前都询问宿主。
- * id 是这个会话的浏览器标签 id，关闭时用它找到这个会话的浏览器。
+ * scope 由会话宿主创建，导航、读取和捕获都使用同一个会话与标签绑定。
  */
 export function browserSessionTools(
   owner: WebContents,
   browsers: WorkbenchBrowsers,
   canUse: () => boolean,
   approval: BrowserApprovalPort,
-  id: string = randomUUID(),
+  scope: AgentBrowserScope,
 ): Record<string, McpSdkServerConfigWithInstance> {
   async function run(
     actionTool: WorkbenchBrowserTool,
@@ -48,6 +51,11 @@ export function browserSessionTools(
     const signal = invocation?.signal instanceof AbortSignal ? invocation.signal : undefined
     const window = owner.isDestroyed() ? null : BrowserWindow.fromWebContents(owner)
     const active = () => !owner.isDestroyed() && !signal?.aborted && canUse()
+    const assertAllowed = () => {
+      if (!active()) throw new BrowserActionError("The browser is unavailable for this session.")
+      const denied = approval.denial(actionTool)
+      if (denied !== null) throw new BrowserActionError(denied)
+    }
     try {
       if (!window || !active()) return unavailable()
       const denied = approval.denial(actionTool)
@@ -57,16 +65,17 @@ export function browserSessionTools(
       if (!active() || browserToolForContext(action.context) !== actionTool) return unavailable()
       if (!(await approval.request(action.context, signal, record(invocation?._meta))))
         return failure("The user did not approve this browser action.")
-      if (!active()) return unavailable()
-      const blocked = approval.denial(actionTool)
-      if (blocked !== null) return failure(blocked)
-
-      const content = await action.execute(signal)
+      assertAllowed()
+      const content = await action.execute(signal, assertAllowed)
       if (!active()) return unavailable()
       return { content: typeof content === "string" ? [{ type: "text", text: content }] : content }
     } catch (error) {
       if (error instanceof BrowserActionError || error instanceof BrowserScreenshotError)
         return failure(error.message)
+      if (error instanceof Error && error.message === "WORKBENCH_BROWSER_LIMIT")
+        return failure(
+          "The shared limit of 12 workbench browsers is reached. Close a browser tab and try again.",
+        )
       if (actionTool === "browser_screenshot")
         return failure(
           "Couldn't capture this local page. Reload the Agent browser tab and try again.",
@@ -85,7 +94,8 @@ export function browserSessionTools(
           const target = workbenchAgentBrowserUrl(url).href
           return {
             context: { kind: "open", url: target },
-            execute: () => browsers.agentPage(window, id, target),
+            execute: (_signal, assertAllowed) =>
+              browsers.agentPage(window, scope, target, assertAllowed),
           }
         }),
       { annotations: { destructiveHint: true } },
@@ -97,7 +107,8 @@ export function browserSessionTools(
       (_input, extra) =>
         run("browser_snapshot", extra, (window) => ({
           context: { kind: "snapshot" },
-          execute: () => browsers.agentPage(window, id),
+          execute: (_signal, assertAllowed) =>
+            browsers.agentPage(window, scope, undefined, assertAllowed),
         })),
       { annotations: { destructiveHint: true, readOnlyHint: true } },
     ),
@@ -111,11 +122,11 @@ export function browserSessionTools(
       async ({ url, action }, extra) => {
         if (url !== undefined && action === undefined)
           return run("browser_navigate", extra, (window) =>
-            browsers.prepareAgentNavigation(window, id, { url }),
+            browsers.prepareAgentNavigation(window, scope, { url }),
           )
         if (url === undefined && action !== undefined)
           return run("browser_navigate", extra, (window) =>
-            browsers.prepareAgentNavigation(window, id, { action }),
+            browsers.prepareAgentNavigation(window, scope, { action }),
           )
         return failure("Provide one local URL or choose back, forward, or reload.")
       },
@@ -126,7 +137,7 @@ export function browserSessionTools(
       "Click an element in this conversation's local preview using a ref from its latest snapshot. Returns the updated snapshot after approval.",
       { ref: z.string().min(1).max(64) },
       ({ ref }, extra) =>
-        run("browser_click", extra, (window) => browsers.prepareAgentClick(window, id, ref)),
+        run("browser_click", extra, (window) => browsers.prepareAgentClick(window, scope, ref)),
       { annotations: { destructiveHint: true } },
     ),
     tool(
@@ -137,7 +148,7 @@ export function browserSessionTools(
         run("browser_screenshot", extra, async (window, signal) => {
           const { context, capture } = await browsers.prepareAgentScreenshot(
             window,
-            id,
+            scope,
             signal,
             () =>
               !owner.isDestroyed() && canUse() && approval.denial("browser_screenshot") === null,

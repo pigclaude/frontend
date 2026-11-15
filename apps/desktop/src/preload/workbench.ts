@@ -34,13 +34,15 @@ export function workbenchBridge(): WorkbenchBridge {
     terminalWrite: (id, data) => invoke("terminal-write", id, data),
     terminalResize: (id, cols, rows) => invoke("terminal-resize", id, cols, rows),
     terminalClose: (id) => invoke("terminal-close", id),
-    browserNavigate: (id, url) => invoke("browser-navigate", id, url),
-    browserCommand: (id, action) => invoke("browser-command", id, action),
-    browserPresent: (id, bounds) => invoke("browser-present", id, bounds),
-    browserPick: (id) => invoke("browser-pick", id),
-    browserClose: (id) => invoke("browser-close", id),
-    browserExternal: (url) => invoke("browser-external", url),
-    previewOpen: (url) => invoke("preview-open", url),
+    browserSetActiveSession: (sessionId) => invoke("browser-active-session", sessionId),
+    browserListAgentTabs: (sessionId) => invoke("browser-agent-tabs", sessionId),
+    browserNavigate: (id, url, sessionId) => invoke("browser-navigate", id, url, sessionId),
+    browserCommand: (id, action, sessionId) => invoke("browser-command", id, action, sessionId),
+    browserPresent: (id, bounds, sessionId) => invoke("browser-present", id, bounds, sessionId),
+    browserPick: (id, sessionId) => invoke("browser-pick", id, sessionId),
+    browserClose: (id, sessionId) => invoke("browser-close", id, sessionId),
+    browserExternal: (url, scope) => invoke("browser-external", url, scope),
+    previewOpen: (url, scope) => invoke("preview-open", url, scope),
     subscribe(listener) {
       const forward = (_event: Electron.IpcRendererEvent, payload: WorkbenchEvent) =>
         listener(payload)

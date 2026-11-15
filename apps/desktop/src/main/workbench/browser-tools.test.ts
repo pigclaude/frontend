@@ -9,6 +9,7 @@ import type {
   McpSdkServerConfigWithInstance,
 } from "@anthropic-ai/claude-agent-sdk"
 import type { WebContents } from "electron"
+import type { AgentBrowserScope } from "../../workbench-contract"
 import type { BrowserApprovalPort } from "../session/browser-tool-approval"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ClaudeAgentAdapter } from "../session/claude-agent-adapter"
@@ -17,7 +18,7 @@ import { createHarness } from "../session/session-host-fixtures"
 import type { SessionPermissionMode } from "../session/session-types"
 import { connectBrowserClient, withoutAttribution } from "./browser-approval-mcp-fixture"
 import type { WorkbenchBrowsers } from "./browser-surface"
-import { browserSessionTools } from "./browser-tools"
+import { browserSessionTools as createBrowserSessionTools } from "./browser-tools"
 
 type CreateSdkMcpServerOptions = Parameters<typeof createSdkMcpServer>[0]
 
@@ -58,6 +59,19 @@ function browsers(agentPage: WorkbenchBrowsers["agentPage"]): WorkbenchBrowsers 
   return { agentPage } as unknown as WorkbenchBrowsers
 }
 
+function browserSessionTools(
+  contents: WebContents,
+  views: WorkbenchBrowsers,
+  canUse: () => boolean,
+  approval: BrowserApprovalPort,
+  sessionId = "session-test",
+) {
+  return createBrowserSessionTools(contents, views, canUse, approval, {
+    id: "agent-" + randomUUID(),
+    sessionId,
+  })
+}
+
 async function call(
   name: string,
   args: Record<string, unknown> = {},
@@ -74,6 +88,16 @@ beforeEach(() => {
 })
 
 describe("browser session tools", () => {
+  it("tells the model which resource limit prevented the approved browser from opening", async () => {
+    const view = vi.fn(async () => {
+      throw new Error("WORKBENCH_BROWSER_LIMIT")
+    })
+    browserSessionTools(owner(), browsers(view), () => true, approved)
+    const result = await call("browser_open", { url: target })
+    expect(result.isError).toBe(true)
+    expect(result.content[0]?.text).toMatch(/12.+Close a browser tab/)
+  })
+
   it("does not touch the page until the invocation has been approved", async () => {
     let answer: (allow: boolean) => void = () => undefined
     const request = vi.fn(
@@ -133,7 +157,7 @@ describe("browser session tools", () => {
 
   it("opens the requested page and reads it back in the same session browser", async () => {
     const contents = owner()
-    const agentPage = vi.fn(async (_window: unknown, _id: string, url?: string) =>
+    const agentPage = vi.fn(async (_window: unknown, _scope: AgentBrowserScope, url?: string) =>
       url ? `Opened ${url}` : "Current page",
     )
     browserSessionTools(contents, browsers(agentPage), () => true, approved)
@@ -146,8 +170,11 @@ describe("browser session tools", () => {
     })
     const [first, second] = agentPage.mock.calls
     expect(first?.[0]).toBe(windows.get(contents))
-    expect(first?.[1]).toMatch(/^[0-9a-f-]{36}$/)
-    expect(second?.[1]).toBe(first?.[1])
+    expect(first?.[1]).toMatchObject({
+      id: expect.stringMatching(/^agent-[0-9a-f-]{36}$/),
+      sessionId: "session-test",
+    })
+    expect(second?.[1]).toEqual(first?.[1])
     expect(second?.[2]).toBeUndefined()
   })
 
@@ -235,7 +262,8 @@ async function startBrowserSession(permissionMode: SessionPermissionMode, unatte
     {
       browser: {
         unattended,
-        create: (approval) => browserSessionTools(contents, browsers(view), () => true, approval),
+        create: (approval, id) =>
+          browserSessionTools(contents, browsers(view), () => true, approval, id),
       },
       close: () => undefined,
     },
@@ -289,6 +317,15 @@ describe("browser tools through a session with a fake SDK", () => {
       }
       await session.respond("allow")
       expect(await first).toEqual({ content: [{ type: "text", text: "local page text" }] })
+      expect(session.view).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({
+          id: expect.stringMatching(/^agent-/),
+          sessionId: session.sessionId,
+        }),
+        target,
+        expect.any(Function),
+      )
 
       const second = call("browser_open", { url: target })
       await vi.waitFor(() => expect(session.cards()).toHaveLength(2))

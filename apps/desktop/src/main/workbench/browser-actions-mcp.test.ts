@@ -94,14 +94,15 @@ async function fixture(permissionMode: SessionPermissionMode = "default") {
   const owner = { isDestroyed: () => false } as unknown as WebContents
   const window = { id: native.size + 1 } as unknown as BrowserWindow
   native.set(owner, window)
-  const id = randomUUID()
+  const id = "agent-" + randomUUID()
   let member = true
 
   const { sessionId } = await h.host.start(
     { workspace, permissionMode },
     {
       browser: {
-        create: (approval) => browserSessionTools(owner, browsers, () => member, approval, id),
+        create: (approval, sessionId) =>
+          browserSessionTools(owner, browsers, () => member, approval, { id, sessionId }),
       },
       close: () => undefined,
     },
@@ -138,9 +139,11 @@ it("先把历史导航的已核对目标交给所属会话审批，批准后才�
   const invocation = f.client.callTool({ name: "browser_navigate", arguments: { action: "back" } })
   void invocation.catch(() => undefined)
   await vi.waitFor(() => expect(f.cards()).toHaveLength(1))
-  expect(f.prepareAgentNavigation).toHaveBeenCalledExactlyOnceWith(f.window, f.id, {
-    action: "back",
-  })
+  expect(f.prepareAgentNavigation).toHaveBeenCalledExactlyOnceWith(
+    f.window,
+    { id: f.id, sessionId: f.sessionId },
+    { action: "back" },
+  )
   const [card] = f.cards()
   if (!card) throw new Error("缺少导航审批卡")
   expect(card).toMatchObject({
@@ -153,7 +156,7 @@ it("先把历史导航的已核对目标交给所属会话审批，批准后才�
   await expect(invocation).resolves.toMatchObject({
     content: [{ type: "text", text: "navigation snapshot" }],
   })
-  expect(f.navigate).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal))
+  expect(f.navigate).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal), expect.any(Function))
 })
 
 function sdkRequest(toolUseID: string): Parameters<CanUseTool>[2] {
@@ -262,8 +265,8 @@ it("同参点击各自绑定子代理和目标；会员撤销时批准也不会�
   expect(f.cards().map(({ subagent }) => subagent)).toEqual([...actors].reverse())
   expect(f.cards().map(({ browser }) => browser)).toEqual([clickContext, clickContext])
   expect(f.prepareAgentClick.mock.calls).toEqual([
-    [f.window, f.id, ref],
-    [f.window, f.id, ref],
+    [f.window, { id: f.id, sessionId: f.sessionId }, ref],
+    [f.window, { id: f.id, sessionId: f.sessionId }, ref],
   ])
   expect(f.click).not.toHaveBeenCalled()
 
@@ -273,7 +276,7 @@ it("同参点击各自绑定子代理和目标；会员撤销时批准也不会�
   await expect(first).resolves.toMatchObject({
     content: [{ type: "text", text: "click snapshot" }],
   })
-  expect(f.click).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal))
+  expect(f.click).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal), expect.any(Function))
 
   f.loseMembership()
   await f.decide(secondCard.requestId, "allow")

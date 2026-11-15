@@ -315,6 +315,7 @@ export function MainWindow({
                   root={workbenchRoot}
                   sessionId={sessionId}
                   sessionActive={sessionActive}
+                  membershipActive={membership.state === "active"}
                   turnActive={turnActive}
                   workspaceRevision={workspaceRevision(session.state)}
                   visible={inChat && rightOpen}

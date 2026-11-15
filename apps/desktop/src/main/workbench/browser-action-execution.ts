@@ -53,11 +53,11 @@ export function preparedBrowserAction(
   let used = false
   return {
     context: { ...context },
-    async execute(signal) {
+    async execute(signal, assertAllowed) {
       if (used)
         throw new BrowserActionError("This browser action already ran. Request approval again.")
       used = true
-      return run(signal)
+      return run(signal, assertAllowed)
     },
   }
 }

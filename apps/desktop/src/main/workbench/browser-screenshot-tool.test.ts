@@ -32,11 +32,17 @@ it("在实际 MCP 上拒绝或未批准时不读像素，批准后返回 JPEG �
     prepareAgentScreenshot: vi.fn(async () => ({ context, capture })),
   } as unknown as WorkbenchBrowsers
   const contents = { isDestroyed: () => false } as WebContents
-  const config = browserSessionTools(contents, browsers, () => true, {
-    request,
-    denial: () => null,
-    rememberCaller: () => undefined,
-  }).pigclaude_workbench
+  const config = browserSessionTools(
+    contents,
+    browsers,
+    () => true,
+    {
+      request,
+      denial: () => null,
+      rememberCaller: () => undefined,
+    },
+    { id: "agent-screenshot-fixture", sessionId: "screenshot-fixture-session" },
+  ).pigclaude_workbench
   if (!config) throw new Error("没有注册本机 MCP 工作台")
   const client = new Client({ name: "screenshot-fixture", version: "1" })
   const [remote, local] = InMemoryTransport.createLinkedPair()

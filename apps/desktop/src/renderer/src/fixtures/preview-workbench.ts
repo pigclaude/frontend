@@ -118,6 +118,8 @@ export function createPreviewWorkbench(): PreviewWorkbench {
       terminalResize: unavailable,
       terminalClose: async () => undefined,
       browserNavigate: unavailable,
+      browserSetActiveSession: async () => undefined,
+      browserListAgentTabs: async () => [],
       browserCommand: unavailable,
       browserPresent: async () => undefined,
       browserPick: unavailable,

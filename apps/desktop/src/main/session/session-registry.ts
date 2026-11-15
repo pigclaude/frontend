@@ -49,7 +49,7 @@ export type SessionEntry = {
   lastActivityAt: number
   /** Claude Code 报告的在途后台任务数，含回合不等的后台 shell；不为 0 时不算空闲。 */
   backgroundTasks: number
-  closeTools: (() => void) | null
+  closeTools: (() => void | Promise<void>) | null
 }
 
 /** 已释放的运行会话在磁盘上的状态。 */

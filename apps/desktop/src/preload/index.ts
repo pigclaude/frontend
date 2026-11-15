@@ -11,8 +11,10 @@ import { windowBridge, type WindowBridge } from "./window-bridge"
 import { workbenchBridge } from "./workbench"
 import { updatesBridge, type UpdatesBridge } from "./updates"
 import { startupPreferencesBridge } from "./startup-preferences"
+import { scheduledTasksBridge } from "./scheduled-tasks"
 import type { WorkbenchBridge } from "../workbench-contract"
 import type { StartupPreferencesBridge } from "../startup-preferences-contract"
+import type { ScheduledTasksBridge } from "../scheduled-tasks-contract"
 import type { AuthorizeClaudeAccountInput } from "../main/claude/account-service-inputs"
 import type { OpenAppKind } from "../main/workbench/open-apps"
 import type { MembershipView } from "@pigclaude/contracts/membership"
@@ -51,6 +53,7 @@ export type PigclaudeBridge = {
   workbench?: WorkbenchBridge
   updates?: UpdatesBridge
   startupPreferences?: StartupPreferencesBridge
+  scheduledTasks?: ScheduledTasksBridge
   /** 读取当前发布版本、本机数据目录和实际使用的 Claude Code 版本，设置页只展示真实运行时信息。 */
   appInfo?: () => Promise<AppInfo>
   openExternal: (url: string) => Promise<void>
@@ -153,6 +156,7 @@ const bridge: PigclaudeBridge = {
   workbench: workbenchBridge(),
   updates: updatesBridge(),
   startupPreferences: startupPreferencesBridge(),
+  scheduledTasks: scheduledTasksBridge(),
   appInfo: () => ipcRenderer.invoke("pigclaude:app-info"),
   openExternal: (url) => ipcRenderer.invoke("pigclaude:open-external", url),
   setTheme: (source) => ipcRenderer.invoke("pigclaude:set-theme", source),

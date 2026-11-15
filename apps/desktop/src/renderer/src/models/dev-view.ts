@@ -21,6 +21,7 @@ const settingsPageNames = [
   "general",
   "appearance",
   "session",
+  "scheduled-tasks",
   "menubar",
   "network",
   "data",

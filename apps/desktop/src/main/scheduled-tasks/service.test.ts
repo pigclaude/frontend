@@ -245,6 +245,7 @@ it("同一任务并发触发只调用一次会话，保留五十条记录且不�
   try {
     const first = await f.service.runNow(task.id)
     expect(first).toMatchObject({ status: "running", source: "manual", scheduledAt: null })
+    await expect(f.service.removeRun(task.id, first.id)).rejects.toThrow("SCHEDULE_RUN_ACTIVE")
     for (let attempt = 0; attempt < 55; attempt++) {
       f.clock.wall += 1
       expect(await f.service.runNow(task.id)).toMatchObject({

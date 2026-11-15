@@ -200,6 +200,17 @@ export class ScheduledTaskService {
     })
   }
 
+  /** 只删本任务的已结束记录，保留任务及独立的会话。 */
+  removeRun(taskId: string, runId: string): Promise<void> {
+    return this.#changeTasks((draft) => {
+      const saved = findTask(draft, taskId)
+      if (saved.active?.id === runId) throw new Error("SCHEDULE_RUN_ACTIVE")
+      const index = saved.history.findIndex(({ id }) => id === runId)
+      if (index === -1) throw new Error("SCHEDULE_RUN_NOT_FOUND")
+      saved.history.splice(index, 1)
+    })
+  }
+
   /** 读取最新落盘的启用任务和最近的后续触发，不携带提示词。 */
   summary(): ScheduledTaskSummary {
     const enabled = this.#file.tasks.flatMap(({ task }) =>

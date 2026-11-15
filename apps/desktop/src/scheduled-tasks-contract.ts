@@ -73,3 +73,22 @@ export type ScheduledTaskChange = { type: "tasks" } | { type: "run"; run: Schedu
 
 /** 按触发倒序读取一页本机运行记录。 */
 export type ScheduledTaskRunsPage = { runs: ScheduledTaskRun[]; total: number }
+
+/** 定时任务主进程与预加载共用的 IPC 命名前缀。 */
+export const scheduledTaskChannelPrefix = "pigclaude:scheduled-tasks-"
+
+/** 调度数据落盘后发送的无正文刷新事件。 */
+export const scheduledTasksChangedChannel = scheduledTaskChannelPrefix + "changed"
+
+/** 设置页使用的本机调度命令。保存返回 null 表示用户取消完全访问确认。 */
+export type ScheduledTasksBridge = {
+  list: () => Promise<ScheduledTask[]>
+  create: (input: ScheduledTaskInput) => Promise<ScheduledTask | null>
+  update: (id: string, input: ScheduledTaskInput) => Promise<ScheduledTask | null>
+  setEnabled: (id: string, enabled: boolean) => Promise<ScheduledTask>
+  remove: (id: string) => Promise<void>
+  runNow: (id: string) => Promise<ScheduledTaskRun>
+  runs: (id: string, offset: number, limit: number) => Promise<ScheduledTaskRunsPage>
+  removeRun: (taskId: string, runId: string) => Promise<void>
+  subscribe: (listener: () => void) => () => void
+}

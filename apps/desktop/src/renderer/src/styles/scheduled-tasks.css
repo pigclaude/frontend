@@ -1,0 +1,33 @@
+/* 定时任务的表单网格、卡片操作和运行详情。 */
+
+.scheduled-task-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.scheduled-task-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-5);
+}
+
+.scheduled-task-editor .input {
+  width: 100%;
+}
+
+.scheduled-task-actions,
+.scheduled-task-switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.scheduled-task-switch {
+  justify-content: space-between;
+}
+
+.scheduled-task-history .schedule-run-reason {
+  white-space: normal;
+}

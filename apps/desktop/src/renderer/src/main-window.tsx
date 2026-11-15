@@ -282,6 +282,7 @@ export function MainWindow({
       history={history}
       canSelectWorkspace={canSelectWorkspace}
       workspace={workspace}
+      workspaces={workspaces}
       appInfo={appInfo}
       appearance={appearance}
       onOpenAuthorize={onOpenAuthorize}

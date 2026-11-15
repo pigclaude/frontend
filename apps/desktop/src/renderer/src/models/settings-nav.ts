@@ -12,6 +12,7 @@ export type SettingsPageId =
   | "general"
   | "appearance"
   | "session"
+  | "scheduled-tasks"
   | "menubar"
   | "network"
   | "data"
@@ -101,6 +102,12 @@ export const settingsNav: SettingsNavGroup[] = [
         icon: "terminal",
         label: "会话",
         keywords: ["默认工作区", "默认模型", "默认权限", "Claude Code", "时区"],
+      },
+      {
+        page: "scheduled-tasks",
+        icon: "calendar",
+        label: "定时任务",
+        keywords: ["计划", "提示词", "重复", "立即运行", "运行记录"],
       },
       {
         page: "menubar",

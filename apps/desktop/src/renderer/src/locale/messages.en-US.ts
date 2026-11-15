@@ -10,6 +10,7 @@ import { settingsZhCN, startupSettingsEnUS } from "./settings.messages"
 import { appSettingsZhCN } from "./app-settings.messages"
 import { appearanceEnUS } from "./appearance.messages"
 import { workbenchEnUS } from "./workbench.messages"
+import { scheduledTasksEnUS } from "./scheduled-tasks.messages"
 
 /** 英文主词典。 */
 export const enUS = {
@@ -24,4 +25,5 @@ export const enUS = {
   ...appSettingsZhCN,
   ...appearanceEnUS,
   ...workbenchEnUS,
+  ...scheduledTasksEnUS,
 } satisfies Record<keyof typeof zhCN, string>

@@ -8,6 +8,7 @@ import type { BrowserProfilesController } from "../hooks/use-browser-profiles"
 import type { ClaudeAccountsController } from "../hooks/use-claude-accounts"
 import type { SessionController } from "../hooks/use-session"
 import type { SessionHistoryController } from "../hooks/use-session-history"
+import type { WorkspacesController } from "../hooks/use-workspaces"
 import { toPoolAccount, toPoolProxy } from "../models/claude-account-view"
 import type { NavLocation } from "../models/navigation"
 import { AccountsScreen } from "./accounts-screen"
@@ -17,6 +18,7 @@ import { ProxiesScreen } from "./proxies-screen"
 import { SettingsScreen } from "./settings/settings-sections"
 import { UsageScreen } from "./usage-screen"
 import { ArchivedSessions } from "./settings/archived-sessions"
+import { ScheduledTasksSettings } from "./settings/scheduled-tasks-settings"
 
 type Props = {
   page: string
@@ -27,6 +29,7 @@ type Props = {
   history: SessionHistoryController
   canSelectWorkspace: (workspace: string) => boolean
   workspace: string | null
+  workspaces: Pick<WorkspacesController, "paths" | "names">
   appInfo: AppInfo | null
   appearance: AppearanceController
   onOpenAuthorize: () => void
@@ -46,6 +49,7 @@ export function MainWindowSettings({
   history,
   canSelectWorkspace,
   workspace,
+  workspaces,
   appInfo,
   appearance,
   onOpenAuthorize,
@@ -54,6 +58,23 @@ export function MainWindowSettings({
   onNavigate,
   onLogout,
 }: Props) {
+  if (page === "scheduled-tasks")
+    return (
+      <ScheduledTasksSettings
+        bridge={window.pigclaude?.scheduledTasks}
+        projectPaths={workspaces.paths}
+        projectNames={workspaces.names}
+        currentProject={workspace}
+        accounts={pool.accounts}
+        models={session.models}
+        modelsLoading={session.modelsLoading}
+        loadModels={session.refreshModels}
+        openSession={(sessionId, projectPath) => {
+          const target = history.summaryForSession(sessionId)?.workspace ?? projectPath
+          if (canSelectWorkspace(target)) onNavigate({ kind: "session", sessionId })
+        }}
+      />
+    )
   const accounts = pool.accounts.map((account) => toPoolAccount(account, pool.proxies))
   if (page === "archived")
     return (

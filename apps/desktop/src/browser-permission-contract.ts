@@ -6,6 +6,9 @@ export type BrowserNavigationTarget = { url: string } | { action: "back" | "forw
 /** 工具层已校验的输入意向，只在对应元素获准后使用文本。 */
 export type BrowserTypeInput = { ref: string; text: string; clear: boolean; submit: boolean }
 
+/** 浏览器输入一次可接受的 UTF-16 单元数。 */
+export const browserTypeTextLimit = 4096
+
 /** 工作台输入在会话中使用的完整进程内工具名。 */
 export const browserTypeToolName = "mcp__pigclaude_workbench__browser_type"
 

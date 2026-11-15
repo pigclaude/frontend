@@ -51,6 +51,7 @@ afterEach(async () => {
 
 it("原样公布清单的 JSON Schema，完全访问时每次仍等待插件的一次性审批", async () => {
   const fixture = await pluginFixture()
+  fixture.settings.mockResolvedValue({ prefix: "合成" })
   const { client, sessionId, canUseTool } = await start(fixture, "bypassPermissions")
   expect((await client.listTools()).tools).toEqual([
     {
@@ -87,7 +88,11 @@ it("原样公布清单的 JSON Schema，完全访问时每次仍等待插件的�
     expect.objectContaining({ pluginId, revision: "fixture-revision-1", entry: "fixture.mjs" }),
     {
       operation: tool,
-      input: { arguments: args, context: { sessionId, workspace: fixture.workspace } },
+      input: {
+        arguments: args,
+        context: { sessionId, workspace: fixture.workspace },
+        settings: { prefix: "合成" },
+      },
     },
     expect.objectContaining({
       signal: expect.any(AbortSignal),
@@ -351,6 +356,9 @@ async function pluginFixture(persist = false) {
   const capabilities = vi
     .fn<NonNullable<CapabilityPluginToolDependencies["capabilities"]>>()
     .mockReturnValue(scope)
+  const settings = vi
+    .fn<NonNullable<CapabilityPluginToolDependencies["settings"]>>()
+    .mockResolvedValue(undefined)
   const store = persist ? await SessionStore.open({ root: join(directory, "sessions") }) : undefined
   const calls: Array<{ options: Options; sdk: FakeQuery }> = []
   const prompts: SDKUserMessage[] = []
@@ -363,6 +371,7 @@ async function pluginFixture(persist = false) {
       sandbox: { invoke },
       pluginNetwork,
       capabilities,
+      settings,
     },
     createAdapter: (onEvent) =>
       new ClaudeAgentAdapter({
@@ -392,6 +401,7 @@ async function pluginFixture(persist = false) {
     canInvoke,
     pluginNetwork,
     capabilities,
+    settings,
     scope,
     query,
     prompts,

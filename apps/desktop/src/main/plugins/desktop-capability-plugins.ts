@@ -57,6 +57,7 @@ export function setupDesktopCapabilityPlugins(
     sandbox,
     runtime,
     active: () => composition.membershipGate.view().state === "active",
+    capabilities: (snapshot, insertText) => capabilities(snapshot, null, insertText),
   })
   return {
     manager,
@@ -67,6 +68,12 @@ export function setupDesktopCapabilityPlugins(
             sandbox,
             pluginNetwork: runtime.pluginNetwork.bind(runtime),
             capabilities,
+            async settings({ manifest, revision }: CapabilityPluginSnapshot, signal: AbortSignal) {
+              if (!manifest.settings.some((field) => field.type !== "secret")) return undefined
+              return manager.runCapability(manifest.id, revision, signal, () =>
+                settings.values(manifest),
+              )
+            },
           },
         }
       : {},

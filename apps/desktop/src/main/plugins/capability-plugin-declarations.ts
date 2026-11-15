@@ -1,14 +1,16 @@
 // 给可信主界面投影已启用的贡献，并将用户命令送到隔离沙箱。
-import type {
-  CapabilityPluginCommandResult,
-  CapabilityPluginDeclarations,
-  CapabilityPluginRevision,
-  CapabilityPluginSettingsView,
+import {
+  capabilityPluginComposerLimit,
+  type CapabilityPluginCommandResult,
+  type CapabilityPluginDeclarations,
+  type CapabilityPluginRevision,
+  type CapabilityPluginSettingsView,
 } from "../../capability-plugin-contract"
 import type { LocalRuntime } from "../runtime/local-runtime"
-import type { CapabilityPluginManager } from "./capability-plugin-manager"
+import type { CapabilityPluginManager, CapabilityPluginSnapshot } from "./capability-plugin-manager"
 import type { CapabilityPluginSettings } from "./capability-plugin-settings"
 import { capabilityPluginToolName } from "./capability-plugin-tool-name"
+import type { PluginSandboxCapabilityScope } from "./plugin-sandbox-contract"
 import type { PluginSandboxHost } from "./plugin-sandbox-host"
 
 type Options = {
@@ -17,6 +19,10 @@ type Options = {
   sandbox: Pick<PluginSandboxHost, "invoke">
   runtime: Pick<LocalRuntime, "pluginNetwork"> | null
   active: () => boolean
+  capabilities: (
+    snapshot: CapabilityPluginSnapshot,
+    insertText: (text: string) => boolean,
+  ) => PluginSandboxCapabilityScope
 }
 
 /** 在主进程执行业务授权；主窗口只接收声明、普通值和许可的草稿插入结果。 */
@@ -82,7 +88,13 @@ export class CapabilityPluginDeclarationHost {
         ? this.options.settings.values(manifest)
         : null,
     )
-    const result = await sandbox.invoke(
+    let insertion = ""
+    const capabilities = this.options.capabilities(snapshot, (text) => {
+      if (insertion.length + text.length > capabilityPluginComposerLimit) return false
+      insertion += text
+      return true
+    })
+    await sandbox.invoke(
       {
         pluginId: manifest.id,
         revision,
@@ -92,19 +104,8 @@ export class CapabilityPluginDeclarationHost {
         ...(network === undefined ? {} : { network }),
       },
       { operation: "command:" + commandId, input: settings === null ? null : { settings } },
+      { capabilities },
     )
-    return manager.withEnabledPlugin(plugin, () => {
-      if (
-        !manifest.permissions.includes("composer-insert") ||
-        typeof result !== "object" ||
-        result === null ||
-        !("insertText" in result) ||
-        typeof result.insertText !== "string" ||
-        result.insertText.length === 0 ||
-        result.insertText.length > 16_384
-      )
-        return { insertText: null }
-      return { insertText: result.insertText }
-    })
+    return manager.withEnabledPlugin(plugin, () => ({ insertText: insertion || null }))
   }
 }

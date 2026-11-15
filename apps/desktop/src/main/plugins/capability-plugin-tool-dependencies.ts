@@ -1,5 +1,6 @@
 // 定义主进程装配能力插件 MCP 工具所需的安装快照、沙箱与出口端口。
 
+import type { CapabilityPluginSettingsView } from "../../capability-plugin-contract"
 import type { CapabilityPluginManager, CapabilityPluginSnapshot } from "./capability-plugin-manager"
 import type {
   PluginNetworkAccess,
@@ -17,4 +18,8 @@ export type CapabilityPluginToolDependencies = {
     plugin: CapabilityPluginSnapshot,
     workspace: string,
   ) => PluginSandboxCapabilityScope
+  settings?: (
+    plugin: CapabilityPluginSnapshot,
+    signal: AbortSignal,
+  ) => Promise<CapabilityPluginSettingsView["values"] | undefined>
 }

@@ -117,8 +117,11 @@ export type CapabilityPluginSettingsView = {
   configuredSecrets: string[]
 }
 
-/** 宿主从命令结果中只保留经声明许可的纯文本插入。 */
+/** 宿主只传递命令当次获准插入的纯文本。 */
 export type CapabilityPluginCommandResult = { insertText: string | null }
+
+/** 一次用户命令最多插入的 UTF-16 单元数。 */
+export const capabilityPluginComposerLimit = 16_384
 
 /** 桌面安装命令的固定 IPC 前缀。 */
 export const capabilityPluginChannelPrefix = "pigclaude:capability-plugins-"

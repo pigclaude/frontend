@@ -13,7 +13,7 @@ import {
 const toolTimeoutMs = 15_000
 const jsonArguments = z.record(z.string(), z.json())
 
-/** 一次工具调用只交给 Worker 操作参数、不透明会话 id 和真实工作区路径。 */
+/** 工具调用基本输入携带操作参数、不透明会话 id 和真实工作区路径。 */
 export type CapabilityPluginInvocation = {
   arguments: Record<string, PluginSandboxJson>
   context: { sessionId: string; workspace: string }
@@ -56,6 +56,7 @@ export async function executeCapabilityPluginTool(
       signal.throwIfAborted()
       if (!(await deps.manager.canInvoke(manifest.id, revision)))
         throw new PluginSandboxError("PLUGIN_SANDBOX_UNAVAILABLE")
+      const settings = await deps.settings?.(plugin, signal)
       signal.throwIfAborted()
       const capabilities = deps.capabilities?.(plugin, input.context.workspace)
       return deps.sandbox.invoke(
@@ -67,7 +68,7 @@ export async function executeCapabilityPluginTool(
           egressId: network?.egressId ?? "no-network",
           ...(network === undefined ? {} : { network }),
         },
-        { operation, input },
+        { operation, input: settings === undefined ? input : { ...input, settings } },
         {
           signal,
           timeoutMs: toolTimeoutMs,

@@ -11,6 +11,7 @@ const create = Object.create
 const freeze = Object.freeze
 const isArray = Array.isArray
 const includes = Function.prototype.call.bind(Array.prototype.includes)
+const startsWith = Function.prototype.call.bind(String.prototype.startsWith)
 const NativePromise = Promise
 const NativeError = Error
 
@@ -109,7 +110,8 @@ self.addEventListener(
       try {
         const result = await invoke(operation, parse(payload), api)
         try {
-          const encoded = stringify(result)
+          const value = result === undefined && startsWith(operation, "command:") ? null : result
+          const encoded = stringify(value)
           if (typeof encoded !== "string" || encoded.length > limit) throw new NativeError()
           response = { type: "result", id, payload: encoded }
         } catch {

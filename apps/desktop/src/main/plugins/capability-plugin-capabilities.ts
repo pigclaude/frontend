@@ -1,5 +1,6 @@
 // 把插件安装时获准的能力限制在当次工具调用或用户触发的命令内。
 
+import { capabilityPluginComposerLimit } from "../../capability-plugin-contract"
 import type { CapabilityPluginManager, CapabilityPluginSnapshot } from "./capability-plugin-manager"
 import type { CapabilityPluginSecrets } from "./capability-plugin-secrets"
 import { CapabilityPluginStorage } from "./capability-plugin-storage"
@@ -29,7 +30,6 @@ type CapabilityOperation = (
 
 const maximumKeyBytes = 128
 const maximumSecretLength = 4_096
-const maximumInsertLength = 16_384
 
 /** 创建一次调用的白名单和请求入口。 */
 export function createCapabilityPluginScope({
@@ -111,7 +111,7 @@ export function createCapabilityPluginScope({
       arity: 1,
       execute([value]) {
         const text = stringValue(value)
-        if (text.length === 0 || text.length > maximumInsertLength) throw denied()
+        if (text.length === 0 || text.length > capabilityPluginComposerLimit) throw denied()
         return insertText(text)
       },
     })

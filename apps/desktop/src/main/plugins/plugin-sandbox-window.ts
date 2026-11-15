@@ -391,7 +391,7 @@ function encodeCall(call: PluginSandboxCall): string {
       !call.operation ||
       call.operation.length > 128 ||
       typeof payload !== "string" ||
-      payload.length > pluginSandboxPayloadLimit
+      Buffer.byteLength(payload) > pluginSandboxPayloadLimit
     )
       throw new Error()
     return payload

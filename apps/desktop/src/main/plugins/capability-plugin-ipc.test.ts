@@ -13,12 +13,14 @@ import {
   capabilityPluginChannelPrefix,
   capabilityPluginManifestFile,
 } from "../../capability-plugin-contract"
+import { createCapabilityPluginScope } from "./capability-plugin-capabilities"
 import { CapabilityPluginDeclarationHost } from "./capability-plugin-declarations"
 import { createCapabilityPluginSecrets } from "./capability-plugin-secrets"
 import { CapabilityPluginSettings } from "./capability-plugin-settings"
 import { capabilityPluginToolName } from "./capability-plugin-tool-name"
 import { registerCapabilityPluginIpc } from "./capability-plugin-ipc"
 import { CapabilityPluginManager } from "./capability-plugin-manager"
+import type { PluginSandboxHost } from "./plugin-sandbox-host"
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
 const native = vi.hoisted(() => ({
@@ -39,7 +41,7 @@ const stray = { senderFrame: {} } as IpcMainInvokeEvent
 let directory: string
 let manager: CapabilityPluginManager | null
 let declarations: CapabilityPluginDeclarationHost | null
-const sandboxInvoke = vi.fn()
+const sandboxInvoke = vi.fn<PluginSandboxHost["invoke"]>()
 const pluginNetwork = vi.fn()
 
 const checksum = "a".repeat(64)
@@ -62,7 +64,7 @@ beforeEach(async () => {
   native.handlers.clear()
   native.showOpenDialog.mockReset()
   directory = await mkdtemp(join(tmpdir(), "capability-plugin-ipc-"))
-  manager = new CapabilityPluginManager({
+  const currentManager = new CapabilityPluginManager({
     root: directory,
     appVersion: "0.0.5",
     membership: () => "active",
@@ -74,6 +76,7 @@ beforeEach(async () => {
         [fixture.entry, Buffer.from('export default () => "fixture";')],
       ]),
   })
+  manager = currentManager
   sandboxInvoke.mockReset()
   pluginNetwork.mockReset()
   pluginNetwork.mockResolvedValue({
@@ -94,6 +97,16 @@ beforeEach(async () => {
     runtime: { pluginNetwork },
     sandbox: { invoke: sandboxInvoke },
     active: () => true,
+    capabilities: (snapshot, insertText) =>
+      createCapabilityPluginScope({
+        snapshot,
+        manager: currentManager,
+        secrets,
+        workspace: null,
+        userDataPath: directory,
+        notify: () => false,
+        insertText,
+      }),
   })
   registerCapabilityPluginIpc({
     getManager: () => manager,
@@ -217,7 +230,13 @@ it("只发布启用版本的贡献，命令与设置受信且停用后撤销", a
     "PLUGIN_DECLARATION_UNAVAILABLE",
   )
   expect(sandboxInvoke).not.toHaveBeenCalled()
-  sandboxInvoke.mockResolvedValue({ insertText: "合成草稿", ignored: "隐藏结果" })
+  const signal = new AbortController().signal
+  sandboxInvoke.mockImplementationOnce(async (_source, _call, options) => {
+    await expect(
+      options?.capabilities?.request("composer.insert", ["合成草稿"], signal),
+    ).resolves.toBe(true)
+    return { ignored: "隐藏结果" }
+  })
   await expect(invoke("run-command", owner, plugin, "compose")).resolves.toEqual({
     insertText: "合成草稿",
   })
@@ -228,6 +247,7 @@ it("只发布启用版本的贡献，命令与设置受信且停用后撤销", a
   expect(sandboxInvoke).toHaveBeenCalledWith(
     expect.objectContaining({ pluginId: fixture.id, egressId: "system" }),
     { operation: "command:compose", input: null },
+    expect.objectContaining({ capabilities: expect.any(Object) }),
   )
   await expect(
     invoke("set-setting", owner, plugin, "password", "synthetic-secret"),
@@ -240,11 +260,12 @@ it("只发布启用版本的贡献，命令与设置受信且停用后撤销", a
   const started = new Promise<void>((resolve) => {
     signalStarted = resolve
   })
-  let finish: (value: { insertText: string }) => void = () => {}
-  const response = new Promise<{ insertText: string }>((resolve) => {
+  let finish: (value: null) => void = () => {}
+  const response = new Promise<null>((resolve) => {
     finish = resolve
   })
-  sandboxInvoke.mockImplementationOnce(() => {
+  sandboxInvoke.mockImplementationOnce(async (_source, _call, options) => {
+    await options?.capabilities?.request("composer.insert", ["已停用命令的草稿"], signal)
     signalStarted()
     return response
   })
@@ -253,7 +274,7 @@ it("只发布启用版本的贡献，命令与设置受信且停用后撤销", a
   )
   await started
   await invoke("set-enabled", owner, fixture.id, false)
-  finish({ insertText: "已停用命令不再返回文字" })
+  finish(null)
   await pending
   await expect(invoke("list-declarations", owner)).resolves.toEqual([])
   await expect(invoke("read-settings", owner, plugin)).rejects.toThrow(

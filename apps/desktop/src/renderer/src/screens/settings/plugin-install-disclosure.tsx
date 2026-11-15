@@ -3,31 +3,44 @@
 import { Badge, Button, Dialog } from "@pigclaude/ui-primitives"
 import { useText } from "../../locale/text"
 import { ClaudeCodePluginFacts } from "./claude-code-plugin-facts"
+import { marketplacePermissionChangeText } from "./plugin-marketplace-view"
 import type { PluginDisclosureFacts } from "./plugin-settings-view"
+
+/** 宿主对手动更新计算出的新增权限和网络范围。 */
+export type PluginUpdateDisclosure = {
+  additionalPermissions: readonly string[]
+  additionalDomains: readonly string[]
+}
 
 /** 披露对话框只展示已准备的事实，由宿主处理确认和放弃。 */
 export function PluginInstallDisclosure({
   facts,
+  sourceName,
+  update,
   busy,
   onCancel,
   onConfirm,
 }: {
   facts: PluginDisclosureFacts
+  sourceName?: string | undefined
+  update?: PluginUpdateDisclosure | undefined
   busy: boolean
   onCancel: () => void
   onConfirm: () => void
 }) {
   const { t } = useText()
+  const description = [facts.name, facts.version, sourceName].filter(Boolean).join(" · ")
   return (
     <Dialog.Root open onOpenChange={(open) => !open && !busy && onCancel()}>
       <Dialog.Content
         className="plugin-disclosure"
-        title={t("pluginSettings.disclosure")}
-        description={`${facts.name} · ${facts.version}`}
+        title={t(update ? "pluginMarketplace.updateDisclosure" : "pluginSettings.disclosure")}
+        description={description}
         closeLabel={t("pluginSettings.close")}
         closeDisabled={busy}
       >
         <Dialog.Body className="plugin-dialog-body">
+          {update ? <UpdateFacts update={update} /> : null}
           <dl className="ext-facts">
             <dt>{t("pluginSettings.type")}</dt>
             <dd>{facts.typeLabel}</dd>
@@ -46,11 +59,45 @@ export function PluginInstallDisclosure({
             {t("pluginSettings.cancel")}
           </Dialog.Close>
           <Button type="button" variant="primary" disabled={busy} onClick={onConfirm}>
-            {t(busy ? "pluginSettings.installing" : "pluginSettings.confirm")}
+            {t(
+              update
+                ? busy
+                  ? "pluginMarketplace.updating"
+                  : "pluginMarketplace.updateConfirm"
+                : busy
+                  ? "pluginSettings.installing"
+                  : "pluginSettings.confirm",
+            )}
           </Button>
         </Dialog.Footer>
       </Dialog.Content>
     </Dialog.Root>
+  )
+}
+
+function UpdateFacts({ update }: { update: PluginUpdateDisclosure }) {
+  const { t } = useText()
+  return (
+    <dl className="ext-facts marketplace-update-facts">
+      {update.additionalPermissions.length ? (
+        <>
+          <dt>{t("pluginMarketplace.additionalPermissions")}</dt>
+          <dd>
+            {update.additionalPermissions.map((permission) => (
+              <Badge key={permission} variant="warn">
+                {marketplacePermissionChangeText(permission, t)}
+              </Badge>
+            ))}
+          </dd>
+        </>
+      ) : null}
+      {update.additionalDomains.length ? (
+        <>
+          <dt>{t("pluginMarketplace.additionalDomains")}</dt>
+          <dd className="mono">{update.additionalDomains.join(", ")}</dd>
+        </>
+      ) : null}
+    </dl>
   )
 }
 

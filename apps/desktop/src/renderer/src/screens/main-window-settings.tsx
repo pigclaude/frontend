@@ -64,6 +64,7 @@ export function MainWindowSettings({
     return (
       <PluginSettings
         bridge={window.pigclaude?.capabilityPlugins}
+        marketplace={window.pigclaude?.pluginMarketplace}
         membershipActive={membership.state === "active"}
         renderSettings={(plugin) =>
           plugin.manifest.settings.length > 0 ? (

@@ -14,6 +14,7 @@ import { capabilityPluginSettingsEnUS } from "./capability-plugin-settings.messa
 import { scheduledTasksEnUS } from "./scheduled-tasks.messages"
 import { capabilityPluginToolsEnUS } from "./capability-plugin-tools.messages"
 import { pluginSettingsEnUS } from "./plugin-settings.messages"
+import { pluginMarketplaceEnUS } from "./plugin-marketplace.messages"
 
 /** 英文主词典。 */
 export const enUS = {
@@ -36,4 +37,5 @@ export const enUS = {
   ...capabilityPluginToolsEnUS,
   ...capabilityPluginSettingsEnUS,
   ...pluginSettingsEnUS,
+  ...pluginMarketplaceEnUS,
 } satisfies Record<keyof typeof zhCN, string>

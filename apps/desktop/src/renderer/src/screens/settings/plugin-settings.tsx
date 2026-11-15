@@ -2,34 +2,47 @@
 
 import { useEffect, useId, useReducer, useRef, useState, type ReactNode } from "react"
 import { Box, Check } from "lucide-react"
-import { Button, Checkbox, Dialog, EmptyState, SearchField } from "@pigclaude/ui-primitives"
+import {
+  Button,
+  Checkbox,
+  Dialog,
+  EmptyState,
+  SearchField,
+  SegmentedControl,
+} from "@pigclaude/ui-primitives"
 import { PluginDetailsDialog, PluginList } from "@pigclaude/ui-plugin-manager"
 import type {
   CapabilityPluginsBridge,
   InstalledCapabilityPlugin,
   InstalledDesktopPlugin,
 } from "../../../../capability-plugin-contract"
+import type { PluginMarketplaceBridge } from "../../../../plugin-marketplace-contract"
 import { fill, useText, type TextKey } from "../../locale/text"
 import { ClaudeCodePluginFacts } from "./claude-code-plugin-facts"
 import { PluginInstallControls } from "./plugin-install-controls"
+import { PluginMarketplaceSettings } from "./plugin-marketplace-settings"
 import { installedPluginSummary, pluginSettingsError } from "./plugin-settings-view"
 import { SettingPage } from "./setting-page"
 import "../../styles/plugin-settings.css"
 
 type PluginData = { developerMode: boolean; installed: InstalledDesktopPlugin[] }
 type Details = { id: string; confirmUninstall: boolean; keepData: boolean }
+type PluginPage = "installed" | "marketplace"
 
 /** 已安装的插件及管理动作；设置插槽只挂载宿主提供的声明式内容。 */
 export function PluginSettings({
   bridge,
+  marketplace,
   membershipActive,
   renderSettings,
 }: {
   bridge: CapabilityPluginsBridge | undefined
+  marketplace?: PluginMarketplaceBridge | undefined
   membershipActive: boolean
   renderSettings?: (plugin: InstalledCapabilityPlugin) => ReactNode
 }) {
   const { t } = useText()
+  const [page, setPage] = useState<PluginPage>("installed")
   const [data, setData] = useState<PluginData | null>(null)
   const [revision, refresh] = useReducer((value: number) => value + 1, 0)
   const [loadError, setLoadError] = useState<TextKey | null>(null)
@@ -114,9 +127,38 @@ export function PluginSettings({
     if (canToggle(id)) void modify(id, (service) => service.setEnabled(id, enabled))
   }
 
+  const title = t("pluginSettings.title")
+  const navigation =
+    bridge && marketplace ? (
+      <SegmentedControl<PluginPage>
+        className="plugin-marketplace-switcher"
+        aria-label={t("pluginMarketplace.view")}
+        value={page}
+        onValueChange={setPage}
+        options={[
+          { value: "installed", label: t("pluginMarketplace.installed") },
+          { value: "marketplace", label: t("pluginMarketplace.catalog") },
+        ]}
+      />
+    ) : null
+
+  if (bridge && marketplace && page === "marketplace") {
+    return (
+      <SettingPage title={title} width="wide">
+        {navigation}
+        <PluginMarketplaceSettings
+          bridge={marketplace}
+          installer={bridge}
+          membershipActive={membershipActive}
+          onInstalled={refresh}
+        />
+      </SettingPage>
+    )
+  }
+
   return (
     <SettingPage
-      title={t("pluginSettings.title")}
+      title={title}
       sub={t("pluginSettings.description")}
       width="wide"
       actions={
@@ -130,6 +172,7 @@ export function PluginSettings({
         ) : null
       }
     >
+      {navigation}
       {!membershipActive && data ? <p className="hint">{t("pluginSettings.membership")}</p> : null}
       {operationError ? (
         <p role="alert" className="error-text">

@@ -60,6 +60,7 @@ interface PigclaudeBridge {
   startupPreferences?: import("../../startup-preferences-contract").StartupPreferencesBridge
   scheduledTasks?: import("../../scheduled-tasks-contract").ScheduledTasksBridge
   capabilityPlugins?: import("../../capability-plugin-contract").CapabilityPluginsBridge
+  pluginMarketplace?: import("../../plugin-marketplace-contract").PluginMarketplaceBridge
   capabilityPluginNotices?: import("../../capability-plugin-notice-contract").CapabilityPluginNoticesBridge
 }
 

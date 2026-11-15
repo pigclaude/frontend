@@ -14,11 +14,13 @@ import { updatesBridge, type UpdatesBridge } from "./updates"
 import { startupPreferencesBridge } from "./startup-preferences"
 import { scheduledTasksBridge } from "./scheduled-tasks"
 import { capabilityPluginsBridge } from "./capability-plugins"
+import { pluginMarketplaceBridge } from "./plugin-marketplace"
 import { capabilityPluginNoticesBridge } from "./capability-plugin-notices"
 import type { WorkbenchBridge } from "../workbench-contract"
 import type { StartupPreferencesBridge } from "../startup-preferences-contract"
 import type { ScheduledTasksBridge } from "../scheduled-tasks-contract"
 import type { CapabilityPluginsBridge } from "../capability-plugin-contract"
+import type { PluginMarketplaceBridge } from "../plugin-marketplace-contract"
 import type { CapabilityPluginNoticesBridge } from "../capability-plugin-notice-contract"
 import type { AuthorizeClaudeAccountInput } from "../main/claude/account-service-inputs"
 import type { OpenAppKind } from "../main/workbench/open-apps"
@@ -60,6 +62,7 @@ export type PigclaudeBridge = {
   startupPreferences?: StartupPreferencesBridge
   scheduledTasks?: ScheduledTasksBridge
   capabilityPlugins?: CapabilityPluginsBridge
+  pluginMarketplace?: PluginMarketplaceBridge
   capabilityPluginNotices?: CapabilityPluginNoticesBridge
   /** 读取当前发布版本、本机数据目录和实际使用的 Claude Code 版本，设置页只展示真实运行时信息。 */
   appInfo?: () => Promise<AppInfo>
@@ -167,6 +170,7 @@ const bridge: PigclaudeBridge = {
   startupPreferences: startupPreferencesBridge(),
   scheduledTasks: scheduledTasksBridge(),
   capabilityPlugins: capabilityPluginsBridge(),
+  pluginMarketplace: pluginMarketplaceBridge(),
   capabilityPluginNotices: capabilityPluginNoticesBridge(),
   appInfo: () => ipcRenderer.invoke("pigclaude:app-info"),
   keepAwake: keepAwakeBridge(),

@@ -18,6 +18,13 @@ const permissions: Record<CapabilityPluginPermission, TextKey> = {
   "composer-insert": "pluginSettings.permissionComposer",
   network: "pluginSettings.permissionNetwork",
 }
+const permissionLabels = new Map<string, TextKey>(Object.entries(permissions))
+
+/** 将主进程认可的能力权限翻成可读名称，目录中的其他声明照原文显示。 */
+export function pluginPermissionText(permission: string, t: (key: TextKey) => string): string {
+  const label = permissionLabels.get(permission)
+  return label ? t(label) : permission
+}
 
 const sources: Record<CapabilityPluginInstallSource["kind"], TextKey> = {
   archive: "pluginSettings.sourceArchive",

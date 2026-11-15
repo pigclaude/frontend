@@ -1,0 +1,13 @@
+/* 市场分段、来源对话框和更新差异复用插件页的控件与布局。 */
+.plugin-marketplace-switcher {
+  width: fit-content;
+  margin-bottom: var(--space-5);
+}
+
+[data-motion="reduce"] .dialog:is(.marketplace-sources, .marketplace-dialog) {
+  transform: translate(-50%, -50%);
+}
+
+.plugin-dialog-body .marketplace-update-facts {
+  background: var(--warn-soft);
+}

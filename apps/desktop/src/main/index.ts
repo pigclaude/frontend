@@ -75,6 +75,8 @@ import { startDesktopUpdates } from "./updates/desktop-updates"
 import { registerUpdateIpc } from "./updates/update-ipc"
 import type { UpdateService } from "./updates/update-service"
 import { prepareDesktopPluginSandbox } from "./plugins/plugin-sandbox-window"
+import { registerCapabilityPluginIpc } from "./plugins/capability-plugin-ipc"
+import { setupDesktopCapabilityPlugins } from "./plugins/desktop-capability-plugins"
 
 const launchPluginSandbox = prepareDesktopPluginSandbox()
 const bundleMetadata: unknown = app.isPackaged
@@ -114,6 +116,7 @@ const windowNavigation = new WindowNavigation(windowVisibility.restore, sendToMa
 let cleanupLiveEvents = () => {}
 let appUpdates: UpdateService | null = null
 let scheduledTasks: ScheduledTaskService | null = null
+let capabilityPlugins: ReturnType<typeof setupDesktopCapabilityPlugins> = null
 const closePreference = new WindowClosePreference(
   join(app.getPath("userData"), "window-preferences.json"),
   process.platform,
@@ -220,6 +223,10 @@ function registerIpcHandlers(): void {
   registerStartupPreferencesIpc(ipcMain, isTrustedSender, startup)
   registerScheduledTasksIpc({ getService: () => scheduledTasks, isTrusted: isTrustedSender })
   registerKeepAwakeIpc(ipcMain, keepAwake, isTrustedSender)
+  registerCapabilityPluginIpc({
+    getManager: () => capabilityPlugins?.manager ?? null,
+    isTrusted: isTrustedSender,
+  })
   registerSessionDefaultsIpc(ipcMain, {
     isTrusted: isTrustedSender,
     store: () => sessionDefaults,
@@ -321,6 +328,7 @@ async function setupAuthorization(): Promise<void> {
     launchPluginSandbox,
   })
   desktopComposition = composition
+  capabilityPlugins = setupDesktopCapabilityPlugins(composition, sendToMainWindow)
   authorizationService = composition.authorizationService
 
   const browser = new FingerprintChromiumAdapter({
@@ -375,15 +383,14 @@ async function setupAuthorization(): Promise<void> {
   sessionHost = sessions.host
   projectPermissions = sessions.projectPermissions
   sessionHost?.subscribe((envelope) => keepAwake.observe(envelope))
-  const host = sessions.host
-  if (composition.runtime && host) {
+  if (composition.runtime && sessions.host) {
     scheduledTasks = createDesktopScheduledTaskService({
       userDataPath: app.getPath("userData"),
       authorization: composition,
       runtime: composition.runtime,
       defaults: sessionDefaults,
       usesDevProvider: sessions.usesDevProvider,
-      runSession: (task, signal) => host.runScheduledTask(task, signal),
+      runSession: sessions.host.runScheduledTask.bind(sessions.host),
       presentation: {
         refreshTray: () => {
           sendToMainWindow(scheduledTasksChangedChannel)
@@ -400,6 +407,7 @@ async function setupAuthorization(): Promise<void> {
   cleanupLiveEvents = () => {
     app.removeListener("browser-window-focus", checkLive)
     stopWake()
+    capabilityPlugins?.stopEvents()
     unsubscribeAccounts()
   }
   if (app.isPackaged) app.setAsDefaultProtocolClient("pigclaude")
@@ -433,6 +441,7 @@ function hasActiveMembership(): boolean {
 }
 
 function sendMembershipView(view: MembershipView): void {
+  capabilityPlugins?.membershipChanged(view.state)
   notifications.membership(view.state)
   workbench.membershipChanged(view)
   sendToMainWindow("pigclaude:membership-state", view)

@@ -16,6 +16,7 @@ import {
 } from "./window-controls.mjs"
 import { systemInput } from "./system-pointer.mjs"
 import { verifyScheduledTasks } from "./scheduled-tasks.mjs"
+import { verifyCapabilityPlugins } from "./capability-plugins.mjs"
 import { trackNativeTray, verifyTrayMembership, verifyTrayNavigation } from "./tray-menu.mjs"
 import { verifyWorkbench } from "./workbench.mjs"
 
@@ -341,6 +342,8 @@ try {
   }
   await verifyScheduledTasks(page, userData)
   pass("native scheduled-task IPC persists a skipped run for a missing project")
+  await verifyCapabilityPlugins(page, userData)
+  pass("native capability-plugin IPC discloses, installs, toggles and removes a bundled fixture")
   await page.getByPlaceholder("搜索设置").fill("时区")
   await expect(page.getByRole("button", { name: "浏览器指纹", exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: "代理", exact: true })).toBeHidden()
@@ -480,9 +483,13 @@ try {
   if (page && !page.isClosed()) await capture(page, "failure").catch(() => {})
   throw error
 } finally {
-  const [stopped, service] = await Promise.allSettled([closeApplication(), fixture.close()])
-  if (stopped.status === "fulfilled") await rm(userData, { recursive: true, force: true })
-  const failed = [stopped, service].find((result) => result.status === "rejected")
+  const cleanup = await Promise.allSettled([
+    closeApplication().then(() =>
+      rm(userData, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }),
+    ),
+    fixture.close(),
+  ])
+  const failed = cleanup.find((result) => result.status === "rejected")
   if (failed) report.cleanupError = String(failed.reason)
   await writeFile(join(out, "report.json"), JSON.stringify(report, null, 2))
   if (failed && !report.error) throw failed.reason

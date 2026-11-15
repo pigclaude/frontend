@@ -41,9 +41,55 @@ function attach(event) {
 
   function sendCall(generation) {
     if (!current) return
-    const { id, operation, payload } = current
+    const { id, operation, payload, methods } = current
     try {
-      generation.broker.postMessage({ id, operation, payload })
+      generation.broker.postMessage({
+        type: "invoke",
+        id,
+        operation,
+        payload,
+        capabilities: [...methods],
+      })
+    } catch {
+      crash()
+    }
+  }
+
+  function forwardCapability({ id, requestId, method, args }) {
+    if (
+      !current ||
+      id !== current.id ||
+      !Number.isSafeInteger(requestId) ||
+      requestId <= current.lastRequestId ||
+      !current.methods.has(method) ||
+      !Array.isArray(args)
+    )
+      return
+    current.lastRequestId = requestId
+    current.pending.add(requestId)
+    try {
+      main.postMessage({ type: "capability", id, requestId, method, args })
+    } catch {
+      crash()
+    }
+  }
+
+  function replyToCapability({ id, requestId, ok, value }) {
+    if (
+      !active?.ready ||
+      !current ||
+      current.id !== id ||
+      typeof ok !== "boolean" ||
+      (ok && value === undefined) ||
+      !current.pending.delete(requestId)
+    )
+      return
+    try {
+      active.broker.postMessage(
+        ok
+          ? { type: "capability-result", id, requestId, ok, value }
+          : { type: "capability-result", id, requestId, ok },
+      )
     } catch {
       crash()
     }
@@ -67,6 +113,8 @@ function attach(event) {
           main.postMessage({ type: "ready" })
         }
         sendCall(generation)
+      } else if (data.type === "capability") {
+        forwardCapability(data)
       } else if (data.type === "fatal") {
         fatal(data.code === "PLUGIN_SANDBOX_UNAVAILABLE" ? data.code : "PLUGIN_LOAD_FAILED")
       } else if (
@@ -92,8 +140,24 @@ function attach(event) {
       } catch {
         crash()
       }
-    } else if (data.type === "invoke" && acceptingCalls && !current) {
-      current = data
+    } else if (
+      data.type === "invoke" &&
+      acceptingCalls &&
+      !current &&
+      typeof data.id === "string"
+    ) {
+      current = {
+        id: data.id,
+        operation: data.operation,
+        payload: data.payload,
+        methods: new Set(
+          Array.isArray(data.capabilities)
+            ? data.capabilities.filter((method) => typeof method === "string")
+            : [],
+        ),
+        lastRequestId: 0,
+        pending: new Set(),
+      }
       expiry = setTimeout(() => {
         acceptingCalls = false
         complete({ type: "failure", id: data.id, code: "PLUGIN_TIMEOUT" })
@@ -104,6 +168,8 @@ function attach(event) {
       } catch {
         crash()
       }
+    } else if (data.type === "capability-result") {
+      replyToCapability(data)
     } else if (data.type === "cancel" && current && data.id === current.id) {
       acceptingCalls = false
       complete({ type: "failure", id: data.id, code: "PLUGIN_CANCELLED" })

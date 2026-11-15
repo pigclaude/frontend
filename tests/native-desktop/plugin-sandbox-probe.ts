@@ -7,7 +7,10 @@ import { setTimeout as wait } from "node:timers/promises"
 import { pathToFileURL } from "node:url"
 import { app, BrowserWindow } from "electron"
 import { PluginSandboxHost } from "../../apps/desktop/src/main/plugins/plugin-sandbox-host"
-import type { PluginSandboxSource } from "../../apps/desktop/src/main/plugins/plugin-sandbox-contract"
+import type {
+  PluginSandboxCapabilityScope,
+  PluginSandboxSource,
+} from "../../apps/desktop/src/main/plugins/plugin-sandbox-contract"
 import {
   createElectronPluginSandboxLaunch,
   registerPluginSandboxScheme,
@@ -96,10 +99,120 @@ async function verify(): Promise<void> {
     assert.equal(BrowserWindow.getAllWindows().length, 0)
     await verifyIdlePartitionReuse()
     await verifyNetworkRouting()
+    await verifyCapabilities()
     console.log("PASS 沙箱窗口与 Worker 完成隔离、超时、取消、崩溃退避和空闲释放")
   } finally {
     await host.dispose()
   }
+}
+
+async function verifyCapabilities(): Promise<void> {
+  const host = new PluginSandboxHost(createElectronPluginSandboxLaunch(preload))
+  const bundle: PluginSandboxSource = {
+    pluginId: "capability-fixture",
+    revision: "1",
+    egressId: "system",
+    entry: "index.mjs",
+    modules: {
+      "index.mjs": [
+        "export default async (operation, input, api) => {",
+        "  if (operation === 'scope') {",
+        "    const [value, secret, denied] = await Promise.all([",
+        "      api.storage.get(input),",
+        "      api.secrets.get('fixture-secret'),",
+        "      api.storage.get('denied').catch(error => error.message),",
+        "    ]);",
+        "    return { value, secret, denied, visible: Object.keys(api),",
+        "      storage: Object.keys(api.storage), secrets: Object.keys(api.secrets),",
+        "      frozen: Object.isFrozen(api) && Object.isFrozen(api.storage) };",
+        "  }",
+        "  if (operation === 'empty') return Object.keys(api);",
+        "  if (operation === 'finish-first') {",
+        "    void api.storage.get(input).catch(() => undefined);",
+        "    return 'first done';",
+        "  }",
+        "  return await api.storage.get(input);",
+        "};",
+      ].join("\n"),
+    },
+  }
+  const requested: string[] = []
+  const scope: PluginSandboxCapabilityScope = {
+    methods: ["storage.get", "secrets.get"],
+    async request(method, args) {
+      requested.push(method + ":" + args[0])
+      if (args[0] === "denied") throw new Error("synthetic-host-private")
+      return method === "secrets.get" ? "synthetic-secret" : "synthetic-value"
+    },
+  }
+  try {
+    assert.deepEqual(
+      await host.invoke(
+        bundle,
+        { operation: "scope", input: "fixture-key" },
+        { capabilities: scope },
+      ),
+      {
+        value: "synthetic-value",
+        secret: "synthetic-secret",
+        denied: "PLUGIN_CAPABILITY_DENIED",
+        visible: ["storage", "secrets"],
+        storage: ["get"],
+        secrets: ["get"],
+        frozen: true,
+      },
+    )
+    assert.deepEqual(requested, [
+      "storage.get:fixture-key",
+      "secrets.get:fixture-secret",
+      "storage.get:denied",
+    ])
+    const originalWindow = BrowserWindow.getAllWindows()[0]?.id
+    assert.ok(originalWindow)
+    assert.deepEqual(await host.invoke(bundle, { operation: "empty", input: null }), [])
+    assert.equal(BrowserWindow.getAllWindows()[0]?.id, originalWindow)
+    assert.equal(requested.length, 3)
+
+    const oldStarted = deferredValue<AbortSignal>()
+    const oldValue = deferredValue<string>()
+    const nextStarted = deferredValue<AbortSignal>()
+    const nextValue = deferredValue<string>()
+    const scopedRequest: PluginSandboxCapabilityScope = {
+      methods: ["storage.get"],
+      request(_method, args, signal) {
+        if (args[0] === "old") {
+          oldStarted.resolve(signal)
+          return oldValue.promise
+        }
+        assert.deepEqual(args, ["next"])
+        nextStarted.resolve(signal)
+        return nextValue.promise
+      },
+    }
+    const options = { capabilities: scopedRequest }
+    assert.equal(
+      await host.invoke(bundle, { operation: "finish-first", input: "old" }, options),
+      "first done",
+    )
+    assert.equal((await oldStarted.promise).aborted, true)
+    const next = host.invoke(bundle, { operation: "read", input: "next" }, options)
+    assert.equal((await nextStarted.promise).aborted, false)
+    oldValue.resolve("retired value")
+    nextValue.resolve("current value")
+    assert.equal(await next, "current value")
+    assert.equal(BrowserWindow.getAllWindows()[0]?.id, originalWindow)
+    console.log("PASS 能力仅在当次 Worker 可用，旧调用的返回无法满足下一次请求")
+  } finally {
+    await host.dispose()
+  }
+}
+
+function deferredValue<T>(): { promise: Promise<T>; resolve(value: T): void } {
+  let resolve: (value: T) => void = () => {}
+  const promise = new Promise<T>((finish) => {
+    resolve = finish
+  })
+  return { promise, resolve }
 }
 
 async function verifyNetworkRouting(): Promise<void> {

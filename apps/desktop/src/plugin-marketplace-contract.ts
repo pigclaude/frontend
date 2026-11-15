@@ -11,7 +11,7 @@ export type PluginMarketplaceSourceInput =
 /** 已保存市场的本机状态，刷新失败时仍可显示上次成功的目录。 */
 export type PluginMarketplaceSourceView = {
   id: string
-  kind: PluginMarketplaceSourceInput["kind"]
+  kind: PluginMarketplaceSourceInput["kind"] | "official"
   /** GitHub 提交或 HTTPS 归档摘要，本地目录为 null。 */
   pin: string | null
   label: string
@@ -37,7 +37,8 @@ export type PluginMarketplaceEntryInfo = {
 /** 条目绑定来源 ID，动作由主进程根据已安装记录判定。 */
 export type PluginMarketplaceEntryView = PluginMarketplaceEntryInfo & {
   sourceId: string
-  action: "install" | "installed" | "update"
+  action: "install" | "installed" | "update" | "blocked"
+  blockedBy?: "expired" | "revoked"
   reviewStatus: "unreviewed" | "reviewed"
 }
 

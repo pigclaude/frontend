@@ -36,6 +36,7 @@ const fixture = vi.hoisted(() => ({
 }))
 
 vi.mock("electron", () => ({
+  net: { isOnline: () => true },
   powerMonitor: {
     on: (name: string, listener: () => void) => fixture.powerEvents.set(name, listener),
     removeListener: (name: string) => fixture.powerEvents.delete(name),

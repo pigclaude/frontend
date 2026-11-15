@@ -14,15 +14,13 @@ import { CapabilityPluginAuthorization } from "./capability-plugin-authorization
 import { isCapabilityPluginId } from "./capability-plugin-paths"
 import {
   CapabilityPluginRecords,
+  describeInstalledPlugin,
+  isDesktopPluginCompatible,
   type CapabilityPluginRecord,
   type ClaudeCodePluginRecord,
   type DesktopPluginRecord,
 } from "./capability-plugin-records"
-import {
-  describeInstalledPlugin,
-  isDesktopPluginCompatible,
-  type CapabilityPluginSnapshot,
-} from "./capability-plugin-snapshot"
+import type { CapabilityPluginSnapshot } from "./capability-plugin-snapshot"
 import { loadLocalDesktopPlugin } from "./desktop-plugin-bundle"
 import {
   createDesktopPluginRecord,

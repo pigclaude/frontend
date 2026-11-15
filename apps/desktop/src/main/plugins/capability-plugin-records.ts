@@ -8,12 +8,16 @@ import {
   capabilityPluginManifestFile,
   type InstalledCapabilityPlugin,
   type InstalledClaudeCodePlugin,
+  type InstalledDesktopPlugin,
 } from "../../capability-plugin-contract"
 import {
   readCapabilityPluginDirectory,
   validateCapabilityPluginBundle,
 } from "./capability-plugin-bundle"
-import { parseCapabilityPluginManifest } from "./capability-plugin-manifest"
+import {
+  isCapabilityPluginCompatible,
+  parseCapabilityPluginManifest,
+} from "./capability-plugin-manifest"
 import { capabilityPluginStoragePaths, isCapabilityPluginId } from "./capability-plugin-paths"
 import type { CapabilityPluginSnapshot } from "./capability-plugin-snapshot"
 import {
@@ -332,4 +336,49 @@ export async function atomicJson(
 
 function missing(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT"
+}
+
+/** Claude Code 插件始终可装配；能力插件受清单中的应用版本范围约束。 */
+export function isDesktopPluginCompatible(
+  record: DesktopPluginRecord,
+  appVersion: string,
+): boolean {
+  return record.type === "claude-code" || isCapabilityPluginCompatible(record.manifest, appVersion)
+}
+
+/** 将本机记录投影为可信窗口的安装状态，内存中的吊销也即时可见。 */
+export function describeInstalledPlugin(
+  record: CapabilityPluginRecord,
+  appVersion: string,
+  revocationReason: string | undefined,
+): InstalledCapabilityPlugin
+export function describeInstalledPlugin(
+  record: DesktopPluginRecord,
+  appVersion: string,
+  revocationReason: string | undefined,
+): InstalledDesktopPlugin
+export function describeInstalledPlugin(
+  record: DesktopPluginRecord,
+  appVersion: string,
+  revocationReason: string | undefined,
+): InstalledDesktopPlugin {
+  const { revision, installedAt, sourceKind, sha256, enabled } = record
+  const common = {
+    revision,
+    installedAt,
+    sourceKind,
+    sha256,
+    enabled: enabled && revocationReason === undefined,
+    compatible: isDesktopPluginCompatible(record, appVersion),
+    ...(revocationReason === undefined ? {} : { revocationReason }),
+  }
+  return record.type === "claude-code"
+    ? { ...common, type: record.type, manifest: record.manifest }
+    : {
+        ...common,
+        type: record.type,
+        manifest: record.manifest,
+        approvedDomains: record.approvedDomains,
+        toolApproval: record.toolApproval,
+      }
 }

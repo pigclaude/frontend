@@ -1,6 +1,9 @@
 // 核对已获快照的能力插件修订，协调运行中鉴权、卸载/更新和官方吊销。
-import type { CapabilityPluginRecord, CapabilityPluginRecords } from "./capability-plugin-records"
-import { isDesktopPluginCompatible } from "./capability-plugin-snapshot"
+import {
+  isDesktopPluginCompatible,
+  type CapabilityPluginRecord,
+  type CapabilityPluginRecords,
+} from "./capability-plugin-records"
 import type { MarketplacePluginRevocations } from "./marketplace-plugin-revocations"
 import { isCapabilityPluginId } from "./capability-plugin-paths"
 import { PluginSandboxError } from "./plugin-sandbox-contract"

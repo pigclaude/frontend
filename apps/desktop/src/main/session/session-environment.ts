@@ -3,10 +3,11 @@
 // 因此原生 CLI 的实际时区来源是 TZ，intl-preload.cjs 只是为 Node 运行时保留的兜底。
 
 import { createHash } from "node:crypto"
-import { chmod, mkdir, readdir, realpath, rm, writeFile } from "node:fs/promises"
-import { isAbsolute, join, relative } from "node:path"
+import { chmod, mkdir, mkdtemp, readdir, realpath, rm, stat, writeFile } from "node:fs/promises"
+import { isAbsolute, join, relative, sep } from "node:path"
 import { buildSessionEnv } from "@pigclaude/session-env"
 import { ProjectTrustStore, projectTrustFilePath } from "../runtime/project-trust-store"
+import type { ClaudeCodePluginSessionSource } from "./claude-code-plugin-session-source"
 import { cliModelCache, type OrganizationModel } from "./claude-bootstrap"
 import {
   prepareProjectConfiguration,
@@ -55,6 +56,8 @@ export type SessionEnvironmentInput = {
   proxyBridgeUrl?: string
   /** 正常会话读取项目提示类组件，模型目录查询保持独立。 */
   loadProjectConfiguration?: boolean
+  /** 正常会话读取一次已启用插件快照，模型目录查询不提供此来源。 */
+  claudeCodePlugins?: ClaudeCodePluginSessionSource
   /** 开发期自定义供应商；提供时替换 daemon 地址和会话 token，并忽略 modelCatalog。 */
   provider?: SessionProvider
 }
@@ -68,9 +71,12 @@ export class SessionEnvironment {
   readonly binaryPath: string
   /** 本次启动生成的配置根和指令排除；模型目录没有项目配置。 */
   readonly projectConfiguration?: SessionProjectConfiguration
+  /** SDK 只收到本次启动私有目录中的插件路径。 */
+  readonly claudeCodePluginPaths?: readonly string[]
   /** 账号/代理出口时区；原生 CLI 靠 env.TZ 生效，预加载只在 Node 运行时生效。 */
   readonly timezone: string
   readonly #retained: boolean
+  readonly #pluginDirectory: string | undefined
   #cleaned = false
 
   private constructor(input: {
@@ -82,6 +88,7 @@ export class SessionEnvironment {
     timezone: string
     retained: boolean
     projectConfiguration?: SessionProjectConfiguration
+    plugins?: { directory: string; paths: readonly string[] }
   }) {
     this.env = input.env
     this.configDir = input.configDir
@@ -93,6 +100,8 @@ export class SessionEnvironment {
       this.projectConfiguration = input.projectConfiguration
     }
     this.#retained = input.retained
+    this.#pluginDirectory = input.plugins?.directory
+    if (input.plugins !== undefined) this.claudeCodePluginPaths = input.plugins.paths
   }
 
   /** 创建隔离环境，使用 0700 的会话目录；已保存会话复用其目录。 */
@@ -131,6 +140,8 @@ export class SessionEnvironment {
 
     let created = false
     let projectConfiguration: SessionProjectConfiguration | undefined
+    let pluginDirectory: string | undefined
+    let pluginPaths: readonly string[] = []
     try {
       if (retained) {
         await mkdir(retained.claudeTmpDir, { recursive: true, mode: sessionDirectoryMode })
@@ -142,6 +153,10 @@ export class SessionEnvironment {
         await chmod(sessionsDir, sessionDirectoryMode)
       }
       await mkdir(configDir, { recursive: retained !== undefined, mode: sessionDirectoryMode })
+      if (input.claudeCodePlugins !== undefined) {
+        pluginDirectory = await mkdtemp(join(retained?.claudeTmpDir ?? sessionDir, "plugins-"))
+        pluginPaths = await stageClaudeCodePlugins(input.claudeCodePlugins, pluginDirectory)
+      }
       if (input.loadProjectConfiguration) {
         await assertCanonicalSessionWorkspace(input.workspace)
         const trust = new ProjectTrustStore(projectTrustFilePath(userDataPath))
@@ -171,6 +186,8 @@ export class SessionEnvironment {
       await chmod(preloadPath, sessionDirectoryMode)
     } catch (error) {
       await projectConfiguration?.dispose().catch(() => undefined)
+      if (pluginDirectory !== undefined)
+        await rm(pluginDirectory, { recursive: true, force: true }).catch(() => undefined)
       if (created) await rm(sessionDir, { recursive: true, force: true }).catch(() => undefined)
       throw error
     }
@@ -184,6 +201,9 @@ export class SessionEnvironment {
       timezone: normalized.timezone,
       retained: retained !== undefined,
       ...(projectConfiguration === undefined ? {} : { projectConfiguration }),
+      ...(pluginDirectory === undefined
+        ? {}
+        : { plugins: { directory: pluginDirectory, paths: pluginPaths } }),
     })
   }
 
@@ -191,9 +211,34 @@ export class SessionEnvironment {
   async cleanup(): Promise<void> {
     if (this.#cleaned) return
     await this.projectConfiguration?.dispose()
+    if (this.#pluginDirectory !== undefined)
+      await rm(this.#pluginDirectory, { recursive: true, force: true })
     if (!this.#retained) await rm(this.sessionDir, { recursive: true, force: true })
     this.#cleaned = true
   }
+}
+
+async function stageClaudeCodePlugins(
+  source: ClaudeCodePluginSessionSource,
+  directory: string,
+): Promise<readonly string[]> {
+  const root = await realpath(directory)
+  const paths = await source.stage(root)
+  return Promise.all(
+    paths.map(async (path) => {
+      if (!isAbsolute(path)) throw new Error("无效的 Claude Code 插件副本")
+      const plugin = await realpath(path)
+      const location = relative(root, plugin)
+      if (
+        isAbsolute(location) ||
+        location === ".." ||
+        location.startsWith(".." + sep) ||
+        !(await stat(plugin)).isDirectory()
+      )
+        throw new Error("无效的 Claude Code 插件副本")
+      return plugin
+    }),
+  )
 }
 
 async function assertCanonicalSessionWorkspace(workspace: string): Promise<void> {

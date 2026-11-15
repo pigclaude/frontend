@@ -6,6 +6,7 @@ import type { CapabilityPluginToolDependencies } from "../plugins/capability-plu
 import { createSessionPluginTools } from "../plugins/capability-plugin-tools"
 import { ClaudeAgentAdapter } from "./claude-agent-adapter"
 import { resolveClaudeBinaryPath } from "./claude-binary"
+import type { ClaudeCodePluginSessionSource } from "./claude-code-plugin-session-source"
 import { SessionEnvironment } from "./session-environment"
 import { SessionClaudeExitError } from "./session-claude-launch"
 import type { DevProviderOverride } from "./dev-provider"
@@ -53,6 +54,7 @@ export type SessionLaunchDeps = {
   permissionTimeoutMs: number
   projectPermissions?: ProjectPermissionStore
   capabilityPluginTools?: CapabilityPluginToolDependencies
+  claudeCodePlugins?: ClaudeCodePluginSessionSource
   timers: SessionTimers
   now: () => number
   newId: () => string
@@ -83,6 +85,9 @@ export function createSessionLaunchDeps(
     ...(options.capabilityPluginTools === undefined
       ? {}
       : { capabilityPluginTools: options.capabilityPluginTools }),
+    ...(options.claudeCodePlugins === undefined
+      ? {}
+      : { claudeCodePlugins: options.claudeCodePlugins }),
     timers,
     now,
     newId,

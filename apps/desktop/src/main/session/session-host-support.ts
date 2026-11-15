@@ -114,6 +114,9 @@ export function buildStartOptions(
     ...(active.environment.projectConfiguration === undefined
       ? {}
       : { projectConfiguration: active.environment.projectConfiguration }),
+    ...(active.environment.claudeCodePluginPaths === undefined
+      ? {}
+      : { claudeCodePluginPaths: active.environment.claudeCodePluginPaths }),
     permissionMode: active.permissionMode,
     canUseTool: routeCanUseTool(
       active.broker,

@@ -2,6 +2,7 @@
 // 最后按账号的语言时区创建会话环境。任何一步不满足都抛已脱敏的稳定错误码；被停止打断时清理已建的环境、吊销令牌，
 // 不留半启动状态。
 
+import type { ClaudeCodePluginSessionSource } from "./claude-code-plugin-session-source"
 import { boundSessionEnvironment } from "./bound-session-environment"
 import type { DevProviderOverride } from "./dev-provider"
 import { sameProfileEnvironment } from "./profile-environment"
@@ -37,6 +38,7 @@ export type SessionStartDeps = {
   runtime: SessionRuntime
   provider: DevProviderOverride | null
   createEnvironment: SessionEnvironmentFactory
+  claudeCodePlugins?: ClaudeCodePluginSessionSource
   resolveBinaryPath: () => string
   resolveProfile: (
     accountId: string | null,
@@ -145,6 +147,9 @@ async function prepareEnvironment(
       binaryPath,
       userDataPath: deps.userDataPath,
       loadProjectConfiguration: true,
+      ...(deps.claudeCodePlugins === undefined
+        ? {}
+        : { claudeCodePlugins: deps.claudeCodePlugins }),
       ...(retainedPaths === undefined ? {} : { retainedPaths }),
       ...providerEnvironmentInput(deps.provider),
     },

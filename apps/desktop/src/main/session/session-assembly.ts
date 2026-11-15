@@ -4,6 +4,7 @@ import { join } from "node:path"
 import type { LocalStore } from "@pigclaude/local-store"
 import type { CapabilityPluginToolDependencies } from "../plugins/capability-plugin-tool-dependencies"
 import { accountSessionProfile } from "./account-session-profile"
+import type { ClaudeCodePluginSessionSource } from "./claude-code-plugin-session-source"
 import { resolveClaudeBinaryPath } from "./claude-binary"
 import { devProviderHostOptions } from "./dev-provider"
 import { ProjectPermissionStore } from "./project-permission-store"
@@ -32,6 +33,8 @@ export type SessionAssemblyInput = {
   sessionStore?: Promise<SessionStore | null>
   /** 桌面装配了能力插件管理器、沙箱和按会话出口时启用。 */
   capabilityPluginTools?: CapabilityPluginToolDependencies
+  /** 本机安装并启用的 Claude Code 插件。 */
+  claudeCodePlugins?: ClaudeCodePluginSessionSource
 }
 
 /** 主进程持有的会话服务。 */
@@ -66,9 +69,12 @@ export function assembleSessionServices(input: SessionAssemblyInput): SessionSer
     ...(input.capabilityPluginTools === undefined
       ? {}
       : { capabilityPluginTools: input.capabilityPluginTools }),
+    ...(input.claudeCodePlugins === undefined
+      ? {}
+      : { claudeCodePlugins: input.claudeCodePlugins }),
     ...devProvider,
   })
-  trackSessionCommandCatalogs(host)
+  trackSessionCommandCatalogs(host, input.claudeCodePlugins)
   host.subscribe(input.onEvent)
   return { usage, host, projectPermissions, usesDevProvider: devProvider.provider !== undefined }
 }

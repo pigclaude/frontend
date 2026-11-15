@@ -32,6 +32,9 @@ export async function boundSessionEnvironment(
       ...(environment.projectConfiguration === undefined
         ? {}
         : { projectConfiguration: environment.projectConfiguration }),
+      ...(environment.claudeCodePluginPaths === undefined
+        ? {}
+        : { claudeCodePluginPaths: environment.claudeCodePluginPaths }),
       configDir: environment.configDir,
       sessionDir: environment.sessionDir,
       workspace: environment.workspace,

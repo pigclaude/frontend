@@ -26,6 +26,8 @@ export type ClaudeAgentStartOptions = {
   mcpServers?: Options["mcpServers"]
   /** 当前会话使用净化根或已经确认信任的项目目录，按启动时的信任状态固定。 */
   projectConfiguration?: SessionProjectConfiguration
+  /** 当前 CLI 进程独有的 Claude Code 插件根。 */
+  claudeCodePluginPaths?: readonly string[]
 }
 
 /** 隔离目录中的 Claude 会话记录设置。 */
@@ -82,6 +84,9 @@ export function buildQueryOptions(
         }
       : {}),
     ...(options.mcpServers ? { mcpServers: options.mcpServers } : {}),
+    ...(options.claudeCodePluginPaths?.length
+      ? { plugins: options.claudeCodePluginPaths.map((path) => ({ type: "local", path })) }
+      : {}),
     permissionMode: options.permissionMode,
     canUseTool: options.canUseTool,
     abortController: options.abortController,

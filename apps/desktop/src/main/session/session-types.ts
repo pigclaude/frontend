@@ -239,6 +239,7 @@ export type SessionRuntime = {
 export type SessionEnvironmentPort = {
   readonly env: Record<string, string>
   readonly projectConfiguration?: import("./project-configuration").SessionProjectConfiguration
+  readonly claudeCodePluginPaths?: readonly string[]
   readonly configDir: string
   readonly sessionDir: string
   readonly workspace: string

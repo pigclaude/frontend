@@ -1,7 +1,7 @@
 {
   "repository": "pigcode/pigcode",
   "commit": "ebeccf382df85ca2a2c594f56c1bb1edd641c447",
-  "rule": "@pigcode/contracts → @pigclaude/ui-contracts，选取声明和纯函数；定时规则测试选取已拷入功能的测试组；其余 @pigcode/<package> → @pigclaude/<package>；\"pigcode.<key>\" 存储键 → \"pigclaude.<key>\"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
+  "rule": "@pigcode/contracts → @pigclaude/ui-contracts，选取声明和纯函数；定时规则测试选取已拷入功能的测试组；工作区侧栏增加通用会话角标槽；其余 @pigcode/<package> → @pigclaude/<package>；\"pigcode.<key>\" 存储键 → \"pigclaude.<key>\"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
   "files": [
     {
       "path": "packages/ui-contracts/src/index.ts",
@@ -1201,7 +1201,7 @@
       "path": "packages/ui-shell/src/workspace-sidebar.tsx",
       "source": "packages/ui-shell/src/workspace-sidebar.tsx",
       "sourceSha256": "df775d7cf0e04412def3b5fad768389db1aaa2c495c153c469cd5bb4dd9b8aba",
-      "sha256": "a3cbcd0b60904c7d174a9063c5bda0f68d1580a6913a772eef89a650ba456b04"
+      "sha256": "1d053695b74e8b053b5fe4a62c73aca921b802a34f35b1de3c7ce50cd7975d97"
     },
     {
       "path": "packages/ui-shell/tsconfig.json",

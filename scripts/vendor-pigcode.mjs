@@ -139,6 +139,33 @@ function git(repo, ...args) {
   return execFileSync("git", ["-C", repo, ...args], { maxBuffer: 256 << 20 })
 }
 
+// 通用角标只负责显示。标签由桌面适配层提供，会话标题、重命名和其他操作使用原数据。
+function addThreadLabelSlot(source) {
+  const edits = [
+    [
+      "  threadStatus?: Record<string, ThreadStatus> | undefined\n",
+      "  threadStatus?: Record<string, ThreadStatus> | undefined\n" +
+        "  /** 按会话 ID 提供额外的只读行标签。 */\n" +
+        "  threadLabels?: Readonly<Record<string, string>> | undefined\n",
+    ],
+    ["  threadStatus = {},\n", "  threadStatus = {},\n  threadLabels,\n"],
+    [
+      "  const row = (thread: Thread, detail: ReactNode) => {\n",
+      "  const row = (thread: Thread, detail: ReactNode) => {\n" +
+        "    const label = threadLabels?.[thread.id]\n",
+    ],
+    [
+      "        detail={detail}",
+      '        detail={label ? <><span className="sess-agent">{label}</span>{detail}</> : detail}',
+    ],
+  ]
+  for (const [before, after] of edits) {
+    if (!source.includes(before)) throw new Error("Pigcode 会话行插槽源位置已变动")
+    source = source.replace(before, after)
+  }
+  return source
+}
+
 async function vendor(repo, commit) {
   const resolved = git(repo, "rev-parse", `${commit}^{commit}`).toString().trim()
   const listed = git(repo, "ls-tree", "-r", "--name-only", resolved, "packages").toString()
@@ -184,6 +211,8 @@ async function vendor(repo, commit) {
       if (contractPath) output = projectUiContracts(output, rest)
       const test = scheduleTests[path]
       if (test) output = projectScheduleTest(output, rest, test.suite, test.helpers)
+      if (path === "packages/ui-shell/src/workspace-sidebar.tsx")
+        output = addThreadLabelSlot(output)
       if (rest === "package.json") output = rewriteManifest(output, item)
       if (rest === "tsconfig.json") output = rewriteTsconfig(output)
       // 改名后部分行超出 100 列：按本仓库 Prettier 配置重排，守卫记录的是重排后的内容。
@@ -214,7 +243,7 @@ async function vendor(repo, commit) {
   const lock = {
     repository: "pigcode/pigcode",
     commit: resolved,
-    rule: '@pigcode/contracts → @pigclaude/ui-contracts，选取声明和纯函数；定时规则测试选取已拷入功能的测试组；其余 @pigcode/<package> → @pigclaude/<package>；"pigcode.<key>" 存储键 → "pigclaude.<key>"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排',
+    rule: '@pigcode/contracts → @pigclaude/ui-contracts，选取声明和纯函数；定时规则测试选取已拷入功能的测试组；工作区侧栏增加通用会话角标槽；其余 @pigcode/<package> → @pigclaude/<package>；"pigcode.<key>" 存储键 → "pigclaude.<key>"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排',
     files,
   }
   await writeFile(lockFile, `${JSON.stringify(lock, null, 2)}\n`)

@@ -27,6 +27,8 @@ export interface WorkspaceSidebarProps {
   threads: Thread[]
   activeThreadId: string | null
   threadStatus?: Record<string, ThreadStatus> | undefined
+  /** 按会话 ID 提供额外的只读行标签。 */
+  threadLabels?: Readonly<Record<string, string>> | undefined
   /** agent 的显示名，按 agent id；会话行上的 agent 缩写由它得出，缺少时用 id。 */
   agentNames?: Readonly<Record<string, string>> | undefined
   expandedProjects: Record<string, boolean>
@@ -130,6 +132,7 @@ export function WorkspaceSidebar({
   threads,
   activeThreadId,
   threadStatus = {},
+  threadLabels,
   agentNames = {},
   expandedProjects,
   onAddProject,
@@ -214,6 +217,7 @@ export function WorkspaceSidebar({
       : []
 
   const row = (thread: Thread, detail: ReactNode) => {
+    const label = threadLabels?.[thread.id]
     const index = shortcutHints ? shortcutIndex.get(thread.id) : undefined
     return (
       <ThreadRow
@@ -221,7 +225,16 @@ export function WorkspaceSidebar({
         thread={thread}
         active={thread.id === activeThreadId}
         status={threadStatus[thread.id] ?? "idle"}
-        detail={detail}
+        detail={
+          label ? (
+            <>
+              <span className="sess-agent">{label}</span>
+              {detail}
+            </>
+          ) : (
+            detail
+          )
+        }
         shortcut={index ? formatShortcut(`Mod+${index}`) : null}
         rename={renameFor(thread.id, (title) => onRenameThread?.(thread.id, title))}
         actions={threadActions(thread)}

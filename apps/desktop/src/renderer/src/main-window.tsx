@@ -407,6 +407,11 @@ export function MainWindow({
       <AddProjectDialog open={addingProject} onOpenChange={setAddingProject} onAdd={addWorkspace} />
       <SessionDeleteDialog history={history} />
       {projectConfiguration.dialog}
+      {membership.state === "network_grace" ? (
+        <p className="membership-network-notice" role="status">
+          {t("flows.membership.networkUnavailable")}
+        </p>
+      ) : null}
       {inChat ? (
         <ChatScreen
           {...(bridge

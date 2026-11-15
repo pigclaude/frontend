@@ -38,6 +38,7 @@ export function membershipGateMessage(view: MembershipView): string | undefined 
     verification_required: desktopText("flows.membership-view.4"),
     expired: desktopText("flows.membership-view.5"),
     device_revoked: desktopText("flows.membership-view.6"),
+    network_grace: desktopText("flows.membership.networkUnavailable"),
     error: desktopText("flows.membership-view.7"),
   }
   return messages[view.state]

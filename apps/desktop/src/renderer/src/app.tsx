@@ -1,7 +1,7 @@
 // 负责把设计稿里的页面串成可切换的桌面界面，并承接主进程授权事件。
 import { useEffect, useRef, useState } from "react"
 import { desktopText } from "./locale/text"
-import type { MembershipView } from "@pigclaude/contracts/membership"
+import { keepsMembershipRuntime, type MembershipView } from "@pigclaude/contracts/membership"
 import { AuthorizeScreen } from "./screens/authorize-screen"
 import { DesktopEntryScreen } from "./screens/desktop-entry-screen"
 import { OnboardingScreen } from "./screens/onboarding-screen"
@@ -108,7 +108,7 @@ function DesktopGate() {
     (loginState.view === "idle" || loginState.view === "confirming") &&
     !signOutState.pending &&
     signOutState.error === null &&
-    (browserPreview ? devView?.phase === undefined : membership.state === "active")
+    (browserPreview ? devView?.phase === undefined : keepsMembershipRuntime(membership.state))
   const startupSettled = membership.startupPhase !== "checking"
   const gatedLocation: NavLocation | null =
     canUseDesktop && isFlow(location, "login") && startupSettled

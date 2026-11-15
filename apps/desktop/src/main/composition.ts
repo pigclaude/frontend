@@ -1,6 +1,6 @@
 // 负责组合第一方 OAuth、独立 Claude provider 端口、本机会员写入生命周期和本机 daemon。
 import type { SecretVault } from "./secret-vault"
-import type { MembershipView } from "@pigclaude/contracts/membership"
+import { keepsMembershipRuntime, type MembershipView } from "@pigclaude/contracts/membership"
 import type { LocalStore } from "@pigclaude/local-store"
 import { AuthorizationService, type ClaudeAuthorizationAdapter } from "./authorization/service"
 import { OAuthTokenManager } from "./authorization/oauth-token-manager"
@@ -57,7 +57,7 @@ export type DesktopComposition = {
   tokenManager: OAuthTokenManager
   /** 每次执行前实时核验会员，不能从 UI 状态授予权限。 */
   runAuthorized: <T>(operation: (signal: AbortSignal) => Promise<T>) => Promise<T>
-  /** 前台/系统恢复触发实时检查。 */
+  /** 窗口回到前台时触发实时会员检查。 */
   resume: () => Promise<MembershipView>
   /** 本机第一方退出同步失效代次，不等待远端。 */
   signOut: () => Promise<MembershipView>
@@ -99,12 +99,12 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
     for (const controller of operations) controller.abort()
   }
   const unsubscribeOperations = membershipGate.subscribe((view) => {
-    if (view.state !== "active") stopOperations()
+    if (!keepsMembershipRuntime(view.state)) stopOperations()
   })
   async function runAuthorized<T>(operation: (signal: AbortSignal) => Promise<T>): Promise<T> {
     const owner = tokenManager.owner
     const revision = membershipGate.view().revision
-    const view = await membershipGate.inspect()
+    const view = await membershipGate.inspect({ authorize: true })
     if (!tokenManager.isCurrent(owner) || view.state !== "active" || view.revision <= revision)
       throw new Error("MEMBERSHIP_REQUIRED")
     const controller = new AbortController()

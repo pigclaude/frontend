@@ -1,7 +1,7 @@
 // 负责按会员状态启动和停止本机 daemon，按会话路由选号，并把额度冷却和换号事件桥接出去。
 // 只监听 loopback；会员失效时停止 daemon、吊销全部会话令牌并中止正在进行的请求。
 
-import type { MembershipView } from "@pigclaude/contracts/membership"
+import { keepsMembershipRuntime, type MembershipView } from "@pigclaude/contracts/membership"
 import type { LocalStore } from "@pigclaude/local-store"
 import { DaemonSessions, LocalDaemon, type DaemonSessionLookup } from "@pigclaude/daemon"
 import type { AccountChooser, ChosenAccount } from "./account-chooser"
@@ -77,7 +77,7 @@ export type LocalRuntimeOptions = {
 
 type Lifecycle = { abort: AbortController }
 
-/** 本机 daemon 的生命周期和选号事件源。保证只在会员 active 时监听 loopback；启动失败按退避重试；会员失效或 stop 时中止请求、吊销全部会话令牌并释放端口；daemon 意外重启不影响已打开的会话。 */
+/** 本机 daemon 的生命周期和选号事件源。会员有效才启动，短暂核验网络故障保留监听。会员失效或 stop 时中止请求、吊销令牌并释放端口。 */
 export class LocalRuntime {
   readonly chooser: LocalRuntimeOptions["chooser"]
 
@@ -118,7 +118,7 @@ export class LocalRuntime {
     this.#createDaemon = options.createDaemon ?? ((daemonOptions) => new LocalDaemon(daemonOptions))
     this.#unsubscribe = this.#membership.subscribe((view) => {
       if (view.state === "active") void this.start()
-      else void this.stop()
+      else if (!keepsMembershipRuntime(view.state)) void this.stop()
     })
   }
 
@@ -254,7 +254,7 @@ export class LocalRuntime {
       !this.#disposed &&
       this.#lifecycle === lifecycle &&
       !lifecycle.abort.signal.aborted &&
-      this.#membership.view().state === "active"
+      keepsMembershipRuntime(this.#membership.view().state)
     )
   }
 

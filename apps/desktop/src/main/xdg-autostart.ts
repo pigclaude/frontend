@@ -13,7 +13,21 @@ export function createXdgAutostart(
 ) {
   const config = configHome && isAbsolute(configHome) ? configHome : join(home, ".config")
   const filePath = join(config, "autostart", "pigclaude-autostart.desktop")
-  const command = () => quoteExecutable(executable) + " " + backgroundArg
+  const command = () => {
+    if (
+      !isAbsolute(executable) ||
+      [...executable].some((character) => character.charCodeAt(0) < 32)
+    )
+      throw new Error("STARTUP_EXECUTABLE_PATH_INVALID")
+    // GIO 在展开字段码前检查命令的首个词，因此让实际路径只作为参数。
+    return [
+      "/bin/sh -c",
+      quoteExecArgument('exec "$@"'),
+      "pigclaude-autostart",
+      quoteExecArgument(executable),
+      backgroundArg,
+    ].join(" ")
+  }
 
   return {
     /** 检查当前程序的自启入口，识别在桌面环境里关闭的入口。 */
@@ -56,10 +70,8 @@ export function createXdgAutostart(
   }
 }
 
-function quoteExecutable(path: string): string {
-  if (!isAbsolute(path) || [...path].some((character) => character.charCodeAt(0) < 32))
-    throw new Error("STARTUP_EXECUTABLE_PATH_INVALID")
-  const escaped = [...path]
+function quoteExecArgument(value: string): string {
+  const escaped = [...value]
     .map((character) => {
       if (character === "%") return "%%"
       if (character === "\\") return "\\\\\\\\"

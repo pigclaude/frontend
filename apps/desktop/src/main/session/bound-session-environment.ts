@@ -29,6 +29,9 @@ export async function boundSessionEnvironment(
     })
     return {
       env: environment.env,
+      ...(environment.projectConfiguration === undefined
+        ? {}
+        : { projectConfiguration: environment.projectConfiguration }),
       configDir: environment.configDir,
       sessionDir: environment.sessionDir,
       workspace: environment.workspace,

@@ -62,7 +62,16 @@ export function normalizeSdkMessage(message: SDKMessage): AdapterEvent[] {
       }
       return events
     }
-    case "user":
+    case "user": {
+      if (localSkillPermissionDenied(message.message.content)) {
+        return [
+          {
+            type: "error",
+            code: "SDK_ERROR",
+            message: "此 skill 的内联命令未获许可。请检查 skill 声明的 allowed-tools 后再试。",
+          },
+        ]
+      }
       return toolResults(
         message.message.content,
         subagentRef(
@@ -71,6 +80,7 @@ export function normalizeSdkMessage(message: SDKMessage): AdapterEvent[] {
         ),
         "tool_use_result" in message && isBackgroundLaunch(message.tool_use_result),
       )
+    }
     case "result": {
       const totalUsage = sumModelUsage(message.modelUsage)
       return [
@@ -94,6 +104,18 @@ export function normalizeSdkMessage(message: SDKMessage): AdapterEvent[] {
     default:
       return []
   }
+}
+
+function localSkillPermissionDenied(content: unknown): boolean {
+  const blocks = Array.isArray(content) ? content : [content]
+  return blocks.some((block) => {
+    const text = isRecord(block) && block.type === "text" ? block.text : block
+    return (
+      typeof text === "string" &&
+      text.startsWith("<local-command-stderr>Shell command permission check failed") &&
+      text.endsWith("</local-command-stderr>")
+    )
+  })
 }
 
 // modelUsage 是整个 CLI 进程到这里为止的累计，含子代理和工作流。

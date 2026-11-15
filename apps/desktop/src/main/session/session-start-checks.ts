@@ -142,6 +142,7 @@ async function prepareEnvironment(
       locale: normalizeSessionLocale(profile?.locale),
       binaryPath,
       userDataPath: deps.userDataPath,
+      loadProjectConfiguration: true,
       ...(retainedPaths === undefined ? {} : { retainedPaths }),
       ...providerEnvironmentInput(deps.provider),
     },

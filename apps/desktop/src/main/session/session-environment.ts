@@ -7,6 +7,10 @@ import { chmod, mkdir, readdir, rm, writeFile } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
 import { buildSessionEnv } from "@pigclaude/session-env"
 import { cliModelCache, type OrganizationModel } from "./claude-bootstrap"
+import {
+  prepareProjectConfiguration,
+  type SessionProjectConfiguration,
+} from "./project-configuration"
 import { normalizeSessionLocale, normalizeSessionTimezone } from "./session-locale"
 import type { SessionStorePaths } from "./session-store-layout"
 
@@ -48,6 +52,8 @@ export type SessionEnvironmentInput = {
   modelCatalog?: ModelCatalogInput
   /** 已绑定代理的会话只传本机代理桥地址。 */
   proxyBridgeUrl?: string
+  /** 正常会话读取项目提示类组件，模型目录查询保持独立。 */
+  loadProjectConfiguration?: boolean
   /** 开发期自定义供应商；提供时替换 daemon 地址和会话 token，并忽略 modelCatalog。 */
   provider?: SessionProvider
 }
@@ -59,6 +65,8 @@ export class SessionEnvironment {
   readonly sessionDir: string
   readonly workspace: string
   readonly binaryPath: string
+  /** 本次启动生成的配置根和指令排除；模型目录没有项目配置。 */
+  readonly projectConfiguration?: SessionProjectConfiguration
   /** 账号/代理出口时区；原生 CLI 靠 env.TZ 生效，预加载只在 Node 运行时生效。 */
   readonly timezone: string
   readonly #retained: boolean
@@ -72,6 +80,7 @@ export class SessionEnvironment {
     binaryPath: string
     timezone: string
     retained: boolean
+    projectConfiguration?: SessionProjectConfiguration
   }) {
     this.env = input.env
     this.configDir = input.configDir
@@ -79,6 +88,9 @@ export class SessionEnvironment {
     this.workspace = input.workspace
     this.binaryPath = input.binaryPath
     this.timezone = input.timezone
+    if (input.projectConfiguration !== undefined) {
+      this.projectConfiguration = input.projectConfiguration
+    }
     this.#retained = input.retained
   }
 
@@ -117,6 +129,7 @@ export class SessionEnvironment {
     }).preloadSource
 
     let created = false
+    let projectConfiguration: SessionProjectConfiguration | undefined
     try {
       if (retained) {
         await mkdir(retained.claudeTmpDir, { recursive: true, mode: sessionDirectoryMode })
@@ -128,6 +141,14 @@ export class SessionEnvironment {
         await chmod(sessionsDir, sessionDirectoryMode)
       }
       await mkdir(configDir, { recursive: retained !== undefined, mode: sessionDirectoryMode })
+      if (input.loadProjectConfiguration) {
+        projectConfiguration = await prepareProjectConfiguration(
+          input.workspace,
+          retained?.claudeTmpDir ?? sessionDir,
+        )
+        // 工具、skill 和 hooks 的子进程不继承 daemon 会话令牌头。
+        env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB = "1"
+      }
       await writeFile(preloadPath, preloadSource, { mode: sessionDirectoryMode })
       const organizationModels = normalized.provider
         ? null
@@ -145,6 +166,10 @@ export class SessionEnvironment {
       await chmod(preloadPath, sessionDirectoryMode)
     } catch (error) {
       if (created) await rm(sessionDir, { recursive: true, force: true }).catch(() => undefined)
+      else if (projectConfiguration?.directory)
+        await rm(projectConfiguration.directory, { recursive: true, force: true }).catch(
+          () => undefined,
+        )
       throw error
     }
 
@@ -156,6 +181,7 @@ export class SessionEnvironment {
       binaryPath: input.binaryPath,
       timezone: normalized.timezone,
       retained: retained !== undefined,
+      ...(projectConfiguration === undefined ? {} : { projectConfiguration }),
     })
   }
 
@@ -163,6 +189,8 @@ export class SessionEnvironment {
   async cleanup(): Promise<void> {
     if (this.#cleaned) return
     if (!this.#retained) await rm(this.sessionDir, { recursive: true, force: true })
+    else if (this.projectConfiguration?.directory)
+      await rm(this.projectConfiguration.directory, { recursive: true, force: true })
     this.#cleaned = true
   }
 }

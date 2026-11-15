@@ -108,6 +108,9 @@ export function buildStartOptions(
   return {
     workspace: active.environment.workspace,
     env: active.environment.env,
+    ...(active.environment.projectConfiguration === undefined
+      ? {}
+      : { projectConfiguration: active.environment.projectConfiguration }),
     permissionMode: active.permissionMode,
     canUseTool: routeCanUseTool(active.broker, active.questions, hasThreadRead),
     abortController: active.abort,

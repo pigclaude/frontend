@@ -238,6 +238,7 @@ export type SessionRuntime = {
 /** 一次会话的环境摘要；真实实现是 SessionEnvironment，测试可注入假实现。 */
 export type SessionEnvironmentPort = {
   readonly env: Record<string, string>
+  readonly projectConfiguration?: import("./project-configuration").SessionProjectConfiguration
   readonly configDir: string
   readonly sessionDir: string
   readonly workspace: string

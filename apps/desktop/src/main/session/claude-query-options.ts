@@ -3,6 +3,7 @@
 import type { CanUseTool, Options, ThinkingConfig } from "@anthropic-ai/claude-agent-sdk"
 import { maxSessionRetentionDays } from "../../session-history-contract"
 import type { SessionEffort, SessionPermissionMode, SessionThinking } from "./session-events"
+import type { SessionProjectConfiguration } from "./project-configuration"
 
 /** 开始一次会话的参数；binaryPath 省略时使用 PIGCLAUDE_CLAUDE_BIN 或平台包二进制。 */
 export type ClaudeAgentStartOptions = {
@@ -22,6 +23,8 @@ export type ClaudeAgentStartOptions = {
   persistence?: ClaudePersistenceOptions
   /** 会话专用的宿主工具，未配置时沿用 SDK 自带工具。 */
   mcpServers?: Options["mcpServers"]
+  /** 指向本次启动生成的净化根；未配置时不加载项目扩展。 */
+  projectConfiguration?: SessionProjectConfiguration
 }
 
 /** 隔离目录中的 Claude 会话记录设置。 */
@@ -53,9 +56,24 @@ export function buildQueryOptions(
   binaryPath: string,
   spawnClaudeCodeProcess?: Options["spawnClaudeCodeProcess"],
 ): Options {
-  const { persistence } = options
+  const { persistence, projectConfiguration } = options
+  const settings = {
+    ...(persistence === undefined ? {} : { cleanupPeriodDays: maxSessionRetentionDays }),
+    ...(options.fast ? { fastMode: true } : {}),
+    ...(projectConfiguration === undefined
+      ? {}
+      : {
+          claudeMdExcludes: projectConfiguration.claudeMdExcludes,
+          autoMemoryEnabled: false,
+          disableClaudeAiConnectors: true,
+        }),
+  }
   return {
     ...isolatedQueryOptions(options.workspace, binaryPath, options.env),
+    ...(projectConfiguration === undefined ? {} : { strictMcpConfig: true }),
+    ...(projectConfiguration?.directory
+      ? { projectConfigRoot: projectConfiguration.directory, settingSources: ["project"] }
+      : {}),
     ...(options.mcpServers ? { mcpServers: options.mcpServers } : {}),
     permissionMode: options.permissionMode,
     canUseTool: options.canUseTool,
@@ -74,14 +92,7 @@ export function buildQueryOptions(
             ? { resume: persistence.sessionId }
             : { sessionId: persistence.sessionId }),
         }),
-    ...(persistence === undefined && !options.fast
-      ? {}
-      : {
-          settings: {
-            ...(persistence === undefined ? {} : { cleanupPeriodDays: maxSessionRetentionDays }),
-            ...(options.fast ? { fastMode: true } : {}),
-          },
-        }),
+    ...(Object.keys(settings).length === 0 ? {} : { settings }),
     ...(spawnClaudeCodeProcess === undefined ? {} : { spawnClaudeCodeProcess }),
     // 子代理的正文和思考也转发，只读过程视图才看得到它说了什么；不开进度摘要，省号池额度。
     forwardSubagentText: true,

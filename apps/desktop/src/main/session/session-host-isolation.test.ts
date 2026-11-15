@@ -80,7 +80,7 @@ describe("SessionHost isolates concurrent sessions", () => {
     const ended = harness.envelopes.filter((envelope) => envelope.event.type === "turn-ended")
     expect(ended.map((envelope) => envelope.sessionId)).toEqual([stopped])
     expect(harness.host.status(running)).toMatchObject({ active: true, turnId: "id-4" })
-    expect(harness.host.pendingWork()).toEqual({ turns: 1, approvals: 0 })
+    expect(harness.host.pendingWork()).toEqual({ runningSessions: 1, turns: 1, approvals: 0 })
     await harness.host.dispose()
   })
 })

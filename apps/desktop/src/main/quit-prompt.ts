@@ -18,8 +18,9 @@ export async function askToLeave(
 ): Promise<LeaveAnswer> {
   const leaving = action === "quit" ? "退出" : "关闭窗口"
   const detail = work.unsavedFiles > 0 ? [`${work.unsavedFiles} 个文件有未保存的修改。`] : []
-  if (work.turns > 0 || work.approvals > 0) detail.push(`${leaving}会结束当前会话。`)
-  if (work.turns > 0) detail.push("Claude 正在回复，这一轮会被中断。")
+  if (work.runningSessions > 0)
+    detail.push(`${leaving}会结束 ${work.runningSessions} 个运行中的会话。`)
+  if (work.turns > 0) detail.push(`有 ${work.turns} 个正在生成的回复会被中断。`)
   if (work.approvals > 0) detail.push(`${work.approvals} 个请求在等待你的审批。`)
   const unsaved = work.unsavedFiles > 0
   const options: Electron.MessageBoxOptions = {

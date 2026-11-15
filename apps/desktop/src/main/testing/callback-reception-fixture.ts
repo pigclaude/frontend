@@ -203,7 +203,7 @@ vi.mock("../session/session-environment", () => ({
 vi.mock("../session/session-host", () => ({
   SessionHost: class {
     subscribe() {}
-    pendingWork = () => ({ turns: 0, approvals: 0 })
+    pendingWork = () => ({ runningSessions: 0, turns: 0, approvals: 0 })
     stop = async () => undefined
     dispose = async () => fixture.shutdownGate!.promise
   },

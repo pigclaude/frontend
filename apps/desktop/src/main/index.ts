@@ -171,11 +171,7 @@ const guardMainWindowClose = installQuitFlow({
   closeToTray: () => tray !== null && closePreference.current(),
   ...(hasSingleInstanceLock ? { watchPowerShutdown } : {}),
   shutdown: shutdownDesktop,
-  onBeforeShutdown: () => {
-    windowVisibility.startShutdown()
-    appUpdates?.stop()
-    closeStartupEvents()
-  },
+  onBeforeShutdown: windowVisibility.startShutdown,
   onShutdownFailure: windowVisibility.shutdownFailed,
   onCancel: () => appUpdates?.cancelRestart(),
   finishQuit: (mode) => {
@@ -285,18 +281,24 @@ function registerIpcHandlers(): void {
   })
 }
 
-/** 应用退出时先关闭浏览器和账号资源，再关闭 Xray。 */
+/** 停止应用后台任务，再按依赖顺序释放资源。 */
 async function shutdownDesktop(): Promise<void> {
   await shutdownDesktopResources({
+    stopBackgroundWork: () => {
+      appUpdates?.stop()
+      closeStartupEvents()
+    },
     accounts: () => claudeAccountService?.dispose() ?? Promise.resolve(),
     sessions: () => sessionHost?.dispose() ?? Promise.resolve(),
     workbench: () => workbench.dispose(),
     composition: () => desktopComposition?.dispose() ?? Promise.resolve(),
     xray: () => startProxyRuntime.dispose(),
     callback: () => callbackServer?.close() ?? Promise.resolve(),
+    destroyTray: () => {
+      tray?.destroy()
+      tray = null
+    },
   })
-  tray?.destroy()
-  tray = null
 }
 
 /** 窗口打开后开始检查更新；更新服务建不起来只记日志，不影响应用其余部分。 */

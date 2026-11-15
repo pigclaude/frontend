@@ -216,12 +216,18 @@ export class SessionRegistry {
       .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
   }
 
-  /** 所有会话里退出会中断的工作：进行中的回合和等待回答的权限；正在结束的会话不算。 */
+  /** 汇总仍在运行的会话、进行中的回合和待审批请求，覆盖没有显示的会话。 */
   pendingWork(): SessionPendingWork {
-    return this.all().reduce((total, entry) => {
-      const work = entry.session?.pendingWork() ?? noPendingWork
-      return { turns: total.turns + work.turns, approvals: total.approvals + work.approvals }
-    }, noPendingWork)
+    const total = { ...noPendingWork }
+    for (const entry of this.#entries.values()) {
+      const session = this.live(entry.sessionId)
+      if (session === null) continue
+      const work = session.pendingWork()
+      total.runningSessions += work.runningSessions
+      total.turns += work.turns
+      total.approvals += work.approvals
+    }
+    return total
   }
 
   /** 和这个工作区重叠（相同、包含或被包含）的会话里有没有进行中的回合；停放和正在结束的会话不算。 */

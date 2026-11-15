@@ -381,7 +381,7 @@ export class SessionHost {
     return this.#registry.hasActiveTurn(workspace)
   }
 
-  /** 退出前要确认的工作：所有会话进行中的回合和等待回答的权限；正在结束的会话不算。 */
+  /** 汇总退出会中断的会话、回合和审批，包括后台会话。 */
   pendingWork(): SessionPendingWork {
     return this.#registry.pendingWork()
   }

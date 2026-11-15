@@ -26,16 +26,23 @@ beforeEach(() => {
 })
 
 describe("askToLeave", () => {
+  it("shows the total even when no session is generating a reply", async () => {
+    await askToLeave(null, { runningSessions: 2, turns: 0, approvals: 0, unsavedFiles: 0 }, "quit")
+
+    expect(shown.options[0]?.detail).toBe("退出会结束 2 个运行中的会话。")
+  })
+
   it("names the running turn and the waiting approvals, and stays on cancel", async () => {
     shown.response = 1
 
     await expect(
-      askToLeave(null, { turns: 1, approvals: 2, unsavedFiles: 0 }, "quit"),
+      askToLeave(null, { runningSessions: 1, turns: 1, approvals: 2, unsavedFiles: 0 }, "quit"),
     ).resolves.toBe("stay")
 
     expect(shown.options[0]).toMatchObject({
       message: "还有工作在运行",
-      detail: "退出会结束当前会话。\nClaude 正在回复，这一轮会被中断。\n2 个请求在等待你的审批。",
+      detail:
+        "退出会结束 1 个运行中的会话。\n有 1 个正在生成的回复会被中断。\n2 个请求在等待你的审批。",
       buttons: ["退出", "继续运行"],
       cancelId: 1,
     })
@@ -45,17 +52,17 @@ describe("askToLeave", () => {
     shown.response = 0
 
     await expect(
-      askToLeave(null, { turns: 0, approvals: 1, unsavedFiles: 0 }, "close"),
+      askToLeave(null, { runningSessions: 1, turns: 0, approvals: 1, unsavedFiles: 0 }, "close"),
     ).resolves.toBe("leave")
 
     expect(shown.options[0]).toMatchObject({
-      detail: "关闭窗口会结束当前会话。\n1 个请求在等待你的审批。",
+      detail: "关闭窗口会结束 1 个运行中的会话。\n1 个请求在等待你的审批。",
       buttons: ["关闭窗口", "继续运行"],
     })
   })
 
   it("offers to save unsaved files in the same question as the running turn", async () => {
-    const work = { turns: 1, approvals: 0, unsavedFiles: 2 }
+    const work = { runningSessions: 1, turns: 1, approvals: 0, unsavedFiles: 2 }
     const answers = []
     for (const response of [0, 1, 2]) {
       shown.response = response
@@ -66,7 +73,8 @@ describe("askToLeave", () => {
     expect(shown.options).toHaveLength(3)
     expect(shown.options[0]).toMatchObject({
       message: "有文件修改还没保存",
-      detail: "2 个文件有未保存的修改。\n退出会结束当前会话。\nClaude 正在回复，这一轮会被中断。",
+      detail:
+        "2 个文件有未保存的修改。\n退出会结束 1 个运行中的会话。\n有 1 个正在生成的回复会被中断。",
       buttons: ["保存并退出", "不保存", "取消"],
       defaultId: 0,
       cancelId: 2,

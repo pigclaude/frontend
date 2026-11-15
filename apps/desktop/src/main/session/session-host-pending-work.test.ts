@@ -1,4 +1,4 @@
-// 负责验证会话宿主报告的「退出会中断的工作」：进行中的回合和待回答的权限，正在结束的会话不算。
+// 负责验证会话宿主为退出确认汇总运行中会话、正在进行的回合和待审批请求。
 
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -19,17 +19,29 @@ afterEach(async () => {
 })
 
 describe("SessionHost pending work", () => {
+  it("includes idle background sessions and excludes parked sessions", async () => {
+    const harness = await startedHarness()
+    const first = currentSessionId(harness.host)
+    const { workspace } = harness.environments.last
+    await harness.host.start({ workspace, permissionMode: "default" })
+    await harness.host.start({ workspace, permissionMode: "default" })
+    await harness.host.stop(first)
+
+    expect(harness.host.pendingWork()).toEqual({ runningSessions: 2, turns: 0, approvals: 0 })
+    await harness.host.dispose()
+  })
+
   it("counts the running turn and the permissions waiting for an answer", async () => {
     const harness = await startedHarness()
     await harness.host.send(currentSessionId(harness.host), { text: "hello" })
     void askPermission(harness)
     await waitUntil(() => harness.host.status().pendingPermissions === 1)
 
-    expect(harness.host.pendingWork()).toEqual({ turns: 1, approvals: 1 })
+    expect(harness.host.pendingWork()).toEqual({ runningSessions: 1, turns: 1, approvals: 1 })
     await harness.host.dispose()
   })
 
-  it("has nothing pending once the turn has its result", async () => {
+  it("keeps counting the session once its turn has a result", async () => {
     const harness = await startedHarness()
     await harness.host.send(currentSessionId(harness.host), { text: "hello" })
     harness.adapters.last.emit({
@@ -42,7 +54,7 @@ describe("SessionHost pending work", () => {
       usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
     })
 
-    expect(harness.host.pendingWork()).toEqual({ turns: 0, approvals: 0 })
+    expect(harness.host.pendingWork()).toEqual({ runningSessions: 1, turns: 0, approvals: 0 })
     await harness.host.dispose()
   })
 
@@ -54,7 +66,7 @@ describe("SessionHost pending work", () => {
 
     const stopping = harness.host.stop()
 
-    expect(harness.host.pendingWork()).toEqual({ turns: 0, approvals: 0 })
+    expect(harness.host.pendingWork()).toEqual({ runningSessions: 0, turns: 0, approvals: 0 })
     await stopping
   })
 })

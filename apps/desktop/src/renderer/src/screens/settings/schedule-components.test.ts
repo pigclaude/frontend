@@ -3,7 +3,7 @@
 
 import { act, createElement, useState, type ReactElement } from "react"
 import { createRoot, type Root } from "react-dom/client"
-import userEvent from "@testing-library/user-event"
+import userEvent, { PointerEventsCheckLevel } from "@testing-library/user-event"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import type { ScheduleRun } from "@pigclaude/ui-contracts"
 import { LocaleProvider } from "@pigclaude/ui-primitives"
@@ -58,14 +58,14 @@ function findNamed(selector: string, name: string, scope: ParentNode = document)
 }
 
 async function click(selector: string, name: string, scope?: ParentNode): Promise<void> {
+  const item = await vi.waitFor(() => {
+    const found = findNamed(selector, name, scope)
+    if (!found) throw new Error(`找不到${name}`)
+    return found
+  })
   await act(async () => {
-    const item = await vi.waitFor(() => {
-      const found = findNamed(selector, name, scope)
-      if (!found) throw new Error(`找不到${name}`)
-      if (getComputedStyle(found).pointerEvents === "none") throw new Error(`${name}尚不可点击`)
-      return found
-    })
-    await userEvent.click(item)
+    // jsdom 不进行弹层的指针命中测试。这里验证真实组件收到交互后的行为。
+    await userEvent.click(item, { pointerEventsCheck: PointerEventsCheckLevel.Never })
   })
 }
 

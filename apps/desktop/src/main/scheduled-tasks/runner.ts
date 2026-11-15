@@ -7,7 +7,7 @@ const stopped: ScheduledTaskOutcome = { status: "stopped", reason: "APP_STOPPED"
 
 /** 运行前读取当前会员、项目、账号和本机 daemon，并把任务快照交给会话宿主。 */
 export type ScheduledTaskRunnerPorts = {
-  checkMembership(): Promise<boolean>
+  checkMembership(signal: AbortSignal): Promise<boolean>
   checkProject(projectPath: string): Promise<boolean>
   checkAccount(): Promise<boolean>
   startDaemon(): Promise<boolean>
@@ -19,7 +19,7 @@ export type ScheduledTaskRunnerPorts = {
 export function createScheduledTaskRunner(ports: ScheduledTaskRunnerPorts) {
   return async (task: ScheduledTaskInput, signal: AbortSignal): Promise<ScheduledTaskOutcome> => {
     const prerequisites = [
-      [() => ports.checkMembership(), "MEMBERSHIP_REQUIRED"],
+      [() => ports.checkMembership(signal), "MEMBERSHIP_REQUIRED"],
       [() => ports.checkProject(task.projectPath), "PROJECT_UNAVAILABLE"],
       [() => ports.checkAccount(), "NO_AVAILABLE_ACCOUNT"],
     ] as const

@@ -1,15 +1,5 @@
 // 负责创建桌面窗口、承接浏览器授权回调并保存主进程秘密。
-import {
-  app,
-  BrowserWindow,
-  ipcMain,
-  nativeTheme,
-  net,
-  powerMonitor,
-  safeStorage,
-  screen,
-  shell,
-} from "electron"
+import { app, BrowserWindow, ipcMain, nativeTheme, safeStorage, screen, shell } from "electron"
 import { join } from "node:path"
 import { readFileSync } from "node:fs"
 import type { MembershipView } from "@pigclaude/contracts/membership"
@@ -55,6 +45,7 @@ import {
   createDesktopScheduledTaskService,
   reportScheduledTasksError,
 } from "./scheduled-tasks/desktop-service"
+import { trackDesktopWake } from "./scheduled-tasks/desktop-wake"
 import type { ScheduledTaskService } from "./scheduled-tasks/service"
 import { WorkbenchIpc } from "./workbench/workbench-ipc"
 import { cleanupStaleSessionDirs } from "./session/session-environment"
@@ -395,16 +386,12 @@ async function setupAuthorization(): Promise<void> {
     })
   }
   const checkLive = () => void desktopComposition?.resume()
-  const resumeAfterSleep = () => {
-    desktopComposition?.membershipGate.resumeAfterWake(() => net.isOnline())
-    void scheduledTasks?.wake().catch(reportScheduledTasksError)
-  }
   app.on("browser-window-focus", checkLive)
-  powerMonitor.on("resume", resumeAfterSleep)
+  const stopWake = trackDesktopWake(composition.membershipGate, scheduledTasks)
   const unsubscribeAccounts = localStore.subscribeAccounts(() => tray?.accountsChanged())
   cleanupLiveEvents = () => {
     app.removeListener("browser-window-focus", checkLive)
-    powerMonitor.removeListener("resume", resumeAfterSleep)
+    stopWake()
     unsubscribeAccounts()
   }
   if (app.isPackaged) app.setAsDefaultProtocolClient("pigclaude")

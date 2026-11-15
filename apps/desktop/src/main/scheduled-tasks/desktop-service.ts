@@ -22,8 +22,19 @@ export function createDesktopScheduledTaskService(options: {
   runSession: ScheduledTaskRunnerPorts["runSession"]
   presentation: Omit<ScheduledTaskPresentationOptions, "service">
 }): ScheduledTaskService {
+  let membershipChecks = Promise.resolve()
   const runner = createScheduledTaskRunner({
-    checkMembership: () => options.authorization.runAuthorized(async () => true),
+    checkMembership: (signal) => {
+      // 同时到点的任务按顺序核验，避免较新的检查使同批较早的授权结果失效。
+      const checked = membershipChecks.then(() =>
+        signal.aborted ? false : options.authorization.runAuthorized(async () => true),
+      )
+      membershipChecks = checked.then(
+        () => undefined,
+        () => undefined,
+      )
+      return checked
+    },
     checkProject: async (projectPath) => {
       await assertWorkspace(projectPath)
       return true

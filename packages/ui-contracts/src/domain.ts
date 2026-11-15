@@ -199,6 +199,21 @@ export const scheduleRunStatusSchema = z.enum([
   "skipped",
 ])
 
+/** 定时任务的一次触发：到点（schedule）或立即运行（manual）。 */
+export const scheduleRunSchema = z.object({
+  id: z.string().min(1),
+  scheduleId: z.string().min(1),
+  source: z.enum(["schedule", "manual"]),
+  status: scheduleRunStatusSchema,
+  threadId: z.string().min(1),
+  /** 启动了的 run；跳过或启动失败时为 null。 */
+  runId: z.string().nullable(),
+  /** 跳过或失败的原因：THREAD_BUSY、AGENT_UNAVAILABLE，或者启动时的错误信息。 */
+  error: z.string().nullable(),
+  triggeredAt: z.string().datetime(),
+  finishedAt: z.string().datetime().nullable(),
+})
+
 /** Agent 功能的类型。 */
 export type AgentFeatures = z.infer<typeof agentFeaturesSchema>
 
@@ -227,6 +242,9 @@ export type ScheduleRule = z.infer<typeof scheduleRuleSchema>
 
 /** 定时任务状态的类型。 */
 export type ScheduleStatus = z.infer<typeof scheduleStatusSchema>
+
+/** 定时任务一次触发的类型。 */
+export type ScheduleRun = z.infer<typeof scheduleRunSchema>
 
 /** 定时任务一次触发结果的类型。 */
 export type ScheduleRunStatus = z.infer<typeof scheduleRunStatusSchema>

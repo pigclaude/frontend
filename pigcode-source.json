@@ -1,13 +1,13 @@
 {
   "repository": "pigcode/pigcode",
   "commit": "ebeccf382df85ca2a2c594f56c1bb1edd641c447",
-  "rule": "@pigcode/contracts → @pigclaude/ui-contracts，按 scripts/pigcode-ui-contracts.mjs 选取声明；其余 @pigcode/<package> → @pigclaude/<package>；\"pigcode.<key>\" 存储键 → \"pigclaude.<key>\"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
+  "rule": "@pigcode/contracts → @pigclaude/ui-contracts，选取声明和纯函数；定时规则测试选取已拷入功能的测试组；其余 @pigcode/<package> → @pigclaude/<package>；\"pigcode.<key>\" 存储键 → \"pigclaude.<key>\"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
   "files": [
     {
       "path": "packages/ui-contracts/src/index.ts",
       "source": null,
       "sourceSha256": null,
-      "sha256": "bf37ffa116e54bde53350379c0fc0d7af85e9df41712a2b36217650a3e32c757"
+      "sha256": "c91ba0c11c2c54ba140f296c41dd43e4884332fd44748e2efcbbf41ba238dd2e"
     },
     {
       "path": "packages/ui-contracts/package.json",
@@ -25,7 +25,7 @@
       "path": "packages/ui-contracts/src/domain.ts",
       "source": "packages/contracts/src/domain.ts",
       "sourceSha256": "c70e074bda273c8781abccbe5d22a3e9ac981c5a16e00e5ba5c9af0394691059",
-      "sha256": "54ad26c141fcfbaa2b2f0d2981eeb6d206742fca4431f6adbbe1e78d12d6aecf"
+      "sha256": "b9306f6e17d24cb0f53c219a48541d5accdda06f7092a18fa4ba1b44e7203462"
     },
     {
       "path": "packages/ui-contracts/src/events.ts",
@@ -56,6 +56,18 @@
       "source": "packages/contracts/src/runtime-modes.ts",
       "sourceSha256": "ec16316c0e02750feed6501715d16bc899f77fdcca0a3435b40ab2051953618e",
       "sha256": "f54ae2952902c4e2fd2f86f1665b1458d6f619c852936cbef8584c3ebbbe64ba"
+    },
+    {
+      "path": "packages/ui-contracts/src/schedule-rules.test.ts",
+      "source": "packages/contracts/src/schedule-rules.test.ts",
+      "sourceSha256": "caf80cff7c13d4347166310ea8eac50b131d570c723eda9daa55977632dda5ca",
+      "sha256": "5c8ffebf943c31844951831e9ec2691debac3e702f709f8872ed9a4639830b34"
+    },
+    {
+      "path": "packages/ui-contracts/src/schedule-rules.ts",
+      "source": "packages/contracts/src/schedule-rules.ts",
+      "sourceSha256": "5aa2f88a3173e551ed4429c488bdacbab45a75ee44f3796553577d711eabbf6d",
+      "sha256": "5aa2f88a3173e551ed4429c488bdacbab45a75ee44f3796553577d711eabbf6d"
     },
     {
       "path": "packages/ui-contracts/src/updates.ts",
@@ -1201,7 +1213,7 @@
       "path": "packages/ui-settings/src/index.ts",
       "source": null,
       "sourceSha256": null,
-      "sha256": "a6fafea3924defa321a207312528058cdf24e9f41114137f77099eb55fa40f56"
+      "sha256": "64033ea021f48ea78fa4d763fc4a79f39d9ce35c901a7b2f3a8ea58c8d2f141d"
     },
     {
       "path": "packages/ui-settings/package.json",
@@ -1276,10 +1288,40 @@
       "sha256": "72cef9b0b4f948d61404abef91d3d0cc5d8ef72d535b88ff3d492804ad44fd30"
     },
     {
+      "path": "packages/ui-settings/src/schedule-custom-repeat.tsx",
+      "source": "packages/ui-settings/src/schedule-custom-repeat.tsx",
+      "sourceSha256": "c3d9fbe2a780c003bce5699b8430b991122048017f1ad4be2ac845ea620bff22",
+      "sha256": "325cac69d254d0403059c41c25321b59b4283756ee36f6088d5e50ebaf7409e1"
+    },
+    {
       "path": "packages/ui-settings/src/schedule-format.ts",
       "source": "packages/ui-settings/src/schedule-format.ts",
       "sourceSha256": "95e2048d58862f3cfe218c55d77347ac6c596960ec8dc6cc61a1871059fc926c",
       "sha256": "7bb03adb8948194f133b2b74404c2d6850206c123680a4653948ea6311641640"
+    },
+    {
+      "path": "packages/ui-settings/src/schedule-history.tsx",
+      "source": "packages/ui-settings/src/schedule-history.tsx",
+      "sourceSha256": "f720a99d904137c198058bbc49871f1ac376e9b69ce7a07ad4fe3536c8347da3",
+      "sha256": "9372f5d8b7fec5515a7cc790eeb7413a03ee27e4c79c04ba442e7c0c087cde5b"
+    },
+    {
+      "path": "packages/ui-settings/src/schedule-rule-field.tsx",
+      "source": "packages/ui-settings/src/schedule-rule-field.tsx",
+      "sourceSha256": "70e34da2d5384545db862c9d671fb9caea1b56fbcff7f11300ac947dd852fc9b",
+      "sha256": "f3e8217ff9d9853276bdd91bfbb6bcd755efcc9973a809bd3d02bdda778c8359"
+    },
+    {
+      "path": "packages/ui-settings/src/schedule-rule-parts.tsx",
+      "source": "packages/ui-settings/src/schedule-rule-parts.tsx",
+      "sourceSha256": "5e447825eefb76c99ce83ffe33a2b2edd0fce941599caeb589f9831f1a2ce50d",
+      "sha256": "5c01bdc5ee8fd69ef5cf763828db693c265560f354d10dc3d4f8dc050322c1c2"
+    },
+    {
+      "path": "packages/ui-settings/src/schedule-format.test.ts",
+      "source": "packages/ui-settings/src/schedules-page.test.tsx",
+      "sourceSha256": "805d91d444a39d42bbe141abcc53e5b7fcb89ce9ba74b31dce85ba4124eae6d3",
+      "sha256": "02127d29f0ae84d3e0e8cd2250169a46f312a7d6cb13147864e8862fa3211a9f"
     },
     {
       "path": "packages/ui-settings/src/sensitive-text.tsx",

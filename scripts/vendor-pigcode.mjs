@@ -4,7 +4,12 @@ import { createHash } from "node:crypto"
 import { mkdir, rm, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import prettier from "prettier"
-import { contractEntry, contractFiles, projectUiContracts } from "./pigcode-ui-contracts.mjs"
+import {
+  contractEntry,
+  contractFiles,
+  projectScheduleTest,
+  projectUiContracts,
+} from "./pigcode-ui-contracts.mjs"
 import { vendoredPackages } from "./pigcode-package-map.mjs"
 
 const frontend = join(import.meta.dirname, "..")
@@ -12,14 +17,14 @@ const lockFile = join(frontend, "pigcode-source.json")
 
 /** client-runtime 只取扩展点注册表；其余是 Host 连接、AppStore 与插件运行时，按规格不拷入。 */
 const partialPackages = {
-  contracts: Object.keys(contractFiles),
+  contracts: [...Object.keys(contractFiles), "src/schedule-rules.ts", "src/schedule-rules.test.ts"],
   "client-runtime": [
     "src/extension-points.tsx",
     "src/extension-points.test.tsx",
     "src/global.d.ts",
     "src/vite-env.d.ts",
   ],
-  // 只取外观页与通用页；Agent、定时任务页属于 Pigcode 的产品功能，按规格不拷入。
+  // 拷入外观、通用页面及定时规则和历史组件。定时任务列表与完整编辑器由 PigClaude 自己实现。
   "ui-settings": [
     "src/appearance-code.tsx",
     "src/appearance-fields.tsx",
@@ -32,8 +37,12 @@ const partialPackages = {
     "src/general-page.tsx",
     "src/global.d.ts",
     "src/preferences.ts",
-    // 外观页用它的 fill() 填文案模板；文件本身还含定时任务的格式化，原样保留不改。
+    "src/schedule-custom-repeat.tsx",
     "src/schedule-format.ts",
+    "src/schedule-history.tsx",
+    "src/schedule-rule-field.tsx",
+    "src/schedule-rule-parts.tsx",
+    "src/schedules-page.test.tsx",
     "src/sensitive-text.tsx",
     "src/vite-env.d.ts",
   ],
@@ -42,10 +51,28 @@ const partialPackages = {
 /** 部分拷入的包需要的入口：只导出实际拷入的模块。 */
 const partialEntries = {
   contracts: contractEntry,
-  "ui-settings": `/** 设置页面的公开入口：只含从 Pigcode 拷入的外观页与通用页。 */
+  "ui-settings": `/** 设置页面和定时任务组件的公开入口。 */
 export * from "./appearance-page"
 export * from "./general-page"
+export { CustomRepeatDialog } from "./schedule-custom-repeat"
+export { DEFAULT_RULE, formatRule } from "./schedule-format"
+export { ScheduleHistory, type ScheduleRunsPage } from "./schedule-history"
+export { ScheduleRuleField, type RuleValue } from "./schedule-rule-field"
+export { MinutePill, Preview, TimePills, TimeZone } from "./schedule-rule-parts"
 `,
+}
+
+// 定时任务的上游测试同时覆盖 Host 和整页 UI，从中保留本次同步范围内的测试组。
+const scheduleTests = {
+  "packages/contracts/src/schedule-rules.test.ts": {
+    target: "src/schedule-rules.test.ts",
+    suite: "nextScheduleRun",
+    helpers: ["at", "next"],
+  },
+  "packages/ui-settings/src/schedules-page.test.tsx": {
+    target: "src/schedule-format.test.ts",
+    suite: "formatRule",
+  },
 }
 
 /** 点分的本地存储键（侧栏宽度、侧栏排法等）改用 PigClaude 的前缀；主题文件格式与主题代码前缀不在此列。 */
@@ -155,13 +182,15 @@ async function vendor(repo, commit) {
       let output = isText ? rewriteSource(original.toString("utf8"), rest) : original
       const contractPath = item.source === "contracts" ? contractFiles[rest] : undefined
       if (contractPath) output = projectUiContracts(output, rest)
+      const test = scheduleTests[path]
+      if (test) output = projectScheduleTest(output, rest, test.suite, test.helpers)
       if (rest === "package.json") output = rewriteManifest(output, item)
       if (rest === "tsconfig.json") output = rewriteTsconfig(output)
       // 改名后部分行超出 100 列：按本仓库 Prettier 配置重排，守卫记录的是重排后的内容。
       if (/\.(tsx?|json|css)$/.test(rest)) {
         output = await prettier.format(output, { ...format, filepath: rest })
       }
-      const destination = `packages/${item.target}/${contractPath ?? rest}`
+      const destination = `packages/${item.target}/${contractPath ?? test?.target ?? rest}`
       outputs.set(destination, output)
       files.push({
         path: destination,
@@ -185,7 +214,7 @@ async function vendor(repo, commit) {
   const lock = {
     repository: "pigcode/pigcode",
     commit: resolved,
-    rule: '@pigcode/contracts → @pigclaude/ui-contracts，按 scripts/pigcode-ui-contracts.mjs 选取声明；其余 @pigcode/<package> → @pigclaude/<package>；"pigcode.<key>" 存储键 → "pigclaude.<key>"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排',
+    rule: '@pigcode/contracts → @pigclaude/ui-contracts，选取声明和纯函数；定时规则测试选取已拷入功能的测试组；其余 @pigcode/<package> → @pigclaude/<package>；"pigcode.<key>" 存储键 → "pigclaude.<key>"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排',
     files,
   }
   await writeFile(lockFile, `${JSON.stringify(lock, null, 2)}\n`)

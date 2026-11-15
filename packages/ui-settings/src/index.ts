@@ -1,3 +1,8 @@
-/** 设置页面的公开入口：只含从 Pigcode 拷入的外观页与通用页。 */
+/** 设置页面和定时任务组件的公开入口。 */
 export * from "./appearance-page"
 export * from "./general-page"
+export { CustomRepeatDialog } from "./schedule-custom-repeat"
+export { DEFAULT_RULE, formatRule } from "./schedule-format"
+export { ScheduleHistory, type ScheduleRunsPage } from "./schedule-history"
+export { ScheduleRuleField, type RuleValue } from "./schedule-rule-field"
+export { MinutePill, Preview, TimePills, TimeZone } from "./schedule-rule-parts"

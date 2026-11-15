@@ -1,4 +1,4 @@
-/** 界面依赖的 Pigcode 数据类型、运行时常量和错误码。 */
+/** 界面依赖的 Pigcode 声明与定时规则计算。 */
 export type {
   AgentCommand,
   AgentFeatures,
@@ -8,10 +8,13 @@ export type {
   ReasoningEffort,
   PullRequestInfo,
   ScheduleRule,
+  ScheduleRun,
   ScheduleRunStatus,
   ScheduleStatus,
   Thread,
 } from "./domain"
+export { scheduleRuleSchema } from "./domain"
+export { nextScheduleRun, nextScheduleRunBefore } from "./schedule-rules"
 export type { ThreadEvent, WorkflowAgent, WorkflowSnapshot, WorkflowStatus } from "./events"
 export { HOST_ERROR_CODES, isHostErrorCode, type HostErrorCode } from "./error-codes"
 export {

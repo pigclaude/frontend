@@ -1,4 +1,4 @@
-// 负责从固定 Pigcode 合约文件选出界面用到的声明及其类型依赖。
+// 从固定 Pigcode 文件中选取界面声明和定时规则测试，并保留它们用到的导入。
 import ts from "typescript"
 
 const declarations = {
@@ -23,6 +23,7 @@ const declarations = {
     "scheduleRuleSchema",
     "scheduleStatusSchema",
     "scheduleRunStatusSchema",
+    "scheduleRunSchema",
     "AgentFeatures",
     "PermissionMode",
     "ReasoningEffort",
@@ -33,6 +34,7 @@ const declarations = {
     "PullRequestInfo",
     "ScheduleRule",
     "ScheduleStatus",
+    "ScheduleRun",
     "ScheduleRunStatus",
   ],
   "src/events.ts": [
@@ -76,12 +78,14 @@ export const contractFiles = {
   "src/updates.ts": "src/updates.ts",
 }
 
-/** 合约包只公开拷入界面包和桌面适配层用到的类型、运行时常量和已知错误码判定。 */
-export const contractEntry = `/** 界面依赖的 Pigcode 数据类型、运行时常量和错误码。 */
+/** 合约包公开界面和桌面适配层用到的声明与定时规则纯函数。 */
+export const contractEntry = `/** 界面依赖的 Pigcode 声明与定时规则计算。 */
 export type {
   AgentCommand, AgentFeatures, KnownReasoningEffort, PermissionMode, Project, ReasoningEffort,
-  PullRequestInfo, ScheduleRule, ScheduleRunStatus, ScheduleStatus, Thread,
+  PullRequestInfo, ScheduleRule, ScheduleRun, ScheduleRunStatus, ScheduleStatus, Thread,
 } from "./domain"
+export { scheduleRuleSchema } from "./domain"
+export { nextScheduleRun, nextScheduleRunBefore } from "./schedule-rules"
 export type { ThreadEvent, WorkflowAgent, WorkflowSnapshot, WorkflowStatus } from "./events"
 export { HOST_ERROR_CODES, isHostErrorCode, type HostErrorCode } from "./error-codes"
 export {
@@ -110,6 +114,40 @@ export function projectUiContracts(source, path) {
     if (name && ts.isIdentifier(name) && wanted.delete(name.text)) selected.push(statement)
   }
   if (wanted.size) throw new Error(`${path} 缺少 Pigcode 界面需要的声明：${[...wanted].join(", ")}`)
+  return selectedSource(file, imports, selected)
+}
+
+/** 保留单个上游测试组及其辅助函数，排除与所拷入功能无关的 Host 命令和整页测试。 */
+export function projectScheduleTest(source, path, suite, helpers = []) {
+  const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, false)
+  const imports = []
+  const selected = []
+  const missing = new Set(helpers)
+  let found = false
+  for (const statement of file.statements) {
+    if (ts.isImportDeclaration(statement)) imports.push(statement)
+    if (ts.isVariableStatement(statement)) {
+      const name = statement.declarationList.declarations[0]?.name
+      if (name && ts.isIdentifier(name) && missing.delete(name.text)) selected.push(statement)
+    }
+    if (!ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression)) continue
+    const { expression, arguments: args } = statement.expression
+    if (
+      ts.isIdentifier(expression) &&
+      expression.text === "describe" &&
+      args[0] &&
+      ts.isStringLiteral(args[0]) &&
+      args[0].text === suite
+    ) {
+      found = true
+      selected.push(statement)
+    }
+  }
+  if (!found || missing.size) throw new Error(`${path} 缺少 Pigcode 定时规则测试组或依赖：${suite}`)
+  return `// 从固定 Pigcode 提交提取 ${suite} 测试组。\n${selectedSource(file, imports, selected)}`
+}
+
+function selectedSource(file, imports, selected) {
   const used = new Set()
   const collect = (node) => {
     if (ts.isIdentifier(node)) used.add(node.text)
@@ -121,11 +159,12 @@ export function projectUiContracts(source, path) {
   return `${parts.join("\n\n")}\n`
 }
 
-/** 只保留被引用的具名导入；全部用到时保留原文，一个都没用到时整条删掉。 */
+/** 筛掉未使用的具名导入和单独的默认导入；全部用到时保留原文。 */
 function usedImport(statement, file, used) {
   const original = statement.getFullText(file).trim()
   const clause = statement.importClause
   const bindings = clause?.namedBindings
+  if (clause?.name && !bindings && !used.has(clause.name.text)) return []
   if (!clause || clause.name || !bindings || !ts.isNamedImports(bindings)) return [original]
   const kept = bindings.elements.filter((element) => used.has(element.name.text))
   if (kept.length === bindings.elements.length) return [original]

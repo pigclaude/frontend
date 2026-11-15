@@ -10,7 +10,9 @@ import { sessionDefaultsBridge, type SessionDefaultsBridge } from "./session-def
 import { windowBridge, type WindowBridge } from "./window-bridge"
 import { workbenchBridge } from "./workbench"
 import { updatesBridge, type UpdatesBridge } from "./updates"
+import { startupPreferencesBridge } from "./startup-preferences"
 import type { WorkbenchBridge } from "../workbench-contract"
+import type { StartupPreferencesBridge } from "../startup-preferences-contract"
 import type { AuthorizeClaudeAccountInput } from "../main/claude/account-service-inputs"
 import type { OpenAppKind } from "../main/workbench/open-apps"
 import type { MembershipView } from "@pigclaude/contracts/membership"
@@ -48,6 +50,7 @@ export type PigclaudeBridge = {
   window: WindowBridge
   workbench?: WorkbenchBridge
   updates?: UpdatesBridge
+  startupPreferences?: StartupPreferencesBridge
   /** 读取当前发布版本、本机数据目录和实际使用的 Claude Code 版本，设置页只展示真实运行时信息。 */
   appInfo?: () => Promise<AppInfo>
   openExternal: (url: string) => Promise<void>
@@ -149,6 +152,7 @@ const bridge: PigclaudeBridge = {
   window: windowBridge(),
   workbench: workbenchBridge(),
   updates: updatesBridge(),
+  startupPreferences: startupPreferencesBridge(),
   appInfo: () => ipcRenderer.invoke("pigclaude:app-info"),
   openExternal: (url) => ipcRenderer.invoke("pigclaude:open-external", url),
   setTheme: (source) => ipcRenderer.invoke("pigclaude:set-theme", source),

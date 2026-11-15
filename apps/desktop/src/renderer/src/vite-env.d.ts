@@ -56,6 +56,7 @@ interface PigclaudeBridge {
   sessionDefaults?: import("../../preload/index").PigclaudeBridge["sessionDefaults"]
   usage?: import("../../preload/index").PigclaudeBridge["usage"]
   updates?: import("../../preload/index").PigclaudeBridge["updates"]
+  startupPreferences?: import("../../startup-preferences-contract").StartupPreferencesBridge
 }
 
 interface Window {

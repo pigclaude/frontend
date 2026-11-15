@@ -61,6 +61,7 @@ vi.mock("electron", () => ({
     removeListener: (name: string, listener: (...args: unknown[]) => void) =>
       fixture.appEvents!.removeListener(name, listener),
     getPath: () => "/callback-reception-fixture",
+    getLoginItemSettings: () => ({ openAtLogin: false, wasOpenedAtLogin: false }),
     getAppPath: () => fileURLToPath(new URL("../../../", import.meta.url)),
     setAsDefaultProtocolClient: () => {
       fixture.registrationCalls++

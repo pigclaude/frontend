@@ -22,7 +22,7 @@ export type CallbackEventSource = {
 export type CallbackReceiverOptions = {
   app: CallbackEventSource
   onCallback: (url: string) => Promise<unknown>
-  onSecondInstance: () => void
+  onSecondInstance: (commandLine: readonly string[]) => void
 }
 
 /** 控制收件生命周期，关闭后不能重新放行。 */
@@ -60,7 +60,7 @@ export function createAuthorizationCallbackReceiver(
   const secondInstance: SecondInstanceListener = (_event, commandLine) => {
     if (phase === "closed") return
     receiveArguments(commandLine)
-    options.onSecondInstance()
+    options.onSecondInstance(commandLine)
   }
   options.app.on("open-url", openUrl)
   options.app.on("second-instance", secondInstance)

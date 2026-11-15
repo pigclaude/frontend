@@ -13,9 +13,11 @@ import { workbenchBridge } from "./workbench"
 import { updatesBridge, type UpdatesBridge } from "./updates"
 import { startupPreferencesBridge } from "./startup-preferences"
 import { scheduledTasksBridge } from "./scheduled-tasks"
+import { capabilityPluginsBridge } from "./capability-plugins"
 import type { WorkbenchBridge } from "../workbench-contract"
 import type { StartupPreferencesBridge } from "../startup-preferences-contract"
 import type { ScheduledTasksBridge } from "../scheduled-tasks-contract"
+import type { CapabilityPluginsBridge } from "../capability-plugin-contract"
 import type { AuthorizeClaudeAccountInput } from "../main/claude/account-service-inputs"
 import type { OpenAppKind } from "../main/workbench/open-apps"
 import type { MembershipView } from "@pigclaude/contracts/membership"
@@ -55,6 +57,7 @@ export type PigclaudeBridge = {
   updates?: UpdatesBridge
   startupPreferences?: StartupPreferencesBridge
   scheduledTasks?: ScheduledTasksBridge
+  capabilityPlugins?: CapabilityPluginsBridge
   /** 读取当前发布版本、本机数据目录和实际使用的 Claude Code 版本，设置页只展示真实运行时信息。 */
   appInfo?: () => Promise<AppInfo>
   /** 本机手动唤醒偏好。 */
@@ -160,6 +163,7 @@ const bridge: PigclaudeBridge = {
   updates: updatesBridge(),
   startupPreferences: startupPreferencesBridge(),
   scheduledTasks: scheduledTasksBridge(),
+  capabilityPlugins: capabilityPluginsBridge(),
   appInfo: () => ipcRenderer.invoke("pigclaude:app-info"),
   keepAwake: keepAwakeBridge(),
   openExternal: (url) => ipcRenderer.invoke("pigclaude:open-external", url),

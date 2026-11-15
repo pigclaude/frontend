@@ -59,6 +59,7 @@ interface PigclaudeBridge {
   updates?: import("../../preload/index").PigclaudeBridge["updates"]
   startupPreferences?: import("../../startup-preferences-contract").StartupPreferencesBridge
   scheduledTasks?: import("../../scheduled-tasks-contract").ScheduledTasksBridge
+  capabilityPlugins?: import("../../capability-plugin-contract").CapabilityPluginsBridge
 }
 
 interface Window {

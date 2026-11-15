@@ -1,0 +1,112 @@
+// 定义安装确认、插件运行时和声明式设置共用的能力插件数据，无代码或密钥内容进入主窗口桥。
+
+import type { PluginSandboxJson } from "./main/plugins/plugin-sandbox-contract"
+
+/** 能力插件包根目录中的清单文件。 */
+export const capabilityPluginManifestFile = "pigclaude-plugin.json"
+
+/** 能力插件 API 只接受当前宿主版本。 */
+export const capabilityPluginApiVersion = 1
+
+/** 插件包允许申请的白名单能力。 */
+export type CapabilityPluginPermission =
+  "workspace-read" | "storage" | "secrets" | "notifications" | "composer-insert" | "network"
+
+/** 工具由宿主登记，输入是对象形状的 JSON Schema。 */
+export type CapabilityPluginTool = {
+  name: string
+  description: string
+  inputSchema: Readonly<Record<string, PluginSandboxJson>>
+}
+
+type Setting = {
+  key: string
+  label: string
+  description?: string | undefined
+  required?: boolean | undefined
+}
+
+/** 声明式设置字段；密钥没有明文默认值。 */
+export type CapabilityPluginSetting =
+  | (Setting & { type: "text"; defaultValue?: string | undefined })
+  | (Setting & { type: "secret" })
+  | (Setting & { type: "boolean"; defaultValue?: boolean | undefined })
+  | (Setting & { type: "number"; defaultValue?: number | undefined })
+  | (Setting & {
+      type: "select"
+      options: Array<{ label: string; value: string }>
+      defaultValue?: string | undefined
+    })
+
+/** 用户主动触发的命令，可声明命令面板标题和斜杠名称。 */
+export type CapabilityPluginCommand = {
+  id: string
+  title: string
+  description?: string | undefined
+  slash?: string | undefined
+}
+
+/** 向 PigClaude 声明工具结果的纯文本模板。 */
+export type CapabilityPluginToolResultTemplate = { tool: string; template: string }
+
+/** 经过宿主校验的清单。省略的贡献项会规范成空列表。 */
+export type CapabilityPluginManifest = {
+  apiVersion: typeof capabilityPluginApiVersion
+  id: string
+  name: string
+  version: string
+  pigclaudeVersion: string
+  entry: string
+  description?: string | undefined
+  tools: CapabilityPluginTool[]
+  permissions: CapabilityPluginPermission[]
+  networkDomains: string[]
+  settings: CapabilityPluginSetting[]
+  commands: CapabilityPluginCommand[]
+  toolResultTemplates: CapabilityPluginToolResultTemplate[]
+}
+
+/** 只支持开发目录和带摘要的现成归档两类来源。 */
+export type CapabilityPluginInstallSource =
+  { kind: "directory"; path: string } | { kind: "archive"; path: string; sha256: string }
+
+/** 主进程交给可信窗口的披露，确认 id 只对应这一份包内容。 */
+export type CapabilityPluginInstallDisclosure = {
+  type: "capability"
+  confirmationId: string
+  manifest: CapabilityPluginManifest
+  sourceKind: CapabilityPluginInstallSource["kind"]
+  sha256: string | null
+}
+
+/** 本机插件列表的记录。启用变化从新会话起生效，兼容性随当前 PigClaude 版本计算。 */
+export type InstalledCapabilityPlugin = {
+  type: "capability"
+  manifest: CapabilityPluginManifest
+  revision: string
+  installedAt: string
+  sourceKind: CapabilityPluginInstallSource["kind"]
+  sha256: string | null
+  approvedDomains: string[]
+  enabled: boolean
+  compatible: boolean
+}
+
+/** 桌面安装命令的固定 IPC 前缀。 */
+export const capabilityPluginChannelPrefix = "pigclaude:capability-plugins-"
+
+/** 主进程落盘状态变更后发送的无正文事件。 */
+export const capabilityPluginsChangedChannel = capabilityPluginChannelPrefix + "changed"
+
+/** 可信设置页的插件管理桥，只有披露确认后才写入本机。 */
+export type CapabilityPluginsBridge = {
+  status(): Promise<{ developerMode: boolean }>
+  list(): Promise<InstalledCapabilityPlugin[]>
+  pick(kind: CapabilityPluginInstallSource["kind"]): Promise<string | null>
+  prepare(input: CapabilityPluginInstallSource): Promise<CapabilityPluginInstallDisclosure>
+  confirm(confirmationId: string): Promise<InstalledCapabilityPlugin>
+  cancel(confirmationId: string): Promise<void>
+  setEnabled(pluginId: string, enabled: boolean): Promise<InstalledCapabilityPlugin>
+  uninstall(pluginId: string, keepData: boolean): Promise<void>
+  subscribe(listener: () => void): () => void
+}

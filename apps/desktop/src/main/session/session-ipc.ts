@@ -23,6 +23,7 @@ import type { UsageRecorder } from "./usage-recorder"
 import { isSessionStoreId } from "./session-store-layout"
 import { registerSessionHistoryIpc } from "./session-history-ipc"
 import { captureSessionCheckpoint } from "../workbench/session-checkpoints"
+import { readCommandCatalog } from "./session-command-catalogs"
 
 const permissionModes = new Set<SessionPermissionMode>([
   "default",
@@ -51,6 +52,23 @@ export type SessionIpcOptions = {
 
 /** 注册会话命令、列出会话、按序号补拉事件和只读用量汇总。保证所有命令只接受主窗口当前 frame，命令都指明会话。 */
 export function registerSessionIpc(options: SessionIpcOptions): void {
+  ipcMain.handle("pigclaude:session-commands", async (event, value: unknown) => {
+    assertTrusted(options, event)
+    const workspace = fieldOf(value, "workspace")
+    if (
+      typeof workspace !== "string" ||
+      workspace.length > 4096 ||
+      workspace.includes("\0") ||
+      !isAbsolute(workspace)
+    ) {
+      throw new SessionHostError("WORKSPACE_UNAVAILABLE", "工作区必须是绝对路径")
+    }
+    const sessionId =
+      fieldOf(value, "sessionId") === undefined ? undefined : readSessionTarget(value).sessionId
+    return readCommandCatalog(options.getHost(), workspace, sessionId).catch(() => {
+      throw new SessionHostError("WORKSPACE_UNAVAILABLE", "无法读取项目命令")
+    })
+  })
   ipcMain.handle("pigclaude:session-start", async (event, value: unknown) => {
     assertTrusted(options, event)
     const input = readSessionStartInput(value)

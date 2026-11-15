@@ -287,6 +287,11 @@ export type SessionUsagePort = {
 
 /** preload 暴露给 renderer 的 session 命名空间；会话命令都带会话 id，事件都包在信封里。 */
 export type SessionBridge = Partial<SessionHistoryBridge> & {
+  /** 读当前会话的 Claude Code 命令，草稿则从工作目录读取占位列表。 */
+  commands?: (input: {
+    workspace: string
+    sessionId?: string
+  }) => Promise<readonly import("@pigclaude/ui-contracts").AgentCommand[]>
   start: (input: SessionStartInput) => Promise<{ sessionId: string }>
   send: (input: SessionTarget & SessionSendInput) => Promise<void>
   cancel: (input: SessionTarget) => Promise<void>

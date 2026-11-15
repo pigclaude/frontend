@@ -1,11 +1,17 @@
 // 负责验证注册表命令接进输入框和命令面板：`/new` 与「新会话」、`/panel` 与 ⌘J 行为一致，
 // 命令面板里有开合右侧面板，输入框的 `/` 菜单列出的就是注册表里的命令。
 // @vitest-environment jsdom
-import { act } from "react"
+import { act, createElement } from "react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
+import { DesktopApp } from "./app"
 import { typeAndSend } from "./test-support/chat-screen-harness"
-import { desktopAppRoot, flush, renderDesktopApp } from "./test-support/desktop-app-harness"
+import {
+  desktopAppRoot,
+  flush,
+  installFakeDesktopBridge,
+  renderDesktopApp,
+} from "./test-support/desktop-app-harness"
 
 vi.mock("./hooks/use-appearance", () => ({
   useAppearance: () => ({
@@ -77,6 +83,23 @@ async function render(): Promise<void> {
 }
 
 describe("registry commands", () => {
+  it("loads the draft project's Claude commands and inserts the selected command", async () => {
+    const fake = installFakeDesktopBridge(["/work/api"])
+    const session = window.pigclaude?.session
+    if (!session) throw new Error("缺少测试会话桥")
+    const commands = vi.fn(async () => [
+      { name: "inspect", text: "/inspect", kind: "skill" as const },
+    ])
+    session.commands = commands
+    await act(async () => app.root.render(createElement(DesktopApp)))
+    await flush()
+
+    const listed = await runSlash("inspect")
+    expect(listed).toEqual([expect.stringContaining("/inspect")])
+    expect(commands).toHaveBeenCalledWith({ workspace: "/work/api" })
+    expect(editor().textContent?.trim()).toBe("/inspect")
+    expect(fake.starts).toEqual([])
+  })
   it("lists /new and /panel from the registry in the composer's / menu", async () => {
     await render()
 

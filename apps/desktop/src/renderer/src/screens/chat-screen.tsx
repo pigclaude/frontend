@@ -18,6 +18,7 @@ import { PermissionPrompt, type PermissionChoice } from "../components/permissio
 import { ToolRenderers } from "../components/tool-renderers"
 import { sessionAccountId } from "../hooks/use-session"
 import { useComposerReference } from "../hooks/use-composer-reference"
+import { useClaudeCommandLoader } from "../hooks/use-claude-command-loader"
 import {
   DEFAULT_PERMISSION_LEVEL,
   accountIdForAgent,
@@ -170,6 +171,10 @@ export function ChatScreen({
   const threadId = state.sessionId ?? (workspace === null ? "new-thread" : `draft-${workspace}`)
   // 草稿页只在还没有会话时使用；从草稿发第一条消息后即使导航还没切换，也要显示时间线。
   const showDraft = fresh && !live && state.sessionId === null
+  const loadAgentCommands = useClaudeCommandLoader(
+    workspace ?? workspaceProject,
+    live ? state.sessionId : null,
+  )
   const draftKey = showDraft ? (projectDraft?.key ?? workspaceProject ?? "new-thread") : threadId
   const draft = useDraftWorkspace(
     workbench,
@@ -420,6 +425,7 @@ export function ChatScreen({
           ? { configuration: { path: workspace, open: onProjectConfiguration } }
           : {})}
         commands={commands}
+        loadAgentCommands={loadAgentCommands}
         threads={threadOptions}
         openIn={openIn}
         layoutControls={layoutControls}
@@ -447,6 +453,7 @@ export function ChatScreen({
           layoutControls={layoutControls}
           openIn={openIn}
           commands={commands}
+          loadAgentCommands={loadAgentCommands}
           {...(onOpenFile ? { onOpenFile } : {})}
           {...(onViewDiff ? { onViewDiff } : {})}
           thread={view.thread}

@@ -10,6 +10,7 @@ import type { SessionEnvelope } from "./session-envelope"
 import type { SessionMembership, SessionRuntime } from "./session-types"
 import type { SessionStore } from "./session-store"
 import { UsageRecorder } from "./usage-recorder"
+import { trackSessionCommandCatalogs } from "./session-command-catalogs"
 
 /** 装配会话服务所需的应用环境。 */
 export type SessionAssemblyInput = {
@@ -51,6 +52,7 @@ export function assembleSessionServices(input: SessionAssemblyInput): SessionSer
     ...(input.sessionStore === undefined ? {} : { sessionStore: input.sessionStore }),
     ...devProviderHostOptions(input.isPackaged, input.env),
   })
+  trackSessionCommandCatalogs(host)
   host.subscribe(input.onEvent)
   return { usage, host }
 }

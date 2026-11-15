@@ -24,6 +24,7 @@ export type SessionRun = {
 const inRun: Readonly<Record<SessionHostEvent["type"], boolean>> = {
   started: false,
   mode: false,
+  "commands-changed": false,
   delta: false,
   message: true,
   "tool-result": true,

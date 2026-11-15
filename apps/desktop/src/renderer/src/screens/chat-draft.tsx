@@ -1,6 +1,6 @@
 // 把桌面会话草稿接到 Pigcode 的新会话页，保留项目控件与启动错误。
 
-import type { ReactNode } from "react"
+import type { ComponentProps, ReactNode } from "react"
 import type {
   ComposerCommand,
   ComposerSubmitOptions,
@@ -23,6 +23,7 @@ type Props = {
   projectId: string | null
   configuration?: { path: string; open: (path: string) => void }
   commands: readonly ComposerCommand[]
+  loadAgentCommands?: ComponentProps<typeof NewThreadView>["loadAgentCommands"]
   threads: readonly ComposerThreadOption[]
   openIn: ReactNode
   layoutControls: ReactNode

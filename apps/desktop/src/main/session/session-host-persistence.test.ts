@@ -38,6 +38,46 @@ afterEach(async () => {
 })
 
 describe("SessionHost 保存与续接", () => {
+  it("保留已归档的运行会话，省略自动标题并在审批取消时刷新摘要", async () => {
+    const fixture = await workspaceFixture()
+    const { host, queries } = hostFixture(fixture, async () => savedProfile)
+    const { sessionId } = await host.start({
+      workspace: fixture.workspace,
+      projectPath: fixture.project,
+      permissionMode: "default",
+    })
+    await fixture.store.update(sessionId, { title: "来自用户提示词的标题", titleSource: "auto" })
+    await host.history.archive(sessionId, true)
+    expect(host.list()).toEqual([])
+    expect(host.livePreviews()).toEqual([
+      { sessionId, projectName: "project", title: null, pendingApprovals: 0 },
+    ])
+    await host.history.rename(sessionId, "手动命名")
+    const counts: number[] = []
+    const unsubscribe = host.subscribe(({ event }) => {
+      if (event.type === "permission" || event.type === "sessions-changed")
+        counts.push(host.livePreviews()[0]?.pendingApprovals ?? 0)
+    })
+    const request = queries[0]?.options.canUseTool
+    if (!request) throw new Error("会话未安装审批回调")
+    const abort = new AbortController()
+    const pending = request(
+      "Read",
+      { file_path: "fixture.txt" },
+      { signal: abort.signal, toolUseID: "tool-1", requestId: "ask-1" },
+    )
+    await waitUntil(() => counts.includes(1))
+    expect(host.livePreviews()).toEqual([
+      { sessionId, projectName: "project", title: "手动命名", pendingApprovals: 1 },
+    ])
+    abort.abort()
+    await expect(pending).resolves.toMatchObject({ behavior: "deny" })
+    expect(counts).toEqual([1, 0])
+    unsubscribe()
+    await host.stop(sessionId)
+    expect(host.livePreviews()).toEqual([])
+  })
+
   it("保存用户正文，停放后重开可只读历史，下一次发送用原环境打开同一个会话", async () => {
     const fixture = await workspaceFixture()
     const original = hostFixture(fixture, async () => savedProfile)

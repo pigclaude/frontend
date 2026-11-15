@@ -15,6 +15,7 @@ import {
   verifySystemControls,
 } from "./window-controls.mjs"
 import { systemInput } from "./system-pointer.mjs"
+import { trackNativeTray, verifyTrayMembership, verifyTrayNavigation } from "./tray-menu.mjs"
 import { verifyWorkbench } from "./workbench.mjs"
 
 const out = resolve(process.argv[2] ?? "test-results/native-desktop")
@@ -52,6 +53,7 @@ async function launch() {
   })
   if (process.env.CI) forwardWorkbenchFailures(application.process().stderr)
   applicationPid = await application.evaluate(() => process.pid)
+  await trackNativeTray(application)
   const page = await application.firstWindow({ timeout: 25_000 })
   await collectPolicyViolations(page, policyViolations)
   page.setDefaultTimeout(10_000)
@@ -333,6 +335,8 @@ try {
   pass("native workbench")
   await verifyBackgroundClose(application, page)
   pass("closing the window hides it and the same window reopens")
+  await verifyTrayNavigation(application, page)
+  pass("real tray menu restores the same window and opens a new session draft")
 
   if (platform !== "darwin") {
     await page.evaluate(() => window.pigclaude.window.control("minimize"))
@@ -413,6 +417,8 @@ try {
   fixture.setMembership("expired")
   await page.evaluate(() => window.pigclaude.membership.inspect())
   await expect(page.getByRole("heading", { name: "会员已到期" })).toBeVisible()
+  await verifyTrayMembership(application, "会员已到期", false)
+  pass("native tray follows membership and removes new session after expiry")
   await checkFlowTop(page, null)
   await capture(page, "recovery")
   assert.equal(await page.locator("[data-main-window]").count(), 0)

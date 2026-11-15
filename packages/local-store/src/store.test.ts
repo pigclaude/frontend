@@ -1,6 +1,6 @@
 // 本机账号库测试。重新打开后仍保留凭据和指纹；旧记录迁移；两次保存交错时两条记录都还在。
 
-import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
@@ -57,6 +57,31 @@ const credential: ClaudeCredential = {
 }
 
 describe("LocalStore", () => {
+  it("账号写入后发出无数据通知，观察者退出后不再收到通知", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "store-observe-account-"))
+    try {
+      const store = new LocalStore(dir)
+      const reads: Promise<AccountRecord[]>[] = []
+      const updates: unknown[][] = []
+      const unsubscribe = store.subscribeAccounts((...args: unknown[]) => {
+        updates.push(args)
+        reads.push(store.listAccounts())
+      })
+      await store.saveAccount(account("observed"))
+      expect(await reads[0]).toMatchObject([{ id: "observed", needsReauth: false }])
+      await store.updateAccount("observed", { needsReauth: true })
+      expect(await reads[1]).toMatchObject([{ id: "observed", needsReauth: true }])
+      await store.updateAccount("missing", { enabled: false })
+      await store.removeAccount("observed")
+      expect(await reads[2]).toEqual([])
+      unsubscribe()
+      await store.saveAccount(account("quiet"))
+      expect(updates).toEqual([[], [], []])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it("迁移遇到截断备份时保留原账号文件并拒绝继续", async () => {
     const dir = await mkdtemp(join(tmpdir(), "store-backup-"))
     const original = JSON.stringify([account("acc-1")])

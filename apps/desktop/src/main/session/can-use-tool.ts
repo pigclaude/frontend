@@ -12,6 +12,7 @@ export function routeCanUseTool(
   permissions: PermissionBroker,
   questions: QuestionBroker,
   hasThreadRead = false,
+  denyUnattended?: () => void,
 ): CanUseTool {
   return (toolName, input, options) => {
     if (
@@ -20,6 +21,14 @@ export function routeCanUseTool(
       isBuiltinThreadRead(toolName, options.mcpServer)
     ) {
       return Promise.resolve({ behavior: "allow", updatedInput: input })
+    }
+    if (denyUnattended !== undefined) {
+      if (!options.signal.aborted) denyUnattended()
+      return Promise.resolve({
+        behavior: "deny",
+        message: "Scheduled runs cannot request approvals. Continue without this operation.",
+        interrupt: false,
+      })
     }
     const asked = toolName === "AskUserQuestion" ? parseQuestions(input) : null
     if (asked !== null) return questions.ask(asked, input, options.signal)

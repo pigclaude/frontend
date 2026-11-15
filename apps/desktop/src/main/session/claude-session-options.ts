@@ -48,6 +48,8 @@ export type ClaudeSessionOptions = {
   saveSettings?: (settings: SessionSavedSettings) => void
   /** 等待写入。普通退出在写入失败时可以保留查询供重试。 */
   flushHistory?: (canDelayStop: boolean) => Promise<void>
+  /** 记录首个定时回合里自动拒绝的批准请求。 */
+  denyUnattended?: () => void
   references?: SessionReferenceAccess
   projectPermissions?: SessionProjectPermissions
 }

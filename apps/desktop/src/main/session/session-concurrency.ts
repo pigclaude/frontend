@@ -13,6 +13,16 @@ export const defaultSessionLimits = Object.freeze({
 
 /** 会话忙着时隔多久再看一次它是否已经空闲。 */
 const busyRecheckMs = 60 * 1_000
+const scheduledQueueWaitMs = 15 * 60 * 1_000
+
+/** 定时任务等待并发名额超过允许时限。 */
+export class SessionSlotTimeout extends Error {
+  /** 使用固定原因码报告名额等待超时。 */
+  constructor() {
+    super("CONCURRENCY_TIMEOUT")
+    this.name = "SessionSlotTimeout"
+  }
+}
 
 /** 并发控制的依赖。 */
 export type SessionConcurrencyOptions = {
@@ -57,7 +67,8 @@ export class SessionConcurrency {
    * 为会话占一个名额。有空位时立刻占上；满了就排队，并停放最久没用的空闲会话来腾位置。
    * 拿到名额后返回一个布尔值，说明是否排过队；排队的会话已满时抛 SESSION_LIMIT_REACHED。
    */
-  acquire(sessionId: string): Promise<boolean> {
+  acquire(sessionId: string, scheduledSignal?: AbortSignal): Promise<boolean> {
+    if (scheduledSignal?.aborted) return Promise.reject(cancelledSlot())
     if (this.#queue.length === 0 && this.#slots.size < this.#options.maxRunning) {
       this.#occupy(sessionId)
       return Promise.resolve(false)
@@ -65,11 +76,39 @@ export class SessionConcurrency {
     if (this.#queue.length >= this.#options.maxQueued) {
       return Promise.reject(new SessionHostError("SESSION_LIMIT_REACHED", "等待启动的会话已满"))
     }
-    const waiting = new Promise<boolean>((resolve, reject) => {
-      this.#queue.push({ sessionId, resolve: () => resolve(true), reject })
-    })
+    const waiting = this.#waitForSlot(sessionId, scheduledSignal)
     this.#evictIdle()
     return waiting
+  }
+
+  #waitForSlot(sessionId: string, signal?: AbortSignal): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      const abort = () => this.cancel(sessionId, cancelledSlot())
+      const timer =
+        signal === undefined
+          ? undefined
+          : this.#options.timers.set(
+              () => this.cancel(sessionId, new SessionSlotTimeout()),
+              scheduledQueueWaitMs,
+            )
+      const clear = () => {
+        if (timer !== undefined) this.#options.timers.clear(timer)
+        signal?.removeEventListener("abort", abort)
+      }
+      this.#queue.push({
+        sessionId,
+        resolve: () => {
+          clear()
+          resolve(true)
+        },
+        reject: (error) => {
+          clear()
+          reject(error)
+        },
+      })
+      signal?.addEventListener("abort", abort, { once: true })
+      if (signal?.aborted) abort()
+    })
   }
 
   /** 把排队的会话移出队列，它的 acquire 以 error 拒绝；不在排队时什么也不做。 */
@@ -165,4 +204,8 @@ export class SessionConcurrency {
     this.#options.timers.clear(slot.timer)
     slot.timer = null
   }
+}
+
+function cancelledSlot(): SessionHostError {
+  return new SessionHostError("SESSION_CANCELLED", "会话启动已取消")
 }

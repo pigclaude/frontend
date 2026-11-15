@@ -111,7 +111,12 @@ export class ClaudeSession {
   /** 启动 Claude Code 并进入用户选的权限模式；模式进不去时只提示，启动失败照常抛出。 */
   async launch(mcpServers: ClaudeAgentStartOptions["mcpServers"]): Promise<void> {
     const options: ClaudeAgentStartOptions = {
-      ...buildStartOptions(this.state, this.#options.input, this.#options.references !== undefined),
+      ...buildStartOptions(
+        this.state,
+        this.#options.input,
+        this.#options.references !== undefined,
+        this.#options.denyUnattended,
+      ),
       ...(mcpServers ? { mcpServers } : {}),
       ...(this.#options.persistence === undefined
         ? {}

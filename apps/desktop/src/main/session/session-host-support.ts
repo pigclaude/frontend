@@ -104,6 +104,7 @@ export function buildStartOptions(
   active: ActiveSession,
   input: SessionStartInput,
   hasThreadRead: boolean,
+  denyUnattended?: () => void,
 ): ClaudeAgentStartOptions {
   return {
     workspace: active.environment.workspace,
@@ -112,7 +113,7 @@ export function buildStartOptions(
       ? {}
       : { projectConfiguration: active.environment.projectConfiguration }),
     permissionMode: active.permissionMode,
-    canUseTool: routeCanUseTool(active.broker, active.questions, hasThreadRead),
+    canUseTool: routeCanUseTool(active.broker, active.questions, hasThreadRead, denyUnattended),
     abortController: active.abort,
     binaryPath: active.environment.binaryPath,
     ...(input.model === undefined ? {} : { model: input.model }),

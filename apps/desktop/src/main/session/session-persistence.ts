@@ -9,7 +9,7 @@ import type { SessionEnvelope } from "./session-envelope"
 import type { SessionUsage } from "./session-events"
 import { maxEnvelopesPerRead, type SessionEventCursor } from "./session-event-log"
 import { SessionHistoryWriteError } from "./session-history-write-error"
-import type { SessionIndex, SessionStoreStatus } from "./session-index"
+import type { SessionIndex, SessionOrigin, SessionStoreStatus } from "./session-index"
 import type { SessionLaunchStorage } from "./session-launch"
 import { normalizeSessionLocale, normalizeSessionTimezone } from "./session-locale"
 import type { SessionStore, SessionIndexPatch } from "./session-store"
@@ -130,6 +130,7 @@ export async function prepareSavedSession(
   profile: SessionProfile,
   index: SessionIndex | null,
   now: number,
+  origin: SessionOrigin = "manual",
 ): Promise<PersistedSessionLaunch> {
   const paths = store.paths(sessionId)
   if (index === null) {
@@ -160,7 +161,7 @@ export async function prepareSavedSession(
       fast: input.fast ?? false,
       permissionMode: input.permissionMode === "plan" ? "default" : input.permissionMode,
       planMode: input.permissionMode === "plan",
-      origin: "manual",
+      origin,
       claudeCodeVersion: null,
       referencedSessionIds: [],
     })

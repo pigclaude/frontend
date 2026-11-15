@@ -2,7 +2,7 @@
 
 import { basename } from "node:path"
 import type { SessionEntry } from "./session-registry"
-import type { SessionIndex } from "./session-index"
+import type { SessionIndex, SessionOrigin } from "./session-index"
 import type { SessionStatusView, SessionTurnEndStatus } from "./session-types"
 
 /**
@@ -25,6 +25,8 @@ export type SessionSummary = {
   archivedAt?: string | null
   /** 本机保存的会话可以用原 id 续接。 */
   restorable?: boolean
+  /** 定时创建的会话保留来源标记，供会话历史展示。 */
+  origin?: SessionOrigin
   status: SessionListStatus
   /** 最后一轮怎么结束的；还没有结束过的回合时为 null。 */
   lastTurn: SessionTurnEndStatus | null
@@ -83,6 +85,7 @@ export function summarizeSavedSession(index: SessionIndex): SessionSummary {
     model: index.model,
     lastActivityAt: index.lastActivityAt,
     restorable: true,
+    ...(index.origin === "scheduled" ? { origin: index.origin } : {}),
   }
 }
 

@@ -345,7 +345,7 @@ export type HarnessOptions = {
   /** 并发上限、排队上限和空闲停放时长；省略时用宿主的默认值。 */
   limits?: Pick<SessionHostOptions, "maxRunningSessions" | "maxQueuedSessions" | "idleParkMs">
   timers?: SessionHostOptions["timers"]
-} & Pick<SessionHostOptions, "projectPermissions">
+} & Pick<SessionHostOptions, "projectPermissions" | "sessionStore">
 
 export type SessionHarness = {
   host: SessionHost
@@ -406,6 +406,7 @@ export function createHarness(options: HarnessOptions): SessionHarness {
     newId: () => `id-${(nextId += 1)}`,
     ...(options.useRealEnvironment ? {} : { createEnvironment: environments.create }),
     ...options.limits,
+    ...(options.sessionStore === undefined ? {} : { sessionStore: options.sessionStore }),
     ...(options.projectPermissions === undefined
       ? {}
       : { projectPermissions: options.projectPermissions }),

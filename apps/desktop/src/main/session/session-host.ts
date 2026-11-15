@@ -1,8 +1,7 @@
 // 负责一个窗口内的 Claude 会话启动、并发名额、命令路由、停放和历史管理。
 import { randomUUID } from "node:crypto"
-import type { OrganizationModelReader } from "./claude-bootstrap"
+import type { ScheduledTaskInput } from "../../scheduled-tasks-contract"
 import type { ClaudeSession } from "./claude-session"
-import type { DevProviderOverride } from "./dev-provider"
 import type { PermissionAnswer } from "./permission-broker"
 import type { QuestionAnswer } from "./question-broker"
 import { SessionConcurrency, defaultSessionLimits } from "./session-concurrency"
@@ -10,6 +9,12 @@ import { SessionClaudeExitError } from "./session-claude-launch"
 import { hostEnvelope, notifySessionListeners, type SessionEnvelope } from "./session-envelope"
 import type { ActiveSession, SessionTimers } from "./session-host-active"
 import type { SessionPendingWork } from "./session-host-support"
+import type { SessionHostOptions } from "./session-host-options"
+import {
+  executeScheduledTurn,
+  type ScheduledHostOutcome,
+  type ScheduledLaunch,
+} from "./run-scheduled-task"
 import {
   createSessionLaunchDeps,
   launchSession,
@@ -26,54 +31,23 @@ import {
   SessionPersistence,
 } from "./session-persistence"
 import { SavedSessionLibrary } from "./saved-session-library"
-import type { SessionStore } from "./session-store"
 import { sessionModelReader } from "./session-models"
 import { SessionRegistry, type SessionEntry, type SessionParkReason } from "./session-registry"
 import type { LiveSessionPreview, SessionSummary } from "./session-summary"
 import {
   SessionHostError,
-  type SessionAdapterFactory,
-  type SessionEnvironmentFactory,
   type SessionHostEvent,
   type SessionMembership,
   type SessionModelCatalog,
   type SessionPermissionMode,
-  type SessionRuntime,
   type SessionSendInput,
   type SessionStartInput,
   type SessionStatusView,
   type SessionTools,
-  type SessionUsagePort,
 } from "./session-types"
 
-/** SessionHost 依赖；所有外部端口都可注入，便于不启动真实 CLI 的测试。 */
-export type SessionHostOptions = {
-  membership: SessionMembership
-  runtime: SessionRuntime
-  usage: SessionUsagePort
-  userDataPath: string
-  createEnvironment?: SessionEnvironmentFactory
-  createAdapter?: SessionAdapterFactory
-  resolveBinaryPath?: () => string
-  resolveProfile?: SessionLaunchDeps["resolveProfile"]
-  /** 桌面启动时打开的会话存储；省略时用于不落盘的宿主测试。 */
-  sessionStore?: Promise<SessionStore | null>
-  /** 经 daemon 读当次选中账号的组织模型；缺省时用随包 CLI 的 bootstrap 请求。 */
-  readOrganizationModels?: OrganizationModelReader
-  /** 开发期自定义供应商；只由主进程在未打包时传入，不影响会员和账号门禁。 */
-  provider?: DevProviderOverride | null
-  defaultWorkspace?: () => string
-  permissionTimeoutMs?: number
-  /** 同时运行的 Claude Code 进程上限，默认 4。 */
-  maxRunningSessions?: number
-  /** 等名额的会话上限，默认 8。 */
-  maxQueuedSessions?: number
-  /** 空闲多久自动停放，默认 30 分钟。 */
-  idleParkMs?: number
-  timers?: SessionTimers
-  now?: () => number
-  newId?: () => string
-} & Pick<SessionLaunchDeps, "projectPermissions">
+/** 用于装配宿主的本机服务与测试端口。 */
+export type { SessionHostOptions } from "./session-host-options"
 
 const usageWriteFailed = "用量记录写入失败"
 const realTimers: SessionTimers = {
@@ -101,6 +75,7 @@ export class SessionHost {
   readonly #listeners = new Set<(envelope: SessionEnvelope) => void>()
   readonly #unsubscribe: (() => void)[]
   readonly #checkBeforeQueue = orderedSessionChecks()
+  readonly #scheduled = new Set<string>()
   #disposed = false
 
   /** 创建会话宿主并订阅会员、换号和用量写入失败事件。 */
@@ -165,10 +140,15 @@ export class SessionHost {
   }
 
   /** 按名额启动并保存新会话；同一活动会话复用启动结果，已停放的会话通过发送续接。 */
-  async start(input: SessionStartInput, tools?: SessionTools): Promise<{ sessionId: string }> {
+  async start(
+    input: SessionStartInput,
+    tools?: SessionTools,
+    scheduled?: ScheduledLaunch,
+  ): Promise<{ sessionId: string }> {
     if (this.#disposed) throw new SessionHostError("SDK_ERROR", "会话宿主已关闭")
     const store = this.#persistence === null ? undefined : await this.#persistence.ready
-    if (store === null) {
+    if (scheduled?.signal.aborted) throw sessionLaunchCancellation("SESSION_CANCELLED")
+    if (store === null || (scheduled !== undefined && store === undefined)) {
       tools?.close()
       throw new SessionHostError("SESSION_START_FAILED", "会话存储不可用")
     }
@@ -188,6 +168,7 @@ export class SessionHost {
       input,
       tools?.servers,
       store ? { store, index: null } : undefined,
+      scheduled,
     )
     entry.launch = launch
     try {
@@ -202,13 +183,16 @@ export class SessionHost {
     input: SessionStartInput,
     servers: SessionTools["servers"],
     storage?: SessionLaunchStorage,
+    scheduled?: ScheduledLaunch,
   ): Promise<{ sessionId: string }> {
     try {
       const hooks: SessionLaunchHooks = {
-        cancelled: () => entry.cancelled ?? (this.#disposed ? "SESSION_CANCELLED" : null),
+        cancelled: () =>
+          entry.cancelled ??
+          (this.#disposed || scheduled?.signal.aborted ? "SESSION_CANCELLED" : null),
         acquire: () => {
           entry.phase = "queued"
-          const slot = this.#concurrency.acquire(entry.sessionId)
+          const slot = this.#concurrency.acquire(entry.sessionId, scheduled?.signal)
           this.#emitHost({ type: "sessions-changed" })
           return slot.then((waited) => {
             entry.phase = "starting"
@@ -228,6 +212,7 @@ export class SessionHost {
         },
         released: () => this.#released(entry),
         parkAfterRevocation: () => this.#park(entry, "stop"),
+        ...(scheduled === undefined ? {} : { scheduled }),
         ...(this.#persistence ? { history: this.#persistence.sessionHooks(entry.sessionId) } : {}),
       }
       await launchSession(this.#launchDeps, input, entry.sessionId, hooks, servers, storage)
@@ -247,6 +232,23 @@ export class SessionHost {
     return { sessionId: entry.sessionId }
   }
 
+  /** 为本次定时运行新建、执行并停放会话，首轮由定时入口独占。 */
+  runScheduledTask(task: ScheduledTaskInput, signal: AbortSignal): Promise<ScheduledHostOutcome> {
+    return executeScheduledTurn(
+      {
+        host: this,
+        active: this.#scheduled,
+        send: (sessionId, text) => {
+          this.#assertMembership()
+          this.history.assertWritable(sessionId)
+          return this.#requireSession(sessionId).send({ text })
+        },
+      },
+      task,
+      signal,
+    )
+  }
+
   /** 向指定会话写入一条消息；如有工作台回调，在交给适配器之前记录基线。回合未结束时抛 TURN_ACTIVE。 */
   async send(
     sessionId: string,
@@ -255,6 +257,8 @@ export class SessionHost {
     tools?: () => SessionTools | undefined,
   ): Promise<void> {
     this.#assertMembership()
+    if (this.#scheduled.has(sessionId))
+      throw new SessionHostError("TURN_ACTIVE", "定时回合正在运行")
     if (this.#persistence !== null) await this.#ensureResumed(sessionId, tools)
     this.history.assertWritable(sessionId)
     await this.#requireSession(sessionId).send(input, checkpoint)

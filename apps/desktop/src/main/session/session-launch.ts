@@ -13,6 +13,7 @@ import { sessionInstance, type SessionIndex } from "./session-index"
 import { SessionReferenceAccess } from "./session-reference-access"
 import type { SessionStore } from "./session-store"
 import type { ClaudeSessionOptions } from "./claude-session-options"
+import type { ScheduledLaunch } from "./run-scheduled-task"
 import { createThreadReadServer, threadReadServerName } from "./thread-read"
 import type { SessionTimers } from "./session-host-active"
 import { mapStartError } from "./session-host-support"
@@ -101,6 +102,8 @@ export type SessionLaunchHooks = {
   parkAfterRevocation?: () => Promise<void>
   /** 绑定此会话的记录写入与退出前同步。 */
   history?: Pick<ClaudeSessionOptions, "saveSettings" | "flushHistory">
+  /** 只在新定时会话首轮注入无人值守批准策略。 */
+  scheduled?: ScheduledLaunch
 }
 
 /** 启动需要的本机存储以及已有索引，第一次启动没有旧索引。 */
@@ -182,6 +185,7 @@ export async function launchSession(
               profile,
               storage.index,
               deps.now(),
+              hooks.scheduled === undefined ? "manual" : "scheduled",
             )
             return persistence.paths
           },
@@ -198,6 +202,7 @@ export async function launchSession(
     ...(references === undefined ? {} : { references }),
     ...(persistence === undefined ? {} : { persistence }),
     ...hooks.history,
+    ...(hooks.scheduled === undefined ? {} : { denyUnattended: hooks.scheduled.denied }),
     ...(hooks.parkAfterRevocation === undefined
       ? {}
       : { parkAfterRevocation: hooks.parkAfterRevocation }),

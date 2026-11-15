@@ -19,6 +19,12 @@ export type CapabilityPluginTool = {
   inputSchema: Readonly<Record<string, PluginSandboxJson>>
 }
 
+/** 同一插件在新会话里的工具询问规则；缺少偏好时始终逐次询问。 */
+export type CapabilityPluginToolApproval = "always_ask" | "follow_session"
+
+/** 权限卡只显示宿主登记的插件与工具名称。 */
+export type CapabilityPluginPermissionSource = { id: string; name: string; toolName: string }
+
 type Setting = {
   key: string
   label: string
@@ -88,6 +94,7 @@ export type InstalledCapabilityPlugin = {
   sourceKind: CapabilityPluginInstallSource["kind"]
   sha256: string | null
   approvedDomains: string[]
+  toolApproval: CapabilityPluginToolApproval
   enabled: boolean
   compatible: boolean
 }
@@ -107,6 +114,11 @@ export type CapabilityPluginsBridge = {
   confirm(confirmationId: string): Promise<InstalledCapabilityPlugin>
   cancel(confirmationId: string): Promise<void>
   setEnabled(pluginId: string, enabled: boolean): Promise<InstalledCapabilityPlugin>
+  /** 保存该插件下次会话启动时使用的询问档。 */
+  setToolApproval(
+    pluginId: string,
+    mode: CapabilityPluginToolApproval,
+  ): Promise<InstalledCapabilityPlugin>
   uninstall(pluginId: string, keepData: boolean): Promise<void>
   subscribe(listener: () => void): () => void
 }

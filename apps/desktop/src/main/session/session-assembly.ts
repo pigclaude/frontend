@@ -2,6 +2,7 @@
 
 import { join } from "node:path"
 import type { LocalStore } from "@pigclaude/local-store"
+import type { CapabilityPluginToolDependencies } from "../plugins/capability-plugin-tool-dependencies"
 import { accountSessionProfile } from "./account-session-profile"
 import { resolveClaudeBinaryPath } from "./claude-binary"
 import { devProviderHostOptions } from "./dev-provider"
@@ -29,6 +30,8 @@ export type SessionAssemblyInput = {
   onEvent: (envelope: SessionEnvelope) => void
   /** 此窗口启动时打开的会话存储；不阻塞登录和窗口创建。 */
   sessionStore?: Promise<SessionStore | null>
+  /** 桌面装配了能力插件管理器、沙箱和按会话出口时启用。 */
+  capabilityPluginTools?: CapabilityPluginToolDependencies
 }
 
 /** 主进程持有的会话服务。 */
@@ -60,6 +63,9 @@ export function assembleSessionServices(input: SessionAssemblyInput): SessionSer
     resolveProfile: (accountId, required) =>
       accountSessionProfile(input.store, accountId, input.systemLocale, required),
     ...(input.sessionStore === undefined ? {} : { sessionStore: input.sessionStore }),
+    ...(input.capabilityPluginTools === undefined
+      ? {}
+      : { capabilityPluginTools: input.capabilityPluginTools }),
     ...devProvider,
   })
   trackSessionCommandCatalogs(host)

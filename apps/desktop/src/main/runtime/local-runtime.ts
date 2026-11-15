@@ -3,8 +3,12 @@
 
 import { keepsMembershipRuntime, type MembershipView } from "@pigclaude/contracts/membership"
 import type { LocalStore } from "@pigclaude/local-store"
-import { createPluginSandboxNetwork, type PluginNetworkAccess } from "../plugins/plugin-network"
-import { PluginSandboxError, type PluginSandboxNetwork } from "../plugins/plugin-sandbox-contract"
+import { createPluginSandboxNetwork } from "../plugins/plugin-network"
+import {
+  PluginSandboxError,
+  type PluginNetworkAccess,
+  type PluginSandboxNetwork,
+} from "../plugins/plugin-sandbox-contract"
 import { DaemonSessions, LocalDaemon, type DaemonSessionLookup } from "@pigclaude/daemon"
 import type { AccountChooser, ChosenAccount } from "./account-chooser"
 import { BrowserProfileUsage } from "../claude/browser-profile-usage"

@@ -153,6 +153,25 @@ it("开发目录在关闭开发模式后不能安装，归档必须把校验摘�
   })
 })
 
+it("旧记录默认逐次询问，偏好保存后重启仍使用相同安装版本", async () => {
+  const f = await fixture()
+  const installed = await f.install()
+  const path = join(f.root, "installed", id, "record.json")
+  const legacy = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>
+  delete legacy.toolApproval
+  await writeFile(path, JSON.stringify(legacy))
+
+  const manager = new CapabilityPluginManager(f.options)
+  await expect(manager.list()).resolves.toMatchObject([{ toolApproval: "always_ask" }])
+  await expect(manager.setToolApproval(id, "follow_session")).resolves.toMatchObject({
+    toolApproval: "follow_session",
+    revision: installed.revision,
+  })
+  await expect(new CapabilityPluginManager(f.options).snapshotEnabled()).resolves.toMatchObject([
+    { toolApproval: "follow_session", revision: installed.revision },
+  ])
+})
+
 it("停用只影响新会话，会员失效禁止启用、作废披露并停止全部实例", async () => {
   const f = await fixture()
   const installed = await f.install()

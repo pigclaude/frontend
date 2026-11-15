@@ -40,4 +40,4 @@ export type SessionHostOptions = {
   timers?: SessionTimers
   now?: () => number
   newId?: () => string
-} & Pick<SessionLaunchDeps, "projectPermissions">
+} & Pick<SessionLaunchDeps, "projectPermissions" | "capabilityPluginTools">

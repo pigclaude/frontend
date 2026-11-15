@@ -12,6 +12,7 @@ import { SessionRetentionSettings } from "./session-retention-settings"
 import { ProjectPermissionRules } from "./project-permission-rules"
 import { WindowCloseSetting } from "./window-close-setting"
 import { StartupSettings } from "./startup-settings"
+import { CapabilityPluginToolApprovalSettings } from "./capability-plugin-tool-approval"
 
 /** 通用：启动、Dock、更新和侧栏会话分组。 */
 export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
@@ -49,6 +50,7 @@ export function SessionSettings({
   history?: SessionHistoryController
 }) {
   const permissions = window.pigclaude?.session?.projectPermissions
+  const plugins = window.pigclaude?.capabilityPlugins
   return (
     <SettingPage
       title={desktopText("settings.settings-app-pages.16")}
@@ -84,6 +86,7 @@ export function SessionSettings({
       </SettingSection>
       {history?.enabled ? <SessionRetentionSettings history={history} /> : null}
       {permissions ? <ProjectPermissionRules bridge={permissions} /> : null}
+      {plugins ? <CapabilityPluginToolApprovalSettings bridge={plugins} /> : null}
     </SettingPage>
   )
 }

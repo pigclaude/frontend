@@ -149,6 +149,18 @@ export function permissionDetail(
   request: SessionPermissionCard,
   t: (key: TextKey) => string,
 ): PermissionDetail {
+  if (request.plugin !== undefined) {
+    const { name, id, toolName } = request.plugin
+    return {
+      summary: fill(t("permission.summary.plugin"), { plugin: `${name} (${id})`, tool: toolName }),
+      command:
+        Object.keys(request.input).length > 0 ? JSON.stringify(request.input, null, 2) : null,
+      target: null,
+      changes: [],
+      blockedPath: null,
+      plan: null,
+    }
+  }
   const plan = planText(request)
   if (plan !== null) {
     return {
@@ -316,7 +328,9 @@ export function PermissionPrompt({ request, onDecide }: PermissionPromptProps) {
         <span className="perm-prompt-title">
           {detail.plan === null ? t("permission.title") : t("permission.plan.title")}
         </span>
-        {detail.plan === null ? <span className="perm-prompt-tool">{request.toolName}</span> : null}
+        {detail.plan === null ? (
+          <span className="perm-prompt-tool">{request.plugin?.toolName ?? request.toolName}</span>
+        ) : null}
       </header>
       <div className="perm-prompt-body">
         <p className="perm-prompt-summary">{detail.summary}</p>

@@ -3,6 +3,7 @@
 // 只依赖这一个会话的适配器、事件出口、时钟和定时器，不引用会话宿主或模块级单例。
 
 import { ContextUsageQuery } from "./context-usage-query"
+import type { CapabilityPluginToolApprovals } from "../plugins/capability-plugin-tools"
 import type { PendingAnswerKind } from "./pending-answers"
 import { cancelledPermissionMessage, type PermissionAnswer } from "./permission-broker"
 import type { QuestionAnswer } from "./question-broker"
@@ -109,13 +110,17 @@ export class ClaudeSession {
   }
 
   /** 启动 Claude Code 并进入用户选的权限模式；模式进不去时只提示，启动失败照常抛出。 */
-  async launch(mcpServers: ClaudeAgentStartOptions["mcpServers"]): Promise<void> {
+  async launch(
+    mcpServers: ClaudeAgentStartOptions["mcpServers"],
+    pluginApprovals?: CapabilityPluginToolApprovals,
+  ): Promise<void> {
     const options: ClaudeAgentStartOptions = {
       ...buildStartOptions(
         this.state,
         this.#options.input,
         this.#options.references !== undefined,
         this.#options.denyUnattended,
+        pluginApprovals,
       ),
       ...(mcpServers ? { mcpServers } : {}),
       ...(this.#options.persistence === undefined
@@ -246,6 +251,7 @@ export class ClaudeSession {
     if (this.#release !== null) return this.#release
     this.#stall.stop()
     active.stopping = true
+    active.pluginCalls.abort()
     this.#options.references?.cancelPendingDeliveries()
     this.#context.stop()
     active.ending = (async () => {
@@ -286,6 +292,7 @@ export class ClaudeSession {
     if (this.#release !== null) return this.#release
     const active = this.state
     active.released = true
+    active.pluginCalls.abort()
     this.#options.references?.cancelPendingDeliveries()
     this.#stall.stop()
     this.#context.stop()

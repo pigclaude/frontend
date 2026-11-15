@@ -10,6 +10,7 @@ import { appSettingsZhCN } from "./app-settings.messages"
 import { appearanceZhCN } from "./appearance.messages"
 import { workbenchZhCN } from "./workbench.messages"
 import { scheduledTasksZhCN } from "./scheduled-tasks.messages"
+import { capabilityPluginToolsZhCN } from "./capability-plugin-tools.messages"
 
 /** 简体中文主词典；它的键就是 PigClaude 全部的文案键。 */
 export const zhCN = {
@@ -24,4 +25,5 @@ export const zhCN = {
   ...appearanceZhCN,
   ...workbenchZhCN,
   ...scheduledTasksZhCN,
+  ...capabilityPluginToolsZhCN,
 }

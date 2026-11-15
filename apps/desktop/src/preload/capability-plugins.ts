@@ -19,6 +19,7 @@ export function capabilityPluginsBridge(): CapabilityPluginsBridge {
     confirm: (id) => invoke("confirm", id),
     cancel: (id) => invoke("cancel", id),
     setEnabled: (id, value) => invoke("set-enabled", id, value),
+    setToolApproval: (id, mode) => invoke("set-tool-approval", id, mode),
     uninstall: (id, keepData) => invoke("uninstall", id, keepData),
     subscribe(listener) {
       const receive = () => listener()

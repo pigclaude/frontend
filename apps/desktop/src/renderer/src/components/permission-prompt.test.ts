@@ -56,6 +56,25 @@ async function render(request: SessionPermissionCard, onDecide = vi.fn()): Promi
 }
 
 describe("permission prompt", () => {
+  it("在单次审批卡展示登记的插件、工具和调用参数", async () => {
+    await render(
+      card({
+        toolName: "mcp__pigclaude_plugin_fixture__label",
+        input: { value: "AB" },
+        plugin: { id: "fixture.labels", name: "标签插件", toolName: "label" },
+        defaultToNo: true,
+      }),
+    )
+    expect(container.textContent).toContain("标签插件 (fixture.labels)")
+    expect(container.querySelector(".perm-prompt-tool")?.textContent).toBe("label")
+    expect(container.querySelector(".perm-prompt-code")?.textContent).toContain('"value": "AB"')
+    expect(options().map((option) => option.getAttribute("aria-selected"))).toEqual([
+      "false",
+      "true",
+    ])
+    expect(container.textContent).not.toContain("始终允许")
+  })
+
   it("shows the command and the numbered choices", async () => {
     await render(card())
 

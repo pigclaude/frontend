@@ -25,6 +25,7 @@ const saved = z.strictObject({
   sha256: z.string().regex(sha256).nullable(),
   approvedDomains: z.array(z.string()).max(32),
   enabled: z.boolean(),
+  toolApproval: z.enum(["always_ask", "follow_session"]).default("always_ask"),
 })
 const removal = z.strictObject({ keepData: z.boolean() })
 
@@ -108,7 +109,7 @@ export class CapabilityPluginRecords {
     }
   }
 
-  /** 原子替换启停元数据，版本和确认的域名保持原绑定。 */
+  /** 原子替换启停与询问偏好，版本和确认的域名保持原绑定。 */
   setRecord(record: CapabilityPluginRecord, beforePublish?: () => void): Promise<void> {
     return atomicJson(
       join(this.#installed, record.manifest.id, "record.json"),

@@ -122,3 +122,28 @@ it("确认与准备绑定同一个受信 frame，安装只采用披露里的域�
   await invoke("uninstall", owner, fixture.id, true)
   expect(await invoke("list", owner)).toEqual([])
 })
+
+it("工具询问偏好只通过可信设置窗口修改，并进入后续会话快照", async () => {
+  const pending = (await invoke("prepare", owner, {
+    kind: "archive",
+    path: join(directory, "fixture.zip"),
+    sha256: checksum,
+  })) as CapabilityPluginInstallDisclosure
+  await expect(invoke("confirm", owner, pending.confirmationId)).resolves.toMatchObject({
+    toolApproval: "always_ask",
+  })
+  await expect(invoke("set-tool-approval", stray, fixture.id, "follow_session")).rejects.toThrow(
+    "UNTRUSTED_PLUGIN_REQUEST",
+  )
+  await expect(invoke("set-tool-approval", owner, fixture.id, "always_allow")).rejects.toThrow(
+    "PLUGIN_TOOL_APPROVAL_INVALID",
+  )
+  await expect(
+    invoke("set-tool-approval", owner, fixture.id, "follow_session"),
+  ).resolves.toMatchObject({
+    toolApproval: "follow_session",
+  })
+  await expect(manager?.snapshotEnabled()).resolves.toMatchObject([
+    { toolApproval: "follow_session" },
+  ])
+})

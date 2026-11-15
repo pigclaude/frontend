@@ -4,6 +4,7 @@ import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from "electro
 import {
   capabilityPluginChannelPrefix,
   type CapabilityPluginInstallSource,
+  type CapabilityPluginToolApproval,
 } from "../../capability-plugin-contract"
 import type { CapabilityPluginManager } from "./capability-plugin-manager"
 
@@ -19,6 +20,7 @@ const visibleErrors = new Set([
   "PLUGIN_CONFIRMATION_INVALID",
   "PLUGIN_SOURCE_INVALID",
   "PLUGIN_ID_INVALID",
+  "PLUGIN_TOOL_APPROVAL_INVALID",
   "PLUGIN_ALREADY_INSTALLED",
   "PLUGIN_NOT_INSTALLED",
   "PLUGIN_API_UNSUPPORTED",
@@ -87,6 +89,9 @@ export function registerCapabilityPluginIpc(options: CapabilityPluginIpcOptions)
   )
   handle("cancel", (manager, [value], _event, owner) => manager.cancel(confirmation(value), owner))
   handle("set-enabled", (manager, [id, value]) => manager.setEnabled(idValue(id), boolean(value)))
+  handle("set-tool-approval", (manager, [id, mode]) =>
+    manager.setToolApproval(idValue(id), toolApproval(mode)),
+  )
   handle("uninstall", (manager, [id, value]) => manager.uninstall(idValue(id), boolean(value)))
 }
 
@@ -126,4 +131,9 @@ function idValue(value: unknown): string {
 function boolean(value: unknown): boolean {
   if (typeof value !== "boolean") throw new Error("PLUGIN_SOURCE_INVALID")
   return value
+}
+
+function toolApproval(value: unknown): CapabilityPluginToolApproval {
+  if (value === "always_ask" || value === "follow_session") return value
+  throw new Error("PLUGIN_TOOL_APPROVAL_INVALID")
 }

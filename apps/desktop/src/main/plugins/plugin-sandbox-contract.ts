@@ -28,6 +28,12 @@ export type PluginSandboxNetwork = {
   forward(request: Request, signal: AbortSignal): Promise<Response>
 }
 
+/** 主进程分别提供清单声明和安装时用户确认的域名。 */
+export type PluginNetworkAccess = {
+  declaredDomains: readonly string[]
+  approvedDomains: readonly string[]
+}
+
 /** 实例与内存分区按同一组插件版本和出口标识隔离。 */
 export function pluginSandboxKey(source: PluginSandboxSource): string {
   return JSON.stringify([

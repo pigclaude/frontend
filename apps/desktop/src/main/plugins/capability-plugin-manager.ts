@@ -7,6 +7,7 @@ import type {
   CapabilityPluginInstallDisclosure,
   CapabilityPluginInstallSource,
   CapabilityPluginManifest,
+  CapabilityPluginToolApproval,
   InstalledCapabilityPlugin,
 } from "../../capability-plugin-contract"
 import {
@@ -41,6 +42,7 @@ export type CapabilityPluginSnapshot = {
   revision: string
   modules: Readonly<Record<string, string>>
   approvedDomains: readonly string[]
+  toolApproval: CapabilityPluginToolApproval
   dataDirectory: string
   secretsFile: string
 }
@@ -131,6 +133,7 @@ export class CapabilityPluginManager {
         sha256: disclosure.sha256,
         approvedDomains: [...manifest.networkDomains],
         enabled: true,
+        toolApproval: "always_ask",
       }
       await this.#records.install(record, bundle, () =>
         this.#assertMayInstall(disclosure.sourceKind, epoch),
@@ -160,6 +163,23 @@ export class CapabilityPluginManager {
         await this.#records.setRecord(updated, enabled ? () => this.#assertActive() : undefined)
         this.#emit()
       }
+      return this.#describe(updated)
+    })
+  }
+
+  /** 保存新会话的询问档；已有会话的工具快照继续沿用。 */
+  setToolApproval(
+    id: string,
+    mode: CapabilityPluginToolApproval,
+  ): Promise<InstalledCapabilityPlugin> {
+    assertId(id)
+    return this.#enqueue(async () => {
+      const record = await this.#records.read(id)
+      if (!record) throw new Error("PLUGIN_NOT_INSTALLED")
+      if (record.toolApproval === mode) return this.#describe(record)
+      const updated = { ...record, toolApproval: mode }
+      await this.#records.setRecord(updated)
+      this.#emit()
       return this.#describe(updated)
     })
   }
@@ -264,6 +284,7 @@ export class CapabilityPluginManager {
       modules,
       revision: record.revision,
       approvedDomains: record.approvedDomains,
+      toolApproval: record.toolApproval,
       ...capabilityPluginStoragePaths(this.options.root, manifest.id),
     }
   }

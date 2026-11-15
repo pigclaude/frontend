@@ -15,11 +15,13 @@ export function Segmented<T extends string>({
   label,
   value,
   options,
+  disabled,
   onChange,
 }: {
   label: string
   value: T
   options: Array<{ value: T; label: string }>
+  disabled?: boolean
   onChange: (value: T) => void
 }) {
   return (
@@ -27,6 +29,7 @@ export function Segmented<T extends string>({
       type="single"
       aria-label={label}
       value={value}
+      disabled={disabled ?? false}
       onValueChange={(next) => next && next !== value && onChange(next as T)}
     >
       {options.map((option) => (

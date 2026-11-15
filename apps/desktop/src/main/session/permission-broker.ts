@@ -4,6 +4,7 @@
 
 import { randomUUID } from "node:crypto"
 import type { PermissionResult, PermissionUpdate } from "@anthropic-ai/claude-agent-sdk"
+import type { CapabilityPluginPermissionSource } from "../../capability-plugin-contract"
 import type {
   PermissionSuggestionSelection,
   PermissionSuggestionView,
@@ -27,6 +28,8 @@ export type PermissionRequestEvent = {
   suggestions?: PermissionSuggestionView[]
   defaultToNo?: boolean
   blockedPath?: string
+  /** 已登记的进程内工具标注能力插件来源。 */
+  plugin?: CapabilityPluginPermissionSource
   /** 子代理发起的请求是它的归属；主线程为 null。 */
   subagent: SubagentRef | null
 }
@@ -65,6 +68,8 @@ export type PermissionRequestOptions = {
   blockedPath?: string
   defaultToNo?: boolean
   suppressAlwaysAllowRule?: boolean
+  /** 只接受主进程从已登记服务找到的来源。 */
+  plugin?: CapabilityPluginPermissionSource
   /** 请求来自子代理时，SDK 给出的子代理 agent id。 */
   agentID?: string
 }
@@ -127,6 +132,7 @@ export class PermissionBroker {
       ...(choices.length === 0 ? {} : { suggestions: choices }),
       ...(options.defaultToNo ? { defaultToNo: true } : {}),
       ...(options.blockedPath === undefined ? {} : { blockedPath: options.blockedPath }),
+      ...(options.plugin === undefined ? {} : { plugin: options.plugin }),
       subagent: this.#subagentOf(options.agentID),
     }
     return new Promise<PermissionResult>((resolve) => {

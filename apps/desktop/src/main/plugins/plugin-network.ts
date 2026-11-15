@@ -4,13 +4,11 @@ import { createHmac, randomBytes } from "node:crypto"
 import { createProxyAgent } from "@pigclaude/proxy-connection"
 import { fetch, type ProxyAgent } from "undici"
 import { isProhibitedPluginDomain, normalizePluginNetworkDomain } from "./plugin-network-domains"
-import { PluginSandboxError, type PluginSandboxNetwork } from "./plugin-sandbox-contract"
-
-/** 分别提供包声明的域名和安装时由用户确认的域名。 */
-export type PluginNetworkAccess = {
-  declaredDomains: readonly string[]
-  approvedDomains: readonly string[]
-}
+import {
+  PluginSandboxError,
+  type PluginNetworkAccess,
+  type PluginSandboxNetwork,
+} from "./plugin-sandbox-contract"
 
 const routeSecret = randomBytes(32)
 const redirectStatuses = new Set([301, 302, 303, 307, 308])

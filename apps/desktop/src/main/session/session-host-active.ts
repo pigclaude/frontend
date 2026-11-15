@@ -45,6 +45,8 @@ export type ActiveSession = {
   /** 这个会话主线程发起的工作流；任务信号据它得出工作流快照。 */
   workflows: WorkflowTasks
   abort: AbortController
+  /** 在停止时取消插件工具，独立于 SDK 保存历史后再关闭的退出顺序。 */
+  pluginCalls: AbortController
   model: string | null
   permissionMode: SessionPermissionMode
   unconfirmedModes: SessionPermissionMode[]
@@ -131,6 +133,7 @@ export function createActiveSession(
     subagents,
     workflows: new WorkflowTasks(),
     abort: new AbortController(),
+    pluginCalls: new AbortController(),
     model: input.model ?? null,
     permissionMode: launchPermissionMode(input.permissionMode),
     unconfirmedModes: [],

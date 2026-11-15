@@ -2,6 +2,8 @@
 // 被停止或会员失效打断时清理已建的环境并抛对应的错误码，不留半启动状态；会话对象一建好就交给宿主，便于中途停止。
 
 import { ClaudeSession } from "./claude-session"
+import type { CapabilityPluginToolDependencies } from "../plugins/capability-plugin-tool-dependencies"
+import { createSessionPluginTools } from "../plugins/capability-plugin-tools"
 import { ClaudeAgentAdapter } from "./claude-agent-adapter"
 import { resolveClaudeBinaryPath } from "./claude-binary"
 import { SessionEnvironment } from "./session-environment"
@@ -50,6 +52,7 @@ export type SessionLaunchDeps = {
   usage: SessionUsagePort
   permissionTimeoutMs: number
   projectPermissions?: ProjectPermissionStore
+  capabilityPluginTools?: CapabilityPluginToolDependencies
   timers: SessionTimers
   now: () => number
   newId: () => string
@@ -77,6 +80,9 @@ export function createSessionLaunchDeps(
     ...(options.projectPermissions === undefined
       ? {}
       : { projectPermissions: options.projectPermissions }),
+    ...(options.capabilityPluginTools === undefined
+      ? {}
+      : { capabilityPluginTools: options.capabilityPluginTools }),
     timers,
     now,
     newId,
@@ -239,7 +245,21 @@ export async function launchSession(
       )
       servers = { ...servers, [threadReadServerName]: reader }
     }
-    await session.launch(servers)
+    const plugins =
+      deps.capabilityPluginTools &&
+      (await createSessionPluginTools(deps.capabilityPluginTools, {
+        sessionId,
+        workspace: canonicalWorkspace,
+        membership: deps.membership,
+        broker: session.state.broker,
+        signal: session.state.pluginCalls.signal,
+        denyUnattended: hooks.scheduled?.denied,
+      }))
+    session.state.pluginCalls.signal.throwIfAborted()
+    await session.launch(
+      plugins === undefined ? servers : { ...servers, ...plugins.servers },
+      plugins?.approvals,
+    )
   } catch (error) {
     if (error instanceof SessionClaudeExitError) throw error
     await session.end("会话启动失败", null)

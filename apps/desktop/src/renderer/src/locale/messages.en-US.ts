@@ -11,6 +11,7 @@ import { appSettingsZhCN } from "./app-settings.messages"
 import { appearanceEnUS } from "./appearance.messages"
 import { workbenchEnUS } from "./workbench.messages"
 import { scheduledTasksEnUS } from "./scheduled-tasks.messages"
+import { capabilityPluginToolsEnUS } from "./capability-plugin-tools.messages"
 
 /** 英文主词典。 */
 export const enUS = {
@@ -30,4 +31,5 @@ export const enUS = {
   ...appearanceEnUS,
   ...workbenchEnUS,
   ...scheduledTasksEnUS,
+  ...capabilityPluginToolsEnUS,
 } satisfies Record<keyof typeof zhCN, string>

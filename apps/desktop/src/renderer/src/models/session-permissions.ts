@@ -3,6 +3,7 @@
 
 import type { SessionEnvelope } from "../../../main/session/session-envelope"
 import type { SubagentRef } from "../../../main/session/session-events"
+import type { CapabilityPluginPermissionSource } from "../../../capability-plugin-contract"
 import {
   isPermissionSuggestionView,
   type PermissionSuggestionView,
@@ -29,6 +30,8 @@ export type SessionPermissionCard = {
   /** 需要额外确认时，卡片默认选择拒绝并停用数字键。 */
   defaultToNo?: boolean
   blockedPath: string | null
+  /** 已登记能力插件的来源，来自主进程的权限事件。 */
+  plugin?: CapabilityPluginPermissionSource
   /** 发起请求的子代理；主线程为 null。 */
   subagent: SubagentRef | null
   status: SessionPermissionStatus
@@ -108,6 +111,7 @@ function cardOf(
     suggestions: (event.suggestions ?? []).filter(isPermissionSuggestionView),
     ...(event.defaultToNo ? { defaultToNo: true } : {}),
     blockedPath: event.blockedPath ?? null,
+    ...(event.plugin === undefined ? {} : { plugin: event.plugin }),
     subagent: event.subagent,
     requestedAt: at,
   }

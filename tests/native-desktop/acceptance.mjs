@@ -15,6 +15,7 @@ import {
   verifySystemControls,
 } from "./window-controls.mjs"
 import { systemInput } from "./system-pointer.mjs"
+import { verifyScheduledTasks } from "./scheduled-tasks.mjs"
 import { trackNativeTray, verifyTrayMembership, verifyTrayNavigation } from "./tray-menu.mjs"
 import { verifyWorkbench } from "./workbench.mjs"
 
@@ -325,6 +326,7 @@ try {
     ["general", "通用"],
     ["appearance", "外观"],
     ["session", "会话"],
+    ["scheduled-tasks", "定时任务"],
     ["menubar", "托盘与菜单栏"],
     ["network", "中继与网络"],
     ["data", "数据与隐私"],
@@ -337,12 +339,14 @@ try {
     await palette.getByRole("option", { name: label, exact: true }).click()
     await expect(screen(page, id)).toBeVisible()
   }
+  await verifyScheduledTasks(page, userData)
+  pass("native scheduled-task IPC persists a skipped run for a missing project")
   await page.getByPlaceholder("搜索设置").fill("时区")
   await expect(page.getByRole("button", { name: "浏览器指纹", exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: "代理", exact: true })).toBeHidden()
   await page.getByRole("button", { name: "返回应用" }).click()
   await expect(screen(page, "chat")).toBeVisible()
-  pass("14 settings palette destinations, sidebar search and return to workspace")
+  pass("15 settings palette destinations, sidebar search and return to workspace")
   // 输入框晚一帧才自动聚焦；不等它就移开焦点，快捷键可能落进输入框而被外壳忽略。
   await expect(page.getByLabel("给 agent 的消息", { exact: true })).toBeFocused()
   await page.evaluate(() => document.activeElement?.blur())

@@ -2,6 +2,7 @@
 import { app, BrowserWindow, ipcMain, nativeTheme, safeStorage, screen, shell } from "electron"
 import { join } from "node:path"
 import { readFileSync } from "node:fs"
+import { scheduledTasksChangedChannel } from "../scheduled-tasks-contract"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import { LocalStore } from "@pigclaude/local-store"
 import { checkEgress } from "@pigclaude/login-gate/egress-check"
@@ -45,6 +46,7 @@ import {
   createDesktopScheduledTaskService,
   reportScheduledTasksError,
 } from "./scheduled-tasks/desktop-service"
+import { registerScheduledTasksIpc } from "./scheduled-tasks/ipc"
 import { trackDesktopWake } from "./scheduled-tasks/desktop-wake"
 import type { ScheduledTaskService } from "./scheduled-tasks/service"
 import { WorkbenchIpc } from "./workbench/workbench-ipc"
@@ -205,6 +207,7 @@ const guardMainWindowClose = installQuitFlow({
 function registerIpcHandlers(): void {
   registerDesktopWindowIpc(() => mainWindow, isTrustedSender, closePreference, windowNavigation)
   registerStartupPreferencesIpc(ipcMain, isTrustedSender, startup)
+  registerScheduledTasksIpc({ getService: () => scheduledTasks, isTrusted: isTrustedSender })
   registerSessionDefaultsIpc(ipcMain, {
     isTrusted: isTrustedSender,
     store: () => sessionDefaults,
@@ -382,7 +385,13 @@ async function setupAuthorization(): Promise<void> {
       defaults: sessionDefaults,
       usesDevProvider: sessions.usesDevProvider,
       runSession: (task, signal) => host.runScheduledTask(task, signal),
-      presentation: { refreshTray: () => tray?.refresh(), announce: notifications.announce },
+      presentation: {
+        refreshTray: () => {
+          sendToMainWindow(scheduledTasksChangedChannel)
+          tray?.refresh()
+        },
+        announce: notifications.announce,
+      },
     })
   }
   const checkLive = () => void desktopComposition?.resume()

@@ -374,6 +374,18 @@ async function snapshotProbe() {
       <div style="opacity:0"><button>Invisible action</button></div>
       <label>Password <input type="password" value="${password}"></label>
       <p>Visible page copy</p><span style="display:contents">Text without a wrapper box</span>
+      <div style="height:0;border:1px solid;overflow:hidden">
+        Collapsed copy<button>Collapsed action</button>
+        <h3>Collapsed heading</h3>
+      </div>
+      <div style="width:80px;overflow-x:clip">
+        <button style="margin-left:100px">Clipped action</button>
+      </div>
+      <div style="width:200px;height:30px;overflow:hidden">
+        <div style="height:20px;overflow:auto">
+          <div style="height:60px"></div><button>Scrollable action</button>
+        </div>
+      </div>
       <p>${"x".repeat(6200)}</p>
       <script>
         const timer = setInterval(async () => {
@@ -420,10 +432,13 @@ async function snapshotProbe() {
     assert(initial.text.includes("Text without a wrapper box"))
     assert(initial.text.length <= 6000)
     assert(!initial.text.includes("Invisible action"))
+    assert(!/Collapsed|Clipped/.test(initial.text))
+    assert(initial.text.includes("Scrollable action"))
     assert.equal(
-      initial.elements.some((element) => /Hidden|Invisible/.test(element.name)),
+      initial.elements.some((element) => /Hidden|Invisible|Collapsed|Clipped/.test(element.name)),
       false,
     )
+    assert(initial.elements.some((element) => element.name === "Scrollable action"))
     assert(initial.elements.some((element) => element.type === "password"))
     assert(!JSON.stringify(initial).includes(password))
     const original = initial.elements.find((element) => element.name === "Original action")

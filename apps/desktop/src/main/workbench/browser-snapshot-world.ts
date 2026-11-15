@@ -21,9 +21,73 @@ export const browserSnapshotWorld = String.raw`(({ generation, ref }) => {
   ].join(", ");
   const clean = (value, limit) => (value || "").replace(/\s+/g, " ").trim().slice(0, limit);
   const hasViewport = innerWidth > 0 && innerHeight > 0;
+  const containers = new WeakMap();
+  const clips = (overflow) => overflow === "hidden" || overflow === "clip";
+  const scrolls = (overflow) => overflow === "auto" || overflow === "scroll";
+  const hasClipping = (box) => box.clipX || box.clipY;
   const visible = (element) => element.isConnected &&
     element.checkVisibility({ opacityProperty: true, visibilityProperty: true }) &&
-    (!hasViewport || Array.from(element.getClientRects()).some((box) => box.width > 0 && box.height > 0));
+    visibleRect(element.getClientRects(), containingBoxes(element.parentElement));
+  function containingBox(element) {
+    if (containers.has(element)) return containers.get(element);
+    const style = getComputedStyle(element);
+    const clipX = clips(style.overflowX);
+    const clipY = clips(style.overflowY);
+    const scrollX = scrolls(style.overflowX) && element.clientWidth > 0 &&
+      element.scrollWidth > element.clientWidth;
+    const scrollY = scrolls(style.overflowY) && element.clientHeight > 0 &&
+      element.scrollHeight > element.clientHeight;
+    let box = null;
+    if ((clipX || clipY || scrollX || scrollY) &&
+        style.display !== "contents" && style.display !== "inline") {
+      const rect = element.getBoundingClientRect();
+      const scaleX = element.offsetWidth > 0 ? rect.width / element.offsetWidth : 1;
+      const scaleY = element.offsetHeight > 0 ? rect.height / element.offsetHeight : 1;
+      const left = rect.left + element.clientLeft * scaleX;
+      const top = rect.top + element.clientTop * scaleY;
+      box = {
+        clipX, clipY, scrollX, scrollY,
+        left, top,
+        right: left + element.clientWidth * scaleX,
+        bottom: top + element.clientHeight * scaleY,
+      };
+    }
+    containers.set(element, box);
+    return box;
+  }
+  function containingBoxes(parent) {
+    const result = [];
+    for (let element = parent; element; element = element.parentElement) {
+      const box = containingBox(element);
+      if (box) result.push(box);
+    }
+    return result;
+  }
+  function visibleRect(rectangles, outside) {
+    if (!hasViewport && !outside.some(hasClipping)) return true;
+    return Array.from(rectangles).some(({ left, right, top, bottom }) => {
+      if (left >= right || top >= bottom) return false;
+      for (const box of outside) {
+        // 普通滚动容器可以把后代移到其可用区域，外层裁剪约束的是该区域。
+        if (box.scrollX) {
+          left = box.left;
+          right = box.right;
+        } else if (box.clipX) {
+          left = Math.max(left, box.left);
+          right = Math.min(right, box.right);
+        }
+        if (box.scrollY) {
+          top = box.top;
+          bottom = box.bottom;
+        } else if (box.clipY) {
+          top = Math.max(top, box.top);
+          bottom = Math.min(bottom, box.bottom);
+        }
+        if (left >= right || top >= bottom) return false;
+      }
+      return true;
+    });
+  }
   const interactive = (element) => {
     if (!visible(element) || element.closest("[inert], [aria-disabled=true]") ||
         element.matches(":disabled, input[type=hidden]")) return false;
@@ -85,7 +149,7 @@ export const browserSnapshotWorld = String.raw`(({ generation, ref }) => {
       const node = walker.nextNode();
       if (!node) break;
       const parent = node.parentElement;
-      if (!parent || parent.closest("textarea, select, script, style, template") || !visibleTextParent(parent))
+      if (!parent || parent.closest("textarea, select, script, style, template") || !visibleTextParent(parent, node))
         continue;
       const text = clean(node.nodeValue, 6000 - length);
       if (!text) continue;
@@ -95,13 +159,18 @@ export const browserSnapshotWorld = String.raw`(({ generation, ref }) => {
     return parts.join("\n");
   }
 
-  function visibleTextParent(element) {
+  function visibleTextParent(element, node) {
+    const outside = containingBoxes(element);
     while (element && !visible(element)) {
       const style = getComputedStyle(element);
       if (style.display !== "contents" || style.visibility !== "visible") return false;
       element = element.parentElement;
     }
-    return element !== null;
+    if (!element) return false;
+    if (!outside.some(hasClipping)) return true;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    return visibleRect(range.getClientRects(), outside);
   }
 
   if (ref !== undefined) {

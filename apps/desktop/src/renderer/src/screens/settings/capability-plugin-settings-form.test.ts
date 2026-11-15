@@ -11,6 +11,7 @@ const plugin: InstalledCapabilityPlugin = {
   type: "capability",
   enabled: true,
   compatible: true,
+  toolApproval: "always_ask",
   revision: "fixture-revision",
   sourceKind: "directory",
   sha256: null,

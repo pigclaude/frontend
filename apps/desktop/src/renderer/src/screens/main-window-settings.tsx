@@ -20,6 +20,7 @@ import { UsageScreen } from "./usage-screen"
 import { ArchivedSessions } from "./settings/archived-sessions"
 import { ScheduledTasksSettings } from "./settings/scheduled-tasks-settings"
 import { PluginSettings } from "./settings/plugin-settings"
+import { CapabilityPluginSettingsForm } from "./settings/capability-plugin-settings-form"
 
 type Props = {
   page: string
@@ -64,6 +65,11 @@ export function MainWindowSettings({
       <PluginSettings
         bridge={window.pigclaude?.capabilityPlugins}
         membershipActive={membership.state === "active"}
+        renderSettings={(plugin) =>
+          plugin.manifest.settings.length > 0 ? (
+            <CapabilityPluginSettingsForm plugin={plugin} />
+          ) : null
+        }
       />
     )
   if (page === "scheduled-tasks")

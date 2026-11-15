@@ -225,6 +225,7 @@ function registerIpcHandlers(): void {
   registerKeepAwakeIpc(ipcMain, keepAwake, isTrustedSender)
   registerCapabilityPluginIpc({
     getManager: () => capabilityPlugins?.manager ?? null,
+    getDeclarations: () => capabilityPlugins?.declarations ?? null,
     isTrusted: isTrustedSender,
   })
   registerSessionDefaultsIpc(ipcMain, {

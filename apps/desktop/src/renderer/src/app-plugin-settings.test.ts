@@ -25,12 +25,12 @@ const manifest: CapabilityPluginManifest = {
   version: "1.0.0",
   pigclaudeVersion: "*",
   entry: "index.mjs",
-  permissions: ["workspace-read", "network"],
+  permissions: ["workspace-read", "network", "secrets"],
   networkDomains: ["example.org"],
   tools: [
     { name: "count_words", description: "统计指定文档的字数", inputSchema: { type: "object" } },
   ],
-  settings: [],
+  settings: [{ key: "apiToken", label: "索引密钥", type: "secret" }],
   commands: [],
   toolResultTemplates: [],
 }
@@ -44,6 +44,13 @@ function fakePlugins(developerMode = false) {
   return {
     status: async () => ({ developerMode }),
     list: async () => plugins,
+    listDeclarations: async () => [],
+    readSettings: async () => ({ values: {}, configuredSecrets: ["apiToken"] }),
+    setSetting: vi.fn<CapabilityPluginsBridge["setSetting"]>(async () => ({
+      values: {},
+      configuredSecrets: [],
+    })),
+    runCommand: async () => ({ insertText: null }),
     pick: vi.fn<CapabilityPluginsBridge["pick"]>(async (kind) =>
       kind === "archive" ? archive : "/fixtures/word-count",
     ),
@@ -70,6 +77,7 @@ function fakePlugins(developerMode = false) {
         approvedDomains: manifest.networkDomains,
         enabled: true,
         compatible: true,
+        toolApproval: "always_ask",
       }
       prepared = null
       plugins = [plugin]
@@ -83,6 +91,14 @@ function fakePlugins(developerMode = false) {
       const plugin = plugins.find((item) => item.manifest.id === id)
       if (!plugin) throw new Error("PLUGIN_NOT_INSTALLED")
       const updated = { ...plugin, enabled }
+      plugins = [updated]
+      changed()
+      return updated
+    }),
+    setToolApproval: vi.fn<CapabilityPluginsBridge["setToolApproval"]>(async (id, toolApproval) => {
+      const plugin = plugins.find((item) => item.manifest.id === id)
+      if (!plugin) throw new Error("PLUGIN_NOT_INSTALLED")
+      const updated = { ...plugin, toolApproval }
       plugins = [updated]
       changed()
       return updated
@@ -210,6 +226,28 @@ it("开发模式从本地目录安装，切换启用状态并可选择保留数�
   await click("确认卸载", dialog())
   expect(bridge.uninstall).toHaveBeenCalledExactlyOnceWith("word-count", true)
   expect(app.container.textContent).toContain("还没有安装插件")
+})
+
+it("从插件页打开宿主渲染的表单并清除密钥，不返显保存的明文", async () => {
+  const bridge = fakePlugins(true)
+  await openSettings(bridge)
+  await click("从目录安装", app.container)
+  await click("确认安装", dialog())
+  const open = app.container.querySelector<HTMLElement>('[aria-label="打开 文档字数 的设置"]')
+  await clickButton(open ?? undefined, "打开 文档字数 的设置")
+  await flush()
+  const form = dialog()
+  expect(form.textContent).toContain("文档字数 的设置")
+  const field = form.querySelector<HTMLInputElement>('input[type="password"]')
+  expect(field?.placeholder).toBe("密钥已保存")
+  expect(field?.value).toBe("")
+  await click("清除", form)
+  expect(bridge.setSetting).toHaveBeenCalledExactlyOnceWith(
+    { pluginId: "word-count", revision: "test-revision" },
+    "apiToken",
+    null,
+  )
+  expect(field?.placeholder).toBe("尚未设置密钥")
 })
 
 it("校验归档摘要格式，安装确认过期后回到列表并给出可重试提示", async () => {

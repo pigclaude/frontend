@@ -28,6 +28,7 @@ const docs: InstalledCapabilityPlugin = {
   sha256: "a".repeat(64),
   enabled: true,
   compatible: true,
+  toolApproval: "always_ask",
   approvedDomains: ["docs.example.org"],
   manifest: {
     id: "docs-index",
@@ -72,7 +73,20 @@ const summary: InstalledCapabilityPlugin = {
 }
 
 /** 让真实设置页面通过隔离的预览桥读取已安装插件及准备安装结果。 */
-export async function installPluginSettingsPreview(page: Page): Promise<void> {
+export async function installPluginSettingsPreview(page: Page, settings = false): Promise<void> {
+  const documentPlugin: InstalledCapabilityPlugin = settings
+    ? {
+        ...docs,
+        manifest: {
+          ...docs.manifest,
+          permissions: [...docs.manifest.permissions, "secrets"],
+          settings: [
+            { key: "indexName", label: "索引名称", type: "text" },
+            { key: "apiToken", label: "索引密钥", type: "secret" },
+          ],
+        },
+      }
+    : docs
   await page.addInitScript(
     ({ membership, docs, summary }) => {
       const unavailable = async () => {
@@ -89,6 +103,13 @@ export async function installPluginSettingsPreview(page: Page): Promise<void> {
         capabilityPlugins: {
           status: async () => ({ developerMode: true }),
           list: async () => [docs, summary],
+          listDeclarations: async () => [],
+          readSettings: async () => ({
+            values: { indexName: "团队手册" },
+            configuredSecrets: ["apiToken"],
+          }),
+          setSetting: unavailable,
+          runCommand: unavailable,
           pick: async (kind) => (kind === "directory" ? "/fixtures/docs" : "/fixtures/docs.zip"),
           prepare: async (source) => ({
             type: "capability",
@@ -100,11 +121,12 @@ export async function installPluginSettingsPreview(page: Page): Promise<void> {
           confirm: unavailable,
           cancel: async () => undefined,
           setEnabled: unavailable,
+          setToolApproval: unavailable,
           uninstall: unavailable,
           subscribe: () => () => undefined,
         },
       }
     },
-    { membership, docs, summary },
+    { membership, docs: documentPlugin, summary },
   )
 }

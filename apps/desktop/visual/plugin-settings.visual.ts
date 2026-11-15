@@ -26,3 +26,19 @@ test("local plugin installation disclosure", async ({ page }) => {
     animations: "disabled",
   })
 })
+
+test("host-rendered plugin settings", async ({ page }) => {
+  await installPluginSettingsPreview(page, true)
+  await page.goto("/?screen=plugins&theme=dark")
+  await page.getByRole("button", { name: "打开 文档索引 的设置" }).click()
+  const dialog = page.getByRole("dialog", { name: "文档索引 的设置" })
+  await expect(dialog.getByLabel("索引名称")).toHaveValue("团队手册")
+  await expect(dialog.getByLabel("索引密钥", { exact: true })).toHaveValue("")
+  await expect(dialog.getByPlaceholder("密钥已保存")).toBeVisible()
+  await page.evaluate(() => document.fonts.ready)
+  await expect(page).toHaveScreenshot("plugin-declarative-settings-dark.png", {
+    threshold: 0.1,
+    maxDiffPixels: 0,
+    animations: "disabled",
+  })
+})

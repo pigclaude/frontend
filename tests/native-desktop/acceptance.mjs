@@ -17,6 +17,7 @@ import {
 import { systemInput } from "./system-pointer.mjs"
 import { verifyScheduledTasks } from "./scheduled-tasks.mjs"
 import { verifyCapabilityPlugins } from "./capability-plugins.mjs"
+import { verifyPluginDeclarations } from "./plugin-declarations.mjs"
 import { trackNativeTray, verifyTrayMembership, verifyTrayNavigation } from "./tray-menu.mjs"
 import { verifyWorkbench } from "./workbench.mjs"
 
@@ -369,6 +370,8 @@ try {
   pass("15 settings palette destinations, sidebar search and return to workspace")
   // 输入框晚一帧才自动聚焦；不等它就移开焦点，快捷键可能落进输入框而被外壳忽略。
   await expect(page.getByLabel("给 agent 的消息", { exact: true })).toBeFocused()
+  await verifyPluginDeclarations(page, userData, mod)
+  pass("native capability-plugin commands insert plain text without replacing or sending the draft")
   await page.evaluate(() => document.activeElement?.blur())
   await page.keyboard.press(`${mod}+n`)
   await expect(screen(page, "chat-new")).toBeVisible()

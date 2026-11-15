@@ -14,6 +14,10 @@ export function capabilityPluginsBridge(): CapabilityPluginsBridge {
   return {
     status: () => invoke("status"),
     list: () => invoke("list"),
+    listDeclarations: () => invoke("list-declarations"),
+    readSettings: (plugin) => invoke("read-settings", plugin),
+    setSetting: (plugin, key, value) => invoke("set-setting", plugin, key, value),
+    runCommand: (plugin, commandId) => invoke("run-command", plugin, commandId),
     pick: (kind) => invoke("pick", kind),
     prepare: (source) => invoke("prepare", source),
     confirm: (id) => invoke("confirm", id),

@@ -52,7 +52,7 @@ export type CapabilityPluginCommand = {
   slash?: string | undefined
 }
 
-/** 向 PigClaude 声明工具结果的纯文本模板。 */
+/** 声明纯文本模板，{{result}} 引用整个结果，{{field.path}} 引用 JSON 标量字段。 */
 export type CapabilityPluginToolResultTemplate = { tool: string; template: string }
 
 /** 经过宿主校验的清单。省略的贡献项会规范成空列表。 */
@@ -99,6 +99,27 @@ export type InstalledCapabilityPlugin = {
   compatible: boolean
 }
 
+/** 绑定命令或设置请求到一次安装，避免请求落到同 id 的新包。 */
+export type CapabilityPluginRevision = { pluginId: string; revision: string }
+
+/** 主进程投影的已启用贡献；工具名由会话工具桥统一生成。 */
+export type CapabilityPluginDeclarations = CapabilityPluginRevision & {
+  commands: CapabilityPluginCommand[]
+  toolResults: Array<{ toolName: string; template: string }>
+}
+
+/** 允许输入和保存的设置值；null 清除当前值。 */
+export type CapabilityPluginSettingValue = string | number | boolean | null
+
+/** 可信界面只接收普通设置值与已配置密钥的字段名。 */
+export type CapabilityPluginSettingsView = {
+  values: Record<string, Exclude<CapabilityPluginSettingValue, null>>
+  configuredSecrets: string[]
+}
+
+/** 宿主从命令结果中只保留经声明许可的纯文本插入。 */
+export type CapabilityPluginCommandResult = { insertText: string | null }
+
 /** 桌面安装命令的固定 IPC 前缀。 */
 export const capabilityPluginChannelPrefix = "pigclaude:capability-plugins-"
 
@@ -109,6 +130,17 @@ export const capabilityPluginsChangedChannel = capabilityPluginChannelPrefix + "
 export type CapabilityPluginsBridge = {
   status(): Promise<{ developerMode: boolean }>
   list(): Promise<InstalledCapabilityPlugin[]>
+  listDeclarations(): Promise<CapabilityPluginDeclarations[]>
+  readSettings(plugin: CapabilityPluginRevision): Promise<CapabilityPluginSettingsView>
+  setSetting(
+    plugin: CapabilityPluginRevision,
+    key: string,
+    value: CapabilityPluginSettingValue,
+  ): Promise<CapabilityPluginSettingsView>
+  runCommand(
+    plugin: CapabilityPluginRevision,
+    commandId: string,
+  ): Promise<CapabilityPluginCommandResult>
   pick(kind: CapabilityPluginInstallSource["kind"]): Promise<string | null>
   prepare(input: CapabilityPluginInstallSource): Promise<CapabilityPluginInstallDisclosure>
   confirm(confirmationId: string): Promise<InstalledCapabilityPlugin>

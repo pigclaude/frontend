@@ -10,6 +10,7 @@ import { settingsZhCN, startupSettingsEnUS } from "./settings.messages"
 import { appSettingsZhCN } from "./app-settings.messages"
 import { appearanceEnUS } from "./appearance.messages"
 import { workbenchEnUS } from "./workbench.messages"
+import { capabilityPluginSettingsEnUS } from "./capability-plugin-settings.messages"
 import { scheduledTasksEnUS } from "./scheduled-tasks.messages"
 import { capabilityPluginToolsEnUS } from "./capability-plugin-tools.messages"
 
@@ -32,4 +33,5 @@ export const enUS = {
   ...workbenchEnUS,
   ...scheduledTasksEnUS,
   ...capabilityPluginToolsEnUS,
+  ...capabilityPluginSettingsEnUS,
 } satisfies Record<keyof typeof zhCN, string>

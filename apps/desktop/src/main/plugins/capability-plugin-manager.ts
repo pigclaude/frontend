@@ -8,6 +8,7 @@ import type {
   CapabilityPluginInstallSource,
   CapabilityPluginManifest,
   CapabilityPluginToolApproval,
+  CapabilityPluginRevision,
   InstalledCapabilityPlugin,
 } from "../../capability-plugin-contract"
 import {
@@ -202,6 +203,36 @@ export class CapabilityPluginManager {
         throw new Error("PLUGIN_NOT_INSTALLED")
       }
       await this.#finishRemoval(pluginId)
+    })
+  }
+
+  /** 在启停和卸载队列中执行当前已启用版本的短操作。 */
+  withEnabledPlugin<T>(
+    { pluginId, revision }: CapabilityPluginRevision,
+    operation: (plugin: InstalledCapabilityPlugin) => T | Promise<T>,
+  ): Promise<T> {
+    assertId(pluginId)
+    return this.#enqueue(async () => {
+      this.#assertActive()
+      const record = await this.#records.read(pluginId)
+      this.#assertActive()
+      if (!record || record.revision !== revision || !record.enabled)
+        throw new Error("PLUGIN_DECLARATION_UNAVAILABLE")
+      const plugin = this.#describe(record)
+      if (!plugin.compatible) throw new Error("PLUGIN_VERSION_INCOMPATIBLE")
+      return operation(plugin)
+    })
+  }
+
+  /** 只为当前启用版本中清单声明的命令读取沙箱快照。 */
+  commandSnapshot(
+    plugin: CapabilityPluginRevision,
+    commandId: string,
+  ): Promise<CapabilityPluginSnapshot> {
+    return this.withEnabledPlugin(plugin, (record) => {
+      if (!record.manifest.commands.some(({ id }) => id === commandId))
+        throw new Error("PLUGIN_DECLARATION_UNAVAILABLE")
+      return this.#snapshot(record)
     })
   }
 

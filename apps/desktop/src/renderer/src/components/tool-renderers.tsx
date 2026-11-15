@@ -1,7 +1,8 @@
 // 负责给 Pigcode 时间线注册内置工具行：终端、文件读写、搜索、网页抓取、MCP 和浏览器
 // 都用 ui-chat 自带的专用卡片，而不是通用回退行。
 
-import type { ReactNode } from "react"
+import { useMemo, type ReactNode } from "react"
+import { useContributions } from "@pigclaude/client-runtime"
 import {
   BUILTIN_TOOL_ROWS,
   ToolRenderersContext,
@@ -19,9 +20,7 @@ const builtinRenderers: readonly ToolRendererEntry[] = BUILTIN_TOOL_ROWS.map(
 
 /** 给 ChatView 和 NewThreadView 提供工具渲染器扩展点。 */
 export function ToolRenderers({ children }: { children: ReactNode }): ReactNode {
-  return (
-    <ToolRenderersContext.Provider value={builtinRenderers}>
-      {children}
-    </ToolRenderersContext.Provider>
-  )
+  const contributions = useContributions("toolRenderer")
+  const renderers = useMemo(() => [...contributions, ...builtinRenderers], [contributions])
+  return <ToolRenderersContext.Provider value={renderers}>{children}</ToolRenderersContext.Provider>
 }

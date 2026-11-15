@@ -5,12 +5,15 @@ import {
   capabilityPluginChannelPrefix,
   type CapabilityPluginInstallSource,
   type CapabilityPluginToolApproval,
+  type CapabilityPluginRevision,
 } from "../../capability-plugin-contract"
+import type { CapabilityPluginDeclarationHost } from "./capability-plugin-declarations"
 import type { CapabilityPluginManager } from "./capability-plugin-manager"
 
 /** 主进程装配时提供当前管理器和可信窗口判定。 */
 export type CapabilityPluginIpcOptions = {
   getManager: () => CapabilityPluginManager | null
+  getDeclarations?: () => CapabilityPluginDeclarationHost | null
   isTrusted: (event: IpcMainInvokeEvent) => boolean
 }
 
@@ -23,6 +26,10 @@ const visibleErrors = new Set([
   "PLUGIN_TOOL_APPROVAL_INVALID",
   "PLUGIN_ALREADY_INSTALLED",
   "PLUGIN_NOT_INSTALLED",
+  "PLUGIN_DECLARATION_UNAVAILABLE",
+  "PLUGIN_SETTING_INVALID",
+  "PLUGIN_SECRET_STORAGE_UNAVAILABLE",
+  "PLUGIN_EGRESS_UNAVAILABLE",
   "PLUGIN_API_UNSUPPORTED",
   "PLUGIN_VERSION_INCOMPATIBLE",
   "PLUGIN_MANIFEST_INVALID",
@@ -63,8 +70,24 @@ export function registerCapabilityPluginIpc(options: CapabilityPluginIpcOptions)
     })
   }
 
+  function declarations() {
+    const result = options.getDeclarations?.()
+    if (!result) throw new Error("PLUGIN_MANAGER_UNAVAILABLE")
+    return result
+  }
+
   handle("status", (manager) => manager.status())
   handle("list", (manager) => manager.list())
+  handle("list-declarations", () => declarations().list())
+  handle("read-settings", (_manager, [plugin]) =>
+    declarations().readSettings(pluginRevision(plugin)),
+  )
+  handle("set-setting", (_manager, [plugin, key, value]) =>
+    declarations().setSetting(pluginRevision(plugin), declarationKey(key), value),
+  )
+  handle("run-command", (_manager, [plugin, commandId]) =>
+    declarations().runCommand(pluginRevision(plugin), declarationKey(commandId)),
+  )
   handle("pick", async (manager, [value], event) => {
     const kind = sourceKind(value)
     if (kind === "directory" && !manager.status().developerMode)
@@ -93,6 +116,25 @@ export function registerCapabilityPluginIpc(options: CapabilityPluginIpcOptions)
     manager.setToolApproval(idValue(id), toolApproval(mode)),
   )
   handle("uninstall", (manager, [id, value]) => manager.uninstall(idValue(id), boolean(value)))
+}
+
+function pluginRevision(value: unknown): CapabilityPluginRevision {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("pluginId" in value) ||
+    !("revision" in value) ||
+    typeof value.revision !== "string" ||
+    value.revision.length > 64
+  )
+    throw new Error("PLUGIN_DECLARATION_UNAVAILABLE")
+  return { pluginId: idValue(value.pluginId), revision: value.revision }
+}
+
+function declarationKey(value: unknown): string {
+  if (typeof value !== "string" || value.length === 0 || value.length > 64)
+    throw new Error("PLUGIN_SETTING_INVALID")
+  return value
 }
 
 function sourceKind(value: unknown): CapabilityPluginInstallSource["kind"] {

@@ -18,6 +18,7 @@ import { useSessionHistory } from "./hooks/use-session-history"
 import { SessionDeleteDialog } from "./components/session-delete-dialog"
 import { useProjectConfigurationDialog } from "./components/project-configuration-dialog"
 import type { ProjectDrafts } from "./hooks/use-project-draft"
+import { useCapabilityPluginContributions } from "./shell/use-capability-plugin-contributions"
 import { useComposerReferenceQueue } from "./hooks/use-composer-reference"
 import { useSessionNotices } from "./hooks/use-session-notices"
 import { useWorkspaces } from "./hooks/use-workspaces"
@@ -183,6 +184,10 @@ export function MainWindow({
   })
   const draftProject = projectOf(workspace)
   const projectDraft = drafts.forProject(draftProject)
+  useCapabilityPluginContributions(
+    membership.state === "active",
+    inChat ? (sessionId ?? projectDraft.key) : null,
+  )
   const composerReferences = useComposerReferenceQueue(sessionId, projectDraft.key, (path) =>
     location.kind === "draft" && draftProject ? projectDraft.key : openDraft(draftProject ?? path),
   )

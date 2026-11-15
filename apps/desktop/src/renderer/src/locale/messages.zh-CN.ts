@@ -9,6 +9,7 @@ import { settingsZhCN } from "./settings.messages"
 import { appSettingsZhCN } from "./app-settings.messages"
 import { appearanceZhCN } from "./appearance.messages"
 import { workbenchZhCN } from "./workbench.messages"
+import { capabilityPluginSettingsZhCN } from "./capability-plugin-settings.messages"
 import { scheduledTasksZhCN } from "./scheduled-tasks.messages"
 import { capabilityPluginToolsZhCN } from "./capability-plugin-tools.messages"
 
@@ -26,4 +27,5 @@ export const zhCN = {
   ...workbenchZhCN,
   ...scheduledTasksZhCN,
   ...capabilityPluginToolsZhCN,
+  ...capabilityPluginSettingsZhCN,
 }

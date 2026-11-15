@@ -156,7 +156,8 @@ async function listDirectories(path: string): Promise<string[]> {
   }
 }
 
-async function readJson(path: string): Promise<unknown> {
+/** 读取本机插件 JSON，缺文件返回 undefined。 */
+export async function readJson(path: string): Promise<unknown> {
   try {
     return JSON.parse(await readFile(path, "utf8")) as unknown
   } catch (error: unknown) {
@@ -165,7 +166,12 @@ async function readJson(path: string): Promise<unknown> {
   }
 }
 
-async function atomicJson(path: string, value: object, beforePublish?: () => void): Promise<void> {
+/** 写入临时文件后原子替换现有的本机插件 JSON。 */
+export async function atomicJson(
+  path: string,
+  value: object,
+  beforePublish?: () => void,
+): Promise<void> {
   const temporary = `${path}.${randomUUID()}.tmp`
   try {
     await writeFile(temporary, JSON.stringify(value), { flag: "wx", mode: 0o600 })

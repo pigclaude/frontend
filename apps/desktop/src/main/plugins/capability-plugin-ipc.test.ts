@@ -5,11 +5,18 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { IpcMainInvokeEvent } from "electron"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
-import type { CapabilityPluginInstallDisclosure } from "../../capability-plugin-contract"
+import type {
+  CapabilityPluginInstallDisclosure,
+  InstalledCapabilityPlugin,
+} from "../../capability-plugin-contract"
 import {
   capabilityPluginChannelPrefix,
   capabilityPluginManifestFile,
 } from "../../capability-plugin-contract"
+import { CapabilityPluginDeclarationHost } from "./capability-plugin-declarations"
+import { createCapabilityPluginSecrets } from "./capability-plugin-secrets"
+import { CapabilityPluginSettings } from "./capability-plugin-settings"
+import { capabilityPluginToolName } from "./capability-plugin-tool-name"
 import { registerCapabilityPluginIpc } from "./capability-plugin-ipc"
 import { CapabilityPluginManager } from "./capability-plugin-manager"
 
@@ -31,6 +38,9 @@ const nextPage = { senderFrame: {} } as IpcMainInvokeEvent
 const stray = { senderFrame: {} } as IpcMainInvokeEvent
 let directory: string
 let manager: CapabilityPluginManager | null
+let declarations: CapabilityPluginDeclarationHost | null
+const sandboxInvoke = vi.fn()
+const pluginNetwork = vi.fn()
 
 const checksum = "a".repeat(64)
 const fixture = {
@@ -40,8 +50,12 @@ const fixture = {
   version: "1.0.0",
   pigclaudeVersion: "*",
   entry: "index.mjs",
-  permissions: ["network"],
+  permissions: ["network", "secrets", "composer-insert"],
   networkDomains: ["fixture.example.com"],
+  commands: [{ id: "compose", title: "插入合成文字", slash: "/compose" }],
+  settings: [{ key: "password", label: "密钥", type: "secret" }],
+  tools: [{ name: "identify", description: "返回标记", inputSchema: { type: "object" } }],
+  toolResultTemplates: [{ tool: "identify", template: "结果：{{summary}}" }],
 }
 
 beforeEach(async () => {
@@ -60,8 +74,30 @@ beforeEach(async () => {
         [fixture.entry, Buffer.from('export default () => "fixture";')],
       ]),
   })
+  sandboxInvoke.mockReset()
+  pluginNetwork.mockReset()
+  pluginNetwork.mockResolvedValue({
+    egressId: "system",
+    domains: ["fixture.example.com"],
+    permits: () => false,
+    forward: () => Promise.resolve(Response.error()),
+  })
+  const secrets = createCapabilityPluginSecrets(directory, {
+    isEncryptionAvailable: () => true,
+    getSelectedStorageBackend: () => "gnome_libsecret",
+    encryptString: () => Buffer.from("opaque"),
+    decryptString: () => "synthetic-secret",
+  })
+  declarations = new CapabilityPluginDeclarationHost({
+    manager,
+    settings: new CapabilityPluginSettings(directory, secrets),
+    runtime: { pluginNetwork },
+    sandbox: { invoke: sandboxInvoke },
+    active: () => true,
+  })
   registerCapabilityPluginIpc({
     getManager: () => manager,
+    getDeclarations: () => declarations,
     isTrusted: (event) => event === owner || event === nextPage,
   })
 })
@@ -146,4 +182,81 @@ it("工具询问偏好只通过可信设置窗口修改，并进入后续会话�
   await expect(manager?.snapshotEnabled()).resolves.toMatchObject([
     { toolApproval: "follow_session" },
   ])
+})
+
+it("只发布启用版本的贡献，命令与设置受信且停用后撤销", async () => {
+  const prepared = (await invoke("prepare", owner, {
+    kind: "archive",
+    path: join(directory, "fixture.zip"),
+    sha256: checksum,
+  })) as CapabilityPluginInstallDisclosure
+  const installed = (await invoke(
+    "confirm",
+    owner,
+    prepared.confirmationId,
+  )) as InstalledCapabilityPlugin
+  await invoke("set-enabled", owner, fixture.id, true)
+  const plugin = { pluginId: fixture.id, revision: installed.revision }
+
+  await expect(invoke("list-declarations", owner)).resolves.toEqual([
+    {
+      ...plugin,
+      commands: fixture.commands,
+      toolResults: [
+        {
+          toolName: capabilityPluginToolName(fixture.id, "identify"),
+          template: "结果：{{summary}}",
+        },
+      ],
+    },
+  ])
+  await expect(invoke("run-command", stray, plugin, "compose")).rejects.toThrow(
+    "UNTRUSTED_PLUGIN_REQUEST",
+  )
+  await expect(invoke("run-command", owner, plugin, "identify")).rejects.toThrow(
+    "PLUGIN_DECLARATION_UNAVAILABLE",
+  )
+  expect(sandboxInvoke).not.toHaveBeenCalled()
+  sandboxInvoke.mockResolvedValue({ insertText: "合成草稿", ignored: "隐藏结果" })
+  await expect(invoke("run-command", owner, plugin, "compose")).resolves.toEqual({
+    insertText: "合成草稿",
+  })
+  expect(pluginNetwork).toHaveBeenCalledWith(null, {
+    declaredDomains: fixture.networkDomains,
+    approvedDomains: fixture.networkDomains,
+  })
+  expect(sandboxInvoke).toHaveBeenCalledWith(
+    expect.objectContaining({ pluginId: fixture.id, egressId: "system" }),
+    { operation: "command:compose", input: null },
+  )
+  await expect(
+    invoke("set-setting", owner, plugin, "password", "synthetic-secret"),
+  ).resolves.toEqual({
+    values: {},
+    configuredSecrets: ["password"],
+  })
+
+  let signalStarted = () => {}
+  const started = new Promise<void>((resolve) => {
+    signalStarted = resolve
+  })
+  let finish: (value: { insertText: string }) => void = () => {}
+  const response = new Promise<{ insertText: string }>((resolve) => {
+    finish = resolve
+  })
+  sandboxInvoke.mockImplementationOnce(() => {
+    signalStarted()
+    return response
+  })
+  const pending = expect(invoke("run-command", owner, plugin, "compose")).rejects.toThrow(
+    "PLUGIN_DECLARATION_UNAVAILABLE",
+  )
+  await started
+  await invoke("set-enabled", owner, fixture.id, false)
+  finish({ insertText: "已停用命令不再返回文字" })
+  await pending
+  await expect(invoke("list-declarations", owner)).resolves.toEqual([])
+  await expect(invoke("read-settings", owner, plugin)).rejects.toThrow(
+    "PLUGIN_DECLARATION_UNAVAILABLE",
+  )
 })

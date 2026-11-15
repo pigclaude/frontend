@@ -7,9 +7,11 @@ import { capabilityPluginsChangedChannel } from "../../capability-plugin-contrac
 import { capabilityPluginNoticeChannel } from "../../capability-plugin-notice-contract"
 import type { DesktopComposition } from "../composition"
 import { createCapabilityPluginScope } from "./capability-plugin-capabilities"
+import { CapabilityPluginDeclarationHost } from "./capability-plugin-declarations"
 import { CapabilityPluginManager, type CapabilityPluginSnapshot } from "./capability-plugin-manager"
 import { CapabilityPluginNotices } from "./capability-plugin-notices"
 import { createCapabilityPluginSecrets } from "./capability-plugin-secrets"
+import { CapabilityPluginSettings } from "./capability-plugin-settings"
 import { readCapabilityPluginArchive } from "./plugin-archive"
 
 /** 仅在沙箱宿主已装配时启用安装入口。源码运行态可以安装本地目录。 */
@@ -48,6 +50,14 @@ export function setupDesktopCapabilityPlugins(
       notify: (message) => notices.show(snapshot.manifest.id, snapshot.manifest.name, message),
       ...(insertText === undefined ? {} : { insertText }),
     })
+  const settings = new CapabilityPluginSettings(root, secrets)
+  const declarations = new CapabilityPluginDeclarationHost({
+    manager,
+    settings,
+    sandbox,
+    runtime,
+    active: () => composition.membershipGate.view().state === "active",
+  })
   return {
     manager,
     sessionOptions: runtime
@@ -60,6 +70,7 @@ export function setupDesktopCapabilityPlugins(
           },
         }
       : {},
+    declarations,
     stopEvents: manager.subscribe(() => send(capabilityPluginsChangedChannel)),
     /** 推进插件的会员生命周期，清理异常使用固定诊断码。 */
     membershipChanged(state: MembershipState): void {

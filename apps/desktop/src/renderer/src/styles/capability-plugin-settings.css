@@ -1,0 +1,9 @@
+/* 声明式插件表单沿用设置行和控件，使保存状态放在表单末尾。 */
+.capability-plugin-settings-fields {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--space-4);
+}

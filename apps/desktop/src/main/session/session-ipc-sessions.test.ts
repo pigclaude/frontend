@@ -2,12 +2,13 @@
 // 不合规的会话 id 在交给宿主之前被拒绝，未知会话返回宿主的「会话不存在」。
 
 import type { IpcMainInvokeEvent } from "electron"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createHarness, type SessionHarness } from "./session-host-fixtures"
 import { readSessionStartInput, registerSessionIpc } from "./session-ipc"
+import { trackSessionCommandCatalogs } from "./session-command-catalogs"
 
 const { handlers } = vi.hoisted(() => ({
   handlers: new Map<string, (event: IpcMainInvokeEvent, value?: unknown) => unknown>(),
@@ -35,6 +36,38 @@ afterEach(async () => {
 })
 
 describe("session IPC with several sessions", () => {
+  it("枚举未启动项目的命令，并为运行中的会话返回独立的 SDK 命令", async () => {
+    const harness = await registered()
+    trackSessionCommandCatalogs(harness.host)
+    const workspace = harness.workspace
+    const directory = join(workspace, ".claude", "commands")
+    try {
+      await mkdir(directory, { recursive: true })
+      await writeFile(join(directory, "local.md"), "synthetic")
+      await expect(invoke("pigclaude:session-commands", { workspace }, false)).rejects.toThrow(
+        "UNTRUSTED_SESSION_REQUEST",
+      )
+      await expect(invoke("pigclaude:session-commands", { workspace })).resolves.toContainEqual({
+        name: "local",
+        kind: "skill",
+        text: "/local",
+      })
+      expect(harness.adapters.instances).toHaveLength(0)
+      await invoke("pigclaude:session-start", startInput(harness, "draft-a"))
+      harness.adapters.last.emit({
+        type: "commands-changed",
+        commands: [{ name: "available", kind: "skill", text: "/available" }],
+      })
+      await expect(
+        invoke("pigclaude:session-commands", { workspace, sessionId: "draft-a" }),
+      ).resolves.toEqual([{ name: "available", kind: "skill", text: "/available" }])
+      await expect(
+        invoke("pigclaude:session-commands", { workspace, sessionId: "other" }),
+      ).resolves.toContainEqual({ name: "local", kind: "skill", text: "/local" })
+    } finally {
+      await harness.host.dispose()
+    }
+  })
   it("lists every session as a redacted summary for a trusted sender", async () => {
     const harness = await registered()
     const first = await invoke("pigclaude:session-start", startInput(harness, "draft-a"))

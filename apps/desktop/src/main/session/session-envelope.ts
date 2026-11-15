@@ -13,6 +13,7 @@ export type SessionEventKind = "persisted" | "live"
 export const sessionEventKinds: Readonly<Record<SessionHostEvent["type"], SessionEventKind>> = {
   started: "persisted",
   mode: "persisted",
+  "commands-changed": "live",
   delta: "live",
   message: "persisted",
   "tool-result": "persisted",

@@ -1,6 +1,12 @@
 // 负责 Claude Agent SDK query 的最小端口：适配器和一次性模型查询都通过它启动、关闭 SDK 进程。
 
-import type { ModelInfo, Options, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
+import type {
+  ModelInfo,
+  Options,
+  SDKMessage,
+  SDKUserMessage,
+  SlashCommand,
+} from "@anthropic-ai/claude-agent-sdk"
 import type { SessionEffort, SessionPermissionMode } from "./session-events"
 
 /** 一次会话允许动态设置的两个 SDK flag；effortLevel 为 null 时恢复模型默认档位。 */
@@ -13,6 +19,8 @@ export type AdapterQuery = AsyncIterable<SDKMessage> & {
   stopTask(taskId: string): Promise<void>
   close(): void
   supportedModels(): Promise<ModelInfo[]>
+  /** 返回 SDK 最近的命令快照；不支持命令的测试端口可以省略。 */
+  supportedCommands?(): Promise<SlashCommand[]>
   setPermissionMode(mode: SessionPermissionMode): Promise<void>
   setModel(model?: string): Promise<void>
   /** 修改当前 query 的会话级 flag，不写入设置文件。 */

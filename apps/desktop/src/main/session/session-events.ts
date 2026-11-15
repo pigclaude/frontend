@@ -5,6 +5,7 @@ import type {
   FastModeState,
   PermissionMode,
 } from "@anthropic-ai/claude-agent-sdk"
+import type { AgentCommand } from "@pigclaude/ui-contracts"
 import type { BackgroundTaskSignal } from "./background-tasks"
 import type { TaskSignal } from "./task-signals"
 
@@ -51,6 +52,7 @@ export type SessionEvent =
     }
   /** Claude Code 报告的当前权限模式；它自己改模式时也会发。 */
   | { type: "mode"; permissionMode: PermissionMode }
+  | { type: "commands-changed"; commands: readonly AgentCommand[] }
   | { type: "delta"; text: string; thinking: boolean; blockIndex: number }
   | {
       type: "message"

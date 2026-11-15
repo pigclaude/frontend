@@ -89,6 +89,7 @@ function canReplay(event: HistoryEvent): boolean {
       // 时间线只识别 result 的边界，较早记录可以没有用量。
       return true
     case "delta":
+    case "commands-changed":
     case "sessions-changed":
       return false
   }

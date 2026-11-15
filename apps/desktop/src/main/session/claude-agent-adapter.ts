@@ -1,7 +1,9 @@
 // 负责包装 Claude Agent SDK 的 query：管理一次会话的发送、中断、停止和控制请求，把 SDK 消息转发为应用事件。
 
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
+import type { AgentCommand } from "@pigclaude/ui-contracts"
 import { resolveClaudeBinaryPath } from "./claude-binary"
+import { claudeCommands } from "./claude-commands"
 import { queryClaudeModels, type ClaudeModelsOptions } from "./claude-model-query"
 import {
   closeQuietly,
@@ -43,6 +45,10 @@ export class ClaudeAgentAdapter {
   readonly #onEvent: ((event: AdapterEvent) => void) | undefined
   readonly #modelsTimeoutMs: number
   #query: AdapterQuery | null = null
+  #commandVersion = 0
+  #reportedCommands: string | null = null
+  #terminalCommands: readonly string[] = []
+  #commands: readonly AgentCommand[] | null = null
   #prompt: PromptStream | null = null
   #started = false
   #stopped = false
@@ -102,6 +108,7 @@ export class ClaudeAgentAdapter {
       return
     }
     this.#pumpPromise = this.#pump(query)
+    this.#refreshCommands()
   }
 
   /** 把一条用户消息写入 SDK 的流式输入；会话未启动或已停止时抛出。 */
@@ -240,9 +247,42 @@ export class ClaudeAgentAdapter {
   }
 
   #handleMessage(message: SDKMessage): void {
+    if (message.type === "system") {
+      if (message.subtype === "commands_changed") {
+        this.#commandVersion += 1
+        this.#publishCommands(claudeCommands(message.commands, this.#terminalCommands))
+      } else if (message.subtype === "init") {
+        const terminal = message.terminal_slash_commands ?? []
+        const reported = JSON.stringify([message.slash_commands, terminal])
+        if (reported !== this.#reportedCommands) {
+          this.#terminalCommands = terminal
+          this.#reportedCommands = reported
+          this.#refreshCommands()
+        }
+      }
+    }
     const events = normalizeSdkMessage(message)
     if (events.length === 0) this.#emit({ type: "sdk-activity" })
     for (const event of events) this.#emit(event)
+  }
+
+  #refreshCommands(): void {
+    const query = this.#query
+    if (query?.supportedCommands === undefined) return
+    const version = ++this.#commandVersion
+    void query
+      .supportedCommands()
+      .then((commands) => {
+        if (!this.#stopped && this.#query === query && version === this.#commandVersion)
+          this.#publishCommands(claudeCommands(commands, this.#terminalCommands))
+      })
+      .catch(() => undefined)
+  }
+
+  #publishCommands(commands: readonly AgentCommand[]): void {
+    if (JSON.stringify(commands) === JSON.stringify(this.#commands)) return
+    this.#commands = commands
+    this.#emit({ type: "commands-changed", commands })
   }
 
   #emit(event: AdapterEvent): void {

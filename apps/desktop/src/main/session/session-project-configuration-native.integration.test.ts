@@ -123,6 +123,15 @@ it.skipIf(binary === null)(
           )
         })
       const messages = gateway.messages.map((item) => item.body).join("\n")
+      await vi.waitFor(() => {
+        expect(
+          h.events.some(
+            (event) =>
+              event.type === "commands-changed" &&
+              event.commands.some((command) => command.name === "verify-project"),
+          ),
+        ).toBe(true)
+      })
       expect(messages).toContain("REPOSITORY_INSTRUCTIONS")
       expect(messages).toContain("WORKSPACE_IMPORTED_INSTRUCTIONS")
       expect(messages).toContain("PROJECT_SKILL_INSTRUCTIONS")

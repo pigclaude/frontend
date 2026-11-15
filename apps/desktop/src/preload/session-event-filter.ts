@@ -6,6 +6,7 @@ import {
   sessionEventKinds,
   type SessionEnvelope,
 } from "../main/session/session-envelope"
+import type { AgentCommand } from "@pigclaude/ui-contracts"
 
 const isoUtc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 
@@ -23,9 +24,29 @@ export function isSessionEnvelope(value: unknown): value is SessionEnvelope {
   if (event.type === "sessions-changed") {
     return sessionId === null && seq === null && isOptionalRemoval(event.removed)
   }
+  if (event.type === "commands-changed") {
+    return sessionId !== null && seq === null && isAgentCommandCatalog(event.commands)
+  }
   const kind = sessionEventKinds[event.type as SessionEnvelope["event"]["type"]]
   if (sessionId === null || kind === "live") return seq === null
   return typeof seq === "number" && Number.isSafeInteger(seq) && seq > 0
+}
+
+/** 校验命令名、可插入文字与展示字段，只接受主进程的命令目录形状。 */
+export function isAgentCommandCatalog(value: unknown): value is readonly AgentCommand[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (command: unknown) =>
+        isRecord(command) &&
+        typeof command.name === "string" &&
+        command.name.length > 0 &&
+        command.text === `/${command.name}` &&
+        (command.kind === "builtin" || command.kind === "skill") &&
+        (command.description === undefined || typeof command.description === "string") &&
+        (command.argumentHint === undefined || typeof command.argumentHint === "string"),
+    )
+  )
 }
 
 function isOptionalRemoval(value: unknown): boolean {

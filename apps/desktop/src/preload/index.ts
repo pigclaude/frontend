@@ -2,7 +2,7 @@
 import { contextBridge, ipcRenderer } from "electron"
 import type { BrowserProfilesBridge } from "@pigclaude/contracts/browser-profile"
 import { browserProfilesBridge } from "./browser-profiles"
-import { isSessionEnvelope } from "./session-event-filter"
+import { isAgentCommandCatalog, isSessionEnvelope } from "./session-event-filter"
 import { isSessionSummary } from "./session-summary-filter"
 import { sessionHistoryBridge } from "./session-history"
 import { sessionDefaultsBridge, type SessionDefaultsBridge } from "./session-defaults"
@@ -289,6 +289,10 @@ const bridge: PigclaudeBridge = {
     },
   },
   session: {
+    commands: async (input) => {
+      const value: unknown = await ipcRenderer.invoke("pigclaude:session-commands", input)
+      return isAgentCommandCatalog(value) ? value : []
+    },
     start: async (input) => {
       const value: unknown = await ipcRenderer.invoke("pigclaude:session-start", input)
       if (!isRecord(value) || typeof value.sessionId !== "string") {

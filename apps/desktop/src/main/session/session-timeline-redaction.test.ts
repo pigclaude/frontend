@@ -15,6 +15,7 @@ type EventSamples = { [K in SessionHostEvent["type"]]: Extract<SessionHostEvent,
 
 const samples: EventSamples = {
   "sessions-changed": { type: "sessions-changed" },
+  "commands-changed": { type: "commands-changed", commands: [] },
   started: {
     type: "started",
     sessionId: "s-1",

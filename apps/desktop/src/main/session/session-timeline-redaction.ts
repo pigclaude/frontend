@@ -28,6 +28,7 @@ const timelineRules: { [K in SessionHostEvent["type"]]: TimelineRule<EventOf<K>>
   started: (event) => event,
   mode: (event) => event,
   delta: "live",
+  "commands-changed": "live",
   message: (event, marks) => ({
     ...event,
     blocks: event.blocks.map((block, index) => redactBlock(block, `event.blocks.${index}`, marks)),

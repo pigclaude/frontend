@@ -77,7 +77,11 @@ export class CapabilityPluginDeclarationHost {
         })
       : undefined
 
-    await manager.withEnabledPlugin(plugin, () => undefined)
+    const settings = await manager.withEnabledPlugin(plugin, () =>
+      manifest.settings.some((field) => field.type !== "secret")
+        ? this.options.settings.values(manifest)
+        : null,
+    )
     const result = await sandbox.invoke(
       {
         pluginId: manifest.id,
@@ -87,7 +91,7 @@ export class CapabilityPluginDeclarationHost {
         egressId: network?.egressId ?? "system",
         ...(network === undefined ? {} : { network }),
       },
-      { operation: "command:" + commandId, input: null },
+      { operation: "command:" + commandId, input: settings === null ? null : { settings } },
     )
     return manager.withEnabledPlugin(plugin, () => {
       if (

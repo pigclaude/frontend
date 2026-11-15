@@ -23,25 +23,33 @@ export class CapabilityPluginSettings {
   /** 回传清单声明的普通设置及已配置的密钥字段，不解密密钥。 */
   async read(manifest: CapabilityPluginManifest): Promise<CapabilityPluginSettingsView> {
     const secretFields = manifest.settings.filter((setting) => setting.type === "secret")
-    const [stored, savedSecretKeys] = await Promise.all([
-      this.#storedValues(manifest.id),
+    const [values, savedSecretKeys] = await Promise.all([
+      this.values(manifest),
       secretFields.length === 0 ? [] : this.secrets.keys(manifest.id),
     ])
     const secretKeys = new Set(savedSecretKeys)
-    const values = Object.fromEntries(
-      manifest.settings.flatMap((field) => {
-        if (field.type === "secret") return []
-        const saved = Object.hasOwn(stored, field.key) ? stored[field.key] : undefined
-        const value = accepts(field, saved) ? saved : field.defaultValue
-        return value === undefined ? [] : [[field.key, value]]
-      }),
-    )
     return {
       values,
       configuredSecrets: secretFields
         .filter((field) => secretKeys.has(field.key))
         .map((field) => field.key),
     }
+  }
+
+  /** 提供本插件声明的普通设置及默认值，供调用输入使用。 */
+  async values(
+    manifest: CapabilityPluginManifest,
+  ): Promise<CapabilityPluginSettingsView["values"]> {
+    const fields = manifest.settings.filter((field) => field.type !== "secret")
+    if (fields.length === 0) return {}
+    const stored = await this.#storedValues(manifest.id)
+    return Object.fromEntries(
+      fields.flatMap((field) => {
+        const saved = Object.hasOwn(stored, field.key) ? stored[field.key] : undefined
+        const value = accepts(field, saved) ? saved : field.defaultValue
+        return value === undefined ? [] : [[field.key, value]]
+      }),
+    )
   }
 
   /** 保存一个声明字段。值为 null 时恢复普通默认值或清除密钥。 */

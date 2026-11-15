@@ -1,7 +1,7 @@
 // 隔离世界里的快照采集脚本。引用跟随元素对象，表只活在隔离世界的全局对象里。
 
-/** 返回可见页面快照，或在隔离世界核对已登记元素与批准的点击坐标。 */
-export const browserSnapshotWorld = String.raw`(({ generation, ref, click }) => {
+/** 返回可见页面快照，或在隔离世界核对动作的已登记元素和状态。 */
+export const browserSnapshotWorld = String.raw`(({ generation, ref, click, input }) => {
   const key = Symbol.for("pigclaude.agent-browser-refs");
   let catalog = globalThis[key];
   if (!catalog || catalog.generation !== generation) {
@@ -15,6 +15,7 @@ export const browserSnapshotWorld = String.raw`(({ generation, ref, click }) => 
     "spinbutton", "treeitem",
   ]);
   const native = "a[href], button, input, textarea, select, summary";
+  const textInputTypes = new Set(["text", "search", "tel", "url", "email", "password", "number"]);
   const selector = [
     native, "[contenteditable]", "[tabindex]", "[onclick]",
     ...Array.from(roles, (role) => '[role~="' + role + '"]'),
@@ -118,38 +119,45 @@ export const browserSnapshotWorld = String.raw`(({ generation, ref, click }) => 
     }
   }
 
-  function nameFor(element, type) {
+  function nameFor(element, type, includeContents) {
+    const labelText = (label) => !includeContents &&
+      (element.contains(label) || (element.isContentEditable && label.contains(element)))
+        ? "" : renderedText(label);
     const labelledBy = (element.getAttribute("aria-labelledby") || "").trim()
       .split(/\s+/).slice(0, 8).flatMap((id) => {
         const label = id && document.getElementById(id);
-        return label ? [renderedText(label)] : [];
+        return label ? [labelText(label)] : [];
       }).join(" ");
-    const labels = Array.from(element.labels || []).slice(0, 8).map(renderedText).join(" ");
+    const labels = Array.from(element.labels || []).slice(0, 8).map(labelText).join(" ");
     const buttonLabel = ["button", "reset", "submit"].includes(type) ? element.value : "";
     return clean(labelledBy, 160) || clean(element.getAttribute("aria-label"), 160) ||
-      clean(labels, 160) || renderedText(element) || clean(buttonLabel, 160) ||
+      clean(labels, 160) || (includeContents ? renderedText(element) : "") || clean(buttonLabel, 160) ||
       clean(element.getAttribute("alt"), 160) || clean(element.getAttribute("title"), 160) ||
       clean(element.getAttribute("placeholder"), 160);
   }
 
-  function describe(element, elementRef) {
+  function describe(element, elementRef, includeContents = true) {
     const type = element.localName === "input" ? element.type : undefined;
     return {
-      ref: elementRef, role: roleFor(element, type), name: nameFor(element, type),
+      ref: elementRef, role: roleFor(element, type), name: nameFor(element, type, includeContents),
       ...(type === undefined ? {} : { type }),
     };
   }
 
+  function sameElement(current, expected) {
+    return current.role === expected.role && current.name === expected.name && current.type === expected.type;
+  }
+
+  function nextPaint() {
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  }
+
   async function clickPoint(element) {
-    const sameTarget = () => {
-      if (!interactive(element)) return false;
-      const current = describe(element, ref);
-      return current.role === click.role && current.name === click.name && current.type === click.type;
-    };
+    const sameTarget = () => interactive(element) && sameElement(describe(element, ref), click);
     if (!sameTarget()) return null;
     element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
     // 确保滚动后至少绘制过一帧，再把当前坐标交给 Chromium 的原生输入路由。
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await nextPaint();
     containers = new WeakMap();
     if (!sameTarget()) return null;
     const bounds = element.getBoundingClientRect();
@@ -166,6 +174,34 @@ export const browserSnapshotWorld = String.raw`(({ generation, ref, click }) => 
       if (node.matches(selector) && interactive(node)) return { blocked: true };
     }
     return { x, y };
+  }
+
+  function editable(element) {
+    if (!interactive(element) || element.getAttribute("aria-readonly") === "true") return false;
+    if (element instanceof HTMLInputElement) return !element.readOnly && textInputTypes.has(element.type);
+    if (element instanceof HTMLTextAreaElement) return !element.readOnly;
+    return element instanceof HTMLElement && element.isContentEditable && !element.parentElement?.isContentEditable;
+  }
+
+  async function inputTarget(element) {
+    if (!editable(element)) return input.phase === "inspect" ? { editable: false } : null;
+    const current = () => describe(element, ref, false);
+    if (input.phase === "inspect") {
+      const field = current();
+      return { ...field, isPassword: field.type === "password" };
+    }
+    if (!sameElement(current(), input.target)) return null;
+    if (input.phase === "focus") {
+      element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+      element.focus({ preventScroll: true });
+      await nextPaint();
+      containers = new WeakMap();
+      if (!editable(element) || !sameElement(current(), input.target)) return null;
+    }
+    if (document.activeElement !== element) return { focused: false };
+    if (!element.isContentEditable) return { focused: true };
+    const selection = document.getSelection();
+    return { focused: !!selection && element.contains(selection.anchorNode) && element.contains(selection.focusNode) };
   }
 
   function visibleBodyText() {
@@ -204,6 +240,7 @@ export const browserSnapshotWorld = String.raw`(({ generation, ref, click }) => 
   if (ref !== undefined) {
     const element = catalog.byRef.get(ref);
     if (click !== undefined) return element ? clickPoint(element) : null;
+    if (input !== undefined) return element ? inputTarget(element) : null;
     return element && interactive(element) ? describe(element, ref) : null;
   }
 

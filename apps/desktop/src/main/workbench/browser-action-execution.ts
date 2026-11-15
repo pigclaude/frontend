@@ -2,10 +2,10 @@
 
 import { setTimeout as delay } from "node:timers/promises"
 import type { WebContents } from "electron"
-import type { BrowserNavigationTarget } from "../../browser-permission-contract"
+import type { BrowserNavigationTarget, BrowserTypeInput } from "../../browser-permission-contract"
 import { BrowserActionError, type PreparedBrowserAction } from "./browser-action-request"
 import { workbenchAgentBrowserUrl } from "./browser-context"
-import type { AgentBrowserPoint } from "./browser-references"
+import { StaleBrowserReference, type AgentBrowserPoint } from "./browser-references"
 
 /** 从输入或当前页的历史中读取实际本机目标，不改变浏览器状态。 */
 export function planBrowserNavigation(
@@ -53,11 +53,12 @@ export function preparedBrowserAction(
   let used = false
   return {
     context: { ...context },
-    async execute(signal) {
+    async execute(signal, assertAllowed) {
       if (used)
         throw new BrowserActionError("This browser action already ran. Request approval again.")
       used = true
-      return run(signal)
+      assertAllowed?.()
+      return run(signal, assertAllowed)
     },
   }
 }
@@ -108,16 +109,8 @@ export async function clickBrowserPoint(
   assertCurrent: () => void,
   signal: AbortSignal,
 ): Promise<void> {
-  assertBrowserActionActive(signal)
-  const debuggerPort = contents.debugger
-  if (debuggerPort.isAttached())
-    throw new BrowserActionError(
-      "The browser is already being debugged. Close the debugger and retry.",
-    )
-  debuggerPort.attach("1.3")
-  try {
+  await inBrowserDebugger(contents, signal, async (debuggerPort) => {
     const { x, y } = await awaitBrowserAction(hit(), signal)
-    assertBrowserActionActive(signal)
     assertCurrent()
     const pointer = { x, y, button: "left", clickCount: 1 }
     await awaitBrowserAction(
@@ -128,7 +121,6 @@ export async function clickBrowserPoint(
       }),
       signal,
     )
-    assertBrowserActionActive(signal)
     assertCurrent()
     await awaitBrowserAction(
       debuggerPort.sendCommand("Input.dispatchMouseEvent", {
@@ -138,11 +130,79 @@ export async function clickBrowserPoint(
       }),
       signal,
     )
+  })
+  await waitAfterBrowserAction(contents, signal)
+}
+
+/** 仅在目标页中发出编辑与回车事件，并在每次 CDP 输入前确认焦点和权限。 */
+export async function typeInBrowserField(
+  contents: WebContents,
+  input: BrowserTypeInput,
+  field: { focus(): Promise<void>; checkFocus(): Promise<void>; sameDocument(): boolean },
+  assertCurrent: () => void,
+  signal: AbortSignal,
+): Promise<void> {
+  await inBrowserDebugger(contents, signal, async (debuggerPort) => {
+    async function send(method: "Input.dispatchKeyEvent" | "Input.insertText", params: object) {
+      assertCurrent()
+      await awaitBrowserAction(field.checkFocus(), signal)
+      assertCurrent()
+      await awaitBrowserAction(debuggerPort.sendCommand(method, params), signal)
+    }
+
+    assertCurrent()
+    await awaitBrowserAction(field.focus(), signal)
+
+    if (input.clear) {
+      const backspace = { key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 }
+      await send("Input.dispatchKeyEvent", {
+        ...backspace,
+        type: "rawKeyDown",
+        commands: ["SelectAll", "DeleteBackward"],
+      })
+      await send("Input.dispatchKeyEvent", { ...backspace, type: "keyUp" })
+    }
+    if (input.text.length > 0) await send("Input.insertText", { text: input.text })
+    if (input.submit) {
+      const enter = { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 }
+      await send("Input.dispatchKeyEvent", {
+        ...enter,
+        type: "keyDown",
+        text: "\r",
+        unmodifiedText: "\r",
+      })
+      try {
+        if (field.sameDocument()) await send("Input.dispatchKeyEvent", { ...enter, type: "keyUp" })
+      } catch (error) {
+        // 回车可能已提交并触发导航，不能把松键补发到新文档。
+        if (!(error instanceof StaleBrowserReference) || field.sameDocument()) throw error
+      }
+    }
+  })
+  await waitAfterBrowserAction(contents, signal)
+}
+
+async function inBrowserDebugger(
+  contents: WebContents,
+  signal: AbortSignal,
+  run: (debuggerPort: WebContents["debugger"]) => Promise<void>,
+): Promise<void> {
+  assertBrowserActionActive(signal)
+  const debuggerPort = contents.debugger
+  if (debuggerPort.isAttached())
+    throw new BrowserActionError(
+      "The browser is already being debugged. Close the debugger and retry.",
+    )
+  debuggerPort.attach("1.3")
+  try {
+    await run(debuggerPort)
   } finally {
     if (!contents.isDestroyed() && debuggerPort.isAttached()) debuggerPort.detach()
   }
+}
 
-  // 给页面处理点击并启动加载的机会；未导航的页面也能返回即时更新的正文。
+async function waitAfterBrowserAction(contents: WebContents, signal: AbortSignal): Promise<void> {
+  // 给页面处理输入并启动加载的机会；未导航时也能返回即时更新的正文。
   await awaitBrowserAction(delay(150), signal)
   await waitForPageLoad(contents, signal)
 }

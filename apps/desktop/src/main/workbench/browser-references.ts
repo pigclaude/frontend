@@ -18,6 +18,13 @@ export type AgentBrowserElement = {
 /** 目标元素在当前主帧视口内实际命中的 CSS 像素。 */
 export type AgentBrowserPoint = { x: number; y: number }
 
+/** 由页面中的实际可输入元素推导的审批目标，不包含字段值。 */
+export type AgentBrowserTextTarget = AgentBrowserElement & { isPassword: boolean }
+
+type InputQuery =
+  { phase: "inspect" } | { phase: "focus" | "check"; target: AgentBrowserTextTarget }
+type ElementQuery = { click: AgentBrowserElement } | { input: InputQuery }
+
 type Heading = { level: number; text: string }
 
 /** 单份快照的可见页面内容，不含元素对象或输入值。 */
@@ -99,7 +106,7 @@ export class BrowserReferences {
   /** 在隔离世界核对已批准的元数据、滚动到中央，并只接受实际打到该元素的点。 */
   async clickPoint(target: AgentBrowserElement): Promise<AgentBrowserPoint> {
     this.#assertRef(target.ref)
-    const value = await this.#read(target.ref, target)
+    const value = await this.#read(target.ref, { click: target })
     if (record(value) && value.blocked === true)
       throw new BrowserActionError(
         "The approved element is covered or outside the viewport. Please take a new browser snapshot.",
@@ -117,17 +124,42 @@ export class BrowserReferences {
     return { x: value.x, y: value.y }
   }
 
+  /** 只读核实 ref 当前指向可输入字段，并识别实际密码类型。 */
+  async resolveInput(ref: string): Promise<AgentBrowserTextTarget> {
+    this.#assertRef(ref)
+    const value = await this.#read(ref, { input: { phase: "inspect" } })
+    if (record(value) && value.editable === false)
+      throw new BrowserActionError(
+        "Choose an editable text field from the latest browser snapshot.",
+      )
+    if (!isElement(value) || !("isPassword" in value) || typeof value.isPassword !== "boolean")
+      throw new StaleBrowserReference()
+    return { ...value, isPassword: value.isPassword }
+  }
+
+  /** 在隔离世界按获批元数据复核字段；仅在开始输入时滚动和聚焦。 */
+  async requireInputFocus(target: AgentBrowserTextTarget, phase: "focus" | "check"): Promise<void> {
+    this.#assertRef(target.ref)
+    const value = await this.#read(target.ref, { input: { phase, target } })
+    if (record(value) && value.focused === true) return
+    if (record(value) && value.focused === false)
+      throw new BrowserActionError(
+        "The approved text field lost focus. Please take a new browser snapshot.",
+      )
+    throw new StaleBrowserReference()
+  }
+
   #assertRef(ref: string): void {
     if (ref.length > 64 || !ref.startsWith(`${this.#generation}:`))
       throw new StaleBrowserReference()
   }
 
-  async #read(ref?: string, click?: AgentBrowserElement): Promise<unknown> {
+  async #read(ref?: string, query?: ElementQuery): Promise<unknown> {
     const assertCurrent = this.documentGuard()
     const generation = this.#generation
     try {
       const value: unknown = await this.contents.executeJavaScriptInIsolatedWorld(snapshotWorld, [
-        { code: `${browserSnapshotWorld}(${JSON.stringify({ generation, ref, click })})` },
+        { code: `${browserSnapshotWorld}(${JSON.stringify({ generation, ref, ...query })})` },
       ])
       assertCurrent()
       return value

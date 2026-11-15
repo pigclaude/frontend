@@ -6,8 +6,9 @@ const { networkInterfaces } = require("node:os")
 const { mkdirSync } = require("node:fs")
 const { join } = require("node:path")
 const assert = require("node:assert/strict")
-const { WorkbenchBrowsers } = require("./browser-surface.js")
-const { configureAgentBrowserRuntime } = require("./agent-browser-network.js")
+const { WorkbenchBrowsers } = require("./main/workbench/browser-surface.js")
+const { configureAgentBrowserRuntime } = require("./main/workbench/agent-browser-network.js")
+const { typingProbe } = require("./agent-browser-input-probe.cjs")
 
 configureAgentBrowserRuntime(app.commandLine)
 
@@ -593,11 +594,13 @@ async function actionProbe() {
 app
   .whenReady()
   .then(async () => {
+    if (process.argv.includes("--type-only")) return typingProbe(listen)
     if (!process.argv.includes("--snapshot-only") && !process.argv.includes("--actions-only")) {
       await verifyPostPopupBlocked()
       await verifyAgentWebRtcBlocked()
       await verifyMalformedAllowlistBlocked()
       await probe()
+      await typingProbe(listen)
     }
     if (!process.argv.includes("--actions-only")) await snapshotProbe()
     if (!process.argv.includes("--snapshot-only")) await actionProbe()

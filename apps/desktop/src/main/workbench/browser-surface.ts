@@ -1,7 +1,6 @@
 // 内置浏览器使用独立沙箱和 WebContentsView，页面没有桌面 preload 或 Node 能力。
-import { BrowserWindow, WebContentsView, shell } from "electron"
-import { randomUUID } from "node:crypto"
-import type { BrowserNavigationTarget } from "../../browser-permission-contract"
+import { WebContentsView, shell, type BrowserWindow } from "electron"
+import type { BrowserNavigationTarget, BrowserTypeInput } from "../../browser-permission-contract"
 import type {
   WorkbenchBrowserAction,
   WorkbenchBrowserActivity,
@@ -17,7 +16,6 @@ import {
 import {
   assertBrowserActionActive,
   awaitBrowserAction,
-  clickBrowserPoint,
   navigateBrowserHistory,
   planBrowserNavigation,
   preparedBrowserAction,
@@ -28,11 +26,12 @@ import {
   allowsWorkbenchBrowserAddress,
   browserSession,
   configureContents,
-  isWorkbenchLoopback,
   workbenchAgentBrowserUrl,
   workbenchBrowserUrl,
 } from "./browser-context"
+import { prepareBrowserElementAction, type AgentElementAction } from "./browser-element-actions"
 import { pickWorkbenchBrowserElement } from "./browser-element-picker"
+import { WorkbenchBrowserPreviews } from "./browser-preview"
 import {
   BrowserReferences,
   StaleBrowserReference,
@@ -70,7 +69,7 @@ function resetBrowserNavigation(entry: Surface): void {
 /** 管理浏览器标签和本机预览窗口；内容尺寸由受信主窗口报告。 */
 export class WorkbenchBrowsers {
   readonly #surfaces = new Map<string, Surface>()
-  readonly #previews = new Map<BrowserWindow, BrowserWindow>()
+  readonly #previews = new WorkbenchBrowserPreviews()
 
   /** 打开指定标签的地址，保留该标签的导航历史。 */
   async navigate(window: BrowserWindow, id: string, input: unknown): Promise<void> {
@@ -148,7 +147,7 @@ export class WorkbenchBrowsers {
     const verifyDocument = original?.references.documentGuard()
     const { context, index } = planBrowserNavigation(original?.view.webContents, target)
     const intent = context.action === "url" ? { url: context.url } : { action: context.action }
-    return preparedBrowserAction(context, async (signal) => {
+    return preparedBrowserAction(context, async (signal, assertAllowed) => {
       if (signal) assertBrowserActionActive(signal)
       if (this.#agentSurface(window, id) !== original) throw new StaleBrowserReference()
       verifyDocument?.()
@@ -156,20 +155,25 @@ export class WorkbenchBrowsers {
         throw new BrowserActionError("Close another browser tab before opening an Agent page.")
       const entry = original ?? this.#entry(window, id, true)
       if (!isAgentSurface(entry)) throw new StaleBrowserReference()
-      return this.#runAgentAction(id, entry, context, 20_000, signal, async (control) => {
-        await awaitBrowserAction(entry.agent.ready, control)
-        assertBrowserActionActive(control)
-        if (this.#agentSurface(window, id) !== entry) throw new StaleBrowserReference()
-        verifyDocument?.()
-        const contents = entry.view.webContents
-        const current = planBrowserNavigation(contents, intent)
-        if (current.context.url !== context.url || current.index !== index)
-          throw new StaleBrowserReference()
-        resetBrowserNavigation(entry)
-        this.#send(window, { type: "browser-open", id, url: context.url })
-        if (context.action === "url") await contents.loadURL(context.url)
-        else await navigateBrowserHistory(contents, index, control)
-      })
+      return this.#runAgentAction(
+        id,
+        entry,
+        context,
+        { timeout: 20_000, signal, assertAllowed },
+        async (control, verify) => {
+          await awaitBrowserAction(entry.agent.ready, control)
+          verify()
+          verifyDocument?.()
+          const contents = entry.view.webContents
+          const current = planBrowserNavigation(contents, intent)
+          if (current.context.url !== context.url || current.index !== index)
+            throw new StaleBrowserReference()
+          resetBrowserNavigation(entry)
+          this.#send(window, { type: "browser-open", id, url: context.url })
+          if (context.action === "url") await contents.loadURL(context.url)
+          else await navigateBrowserHistory(contents, index, control)
+        },
+      )
     })
   }
 
@@ -179,34 +183,51 @@ export class WorkbenchBrowsers {
     id: string,
     ref: string,
   ): Promise<PreparedBrowserAction> {
+    return this.#prepareElementAction(window, id, { kind: "click", ref })
+  }
+
+  /** 核对可输入目标与批准卡元数据；原始文字只交给获批后的目标页面。 */
+  async prepareAgentType(
+    window: BrowserWindow,
+    id: string,
+    input: BrowserTypeInput,
+  ): Promise<PreparedBrowserAction> {
+    return this.#prepareElementAction(window, id, { kind: "type", input: { ...input } })
+  }
+
+  async #prepareElementAction(
+    window: BrowserWindow,
+    id: string,
+    action: AgentElementAction,
+  ): Promise<PreparedBrowserAction> {
     const entry = this.#agentSurface(window, id)
-    if (!entry) throw new StaleBrowserReference()
-    const verifyDocument = entry.references.documentGuard()
-    const target = await this.agentElement(window, id, ref)
-    verifyDocument()
-    const context = {
-      kind: "click" as const,
-      url: target.url,
-      ref,
-      role: target.role,
-      name: target.name,
+    if (!entry || entry.error) throw new StaleBrowserReference()
+    const prepared = await prepareBrowserElementAction(
+      entry.view.webContents,
+      entry.references,
+      action,
+    )
+    const verifyDocument = () => {
+      if (this.#agentSurface(window, id) !== entry || entry.error) throw new StaleBrowserReference()
+      prepared.verifyDocument()
     }
-    return preparedBrowserAction(context, (signal) =>
-      this.#runAgentAction(id, entry, context, 10_000, signal, async (control) => {
-        const verifyTarget = () => {
-          if (this.#agentSurface(window, id) !== entry || !isAgentBrowserAddress(target.url))
-            throw new StaleBrowserReference()
-          verifyDocument()
-        }
-        verifyTarget()
-        this.#send(window, { type: "browser-open", id, url: target.url })
-        await clickBrowserPoint(
-          entry.view.webContents,
-          () => entry.references.clickPoint(target),
-          verifyTarget,
-          control,
-        )
-      }),
+    verifyDocument()
+    return preparedBrowserAction(prepared.context, (signal, assertAllowed) =>
+      this.#runAgentAction(
+        id,
+        entry,
+        prepared.context,
+        { timeout: 10_000, signal, assertAllowed },
+        (control, verify) => {
+          const verifyTarget = () => {
+            verify()
+            verifyDocument()
+          }
+          verifyTarget()
+          this.#send(window, { type: "browser-open", id, url: prepared.context.url })
+          return prepared.run(control, verifyTarget)
+        },
+      ),
     )
   }
 
@@ -312,35 +333,12 @@ export class WorkbenchBrowsers {
   /** 关闭属于该主窗口的标签和独立预览。 */
   closeWindow(window: BrowserWindow): void {
     for (const id of this.#surfaces.keys()) this.close(window, id)
-    for (const [preview, owner] of this.#previews) if (owner === window) preview.destroy()
+    this.#previews.closeWindow(window)
   }
 
   /** 在独立沙箱窗口预览本机开发地址。 */
   async preview(window: BrowserWindow, input: unknown): Promise<{ id: string }> {
-    const url = workbenchBrowserUrl(input)
-    if (!isWorkbenchLoopback(url)) throw new Error("PREVIEW_URL_NOT_ALLOWED")
-    const preview = new BrowserWindow({
-      width: 1100,
-      height: 760,
-      show: false,
-      webPreferences: {
-        session: browserSession(),
-        sandbox: true,
-        contextIsolation: true,
-        nodeIntegration: false,
-      },
-    })
-    this.#previews.set(preview, window)
-    preview.once("closed", () => this.#previews.delete(preview))
-    configureContents(preview.webContents, true)
-    try {
-      await preview.loadURL(url.href)
-      preview.show()
-      return { id: randomUUID() }
-    } catch {
-      if (!preview.isDestroyed()) preview.destroy()
-      throw new Error("WORKBENCH_PREVIEW_FAILED")
-    }
+    return this.#previews.open(window, input)
   }
 
   /** 只将显式的 HTTP(S) 地址交给系统浏览器。 */
@@ -361,27 +359,37 @@ export class WorkbenchBrowsers {
     id: string,
     entry: AgentSurface,
     context: PreparedBrowserAction["context"],
-    timeout: number,
-    signal: AbortSignal | undefined,
-    run: (control: AbortSignal) => Promise<void>,
+    {
+      timeout,
+      signal,
+      assertAllowed,
+    }: {
+      timeout: number
+      signal: AbortSignal | undefined
+      assertAllowed: (() => void) | undefined
+    },
+    run: (control: AbortSignal, verify: () => void) => Promise<void>,
   ): Promise<string> {
-    if (this.#agentSurface(entry.window, id) !== entry) throw new StaleBrowserReference()
-    if (entry.activity)
-      throw new BrowserActionError("Another approved browser action is still running.")
     const deadline = AbortSignal.timeout(timeout)
     const control = signal ? AbortSignal.any([signal, deadline]) : deadline
-    assertBrowserActionActive(control)
+    const verify = () => {
+      assertBrowserActionActive(control)
+      assertAllowed?.()
+      if (this.#agentSurface(entry.window, id) !== entry) throw new StaleBrowserReference()
+    }
+    verify()
+    if (entry.activity)
+      throw new BrowserActionError("Another approved browser action is still running.")
     entry.activity = {
       kind: context.kind,
       target: context.kind === "navigate" ? context.url : context.name || context.ref,
     }
     try {
       this.#publish(id, entry)
-      await awaitBrowserAction(run(control), control)
-      assertBrowserActionActive(control)
-      if (this.#agentSurface(entry.window, id) !== entry) throw new StaleBrowserReference()
+      await awaitBrowserAction(run(control, verify), control)
+      verify()
       const snapshot = await awaitBrowserAction(this.agentPage(entry.window, id), control)
-      if (this.#agentSurface(entry.window, id) !== entry) throw new StaleBrowserReference()
+      verify()
       return snapshot
     } catch (error) {
       if (error instanceof BrowserActionError) throw error

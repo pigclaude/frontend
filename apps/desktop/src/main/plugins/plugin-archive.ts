@@ -1,4 +1,4 @@
-// 校验本地能力插件归档的哈希，再以只读方式取得包内的文件正文。
+// 校验同一份本地或下载归档的哈希，再以只读方式取得包内文件。
 
 import { createHash } from "node:crypto"
 import { constants } from "node:fs"
@@ -20,19 +20,39 @@ export async function readCapabilityPluginArchive(
   path: string,
   sha256: string,
 ): Promise<ReadonlyMap<string, Buffer>> {
-  if (typeof sha256 !== "string" || sha256.length !== 64 || !/^[0-9a-f]{64}$/i.test(sha256))
-    throw new PluginArchiveError("PLUGIN_ARCHIVE_SHA256_INVALID")
+  const hash = archiveChecksum(sha256)
   try {
-    const bytes = await readArchive(path)
-    if (createHash("sha256").update(bytes).digest("hex") !== sha256.toLowerCase())
+    return (await readPluginArchiveBytes(await readArchive(path), hash)).files
+  } catch (error) {
+    throw pluginArchiveError(error)
+  }
+}
+
+/** 先校验实际字节的限额和可选摘要，再解包；同一摘要可作为下载来源证据。 */
+export async function readPluginArchiveBytes(
+  bytes: Buffer,
+  expectedSha256: string | null,
+): Promise<{ files: ReadonlyMap<string, Buffer>; sha256: string }> {
+  const expected = expectedSha256 === null ? null : archiveChecksum(expectedSha256)
+  try {
+    if (bytes.length > pluginArchiveLimits.inputBytes)
+      throw new PluginArchiveError("PLUGIN_ARCHIVE_TOO_LARGE")
+    const sha256 = createHash("sha256").update(bytes).digest("hex")
+    if (expected !== null && sha256 !== expected)
       throw new PluginArchiveError("PLUGIN_ARCHIVE_SHA256_MISMATCH")
     const entries = new PluginArchiveEntries()
     if (bytes[0] === 0x1f && bytes[1] === 0x8b) await readPluginTar(bytes, entries)
     else await readPluginZip(bytes, entries)
-    return entries.finish()
+    return { files: entries.finish(), sha256 }
   } catch (error) {
     throw pluginArchiveError(error)
   }
+}
+
+function archiveChecksum(value: string): string {
+  if (typeof value !== "string" || value.length !== 64 || !/^[0-9a-f]{64}$/i.test(value))
+    throw new PluginArchiveError("PLUGIN_ARCHIVE_SHA256_INVALID")
+  return value.toLowerCase()
 }
 
 async function readArchive(path: string): Promise<Buffer> {

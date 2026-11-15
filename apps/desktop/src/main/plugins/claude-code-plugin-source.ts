@@ -11,9 +11,20 @@ const ignoredDirectoryEntries = new Set([".git", "node_modules"])
 export async function readClaudeCodePluginDirectory(
   path: string,
 ): Promise<ReadonlyMap<string, Buffer>> {
-  const output = new PluginArchiveEntries()
   try {
     const root = await realpath(path)
+    return await readCanonicalPluginDirectory(root)
+  } catch (error) {
+    throw bundleError(error)
+  }
+}
+
+/** 读取宿主已经定位好的目录；路径在读取前变为链接时会拒绝。 */
+export async function readCanonicalPluginDirectory(
+  root: string,
+): Promise<ReadonlyMap<string, Buffer>> {
+  const output = new PluginArchiveEntries()
+  try {
     if (!(await stat(root)).isDirectory()) throw new Error("PLUGIN_BUNDLE_INVALID")
     await readDirectory(root, "", output)
     return output.finish()

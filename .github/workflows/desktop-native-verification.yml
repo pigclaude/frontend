@@ -67,6 +67,12 @@ jobs:
       - name: Verify native Electron on Windows
         if: runner.os == 'Windows'
         run: node tests/native-desktop/acceptance.mjs test-results/native-desktop
+      - name: Verify capability plugin sandbox on Windows
+        if: runner.os == 'Windows'
+        run: node tests/native-desktop/plugin-sandbox.mjs
+      - name: Verify capability plugin sandbox on Linux
+        if: runner.os == 'Linux'
+        run: xvfb-run -a node tests/native-desktop/plugin-sandbox.mjs
       - name: Verify native Electron on Linux
         if: runner.os == 'Linux'
         timeout-minutes: 3

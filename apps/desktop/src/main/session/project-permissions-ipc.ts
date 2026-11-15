@@ -1,7 +1,10 @@
 // 负责设置页的项目授权接口；登记和选择新规则由权限代理完成。
 
 import type { IpcMain, IpcMainInvokeEvent } from "electron"
-import type { ProjectPermissionEntry } from "../../project-permissions-contract"
+import {
+  projectPermissionCleanupFailed,
+  type ProjectPermissionEntry,
+} from "../../project-permissions-contract"
 import type { ProjectPermissionStore } from "./project-permission-store"
 
 /** 设置页 IPC 需要的已信任窗口和本机授权库。 */
@@ -29,7 +32,12 @@ export function registerProjectPermissionsIpc(
       try {
         return await apply(store, id)
       } catch (error) {
-        if (error instanceof Error && error.message === "INVALID_SESSION_INPUT") throw error
+        if (
+          error instanceof Error &&
+          (error.message === "INVALID_SESSION_INPUT" ||
+            error.message === projectPermissionCleanupFailed)
+        )
+          throw error
         throw new Error("PROJECT_PERMISSIONS_FAILED")
       }
     })

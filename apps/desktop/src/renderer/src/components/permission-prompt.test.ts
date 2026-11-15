@@ -198,6 +198,20 @@ describe("permission prompt", () => {
     })
   })
 
+  it("明确列出目录建议的授权范围及目录路径", async () => {
+    await render(
+      card({
+        suggestions: [
+          { index: 4, label: "/test/directory", kind: "directory", canSaveProject: true },
+        ],
+      }),
+    )
+    expect(options()[1]?.textContent).toContain("允许此会话访问目录")
+    expect(options()[1]?.textContent).toContain("/test/directory")
+    expect(options()[2]?.textContent).toContain("允许此项目的会话访问目录")
+    expect(options()[2]?.textContent).toContain("/test/directory")
+  })
+
   it("focuses the decline choice and disables digit shortcuts when required", async () => {
     const onDecide = vi.fn()
     await render(card({ defaultToNo: true }), onDecide)

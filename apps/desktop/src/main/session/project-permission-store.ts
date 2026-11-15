@@ -3,16 +3,18 @@
 import { randomUUID } from "node:crypto"
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute } from "node:path"
-import type {
-  ProjectPermissionEntry,
-  ProjectPermissionGrant,
+import {
+  projectPermissionCleanupFailed,
+  type ProjectPermissionEntry,
+  type ProjectPermissionGrant,
 } from "../../project-permissions-contract"
 import {
   projectPermissionSettings,
   type ProjectPermissionSettings,
 } from "./project-permission-grants"
 
-type RuleListener = (settings: ProjectPermissionSettings) => Promise<void>
+type RuleChange = "grant" | "revoke"
+type RuleListener = (settings: ProjectPermissionSettings, change: RuleChange) => Promise<void>
 
 /** 本机项目授权库。更新完成后通知使用同一真实项目路径的活动会话。 */
 export class ProjectPermissionStore {
@@ -70,7 +72,7 @@ export class ProjectPermissionStore {
         next.push({ ...grant, projectPath, id: randomUUID() })
       }
       if (next.length !== entries.length && (await this.#commit(next, active)))
-        void this.#notify(projectPath, next)
+        void this.#notify(projectPath, next, "grant")
     })
   }
 
@@ -81,7 +83,7 @@ export class ProjectPermissionStore {
       if (removed === undefined) return { entries }
       const next = entries.filter((entry) => entry.id !== id)
       await this.#commit(next, () => true)
-      return { entries: next, applied: this.#notify(removed.projectPath, next) }
+      return { entries: next, applied: this.#notify(removed.projectPath, next, "revoke") }
     })
     await applied
     return entries
@@ -105,10 +107,18 @@ export class ProjectPermissionStore {
     return result
   }
 
-  async #notify(projectPath: string, entries: ProjectPermissionEntry[]): Promise<void> {
+  async #notify(
+    projectPath: string,
+    entries: ProjectPermissionEntry[],
+    change: RuleChange,
+  ): Promise<void> {
     const settings = settingsFor(entries, projectPath)
     const listeners = [...(this.#listeners.get(projectPath) ?? [])]
-    await Promise.allSettled(listeners.map(async (listener) => listener(settings)))
+    const settled = await Promise.allSettled(
+      listeners.map(async (listener) => listener(settings, change)),
+    )
+    if (change === "revoke" && settled.some((result) => result.status === "rejected"))
+      throw new Error(projectPermissionCleanupFailed)
   }
 
   async #commit(entries: ProjectPermissionEntry[], active: () => boolean): Promise<boolean> {

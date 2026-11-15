@@ -227,6 +227,7 @@ export class SessionHost {
           this.#concurrency.touch(entry.sessionId)
         },
         released: () => this.#released(entry),
+        parkAfterRevocation: () => this.#park(entry, "stop"),
         ...(this.#persistence === null
           ? {}
           : { saveSettings: (settings) => this.#persistence?.settings(entry.sessionId, settings) }),
@@ -494,7 +495,6 @@ export class SessionHost {
     }
   }
 }
-
 function resumeFailed(): SessionHostError {
   return new SessionHostError("SESSION_RESUME_FAILED", "会话已停放，暂时不能接着使用")
 }

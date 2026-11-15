@@ -61,6 +61,7 @@ export class ClaudeSession {
     emit: (event) => this.#publish(event),
   })
   #release: Promise<void> | null = null
+  #reportCleanupFailure = false
   readonly #emitModeEvent = (event: ModeEvent): void => {
     if (event.type === "mode") this.#publish(event)
     else this.#publish({ ...event, message: this.#redact(event.message) })
@@ -118,9 +119,14 @@ export class ClaudeSession {
     const project = this.#options.projectPermissions
     if (project === undefined) await this.state.adapter.start(options)
     else {
-      await project.start(this.state.adapter, options, () =>
-        this.#publish({ type: "notice", message: "当前会话未能应用最新项目授权，请重新打开会话" }),
-      )
+      await project.start(this.state.adapter, options, {
+        onFailure: () =>
+          this.#publish({
+            type: "notice",
+            message: "当前会话未能应用最新项目授权，请重新打开会话",
+          }),
+        onRevokeFailure: () => this.#stopAfterRevocation(),
+      })
     }
     await enterRequestedMode(this.state, this.#options.input.permissionMode, this.#emitModeEvent)
   }
@@ -246,7 +252,7 @@ export class ClaudeSession {
         await active.turns.shutdown()
       }
       await active.adapter.stop().catch((error: unknown) => {
-        if (error instanceof SessionClaudeExitError) throw error
+        if (this.#reportCleanupFailure || error instanceof SessionClaudeExitError) throw error
       })
       await this.release()
     })().catch((error: unknown) => {
@@ -254,6 +260,18 @@ export class ClaudeSession {
       throw error
     })
     return active.ending
+  }
+
+  async #stopAfterRevocation(): Promise<void> {
+    this.#reportCleanupFailure = true
+    const message = "当前会话未能更新已撤销的项目授权，正在停放"
+    this.#publish({ type: "notice", message })
+    try {
+      this.#options.revokeRouting?.()
+    } finally {
+      this.state.abort.abort()
+      await (this.#options.parkAfterRevocation?.() ?? this.end(message, null))
+    }
   }
 
   /** 拒绝还没回答的权限和提问，清理环境后通知宿主；并发调用等待同一次清理。 */
@@ -271,8 +289,9 @@ export class ClaudeSession {
   async #releaseEnvironment(): Promise<void> {
     const active = this.state
     active.pending.rejectAll(cancelledPermissionMessage)
-    await active.environment.cleanup().catch(() => undefined)
+    const cleanup = await active.environment.cleanup().catch((error: unknown) => ({ error }))
     await this.#options.onReleased(this)
+    if (this.#reportCleanupFailure && cleanup) throw cleanup.error
   }
 
   /**

@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react"
 import { Button, SettingRow, SettingSection } from "@pigclaude/ui-primitives"
-import type {
-  ProjectPermissionEntry,
-  ProjectPermissionsBridge,
+import {
+  projectPermissionCleanupFailed,
+  type ProjectPermissionEntry,
+  type ProjectPermissionsBridge,
 } from "../../../../project-permissions-contract"
 import { useText } from "../../locale/text"
 
@@ -12,7 +13,7 @@ import { useText } from "../../locale/text"
 export function ProjectPermissionRules({ bridge }: { bridge: ProjectPermissionsBridge }) {
   const { t } = useText()
   const [entries, setEntries] = useState<ProjectPermissionEntry[] | null>(null)
-  const [error, setError] = useState(false)
+  const [error, setError] = useState<"request" | "cleanup" | null>(null)
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     let alive = true
@@ -21,7 +22,7 @@ export function ProjectPermissionRules({ bridge }: { bridge: ProjectPermissionsB
         if (alive) setEntries(rules)
       },
       () => {
-        if (alive) setError(true)
+        if (alive) setError("request")
       },
     )
     return () => {
@@ -31,11 +32,14 @@ export function ProjectPermissionRules({ bridge }: { bridge: ProjectPermissionsB
 
   async function revoke(id: string): Promise<void> {
     setSaving(true)
-    setError(false)
+    setError(null)
     try {
       setEntries(await bridge.revoke(id))
-    } catch {
-      setError(true)
+    } catch (cause) {
+      if (cause instanceof Error && cause.message.includes(projectPermissionCleanupFailed)) {
+        setError("cleanup")
+        await bridge.list().then(setEntries, () => undefined)
+      } else setError("request")
     } finally {
       setSaving(false)
     }
@@ -43,7 +47,11 @@ export function ProjectPermissionRules({ bridge }: { bridge: ProjectPermissionsB
 
   return (
     <SettingSection title={t("permission.rules.title")}>
-      {error ? <p role="alert">{t("permission.rules.error")}</p> : null}
+      {error ? (
+        <p role="alert">
+          {t(error === "cleanup" ? "permission.rules.cleanupFailed" : "permission.rules.error")}
+        </p>
+      ) : null}
       {entries?.length === 0 ? <SettingRow title={t("permission.rules.empty")} /> : null}
       {entries?.map(({ id, projectPath, value }) => (
         <SettingRow key={id} title={value} description={projectPath}>

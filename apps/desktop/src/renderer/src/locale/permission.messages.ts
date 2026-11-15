@@ -19,6 +19,8 @@ export const permissionZhCN = {
   "permission.allowAlways.description": "本次会话中，后续相同请求不再询问",
   "permission.allowProject": "此项目始终允许",
   "permission.allowProject.description": "同一项目的其他会话也会应用",
+  "permission.allowDirectory.session": "允许此会话访问目录",
+  "permission.allowDirectory.project": "允许此项目的会话访问目录",
   "permission.deny": "拒绝",
   "permission.deny.description": "这次先拒绝",
   "permission.plan.title": "计划已就绪",
@@ -34,6 +36,7 @@ export const permissionZhCN = {
   "permission.rules.empty": "没有已保存的项目授权",
   "permission.rules.revoke": "撤销",
   "permission.rules.error": "无法读取或撤销项目授权，请重试。",
+  "permission.rules.cleanupFailed": "授权已从本机撤销，但有会话未能完成停放。请检查会话状态。",
 }
 
 /** 英文；键与简体中文一致，缺键时编译失败。 */
@@ -55,6 +58,8 @@ export const permissionEnUS = {
   "permission.allowAlways.description": "Skip this confirmation in the current session",
   "permission.allowProject": "Always allow in this project",
   "permission.allowProject.description": "Also applies to other sessions in this project",
+  "permission.allowDirectory.session": "Allow this session to access the directory",
+  "permission.allowDirectory.project": "Allow this project's sessions to access the directory",
   "permission.deny": "Deny",
   "permission.deny.description": "Deny this request",
   "permission.plan.title": "Plan ready",
@@ -70,4 +75,6 @@ export const permissionEnUS = {
   "permission.rules.empty": "No saved project permissions",
   "permission.rules.revoke": "Revoke",
   "permission.rules.error": "Couldn't load or revoke project permissions. Try again.",
+  "permission.rules.cleanupFailed":
+    "The permission was revoked locally, but a session couldn't finish stopping. Check the session status.",
 } satisfies Record<keyof typeof permissionZhCN, string>

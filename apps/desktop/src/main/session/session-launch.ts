@@ -97,6 +97,8 @@ export type SessionLaunchHooks = {
   backgroundTasks: (count: number) => void
   /** 会话释放时调用一次。 */
   released: () => void | Promise<void>
+  /** 项目授权撤销未能热更新时，从宿主停放该会话。 */
+  parkAfterRevocation?: () => Promise<void>
   /** 适配器确认修改模型或发送设置后更新会话索引。 */
   saveSettings?: (settings: SessionSavedSettings) => void
 }
@@ -160,7 +162,7 @@ export async function launchSession(
       : queued.workspace
     const canonicalInput = { ...input, workspace: canonicalWorkspace }
     if (deps.projectPermissions !== undefined) {
-      const path = await permissionProjectPath(canonicalWorkspace, input.projectPath).catch(
+      const path = await permissionProjectPath(canonicalWorkspace, deps.userDataPath).catch(
         () => null,
       )
       if (path !== null)
@@ -196,6 +198,9 @@ export async function launchSession(
     ...(references === undefined ? {} : { references }),
     ...(persistence === undefined ? {} : { persistence }),
     ...(hooks.saveSettings === undefined ? {} : { saveSettings: hooks.saveSettings }),
+    ...(hooks.parkAfterRevocation === undefined
+      ? {}
+      : { parkAfterRevocation: hooks.parkAfterRevocation }),
     createAdapter: (onEvent) =>
       deps.createAdapter((event) => {
         if (event.type === "background-tasks") {

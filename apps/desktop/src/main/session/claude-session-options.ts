@@ -28,6 +28,8 @@ export type ClaudeSessionOptions = {
   recordUsage: (record: UsageRecord) => void
   /** 当前 daemon 会话令牌，只用于从错误文本里去掉它。 */
   sessionToken: () => string
+  /** 在停止不再安全的会话前立即吊销 daemon 路由。 */
+  revokeRouting?: () => void
   provider: DevProviderOverride | null
   permissionTimeoutMs: number
   timers: SessionTimers
@@ -35,6 +37,8 @@ export type ClaudeSessionOptions = {
   newId: () => string
   /** 会话释放后调用一次，宿主据此放下对它的引用。 */
   onReleased: (session: ClaudeSession) => unknown
+  /** 撤销无法热更新时，交回宿主按正常流程停放。 */
+  parkAfterRevocation?: () => Promise<void>
   /** 保存会话用的 SDK 选项和磁盘时间线起点。 */
   persistence?: ClaudePersistenceOptions & {
     cursor: SessionEventCursor

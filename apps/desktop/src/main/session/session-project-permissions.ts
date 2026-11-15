@@ -1,10 +1,10 @@
 // 负责将一个会话绑定到本机项目授权。认证项目路径、启动时注入规则，并将变更热更新到活动会话。
 
-import { realpath, stat } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { ProjectPermissionGrant } from "../../project-permissions-contract"
 import { listWorkbenchWorktrees } from "../workbench/git-workspace"
+import { WorktreeRegistry } from "../workbench/worktree-registry"
 import type { ClaudeAgentStartOptions } from "./claude-query-options"
 import { canonicalProjectPath, containsProjectPath } from "./project-configuration-scope"
 import type { ProjectPermissionSettings } from "./project-permission-grants"
@@ -31,34 +31,43 @@ export class SessionProjectPermissions {
   async start(
     adapter: SessionAdapterPort,
     options: ClaudeAgentStartOptions,
-    onFailure: () => void,
+    hooks: { onFailure(): void; onRevokeFailure(): Promise<void> },
   ): Promise<void> {
     await adapter.start(options)
     if (this.#closed) return
     let notified = false
-    const queue = (permissions: ProjectPermissionSettings): Promise<void> => {
-      this.#apply = this.#apply
-        .then(async () => {
-          if (!this.#closed) await adapter.applyFlagSettings({ permissions })
-        })
-        .catch(() => {
-          if (!this.#closed) onFailure()
-        })
-      return this.#apply
+    const queue = (
+      permissions: ProjectPermissionSettings,
+      change: "grant" | "revoke",
+    ): Promise<void> => {
+      const update = this.#apply.then(async () => {
+        if (this.#closed) return
+        try {
+          await adapter.applyFlagSettings({ permissions })
+        } catch {
+          if (this.#closed) return
+          if (change === "revoke") {
+            this.close()
+            await hooks.onRevokeFailure()
+          } else hooks.onFailure()
+        }
+      })
+      this.#apply = update.catch(() => undefined)
+      return update
     }
-    this.#detach = this.store.subscribe(this.projectPath, (permissions) => {
+    this.#detach = this.store.subscribe(this.projectPath, (permissions, change) => {
       notified = true
-      return queue(permissions)
+      return queue(permissions, change)
     })
     try {
       const current = await this.store.settings(this.projectPath)
       if (!notified && (current.allow?.length || current.additionalDirectories?.length)) {
         // 启动和热更新用同一层 flag，避免 CLI 启动参数保留撤销后的旧规则。
-        queue(current)
+        await queue(current, "grant")
       }
       await this.#apply
     } catch {
-      onFailure()
+      hooks.onFailure()
     }
   }
 
@@ -69,23 +78,28 @@ export class SessionProjectPermissions {
   }
 }
 
-/** 主目录与个人配置目录不能记住项目授权，分离的 worktree 必须由 Git 确认归属。 */
+/** 以实际工作区作为授权身份；共享授权须同时符合主进程工作树登记及当前 Git 记录。 */
 export async function permissionProjectPath(
   canonicalWorkspace: string,
-  projectPath: string | undefined,
+  userDataPath: string,
 ): Promise<string | null> {
   const home = (await canonicalProjectPath(homedir())) ?? homedir()
   const personal = (await canonicalProjectPath(join(home, ".claude"))) ?? join(home, ".claude")
   const allowed = (path: string): boolean => path !== home && !containsProjectPath(personal, path)
   if (!allowed(canonicalWorkspace)) return null
-  if (projectPath === undefined) return canonicalWorkspace
-  const project = await realpath(projectPath).catch(() => null)
-  if (project === null || !allowed(project)) return canonicalWorkspace
-  if (!(await stat(project).catch(() => null))?.isDirectory()) return canonicalWorkspace
-  if (containsProjectPath(project, canonicalWorkspace)) return project
-  for (const worktree of await listWorkbenchWorktrees(project)) {
-    const path = await realpath(worktree.path).catch(() => null)
-    if (path !== null && containsProjectPath(path, canonicalWorkspace)) return project
+  const registry = new WorktreeRegistry({ filePath: join(userDataPath, "worktrees.json") })
+  for (const [worktree, owner] of Object.entries(await registry.projects())) {
+    if ((await canonicalProjectPath(worktree).catch(() => null)) !== canonicalWorkspace) continue
+    const project = await canonicalProjectPath(owner).catch(() => null)
+    if (project === null || !allowed(project) || project === canonicalWorkspace) continue
+    const paths = new Set(
+      await Promise.all(
+        (await listWorkbenchWorktrees(project)).map(({ path }) =>
+          canonicalProjectPath(path).catch(() => null),
+        ),
+      ),
+    )
+    if (paths.has(project) && paths.has(canonicalWorkspace)) return project
   }
   return canonicalWorkspace
 }

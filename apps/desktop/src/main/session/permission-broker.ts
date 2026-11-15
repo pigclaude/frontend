@@ -69,7 +69,7 @@ export type PermissionRequestOptions = {
 
 type PendingPermission = {
   input: Record<string, unknown>
-  suggestions: PermissionUpdate[]
+  suggestions: Array<PermissionUpdate | undefined>
   saving: boolean
 }
 
@@ -109,19 +109,18 @@ export class PermissionBroker {
     }
     const suggestions = options.suppressAlwaysAllowRule
       ? []
-      : structuredClone(options.suggestions ?? []).map(sessionOnly)
+      : structuredClone(options.suggestions ?? []).map((update) =>
+          projectPermissionGrants(update).length === 0 ? undefined : sessionOnly(update),
+        )
+    const choices = suggestions.flatMap((suggestion, index) =>
+      suggestion === undefined ? [] : [this.#suggestion(suggestion, index)],
+    )
     const request: PermissionRequestEvent = {
       type: "permission",
       requestId: this.#newRequestId(),
       toolName,
       input,
-      ...(suggestions.length === 0
-        ? {}
-        : {
-            suggestions: suggestions.map((suggestion, index) =>
-              this.#suggestion(suggestion, index),
-            ),
-          }),
+      ...(choices.length === 0 ? {} : { suggestions: choices }),
       ...(options.defaultToNo ? { defaultToNo: true } : {}),
       ...(options.blockedPath === undefined ? {} : { blockedPath: options.blockedPath }),
       subagent: this.#subagentOf(options.agentID),
@@ -186,6 +185,7 @@ export class PermissionBroker {
       index,
       label: grants.map(({ value }) => value).join(" · "),
       canSaveProject: this.#saveProjectGrants !== undefined && grants.length > 0,
+      ...(update.type === "addDirectories" ? { kind: "directory" as const } : {}),
     }
   }
 

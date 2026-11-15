@@ -221,18 +221,26 @@ export function permissionOptions(
         : family === "file-write"
           ? t("permission.allowAlways.file")
           : t("permission.allowAlways.generic")
-    for (const { index, label: rule, canSaveProject } of request.suggestions) {
+    for (const { index, label: rule, canSaveProject, kind } of request.suggestions) {
       options.push({
         id: `allow-session:${index}`,
-        label,
-        description: [t("permission.allowAlways.description"), rule].filter(Boolean).join(" · "),
+        label: kind === "directory" ? t("permission.allowDirectory.session") : label,
+        description:
+          kind === "directory"
+            ? rule
+            : [t("permission.allowAlways.description"), rule].filter(Boolean).join(" · "),
         choice: { decision: "allow", suggestion: { index, scope: "session" } },
       })
       if (canSaveProject)
         options.push({
           id: `allow-project:${index}`,
-          label: t("permission.allowProject"),
-          description: [t("permission.allowProject.description"), rule].filter(Boolean).join(" · "),
+          label: t(
+            kind === "directory" ? "permission.allowDirectory.project" : "permission.allowProject",
+          ),
+          description:
+            kind === "directory"
+              ? rule
+              : [t("permission.allowProject.description"), rule].filter(Boolean).join(" · "),
           choice: { decision: "allow", suggestion: { index, scope: "project" } },
         })
     }

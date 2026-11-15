@@ -54,6 +54,8 @@ export type PreparedSessionStart = {
   sessionId: string
   /** 这个会话的 daemon 令牌；环境清理时吊销。 */
   sessionToken: string
+  /** 提前停止这一会话的 daemon 路由，保留环境供后续清理。 */
+  revokeRouting: () => void
   /** 已按开发期供应商固定过模型的启动输入。 */
   input: SessionStartInput
   environment: SessionEnvironmentPort
@@ -159,6 +161,7 @@ async function prepareEnvironment(
   return {
     sessionId,
     sessionToken: token,
+    revokeRouting: () => session.close(),
     input: pinnedStartInput(deps.provider, input),
     environment,
     profile,

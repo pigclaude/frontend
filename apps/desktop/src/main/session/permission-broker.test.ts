@@ -1,5 +1,6 @@
 // 负责验证权限代理的 allow/deny 写回、取消、超时和事件内容；不接触真实 SDK、网络或磁盘。
 
+import { resolve } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { PermissionUpdate } from "@anthropic-ai/claude-agent-sdk"
 import { PendingAnswers } from "./pending-answers"
@@ -201,6 +202,48 @@ describe("PermissionBroker", () => {
     ])
     expect(events[0]?.subagent).toBeNull()
     controller.abort()
+  })
+
+  it("只保留增加允许权限的建议，模式和修改旧规则不能用序号提交", async () => {
+    const events: PermissionRequestEvent[] = []
+    const broker = createBroker({ emit: (request) => events.push(request) })
+    const directory = resolve("fixture-directory")
+    const pending = broker.request(
+      "Bash",
+      {},
+      {
+        signal: new AbortController().signal,
+        suggestions: [
+          { type: "setMode", mode: "acceptEdits", destination: "projectSettings" },
+          { ...allowOnce, type: "replaceRules" },
+          { ...allowOnce, type: "removeRules" },
+          allowOnce,
+          { type: "addDirectories", directories: [directory], destination: "projectSettings" },
+        ],
+      },
+    )
+    expect(events[0]?.suggestions).toEqual([
+      { index: 3, label: "Bash(ls)", canSaveProject: false },
+      { index: 4, label: directory, kind: "directory", canSaveProject: false },
+    ])
+    for (const index of [0, 1, 2]) {
+      await expect(
+        broker.respond({
+          requestId: "permission-1",
+          decision: "allow",
+          suggestion: { index, scope: "session" },
+        }),
+      ).rejects.toThrow("INVALID_SESSION_INPUT")
+    }
+    await broker.respond({
+      requestId: "permission-1",
+      decision: "allow",
+      suggestion: { index: 3, scope: "session" },
+    })
+    await expect(pending).resolves.toMatchObject({
+      behavior: "allow",
+      updatedPermissions: [allowOnce],
+    })
   })
 })
 

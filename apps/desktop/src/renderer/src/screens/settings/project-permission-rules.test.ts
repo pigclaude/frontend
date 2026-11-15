@@ -5,17 +5,24 @@ import { LocaleProvider } from "@pigclaude/ui-primitives"
 import { act, createElement } from "react"
 import { createRoot } from "react-dom/client"
 import { expect, it, vi } from "vitest"
-import type { ProjectPermissionsBridge } from "../../../../project-permissions-contract"
+import {
+  projectPermissionCleanupFailed,
+  type ProjectPermissionsBridge,
+} from "../../../../project-permissions-contract"
 import { SessionSettings } from "./settings-app-pages"
 
-it("在会话设置查看规则所属目录，按 id 撤销并刷新列表", async () => {
+it.each(["clean", "cleanup failed"] as const)("撤销后刷新项目授权列表（%s）", async (result) => {
   const bridge: ProjectPermissionsBridge = {
     list: vi
       .fn()
-      .mockResolvedValue([
+      .mockResolvedValueOnce([
         { id: "permission-a", kind: "allow", value: "Bash(pnpm test)", projectPath: "/repo/app" },
-      ]),
-    revoke: vi.fn().mockResolvedValue([]),
+      ])
+      .mockResolvedValue([]),
+    revoke:
+      result === "clean"
+        ? vi.fn().mockResolvedValue([])
+        : vi.fn().mockRejectedValue(new Error(projectPermissionCleanupFailed)),
   }
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true)
   vi.stubGlobal("pigclaude", { session: { projectPermissions: bridge } })
@@ -42,6 +49,9 @@ it("在会话设置查看规则所属目录，按 id 撤销并刷新列表", asy
     expect(bridge.revoke).toHaveBeenCalledExactlyOnceWith("permission-a")
     expect(container.textContent).not.toContain("Bash(pnpm test)")
     expect(container.textContent).toContain("没有已保存的项目授权")
+    if (result === "cleanup failed") {
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain("会话未能完成停放")
+    } else expect(container.querySelector('[role="alert"]')).toBeNull()
   } finally {
     await act(async () => root.unmount())
     container.remove()

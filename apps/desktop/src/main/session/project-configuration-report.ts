@@ -1,6 +1,6 @@
 // 把读取的项目配置变成脱敏报告，只披露信任确认所需的可执行项与名称。
 import JSON5 from "json5"
-import { load } from "js-yaml"
+import { readClaudeMarkdown, skillExecutionOf } from "./claude-markdown"
 import {
   pigclaudeProjectCommandNames,
   type ProjectConfigurationReport,
@@ -82,7 +82,7 @@ export function describeProjectConfiguration(
       return []
     }
     try {
-      const execution = skillExecutionOf(text)
+      const execution = skillExecutionOf(readClaudeMarkdown(text))
       return Object.values(execution).some(Boolean) ? [{ name, ...execution }] : []
     } catch {
       unreadable.add(path)
@@ -128,18 +128,6 @@ function parseFiles(
     unreadable.add(path)
     return []
   })
-}
-
-function skillExecutionOf(text: string) {
-  const frontMatter = /^\uFEFF?---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(text)
-  const header = frontMatter?.[1]
-  const config = header === undefined ? {} : fields(load(header))
-  const body = text.slice(frontMatter?.[0].length ?? 0)
-  return {
-    inline: /!\u0060[^\u0060]+\u0060/.test(body),
-    hooks: "hooks" in config,
-    allowedTools: "allowed-tools" in config,
-  }
 }
 
 function fields(value: unknown): Record<string, unknown> {

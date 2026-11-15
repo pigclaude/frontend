@@ -65,6 +65,17 @@ it("校验 tgz 哈希后从单一发布目录返回相对文件路径", async ()
   )
 })
 
+it("无清单且只有 skills 的包保留标准目录名", async () => {
+  const name = "skills/fixture/SKILL.md"
+  const body = "合成说明"
+  for (const make of [tarArchive, zipArchive]) {
+    const { path, sha256 } = await writeFixture(make([{ name, body }]))
+    expect(await readCapabilityPluginArchive(path, sha256)).toEqual(
+      new Map([[name, Buffer.from(body)]]),
+    )
+  }
+})
+
 type FixtureZipEntry = {
   name: string
   body?: string

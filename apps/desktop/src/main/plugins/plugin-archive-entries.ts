@@ -1,5 +1,10 @@
 // 为两种归档共享计数、可跨平台的相对路径和包根限制。
 
+import { capabilityPluginManifestFile } from "../../capability-plugin-contract"
+
+const componentRoots = new Set([".claude-plugin/", "skills/", "commands/", "agents/"])
+const claudeCodeManifest = ".claude-plugin/plugin.json"
+
 /** 限制压缩输入为 32 MiB、解压数据为 64 MiB、每个文件为 16 MiB、条目为 2048 个。 */
 export const pluginArchiveLimits = {
   inputBytes: 32 * 1024 * 1024,
@@ -75,7 +80,7 @@ export class PluginArchiveEntries {
     this.#files.set(path, contents)
   }
 
-  /** 返回包根的普通文件。所有文件共用一个发布目录时剥掉该目录。 */
+  /** 返回包根的普通文件。保留标准组件根，剥掉单一发布目录。 */
   finish(): ReadonlyMap<string, Buffer> {
     const first = this.#files.keys().next().value
     if (first === undefined) throw new PluginArchiveError("PLUGIN_ARCHIVE_INVALID")
@@ -83,6 +88,12 @@ export class PluginArchiveEntries {
     if (slash < 0) return this.#files
     const prefix = first.slice(0, slash + 1)
     if (![...this.#files.keys()].every((path) => path.startsWith(prefix))) return this.#files
+    if (
+      componentRoots.has(prefix) &&
+      !this.#files.has(prefix + capabilityPluginManifestFile) &&
+      !this.#files.has(prefix + claudeCodeManifest)
+    )
+      return this.#files
     return new Map(
       [...this.#files].map(([path, contents]) => [path.slice(prefix.length), contents]),
     )

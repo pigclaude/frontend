@@ -5,6 +5,7 @@ import { workbenchChildEnv } from "./child-env"
 
 const execute = promisify(execFile)
 const failedSubcommands = new WeakMap<object, string>()
+const diagnosticDetails = new WeakMap<object, string>()
 
 /**
  * 工作台读写 Git 时只使用参数数组，避免 shell、分页器、钩子或 diff 程序改写请求。给了 input 时
@@ -17,6 +18,8 @@ export async function runWorkbenchGit(
   input?: string,
 ): Promise<string> {
   const options = ["--no-pager", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]
+  const startedAt = Date.now()
+  let pid: number | undefined
   try {
     const pending = execute("git", [...options, ...args], {
       cwd: root,
@@ -30,13 +33,33 @@ export async function runWorkbenchGit(
       timeout: 15_000,
       windowsHide: true,
     })
+    pid = pending.child.pid
     if (input !== undefined) pending.child.stdin?.end(input)
     const { stdout } = await pending
     return stdout
   } catch (error: unknown) {
-    if (typeof error === "object" && error !== null) failedSubcommands.set(error, subcommand(args))
+    if (typeof error === "object" && error !== null) {
+      failedSubcommands.set(error, subcommand(args))
+      if (process.env.PIGCLAUDE_CI_DIAG_164 === "1") {
+        const stdout = "stdout" in error && typeof error.stdout === "string" ? error.stdout : ""
+        const stderr = "stderr" in error && typeof error.stderr === "string" ? error.stderr : ""
+        diagnosticDetails.set(
+          error,
+          ` pid=${pid ?? 0} elapsedMs=${Date.now() - startedAt} stdoutBytes=${Buffer.byteLength(stdout)} stderrBytes=${Buffer.byteLength(stderr)} stderrKind=${classifyGitStderr(stderr)}`,
+        )
+      }
+    }
     throw error
   }
+}
+
+function classifyGitStderr(stderr: string): string {
+  if (!stderr) return "empty"
+  if (/index\.lock|unable to lock|cannot lock/i.test(stderr)) return "lock"
+  if (/index|unmerged|error building trees/i.test(stderr)) return "index"
+  if (/permission denied|cannot (?:read|write)|unable to (?:write|create)/i.test(stderr))
+    return "filesystem"
+  return "other"
 }
 
 function subcommand(args: string[]): string {
@@ -58,7 +81,7 @@ export function describeWorkbenchGitFailure(error: unknown): string | null {
       ? String(code)
       : "none"
   const signalName = typeof signal === "string" && /^SIG[A-Z0-9]+$/.test(signal) ? signal : "none"
-  return `git ${name} code=${exit} signal=${signalName}`
+  return `git ${name} code=${exit} signal=${signalName}${diagnosticDetails.get(error) ?? ""}`
 }
 
 /** 检查项目目录属于 Git 工作树；普通目录返回工作台可展示的错误。 */

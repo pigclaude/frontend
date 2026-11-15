@@ -80,7 +80,7 @@ function forwardWorkbenchFailures(stderr) {
     pending = lines.pop() ?? ""
     for (const line of lines) {
       const marker = line.match(
-        /Workbench IPC failed [a-z-]+ (?:git [a-z-]+ code=-?\w+ signal=\w+|[A-Z0-9_]+)/,
+        /Workbench IPC failed [a-z-]+ (?:git [a-z-]+ code=-?\w+ signal=\w+(?: pid=\d+ elapsedMs=\d+ stdoutBytes=\d+ stderrBytes=\d+ stderrKind=\w+)?|[A-Z0-9_]+)/,
       )
       if (marker) console.error(marker[0])
     }

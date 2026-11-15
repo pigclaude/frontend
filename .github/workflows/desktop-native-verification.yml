@@ -14,7 +14,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2022]
+        os: [windows-2022]
+        trial: [1, 2, 3, 4, 5]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 18
     steps:
@@ -69,7 +70,26 @@ jobs:
         run: |
           node tests/native-desktop/agent-browser-network.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node tests/native-desktop/acceptance.mjs test-results/native-desktop
+          $PSNativeCommandUseErrorActionPreference = $false
+          $env:PIGCLAUDE_CI_DIAG_164 = '1'
+          for ($iteration = 1; $iteration -le 5; $iteration++) {
+            Write-Host "PC164 attempt $iteration"
+            $trace = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP "pc164-$iteration")
+            $log = Join-Path $trace.Parent.FullName "pc164-$iteration.log"
+            git config --global trace2.eventTarget ($trace.FullName.Replace('\', '/'))
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            try {
+              node tests/native-desktop/acceptance.mjs "test-results/native-desktop/$iteration" 2>&1 | Tee-Object -FilePath $log
+              $testExit = $LASTEXITCODE
+              node tests/native-desktop/checkpoint-git-diagnostics.mjs $trace.FullName $log
+              $traceExit = $LASTEXITCODE
+            } finally {
+              git config --global --unset trace2.eventTarget
+              Remove-Item -LiteralPath $trace.FullName, $log -Force -Recurse -ErrorAction SilentlyContinue
+            }
+            if ($testExit -ne 0) { exit $testExit }
+            if ($traceExit -ne 0) { exit $traceExit }
+          }
       - name: Verify capability plugin sandbox on Windows
         if: runner.os == 'Windows'
         run: node tests/native-desktop/plugin-sandbox.mjs
@@ -91,6 +111,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: desktop-native-${{ runner.os }}
+          name: desktop-native-${{ runner.os }}-${{ matrix.trial }}
           path: test-results/native-desktop
           if-no-files-found: warn

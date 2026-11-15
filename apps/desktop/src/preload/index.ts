@@ -7,6 +7,7 @@ import { isSessionSummary } from "./session-summary-filter"
 import { sessionHistoryBridge } from "./session-history"
 import { projectPermissionsBridge } from "./project-permissions"
 import { sessionDefaultsBridge, type SessionDefaultsBridge } from "./session-defaults"
+import { keepAwakeBridge, type KeepAwakeBridge } from "./keep-awake"
 import { windowBridge, type WindowBridge } from "./window-bridge"
 import { workbenchBridge } from "./workbench"
 import { updatesBridge, type UpdatesBridge } from "./updates"
@@ -53,6 +54,8 @@ export type PigclaudeBridge = {
   startupPreferences?: StartupPreferencesBridge
   /** 读取当前发布版本、本机数据目录和实际使用的 Claude Code 版本，设置页只展示真实运行时信息。 */
   appInfo?: () => Promise<AppInfo>
+  /** 本机手动唤醒偏好。 */
+  keepAwake?: KeepAwakeBridge
   openExternal: (url: string) => Promise<void>
   setTheme: (source: "light" | "dark" | "system") => Promise<void>
   setDockIcon: (dataUrl: string) => Promise<void>
@@ -154,6 +157,7 @@ const bridge: PigclaudeBridge = {
   updates: updatesBridge(),
   startupPreferences: startupPreferencesBridge(),
   appInfo: () => ipcRenderer.invoke("pigclaude:app-info"),
+  keepAwake: keepAwakeBridge(),
   openExternal: (url) => ipcRenderer.invoke("pigclaude:open-external", url),
   setTheme: (source) => ipcRenderer.invoke("pigclaude:set-theme", source),
   setDockIcon: (dataUrl) => ipcRenderer.invoke("pigclaude:set-dock-icon", dataUrl),

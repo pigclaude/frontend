@@ -22,6 +22,10 @@ export const enUS = {
   ...settingsZhCN,
   ...startupSettingsEnUS,
   ...appSettingsZhCN,
+  "appSettings.keepAwake": "Keep this computer awake",
+  "appSettings.keepAwakeDetail":
+    "Prevent idle sleep while the app is open so scheduled tasks run on time. Closing the lid follows your system settings.",
+  "appSettings.keepAwakeFailed": "Couldn't load or save the keep-awake setting. Try again.",
   ...appearanceEnUS,
   ...workbenchEnUS,
 } satisfies Record<keyof typeof zhCN, string>

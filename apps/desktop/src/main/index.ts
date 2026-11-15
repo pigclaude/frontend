@@ -6,6 +6,7 @@ import {
   nativeTheme,
   net,
   powerMonitor,
+  powerSaveBlocker,
   safeStorage,
   screen,
   shell,
@@ -63,6 +64,7 @@ import { registerSessionIpc } from "./session/session-ipc"
 import { installQuitFlow, watchPowerShutdown } from "./quit-flow"
 import { noPendingWork } from "./session/session-host-support"
 import { applyLoginShellPath } from "./login-shell-path"
+import { KeepAwake, registerKeepAwakeIpc } from "./keep-awake"
 import { shutdownDesktopResources } from "./shutdown-resources"
 import type { UsageRecorder } from "./session/usage-recorder"
 import { FileSecretVault } from "./secret-vault"
@@ -85,6 +87,7 @@ const { rustBaseUrl, authOrigin, websiteOrigin } = readDesktopRuntimeEndpoints(
 )
 const hasSingleInstanceLock = configureRuntimeProfile(app, process.env["PIGCLAUDE_USER_DATA"])
 const startup = createDesktopStartup()
+const keepAwake = new KeepAwake(join(app.getPath("userData"), "keep-awake.json"), powerSaveBlocker)
 const hostArch = runtimeHostArch(app.runningUnderARM64Translation)
 const startProxyRuntime = createXrayRuntimeStarter({
   hostArch,
@@ -141,6 +144,7 @@ if (!hasSingleInstanceLock) {
     .whenReady()
     .then(async () => {
       if (windowVisibility.shutdownStarted()) return
+      keepAwake.ready()
       let initialized = false
       try {
         await setupAuthorization()
@@ -193,7 +197,10 @@ const guardMainWindowClose = installQuitFlow({
   onShutdownFailure: windowVisibility.shutdownFailed,
   onCancel: () => appUpdates?.cancelRestart(),
   finishQuit: (mode) => {
-    if (mode === "system") return app.exit()
+    if (mode === "system") {
+      keepAwake.dispose()
+      return app.exit()
+    }
     if (!appUpdates?.restartRequested()) return app.quit()
     void appUpdates.installAndRestart().finally(() => app.quit())
   },
@@ -202,6 +209,7 @@ const guardMainWindowClose = installQuitFlow({
 function registerIpcHandlers(): void {
   registerDesktopWindowIpc(() => mainWindow, isTrustedSender, closePreference, windowNavigation)
   registerStartupPreferencesIpc(ipcMain, isTrustedSender, startup)
+  registerKeepAwakeIpc(ipcMain, keepAwake, isTrustedSender)
   let sessionDefaults: SessionDefaultsStore | null = null
   registerSessionDefaultsIpc(ipcMain, {
     isTrusted: isTrustedSender,
@@ -272,6 +280,7 @@ async function shutdownDesktop(): Promise<void> {
     composition: () => desktopComposition?.dispose() ?? Promise.resolve(),
     xray: () => startProxyRuntime.dispose(),
     callback: () => callbackServer?.close() ?? Promise.resolve(),
+    releaseAwake: () => keepAwake.dispose(),
     destroyTray: () => {
       tray?.destroy()
       tray = null
@@ -389,6 +398,7 @@ async function setupAuthorization(): Promise<void> {
   usageRecorder = sessions.usage
   sessionHost = sessions.host
   projectPermissions = sessions.projectPermissions
+  sessionHost?.subscribe((envelope) => keepAwake.observe(envelope))
   const checkLive = () => void desktopComposition?.resume()
   const resumeAfterSleep = () =>
     desktopComposition?.membershipGate.resumeAfterWake(() => net.isOnline())

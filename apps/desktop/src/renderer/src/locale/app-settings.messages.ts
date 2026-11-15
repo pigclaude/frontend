@@ -1,6 +1,10 @@
 // 负责数据与应用设置的简体中文文案。
 /** 应用设置使用的文案。 */
 export const appSettingsZhCN = {
+  "appSettings.keepAwake": "保持电脑唤醒",
+  "appSettings.keepAwakeDetail":
+    "应用打开时阻止空闲睡眠，让定时任务按时运行。合盖时仍遵循系统设置。",
+  "appSettings.keepAwakeFailed": "无法读取或保存唤醒设置，请重试。",
   "appSettings.network": "中继与网络",
   "appSettings.relay": "中继",
   "appSettings.relayPort": "中继端口",

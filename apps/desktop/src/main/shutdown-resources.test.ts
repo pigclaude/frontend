@@ -2,6 +2,51 @@
 
 import { expect, it, vi } from "vitest"
 import { shutdownDesktopResources } from "./shutdown-resources"
+import { deferred } from "./testing/profile-fixture"
+
+it("stops background work, drains parallel resources, then releases dependent resources in order", async () => {
+  const order: string[] = []
+  const sessions = deferred<void>()
+  const workbench = deferred<void>()
+  const shutdown = shutdownDesktopResources({
+    stopBackgroundWork: () => {
+      order.push("timers")
+    },
+    sessions: async () => {
+      order.push("sessions")
+      await sessions.promise
+    },
+    accounts: async () => {
+      order.push("accounts")
+    },
+    workbench: async () => {
+      order.push("workbench")
+      await workbench.promise
+    },
+    composition: async () => {
+      order.push("daemon and heartbeat")
+    },
+    xray: async () => {
+      order.push("proxy")
+    },
+    callback: async () => {
+      order.push("callback")
+    },
+    releaseAwake: () => {
+      order.push("awake")
+    },
+    destroyTray: () => {
+      order.push("tray")
+    },
+  })
+  expect(order).toEqual(["timers", "sessions", "accounts", "workbench"])
+  sessions.resolve()
+  await Promise.resolve()
+  expect(order).toHaveLength(4)
+  workbench.resolve()
+  await shutdown
+  expect(order.slice(4)).toEqual(["daemon and heartbeat", "proxy", "callback", "awake", "tray"])
+})
 
 it("等待账号资源清理成功后才关闭 Xray", async () => {
   let finish: () => void = () => undefined

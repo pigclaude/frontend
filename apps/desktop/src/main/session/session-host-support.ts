@@ -122,16 +122,24 @@ export function buildStartOptions(
   }
 }
 
-/** 退出会中断的工作：进行中的回合数和等待回答的权限数。 */
-export type SessionPendingWork = { turns: number; approvals: number }
+/** 退出会结束的会话数、进行中的回合数和待审批请求数。 */
+export type SessionPendingWork = { runningSessions: number; turns: number; approvals: number }
 
 /** 没有会中断的工作。 */
-export const noPendingWork: SessionPendingWork = Object.freeze({ turns: 0, approvals: 0 })
+export const noPendingWork: SessionPendingWork = Object.freeze({
+  runningSessions: 0,
+  turns: 0,
+  approvals: 0,
+})
 
 /** 统计活动会话里退出会中断的工作；没有会话或会话正在结束时都为 0。 */
 export function pendingWorkOf(active: ActiveSession | null): SessionPendingWork {
   if (active === null || active.stopping || active.released) return noPendingWork
-  return { turns: active.turns.turnId === null ? 0 : 1, approvals: active.broker.pendingCount }
+  return {
+    runningSessions: 1,
+    turns: active.turns.turnId === null ? 0 : 1,
+    approvals: active.broker.pendingCount,
+  }
 }
 
 /** 返回脱敏会话快照；没有活动会话时所有 id 和模型为 null。 */

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { BrowserWindow } from "electron"
 import { createMainWindowVisibility } from "./main-window-visibility"
 import { installQuitFlow } from "./quit-flow"
+import { noPendingWork, type SessionPendingWork } from "./session/session-host-support"
 import { askBeforeReload } from "./quit-prompt"
 import { UnsavedFiles } from "./workbench/unsaved-files"
 
@@ -21,8 +22,8 @@ vi.mock("electron", () => ({
 }))
 
 vi.mock("./quit-prompt", () => ({
-  askToLeave: async () => {
-    electron.ask()
+  askToLeave: async (...args: Parameters<typeof import("./quit-prompt").askToLeave>) => {
+    electron.ask(...args)
     return electron.answer
   },
   askBeforeReload: vi.fn(),
@@ -55,7 +56,7 @@ function fakeWindow() {
 function setup(background?: {
   ui: ReturnType<typeof fakeWindow>
   closeToTray: boolean
-  pendingTurns?: number
+  work?: SessionPendingWork
 }) {
   const calls = {
     shutdown: vi.fn(async () => undefined),
@@ -68,7 +69,7 @@ function setup(background?: {
   const window = (background?.ui.window ?? null) as unknown as BrowserWindow | null
   let systemShutdown: ((event: { preventDefault(): void }) => void) | undefined
   const guard = installQuitFlow({
-    pendingWork: () => ({ turns: background?.pendingTurns ?? 1, approvals: 0 }),
+    pendingWork: () => background?.work ?? { runningSessions: 1, turns: 1, approvals: 0 },
     unsaved,
     mainWindow: () => window,
     closeToTray: () => background?.closeToTray ?? false,
@@ -97,6 +98,28 @@ describe("退出流程", () => {
     electron.ask.mockClear()
     electron.answer = "leave"
     vi.mocked(askBeforeReload).mockClear()
+  })
+
+  it("退出前唤回隐藏的窗口，确认两个没有运行中回合的会话", async () => {
+    const ui = fakeWindow()
+    const work = { ...noPendingWork, runningSessions: 2 }
+    const { calls, quit, unsaved } = setup({ ui, closeToTray: true, work })
+    unsaved.report(ui.window.webContents, 0)
+    ui.closeEvents.get("close")?.({ preventDefault: vi.fn() })
+    electron.answer = "stay"
+
+    quit()
+
+    expect(ui.window.hide).toHaveBeenCalledOnce()
+    expect(ui.window.show).toHaveBeenCalledBefore(electron.ask)
+    expect(electron.ask).toHaveBeenCalledWith(
+      ui.window,
+      { ...work, unsavedFiles: 0 },
+      "quit",
+      expect.anything(),
+    )
+    await vi.waitFor(() => expect(calls.onCancel).toHaveBeenCalledOnce())
+    expect(calls.shutdown).not.toHaveBeenCalled()
   })
 
   it("启用后台运行时，关窗隐藏窗口并保留工作和未保存文件", () => {
@@ -180,7 +203,7 @@ describe("退出流程", () => {
 
   it("退出清理失败时恢复窗口操作，并可由退出菜单重试", async () => {
     const ui = fakeWindow()
-    const { calls, quit, unsaved } = setup({ ui, closeToTray: true, pendingTurns: 0 })
+    const { calls, quit, unsaved } = setup({ ui, closeToTray: true, work: noPendingWork })
     unsaved.report(ui.window.webContents, 0)
     const visibility = createMainWindowVisibility(() => ui.window, vi.fn())
     calls.onBeforeShutdown.mockImplementation(visibility.startShutdown)

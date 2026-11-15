@@ -149,7 +149,7 @@ describe("SessionHost parking", () => {
 
     expect(harness.environments.instances.map((environment) => environment.cleaned)).toEqual([1, 1])
     expect(harness.runtime.sessions.map((session) => session.closed)).toEqual([true, true])
-    expect(harness.host.pendingWork()).toEqual({ turns: 0, approvals: 0 })
+    expect(harness.host.pendingWork()).toEqual({ runningSessions: 0, turns: 0, approvals: 0 })
     expect(harness.host.list().map(({ sessionId, status }) => [sessionId, status])).toEqual([
       [first, "interrupted"],
       [second, "parked"],

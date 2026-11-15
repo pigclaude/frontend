@@ -46,7 +46,7 @@ describe("SessionHost turns", () => {
       code: "TURN_ACTIVE",
     })
     expect(harness.host.status().turnId).not.toBeNull()
-    expect(harness.host.pendingWork()).toEqual({ turns: 1, approvals: 0 })
+    expect(harness.host.pendingWork()).toEqual({ runningSessions: 1, turns: 1, approvals: 0 })
     await harness.host.dispose()
   })
 

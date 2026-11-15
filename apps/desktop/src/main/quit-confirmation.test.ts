@@ -3,13 +3,23 @@
 import { describe, expect, it, vi } from "vitest"
 import {
   createQuitConfirmation,
+  hasPendingWork,
   type GuardedWindow,
   type LeaveAnswer,
   type LeaveWork,
   type QuitConfirmationOptions,
 } from "./quit-confirmation"
 
-const nothingPending: LeaveWork = { turns: 0, approvals: 0, unsavedFiles: 0 }
+const nothingPending: LeaveWork = { runningSessions: 0, turns: 0, approvals: 0, unsavedFiles: 0 }
+
+it.each([
+  [nothingPending, false],
+  [{ ...nothingPending, runningSessions: 2 }, true],
+  [{ ...nothingPending, approvals: 1 }, true],
+  [{ ...nothingPending, unsavedFiles: 1 }, true],
+] as const)("checks whether leaving interrupts %j", (work, expected) => {
+  expect(hasPendingWork(work)).toBe(expected)
+})
 
 function confirmationWith(
   work: LeaveWork,
@@ -32,6 +42,15 @@ function confirmationWith(
 }
 
 describe("createQuitConfirmation", () => {
+  it("lets the user cancel quitting with only idle background sessions", async () => {
+    const work = { ...nothingPending, runningSessions: 2 }
+    const ask = vi.fn(async (): Promise<LeaveAnswer> => "stay")
+    const { confirmation } = confirmationWith(work, ask)
+
+    expect(await confirmation.confirm("quit")).toBe(false)
+    expect(ask).toHaveBeenCalledExactlyOnceWith(work, "quit")
+  })
+
   it("lets the quit and the window close go ahead at once when nothing is pending", () => {
     const ask = vi.fn(async (): Promise<LeaveAnswer> => "stay")
     const { confirmation } = confirmationWith(nothingPending, ask)
@@ -44,7 +63,7 @@ describe("createQuitConfirmation", () => {
   })
 
   it("keeps the window open when the user cancels closing it during a turn", async () => {
-    const work: LeaveWork = { turns: 1, approvals: 1, unsavedFiles: 0 }
+    const work: LeaveWork = { runningSessions: 1, turns: 1, approvals: 1, unsavedFiles: 0 }
     const ask = vi.fn(async (): Promise<LeaveAnswer> => "stay")
     const { confirmation } = confirmationWith(work, ask)
     const window = fakeWindow()
@@ -59,7 +78,10 @@ describe("createQuitConfirmation", () => {
 
   it("closes the window once the user confirms, without asking twice", async () => {
     const ask = vi.fn(async (): Promise<LeaveAnswer> => "leave")
-    const { confirmation } = confirmationWith({ turns: 1, approvals: 0, unsavedFiles: 0 }, ask)
+    const { confirmation } = confirmationWith(
+      { runningSessions: 1, turns: 1, approvals: 0, unsavedFiles: 0 },
+      ask,
+    )
     const window = fakeWindow()
     confirmation.guardClose(window)
 
@@ -78,7 +100,10 @@ describe("createQuitConfirmation", () => {
           answer.give = resolve
         }),
     )
-    const { confirmation } = confirmationWith({ turns: 0, approvals: 2, unsavedFiles: 0 }, ask)
+    const { confirmation } = confirmationWith(
+      { runningSessions: 0, turns: 0, approvals: 2, unsavedFiles: 0 },
+      ask,
+    )
     const window = fakeWindow()
     confirmation.guardClose(window)
 
@@ -93,7 +118,7 @@ describe("createQuitConfirmation", () => {
 
   it("lets the user leave when the question itself fails", async () => {
     const { confirmation, discardFiles } = confirmationWith(
-      { turns: 1, approvals: 0, unsavedFiles: 1 },
+      { runningSessions: 1, turns: 1, approvals: 0, unsavedFiles: 1 },
       async () => {
         throw new Error("dialog unavailable")
       },
@@ -104,7 +129,7 @@ describe("createQuitConfirmation", () => {
   })
 
   it("asks about unsaved files together with the running turn and saves them before leaving", async () => {
-    const work: LeaveWork = { turns: 1, approvals: 0, unsavedFiles: 2 }
+    const work: LeaveWork = { runningSessions: 1, turns: 1, approvals: 0, unsavedFiles: 2 }
     const ask = vi.fn(async (): Promise<LeaveAnswer> => "save")
     const { confirmation, saveFiles, discardFiles } = confirmationWith(work, ask)
 
@@ -116,7 +141,7 @@ describe("createQuitConfirmation", () => {
   })
 
   it("stays when saving fails, discards before leaving without saving, and touches nothing on cancel", async () => {
-    const work: LeaveWork = { turns: 0, approvals: 0, unsavedFiles: 1 }
+    const work: LeaveWork = { runningSessions: 0, turns: 0, approvals: 0, unsavedFiles: 1 }
     const failed = confirmationWith(work, async () => "save", false)
     const window = fakeWindow()
     failed.confirmation.guardClose(window)
@@ -138,7 +163,10 @@ describe("createQuitConfirmation", () => {
 
   it("does not ask again for the close that follows a confirmed quit until it is reset", async () => {
     const ask = vi.fn(async (): Promise<LeaveAnswer> => "leave")
-    const { confirmation } = confirmationWith({ turns: 0, approvals: 0, unsavedFiles: 1 }, ask)
+    const { confirmation } = confirmationWith(
+      { runningSessions: 0, turns: 0, approvals: 0, unsavedFiles: 1 },
+      ask,
+    )
     const window = fakeWindow()
     confirmation.guardClose(window)
     expect(confirmation.leaving()).toBe(false)

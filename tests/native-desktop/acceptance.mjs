@@ -93,7 +93,7 @@ function processRunning(pid) {
   }
 }
 
-async function closeApplication() {
+async function closeApplication(allowForce = true) {
   if (!application) return
   const current = application
   const pid = applicationPid
@@ -108,6 +108,7 @@ async function closeApplication() {
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
   if (processRunning(pid)) {
+    assert.ok(allowForce, "Electron must quit without the test terminating its process tree")
     if (process.platform === "win32") {
       await run("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { timeout: 5000 })
     } else {
@@ -118,6 +119,32 @@ async function closeApplication() {
   // 主进程已退出，Playwright 的传输连接可能要等到测试宿主结束才返回。
   void current.close().catch(() => {})
   application = undefined
+}
+
+async function openTerminalForQuit(page) {
+  const root = join(userData, "quit-workspace")
+  await mkdir(root)
+  // 捕获下一次真实 PTY 启动的 PID；终端依然通过受信任的工作台 IPC 打开。
+  await application.evaluate(({ app }) => {
+    const require = process
+      .getBuiltinModule("node:module")
+      .createRequire(app.getAppPath() + "/package.json")
+    const pty = require("node-pty")
+    const spawn = pty.spawn
+    pty.spawn = (...args) => {
+      pty.spawn = spawn
+      const child = spawn(...args)
+      Reflect.set(app, "acceptanceQuitTerminalPid", child.pid)
+      return child
+    }
+  })
+  await page.evaluate(async (root) => {
+    await window.pigclaude.workspaces.add(root)
+    await window.pigclaude.workbench.terminalOpen(root, crypto.randomUUID())
+  }, root)
+  const pid = await application.evaluate(({ app }) => Reflect.get(app, "acceptanceQuitTerminalPid"))
+  assert.ok(Number.isInteger(pid) && pid > 0 && processRunning(pid))
+  return pid
 }
 
 async function capture(page, name) {
@@ -398,7 +425,10 @@ try {
     await systemInput("capture", join(out, "native-dark-window.png"))
     pass("dark theme updates actual native title bar overlay")
   }
-  await closeApplication()
+  const terminalPid = await openTerminalForQuit(page)
+  await closeApplication(false)
+  await expect.poll(() => processRunning(terminalPid)).toBe(false)
+  pass("quitting the app closes its live PTY without forced cleanup")
   page = await launch()
   await expect(screen(page, "chat")).toBeVisible()
   assert.equal(await page.evaluate(() => localStorage.getItem("pigclaude.sidebarWidth")), "322")

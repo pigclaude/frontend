@@ -1,7 +1,7 @@
 {
   "repository": "pigcode/pigcode",
   "commit": "ebeccf382df85ca2a2c594f56c1bb1edd641c447",
-  "rule": "@pigcode/contracts → @pigclaude/ui-contracts，选取声明和纯函数；定时规则测试选取已拷入功能的测试组；工作区侧栏增加通用会话角标槽；插件列表和详情增加类型标签、详情内容、启停可用性和卸载选项插槽；其余 @pigcode/<package> → @pigclaude/<package>；\"pigcode.<key>\" 存储键 → \"pigclaude.<key>\"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
+  "rule": "@pigcode/contracts → @pigclaude/ui-contracts，选取声明和纯函数；定时规则测试选取已拷入功能的测试组；工作区侧栏增加通用会话角标槽；浏览器工具栏增加通用状态槽；插件列表和详情增加类型标签、详情内容、启停可用性和卸载选项插槽；其余 @pigcode/<package> → @pigclaude/<package>；\"pigcode.<key>\" 存储键 → \"pigclaude.<key>\"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
   "files": [
     {
       "path": "packages/ui-contracts/src/index.ts",
@@ -2095,7 +2095,7 @@
       "path": "packages/ui-workbench/src/browser-toolbar.tsx",
       "source": "packages/ui-workbench/src/browser-toolbar.tsx",
       "sourceSha256": "1622272044dcd6cbec3d244ecd643f8ca69d34a6f61361cb231f9496e3a40992",
-      "sha256": "059ba0580e9acf750a6c9ca088a4c3e3c2323f42549c517637ddc29cadc92c30"
+      "sha256": "022d32e535ab2450aac5079e4d8b2e959b83035341d7c56bc2dbb986d8b35ea8"
     },
     {
       "path": "packages/ui-workbench/src/browser-url.ts",
@@ -2113,7 +2113,7 @@
       "path": "packages/ui-workbench/src/browser-view.tsx",
       "source": "packages/ui-workbench/src/browser-view.tsx",
       "sourceSha256": "431641bfffe2c22de8a91749af1f941a47a1e49941107e614c0c1d29ae4b6bac",
-      "sha256": "cb9735209ff2d7d79fb1c76b4e88389b266e752c8dabf5b50c468c50700e84f3"
+      "sha256": "d63617121b983b3b4aa84faafaaee8dbf779baa79af02c482c3331d04d907cd8"
     },
     {
       "path": "packages/ui-workbench/src/browser-viewport.ts",

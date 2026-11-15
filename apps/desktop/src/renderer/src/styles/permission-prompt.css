@@ -88,6 +88,25 @@
   font-size: var(--fs-compact);
   overflow-wrap: anywhere;
 }
+.perm-browser-element {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  color: var(--fg-2);
+  font-size: var(--fs-compact);
+}
+
+.perm-browser-element dt {
+  color: var(--muted);
+}
+
+.perm-browser-element dd {
+  margin: 0;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
 /* 写入类工具的文件改动：路径、增删行数，下面是带 −/+ 前缀的预览。 */
 .perm-change {
   display: flex;

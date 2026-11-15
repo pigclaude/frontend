@@ -7,6 +7,7 @@ import { MessageText, toolFamily, type ToolFamily } from "@pigclaude/ui-chat"
 import { Button } from "@pigclaude/ui-primitives"
 import { fill, useText, type TextKey } from "../locale/text"
 import type { SessionPermissionCard } from "../models/session-permissions"
+import type { BrowserPermissionContext } from "../../../browser-permission-contract"
 import type { PermissionSuggestionSelection } from "../../../project-permissions-contract"
 
 /** 用户对一张权限卡的回答；只引用主进程给出的建议序号。 */
@@ -42,11 +43,14 @@ export type PermissionFileChange = {
   added: string | null
 }
 
+type BrowserClick = Extract<BrowserPermissionContext, { kind: "click" }>
+
 /** 卡片正文：一句话说明这次操作，再按工具族给出命令、目标、文件改动或计划正文。 */
 export type PermissionDetail = {
   summary: string
   command: string | null
   target: PermissionTarget | null
+  browserElement?: BrowserClick
   changes: PermissionFileChange[]
   blockedPath: string | null
   plan: string | null
@@ -146,6 +150,19 @@ function permissionTarget(
   return null
 }
 
+const browserSummary = {
+  open: "permission.summary.browserOpen",
+  snapshot: "permission.summary.browserSnapshot",
+  click: "permission.summary.browserClick",
+} satisfies Record<Exclude<BrowserPermissionContext["kind"], "navigate">, TextKey>
+
+const navigationSummary = {
+  url: "permission.summary.browserNavigate",
+  back: "permission.summary.browserBack",
+  forward: "permission.summary.browserForward",
+  reload: "permission.summary.browserReload",
+} satisfies Record<Extract<BrowserPermissionContext, { kind: "navigate" }>["action"], TextKey>
+
 /** 按工具族给出正文；计划看正文，终端看命令，写入看改动，只读与访问看目标。 */
 export function permissionDetail(
   request: SessionPermissionCard,
@@ -163,21 +180,23 @@ export function permissionDetail(
       plan: null,
     }
   }
-  if (request.browser !== undefined) {
+  const { browser } = request
+  if (browser !== undefined) {
     let target: PermissionTarget | null = null
-    if (request.browser.kind === "open") {
-      const url = request.browser.url
+    if ("url" in browser) {
+      const { url } = browser
       const origin = URL.canParse(url) ? new URL(url).origin : ""
       target = { kind: "url", text: url, ...(origin && url.startsWith(origin) ? { origin } : {}) }
     }
     return {
       summary: t(
-        request.browser.kind === "open"
-          ? "permission.summary.browserOpen"
-          : "permission.summary.browserSnapshot",
+        browser.kind === "navigate"
+          ? navigationSummary[browser.action]
+          : browserSummary[browser.kind],
       ),
       command: null,
       target,
+      ...(browser.kind === "click" ? { browserElement: browser } : {}),
       changes: [],
       blockedPath: null,
       plan: null,
@@ -370,6 +389,16 @@ export function PermissionPrompt({ request, onDecide }: PermissionPromptProps) {
             </span>
           </p>
         )}
+        {detail.browserElement ? (
+          <dl className="perm-browser-element">
+            <dt>{t("permission.browser.elementRef")}</dt>
+            <dd>{detail.browserElement.ref}</dd>
+            <dt>{t("permission.browser.elementRole")}</dt>
+            <dd>{detail.browserElement.role}</dd>
+            <dt>{t("permission.browser.elementName")}</dt>
+            <dd dir="auto">{detail.browserElement.name || t("permission.browser.unnamed")}</dd>
+          </dl>
+        ) : null}
         {detail.command === null ? null : <pre className="perm-prompt-code">{detail.command}</pre>}
         {detail.changes.map((change, index) => (
           <div className="perm-change" key={`${change.path}-${index}`}>

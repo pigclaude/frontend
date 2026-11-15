@@ -64,6 +64,7 @@ export function BrowserPane({ bridge, id, initialUrl, active, onTitle }: Props) 
     [bridge, id],
   )
 
+  const activity = active ? page.activity : undefined
   const renderPage = active && page.url !== "" && !page.error && !page.crashed
   useLayoutEffect(() => {
     const element = slot.current
@@ -159,6 +160,17 @@ export function BrowserPane({ bridge, id, initialUrl, active, onTitle }: Props) 
             .finally(() => setPicking(false))
         }}
         openExternal={bridge.previewOpen}
+        toolbarStatus={
+          activity ? (
+            <div className="browser-agent-activity" role="status" title={activity.target}>
+              <strong>Agent</strong>
+              {" · "}
+              {text(`workbench.browserActivity.${activity.kind}`)}
+              {" · "}
+              <bdi>{activity.target}</bdi>
+            </div>
+          ) : null
+        }
         slot={<div className="browser-slot" ref={slot} />}
       />
     </>

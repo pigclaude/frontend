@@ -1,4 +1,4 @@
-/* 让 PigClaude 工作台的终端工具栏和抽屉对齐现有控件。 */
+/* 负责 PigClaude 工作台的终端、抽屉和浏览器工具栏的宿主样式。 */
 .terminal-toolbar {
   display: flex;
   align-items: center;
@@ -32,4 +32,30 @@
 .terminal-tab-suffix {
   flex: none;
   white-space: pre;
+}
+
+/* 活动行在地址栏下方，留出原生视图的页面区。 */
+.browser-toolbar:has(> .browser-agent-activity) {
+  height: auto;
+  flex-wrap: wrap;
+  row-gap: var(--space-2);
+  padding-block: calc((var(--bar-h) - var(--control-md)) / 2) var(--space-2);
+}
+
+.browser-agent-activity {
+  flex: 0 0 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  color: var(--fg-2);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.browser-agent-activity strong {
+  color: var(--accent-text);
 }

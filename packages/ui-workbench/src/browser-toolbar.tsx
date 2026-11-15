@@ -102,6 +102,7 @@ export interface BrowserToolbarProps {
   onOpenDevTools?: (() => void) | undefined
   /** 地址栏输入不合法时的提示；合法时为 null。 */
   onInvalid: (message: string | null) => void
+  toolbarStatus?: ReactNode
 }
 
 export function BrowserToolbar({
@@ -124,6 +125,7 @@ export function BrowserToolbar({
   onCopyUrl,
   onOpenDevTools,
   onInvalid,
+  toolbarStatus,
 }: BrowserToolbarProps) {
   const { t } = useLocale()
   const [address, setAddress] = useState(url)
@@ -249,6 +251,7 @@ export function BrowserToolbar({
           </Menu.Positioner>
         </Menu.Portal>
       </Menu.Root>
+      {toolbarStatus}
       {loading ? (
         <span className="browser-progress" role="progressbar" aria-label={t("browser.loading")} />
       ) : null}

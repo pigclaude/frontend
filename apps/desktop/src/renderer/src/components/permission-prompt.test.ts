@@ -116,6 +116,63 @@ describe("permission prompt", () => {
     expect(options()).toHaveLength(2)
   })
 
+  it.each([
+    ["url", "Claude 想要跳转到这个本机地址"],
+    ["back", "Claude 想要后退到这个本机地址"],
+    ["forward", "Claude 想要前进到这个本机地址"],
+    ["reload", "Claude 想要重新加载这个本机地址"],
+  ] as const)("shows the %s navigation and the resolved URL", async (action, summary) => {
+    const url = "http://[::1]:5173/docs?view=compact#intro"
+    await render(
+      card({
+        toolName: "mcp__pigclaude_workbench__browser_navigate",
+        input: { url: "http://localhost:4242/untrusted" },
+        browser: { kind: "navigate", action, url },
+        suggestions: [{ index: 0, label: "browser_navigate", canSaveProject: true }],
+        defaultToNo: true,
+      }),
+    )
+
+    const dialog = container.querySelector('[role="dialog"]')
+    expect(dialog?.textContent).toContain(summary)
+    const target = dialog?.querySelector(".perm-prompt-target")
+    expect(target?.textContent).toBe(url)
+    expect(target?.querySelector("strong")?.textContent).toBe("http://[::1]:5173")
+    expect(dialog?.textContent).not.toContain("localhost:4242")
+    expect(options()).toHaveLength(2)
+    expect(options()[1]?.getAttribute("aria-selected")).toBe("true")
+  })
+
+  it("shows the verified click element and its page in the one-time prompt", async () => {
+    const url = "http://localhost:4173/settings?tab=profile"
+    await render(
+      card({
+        toolName: "mcp__pigclaude_workbench__browser_click",
+        input: { ref: "untrusted" },
+        browser: { kind: "click", url, ref: "e7", role: "button", name: "Save & close" },
+        suggestions: [{ index: 0, label: "browser_click", canSaveProject: true }],
+      }),
+      undefined,
+      "en-US",
+    )
+
+    const dialog = container.querySelector('[role="dialog"]')
+    expect(dialog?.textContent).toContain("Claude wants to click this page element")
+    expect(dialog?.querySelector(".perm-prompt-target")?.textContent).toBe(url)
+    expect([...(dialog?.querySelectorAll("dt") ?? [])].map((label) => label.textContent)).toEqual([
+      "Element ref",
+      "Role",
+      "Name",
+    ])
+    expect([...(dialog?.querySelectorAll("dd") ?? [])].map((value) => value.textContent)).toEqual([
+      "e7",
+      "button",
+      "Save & close",
+    ])
+    expect(dialog?.textContent).not.toContain("untrusted")
+    expect(options()).toHaveLength(2)
+  })
+
   it("shows the command and the numbered choices", async () => {
     await render(card())
 

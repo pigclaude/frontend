@@ -85,6 +85,8 @@ export interface BrowserViewProps {
   /** 复制当前地址；宿主负责提示已复制。 */
   onCopyUrl?: ((url: string) => void) | undefined
   openExternal?: PreviewOpen
+  /** 工具栏上的宿主状态内容。 */
+  toolbarStatus?: ReactNode
   /** 页面区的占位槽；宿主把 webview 盖在它上面。 */
   slot: ReactNode
 }
@@ -106,6 +108,7 @@ export function BrowserView({
   onOpenDefault,
   onCopyUrl,
   openExternal = openInNativeWindow,
+  toolbarStatus,
   slot,
 }: BrowserViewProps) {
   const { t } = useLocale()
@@ -146,6 +149,7 @@ export function BrowserView({
         onCopyUrl={onCopyUrl ? () => onCopyUrl(current) : undefined}
         onOpenDevTools={onOpenDevTools}
         onInvalid={setError}
+        toolbarStatus={toolbarStatus}
       />
       {viewport && onViewportChange ? (
         <BrowserDeviceBar viewport={viewport} scale={viewportScale} onChange={onViewportChange} />

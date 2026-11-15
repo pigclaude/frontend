@@ -180,6 +180,45 @@ function addThreadLabelSlot(source) {
   return source
 }
 
+// 通用状态槽由宿主提供内容，放在原生页面的工具栏里。
+const browserToolbarSlots = {
+  "src/browser-view.tsx": [
+    [
+      "  openExternal?: PreviewOpen\n",
+      "  openExternal?: PreviewOpen\n  /** 工具栏上的宿主状态内容。 */\n  toolbarStatus?: ReactNode\n",
+    ],
+    ["  slot,\n}: BrowserViewProps)", "  toolbarStatus,\n  slot,\n}: BrowserViewProps)"],
+    [
+      "        onInvalid={setError}\n",
+      "        onInvalid={setError}\n        toolbarStatus={toolbarStatus}\n",
+    ],
+  ],
+  "src/browser-toolbar.tsx": [
+    [
+      "  onInvalid: (message: string | null) => void\n",
+      "  onInvalid: (message: string | null) => void\n  toolbarStatus?: ReactNode\n",
+    ],
+    [
+      "  onInvalid,\n}: BrowserToolbarProps)",
+      "  onInvalid,\n  toolbarStatus,\n}: BrowserToolbarProps)",
+    ],
+    [
+      "      </Menu.Root>\n      {loading ?",
+      "      </Menu.Root>\n      {toolbarStatus}\n      {loading ?",
+    ],
+  ],
+}
+
+function projectBrowserToolbarSlot(source, path) {
+  for (const [before, after] of browserToolbarSlots[path] ?? []) {
+    const at = source.indexOf(before)
+    if (at < 0 || source.indexOf(before, at + before.length) >= 0)
+      throw new Error(`Pigcode 浏览器工具栏插槽源位置已变动：${path}`)
+    source = source.replace(before, after)
+  }
+  return source
+}
+
 async function vendor(repo, commit) {
   const resolved = git(repo, "rev-parse", `${commit}^{commit}`).toString().trim()
   const listed = git(repo, "ls-tree", "-r", "--name-only", resolved, "packages").toString()
@@ -228,6 +267,7 @@ async function vendor(repo, commit) {
       if (path === "packages/ui-shell/src/workspace-sidebar.tsx")
         output = addThreadLabelSlot(output)
       if (item.source === "ui-plugin-manager") output = projectPluginManagerSlots(output, rest)
+      if (item.source === "ui-workbench") output = projectBrowserToolbarSlot(output, rest)
       if (rest === "package.json") output = rewriteManifest(output, item)
       if (rest === "tsconfig.json") output = rewriteTsconfig(output)
       // 改名后部分行超出 100 列：按本仓库 Prettier 配置重排，守卫记录的是重排后的内容。
@@ -258,7 +298,7 @@ async function vendor(repo, commit) {
   const lock = {
     repository: "pigcode/pigcode",
     commit: resolved,
-    rule: '@pigcode/contracts → @pigclaude/ui-contracts，选取声明和纯函数；定时规则测试选取已拷入功能的测试组；工作区侧栏增加通用会话角标槽；插件列表和详情增加类型标签、详情内容、启停可用性和卸载选项插槽；其余 @pigcode/<package> → @pigclaude/<package>；"pigcode.<key>" 存储键 → "pigclaude.<key>"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排',
+    rule: '@pigcode/contracts → @pigclaude/ui-contracts，选取声明和纯函数；定时规则测试选取已拷入功能的测试组；工作区侧栏增加通用会话角标槽；浏览器工具栏增加通用状态槽；插件列表和详情增加类型标签、详情内容、启停可用性和卸载选项插槽；其余 @pigcode/<package> → @pigclaude/<package>；"pigcode.<key>" 存储键 → "pigclaude.<key>"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排',
     files,
   }
   await writeFile(lockFile, `${JSON.stringify(lock, null, 2)}\n`)

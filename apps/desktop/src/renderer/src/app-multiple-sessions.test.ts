@@ -7,7 +7,12 @@ import { typeAndSend } from "./test-support/chat-screen-harness"
 import { desktopAppRoot, flush, installFakeDesktopBridge } from "./test-support/desktop-app-harness"
 import { fakeSessionBridge } from "./test-support/session-bridge-fake"
 import type { SessionSummary } from "../../main/session/session-summary"
-import type { SessionBridge } from "../../main/session/session-types"
+import type {
+  SessionBridge,
+  SessionEnvelope,
+  SessionHostEvent,
+} from "../../main/session/session-types"
+import { syntheticJpegBase64 } from "../../test-support/synthetic-jpeg"
 
 const app = desktopAppRoot()
 const at = "2026-11-14T01:00:00.000Z"
@@ -150,6 +155,106 @@ it("reads a parked session without waiting for a later event and refreshes the q
     }),
   )
   expect(projectRows("web")[0]?.dataset.status).toBe("running")
+})
+
+const screenshotTool = "mcp__pigclaude_workbench__browser_screenshot"
+
+function screenshotTimeline(
+  sessionId: string,
+  result: Extract<SessionHostEvent, { type: "tool-result" }>,
+): SessionEnvelope[] {
+  const turnId = `turn-${sessionId}`
+  const events: SessionHostEvent[] = [
+    { type: "turn-started", turnId, userText: "截取本机预览" },
+    {
+      type: "message",
+      messageId: `request-${sessionId}`,
+      model: "claude-sonnet",
+      subagent: null,
+      blocks: [{ type: "tool-use", id: result.toolUseId, name: screenshotTool, input: {} }],
+    },
+    result,
+    { type: "turn-ended", turnId, status: "completed", errorCode: null },
+  ]
+  return events.map((event, index) => ({ version: 1, sessionId, seq: index + 1, at, event }))
+}
+
+it("shows a live browser screenshot only in the session that owns its tool result", async () => {
+  installFakeDesktopBridge()
+  const session = fakeSessionBridge({
+    list: vi.fn(async () => [summary("one", "/work/api"), summary("two", "/work/web")]),
+  })
+  if (!window.pigclaude) throw new Error("桌面桥尚未安装")
+  window.pigclaude.session = session.bridge
+  await act(async () => app.root.render(createElement(DesktopApp)))
+  await flush()
+
+  const first = projectRows("api")[0]
+  const second = projectRows("web")[0]
+  await act(async () => first?.click())
+  const envelopes = screenshotTimeline("one", {
+    type: "tool-result",
+    toolUseId: "screenshot-call",
+    content: "Captured the local preview",
+    image: { type: "image", mimeType: "image/jpeg", data: syntheticJpegBase64 },
+    subagent: null,
+    isError: false,
+  })
+  await act(async () => {
+    for (const envelope of envelopes) session.push(envelope)
+    session.push({
+      version: 1,
+      sessionId: "two",
+      seq: 1,
+      at,
+      event: { type: "turn-started", turnId: "turn-two", userText: "另一会话的任务" },
+    })
+  })
+
+  const screenshot = () => app.container.querySelector('.chat-page img[alt="截图"]')
+  expect(screenshot()?.getAttribute("src")).toBe(`data:image/jpeg;base64,${syntheticJpegBase64}`)
+  await act(async () => second?.click())
+  expect(app.container.querySelector(".chat-page")?.textContent).toContain("另一会话的任务")
+  expect(screenshot()).toBeNull()
+  await act(async () => first?.click())
+  expect(screenshot()?.getAttribute("src")).toBe(`data:image/jpeg;base64,${syntheticJpegBase64}`)
+})
+
+it("shows the screenshot placeholder in a reloaded session timeline", async () => {
+  installFakeDesktopBridge()
+  const parked = {
+    ...summary("one", "/work/api"),
+    status: "parked",
+    lastTurn: "completed",
+  } as const
+  const history = screenshotTimeline("one", {
+    type: "tool-result",
+    toolUseId: "history-screenshot-call",
+    content: "[截图未保存]",
+    subagent: null,
+    isError: false,
+  })
+  const session = fakeSessionBridge({
+    list: vi.fn(async () => [parked]),
+    events: vi.fn<SessionBridge["events"]>(async ({ sessionId, afterSeq }) =>
+      sessionId === "one" ? history.filter((entry) => (entry.seq ?? 0) > afterSeq) : [],
+    ),
+  })
+  if (!window.pigclaude) throw new Error("桌面桥尚未安装")
+  window.pigclaude.session = session.bridge
+  await act(async () => app.root.render(createElement(DesktopApp)))
+  await flush()
+  await act(async () => projectRows("api")[0]?.click())
+  await flush()
+
+  const chat = app.container.querySelector(".chat-page")
+  const screenshot = [
+    ...(chat?.querySelectorAll<HTMLElement>('[role="button"][aria-expanded]') ?? []),
+  ].find((row) => row.textContent?.includes("截图"))
+  expect(screenshot).toBeDefined()
+  await act(async () => screenshot?.click())
+  expect(chat?.textContent).toContain("[截图未保存]")
+  expect(chat?.querySelector('img[alt="截图"]')).toBeNull()
 })
 
 it("waits for the existing history before adding the next user turn", async () => {

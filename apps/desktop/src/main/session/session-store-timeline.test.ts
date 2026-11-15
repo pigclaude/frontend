@@ -4,6 +4,7 @@
 import { appendFile, chmod, readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
+import { syntheticJpegBase64 } from "../../test-support/synthetic-jpeg"
 import { maxEnvelopesPerRead, SessionEventLog } from "./session-event-log"
 import { sessionInstance } from "./session-index"
 import { SessionStore } from "./session-store"
@@ -92,6 +93,44 @@ describe("SessionStore 时间线", () => {
     ])
     expect(page.lastSeq).toBe(2)
     expect(store.list()[0]?.timelineCursor).toBe(2)
+  })
+
+  it("writes the text and screenshot placeholder while keeping the live envelope intact", async () => {
+    const root = join(await temporaryDir(), "session-store")
+    const store = await SessionStore.open({ root })
+    await store.create(newSessionIndex("s-1"))
+    const image = { type: "image", mimeType: "image/jpeg", data: syntheticJpegBase64 } as const
+    const content = "Captured the visible local preview"
+    const live = envelopeOf("s-1", 2, {
+      type: "tool-result",
+      toolUseId: "screenshot-call",
+      content,
+      image,
+      isError: false,
+      subagent: null,
+    })
+
+    await store.appendTimeline("s-1", turnStarted(1))
+    await store.appendTimeline("s-1", live)
+    const file = await readFile(store.paths("s-1").timelineFile, "utf8")
+    expect(file).toContain(content)
+    expect(file).toContain("[截图未保存]")
+    expect(file).not.toContain(syntheticJpegBase64)
+    expect(file).not.toContain('"image":')
+    expect(live.event).toMatchObject({ image })
+
+    const reopened = await SessionStore.open({ root })
+    const replay = (await reopened.readTimeline("s-1", { afterSeq: 1 })).envelopes[0]
+    expect(replay?.event).toMatchObject({
+      type: "tool-result",
+      toolUseId: "screenshot-call",
+      isError: false,
+      subagent: null,
+    })
+    expect(replay?.event).not.toHaveProperty("image")
+    if (replay?.event.type !== "tool-result") throw new Error("未读回工具结果")
+    expect(replay.event.content).toContain(content)
+    expect(replay.event.content).toContain("[截图未保存]")
   })
 
   posixOnly("时间线文件是 0600", async () => {

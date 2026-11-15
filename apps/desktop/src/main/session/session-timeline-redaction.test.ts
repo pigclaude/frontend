@@ -1,6 +1,7 @@
 // 验证写进时间线前的脱敏：保存分类的穷举检查、64 KiB 截断与标记（含工作流快照）、截图占位和浏览器输入里的密码打码。
 
 import { describe, expect, it } from "vitest"
+import { syntheticJpegBase64 } from "../../test-support/synthetic-jpeg"
 import { sessionEventKinds } from "./session-envelope"
 import { maskedSecret } from "./session-browser-secrets"
 import { envelopeOf } from "./session-store-fixtures"
@@ -229,6 +230,26 @@ describe("timelineEnvelope 截图", () => {
     })
     expect(content).toMatchObject({ content: `截图：${screenshotPlaceholder} 完成` })
     expect(JSON.stringify([input, content])).not.toContain("iVBORw0KGgo")
+  })
+
+  it("在 64 KiB 字段预算内保留截断后的原正文与截图占位", () => {
+    const content = "中".repeat(Math.floor(timelineContentLimitBytes / 3))
+    const result = timelineEnvelope(
+      envelopeOf("s-1", 8, {
+        ...samples["tool-result"],
+        content,
+        image: { type: "image", mimeType: "image/jpeg", data: syntheticJpegBase64 },
+      }),
+    )
+
+    if (result?.event.type !== "tool-result") throw new Error("未投影工具结果")
+    expect(result.event.content.startsWith("中中中")).toBe(true)
+    expect(result.event.content.endsWith(screenshotPlaceholder)).toBe(true)
+    expect(result.event.content).not.toContain("�")
+    expect(Buffer.byteLength(result.event.content, "utf8")).toBeLessThanOrEqual(
+      timelineContentLimitBytes,
+    )
+    expect(result.truncated).toEqual([expect.objectContaining({ path: "event.content" })])
   })
 
   it("工具结果里不带 data URL 前缀的 base64 截图同样只留占位", () => {

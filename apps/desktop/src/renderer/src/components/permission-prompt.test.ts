@@ -329,6 +329,48 @@ describe("permission prompt", () => {
     expect(options()[2]?.textContent).toContain("/test/directory")
   })
 
+  it.each([
+    ["zh-CN", "截取当前本机页面的可见区域（960 × 540 像素）并发送给 Claude", "允许一次", "拒绝"],
+    [
+      "en-US",
+      "Capture the visible region of the local page (960 × 540 pixels) and send it to Claude",
+      "Allow once",
+      "Deny",
+    ],
+  ] as const)(
+    "discloses the screenshot size and one-time choice in %s",
+    async (locale, summary, allow, deny) => {
+      const onDecide = vi.fn()
+      const url = "http://localhost:4173/preview"
+      await render(
+        card({
+          toolName: "mcp__pigclaude_workbench__browser_screenshot",
+          input: {},
+          browser: { kind: "screenshot", url, width: 960, height: 540 },
+          suggestions: [{ index: 0, label: "browser_screenshot", canSaveProject: true }],
+          defaultToNo: true,
+        }),
+        onDecide,
+        locale,
+      )
+
+      const dialog = container.querySelector('[role="dialog"]')
+      expect(dialog?.querySelector(".perm-prompt-summary")?.textContent).toBe(summary)
+      expect(dialog?.querySelector(".perm-prompt-target")?.textContent).toBe(url)
+      const choices = options()
+      expect(choices).toHaveLength(2)
+      expect(choices[0]?.textContent).toContain(allow)
+      expect(choices[1]?.textContent).toContain(deny)
+      expect(document.activeElement).toBe(choices[1])
+      await act(async () => {
+        choices[0]?.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+        )
+      })
+      expect(onDecide).toHaveBeenCalledWith("permission-1", { decision: "allow" })
+    },
+  )
+
   it("focuses the decline choice and disables digit shortcuts when required", async () => {
     const onDecide = vi.fn()
     await render(card({ defaultToNo: true }), onDecide)

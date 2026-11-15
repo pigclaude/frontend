@@ -3,7 +3,8 @@
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import type { AgentCommand } from "@pigclaude/ui-contracts"
 import { resolveClaudeBinaryPath } from "./claude-binary"
-import { claudeCommands } from "./claude-commands"
+import { claudeCommands, draftBuiltinCommands } from "./claude-commands"
+import { scanProjectCommands } from "./project-command-catalog"
 import { queryClaudeModels, type ClaudeModelsOptions } from "./claude-model-query"
 import {
   closeQuietly,
@@ -49,6 +50,7 @@ export class ClaudeAgentAdapter {
   #reportedCommands: string | null = null
   #terminalCommands: readonly string[] = []
   #commands: readonly AgentCommand[] | null = null
+  #workspace: string | null = null
   #prompt: PromptStream | null = null
   #started = false
   #stopped = false
@@ -70,6 +72,7 @@ export class ClaudeAgentAdapter {
   async start(options: ClaudeAgentStartOptions): Promise<void> {
     if (this.#started) throw new Error("SESSION_ALREADY_ACTIVE: adapter already started")
     this.#started = true
+    this.#workspace = options.workspace
     const prompt = new PromptStream()
     this.#prompt = prompt
     const task = this.#startQuery(options, prompt)
@@ -253,11 +256,11 @@ export class ClaudeAgentAdapter {
         this.#publishCommands(claudeCommands(message.commands, this.#terminalCommands))
       } else if (message.subtype === "init") {
         const terminal = message.terminal_slash_commands ?? []
-        const reported = JSON.stringify([message.slash_commands, terminal])
+        const reported = JSON.stringify([message.slash_commands, message.skills, terminal])
         if (reported !== this.#reportedCommands) {
           this.#terminalCommands = terminal
           this.#reportedCommands = reported
-          this.#refreshCommands()
+          this.#refreshCommands(message.slash_commands, message.skills)
         }
       }
     }
@@ -266,15 +269,38 @@ export class ClaudeAgentAdapter {
     for (const event of events) this.#emit(event)
   }
 
-  #refreshCommands(): void {
+  #refreshCommands(names?: readonly string[], skills: readonly string[] = []): void {
     const query = this.#query
     if (query?.supportedCommands === undefined) return
     const version = ++this.#commandVersion
     void query
       .supportedCommands()
-      .then((commands) => {
-        if (!this.#stopped && this.#query === query && version === this.#commandVersion)
+      .then(async (commands) => {
+        if (this.#stopped || this.#query !== query || version !== this.#commandVersion) return
+        if (names === undefined) {
           this.#publishCommands(claudeCommands(commands, this.#terminalCommands))
+          return
+        }
+        const current = new Set(names)
+        const known = commands.filter(({ name }) => current.has(name))
+        const unknown = new Set(names.filter((name) => !known.some((item) => item.name === name)))
+        const scoped =
+          unknown.size === 0 || this.#workspace === null
+            ? []
+            : await scanProjectCommands(this.#workspace).catch(() => [])
+        if (this.#stopped || this.#query !== query || version !== this.#commandVersion) return
+        this.#publishCommands(
+          claudeCommands(
+            [
+              ...known,
+              ...draftBuiltinCommands().filter(({ name }) => unknown.has(name)),
+              ...[...skills, ...scoped.map(({ name }) => name)]
+                .filter((name) => unknown.has(name))
+                .map((name) => ({ name })),
+            ],
+            this.#terminalCommands,
+          ),
+        )
       })
       .catch(() => undefined)
   }

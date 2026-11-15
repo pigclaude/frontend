@@ -12,8 +12,13 @@ export async function verifyTerminalDrawer(page, root, output) {
   const second = drawer.getByRole("tab", { name: name + " (2)", exact: true })
   const terminal = drawer.locator('[data-testid="terminal-view"]:visible')
   const readTerminal = () => terminal.evaluate((element) => element.pigcodeTerminal?.text() ?? "")
+  const openDrawer = async () => {
+    await expect(toggle).toHaveCount(1)
+    await expect(toggle).toHaveAttribute("aria-pressed", "false")
+    await toggle.click()
+  }
 
-  await toggle.click()
+  await openDrawer()
   await expect(terminal).toBeVisible()
   await expect(add, "底部终端只有标题栏提供新建按钮").toHaveCount(1)
   await expect(drawer.locator(".terminal-drawer-shell")).toHaveText(/\S/)
@@ -52,7 +57,7 @@ export async function verifyTerminalDrawer(page, root, output) {
 
   await drawer.getByRole("button", { name: "关闭终端面板", exact: true }).click()
   await expect(drawer).toBeHidden()
-  await toggle.click()
+  await openDrawer()
   await expect(first).toHaveAttribute("aria-selected", "true")
   await expect.poll(readTerminal).toContain("DRAWER_KEEP_OK")
   await drawer.getByRole("button", { name: "关闭 " + name + " (2)", exact: true }).click()
@@ -60,7 +65,7 @@ export async function verifyTerminalDrawer(page, root, output) {
   await page.keyboard.type("exit")
   await page.keyboard.press("Enter")
   await expect(drawer).toBeHidden()
-  await toggle.click()
+  await openDrawer()
   await expect(first).toHaveAttribute("aria-selected", "true")
   await expect(drawer.locator(".terminal-drawer-shell")).toHaveText(/\S/)
   await drawer.getByRole("button", { name: "关闭 " + name, exact: true }).click()

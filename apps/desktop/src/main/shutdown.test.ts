@@ -1,6 +1,7 @@
 // 负责验证退出协调器：安全清理完成前不退出，失败或超时明确报告。
 
 import { describe, expect, it, vi } from "vitest"
+import { SessionHistoryWriteError } from "./session/session-history-write-error"
 import { createQuitCoordinator } from "./shutdown"
 
 function quitEvent() {
@@ -46,21 +47,24 @@ describe("createQuitCoordinator", () => {
     expect(final.preventDefault).not.toHaveBeenCalled()
   })
 
-  it("keeps the app open when shutdown fails and allows a retry", async () => {
+  it.each([
+    ["failed", new Error("shutdown failed")],
+    ["session-save", new SessionHistoryWriteError()],
+  ] as const)("keeps the app open after %s and allows a retry", async (reason, error) => {
     const quit = vi.fn()
     const onFailure = vi.fn()
     let attempts = 0
     const { beforeQuit: handle } = createQuitCoordinator({
       shutdown: async () => {
         attempts += 1
-        if (attempts === 1) throw new Error("shutdown failed")
+        if (attempts === 1) throw error
       },
       quit,
       onFailure,
     })
 
     handle(quitEvent())
-    await vi.waitFor(() => expect(onFailure).toHaveBeenCalledWith("failed"))
+    await vi.waitFor(() => expect(onFailure).toHaveBeenCalledWith(reason))
     expect(quit).not.toHaveBeenCalled()
     handle(quitEvent())
     await vi.waitFor(() => expect(quit).toHaveBeenCalledTimes(1))

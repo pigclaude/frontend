@@ -393,7 +393,9 @@ export class SessionHost {
   async dispose(): Promise<void> {
     if (!this.#disposed) for (const unsubscribe of this.#unsubscribe) unsubscribe()
     this.#disposed = true
+    this.#persistence?.prepareQuit()
     await this.stop()
+    await this.#persistence?.flushQuitWrites()
     await this.history.dispose()
     this.#concurrency.dispose(new SessionHostError("SESSION_CANCELLED", "会话启动已取消"))
     this.#listeners.clear()

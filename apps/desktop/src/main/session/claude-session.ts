@@ -252,7 +252,7 @@ export class ClaudeSession {
       } else {
         await active.turns.shutdown()
       }
-      await this.#options.flushHistory?.()
+      await this.#options.flushHistory?.(errorCode === null && !this.#reportCleanupFailure)
       await active.adapter.stop().catch((error: unknown) => {
         if (this.#reportCleanupFailure || error instanceof SessionClaudeExitError) throw error
       })

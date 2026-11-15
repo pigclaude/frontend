@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { BrowserWindow } from "electron"
 import { createMainWindowVisibility } from "./main-window-visibility"
 import { installQuitFlow } from "./quit-flow"
+import { SessionHistoryWriteError } from "./session/session-history-write-error"
 import { noPendingWork, type SessionPendingWork } from "./session/session-host-support"
 import { askBeforeReload } from "./quit-prompt"
 import { UnsavedFiles } from "./workbench/unsaved-files"
@@ -201,23 +202,26 @@ describe("退出流程", () => {
     expect(calls.finishQuit).toHaveBeenCalledOnce()
   })
 
-  it("退出清理失败时恢复窗口操作，并可由退出菜单重试", async () => {
-    const ui = fakeWindow()
-    const { calls, quit, unsaved } = setup({ ui, closeToTray: true, work: noPendingWork })
-    unsaved.report(ui.window.webContents, 0)
-    const visibility = createMainWindowVisibility(() => ui.window, vi.fn())
-    calls.onBeforeShutdown.mockImplementation(visibility.startShutdown)
-    calls.onShutdownFailure.mockImplementation(visibility.shutdownFailed)
-    calls.shutdown.mockRejectedValueOnce(new Error("资源尚未关闭"))
-    quit()
-    await vi.waitFor(() => expect(calls.onShutdownFailure).toHaveBeenCalledOnce())
-    expect(electron.ask).not.toHaveBeenCalled()
-    expect(ui.window.show).toHaveBeenCalledOnce()
-    expect(calls.finishQuit).not.toHaveBeenCalled()
-    quit()
-    await vi.waitFor(() => expect(calls.finishQuit).toHaveBeenCalledWith("normal"))
-    expect(calls.shutdown).toHaveBeenCalledTimes(2)
-  })
+  it.each([new Error("资源尚未关闭"), new SessionHistoryWriteError()])(
+    "退出遇到 %s 时恢复窗口操作，并可由退出菜单重试",
+    async (error) => {
+      const ui = fakeWindow()
+      const { calls, quit, unsaved } = setup({ ui, closeToTray: true, work: noPendingWork })
+      unsaved.report(ui.window.webContents, 0)
+      const visibility = createMainWindowVisibility(() => ui.window, vi.fn())
+      calls.onBeforeShutdown.mockImplementation(visibility.startShutdown)
+      calls.onShutdownFailure.mockImplementation(visibility.shutdownFailed)
+      calls.shutdown.mockRejectedValueOnce(error)
+      quit()
+      await vi.waitFor(() => expect(calls.onShutdownFailure).toHaveBeenCalledOnce())
+      expect(electron.ask).not.toHaveBeenCalled()
+      expect(ui.window.show).toHaveBeenCalledOnce()
+      expect(calls.finishQuit).not.toHaveBeenCalled()
+      quit()
+      await vi.waitFor(() => expect(calls.finishQuit).toHaveBeenCalledWith("normal"))
+      expect(calls.shutdown).toHaveBeenCalledTimes(2)
+    },
+  )
 
   it("用户取消退出时通知调用方，不清理也不执行最后一步", async () => {
     electron.answer = "stay"

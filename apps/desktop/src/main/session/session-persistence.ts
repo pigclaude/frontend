@@ -8,6 +8,7 @@ import { retainedClaudeProject } from "./session-environment"
 import type { SessionEnvelope } from "./session-envelope"
 import type { SessionUsage } from "./session-events"
 import { maxEnvelopesPerRead, type SessionEventCursor } from "./session-event-log"
+import { SessionHistoryWriteError } from "./session-history-write-error"
 import type { SessionIndex, SessionStoreStatus } from "./session-index"
 import type { SessionLaunchStorage } from "./session-launch"
 import { normalizeSessionLocale, normalizeSessionTimezone } from "./session-locale"
@@ -205,6 +206,8 @@ async function verifyRetainedSession(paths: SessionStorePaths, sessionId: string
 export class SessionPersistence {
   #loaded: SessionStore | null = null
   readonly #writes = new Map<string, Promise<void>>()
+  readonly #quitWrites = new Map<string, Array<() => Promise<unknown>>>()
+  #quitting = false
 
   /** 等待应用启动时打开的存储；登录和窗口仍可独立启动。 */
   readonly ready: Promise<SessionStore | null>
@@ -228,11 +231,23 @@ export class SessionPersistence {
     return this.#loaded
   }
 
+  /** 应用开始退出时保留写入失败的记录，供退出重试。 */
+  prepareQuit(): void {
+    this.#quitting = true
+  }
+
+  /** 等待 SDK 结束后生成的记录，重试最终的时间线和停放状态写入。 */
+  async flushQuitWrites(): Promise<void> {
+    await Promise.all(this.#writes.values())
+    await Promise.all([...this.#quitWrites.keys()].map((id) => this.#flushBeforeQuit(id)))
+  }
+
   /** 绑定单个会话的索引设置和关停前写入检查。 */
   sessionHooks(id: string) {
     return {
       saveSettings: (settings: SessionSavedSettings) => this.#saveSettings(id, settings),
-      flushHistory: () => this.flush(id),
+      flushHistory: (canDelayStop: boolean) =>
+        this.#quitting && canDelayStop ? this.#flushBeforeQuit(id) : this.flush(id),
     }
   }
 
@@ -240,8 +255,14 @@ export class SessionPersistence {
   observe(id: string, envelope: SessionEnvelope): void {
     const store = this.#loaded
     if (store === null || envelope.seq === null) return
+    let append: "initial" | "retry" | "done" = "initial"
     void this.#save(id, async () => {
-      await store.appendTimeline(id, envelope)
+      if (append !== "done") {
+        const retry = append === "retry"
+        append = "retry"
+        await store.appendTimeline(id, envelope, retry)
+        append = "done"
+      }
       const { event, at } = envelope
       await store.update(id, (index) => indexPatch(index, event, at))
     })
@@ -294,17 +315,50 @@ export class SessionPersistence {
   }
 
   #save(id: string, write: () => Promise<unknown>): Promise<void> {
-    const done = this.flush(id)
-      .then(write)
-      .then(
-        () => undefined,
-        () => this.warn(),
-      )
+    return this.#enqueue(id, async () => {
+      const waiting = this.#quitWrites.get(id)
+      if (waiting !== undefined) {
+        waiting.push(write)
+        return
+      }
+      try {
+        await write()
+      } catch {
+        if (this.#quitting) this.#quitWrites.set(id, [write])
+        this.warn()
+      }
+    })
+  }
+
+  #flushBeforeQuit(id: string): Promise<void> {
+    return this.#enqueue(id, async () => {
+      const waiting = this.#quitWrites.get(id)
+      if (waiting === undefined) return
+      if (this.#loaded?.get(id) == null) {
+        this.#quitWrites.delete(id)
+        return
+      }
+      try {
+        while (waiting[0] !== undefined) {
+          await waiting[0]()
+          waiting.shift()
+        }
+      } catch (cause) {
+        throw new SessionHistoryWriteError(cause)
+      }
+      this.#quitWrites.delete(id)
+    })
+  }
+
+  #enqueue(id: string, write: () => Promise<void>): Promise<void> {
+    const result = this.flush(id).then(write)
+    const done = result
+      .catch(() => undefined)
       .finally(() => {
         if (this.#writes.get(id) === done) this.#writes.delete(id)
       })
     this.#writes.set(id, done)
-    return done
+    return result
   }
 }
 

@@ -17,6 +17,7 @@ import {
 import {
   isSessionStoreId,
   sessionStoreDirMode,
+  sessionStoreFileMode,
   sessionStorePaths,
   type SessionStorePaths,
 } from "./session-store-layout"
@@ -193,16 +194,17 @@ export class SessionStore {
 
   /**
    * 往时间线追加一条信封：只用于实时的事件不写、返回 false；要保存的事件先脱敏截断再写，返回 true，
-   * 并把内存索引的时间线游标推到这条的序号（下次写索引时落盘）。信封的会话 id 必须是目标会话。
+   * 并推进内存游标。重试时修复末行并确认完整记录，不重复写入同一序号。
+   * 信封的会话 id 必须是目标会话。
    */
-  appendTimeline(id: string, envelope: SessionEnvelope): Promise<boolean> {
+  appendTimeline(id: string, envelope: SessionEnvelope, retry = false): Promise<boolean> {
     return this.#enqueue(id, async () => {
       const entry = this.#entry(id)
       if (envelope.sessionId !== id)
         throw new SessionHostError("SESSION_NOT_FOUND", "信封不属于这个会话")
       const line = timelineEnvelope(envelope)
       if (line === null || line.seq === null) return false
-      await this.#appendLines(id, [line])
+      await this.#appendLines(id, [line], retry)
       entry.index = {
         ...entry.index,
         timelineCursor: Math.max(entry.index.timelineCursor, line.seq),
@@ -383,13 +385,21 @@ export class SessionStore {
     }
   }
 
-  async #appendLines(id: string, lines: readonly TimelineEnvelope[]): Promise<void> {
+  async #appendLines(id: string, lines: readonly TimelineEnvelope[], retry = false): Promise<void> {
     const file = this.paths(id).timelineFile
-    if (!this.#repairedTimelines.has(id)) {
+    if (retry || !this.#repairedTimelines.has(id)) {
       await repairTimelineTail(file)
       this.#repairedTimelines.add(id)
     }
     try {
+      if (retry) {
+        const written = new Set((await this.#readTimeline(id)).envelopes.map(({ seq }) => seq))
+        lines = lines.filter(({ seq }) => !written.has(seq))
+        if (lines.length === 0) {
+          await chmod(file, sessionStoreFileMode)
+          return
+        }
+      }
       await appendTimelineFile(file, lines)
     } catch (error: unknown) {
       this.#repairedTimelines.delete(id)

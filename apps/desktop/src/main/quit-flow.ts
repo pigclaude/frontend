@@ -87,7 +87,7 @@ export function installQuitFlow(options: QuitFlowOptions): (window: BrowserWindo
     shutdown: options.shutdown,
     quit: options.finishQuit,
     onFailure: (reason) => {
-      if (reason === "failed") {
+      if (reason !== "timeout") {
         confirmation.reset()
         options.onShutdownFailure?.()
       }

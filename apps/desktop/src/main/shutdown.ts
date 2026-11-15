@@ -1,12 +1,13 @@
 // 负责应用退出流程：先确认进行中的工作，资源未确认关闭时保持进程并报告失败或超时。
+import { SessionHistoryWriteError } from "./session/session-history-write-error"
 
 /** quit 流程只需要事件能阻止默认行为；Electron 的 Event 满足这个形状。 */
 export type QuitEvent = {
   preventDefault(): void
 }
 
-/** 资源没能确认关闭的原因：清理报错，或超过时限仍在清理。 */
-export type QuitFailure = "failed" | "timeout"
+/** 退出被保存失败、资源清理失败或清理超时阻止。 */
+export type QuitFailure = "session-save" | "failed" | "timeout"
 
 /** 区分用户主动退出和操作系统关机或注销。 */
 export type QuitMode = "normal" | "system"
@@ -98,12 +99,12 @@ export function createQuitCoordinator(options: QuitCoordinatorOptions): QuitCoor
       options.onBeforeShutdown?.()
       await options.shutdown()
       exit()
-    } catch {
+    } catch (error) {
       if (mode === "system") exit()
       else {
         phase = "idle"
         timedOut = false
-        options.onFailure("failed")
+        options.onFailure(error instanceof SessionHistoryWriteError ? "session-save" : "failed")
       }
     } finally {
       clearTimeout(timer)

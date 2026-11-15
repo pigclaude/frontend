@@ -5,6 +5,11 @@ import type { LeaveAction, LeaveAnswer, LeaveWork } from "./quit-confirmation"
 import type { QuitFailure } from "./shutdown"
 
 const unsavedMessage = "有文件修改还没保存"
+const quitFailureMessage: Record<QuitFailure, string> = {
+  "session-save": "会话记录未能写入磁盘。请确认磁盘可用后重试退出。",
+  timeout: "资源仍在关闭，请手动关闭浏览器并等待清理完成。",
+  failed: "浏览器或代理资源尚未关闭，请关闭相关浏览器后重试。",
+}
 
 /**
  * 问用户是否离开。有未保存的文件时按钮是「保存并离开」「不保存」「取消」，默认保存；
@@ -69,10 +74,5 @@ function answerOf(response: number, unsaved: boolean): LeaveAnswer {
 
 /** 资源没能按时关闭时提示用户，应用保持运行。 */
 export function showQuitFailure(reason: QuitFailure): void {
-  dialog.showErrorBox(
-    "无法安全退出",
-    reason === "timeout"
-      ? "资源仍在关闭，请手动关闭浏览器并等待清理完成。"
-      : "浏览器或代理资源尚未关闭，请关闭相关浏览器后重试。",
-  )
+  dialog.showErrorBox("无法安全退出", quitFailureMessage[reason])
 }

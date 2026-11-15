@@ -4,10 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const shown = vi.hoisted(() => ({
   options: [] as Electron.MessageBoxOptions[],
   response: 1,
+  error: vi.fn(),
 }))
 
 vi.mock("electron", () => ({
   dialog: {
+    showErrorBox: shown.error,
     showMessageBox: async (...args: unknown[]) => {
       shown.options.push(args.at(-1) as Electron.MessageBoxOptions)
       return { response: shown.response, checkboxChecked: false }
@@ -19,10 +21,19 @@ vi.mock("electron", () => ({
   },
 }))
 
-const { askToLeave, askBeforeReload } = await import("./quit-prompt")
+const { askToLeave, askBeforeReload, showQuitFailure } = await import("./quit-prompt")
 
 beforeEach(() => {
   shown.options.length = 0
+  shown.error.mockClear()
+})
+
+it("退出保存失败直接提示会话记录和磁盘", () => {
+  showQuitFailure("session-save")
+  expect(shown.error).toHaveBeenCalledExactlyOnceWith(
+    "无法安全退出",
+    "会话记录未能写入磁盘。请确认磁盘可用后重试退出。",
+  )
 })
 
 describe("askToLeave", () => {

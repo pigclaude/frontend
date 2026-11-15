@@ -46,8 +46,8 @@ export type ClaudeSessionOptions = {
   }
   /** 已确认的模型或回合设置改变时保存索引。 */
   saveSettings?: (settings: SessionSavedSettings) => void
-  /** 在关闭查询前等待这个会话的时间线和索引写入。 */
-  flushHistory?: () => Promise<void>
+  /** 等待写入。普通退出在写入失败时可以保留查询供重试。 */
+  flushHistory?: (canDelayStop: boolean) => Promise<void>
   references?: SessionReferenceAccess
   projectPermissions?: SessionProjectPermissions
 }

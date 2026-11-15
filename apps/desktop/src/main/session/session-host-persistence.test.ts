@@ -1,7 +1,7 @@
 // 验证宿主用真实会话存储和假的 SDK 启动、停放和续接会话，打开历史时不创建查询进程。
 
 import { randomUUID } from "node:crypto"
-import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises"
+import { appendFile, mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { setImmediate } from "node:timers/promises"
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
@@ -114,6 +114,119 @@ describe("SessionHost 保存与续接", () => {
       status: "interrupted",
       lastTurn: { status: "interrupted" },
     })
+  })
+
+  it.each(["partial", "committed", "index"] as const)(
+    "%s：保存中断回合失败后保留 SDK，重试后时间线只追加一次",
+    async (failure) => {
+      const fixture = await workspaceFixture()
+      const { host, sessions } = hostFixture(fixture, async () => savedProfile)
+      const { sessionId } = await host.start({
+        workspace: fixture.workspace,
+        permissionMode: "default",
+      })
+      await host.send(sessionId, { text: "磁盘恢复后还要保存的消息" })
+      const query = sessions[0]
+      if (!query) throw new Error("没有建立会话查询")
+      const path = fixture.store.paths(sessionId).timelineFile
+      let diskUnavailable = true
+      let reachedTurnEnd = false
+      const appendTimeline = fixture.store.appendTimeline.bind(fixture.store)
+      vi.spyOn(fixture.store, "appendTimeline").mockImplementation(async (...args) => {
+        const [, envelope] = args
+        if (envelope.event.type !== "turn-ended") return appendTimeline(...args)
+        const firstAttempt = !reachedTurnEnd
+        reachedTurnEnd = true
+        if (!diskUnavailable || failure === "index") return appendTimeline(...args)
+        if (firstAttempt && failure === "partial")
+          await appendFile(path, JSON.stringify(envelope).slice(0, -4))
+        if (firstAttempt && failure === "committed") await appendTimeline(...args)
+        throw new Error("fixture disk unavailable")
+      })
+      const update = fixture.store.update.bind(fixture.store)
+      vi.spyOn(fixture.store, "update").mockImplementation(async (...args) => {
+        if (diskUnavailable && reachedTurnEnd && failure === "index")
+          throw new Error("fixture index unavailable")
+        return update(...args)
+      })
+
+      try {
+        await expect(host.dispose()).rejects.toThrow("会话记录写入失败")
+        expect(query.closes).toBe(0)
+        expect(await host.historyEvents(sessionId, 0)).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              event: expect.objectContaining({
+                type: "turn-started",
+                userText: "磁盘恢复后还要保存的消息",
+              }),
+            }),
+          ]),
+        )
+      } finally {
+        diskUnavailable = false
+      }
+      await host.dispose()
+
+      expect(query.closes).toBe(1)
+      expect(fixture.store.get(sessionId)).toMatchObject({
+        status: "interrupted",
+        lastTurn: { status: "interrupted" },
+      })
+      expect((await readFile(path, "utf8")).match(/"type":"turn-ended"/g)).toHaveLength(1)
+      expect(await fixture.store.readTimeline(sessionId)).toMatchObject({ skippedLines: 0 })
+    },
+  )
+
+  it("SDK 关闭后停放状态写入失败仍阻止退出，重试只补写索引", async () => {
+    const fixture = await workspaceFixture()
+    const { host, sessions } = hostFixture(fixture, async () => savedProfile)
+    const { sessionId } = await host.start({
+      workspace: fixture.workspace,
+      permissionMode: "default",
+    })
+    await host.send(sessionId, { text: "先保存回合，然后写入停放状态" })
+    const query = sessions[0]
+    if (!query) throw new Error("没有建立会话查询")
+    const update = fixture.store.update.bind(fixture.store)
+    let diskUnavailable = true
+    vi.spyOn(fixture.store, "update").mockImplementation(async (id, patch) => {
+      if (diskUnavailable && typeof patch !== "function" && patch.status === "interrupted")
+        throw new Error("fixture park index unavailable")
+      return update(id, patch)
+    })
+
+    try {
+      await expect(host.dispose()).rejects.toThrow("会话记录写入失败")
+      expect(query.closes).toBe(1)
+      expect(fixture.store.get(sessionId)?.lastTurn).toMatchObject({ status: "interrupted" })
+    } finally {
+      diskUnavailable = false
+    }
+    await host.dispose()
+    expect(query.closes).toBe(1)
+    expect(fixture.store.get(sessionId)?.status).toBe("interrupted")
+  })
+
+  it("会员失效时磁盘写入失败也停止 SDK 并吊销会话令牌", async () => {
+    const fixture = await workspaceFixture()
+    const { host, membership, sessions, runtime } = hostFixture(fixture, async () => savedProfile)
+    const { sessionId } = await host.start({
+      workspace: fixture.workspace,
+      permissionMode: "default",
+    })
+    await host.send(sessionId, { text: "只用于会员失效的合成消息" })
+    const appendTimeline = fixture.store.appendTimeline.bind(fixture.store)
+    vi.spyOn(fixture.store, "appendTimeline").mockImplementation(async (...args) => {
+      if (args[1].event.type === "turn-ended") throw new Error("fixture disk unavailable")
+      return appendTimeline(...args)
+    })
+
+    membership.setState("expired")
+    await waitUntil(() => runtime.sessions[0]?.closed === true)
+
+    expect(sessions[0]?.closes).toBe(1)
+    expect(runtime.sessions[0]?.closed).toBe(true)
   })
 
   it("保存用户正文，停放后重开可只读历史，下一次发送用原环境打开同一个会话", async () => {
@@ -319,8 +432,9 @@ function hostFixture(
   const prompts: SDKUserMessage[] = []
   const runtime = new FakeRuntime()
   const usage = new FakeUsage()
+  const membership = new FakeMembership()
   const host = new SessionHost({
-    membership: new FakeMembership(),
+    membership,
     runtime,
     usage,
     userDataPath: fixture.userDataPath,
@@ -346,7 +460,7 @@ function hostFixture(
       }),
   })
   hosts.push(host)
-  return { host, queries, prompts, sessions, runtime, usage }
+  return { host, membership, queries, prompts, sessions, runtime, usage }
 }
 
 async function writeTranscript(store: SessionStore, sessionId: string): Promise<string> {

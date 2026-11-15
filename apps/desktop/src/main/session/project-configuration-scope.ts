@@ -47,11 +47,7 @@ export async function resolveProjectConfigurationScope(
   const root = directories.at(-1) ?? cwd
   for (const directory of directories) {
     const rules = join(directory, ".claude", "rules")
-    for (const entry of [
-      join(directory, "CLAUDE.md"),
-      join(directory, ".claude", "CLAUDE.md"),
-      rules,
-    ]) {
+    for (const entry of [...instructionFiles(directory), rules]) {
       const resolved = await canonicalProjectPath(entry)
       if (
         resolved &&
@@ -76,7 +72,7 @@ export async function canonicalProjectPath(path: string): Promise<string | null>
   try {
     return await realpath(path)
   } catch (error) {
-    if (isMissingPath(error)) return null
+    if (isMissingProjectPath(error)) return null
     throw error
   }
 }
@@ -95,18 +91,26 @@ async function optionalGitMarker(path: string): Promise<boolean> {
     const marker = await lstat(path)
     return marker.isDirectory() || marker.isFile()
   } catch (error) {
-    if (isMissingPath(error)) return false
+    if (isMissingProjectPath(error)) return false
     throw error
   }
 }
 
 function instructionExclusions(directories: readonly string[]): string[] {
   return [...new Set(directories)].flatMap((directory) => [
-    literalPattern(join(directory, "CLAUDE.md")),
-    literalPattern(join(directory, ".claude", "CLAUDE.md")),
-    literalPattern(join(directory, "CLAUDE.local.md")),
+    ...instructionFiles(directory).map(literalPattern),
     `${literalPattern(join(directory, ".claude", "rules"))}/**`,
   ])
+}
+
+function instructionFiles(directory: string): string[] {
+  return [
+    join(directory, "CLAUDE.md"),
+    join(directory, ".claude", "CLAUDE.md"),
+    join(directory, "CLAUDE.local.md"),
+    join(directory, "AGENTS.md"),
+    join(directory, ".claude", "AGENTS.md"),
+  ]
 }
 
 function literalPattern(path: string): string {
@@ -116,11 +120,12 @@ function literalPattern(path: string): string {
     .replace(/[\\*?{}[\]()!+@]/g, "\\$&")
 }
 
-function isMissingPath(error: unknown): boolean {
+/** 项目扩展可选，扫描中消失的路径及循环链接都视为不存在。 */
+export function isMissingProjectPath(error: unknown): boolean {
   return (
     typeof error === "object" &&
     error !== null &&
     "code" in error &&
-    (error.code === "ENOENT" || error.code === "ENOTDIR")
+    (error.code === "ENOENT" || error.code === "ENOTDIR" || error.code === "ELOOP")
   )
 }

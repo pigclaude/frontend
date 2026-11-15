@@ -3,7 +3,7 @@
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { expect, it } from "vitest"
+import { expect, it, vi } from "vitest"
 import { ClaudeAgentAdapter } from "./claude-agent-adapter"
 import { capture, FakeQuery, type CapturedQuery } from "./claude-agent-adapter-fixtures"
 import { prepareProjectConfiguration } from "./project-configuration"
@@ -20,6 +20,9 @@ it("加载工作目录与 Git 根之间的项目扩展，保持原工作目录�
   await projectFile(repo, ".claude/commands/build.md", "parent command")
   await projectFile(workspace, ".claude/commands/build.md", "local command")
   await projectFile(repo, ".claude/commands/test.md", "other command")
+  await projectFile(repo, ".claude/commands/checks/parent.md", "parent nested command")
+  await projectFile(workspace, ".claude/commands/checks/current.md", "current nested command")
+  await projectFile(repo, ".claude/output-styles/compact.md", "project style")
   await projectFile(repo, ".claude/skills/release/SKILL.md", "release guide")
   await projectFile(workspace, ".claude/agents/linter.md", "workspace agent")
   await projectFile(join(repo, "other"), ".claude/skills/unrelated/SKILL.md", "unrelated")
@@ -46,6 +49,7 @@ it("加载工作目录与 Git 根之间的项目扩展，保持原工作目录�
       settings: {
         claudeMdExcludes: expect.arrayContaining([
           join(directory, "CLAUDE.md").replaceAll("\\", "/"),
+          join(directory, "AGENTS.md").replaceAll("\\", "/"),
         ]),
         autoMemoryEnabled: false,
         disableClaudeAiConnectors: true,
@@ -53,6 +57,17 @@ it("加载工作目录与 Git 根之间的项目扩展，保持原工作目录�
     })
     const root = options?.projectConfigRoot
     if (root === undefined) throw new Error("未生成项目配置根")
+    for (const [name, expected] of [
+      ["parent", "parent nested command"],
+      ["current", "current nested command"],
+    ]) {
+      expect(
+        await readFile(join(root, ".claude", "commands", "checks", `${name}.md`), "utf8"),
+      ).toBe(expected)
+    }
+    expect(await readFile(join(root, ".claude", "output-styles", "compact.md"), "utf8")).toBe(
+      "project style",
+    )
     expect(root).not.toBe(workspace)
     expect(await readFile(join(root, ".claude", "commands", "build.md"), "utf8")).toBe(
       "local command",
@@ -109,7 +124,29 @@ it("跳过个人配置目录和指向项目之外的嵌套链接", async () => {
     await expect(readFile(join(skills, "working", "SKILL.md"), "utf8")).resolves.toBe(
       "workspace skill",
     )
-    await expect(stat(join(skills, "linked"))).rejects.toMatchObject({ code: "ENOENT" })
+    await expect(stat(join(skills, "linked", "outside"))).rejects.toMatchObject({ code: "ENOENT" })
+    const working = join(workspace, ".claude", "skills", "working")
+    await writeFile(join(working, "SKILL.md"), "updated workspace skill")
+    await symlink(
+      personalSkills,
+      join(working, "new-alias"),
+      process.platform === "win32" ? "junction" : "dir",
+    )
+    try {
+      await vi.waitFor(
+        async () => {
+          await expect(readFile(join(skills, "working", "SKILL.md"), "utf8")).resolves.toBe(
+            "updated workspace skill",
+          )
+        },
+        { timeout: 4_000 },
+      )
+      await expect(stat(join(skills, "working", "new-alias"))).rejects.toMatchObject({
+        code: "ENOENT",
+      })
+    } finally {
+      await configuration.dispose()
+    }
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

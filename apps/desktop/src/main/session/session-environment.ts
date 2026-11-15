@@ -165,11 +165,8 @@ export class SessionEnvironment {
       await chmod(configDir, sessionDirectoryMode)
       await chmod(preloadPath, sessionDirectoryMode)
     } catch (error) {
+      await projectConfiguration?.dispose().catch(() => undefined)
       if (created) await rm(sessionDir, { recursive: true, force: true }).catch(() => undefined)
-      else if (projectConfiguration?.directory)
-        await rm(projectConfiguration.directory, { recursive: true, force: true }).catch(
-          () => undefined,
-        )
       throw error
     }
 
@@ -188,9 +185,8 @@ export class SessionEnvironment {
   /** 清理一次性目录，停放的会话仍可通过原配置和记录续接。 */
   async cleanup(): Promise<void> {
     if (this.#cleaned) return
+    await this.projectConfiguration?.dispose()
     if (!this.#retained) await rm(this.sessionDir, { recursive: true, force: true })
-    else if (this.projectConfiguration?.directory)
-      await rm(this.projectConfiguration.directory, { recursive: true, force: true })
     this.#cleaned = true
   }
 }

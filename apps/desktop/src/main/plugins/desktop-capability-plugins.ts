@@ -23,6 +23,7 @@ import {
   normalizePluginMarketplaceSource,
 } from "./plugin-marketplace-source"
 import { PluginMarketplaceSources } from "./plugin-marketplace-sources"
+import { PluginMarketplaceThirdParty } from "./plugin-marketplace-third-party"
 
 /** 两种插件入口与市场都接受同一可信窗口来源。 */
 export function registerDesktopPluginIpc(
@@ -68,11 +69,20 @@ export function setupDesktopCapabilityPlugins(
     normalize: normalizePluginMarketplaceSource,
     load: loadPluginMarketplaceCatalog,
   })
+  const thirdParty = new PluginMarketplaceThirdParty(
+    join(root, "marketplace-third-party.json"),
+    () => membership() === "active",
+    () => {
+      sources.invalidateRequests()
+      send(pluginMarketplaceChangedChannel)
+    },
+  )
   const marketplace = new PluginMarketplace(
     sources,
     manager,
     loadPluginMarketplaceEntry,
     appVersion,
+    thirdParty,
   )
   const stopMarkets = sources.subscribe(() => send(pluginMarketplaceChangedChannel))
   const stopPlugins = manager.subscribe(() => {

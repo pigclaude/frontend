@@ -224,7 +224,12 @@ export class PluginMarketplaceSources {
 
   /** 会员离开 active 时吊销已取出的确认和尚未发布的下载。 */
   membershipChanged(state: MembershipState): void {
-    if (state !== "active") this.#membershipEpoch++
+    if (state !== "active") this.invalidateRequests()
+  }
+
+  /** 当前入口权限变更时，使旧下载和确认失效。 */
+  invalidateRequests(): void {
+    this.#membershipEpoch++
   }
 
   #captureMembership(): number {

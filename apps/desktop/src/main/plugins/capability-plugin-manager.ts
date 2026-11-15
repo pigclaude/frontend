@@ -1,6 +1,5 @@
 // 管理安装披露、不可变包副本、启停和卸载；供会话宿主读取已启用的快照。
 
-import { basename, isAbsolute } from "node:path"
 import { keepsMembershipRuntime, type MembershipState } from "@pigclaude/contracts/membership"
 import type {
   CapabilityPluginInstallSource,
@@ -24,11 +23,12 @@ import {
   type DesktopPluginRecord,
 } from "./capability-plugin-records"
 import type { CapabilityPluginSnapshot } from "./capability-plugin-snapshot"
-import { readDesktopPluginDirectory, validateDesktopPluginBundle } from "./desktop-plugin-bundle"
+import { loadLocalDesktopPlugin } from "./desktop-plugin-bundle"
 import {
   createDesktopPluginRecord,
   DesktopPluginInstallReview,
   expandedPluginAccess,
+  marketplaceFilesChanged,
   marketplaceInstallPlan,
   type DesktopPluginInstallPlan,
   type PluginMarketplaceInstallRequest,
@@ -85,21 +85,11 @@ export class CapabilityPluginManager {
     this.#assertMayInstall(source.kind)
     const epoch = this.#epoch
     const assertCurrent = this.#review.begin(owner)
-    if (!isAbsolute(source.path) || source.path.includes("\0"))
-      throw new Error("PLUGIN_SOURCE_INVALID")
-    if (source.kind === "archive" && typeof source.sha256 !== "string")
-      throw new Error("PLUGIN_ARCHIVE_SHA256_INVALID")
-    const sha256 = source.kind === "archive" ? source.sha256.toLowerCase() : null
-    if (sha256 !== null && !/^[0-9a-f]{64}$/.test(sha256))
-      throw new Error("PLUGIN_ARCHIVE_SHA256_INVALID")
-    const files =
-      sha256 === null
-        ? await readDesktopPluginDirectory(source.path)
-        : await this.options.readArchive(source.path, sha256)
-    const sourceName = basename(source.path)
-    const fallbackId =
-      sha256 === null ? sourceName : sourceName.replace(/\.(?:tar\.gz|tgz|zip)$/i, "")
-    const bundle = validateDesktopPluginBundle(files, this.options.appVersion, fallbackId)
+    const { bundle, sha256 } = await loadLocalDesktopPlugin(
+      source,
+      this.options.appVersion,
+      this.options.readArchive,
+    )
     this.#assertMayInstall(source.kind, epoch)
     assertCurrent()
     return this.#review.prepare(owner, { bundle, sourceKind: source.kind, sha256, epoch })
@@ -138,7 +128,7 @@ export class CapabilityPluginManager {
     })
   }
 
-  /** 手动更新同一市场项，只在实际验证的包扩大申请范围时创建确认。 */
+  /** 手动更新同一市场项，验过的包发生增权或需要重新确认文件时创建披露。 */
   prepareMarketplaceUpdate(
     request: PluginMarketplaceInstallRequest,
     owner: object,
@@ -155,11 +145,17 @@ export class CapabilityPluginManager {
       )
         throw new Error("PLUGIN_MARKETPLACE_INSTALLATION_MISMATCH")
       this.#assertInstallPlan(plan)
-      if (current.marketplace.digest === provenance.digest) return { kind: "unchanged" }
+      if (!marketplaceFilesChanged(current.marketplace, provenance)) return { kind: "unchanged" }
       const update = { ...plan, previousRevision: current.revision }
       const grown = expandedPluginAccess(current, plan.bundle)
-      if (grown.additionalPermissions.length || grown.additionalDomains.length)
-        return { kind: "review", disclosure: this.#review.prepare(owner, update), ...grown }
+      const fileHashChanged = request.requireFileReview === true
+      if (fileHashChanged || grown.additionalPermissions.length || grown.additionalDomains.length)
+        return {
+          kind: "review",
+          disclosure: this.#review.prepare(owner, update),
+          ...grown,
+          ...(fileHashChanged ? { fileHashChanged: true as const } : {}),
+        }
       await this.#publish(update)
       return { kind: "updated" }
     })

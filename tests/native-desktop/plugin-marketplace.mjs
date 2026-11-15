@@ -16,6 +16,8 @@ export async function verifyPluginMarketplace(page, userData) {
     sourceId = await page.evaluate(
       async ({ source, name }) => {
         const market = window.pigclaude.pluginMarketplace
+        if ((await market.list()).thirdPartyEnabled) throw new Error("第三方市场应默认关闭")
+        await market.setThirdPartyEnabled(true)
         await market.add({ kind: "directory", path: source })
         const view = await market.list()
         const id = view.sources.find((item) => item.catalogName === name)?.id
@@ -28,12 +30,12 @@ export async function verifyPluginMarketplace(page, userData) {
     const initial = await page.evaluate(async (id) => {
       const market = window.pigclaude.pluginMarketplace
       const entries = (await market.list()).entries.filter((entry) => entry.sourceId === id)
-      return entries.map(({ type, action }) => ({ type, action }))
+      return entries.map(({ type, action, reviewStatus }) => ({ type, action, reviewStatus }))
     }, sourceId)
     expect(initial).toEqual(
       expect.arrayContaining([
-        { type: "capability", action: "install" },
-        { type: "claude-code", action: "install" },
+        { type: "capability", action: "install", reviewStatus: "unreviewed" },
+        { type: "claude-code", action: "install", reviewStatus: "unreviewed" },
       ]),
     )
 
@@ -83,6 +85,7 @@ export async function verifyPluginMarketplace(page, userData) {
           version: published.manifest.version,
           permissions: change.additionalPermissions,
           domains: change.additionalDomains,
+          fileHashChanged: change.fileHashChanged,
         }
       },
       { id: sourceId, entry: capability },
@@ -91,6 +94,7 @@ export async function verifyPluginMarketplace(page, userData) {
       version: "2.0.0",
       permissions: ["network"],
       domains: ["docs.example.org"],
+      fileHashChanged: true,
     })
 
     const remaining = await page.evaluate(async (id) => {
@@ -104,6 +108,7 @@ export async function verifyPluginMarketplace(page, userData) {
     await page.evaluate(
       async ({ id, entries }) => {
         const { pluginMarketplace, capabilityPlugins } = window.pigclaude
+        await pluginMarketplace.setThirdPartyEnabled(false)
         if (id) await pluginMarketplace.remove(id).catch(() => undefined)
         await Promise.all(
           entries.map((entry) => capabilityPlugins.uninstall(entry, false).catch(() => undefined)),

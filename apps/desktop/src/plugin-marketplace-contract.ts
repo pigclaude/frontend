@@ -49,7 +49,7 @@ export type PluginMarketplaceView = {
   entries: PluginMarketplaceEntryView[]
 }
 
-/** 手动更新仅在扩大申请范围时进入一次性披露确认。 */
+/** 手动更新需要复核文件或授权变化时进入一次性披露确认。 */
 export type PluginMarketplaceUpdateResult =
   | { kind: "unchanged" }
   | { kind: "updated" }

@@ -43,6 +43,7 @@ const marketProvenance = z.strictObject({
   sourceId: z.string().min(1).max(128),
   entryId: z.string().min(1).max(128),
   digest: z.string().regex(sha256),
+  artifactDigest: z.string().regex(sha256).optional(),
   archiveSha256: z.string().regex(sha256).nullable(),
   repo: z.string().nullable(),
   commit: z

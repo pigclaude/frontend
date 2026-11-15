@@ -230,3 +230,29 @@ it("同名 skill 增加 allowed-tools 后需要重新确认", async () => {
     additionalDomains: [],
   })
 })
+
+it("第三方独立归档的摘要变化会询问，包括解包正文一致的情况", async () => {
+  const f = await fixture()
+  const owner = {}
+  const first = capability("1.0.0", f.assertCurrent)
+  const prepare = await f.manager.prepareMarketplaceInstall(
+    { ...first, provenance: { ...first.provenance, artifactDigest: "a".repeat(64) } },
+    owner,
+  )
+  await f.manager.confirm(prepare.confirmationId, owner)
+  const change = await f.manager.prepareMarketplaceUpdate(
+    {
+      ...first,
+      provenance: { ...first.provenance, artifactDigest: "b".repeat(64) },
+      requireFileReview: true,
+    },
+    owner,
+  )
+  expect(change).toMatchObject({
+    kind: "review",
+    fileHashChanged: true,
+    additionalPermissions: [],
+    additionalDomains: [],
+  })
+  expect((await f.manager.marketplaceInstallations()).get(id)?.artifactDigest).toBe("a".repeat(64))
+})

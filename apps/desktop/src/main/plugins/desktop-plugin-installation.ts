@@ -14,6 +14,7 @@ import type { PluginMarketplaceProvenance } from "./plugin-marketplace-catalog"
 export type PluginMarketplaceInstallRequest = {
   bundle: DesktopPluginBundle
   provenance: PluginMarketplaceProvenance
+  requireFileReview?: true
   assertCurrent(): void
 }
 
@@ -131,6 +132,17 @@ export function createDesktopPluginRecord(
 type PluginAccess =
   | Pick<InstalledCapabilityPlugin, "type" | "manifest">
   | Pick<InstalledClaudeCodePlugin, "type" | "manifest">
+
+/** 比对初次确认的文件表及单独下载的实际归档；相对条目只绑定自己的文件。 */
+export function marketplaceFilesChanged(
+  previous: PluginMarketplaceProvenance,
+  candidate: PluginMarketplaceProvenance,
+): boolean {
+  return (
+    previous.digest !== candidate.digest ||
+    (previous.artifactDigest ?? previous.digest) !== (candidate.artifactDigest ?? candidate.digest)
+  )
+}
 
 function requestedAccess(plugin: PluginAccess): { permissions: string[]; domains: string[] } {
   if (plugin.type === "capability")

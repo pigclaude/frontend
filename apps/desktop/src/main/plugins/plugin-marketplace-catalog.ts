@@ -35,4 +35,5 @@ export type PluginMarketplaceLoadedEntry = {
 export type PluginMarketplaceProvenance = Omit<PluginMarketplaceLoadedEntry, "files"> & {
   sourceId: string
   entryId: string
+  artifactDigest?: string | undefined
 }

@@ -33,22 +33,29 @@ export function registerPluginMarketplaceIpc(options: {
   }
 
   handle("list", (marketplace) => marketplace.list())
+  handle("set-third-party-enabled", (marketplace, [enabled]) => {
+    if (typeof enabled !== "boolean") throw new Error("PLUGIN_MARKETPLACE_SOURCE_INVALID")
+    return marketplace.setThirdPartyEnabled(enabled)
+  })
   handle("select-directory", async (marketplace, _values, event) => {
+    const validateConsent = await marketplace.authorizeThirdParty()
     if (!(await marketplace.sources.list()).developerMode)
       throw new Error("PLUGIN_DEVELOPER_MODE_REQUIRED")
+    validateConsent()
     const window = BrowserWindow.fromWebContents(event.sender)
     if (!window) throw new Error("PLUGIN_MARKETPLACE_UNAVAILABLE")
     const result = await dialog.showOpenDialog(window, {
       title: "选择本地市场目录",
       properties: ["openDirectory"],
     })
+    validateConsent()
     return result.canceled ? null : (result.filePaths[0] ?? null)
   })
-  handle("add", (marketplace, [input]) => marketplace.sources.add(input))
+  handle("add", (marketplace, [input]) => marketplace.add(input))
   handle("refresh", (marketplace, [source, pin]) => {
     if (pin !== undefined && typeof pin !== "string")
       throw new Error("PLUGIN_MARKETPLACE_SOURCE_INVALID")
-    return marketplace.sources.refresh(marketKey(source), pin)
+    return marketplace.refresh(marketKey(source), pin)
   })
   handle("set-enabled", (marketplace, [source, enabled]) => {
     if (typeof enabled !== "boolean") throw new Error("PLUGIN_MARKETPLACE_SOURCE_INVALID")

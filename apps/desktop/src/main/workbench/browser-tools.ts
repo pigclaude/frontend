@@ -1,5 +1,6 @@
 // 提供会话专用的本机预览工具；每次调用先由会话的权限代理审批。
 import { randomUUID } from "node:crypto"
+import { toUSVString } from "node:util"
 import { BrowserWindow, type WebContents } from "electron"
 import {
   createSdkMcpServer,
@@ -180,7 +181,7 @@ function maskPasswordEcho(snapshot: string, text: string): string {
   if (text === "") return snapshot
   // 可见文本会压缩空白，提交表单还可能把同一值编码到当前地址。
   const visibleText = text.replace(/\s+/g, " ").trim()
-  const uriText = encodeURIComponent(text.toWellFormed())
+  const uriText = encodeURIComponent(toUSVString(text))
   const formText = new URLSearchParams([["", text]]).toString().slice(1)
   const mask = "••••"
   const masked: unknown = JSON.parse(snapshot, (key, value: unknown) => {

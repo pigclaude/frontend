@@ -297,6 +297,8 @@ describe("SessionHost 保存与续接", () => {
     expect(firstQuery.flagSettings).toEqual([{ effortLevel: "high", fastMode: true }])
     await finishTurn(original.host, firstQuery, sessionId, "bypassPermissions", 16)
     expect(original.usage.records.map(({ inputTokens }) => inputTokens)).toEqual([16])
+    await original.host.setMode(sessionId, "default")
+    await original.host.setMode(sessionId, "bypassPermissions")
     await original.host.setMode(sessionId, "plan")
     const transcript = await writeTranscript(fixture.store, sessionId)
     await original.host.stop(sessionId)
@@ -328,6 +330,15 @@ describe("SessionHost 保存与续接", () => {
     })
     await reopened.host.ready()
     const page = await reopened.host.historyEvents(sessionId, 0)
+    expect(page).toContainEqual(
+      expect.objectContaining({
+        sessionId,
+        event: expect.objectContaining({ type: "started", permissionMode: "bypassPermissions" }),
+      }),
+    )
+    expect(
+      page.flatMap(({ event }) => (event.type === "mode" ? [event.permissionMode] : [])).slice(-3),
+    ).toEqual(["default", "bypassPermissions", "plan"])
     expect(page).toContainEqual(
       expect.objectContaining({
         sessionId,

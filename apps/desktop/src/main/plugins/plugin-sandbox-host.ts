@@ -5,6 +5,7 @@ import {
   type PluginSandboxCall,
   type PluginSandboxCallOptions,
   type PluginSandboxJson,
+  type PluginSandboxNetwork,
   type PluginSandboxSource,
 } from "./plugin-sandbox-contract"
 
@@ -14,6 +15,7 @@ export type PluginSandboxContext = {
     call: PluginSandboxCall,
     timeoutMs: number,
     signal: AbortSignal,
+    network?: PluginSandboxNetwork,
   ): Promise<PluginSandboxJson>
   close(): Promise<void>
 }
@@ -135,7 +137,7 @@ export class PluginSandboxHost {
     if (Date.now() < entry.retryAt) throw new PluginSandboxError("PLUGIN_SANDBOX_BACKOFF")
     try {
       const context = entry.context ?? (await this.#open(entry, source, signal))
-      const value = await context.invoke(call, timeout, signal)
+      const value = await context.invoke(call, timeout, signal, source.network)
       entry.failures = 0
       return value
     } catch (error) {

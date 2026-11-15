@@ -7,6 +7,9 @@ self.addEventListener(
     const send = port.postMessage.bind(port)
     const parse = JSON.parse.bind(JSON)
     const stringify = JSON.stringify.bind(JSON)
+    for (const name of ["WebSocket", "WebSocketStream", "WebTransport"]) {
+      Object.defineProperty(self, name, { value: undefined, writable: false, configurable: false })
+    }
     if (
       typeof require !== "undefined" ||
       typeof process !== "undefined" ||

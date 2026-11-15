@@ -14,7 +14,6 @@ const html =
 const csp = [
   "default-src 'none'",
   "script-src 'self'",
-  "connect-src 'none'",
   "frame-src 'none'",
   "frame-ancestors 'none'",
   "object-src 'none'",
@@ -24,6 +23,7 @@ const csp = [
 
 /** 一个实例只能看到受信页面、Worker 引导和自己的包内模块。 */
 export type PluginSandboxResources = {
+  origin: string
   url: string
   entry: string
   permits(url: string): boolean
@@ -61,6 +61,7 @@ export function createPluginSandboxResources(
       : null
   }
   return {
+    origin,
     url: `${origin}${shellPath}`,
     entry: `${origin}${entry}`,
     permits: (url) => pathOf(url) !== null,
@@ -81,7 +82,7 @@ export function createPluginSandboxResources(
           "Content-Type":
             path === shellPath ? "text/html; charset=utf-8" : "text/javascript; charset=utf-8",
           "X-Content-Type-Options": "nosniff",
-          "Content-Security-Policy": `${csp}; worker-src ${path === shellPath ? "'self'" : "'none'"}`,
+          "Content-Security-Policy": `${csp}; connect-src ${source.network?.domains.length ? "https:" : "'none'"}; worker-src ${path === shellPath ? "'self'" : "'none'"}`,
         },
       })
     },

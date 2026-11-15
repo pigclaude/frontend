@@ -16,11 +16,26 @@ export type PluginSandboxSource = {
   readonly egressId: string
   readonly entry: string
   readonly modules: Readonly<Record<string, string>>
+  /** 主进程为当次调用核准的网络能力；缺省时分区禁网。 */
+  readonly network?: PluginSandboxNetwork
+}
+
+/** 主进程持有的出口与域名授权。Worker 只看到 HTTPS 请求和响应。 */
+export type PluginSandboxNetwork = {
+  readonly egressId: string
+  readonly domains: readonly string[]
+  permits(url: string): boolean
+  forward(request: Request, signal: AbortSignal): Promise<Response>
 }
 
 /** 实例与内存分区按同一组插件版本和出口标识隔离。 */
 export function pluginSandboxKey(source: PluginSandboxSource): string {
-  return JSON.stringify([source.pluginId, source.revision, source.egressId])
+  return JSON.stringify([
+    source.pluginId,
+    source.revision,
+    source.network?.egressId ?? source.egressId,
+    source.network?.domains ?? [],
+  ])
 }
 
 /** Worker 将操作名与输入交给入口模块的默认导出。 */
@@ -36,6 +51,7 @@ export type PluginSandboxErrorCode =
   | "PLUGIN_SANDBOX_CLOSED"
   | "PLUGIN_SANDBOX_CRASHED"
   | "PLUGIN_SANDBOX_BACKOFF"
+  | "PLUGIN_EGRESS_UNAVAILABLE"
   | "PLUGIN_LOAD_FAILED"
   | "PLUGIN_EXECUTION_FAILED"
   | "PLUGIN_TIMEOUT"

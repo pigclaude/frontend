@@ -94,6 +94,20 @@ export class RuntimeSessions {
     return accountId === from ? null : { from, to: accountId, reason }
   }
 
+  /** 读实际已选号的当前出口。无会话、未选号或绑定失效时返回 undefined。 */
+  async currentProxyUrl(sessionId: string): Promise<string | null | undefined> {
+    const selection = this.#sessions.get(sessionId)
+    const accountId = selection?.currentAccountId
+    if (accountId == null) return undefined
+    const current = () =>
+      this.#sessions.get(sessionId) === selection && selection?.currentAccountId === accountId
+    const account = await this.#store.getAccount(accountId)
+    if (!account?.enabled || !current()) return undefined
+    if (account.proxyId === null) return null
+    const proxy = await this.#store.getProxy(account.proxyId)
+    return current() && proxy?.url ? proxy.url : undefined
+  }
+
   /** 记下会话里一个账号因额度用尽被拒，使下一次换号的原因是 quota。 */
   rejectQuota(sessionId: string, accountId: string): void {
     this.#sessions.get(sessionId)?.quotaRejections.add(accountId)

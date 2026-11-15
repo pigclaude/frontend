@@ -16,7 +16,9 @@ import {
   type PluginSandboxCall,
   type PluginSandboxErrorCode,
   type PluginSandboxJson,
+  type PluginSandboxNetwork,
 } from "./plugin-sandbox-contract"
+import { respondToPluginHttps } from "./plugin-network-response"
 import type { PluginSandboxContext, PluginSandboxLaunch } from "./plugin-sandbox-host"
 import {
   PluginSandboxPartitions,
@@ -31,6 +33,7 @@ import {
 const attachChannel = "pigclaude:plugin-sandbox-attach"
 const launchTimeoutMs = 12_000
 const superviseDelayMs = 200
+const httpsHandlers = new WeakSet<Session>()
 
 /** 必须在 Electron ready 前注册方案；不在默认分区挂任何可访问的资源处理器。 */
 export function registerPluginSandboxScheme(): void {
@@ -71,7 +74,17 @@ export function createElectronPluginSandboxLaunch(preload: string): PluginSandbo
       lease = await partitions.acquire(pluginSandboxKey(source), signal)
       if (signal.aborted) throw new PluginSandboxError("PLUGIN_CANCELLED")
       const { profile } = lease
-      configureSession(profile, resources)
+      configureSession(
+        profile,
+        resources,
+        source.network?.domains.length
+          ? {
+              permits: (url) => context?.permitsNetwork(url) === true,
+              handle: (request) =>
+                context?.forwardNetwork(request, resources.origin) ?? Response.error(),
+            }
+          : undefined,
+      )
       window = new BrowserWindow({
         show: false,
         skipTaskbar: true,
@@ -123,17 +136,32 @@ function createSession(): Session {
   return profile
 }
 
-function configureSession(profile: Session, resources: PluginSandboxResources): void {
+function configureSession(
+  profile: Session,
+  resources: PluginSandboxResources,
+  network?: {
+    permits(url: string): boolean
+    handle(request: Request): Response | Promise<Response>
+  },
+): void {
   profile.webRequest.onBeforeRequest((details, done) =>
-    done({ cancel: !resources.permits(details.url) }),
+    done({ cancel: !resources.permits(details.url) && network?.permits(details.url) !== true }),
   )
   profile.protocol.handle(pluginSandboxScheme, (request) => resources.handle(request))
+  if (network) {
+    profile.protocol.handle("https", network.handle)
+    httpsHandlers.add(profile)
+  }
 }
 
 async function clearSession(profile: Session): Promise<void> {
   profile.webRequest.onBeforeRequest((_details, done) => done({ cancel: true }))
   if (profile.protocol.isProtocolHandled(pluginSandboxScheme))
     profile.protocol.unhandle(pluginSandboxScheme)
+  if (httpsHandlers.has(profile)) {
+    profile.protocol.unhandle("https")
+    httpsHandlers.delete(profile)
+  }
   const cleanup = await Promise.allSettled([
     profile.closeAllConnections(),
     profile.clearStorageData(),
@@ -147,6 +175,7 @@ async function clearSession(profile: Session): Promise<void> {
 type PendingCall = {
   id: string
   complete: (result: PluginSandboxJson | PluginSandboxError) => void
+  network?: { policy: PluginSandboxNetwork; abort: AbortController }
 }
 
 class WindowContext implements PluginSandboxContext {
@@ -213,12 +242,15 @@ class WindowContext implements PluginSandboxContext {
     call: PluginSandboxCall,
     timeout: number,
     signal: AbortSignal,
+    network?: PluginSandboxNetwork,
   ): Promise<PluginSandboxJson> {
     if (signal.aborted) throw new PluginSandboxError("PLUGIN_CANCELLED")
     if (!this.#ready || this.#closed || this.#call)
       throw new PluginSandboxError("PLUGIN_SANDBOX_CRASHED")
     const payload = encodeCall(call)
     const id = randomUUID()
+    const networkScope =
+      network === undefined ? undefined : { policy: network, abort: new AbortController() }
     return new Promise((resolve, reject) => {
       const timer = setTimeout(
         () => finish(new PluginSandboxError("PLUGIN_TIMEOUT")),
@@ -235,6 +267,7 @@ class WindowContext implements PluginSandboxContext {
       const finish = (result: PluginSandboxJson | PluginSandboxError): void => {
         if (this.#call?.id !== id) return
         this.#call = null
+        networkScope?.abort.abort()
         clearTimeout(timer)
         signal.removeEventListener("abort", cancel)
         if (result instanceof PluginSandboxError) {
@@ -243,7 +276,11 @@ class WindowContext implements PluginSandboxContext {
             void this.close().catch(() => undefined)
         } else resolve(result)
       }
-      this.#call = { id, complete: finish }
+      this.#call = {
+        id,
+        complete: finish,
+        ...(networkScope === undefined ? {} : { network: networkScope }),
+      }
       signal.addEventListener("abort", cancel, { once: true })
       try {
         this.port.postMessage({ type: "invoke", id, operation: call.operation, payload, timeout })
@@ -251,6 +288,17 @@ class WindowContext implements PluginSandboxContext {
         finish(new PluginSandboxError("PLUGIN_SANDBOX_CRASHED"))
       }
     })
+  }
+
+  permitsNetwork(url: string): boolean {
+    return !this.#closed && this.#call?.network?.policy.permits(url) === true
+  }
+
+  forwardNetwork(request: Request, origin: string): Response | Promise<Response> {
+    const network = this.#call?.network
+    return this.#closed || network === undefined
+      ? Response.error()
+      : respondToPluginHttps(request, network.policy, network.abort.signal, origin)
   }
 
   close(): Promise<void> {

@@ -95,7 +95,98 @@ async function verify(): Promise<void> {
     await wait(2_150)
     assert.equal(BrowserWindow.getAllWindows().length, 0)
     await verifyIdlePartitionReuse()
+    await verifyNetworkRouting()
     console.log("PASS 沙箱窗口与 Worker 完成隔离、超时、取消、崩溃退避和空闲释放")
+  } finally {
+    await host.dispose()
+  }
+}
+
+async function verifyNetworkRouting(): Promise<void> {
+  const host = new PluginSandboxHost(createElectronPluginSandboxLaunch(preload))
+  const endpoint = "https://localhost:1"
+  const redirectedEndpoint = "https://other.localhost:1"
+  const requests: string[] = []
+  const bundle = {
+    pluginId: "fixture-network",
+    revision: "1",
+    entry: "network.mjs",
+    modules: {
+      "network.mjs": [
+        "export default async (operation, url) => {",
+        "  const inactiveTransports = [typeof WebSocket, typeof WebSocketStream, typeof WebTransport];",
+        "  if (operation === 'after') {",
+        "    setTimeout(() => { void fetch(url).catch(() => undefined); }, 30);",
+        "    return { body: 'timer installed', inactiveTransports };",
+        "  }",
+        "  try {",
+        "    const response = await fetch(url, {headers: {authorization: 'fixture header'}});",
+        "    return { body: await response.text(), inactiveTransports };",
+        "  } catch { return { body: null, inactiveTransports }; }",
+        "}",
+      ].join("\n"),
+    },
+  }
+  const scoped = (label: string, egressId = "fixture-shared"): PluginSandboxSource => ({
+    ...bundle,
+    egressId,
+    network: {
+      egressId,
+      domains: ["localhost", "other.localhost"],
+      permits(url) {
+        const origin = URL.parse(url)?.origin
+        return origin === endpoint || origin === redirectedEndpoint
+      },
+      async forward(request) {
+        const { pathname } = new URL(request.url)
+        requests.push(label + pathname)
+        if (pathname === "/redirect")
+          return new Response(null, {
+            status: 302,
+            headers: { location: redirectedEndpoint + "/result" },
+          })
+        return new Response(label + " synthetic result", {
+          headers: { "cache-control": "public, max-age=300" },
+        })
+      },
+    },
+  })
+  try {
+    const allowed = { operation: "fetch", input: endpoint + "/redirect" }
+    const first = await host.invoke(scoped("first"), allowed)
+    assert.deepEqual(first, {
+      body: "first synthetic result",
+      inactiveTransports: ["undefined", "undefined", "undefined"],
+    })
+    assert.deepEqual(requests, ["first/redirect", "first/result"])
+    const firstWindow = BrowserWindow.getAllWindows()[0]?.id
+    const second = await host.invoke(scoped("second"), {
+      operation: "fetch",
+      input: redirectedEndpoint + "/result",
+    })
+    assert.deepEqual(second, {
+      body: "second synthetic result",
+      inactiveTransports: ["undefined", "undefined", "undefined"],
+    })
+    assert.equal(BrowserWindow.getAllWindows()[0]?.id, firstWindow)
+    const denied = await host.invoke(scoped("second"), {
+      operation: "fetch",
+      input: "https://127.0.0.1:1/result",
+    })
+    assert.deepEqual(denied, {
+      body: null,
+      inactiveTransports: ["undefined", "undefined", "undefined"],
+    })
+    assert.deepEqual(requests, ["first/redirect", "first/result", "second/result"])
+    await host.invoke(scoped("second"), { operation: "after", input: endpoint + "/late" })
+    await wait(100)
+    assert.deepEqual(requests, ["first/redirect", "first/result", "second/result"])
+    await host.invoke(scoped("other", "fixture-other-route"), {
+      operation: "fetch",
+      input: endpoint + "/result",
+    })
+    assert.equal(BrowserWindow.getAllWindows().length, 2)
+    console.log("PASS 插件 Worker 的 HTTPS 由当次授权转发，不同出口保持隔离")
   } finally {
     await host.dispose()
   }

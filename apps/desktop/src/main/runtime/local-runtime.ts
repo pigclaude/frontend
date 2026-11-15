@@ -3,6 +3,8 @@
 
 import { keepsMembershipRuntime, type MembershipView } from "@pigclaude/contracts/membership"
 import type { LocalStore } from "@pigclaude/local-store"
+import { createPluginSandboxNetwork, type PluginNetworkAccess } from "../plugins/plugin-network"
+import { PluginSandboxError, type PluginSandboxNetwork } from "../plugins/plugin-sandbox-contract"
 import { DaemonSessions, LocalDaemon, type DaemonSessionLookup } from "@pigclaude/daemon"
 import type { AccountChooser, ChosenAccount } from "./account-chooser"
 import { BrowserProfileUsage } from "../claude/browser-profile-usage"
@@ -194,6 +196,25 @@ export class LocalRuntime {
    */
   openSession(input: SessionRuntimeLeaseInput): SessionRuntimeLease {
     return this.#sessions.open(input)
+  }
+
+  /** 为工具调用或会话外操作建立不含凭据的插件网络授权。 */
+  pluginNetwork(
+    sessionId: string | null,
+    access: PluginNetworkAccess,
+  ): Promise<PluginSandboxNetwork> {
+    const checkMembership = () => {
+      if (this.#disposed || this.#membership.view().state !== "active")
+        throw new PluginSandboxError("PLUGIN_EGRESS_UNAVAILABLE")
+    }
+    return createPluginSandboxNetwork(access, async () => {
+      checkMembership()
+      if (sessionId === null) return null
+      const proxy = await this.#sessions.currentProxyUrl(sessionId)
+      checkMembership()
+      if (proxy === undefined) throw new PluginSandboxError("PLUGIN_EGRESS_UNAVAILABLE")
+      return proxy
+    })
   }
 
   async #runStart(lifecycle: Lifecycle): Promise<void> {

@@ -48,7 +48,7 @@ export async function scanProjectConfiguration(
 
   const scope = { root, personalDirectory }
   const cwdDisplay = (file: string) => relative(workspace, file).split(sep).join("/")
-  const read = (file: string) => readOptional(file, cwdDisplay(file), scope)
+  const read = (file: string) => readProjectConfigurationFile(file, cwdDisplay(file), scope)
   const commands = await scanProjectCommands(workspace)
   const settings = await filesOf(
     directories.flatMap((directory) => [
@@ -93,7 +93,8 @@ async function filesOf(
   return (await Promise.all(paths.map(read))).filter((file) => file !== null)
 }
 
-async function readOptional(
+/** 读取范围内现存的普通配置文件，拒绝不匹配的文件身份并限制字节数。 */
+export async function readProjectConfigurationFile(
   path: string,
   display: string,
   scope: ReportScope,

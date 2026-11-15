@@ -1,9 +1,9 @@
 // 在可信项目的原生配置之上固定 PigClaude 的会话转发和认证设置。
 
-import { readFile, stat } from "node:fs/promises"
 import { join } from "node:path"
 import JSON5 from "json5"
 import type { Options } from "@anthropic-ai/claude-agent-sdk"
+import { readProjectConfigurationFile } from "./project-configuration-scan"
 import {
   canonicalProjectPath,
   containsProjectPath,
@@ -65,9 +65,13 @@ export async function inspectTrustedSettings(
     for (const file of ["settings.json", "settings.local.json"]) {
       const resolved = await inProject(join(directory, ".claude", file))
       if (resolved === null) continue
-      const info = await stat(resolved)
-      if (!info.isFile() || info.size > 512 * 1024) throw new Error("项目设置文件不可读")
-      const settings = await readSettings(resolved)
+      const source = await readProjectConfigurationFile(resolved, file, {
+        root,
+        personalDirectory: scope.personalDirectory,
+      })
+      if (source === null) continue
+      if (source.text === null) throw new Error("项目设置文件不可读")
+      const settings = readSettings(source.text)
       if (settings === null) continue
       if (record(settings.env)) for (const key of Object.keys(settings.env)) envNames.add(key)
       if (record(settings.enabledPlugins))
@@ -115,8 +119,7 @@ export function trustedCredentialEnvironment(
   )
 }
 
-async function readSettings(path: string): Promise<Record<string, unknown> | null> {
-  const text = await readFile(path, "utf8")
+function readSettings(text: string): Record<string, unknown> | null {
   try {
     const value: unknown = JSON5.parse(text)
     return record(value) ? value : null

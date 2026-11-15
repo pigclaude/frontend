@@ -25,7 +25,7 @@ export type SessionProjectConfiguration = {
   dispose(): Promise<void>
 }
 
-/** 在应用临时目录生成项目扩展的安全副本；用户个人配置与项目设置文件不会进入该目录。 */
+/** 为未信任项目生成临时扩展副本；已信任时验证并使用实际项目配置目录。 */
 export async function prepareProjectConfiguration(
   workspace: string,
   temporaryDirectory: string,

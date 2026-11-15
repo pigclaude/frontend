@@ -206,7 +206,7 @@ export class ClaudeAgentAdapter {
     await query.setModel(model)
   }
 
-  /** 等 CLI 确认更新当前会话的思考深度与快速模式；query 不可用时抛错。 */
+  /** 等 CLI 确认更新当前会话的设置，同时保持已固定的转发凭据。 */
   async applyFlagSettings(settings: SessionFlagSettings): Promise<void> {
     await this.#requireQuery().applyFlagSettings(
       this.#credentialEnv === undefined ? settings : { ...settings, env: this.#credentialEnv },

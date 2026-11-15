@@ -24,7 +24,7 @@ export type ClaudeAgentStartOptions = {
   persistence?: ClaudePersistenceOptions
   /** 会话专用的宿主工具，未配置时沿用 SDK 自带工具。 */
   mcpServers?: Options["mcpServers"]
-  /** 指向本次启动生成的净化根；未配置时不加载项目扩展。 */
+  /** 当前会话使用净化根或已经确认信任的项目目录，按启动时的信任状态固定。 */
   projectConfiguration?: SessionProjectConfiguration
 }
 

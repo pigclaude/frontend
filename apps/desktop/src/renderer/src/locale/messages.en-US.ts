@@ -13,6 +13,7 @@ import { workbenchEnUS } from "./workbench.messages"
 import { capabilityPluginSettingsEnUS } from "./capability-plugin-settings.messages"
 import { scheduledTasksEnUS } from "./scheduled-tasks.messages"
 import { capabilityPluginToolsEnUS } from "./capability-plugin-tools.messages"
+import { pluginSettingsEnUS } from "./plugin-settings.messages"
 
 /** 英文主词典。 */
 export const enUS = {
@@ -34,4 +35,5 @@ export const enUS = {
   ...scheduledTasksEnUS,
   ...capabilityPluginToolsEnUS,
   ...capabilityPluginSettingsEnUS,
+  ...pluginSettingsEnUS,
 } satisfies Record<keyof typeof zhCN, string>

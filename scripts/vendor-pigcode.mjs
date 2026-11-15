@@ -11,6 +11,7 @@ import {
   projectUiContracts,
 } from "./pigcode-ui-contracts.mjs"
 import { vendoredPackages } from "./pigcode-package-map.mjs"
+import { projectPluginManagerSlots } from "./pigcode-plugin-manager.mjs"
 
 const frontend = join(import.meta.dirname, "..")
 const lockFile = join(frontend, "pigcode-source.json")
@@ -46,6 +47,14 @@ const partialPackages = {
     "src/sensitive-text.tsx",
     "src/vite-env.d.ts",
   ],
+  // 安装表单已在 ui-primitives，仅同步列表、详情及其摘要和类型声明。
+  "ui-plugin-manager": [
+    "src/global.d.ts",
+    "src/plugin-details.tsx",
+    "src/plugin-list.tsx",
+    "src/plugin-summary.ts",
+    "src/vite-env.d.ts",
+  ],
 }
 
 /** 部分拷入的包需要的入口：只导出实际拷入的模块。 */
@@ -59,6 +68,11 @@ export { DEFAULT_RULE, formatRule } from "./schedule-format"
 export { ScheduleHistory, type ScheduleRunsPage } from "./schedule-history"
 export { ScheduleRuleField, type RuleValue } from "./schedule-rule-field"
 export { MinutePill, Preview, TimePills, TimeZone } from "./schedule-rule-parts"
+`,
+  "ui-plugin-manager": `/** 已安装插件的列表、详情与展示数据。 */
+export { PluginDetailsDialog } from "./plugin-details"
+export { PluginList } from "./plugin-list"
+export type { PluginSummary } from "./plugin-summary"
 `,
 }
 
@@ -213,6 +227,7 @@ async function vendor(repo, commit) {
       if (test) output = projectScheduleTest(output, rest, test.suite, test.helpers)
       if (path === "packages/ui-shell/src/workspace-sidebar.tsx")
         output = addThreadLabelSlot(output)
+      if (item.source === "ui-plugin-manager") output = projectPluginManagerSlots(output, rest)
       if (rest === "package.json") output = rewriteManifest(output, item)
       if (rest === "tsconfig.json") output = rewriteTsconfig(output)
       // 改名后部分行超出 100 列：按本仓库 Prettier 配置重排，守卫记录的是重排后的内容。
@@ -243,7 +258,7 @@ async function vendor(repo, commit) {
   const lock = {
     repository: "pigcode/pigcode",
     commit: resolved,
-    rule: '@pigcode/contracts → @pigclaude/ui-contracts，选取声明和纯函数；定时规则测试选取已拷入功能的测试组；工作区侧栏增加通用会话角标槽；其余 @pigcode/<package> → @pigclaude/<package>；"pigcode.<key>" 存储键 → "pigclaude.<key>"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排',
+    rule: '@pigcode/contracts → @pigclaude/ui-contracts，选取声明和纯函数；定时规则测试选取已拷入功能的测试组；工作区侧栏增加通用会话角标槽；插件列表和详情增加启停可用性、卸载选项插槽；其余 @pigcode/<package> → @pigclaude/<package>；"pigcode.<key>" 存储键 → "pigclaude.<key>"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排',
     files,
   }
   await writeFile(lockFile, `${JSON.stringify(lock, null, 2)}\n`)

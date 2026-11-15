@@ -15,6 +15,7 @@
     "ui-primitives",
     "ui-shell",
     "ui-settings",
+    "ui-plugin-manager",
     "ui-composer",
     "ui-chat",
     "client-runtime",

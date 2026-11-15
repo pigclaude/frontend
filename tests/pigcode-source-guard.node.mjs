@@ -63,6 +63,33 @@ test("原样拷入的 Pigcode 代码通过", async () => {
   assert.equal(result.status, 0, result.stderr)
 })
 
+test("插件管理只拷入已安装组件，安装表单仍来自基础组件包", async () => {
+  const prefix = "packages/ui-plugin-manager/"
+  const sources = lock.files
+    .filter((file) => file.path.startsWith(prefix) && file.source)
+    .map((file) => file.source.slice(prefix.length))
+    .sort()
+  assert.deepEqual(sources, [
+    "package.json",
+    "src/global.d.ts",
+    "src/plugin-details.tsx",
+    "src/plugin-list.tsx",
+    "src/plugin-summary.ts",
+    "src/vite-env.d.ts",
+    "tsconfig.json",
+  ])
+  assert.ok(
+    lock.files.some(
+      (file) => file.source === "packages/ui-primitives/src/components/install-dialog.tsx",
+    ),
+  )
+  const result = await run((root) =>
+    appendFile(join(root, prefix, "src/plugin-list.tsx"), "\n// 本地改动\n"),
+  )
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /ui-plugin-manager\/src\/plugin-list\.tsx: content differs/)
+})
+
 test("直接修改拷入文件失败", async () => {
   assert.ok(sample)
   const result = await run((root) => appendFile(join(root, sample.path), "\n/* 本地改动 */\n"))

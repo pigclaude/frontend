@@ -6,6 +6,11 @@ export const vendoredPackages = [
   { source: "ui-primitives", target: "ui-primitives", name: "@pigclaude/ui-primitives" },
   { source: "ui-shell", target: "ui-shell", name: "@pigclaude/ui-shell" },
   { source: "ui-settings", target: "ui-settings", name: "@pigclaude/ui-settings" },
+  {
+    source: "ui-plugin-manager",
+    target: "ui-plugin-manager",
+    name: "@pigclaude/ui-plugin-manager",
+  },
   { source: "ui-composer", target: "ui-composer", name: "@pigclaude/ui-composer" },
   { source: "ui-chat", target: "ui-chat", name: "@pigclaude/ui-chat" },
   { source: "client-runtime", target: "client-runtime", name: "@pigclaude/client-runtime" },

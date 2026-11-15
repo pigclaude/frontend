@@ -29,6 +29,7 @@
     "@pigclaude/ui-contracts": "workspace:*",
     "@pigclaude/ui-chat": "workspace:*",
     "@pigclaude/ui-composer": "workspace:*",
+    "@pigclaude/ui-plugin-manager": "workspace:*",
     "@pigclaude/ui-primitives": "workspace:*",
     "@pigclaude/ui-settings": "workspace:*",
     "@pigclaude/ui-shell": "workspace:*",

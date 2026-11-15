@@ -19,6 +19,7 @@ import { SettingsScreen } from "./settings/settings-sections"
 import { UsageScreen } from "./usage-screen"
 import { ArchivedSessions } from "./settings/archived-sessions"
 import { ScheduledTasksSettings } from "./settings/scheduled-tasks-settings"
+import { PluginSettings } from "./settings/plugin-settings"
 
 type Props = {
   page: string
@@ -58,6 +59,13 @@ export function MainWindowSettings({
   onNavigate,
   onLogout,
 }: Props) {
+  if (page === "plugins")
+    return (
+      <PluginSettings
+        bridge={window.pigclaude?.capabilityPlugins}
+        membershipActive={membership.state === "active"}
+      />
+    )
   if (page === "scheduled-tasks")
     return (
       <ScheduledTasksSettings

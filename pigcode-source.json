@@ -1,7 +1,7 @@
 {
   "repository": "pigcode/pigcode",
   "commit": "ebeccf382df85ca2a2c594f56c1bb1edd641c447",
-  "rule": "@pigcode/contracts → @pigclaude/ui-contracts，选取声明和纯函数；定时规则测试选取已拷入功能的测试组；工作区侧栏增加通用会话角标槽；其余 @pigcode/<package> → @pigclaude/<package>；\"pigcode.<key>\" 存储键 → \"pigclaude.<key>\"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
+  "rule": "@pigcode/contracts → @pigclaude/ui-contracts，选取声明和纯函数；定时规则测试选取已拷入功能的测试组；工作区侧栏增加通用会话角标槽；插件列表和详情增加启停可用性、卸载选项插槽；其余 @pigcode/<package> → @pigclaude/<package>；\"pigcode.<key>\" 存储键 → \"pigclaude.<key>\"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排",
   "files": [
     {
       "path": "packages/ui-contracts/src/index.ts",
@@ -1338,6 +1338,54 @@
     {
       "path": "packages/ui-settings/tsconfig.json",
       "source": "packages/ui-settings/tsconfig.json",
+      "sourceSha256": "6c488d95d23760b5d5a1e518c11e0f35785867d99bf493d39dbebc9d9144365a",
+      "sha256": "52cb9243947646017a3f3fc80d094d8ce477a43b440285559677152e692a0bd2"
+    },
+    {
+      "path": "packages/ui-plugin-manager/src/index.ts",
+      "source": null,
+      "sourceSha256": null,
+      "sha256": "01ae886c8a3b78ceb74fe845a94435f22d824a7bf627c871c6ae1c73402aa898"
+    },
+    {
+      "path": "packages/ui-plugin-manager/package.json",
+      "source": "packages/ui-plugin-manager/package.json",
+      "sourceSha256": "60a875bf87a146a33d4b26f36045143e4a564164238fc043709d61cc59a92bb6",
+      "sha256": "f8e37f40f4c1d6754cd7138b7567bae3de83e9c2b4814c69ae61878a7b654124"
+    },
+    {
+      "path": "packages/ui-plugin-manager/src/global.d.ts",
+      "source": "packages/ui-plugin-manager/src/global.d.ts",
+      "sourceSha256": "6c7b6ec036e69cb4fdcfa67a1ee8f851f7a18c3abc44e1fd7f5368f8b01c467a",
+      "sha256": "6c7b6ec036e69cb4fdcfa67a1ee8f851f7a18c3abc44e1fd7f5368f8b01c467a"
+    },
+    {
+      "path": "packages/ui-plugin-manager/src/plugin-details.tsx",
+      "source": "packages/ui-plugin-manager/src/plugin-details.tsx",
+      "sourceSha256": "f17dff45784fc62f06dbfb8c4d2647ec905792c62da0d4f8cba26f60a6bc44d5",
+      "sha256": "9d750ac0c221edc4b162a4b9752be25db6e578b1ff1e94c2069d5c33ffc60c30"
+    },
+    {
+      "path": "packages/ui-plugin-manager/src/plugin-list.tsx",
+      "source": "packages/ui-plugin-manager/src/plugin-list.tsx",
+      "sourceSha256": "fa267562ec6b1698185300b97804017fe619c84ff86286fe240dae53d9285e70",
+      "sha256": "db5e14d29ba06bad04d594eef1cb5ada10d79152cce9533fa4894df092ec8933"
+    },
+    {
+      "path": "packages/ui-plugin-manager/src/plugin-summary.ts",
+      "source": "packages/ui-plugin-manager/src/plugin-summary.ts",
+      "sourceSha256": "b391b205e747c85f26a89179b974699fc1a42ebe3ca9ee61b0a0185e65f4bbe1",
+      "sha256": "5a5d0e7b20e6b07e08bf02f3518b5cb20f73d82603a4b8ef7628469c5553e4f3"
+    },
+    {
+      "path": "packages/ui-plugin-manager/src/vite-env.d.ts",
+      "source": "packages/ui-plugin-manager/src/vite-env.d.ts",
+      "sourceSha256": "fa26eaa7984b88ad69aaa5ca09e8485ab3d66616a054f48eace177ef831c606a",
+      "sha256": "fa26eaa7984b88ad69aaa5ca09e8485ab3d66616a054f48eace177ef831c606a"
+    },
+    {
+      "path": "packages/ui-plugin-manager/tsconfig.json",
+      "source": "packages/ui-plugin-manager/tsconfig.json",
       "sourceSha256": "6c488d95d23760b5d5a1e518c11e0f35785867d99bf493d39dbebc9d9144365a",
       "sha256": "52cb9243947646017a3f3fc80d094d8ce477a43b440285559677152e692a0bd2"
     },

@@ -1,6 +1,7 @@
 // 负责给每个页面在浅色、深色、有无玻璃效果下截图，并与基线逐像素比较。
 import { expect, test, type Page } from "@playwright/test"
 import { allScreens } from "../src/renderer/src/models/dev-view"
+import { installPluginSettingsPreview } from "./plugin-settings-fixture"
 import { installScheduledTasksPreview } from "./scheduled-tasks-fixture"
 
 const options = { threshold: 0.1, maxDiffPixels: 0, animations: "disabled" } as const
@@ -55,6 +56,7 @@ for (const screen of allScreens.filter((name) => !skipped.has(name))) {
     for (const glass of [0, 1] as const) {
       test(`${screen} ${theme} glass=${glass}`, async ({ page }) => {
         await freezeClock(page)
+        if (screen === "plugins") await installPluginSettingsPreview(page)
         if (screen === "scheduled-tasks") await installScheduledTasksPreview(page)
         if (screen === "general") {
           await page.addInitScript(() => {
@@ -72,6 +74,9 @@ for (const screen of allScreens.filter((name) => !skipped.has(name))) {
           })
         }
         await page.goto(`/?screen=${screen}&theme=${theme}&glass=${glass}`)
+        if (screen === "plugins") {
+          await expect(page.getByRole("button", { name: "文档索引 的详情" })).toBeVisible()
+        }
         if (screen === "scheduled-tasks") {
           await expect(page.getByRole("article").filter({ hasText: "检查主分支" })).toBeVisible()
         }

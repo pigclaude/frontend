@@ -1,0 +1,41 @@
+/* 插件页披露对话框和卸载选项沿用现有详情的布局与颜色。 */
+.dialog.plugin-disclosure,
+.dialog.plugin-settings-dialog {
+  width: min(520px, calc(100vw - 48px));
+}
+
+/* 降低动态效果时仍使用固定定位所需的居中变换。 */
+[data-motion="reduce"]
+  .dialog:is(.plugin-disclosure, .plugin-dialog, .plugin-settings-dialog, .install-dialog) {
+  transform: translate(-50%, -50%);
+}
+
+.plugin-settings-dialog .dialog-body {
+  padding-bottom: var(--space-8);
+}
+
+.plugin-disclosure-tools {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.plugin-disclosure-tools li {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.plugin-disclosure-tools span {
+  color: var(--muted);
+}
+
+.plugin-uninstall-options {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.plugin-uninstall-options label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--fs-sm);
+}

@@ -13,6 +13,7 @@ export type SettingsPageId =
   | "appearance"
   | "session"
   | "scheduled-tasks"
+  | "plugins"
   | "menubar"
   | "network"
   | "data"
@@ -108,6 +109,12 @@ export const settingsNav: SettingsNavGroup[] = [
         icon: "calendar",
         label: "定时任务",
         keywords: ["计划", "提示词", "重复", "立即运行", "运行记录"],
+      },
+      {
+        page: "plugins",
+        icon: "cube",
+        label: "插件",
+        keywords: ["能力插件", "安装", "权限", "启用", "停用", "卸载"],
       },
       {
         page: "menubar",

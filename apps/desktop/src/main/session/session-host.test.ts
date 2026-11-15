@@ -1,6 +1,6 @@
 // 负责验证 SessionHost 的启动前置条件、单活动会话、事件转发、用量记录、模型查询和停止清理。
 
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises"
+import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
@@ -126,9 +126,10 @@ describe("SessionHost start", () => {
     })
 
     expect(result.sessionId).toBe("id-1")
+    const workspace = await realpath(harness.workspace)
     expect(harness.environments.inputs[0]).toMatchObject({
       sessionId: "id-1",
-      workspace: harness.workspace,
+      workspace,
       daemonBaseUrl: "http://127.0.0.1:47821",
       sessionToken: harness.runtime.sessionToken,
       timezone: "America/Los_Angeles",
@@ -136,7 +137,7 @@ describe("SessionHost start", () => {
       binaryPath: "/fake/claude",
     })
     expect(harness.adapters.last.startCalls[0]).toMatchObject({
-      workspace: harness.workspace,
+      workspace,
       permissionMode: "default",
       model: "claude-opus-4",
       thinking: "high",

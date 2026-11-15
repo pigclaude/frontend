@@ -3,7 +3,7 @@
 import { join } from "node:path"
 import JSON5 from "json5"
 import type { Options } from "@anthropic-ai/claude-agent-sdk"
-import { readProjectConfigurationFile } from "./project-configuration-scan"
+import { readProjectConfigurationFile } from "./project-configuration-file"
 import {
   canonicalProjectPath,
   containsProjectPath,

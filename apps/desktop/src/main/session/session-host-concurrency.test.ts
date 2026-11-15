@@ -1,7 +1,7 @@
 // 验证会话宿主的进程上限：满了先停放最久没用的空闲会话，没有空闲的就排队，有空位后按先来先启动；
 // 排队排满时报并发已满；排队的会话可以取消。
 
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, realpath, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -121,9 +121,10 @@ describe("SessionHost concurrency limit", () => {
     harness.adapters.instances[0]?.emit(resultEvent())
 
     const { sessionId } = await queued
+    const workspace = await realpath(harness.workspace)
     expect(checkpoints).toEqual([
-      [harness.workspace, "baseline", "id-2"],
-      [harness.workspace, "final", "id-2"],
+      [workspace, "baseline", "id-2"],
+      [workspace, "final", "id-2"],
     ])
     expect(statuses(harness)).toEqual({ [busy]: "parked", [sessionId]: "idle" })
     expect(harness.host.list().find((summary) => summary.sessionId === busy)?.lastTurn).toBe(

@@ -1,19 +1,19 @@
 // 按会话的项目范围读取配置，用脱敏报告和本机指纹支持确认，不执行任何项目代码。
 import { createHash } from "node:crypto"
-import { lstat, open, readdir, realpath, stat } from "node:fs/promises"
+import { readdir, realpath, stat } from "node:fs/promises"
 import { join, relative, sep } from "node:path"
 import type { ProjectConfigurationReport } from "../../project-configuration-contract"
+import {
+  readProjectConfigurationFile,
+  scopedProjectPath,
+  type ProjectConfigurationFileScope,
+} from "./project-configuration-file"
 import { scanProjectCommands } from "./project-command-catalog"
 import { describeProjectConfiguration, type ReportFile } from "./project-configuration-report"
 import {
-  canonicalProjectPath,
-  containsProjectPath,
   isMissingProjectPath,
   resolveProjectConfigurationScope,
 } from "./project-configuration-scope"
-
-const maxReportFileBytes = 512 * 1024
-type ReportScope = { root: string; personalDirectory: string }
 
 /** 指纹只在主进程比较两次读取，原始设置和环境变量的值不会离开主进程。 */
 export type ProjectConfigurationScan = { report: ProjectConfigurationReport; fingerprint: string }
@@ -93,60 +93,16 @@ async function filesOf(
   return (await Promise.all(paths.map(read))).filter((file) => file !== null)
 }
 
-/** 读取范围内现存的普通配置文件，拒绝不匹配的文件身份并限制字节数。 */
-export async function readProjectConfigurationFile(
-  path: string,
-  display: string,
-  scope: ReportScope,
-): Promise<ReportFile | null> {
-  try {
-    await lstat(path)
-  } catch (error) {
-    return isMissingProjectPath(error) ? null : { path: display, text: null }
-  }
-  try {
-    const canonical = await scopedPath(path, scope)
-    if (canonical === null) return { path: display, text: null }
-    const expected = await stat(canonical)
-    if (!expected.isFile() || expected.size > maxReportFileBytes)
-      return { path: display, text: null }
-    const file = await open(canonical, "r")
-    try {
-      const info = await file.stat()
-      if (
-        !info.isFile() ||
-        info.size > maxReportFileBytes ||
-        info.ino !== expected.ino ||
-        info.dev !== expected.dev
-      ) {
-        return { path: display, text: null }
-      }
-      const buffer = Buffer.alloc(info.size + 1)
-      let length = 0
-      while (length < buffer.length) {
-        const { bytesRead } = await file.read(buffer, length, buffer.length - length, length)
-        if (bytesRead === 0) break
-        length += bytesRead
-      }
-      return {
-        path: display,
-        text: length === buffer.length ? null : buffer.toString("utf8", 0, length),
-      }
-    } finally {
-      await file.close()
-    }
-  } catch {
-    return { path: display, text: null }
-  }
-}
-
-async function instructionPaths(directories: string[], scope: ReportScope): Promise<string[]> {
+async function instructionPaths(
+  directories: string[],
+  scope: ProjectConfigurationFileScope,
+): Promise<string[]> {
   const paths: string[] = []
   for (const directory of directories) {
     for (const base of [directory, join(directory, ".claude")]) {
       for (const name of ["CLAUDE.md", "AGENTS.md"]) {
         const path = join(base, name)
-        const canonical = await scopedPath(path, scope)
+        const canonical = await scopedProjectPath(path, scope)
         if (canonical && (await stat(canonical)).isFile()) {
           paths.push(path)
           break
@@ -157,16 +113,19 @@ async function instructionPaths(directories: string[], scope: ReportScope): Prom
   return paths
 }
 
-async function countAgents(directories: readonly string[], scope: ReportScope): Promise<number> {
+async function countAgents(
+  directories: readonly string[],
+  scope: ProjectConfigurationFileScope,
+): Promise<number> {
   const agents = new Set<string>()
   async function scan(path: string, names: string[], parents: ReadonlySet<string>): Promise<void> {
-    const canonical = await scopedPath(path, scope)
+    const canonical = await scopedProjectPath(path, scope)
     if (canonical === null || parents.has(canonical)) return
     try {
       const nested = new Set([...parents, canonical])
       for (const entry of await readdir(canonical)) {
         if (entry === ".git" || entry === "node_modules") continue
-        const file = await scopedPath(join(canonical, entry), scope)
+        const file = await scopedProjectPath(join(canonical, entry), scope)
         if (file === null) continue
         const info = await stat(file)
         if (info.isDirectory()) await scan(file, [...names, entry], nested)
@@ -179,17 +138,4 @@ async function countAgents(directories: readonly string[], scope: ReportScope): 
   for (const directory of directories)
     await scan(join(directory, ".claude", "agents"), [], new Set())
   return agents.size
-}
-
-async function scopedPath(
-  path: string,
-  { root, personalDirectory }: ReportScope,
-): Promise<string | null> {
-  const canonical = await canonicalProjectPath(path)
-  return canonical &&
-    canonical !== root &&
-    containsProjectPath(root, canonical) &&
-    !containsProjectPath(personalDirectory, canonical)
-    ? canonical
-    : null
 }

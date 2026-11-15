@@ -15,11 +15,13 @@ import {
   pluginSandboxPayloadLimit,
   PluginSandboxError,
   type PluginSandboxCall,
+  type PluginSandboxCapabilityScope,
   type PluginSandboxErrorCode,
   type PluginSandboxJson,
   type PluginSandboxNetwork,
 } from "./plugin-sandbox-contract"
 import { respondToPluginHttps } from "./plugin-network-response"
+import { PluginSandboxCapabilityPort } from "./plugin-sandbox-capability-port"
 import type { PluginSandboxContext, PluginSandboxLaunch } from "./plugin-sandbox-host"
 import {
   PluginSandboxPartitions,
@@ -182,7 +184,9 @@ async function clearSession(profile: Session): Promise<void> {
 type PendingCall = {
   id: string
   complete: (result: PluginSandboxJson | PluginSandboxError) => void
-  network?: { policy: PluginSandboxNetwork; abort: AbortController }
+  signal: AbortSignal
+  network?: PluginSandboxNetwork
+  capabilities?: PluginSandboxCapabilityPort
 }
 
 class WindowContext implements PluginSandboxContext {
@@ -250,14 +254,14 @@ class WindowContext implements PluginSandboxContext {
     timeout: number,
     signal: AbortSignal,
     network?: PluginSandboxNetwork,
+    capabilities?: PluginSandboxCapabilityScope,
   ): Promise<PluginSandboxJson> {
     if (signal.aborted) throw new PluginSandboxError("PLUGIN_CANCELLED")
     if (!this.#ready || this.#closed || this.#call)
       throw new PluginSandboxError("PLUGIN_SANDBOX_CRASHED")
     const payload = encodeCall(call)
     const id = randomUUID()
-    const networkScope =
-      network === undefined ? undefined : { policy: network, abort: new AbortController() }
+    const scope = new AbortController()
     return new Promise((resolve, reject) => {
       const timer = setTimeout(
         () => finish(new PluginSandboxError("PLUGIN_TIMEOUT")),
@@ -274,7 +278,7 @@ class WindowContext implements PluginSandboxContext {
       const finish = (result: PluginSandboxJson | PluginSandboxError): void => {
         if (this.#call?.id !== id) return
         this.#call = null
-        networkScope?.abort.abort()
+        scope.abort()
         clearTimeout(timer)
         signal.removeEventListener("abort", cancel)
         if (result instanceof PluginSandboxError) {
@@ -286,11 +290,26 @@ class WindowContext implements PluginSandboxContext {
       this.#call = {
         id,
         complete: finish,
-        ...(networkScope === undefined ? {} : { network: networkScope }),
+        signal: scope.signal,
+        ...(network === undefined ? {} : { network }),
+        ...(capabilities === undefined
+          ? {}
+          : {
+              capabilities: new PluginSandboxCapabilityPort(capabilities, scope.signal, (reply) =>
+                this.port.postMessage({ ...reply, id }),
+              ),
+            }),
       }
       signal.addEventListener("abort", cancel, { once: true })
       try {
-        this.port.postMessage({ type: "invoke", id, operation: call.operation, payload, timeout })
+        this.port.postMessage({
+          type: "invoke",
+          id,
+          operation: call.operation,
+          payload,
+          timeout,
+          ...(capabilities === undefined ? {} : { capabilities: capabilities.methods }),
+        })
       } catch {
         finish(new PluginSandboxError("PLUGIN_SANDBOX_CRASHED"))
       }
@@ -298,14 +317,14 @@ class WindowContext implements PluginSandboxContext {
   }
 
   permitsNetwork(url: string): boolean {
-    return !this.#closed && this.#call?.network?.policy.permits(url) === true
+    return !this.#closed && this.#call?.network?.permits(url) === true
   }
 
   forwardNetwork(request: Request, origin: string): Response | Promise<Response> {
-    const network = this.#call?.network
-    return this.#closed || network === undefined
+    const call = this.#call
+    return this.#closed || call?.network === undefined
       ? Response.error()
-      : respondToPluginHttps(request, network.policy, network.abort.signal, origin)
+      : respondToPluginHttps(request, call.network, call.signal, origin)
   }
 
   close(): Promise<void> {
@@ -338,6 +357,9 @@ class WindowContext implements PluginSandboxContext {
             ? data.code
             : "PLUGIN_SANDBOX_CRASHED",
         )
+        return
+      case "capability":
+        if (this.#call && data.id === this.#call.id) this.#call.capabilities?.receive(data)
         return
       case "result":
         if (this.#call && data.id === this.#call.id) this.#call.complete(decodeResult(data.payload))

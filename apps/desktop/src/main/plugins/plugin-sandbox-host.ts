@@ -4,6 +4,7 @@ import {
   PluginSandboxError,
   type PluginSandboxCall,
   type PluginSandboxCallOptions,
+  type PluginSandboxCapabilityScope,
   type PluginSandboxJson,
   type PluginSandboxNetwork,
   type PluginSandboxSource,
@@ -16,6 +17,7 @@ export type PluginSandboxContext = {
     timeoutMs: number,
     signal: AbortSignal,
     network?: PluginSandboxNetwork,
+    capabilities?: PluginSandboxCapabilityScope,
   ): Promise<PluginSandboxJson>
   close(): Promise<void>
 }
@@ -83,7 +85,7 @@ export class PluginSandboxHost {
     clearTimeout(entry.idle)
     entry.users += 1
     const work = entry.queue
-      .then(() => this.#call(entry, source, call, timeout, signal))
+      .then(() => this.#call(entry, source, call, timeout, signal, options.capabilities))
       .finally(() => {
         entry.users -= 1
         if (entry.users === 0 && this.#entries.get(key) === entry && !this.#shutdown.signal.aborted)
@@ -150,12 +152,13 @@ export class PluginSandboxHost {
     call: PluginSandboxCall,
     timeout: number,
     signal: AbortSignal,
+    capabilities?: PluginSandboxCapabilityScope,
   ): Promise<PluginSandboxJson> {
     if (signal.aborted) throw new PluginSandboxError("PLUGIN_CANCELLED")
     if (Date.now() < entry.retryAt) throw new PluginSandboxError("PLUGIN_SANDBOX_BACKOFF")
     try {
       const context = entry.context ?? (await this.#open(entry, source, signal))
-      const value = await context.invoke(call, timeout, signal, source.network)
+      const value = await context.invoke(call, timeout, signal, source.network, capabilities)
       entry.failures = 0
       return value
     } catch (error) {

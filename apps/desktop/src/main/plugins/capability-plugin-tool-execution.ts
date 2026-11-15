@@ -57,6 +57,7 @@ export async function executeCapabilityPluginTool(
       if (!(await deps.manager.canInvoke(manifest.id, revision)))
         throw new PluginSandboxError("PLUGIN_SANDBOX_UNAVAILABLE")
       signal.throwIfAborted()
+      const capabilities = deps.capabilities?.(plugin, input.context.workspace)
       return deps.sandbox.invoke(
         {
           pluginId: manifest.id,
@@ -67,7 +68,11 @@ export async function executeCapabilityPluginTool(
           ...(network === undefined ? {} : { network }),
         },
         { operation, input },
-        { signal, timeoutMs: toolTimeoutMs },
+        {
+          signal,
+          timeoutMs: toolTimeoutMs,
+          ...(capabilities === undefined ? {} : { capabilities }),
+        },
       )
     })
     signal.throwIfAborted()

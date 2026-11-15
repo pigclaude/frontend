@@ -75,6 +75,7 @@ export type ActiveSessionHooks = {
   now: () => number
   usageBaseline?: SessionUsage
   emitPermission: (request: PermissionRequestEvent) => void
+  onPermissionSettled: () => void
   emitQuestion: (event: QuestionRequestEvent | QuestionResolvedEvent) => void
   emitTurn: (event: SessionTurnEvent) => void
   onTurnClosed: (active: ActiveSession, turn: ClosedTurn) => void
@@ -107,6 +108,7 @@ export function createActiveSession(
       ? {}
       : { saveProjectGrants: hooks.saveProjectGrants }),
     emit: (request) => hooks.emitPermission({ ...request }),
+    onSettled: hooks.onPermissionSettled,
     subagentOf: (agentId) => subagents.refOf(agentId),
     onTimeout: timedOut("permission"),
     queue: pending,

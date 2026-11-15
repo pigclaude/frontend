@@ -110,17 +110,3 @@ it("inserts in the current project draft and restores the chip after a failed ba
     }),
   )
 })
-
-it("opens a draft before inserting a sidebar reference when there is no composer", async () => {
-  window.history.replaceState({}, "", "/?screen=tray")
-  const session = await openApp()
-  expect(app.container.querySelector(".tiptap")).toBeNull()
-
-  await referenceFromSidebar()
-
-  expect(app.container.querySelector(".new-thread-view .tiptap .mention-chip")?.textContent).toBe(
-    "@参考会话",
-  )
-  expect(session.start).not.toHaveBeenCalled()
-  expect(session.send).not.toHaveBeenCalled()
-})

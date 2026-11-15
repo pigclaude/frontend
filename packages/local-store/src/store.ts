@@ -32,12 +32,19 @@ export type LocalStoreOptions = { systemLocale?: () => string; systemTimezone?: 
 export class LocalStore {
   readonly #dataDir: string
   readonly #options: LocalStoreOptions
+  readonly #accountListeners = new Set<() => void>()
   #writes: Promise<void> = Promise.resolve()
 
   /** 绑定本机目录和旧自动配置基线，不在构造时访问文件。 */
   constructor(dataDir: string, options: LocalStoreOptions = {}) {
     this.#dataDir = dataDir
     this.#options = options
+  }
+
+  /** 账号成功写入后向本机观察者发送无数据通知；返回取消订阅函数。 */
+  subscribeAccounts(listener: () => void): () => void {
+    this.#accountListeners.add(listener)
+    return () => this.#accountListeners.delete(listener)
   }
 
   /** 返回独立实例；旧账号先完成可重试迁移。 */
@@ -148,6 +155,7 @@ export class LocalStore {
         invalid: stored.invalid,
       })
     })
+    this.#notifyAccounts()
   }
 
   /** 在队列内读取最新账号再更新，删除后不复活，环境字段不写回为账号副本。 */
@@ -169,6 +177,7 @@ export class LocalStore {
         invalid: stored.invalid,
       })
     })
+    if (updated !== null) this.#notifyAccounts()
     return updated
   }
 
@@ -182,6 +191,7 @@ export class LocalStore {
         invalid: stored.invalid,
       })
     })
+    this.#notifyAccounts()
   }
 
   /** 返回账号当前实例的解引用视图，缺实例时明确报错。 */
@@ -284,6 +294,15 @@ export class LocalStore {
   }
   #readProxies() {
     return readStoredList(this.#proxiesPath(), parseProxy)
+  }
+  #notifyAccounts(): void {
+    for (const listener of [...this.#accountListeners]) {
+      try {
+        listener()
+      } catch {
+        // 订阅者失效不改变已经完成的写入。
+      }
+    }
   }
   #enqueue(operation: () => Promise<void>): Promise<void> {
     const run = this.#writes.then(operation, operation)

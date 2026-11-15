@@ -156,62 +156,6 @@ html[data-platform="linux"] .win-top {
   font-size: inherit;
 }
 
-.tray-stage {
-  display: grid;
-  flex: 1;
-  place-items: center;
-  padding: 28px;
-}
-
-.tray {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: min(360px, 100%);
-  padding: 10px;
-  border-radius: var(--r-xl);
-  background: var(--popover);
-  box-shadow: var(--shadow-pop);
-}
-
-.tray-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 2px 4px 4px;
-  font-size: var(--fs-md);
-}
-
-.tray-head b {
-  font-weight: 600;
-}
-
-.app-ic {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  flex: none;
-  border-radius: 6px;
-  background: var(--primary);
-  color: var(--on-primary);
-}
-
-.app-ic .ic {
-  width: 14px;
-  height: 14px;
-}
-
-.tray > .item {
-  border-radius: var(--r-lg);
-  background: var(--panel);
-}
-
-.tray-actions {
-  justify-content: flex-end;
-  padding-top: 2px;
-}
-
 /* ─── 页面标题里的标签行、账号详情页头与返回链接 ─────── */
 .h1-row {
   display: flex;

@@ -67,8 +67,10 @@ describe("settings proxy copy", () => {
         }),
       ),
     )
+    expect(container.textContent).toContain("菜单栏文字")
     expect(container.textContent).toContain("—")
     expect(container.textContent).not.toContain("62%")
+    expect(container.textContent).not.toMatch(/预览托盘|托盘里显示号池/)
   })
 
   it("shows the stored window-close behavior and saves a change through the desktop bridge", async () => {

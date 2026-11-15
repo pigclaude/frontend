@@ -1,5 +1,6 @@
 // 定义会话列表里每个会话的脱敏摘要和状态集合，并从注册表记录生成摘要；preload 和渲染层也引用这里的类型。
 
+import { basename } from "node:path"
 import type { SessionEntry } from "./session-registry"
 import type { SessionIndex } from "./session-index"
 import type { SessionStatusView, SessionTurnEndStatus } from "./session-types"
@@ -35,6 +36,27 @@ export type SessionSummary = {
   model: string | null
   /** 最近一次活动的时间，ISO UTC。 */
   lastActivityAt: string
+}
+
+/** 系统入口展示的运行会话：项目目录名、手动标题和待审批数。 */
+export type LiveSessionPreview = {
+  sessionId: string
+  projectName: string
+  title: string | null
+  pendingApprovals: number
+}
+
+/** 只给系统入口提供公开摘要；自动标题来自第一条提示词。 */
+export function liveSessionPreview(
+  entry: SessionEntry,
+  saved: SessionIndex | null | undefined,
+): LiveSessionPreview {
+  return {
+    sessionId: entry.sessionId,
+    projectName: basename(saved?.projectPath ?? entry.workspace),
+    title: saved?.titleSource === "user" ? saved.title : null,
+    pendingApprovals: entry.session?.status().pendingPermissions ?? 0,
+  }
 }
 
 /** 无需启动 Claude Code 即可列出保存的会话状态。 */

@@ -1,5 +1,5 @@
 // 负责登录后的主窗口：把工作区、当前会话和账号状态接到 Pigcode 外壳，并按当前位置画内容区页面。
-// 聊天、账号、代理、环境、用量和托盘都接真实会话与本地数据；只有浏览器预览会传入演示工作台。
+// 聊天、账号、代理、环境和用量接真实会话与本地数据；只有浏览器预览会传入演示工作台。
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import { OpenInButton, useToast } from "@pigclaude/ui-shell"
@@ -12,7 +12,6 @@ import { ChatScreen } from "./screens/chat-screen"
 import { MainWindowSettings } from "./screens/main-window-settings"
 import type { BrowserProfilesController } from "./hooks/use-browser-profiles"
 import type { AppInfo } from "../../preload/index"
-import { TrayScreen } from "./screens/tray-screen"
 import type { ClaudeAccountsController } from "./hooks/use-claude-accounts"
 import { sessionAccountId, useSession } from "./hooks/use-session"
 import { useSessionHistory } from "./hooks/use-session-history"
@@ -24,6 +23,7 @@ import { useSessionNotices } from "./hooks/use-session-notices"
 import { useWorkspaces } from "./hooks/use-workspaces"
 import { useWorkspaceSelection } from "./hooks/use-workspace-selection"
 import { useWorkspaceShortcuts } from "./hooks/use-workspace-shortcuts"
+import { useWindowNavigation } from "./hooks/use-window-navigation"
 import { fill, useText } from "./locale/text"
 import { composerSessionOptions } from "./models/composer-session-options"
 import { projectNameFromPath, workspaceErrorMessage } from "./models/project-model"
@@ -230,6 +230,19 @@ export function MainWindow({
     openDraft(path)
   }
 
+  function openThread(id: string): void {
+    const path = history.summaryForSession(id)?.workspace ?? history.workspaces.get(id)
+    if (id !== sessionId && !canSelectWorkspace(path ?? null)) return
+    onNavigate({ kind: "session", sessionId: id })
+  }
+
+  useWindowNavigation({
+    membership: membership.state,
+    openSession: openThread,
+    newSession,
+    openAccounts: () => settings("accounts"),
+  })
+
   function openDraft(path: string | null, atProjectRoot = false): string | null {
     const projectId = projectOf(path)
     const directory =
@@ -337,13 +350,7 @@ export function MainWindow({
       {...(bridge
         ? { onBrowseFiles: browseFiles, onToggleWorkbench: toggleRight, canToggleWorkbench: inChat }
         : {})}
-      onOpenThread={(id) => {
-        const path =
-          session.summaries.find((item) => item.sessionId === id)?.workspace ??
-          history.workspaces.get(id)
-        if (path && !canSelectWorkspace(path)) return
-        onNavigate({ kind: "session", sessionId: id })
-      }}
+      onOpenThread={openThread}
       onReferenceThread={composerReferences.reference}
       onAddProject={() => setAddingProject(true)}
       {...(history.enabled
@@ -483,14 +490,6 @@ export function MainWindow({
           root={workbenchRoot}
           open={inChat && terminalOpen}
           onClose={() => setTerminalOpen(false)}
-        />
-      ) : null}
-      {location.kind === "tray" ? (
-        <TrayScreen
-          membership={membership}
-          accounts={pool.accounts}
-          onOpenAccounts={() => settings("accounts")}
-          onOpenSettings={() => settings("general")}
         />
       ) : null}
       {page !== null ? <SettingsContributionView page={page} /> : null}

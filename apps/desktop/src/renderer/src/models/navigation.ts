@@ -1,4 +1,4 @@
-// 负责前进后退的历史：新会话、进行中的会话、设置页、托盘预览与整窗流程都是可以回去的位置。
+// 负责前进后退的历史：新会话、进行中的会话、设置页与整窗流程都是可以回去的位置。
 // 会话按 id、草稿按项目区分，回退时回到原先打开的会话或项目草稿。
 
 /** 在外壳之外整窗渲染的流程。 */
@@ -9,7 +9,6 @@ export type NavLocation =
   | { kind: "draft"; projectId?: string }
   | { kind: "session"; sessionId?: string }
   | { kind: "settings"; page: string }
-  | { kind: "tray" }
   | { kind: "flow"; flow: FlowName }
 
 /** 历史记录与当前所在的下标。 */
@@ -85,7 +84,7 @@ export function goForward(history: NavHistory): NavHistory {
   return canGoForward(history) ? { ...history, index: history.index + 1 } : history
 }
 
-/** 是否在外壳里显示（会话、设置、托盘预览）；整窗流程不在外壳里。 */
+/** 是否在外壳里显示（会话、设置）；整窗流程不在外壳里。 */
 export function inShell(location: NavLocation): boolean {
   return location.kind !== "flow"
 }

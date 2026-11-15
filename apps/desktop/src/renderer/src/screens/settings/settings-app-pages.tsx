@@ -91,7 +91,7 @@ export function SessionSettings({
   )
 }
 
-/** 托盘与菜单栏：菜单栏文字和托盘面板内容。 */
+/** 托盘与菜单栏：原生关窗偏好和未接入额度的菜单栏文字。 */
 export function MenubarSettings() {
   return (
     <SettingPage title={desktopText("settings.settings-app-pages.39")}>
@@ -100,16 +100,6 @@ export function MenubarSettings() {
         <SettingRow
           title={desktopText("settings.settings-app-pages.41")}
           description={desktopText("settings.settings-app-pages.42")}
-          value="—"
-        />
-        <SettingRow
-          title={desktopText("settings.settings-app-pages.43")}
-          description={desktopText("settings.settings-app-pages.44")}
-          value="—"
-        />
-        <SettingRow
-          title={desktopText("settings.settings-app-pages.46")}
-          description={desktopText("settings.settings-app-pages.47")}
           value="—"
         />
       </SettingSection>

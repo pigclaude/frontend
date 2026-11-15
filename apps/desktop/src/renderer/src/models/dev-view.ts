@@ -29,13 +29,7 @@ const settingsPageNames = [
 
 /** 开发期地址里 screen 参数能用的页面名。 */
 export type DevScreen =
-  | "login"
-  | "onboarding"
-  | "authorize"
-  | "chat-new"
-  | "chat"
-  | "tray"
-  | (typeof settingsPageNames)[number]
+  "login" | "onboarding" | "authorize" | "chat-new" | "chat" | (typeof settingsPageNames)[number]
 
 /** 全部页面名；视觉回归按这个顺序截图。 */
 export const allScreens: readonly DevScreen[] = [
@@ -44,7 +38,6 @@ export const allScreens: readonly DevScreen[] = [
   "chat-new",
   "chat",
   ...settingsPageNames,
-  "tray",
   "authorize",
 ]
 
@@ -69,7 +62,6 @@ export function locationOfScreen(name: DevScreen): NavLocation {
   }
   if (name === "chat-new") return { kind: "draft" }
   if (name === "chat") return { kind: "session" }
-  if (name === "tray") return { kind: "tray" }
   return { kind: "settings", page: name }
 }
 
@@ -78,8 +70,7 @@ export function screenOfLocation(location: NavLocation): string {
   if (location.kind === "draft") return "chat-new"
   if (location.kind === "session") return "chat"
   if (location.kind === "settings") return location.page
-  if (location.kind === "flow") return location.flow
-  return "tray"
+  return location.flow
 }
 
 function isDevScreen(name: string): name is DevScreen {

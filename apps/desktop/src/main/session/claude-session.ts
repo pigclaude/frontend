@@ -92,6 +92,7 @@ export class ClaudeSession {
         ? {}
         : { usageBaseline: options.persistence.usageBaseline }),
       emitPermission: (request) => this.#publish(request),
+      onPermissionSettled: () => this.#publish({ type: "sessions-changed" }),
       emitQuestion: (event) => this.#publish(event),
       emitTurn: (event) => this.#publishTurn(event),
       onTurnClosed: (_active, turn) => this.#handleTurnClosed(turn),

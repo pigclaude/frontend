@@ -7,7 +7,13 @@ import type { ClaudeSession } from "./claude-session"
 import type { SessionEnvelope } from "./session-envelope"
 import type { SessionIndex, SessionStoreStatus } from "./session-index"
 import { buildStatusView, noPendingWork, type SessionPendingWork } from "./session-host-support"
-import { summarizeSavedSession, summarizeSession, type SessionSummary } from "./session-summary"
+import {
+  liveSessionPreview,
+  summarizeSavedSession,
+  summarizeSession,
+  type LiveSessionPreview,
+  type SessionSummary,
+} from "./session-summary"
 import type { SessionErrorCode, SessionStatusView, SessionTurnEndStatus } from "./session-types"
 
 /** 一个会话在宿主里的阶段：检查启动条件、等名额、正在启动、运行中或已停放。 */
@@ -214,6 +220,19 @@ export class SessionRegistry {
     return [...summaries.values()]
       .filter((item) => (item.archivedAt != null) === archived)
       .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
+  }
+
+  /** 最近活动的运行中会话在前，包含已归档但仍在运行的会话。 */
+  livePreviews(
+    saved: (sessionId: string) => SessionIndex | null | undefined,
+  ): LiveSessionPreview[] {
+    return this.all()
+      .filter(
+        (entry) =>
+          (entry.phase === "starting" || entry.phase === "running") && !entry.session?.closing,
+      )
+      .sort((left, right) => right.lastActivityAt - left.lastActivityAt)
+      .map((entry) => liveSessionPreview(entry, saved(entry.sessionId)))
   }
 
   /** 所有会话里退出会中断的工作：进行中的回合和等待回答的权限；正在结束的会话不算。 */

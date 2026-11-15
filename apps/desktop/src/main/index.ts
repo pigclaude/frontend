@@ -2,9 +2,7 @@
 import {
   app,
   BrowserWindow,
-  dialog,
   ipcMain,
-  nativeImage,
   nativeTheme,
   net,
   powerMonitor,
@@ -41,8 +39,8 @@ import { registerBrowserProfileIpc } from "./claude/browser-profile-ipc"
 import { createDesktopComposition, type DesktopComposition } from "./composition"
 import { DeviceIdentityService } from "./device-identity"
 import { readDeviceInfo } from "./device-identity/device-info"
-import { readDockIconDataUrl } from "./dock-icon"
 import { createDesktopTray } from "./desktop-tray"
+import { registerDesktopWindowIpc } from "./desktop-window-ipc"
 import { createMainWindowVisibility } from "./main-window-visibility"
 import { configureRuntimeProfile } from "./runtime-profile"
 import { registerMembershipIpc } from "./membership/ipc"
@@ -50,11 +48,11 @@ import { readDesktopRuntimeEndpoints } from "./runtime-endpoints"
 import { registerWorkspaceIpc } from "./runtime/workspace-ipc"
 import { SessionDefaultsStore } from "./runtime/session-defaults"
 import { registerSessionDefaultsIpc } from "./runtime/session-defaults-ipc"
-import { readClaudeCodeVersion } from "./session/claude-version"
 import { WorkbenchIpc } from "./workbench/workbench-ipc"
 import { cleanupStaleSessionDirs } from "./session/session-environment"
 import { startSessionStore } from "./session/session-store-startup"
 import type { SessionHost } from "./session/session-host"
+import type { SessionEnvelope } from "./session/session-envelope"
 import { assembleSessionServices } from "./session/session-assembly"
 import { registerProjectPermissionsIpc } from "./session/project-permissions-ipc"
 import type { ProjectPermissionStore } from "./session/project-permission-store"
@@ -65,13 +63,12 @@ import { applyLoginShellPath } from "./login-shell-path"
 import { shutdownDesktopResources } from "./shutdown-resources"
 import type { UsageRecorder } from "./session/usage-recorder"
 import { FileSecretVault } from "./secret-vault"
-import { registerFolderPickerIpc } from "./folder-picker"
-import { forwardFullScreen, registerWindowIpc } from "./window-ipc"
-import { registerWindowClosePreference, WindowClosePreference } from "./window-close-preference"
-import { electronMenuFactory } from "./native-menu"
+import { forwardFullScreen } from "./window-ipc"
+import { WindowClosePreference } from "./window-close-preference"
+import { WindowNavigation } from "./window-navigation"
 import { errorMessage } from "./error-message"
 import { applyGlassBackground } from "./glass-background"
-import { createMainWindowOptions, developmentRendererUrl, readThemeSource } from "./window-options"
+import { createMainWindowOptions, developmentRendererUrl } from "./window-options"
 import { createAppUpdates } from "./updates/app-updates"
 import { registerUpdateIpc } from "./updates/update-ipc"
 import type { UpdateService } from "./updates/update-service"
@@ -104,6 +101,7 @@ let callbackServer: Awaited<ReturnType<typeof createCallbackServer>> | null = nu
 let callbackReceiver: AuthorizationCallbackReceiver | null = null
 let authorizationReady = false
 const windowVisibility = createMainWindowVisibility(() => mainWindow, createWindow)
+const windowNavigation = new WindowNavigation(windowVisibility.restore, sendToMainWindow)
 let cleanupLiveEvents = () => {}
 let appUpdates: UpdateService | null = null
 const closePreference = new WindowClosePreference(
@@ -147,7 +145,13 @@ if (!hasSingleInstanceLock) {
         return
       }
       createWindow()
-      tray = createDesktopTray(windowVisibility.restore)
+      tray = createDesktopTray({
+        openWindow: windowVisibility.restore,
+        navigate: (command) => windowNavigation.open(command),
+        membership: () => desktopComposition?.membershipGate.view().state ?? "connecting",
+        sessions: () => sessionHost?.livePreviews() ?? [],
+        accounts: async () => (await claudeAccountService?.list()) ?? [],
+      })
       if (initialized) {
         authorizationReady = true
         callbackReceiver?.ready()
@@ -186,17 +190,7 @@ const guardMainWindowClose = installQuitFlow({
 })
 
 function registerIpcHandlers(): void {
-  registerWindowClosePreference(ipcMain, isTrustedSender, closePreference)
-  let claudeCodeVersion = readClaudeCodeVersion()
-  ipcMain.handle("pigclaude:app-info", async () => {
-    const version = await claudeCodeVersion
-    if (version === null) claudeCodeVersion = readClaudeCodeVersion()
-    return {
-      appVersion: app.getVersion(),
-      userDataPath: app.getPath("userData"),
-      claudeCodeVersion: version,
-    }
-  })
+  registerDesktopWindowIpc(() => mainWindow, isTrustedSender, closePreference, windowNavigation)
   let sessionDefaults: SessionDefaultsStore | null = null
   registerSessionDefaultsIpc(ipcMain, {
     isTrusted: isTrustedSender,
@@ -206,38 +200,6 @@ function registerIpcHandlers(): void {
       })),
   })
   registerUpdateIpc({ ipcMain, service: () => appUpdates, isTrusted: isTrustedSender })
-  registerFolderPickerIpc(ipcMain, (options) =>
-    mainWindow ? dialog.showOpenDialog(mainWindow, options) : dialog.showOpenDialog(options),
-  )
-  registerWindowIpc({
-    ipcMain,
-    windows: BrowserWindow,
-    nativeTheme,
-    menus: electronMenuFactory(),
-    platform: process.platform,
-    systemVersion:
-      typeof process.getSystemVersion === "function" ? process.getSystemVersion() : "unknown",
-    allowDevRoles: !app.isPackaged,
-    isTrusted: isTrustedSender,
-  })
-  ipcMain.handle("pigclaude:set-theme", (_event, value: unknown) => {
-    const source = readThemeSource(value)
-    if (source) nativeTheme.themeSource = source
-  })
-  nativeTheme.on("updated", () =>
-    applyGlassBackground(mainWindow, process.platform, nativeTheme.shouldUseDarkColors),
-  )
-  ipcMain.handle("pigclaude:set-dock-icon", (_event, value: unknown) => {
-    if (process.platform !== "darwin") return
-    const dataUrl = readDockIconDataUrl(value)
-    if (!dataUrl) return
-    try {
-      const image = nativeImage.createFromDataURL(dataUrl)
-      if (!image.isEmpty()) app.dock?.setIcon(image)
-    } catch (error: unknown) {
-      console.error(errorMessage(error))
-    }
-  })
   ipcMain.handle("pigclaude:open-external", async (_event, value: unknown) => {
     if (typeof value !== "string" || !isAllowedAuthorizationUrl(value, authOrigin)) return
     await shell.openExternal(value)
@@ -404,7 +366,7 @@ async function setupAuthorization(): Promise<void> {
     systemLocale,
     isPackaged: app.isPackaged,
     env: process.env,
-    onEvent: (event) => sendToMainWindow("pigclaude:session-event", event),
+    onEvent: sendSessionEvent,
   })
   usageRecorder = sessions.usage
   sessionHost = sessions.host
@@ -414,9 +376,11 @@ async function setupAuthorization(): Promise<void> {
     desktopComposition?.membershipGate.resumeAfterWake(() => net.isOnline())
   app.on("browser-window-focus", checkLive)
   powerMonitor.on("resume", resumeAfterSleep)
+  const unsubscribeAccounts = localStore.subscribeAccounts(() => tray?.accountsChanged())
   cleanupLiveEvents = () => {
     app.removeListener("browser-window-focus", checkLive)
     powerMonitor.removeListener("resume", resumeAfterSleep)
+    unsubscribeAccounts()
   }
   if (app.isPackaged) app.setAsDefaultProtocolClient("pigclaude")
 }
@@ -451,9 +415,15 @@ function hasActiveMembership(): boolean {
 function sendMembershipView(view: MembershipView): void {
   workbench.membershipChanged(view)
   sendToMainWindow("pigclaude:membership-state", view)
+  tray?.refresh()
 }
 
-function sendToMainWindow(channel: string, payload: unknown): void {
+function sendSessionEvent(envelope: SessionEnvelope): void {
+  sendToMainWindow("pigclaude:session-event", envelope)
+  tray?.sessionChanged(envelope.event.type)
+}
+
+function sendToMainWindow(channel: string, payload?: unknown): void {
   const contents = mainWindow?.webContents
   if (contents && !contents.isDestroyed()) contents.send(channel, payload)
 }

@@ -45,6 +45,8 @@ export type PermissionAnswer = {
 export type PermissionBrokerOptions = {
   queue: PendingAnswers
   emit: (request: PermissionRequestEvent) => void
+  /** 请求退出待答队列后发出摘要变化。 */
+  onSettled?: () => void
   onTimeout?: (request: PermissionRequestEvent) => void
   newRequestId?: () => string
   /** 按 SDK 给的 agent id 找回子代理归属；没有 agent id 时是主线程。 */
@@ -77,6 +79,7 @@ type PendingPermission = {
 export class PermissionBroker {
   readonly #emit: (request: PermissionRequestEvent) => void
   readonly #onTimeout: ((request: PermissionRequestEvent) => void) | undefined
+  readonly #onSettled: (() => void) | undefined
   readonly #newRequestId: () => string
   readonly #subagentOf: (agentId: string | undefined) => SubagentRef | null
   readonly #queue: PendingAnswers
@@ -87,6 +90,7 @@ export class PermissionBroker {
   constructor(options: PermissionBrokerOptions) {
     this.#emit = options.emit
     this.#onTimeout = options.onTimeout
+    this.#onSettled = options.onSettled
     this.#newRequestId = options.newRequestId ?? (() => randomUUID())
     this.#subagentOf = options.subagentOf
     this.#queue = options.queue
@@ -133,6 +137,7 @@ export class PermissionBroker {
         settle: (outcome) => {
           this.#requests.delete(request.requestId)
           resolve(permissionResult(outcome))
+          this.#onSettled?.()
         },
         onTimeout: () => this.#onTimeout?.(request),
       })

@@ -1,6 +1,8 @@
 // 负责向页面暴露外壳需要的窗口能力：窗口按钮、最大化与全屏状态、标题栏菜单、标题栏配色和侧栏透明。
 // 全部走 pigclaude:* 通道，主进程只作用于发消息的受信任窗口。
 import { ipcRenderer } from "electron"
+import type { WindowNavigationCommand } from "../window-navigation-contract"
+import { windowNavigationListener } from "./window-navigation"
 
 /** 标题栏菜单里可以序列化的一项：分隔线、应用命令或系统角色。 */
 export type NativeMenuItemInput =
@@ -15,6 +17,8 @@ export type WindowBridge = {
   getCloseToTray: () => Promise<boolean>
   /** 保存窗口关闭行为，返回落盘的值。 */
   setCloseToTray: (value: boolean) => Promise<boolean>
+  /** 订阅托盘或系统通知的导航命令，调用返回值取消订阅。 */
+  onNavigation: (listener: (command: WindowNavigationCommand) => void) => () => void
   isMaximized: () => Promise<boolean>
   isFullScreen: () => Promise<boolean>
   /** 订阅全屏变化；返回取消订阅函数。 */
@@ -36,6 +40,7 @@ export function windowBridge(): WindowBridge {
       (await ipcRenderer.invoke("pigclaude:window-close-to-tray-get")) === true,
     setCloseToTray: async (value) =>
       (await ipcRenderer.invoke("pigclaude:window-close-to-tray-set", value)) === true,
+    onNavigation: windowNavigationListener(),
     isMaximized: async () => (await ipcRenderer.invoke("pigclaude:is-maximized")) === true,
     isFullScreen: async () => (await ipcRenderer.invoke("pigclaude:is-full-screen")) === true,
     onFullScreenChange: (listener) => {

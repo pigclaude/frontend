@@ -69,7 +69,6 @@ describe("navigation history", () => {
   it("只有整窗流程在外壳之外", () => {
     expect(inShell({ kind: "flow", flow: "onboarding" })).toBe(false)
     expect(inShell({ kind: "draft" })).toBe(true)
-    expect(inShell({ kind: "tray" })).toBe(true)
     expect(inShell(general)).toBe(true)
   })
 })

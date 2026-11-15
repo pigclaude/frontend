@@ -1,5 +1,5 @@
 // 定义主进程发给渲染层的会话事件信封：格式版本、会话 id、序号、时间和事件本身，
-// 以及每种事件要保存还是只用于实时。只有类型和常量，preload 也会引用。
+// 以及每种事件要保存还是只用于实时。preload 也会引用信封格式。
 
 import type { SessionHostEvent } from "./session-types"
 
@@ -54,5 +54,19 @@ export function hostEnvelope(event: SessionHostEvent, now: number): SessionEnvel
     seq: null,
     at: new Date(now).toISOString(),
     event,
+  }
+}
+
+/** 交付一条信封；单个订阅者失败不能中断会话。 */
+export function notifySessionListeners(
+  listeners: ReadonlySet<(envelope: SessionEnvelope) => void>,
+  envelope: SessionEnvelope,
+): void {
+  for (const listener of [...listeners]) {
+    try {
+      listener(envelope)
+    } catch {
+      // 其它订阅者仍收到这条消息。
+    }
   }
 }

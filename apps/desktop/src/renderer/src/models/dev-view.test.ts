@@ -13,6 +13,7 @@ describe("parseDevView", () => {
 
   it("页面名不合法时返回 null", () => {
     expect(parseDevView("?screen=nope", true)).toBeNull()
+    expect(parseDevView("?screen=tray", true)).toBeNull()
   })
 
   it("非开发模式永远返回 null", () => {
@@ -44,9 +45,8 @@ describe("parseDevView", () => {
 })
 
 describe("页面名与导航位置", () => {
-  it("新会话、会话、托盘与整窗流程有各自的位置", () => {
+  it("新会话、会话、整窗流程和设置有各自的位置", () => {
     expect(locationOfScreen("chat-new")).toEqual({ kind: "draft" })
-    expect(locationOfScreen("tray")).toEqual({ kind: "tray" })
     expect(locationOfScreen("authorize")).toEqual({ kind: "flow", flow: "authorize" })
     expect(locationOfScreen("menubar")).toEqual({ kind: "settings", page: "menubar" })
   })

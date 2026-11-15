@@ -7,7 +7,7 @@ import type { PermissionAnswer } from "./permission-broker"
 import type { QuestionAnswer } from "./question-broker"
 import { SessionConcurrency, defaultSessionLimits } from "./session-concurrency"
 import { SessionClaudeExitError } from "./session-claude-launch"
-import { hostEnvelope, type SessionEnvelope } from "./session-envelope"
+import { hostEnvelope, notifySessionListeners, type SessionEnvelope } from "./session-envelope"
 import type { ActiveSession, SessionTimers } from "./session-host-active"
 import type { SessionPendingWork } from "./session-host-support"
 import {
@@ -29,7 +29,7 @@ import { SavedSessionLibrary } from "./saved-session-library"
 import type { SessionStore } from "./session-store"
 import { sessionModelReader } from "./session-models"
 import { SessionRegistry, type SessionEntry, type SessionParkReason } from "./session-registry"
-import type { SessionSummary } from "./session-summary"
+import type { LiveSessionPreview, SessionSummary } from "./session-summary"
 import {
   SessionHostError,
   type SessionAdapterFactory,
@@ -376,6 +376,11 @@ export class SessionHost {
     return this.#registry.summaries(this.#persistence?.store?.list(), archived)
   }
 
+  /** 给本机托盘读取脱敏的运行会话，会员网络宽限期间仍能展示。 */
+  livePreviews(): LiveSessionPreview[] {
+    return this.#registry.livePreviews((id) => this.#persistence?.store?.get(id))
+  }
+
   /** 和这个工作区重叠的运行中会话里有没有进行中的回合；工作台据此拒绝切分支和恢复检查点。 */
   hasActiveTurn(workspace: string): boolean {
     return this.#registry.hasActiveTurn(workspace)
@@ -462,7 +467,7 @@ export class SessionHost {
     this.#registry.observe(entry, envelope, this.#now())
     this.#persistence?.observe(entry.sessionId, envelope)
     this.#concurrency.touch(entry.sessionId)
-    this.#emit(envelope)
+    notifySessionListeners(this.#listeners, envelope)
   }
 
   #requireSession(sessionId: string): ClaudeSession {
@@ -482,17 +487,7 @@ export class SessionHost {
   }
 
   #emitHost(event: SessionHostEvent): void {
-    this.#emit(hostEnvelope(event, this.#now()))
-  }
-
-  #emit(envelope: SessionEnvelope): void {
-    for (const listener of [...this.#listeners]) {
-      try {
-        listener(envelope)
-      } catch {
-        // 单个订阅者失败不能中断会话。
-      }
-    }
+    notifySessionListeners(this.#listeners, hostEnvelope(event, this.#now()))
   }
 }
 function resumeFailed(): SessionHostError {

@@ -10,7 +10,12 @@ import ts from "typescript"
 
 const require = createRequire(new URL("../../apps/desktop/package.json", import.meta.url))
 const temp = await mkdtemp(join(tmpdir(), "pigclaude-native-agent-browser-"))
-const files = ["agent-browser-network", "browser-surface"]
+const files = [
+  "agent-browser-network",
+  "browser-references",
+  "browser-snapshot-world",
+  "browser-surface",
+]
 try {
   for (const file of files) {
     const original = new URL(`../../apps/desktop/src/main/workbench/${file}.ts`, import.meta.url)
@@ -26,10 +31,14 @@ try {
   )
   const env = { ...process.env }
   delete env.ELECTRON_RUN_AS_NODE
-  const { stdout } = await promisify(execFile)(require("electron"), [join(temp, "main.cjs")], {
-    timeout: 25_000,
-    env,
-  })
+  const { stdout } = await promisify(execFile)(
+    require("electron"),
+    [join(temp, "main.cjs"), ...process.argv.slice(2)],
+    {
+      timeout: 25_000,
+      env,
+    },
+  )
   process.stdout.write(stdout)
 } finally {
   await rm(temp, { recursive: true, force: true })

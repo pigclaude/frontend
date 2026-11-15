@@ -38,34 +38,36 @@ export default async function DownloadPage() {
   return (
     <>
       <Nav variant="marketing" />
-      <main className="landing-container min-h-[60vh] py-12 md:py-20">
-        <header className="mb-10 grid gap-4">
-          <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">下载 PigClaude</h1>
-          <p className="text-base text-muted-foreground">选择适合你设备的安装包。</p>
-        </header>
-        {release.status === "available" ? (
-          <>
-            <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-              <span className="font-medium">{release.tag}</span>
-              <ReleaseLink href={release.releaseUrl}>发布说明</ReleaseLink>
-              {release.checksumsUrl && (
-                <ReleaseLink href={release.checksumsUrl}>SHA-256 校验清单</ReleaseLink>
-              )}
+      <main className="min-h-[60vh] py-12 md:py-20">
+        <div className="landing-container">
+          <header className="mb-10 grid gap-4">
+            <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">下载 PigClaude</h1>
+            <p className="text-base text-muted-foreground">选择适合你设备的安装包。</p>
+          </header>
+          {release.status === "available" ? (
+            <>
+              <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+                <span className="font-medium">{release.tag}</span>
+                <ReleaseLink href={release.releaseUrl}>发布说明</ReleaseLink>
+                {release.checksumsUrl && (
+                  <ReleaseLink href={release.checksumsUrl}>SHA-256 校验清单</ReleaseLink>
+                )}
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                {release.downloads.map((download) => (
+                  <DownloadCard key={download.platform} download={download} />
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="grid max-w-lg gap-3 rounded-xl border border-border bg-card p-6">
+              <p role="status" className="text-base font-medium">
+                {release.status === "unreleased" ? "暂无公开安装包" : "暂时无法读取发布信息"}
+              </p>
+              <ReleaseLink href={desktopReleasesPage}>查看发布记录</ReleaseLink>
             </div>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              {release.downloads.map((download) => (
-                <DownloadCard key={download.platform} download={download} />
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="grid max-w-lg gap-3 rounded-xl border border-border bg-card p-6">
-            <p role="status" className="text-base font-medium">
-              {release.status === "unreleased" ? "暂无公开安装包" : "暂时无法读取发布信息"}
-            </p>
-            <ReleaseLink href={desktopReleasesPage}>查看发布记录</ReleaseLink>
-          </div>
-        )}
+          )}
+        </div>
       </main>
       <Footer />
     </>

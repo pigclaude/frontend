@@ -228,9 +228,7 @@ export class SessionHost {
         },
         released: () => this.#released(entry),
         parkAfterRevocation: () => this.#park(entry, "stop"),
-        ...(this.#persistence === null
-          ? {}
-          : { saveSettings: (settings) => this.#persistence?.settings(entry.sessionId, settings) }),
+        ...(this.#persistence ? { history: this.#persistence.sessionHooks(entry.sessionId) } : {}),
       }
       await launchSession(this.#launchDeps, input, entry.sessionId, hooks, servers, storage)
     } catch (error) {

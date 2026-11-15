@@ -3,8 +3,10 @@
 import { randomUUID } from "node:crypto"
 import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
+import { setImmediate } from "node:timers/promises"
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { deferred } from "../testing/profile-fixture"
 import { ClaudeAgentAdapter } from "./claude-agent-adapter"
 import { collectPrompt, FakeQuery, type CapturedQuery } from "./claude-agent-adapter-fixtures"
 import type { SessionFlagSettings } from "./claude-query"
@@ -76,6 +78,42 @@ describe("SessionHost 保存与续接", () => {
     unsubscribe()
     await host.stop(sessionId)
     expect(host.livePreviews()).toEqual([])
+  })
+
+  it("退出时先保存中断的回合，再关闭 SDK 查询进程", async () => {
+    const fixture = await workspaceFixture()
+    const { host, sessions } = hostFixture(fixture, async () => savedProfile)
+    const { sessionId } = await host.start({
+      workspace: fixture.workspace,
+      permissionMode: "default",
+    })
+    await host.send(sessionId, { text: "退出前要保存的消息" })
+    const query = sessions[0]
+    if (!query) throw new Error("没有建立会话查询")
+    const writing = deferred<void>()
+    const allowWrite = deferred<void>()
+    const appendTimeline = fixture.store.appendTimeline.bind(fixture.store)
+    vi.spyOn(fixture.store, "appendTimeline").mockImplementation(async (id, envelope) => {
+      if (envelope.event.type === "turn-ended") {
+        writing.resolve()
+        await allowWrite.promise
+      }
+      return appendTimeline(id, envelope)
+    })
+    const quitting = host.dispose()
+    try {
+      await writing.promise
+      await setImmediate()
+      expect(query.closes).toBe(0)
+    } finally {
+      allowWrite.resolve()
+      await quitting
+    }
+    expect(query.closes).toBe(1)
+    expect(fixture.store.get(sessionId)).toMatchObject({
+      status: "interrupted",
+      lastTurn: { status: "interrupted" },
+    })
   })
 
   it("保存用户正文，停放后重开可只读历史，下一次发送用原环境打开同一个会话", async () => {

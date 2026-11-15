@@ -228,6 +228,14 @@ export class SessionPersistence {
     return this.#loaded
   }
 
+  /** 绑定单个会话的索引设置和关停前写入检查。 */
+  sessionHooks(id: string) {
+    return {
+      saveSettings: (settings: SessionSavedSettings) => this.#saveSettings(id, settings),
+      flushHistory: () => this.flush(id),
+    }
+  }
+
   /** 写入已保存信封并更新索引状态，排队顺序由 SessionStore 保证。 */
   observe(id: string, envelope: SessionEnvelope): void {
     const store = this.#loaded
@@ -239,8 +247,7 @@ export class SessionPersistence {
     })
   }
 
-  /** SDK 确认新的模型或回合设置后保存，供停放后续接。 */
-  settings(id: string, settings: SessionSavedSettings): void {
+  #saveSettings(id: string, settings: SessionSavedSettings): void {
     const store = this.#loaded
     if (store !== null) {
       void this.#save(id, async () => {

@@ -12,7 +12,7 @@ import { prepareSavedSession, type PersistedSessionLaunch } from "./session-pers
 import { sessionInstance, type SessionIndex } from "./session-index"
 import { SessionReferenceAccess } from "./session-reference-access"
 import type { SessionStore } from "./session-store"
-import type { SessionSavedSettings } from "./claude-session-options"
+import type { ClaudeSessionOptions } from "./claude-session-options"
 import { createThreadReadServer, threadReadServerName } from "./thread-read"
 import type { SessionTimers } from "./session-host-active"
 import { mapStartError } from "./session-host-support"
@@ -99,8 +99,8 @@ export type SessionLaunchHooks = {
   released: () => void | Promise<void>
   /** 项目授权撤销未能热更新时，从宿主停放该会话。 */
   parkAfterRevocation?: () => Promise<void>
-  /** 适配器确认修改模型或发送设置后更新会话索引。 */
-  saveSettings?: (settings: SessionSavedSettings) => void
+  /** 绑定此会话的记录写入与退出前同步。 */
+  history?: Pick<ClaudeSessionOptions, "saveSettings" | "flushHistory">
 }
 
 /** 启动需要的本机存储以及已有索引，第一次启动没有旧索引。 */
@@ -197,7 +197,7 @@ export async function launchSession(
     ...(projectPermissions === undefined ? {} : { projectPermissions }),
     ...(references === undefined ? {} : { references }),
     ...(persistence === undefined ? {} : { persistence }),
-    ...(hooks.saveSettings === undefined ? {} : { saveSettings: hooks.saveSettings }),
+    ...hooks.history,
     ...(hooks.parkAfterRevocation === undefined
       ? {}
       : { parkAfterRevocation: hooks.parkAfterRevocation }),

@@ -233,7 +233,7 @@ export class ClaudeSession {
 
   /**
    * 结束会话：拒绝权限和提问，再中断并停止在途后台任务（会员失效时直接中止并报错），以中断结束进行中的一轮，
-   * 然后停止适配器、清理环境。重复调用返回同一个 Promise。
+   * 然后保存历史、停止适配器并清理环境。重复调用返回同一个 Promise。
    */
   end(rejectMessage: string, errorCode: "MEMBERSHIP_REQUIRED" | null): Promise<void> {
     const active = this.state
@@ -252,6 +252,7 @@ export class ClaudeSession {
       } else {
         await active.turns.shutdown()
       }
+      await this.#options.flushHistory?.()
       await active.adapter.stop().catch((error: unknown) => {
         if (this.#reportCleanupFailure || error instanceof SessionClaudeExitError) throw error
       })

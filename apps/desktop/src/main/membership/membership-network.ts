@@ -4,7 +4,11 @@ import { PigclaudeApiError } from "../api/oauth-client"
 const graceMs = 10 * 60_000
 const wakeRetryMs = 1_000
 type EndState = "error" | "expired"
-type WakeRetry = { isOnline: () => boolean; timer?: ReturnType<typeof setTimeout> }
+type WakeRetry = {
+  isOnline: () => boolean
+  onOnline: (() => void) | undefined
+  timer?: ReturnType<typeof setTimeout>
+}
 
 /** 识别 API 连接失败、请求超时和上游暂时不可用，其他错误按原门禁处理。 */
 export function isMembershipNetworkFailure(error: unknown): boolean {
@@ -61,10 +65,10 @@ export class MembershipNetwork {
     this.#grace = null
   }
 
-  /** 唤醒后等系统报告已联网，再由门禁实时向服务端核验。 */
-  afterWake(isOnline: () => boolean, check: () => void): void {
+  /** 唤醒后等系统报告已联网。首次观察到联网时告知调用者。 */
+  afterWake(isOnline: () => boolean, check: () => void, onOnline?: () => void): void {
     this.clearWake()
-    const wake: WakeRetry = { isOnline }
+    const wake: WakeRetry = { isOnline, onOnline }
     this.#wake = wake
     const poll = () => {
       if (this.#wake !== wake) return
@@ -84,9 +88,15 @@ export class MembershipNetwork {
 
   /** 唤醒后仍离线时阻止所有入口提前访问会员服务，也不允许沿用旧权限。 */
   waitingForNetwork(): boolean {
-    if (this.#wake === null) return false
-    if (!this.#wake.isOnline()) return true
+    const wake = this.#wake
+    if (wake === null) return false
+    if (!wake.isOnline()) return true
     this.clearWake()
+    try {
+      wake.onOnline?.()
+    } catch {
+      // 调度回调出错时，会员核验仍可继续。
+    }
     return false
   }
 

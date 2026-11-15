@@ -88,6 +88,7 @@ it("唤醒后等待联网，心跳和前台检查不提前访问服务端", asyn
   await seedProfile(vault)
   const inspectMembership = vi.fn(async () => membershipView())
   let online = false
+  const onOnline = vi.fn()
   vi.useFakeTimers()
   const composition = createDesktopComposition({
     vault,
@@ -96,18 +97,57 @@ it("唤醒后等待联网，心跳和前台检查不提前访问服务端", asyn
   })
   try {
     await composition.resume()
-    composition.membershipGate.resumeAfterWake(() => online)
+    composition.membershipGate.resumeAfterWake(() => online, onOnline)
     await vi.advanceTimersByTimeAsync(60_000)
     expect(await composition.resume()).toMatchObject({ state: "network_grace" })
     await expect(composition.runAuthorized(async () => undefined)).rejects.toThrow(
       "MEMBERSHIP_REQUIRED",
     )
     expect(inspectMembership).toHaveBeenCalledTimes(1)
+    expect(onOnline).not.toHaveBeenCalled()
 
     online = true
     await vi.advanceTimersByTimeAsync(1_000)
     expect(inspectMembership).toHaveBeenCalledTimes(2)
+    expect(onOnline).toHaveBeenCalledOnce()
     expect(composition.membershipGate.view().state).toBe("active")
+  } finally {
+    await composition.dispose()
+    vi.useRealTimers()
+  }
+})
+
+it("前台核验先确认联网时也通知一次，显式关闭不会触发旧的联网回调", async () => {
+  const vault = new ProfileVault()
+  await seedProfile(vault)
+  const inspectMembership = vi.fn(async () => membershipView())
+  let online = false
+  const onOnline = vi.fn()
+  const afterDispose = vi.fn()
+  vi.useFakeTimers()
+  const composition = createDesktopComposition({
+    vault,
+    api: profileApi({ inspectMembership }),
+    authOrigin: "http://127.0.0.1:8788",
+  })
+  try {
+    await composition.resume()
+    composition.membershipGate.resumeAfterWake(() => online, onOnline)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onOnline).not.toHaveBeenCalled()
+
+    online = true
+    expect(await composition.resume()).toMatchObject({ state: "active" })
+    expect(onOnline).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(onOnline).toHaveBeenCalledOnce()
+
+    online = false
+    composition.membershipGate.resumeAfterWake(() => online, afterDispose)
+    await composition.dispose()
+    online = true
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(afterDispose).not.toHaveBeenCalled()
   } finally {
     await composition.dispose()
     vi.useRealTimers()

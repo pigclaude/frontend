@@ -60,6 +60,7 @@ export class ScheduledTaskService {
   #startup: Promise<void> | undefined
   #disposing: Promise<void> | undefined
   #started = false
+  #suspended = false
   #cancelTimer: (() => void) | undefined
   #pollDeadline: number | undefined
   #sample: { wall: number; elapsed: number } | null = null
@@ -83,8 +84,16 @@ export class ScheduledTaskService {
     }))
   }
 
-  /** 系统唤醒时立即重算，和正常触发共享同一持久化游标。 */
+  /** 停止自动巡检和认领，保留游标等恢复联网时重算。 */
+  suspend(): void {
+    this.#suspended = true
+    this.#cancelTimer?.()
+    this.#cancelTimer = undefined
+  }
+
+  /** 恢复联网后按同一持久化游标重算，并恢复自动巡检。 */
   async wake(): Promise<void> {
+    this.#suspended = false
     await this.start()
     await this.#poll(true)
   }
@@ -220,7 +229,7 @@ export class ScheduledTaskService {
 
   /** 停止巡检、中止执行入口，等待最后的运行记录保存。 */
   dispose(): Promise<void> {
-    this.#cancelTimer?.()
+    this.suspend()
     this.#abort.abort()
     return (this.#disposing ??= this.#close().catch((error: unknown) => {
       this.#disposing = undefined
@@ -237,7 +246,7 @@ export class ScheduledTaskService {
 
   #poll(force: boolean): Promise<void> {
     return this.#enqueue(async () => {
-      if (this.#abort.signal.aborted) return
+      if (this.#suspended || this.#abort.signal.aborted) return
       this.#pollDeadline = this.#clock.monotonicNow() + scheduledTaskPollMs
       try {
         await this.#refresh(force, false)
@@ -254,21 +263,22 @@ export class ScheduledTaskService {
     const draft = structuredClone(this.#file)
     const sample = { wall: this.#clock.now(), elapsed: this.#clock.monotonicNow() }
     const timeZone = this.#clock.timeZone()
-    const zoneChanged = draft.timeZone !== timeZone
+    const zoneChanged = !this.#suspended && draft.timeZone !== timeZone
     const recalculate = force || zoneChanged || wallClockJumped(this.#sample, sample)
-    draft.timeZone = timeZone
+    if (zoneChanged) draft.timeZone = timeZone
     const runs: ScheduledTaskRun[] = []
     const executions: ScheduledTaskRequest[] = []
     let changed = zoneChanged
     for (const saved of draft.tasks) {
-      if (recalculate && Date.parse(saved.eligibleFrom) > sample.wall) {
-        saved.eligibleFrom = timestamp(sample.wall)
-        changed = true
-      }
       if (recover && saved.active !== null) {
         const stopped = completedRun(saved.active, stoppedOnExit, sample.wall)
         finishRun(saved, stopped)
         runs.push(stopped)
+      }
+      if (this.#suspended) continue
+      if (recalculate && Date.parse(saved.eligibleFrom) > sample.wall) {
+        saved.eligibleFrom = timestamp(sample.wall)
+        changed = true
       }
       const planned = zoneChanged
         ? { ...saved.task, nextRunAt: nextForTask(saved, Date.parse(saved.eligibleFrom)) }
@@ -336,7 +346,7 @@ export class ScheduledTaskService {
 
   #arm(retry = false): void {
     this.#cancelTimer?.()
-    if (!this.#started || this.#abort.signal.aborted) return
+    if (!this.#started || this.#suspended || this.#abort.signal.aborted) return
     // 保存配置时沿用已安排的巡检截止，再和任务触发时间一起选择定时器。
     const elapsed = this.#clock.monotonicNow()
     const pollAfter = (this.#pollDeadline ??= elapsed + scheduledTaskPollMs) - elapsed

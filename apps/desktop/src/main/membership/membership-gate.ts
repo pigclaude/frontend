@@ -181,10 +181,10 @@ export class MembershipGate {
     }
   }
 
-  /** 唤醒时在系统网络恢复后重新核验，等待期间对受限请求继续关闸。 */
-  resumeAfterWake(isOnline: () => boolean): void {
+  /** 唤醒后保留实时核验门槛，系统首次报告联网时通知调用者。 */
+  resumeAfterWake(isOnline: () => boolean, onOnline?: () => void): void {
     if (this.#disposed) return
-    this.#network.afterWake(isOnline, () => void this.inspect())
+    this.#network.afterWake(isOnline, () => void this.inspect(), onOnline)
   }
 
   /** 订阅脱敏快照，返回移除当前 listener 的清理函数。 */

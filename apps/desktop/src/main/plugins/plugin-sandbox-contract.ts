@@ -1,0 +1,51 @@
+// 定义能力插件宿主接受的模块、调用与唯一能跨消息端口传递的数据。
+
+/** 插件调用只携带 JSON 数据，不能把进程对象、文件句柄或消息端口交给插件。 */
+export type PluginSandboxJson =
+  | null
+  | string
+  | number
+  | boolean
+  | readonly PluginSandboxJson[]
+  | { readonly [key: string]: PluginSandboxJson }
+
+/** 已安装插件的模块快照，模块路径是包内相对路径，出口标识只用于主进程隔离实例。 */
+export type PluginSandboxSource = {
+  readonly pluginId: string
+  readonly revision: string
+  readonly egressId: string
+  readonly entry: string
+  readonly modules: Readonly<Record<string, string>>
+}
+
+/** Worker 将操作名与输入交给入口模块的默认导出。 */
+export type PluginSandboxCall = { readonly operation: string; readonly input: PluginSandboxJson }
+
+/** 调用方可取消一次调用或缩短它的最长执行时间。 */
+export type PluginSandboxCallOptions = { signal?: AbortSignal; timeoutMs?: number }
+
+/** 进程边界只返回固定错误码，不转发 Chromium 错误、文件路径、堆栈或插件抛出的字符串。 */
+export type PluginSandboxErrorCode =
+  | "PLUGIN_BUNDLE_INVALID"
+  | "PLUGIN_SANDBOX_UNAVAILABLE"
+  | "PLUGIN_SANDBOX_CLOSED"
+  | "PLUGIN_SANDBOX_CRASHED"
+  | "PLUGIN_SANDBOX_BACKOFF"
+  | "PLUGIN_LOAD_FAILED"
+  | "PLUGIN_EXECUTION_FAILED"
+  | "PLUGIN_TIMEOUT"
+  | "PLUGIN_CANCELLED"
+  | "PLUGIN_PAYLOAD_INVALID"
+  | "PLUGIN_RESULT_INVALID"
+
+/** 主进程使用固定错误码报告沙箱故障。 */
+export class PluginSandboxError extends Error {
+  /** 不附带插件自定义消息或堆栈。 */
+  constructor(readonly code: PluginSandboxErrorCode) {
+    super(code)
+    this.name = "PluginSandboxError"
+  }
+}
+
+/** JSON 消息的文本上限，与 Worker 的结果限制一致。 */
+export const pluginSandboxPayloadLimit = 512 * 1024

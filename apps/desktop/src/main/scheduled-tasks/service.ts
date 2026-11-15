@@ -14,6 +14,7 @@ import {
   maximumScheduledTaskRuns,
   newestScheduledRunFirst,
   parseScheduledTaskInput,
+  parseScheduledTaskOutcome,
   readScheduledTasks,
   writeScheduledTasks,
   type SavedScheduledTask,
@@ -299,7 +300,8 @@ export class ScheduledTaskService {
         let outcome = stoppedOnExit
         if (!signal.aborted) {
           try {
-            outcome = await this.options.run(structuredClone(request), signal)
+            const reported = await this.options.run(structuredClone(request), signal)
+            outcome = parseScheduledTaskOutcome(reported)
           } catch {
             outcome = signal.aborted ? stoppedOnExit : executionFailed
           }

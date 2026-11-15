@@ -1,24 +1,14 @@
 // 用假时钟、假会话入口及临时 JSON 验证定时任务的实际触发行为。
 
-import { copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { afterEach, expect, it, vi } from "vitest"
-import type { ScheduledTaskInput, ScheduledTaskOutcome } from "../../scheduled-tasks-contract"
+import type { ScheduledTaskOutcome } from "../../scheduled-tasks-contract"
 import { deferred } from "../testing/profile-fixture"
-import { ScheduledTaskService, type ScheduleClock } from "./service"
+import type { ScheduledTaskService } from "./service"
+import { disposeFixtures, fixture, hour, minute, reopen } from "./service-fixture"
 import { systemScheduleClock } from "./timing"
 
-const minute = 60_000
-const hour = 60 * minute
-const directories: string[] = []
-const services: ScheduledTaskService[] = []
-
-afterEach(async () => {
-  await Promise.allSettled(services.splice(0).map((service) => service.dispose()))
-  await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })))
-  vi.unstubAllEnvs()
-})
+afterEach(disposeFixtures)
 
 it("先保存任务，在第一次符合规则的时刻调用一次会话入口", async () => {
   const f = await fixture()
@@ -420,59 +410,3 @@ it("认领或完成记录写失败时可以重试，同一触发只交给入口�
     complete.resolve({ status: "stopped" })
   }
 })
-
-async function fixture() {
-  const directory = await mkdtemp(join(tmpdir(), "pigclaude-tasks-"))
-  directories.push(directory)
-  const clock = new FakeClock(Date.parse("2026-11-15T08:00:00.000Z"))
-  const run = vi.fn<ConstructorParameters<typeof ScheduledTaskService>[0]["run"]>(async () => ({
-    status: "succeeded",
-    sessionId: "fake-session",
-  }))
-  const filePath = join(directory, "scheduled-tasks.json")
-  const reportError = vi.fn()
-  const service = new ScheduledTaskService({ filePath, clock, run, reportError })
-  services.push(service)
-  const input: ScheduledTaskInput = {
-    projectPath: directory,
-    prompt: "汇总本机项目的测试结果",
-    rule: { kind: "everyMinutes", every: 15, anchor: "2026-11-15T08:00:00.000Z" },
-    endsAt: null,
-    enabled: true,
-    model: null,
-    permissionMode: "default",
-    accountId: null,
-  }
-  return { service, clock, run, filePath, input, reportError }
-}
-
-function reopen(f: Awaited<ReturnType<typeof fixture>>, filePath = f.filePath) {
-  const service = new ScheduledTaskService({ ...f, filePath })
-  services.push(service)
-  return service
-}
-
-class FakeClock implements ScheduleClock {
-  readonly timers = new Map<() => void, number>()
-  elapsed = 0
-
-  constructor(public wall: number) {}
-
-  now = () => this.wall
-  monotonicNow = () => this.elapsed
-  timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone
-  after(delay: number, callback: () => void): () => void {
-    this.timers.set(callback, this.elapsed + delay)
-    return () => void this.timers.delete(callback)
-  }
-
-  advance(ms: number): void {
-    this.wall += ms
-    this.elapsed += ms
-    for (const [callback, deadline] of this.timers) {
-      if (deadline > this.elapsed) continue
-      this.timers.delete(callback)
-      callback()
-    }
-  }
-}

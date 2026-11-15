@@ -5,7 +5,11 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute } from "node:path"
 import { scheduleRuleSchema } from "@pigclaude/ui-contracts"
 import { z } from "zod"
-import type { ScheduledTaskInput, ScheduledTaskRun } from "../../scheduled-tasks-contract"
+import type {
+  ScheduledTaskInput,
+  ScheduledTaskOutcome,
+  ScheduledTaskRun,
+} from "../../scheduled-tasks-contract"
 
 /** 每个任务最多保留的触发记录数，包含正在运行的一条记录。 */
 export const maximumScheduledTaskRuns = 50
@@ -49,6 +53,13 @@ const run = z.object({
   sessionId: id.nullable(),
   accountId: id.nullable(),
   deniedApprovals: z.number().int().nonnegative(),
+})
+const runOutcome = z.object({
+  status: run.shape.status.exclude(["running"]),
+  reason: run.shape.reason.catch(null),
+  sessionId: run.shape.sessionId.catch(null),
+  accountId: run.shape.accountId.catch(null),
+  deniedApprovals: run.shape.deniedApprovals.catch(0),
 })
 const savedTask = z
   .object({
@@ -101,6 +112,13 @@ export function parseScheduledTaskInput(input: unknown): ScheduledTaskInput {
   if (valid.error.issues.some(({ message }) => message === "SCHEDULE_INTERVAL_TOO_SHORT"))
     throw new Error("SCHEDULE_INTERVAL_TOO_SHORT")
   throw new Error("SCHEDULE_TASK_INVALID")
+}
+
+/** 按运行记录的约束整理入口结果。缺失或畸形的终态抛出固定错误码。 */
+export function parseScheduledTaskOutcome(input: unknown): ScheduledTaskOutcome {
+  const result = runOutcome.safeParse(input)
+  if (!result.success) throw new Error("SCHEDULE_RUN_OUTCOME_INVALID")
+  return result.data
 }
 
 /** 没有旧文件时读到空快照，损坏的文件会报告失败。 */

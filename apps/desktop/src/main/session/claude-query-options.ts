@@ -4,6 +4,7 @@ import type { CanUseTool, Options, ThinkingConfig } from "@anthropic-ai/claude-a
 import { maxSessionRetentionDays } from "../../session-history-contract"
 import type { SessionEffort, SessionPermissionMode, SessionThinking } from "./session-events"
 import type { SessionProjectConfiguration } from "./project-configuration"
+import { trustedFlagSettings } from "./trusted-project-settings"
 
 /** 开始一次会话的参数；binaryPath 省略时使用 PIGCLAUDE_CLAUDE_BIN 或平台包二进制。 */
 export type ClaudeAgentStartOptions = {
@@ -57,6 +58,7 @@ export function buildQueryOptions(
   spawnClaudeCodeProcess?: Options["spawnClaudeCodeProcess"],
 ): Options {
   const { persistence, projectConfiguration } = options
+  const trusted = projectConfiguration?.trusted
   const settings = {
     ...(persistence === undefined ? {} : { cleanupPeriodDays: maxSessionRetentionDays }),
     ...(options.fast ? { fastMode: true } : {}),
@@ -67,13 +69,17 @@ export function buildQueryOptions(
           autoMemoryEnabled: false,
           disableClaudeAiConnectors: true,
         }),
+    ...(trusted === undefined ? {} : trustedFlagSettings(options.env, trusted)),
   }
   return {
     ...isolatedQueryOptions(options.workspace, binaryPath, options.env),
     systemPrompt: { type: "preset", preset: "claude_code" },
-    ...(projectConfiguration === undefined ? {} : { strictMcpConfig: true }),
+    ...(projectConfiguration === undefined ? {} : { strictMcpConfig: trusted === undefined }),
     ...(projectConfiguration?.directory
-      ? { projectConfigRoot: projectConfiguration.directory, settingSources: ["project"] }
+      ? {
+          projectConfigRoot: projectConfiguration.directory,
+          settingSources: trusted === undefined ? ["project"] : ["project", "local"],
+        }
       : {}),
     ...(options.mcpServers ? { mcpServers: options.mcpServers } : {}),
     permissionMode: options.permissionMode,

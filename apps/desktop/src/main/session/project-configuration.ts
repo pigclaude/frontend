@@ -10,6 +10,7 @@ import {
   isMissingProjectPath,
   resolveProjectConfigurationScope,
 } from "./project-configuration-scope"
+import { inspectTrustedSettings, type TrustedProjectSettings } from "./trusted-project-settings"
 
 const projectComponents = ["commands", "skills", "agents", "output-styles"] as const
 type ProjectBoundary = { root: string; personalDirectory: string }
@@ -19,6 +20,8 @@ type SourceFile = { path: string; identity: Stats; destination: string }
 export type SessionProjectConfiguration = {
   directory: string | null
   claudeMdExcludes: string[]
+  /** 已确认信任时使用实际配置目录及启动时锁定的路由键。 */
+  trusted?: TrustedProjectSettings
   dispose(): Promise<void>
 }
 
@@ -27,11 +30,20 @@ export async function prepareProjectConfiguration(
   workspace: string,
   temporaryDirectory: string,
   userHome?: string,
+  trusted = false,
 ): Promise<SessionProjectConfiguration> {
-  const { directories, claudeMdExcludes, personalDirectory } =
-    await resolveProjectConfigurationScope(workspace, userHome)
+  const scope = await resolveProjectConfigurationScope(workspace, userHome)
+  const { directories, claudeMdExcludes, personalDirectory } = scope
   const root = directories.at(-1)
   if (root === undefined) return { directory: null, claudeMdExcludes, dispose: async () => {} }
+  if (trusted) {
+    return {
+      directory: directories[0] ?? root,
+      claudeMdExcludes,
+      trusted: await inspectTrustedSettings(scope),
+      dispose: async () => {},
+    }
+  }
 
   const directory = await mkdtemp(join(temporaryDirectory, "project-"))
   const config = join(directory, ".claude")

@@ -6,6 +6,7 @@ import { createHash } from "node:crypto"
 import { chmod, mkdir, readdir, rm, writeFile } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
 import { buildSessionEnv } from "@pigclaude/session-env"
+import { ProjectTrustStore, projectTrustFilePath } from "../runtime/project-trust-store"
 import { cliModelCache, type OrganizationModel } from "./claude-bootstrap"
 import {
   prepareProjectConfiguration,
@@ -142,9 +143,12 @@ export class SessionEnvironment {
       }
       await mkdir(configDir, { recursive: retained !== undefined, mode: sessionDirectoryMode })
       if (input.loadProjectConfiguration) {
+        const trust = new ProjectTrustStore(projectTrustFilePath(userDataPath))
         projectConfiguration = await prepareProjectConfiguration(
           input.workspace,
           retained?.claudeTmpDir ?? sessionDir,
+          undefined,
+          await trust.isTrusted(input.workspace),
         )
       }
       await writeFile(preloadPath, preloadSource, { mode: sessionDirectoryMode })

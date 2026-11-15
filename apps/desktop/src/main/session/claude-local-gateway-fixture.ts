@@ -5,7 +5,11 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 /** 只接收回环请求的假网关及它收到的消息请求。 */
 export type ClaudeLocalGateway = {
   readonly url: string
-  readonly messages: Array<{ body: string; hasSessionHeader: boolean }>
+  readonly messages: Array<{
+    body: string
+    hasSessionHeader: boolean
+    hasPlaceholderCredential: boolean
+  }>
   close(): Promise<void>
 }
 
@@ -54,6 +58,9 @@ async function reply(
   messages.push({
     body,
     hasSessionHeader: typeof request.headers["x-pigclaude-session"] === "string",
+    hasPlaceholderCredential:
+      request.headers.authorization === "Bearer pigclaude-local" &&
+      request.headers["x-api-key"] === undefined,
   })
   const input: unknown = JSON.parse(body)
   const model =

@@ -63,12 +63,25 @@ describe("settings proxy copy", () => {
     await act(async () =>
       root.render(
         createElement(AppProviders, {
-          children: createElement(MenubarSettings, { onNavigate: () => undefined }),
+          children: createElement(MenubarSettings),
         }),
       ),
     )
     expect(container.textContent).toContain("—")
     expect(container.textContent).not.toContain("62%")
+  })
+
+  it("shows the stored window-close behavior and saves a change through the desktop bridge", async () => {
+    const setCloseToTray = vi.fn(async (value: boolean) => value)
+    vi.stubGlobal("pigclaude", { window: { getCloseToTray: async () => false, setCloseToTray } })
+    await act(async () =>
+      root.render(createElement(AppProviders, { children: createElement(MenubarSettings) })),
+    )
+    const toggle = container.querySelector<HTMLButtonElement>('[role="switch"]')
+    expect(toggle?.getAttribute("aria-checked")).toBe("false")
+    await act(async () => toggle?.click())
+    expect(setCloseToTray).toHaveBeenCalledExactlyOnceWith(true)
+    expect(toggle?.getAttribute("aria-checked")).toBe("true")
   })
 
   it("keeps the session time zone and language tied to the account fingerprint", async () => {

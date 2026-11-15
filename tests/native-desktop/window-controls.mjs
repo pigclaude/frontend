@@ -95,6 +95,32 @@ export async function verifySystemControls(application, page, nativeState, out) 
   )
 }
 
+/** 验证关窗隐藏同一个原生窗口，Dock 激活或再次启动能唤回，再保存关窗退出偏好。 */
+export async function verifyBackgroundClose(application, page) {
+  const defaultValue = await page.evaluate(() => window.pigclaude.window.getCloseToTray())
+  assert.equal(defaultValue, process.platform !== "linux")
+  if (!defaultValue)
+    assert.equal(await page.evaluate(() => window.pigclaude.window.setCloseToTray(true)), true)
+  const read = () =>
+    application.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0]
+      return window ? { id: window.id, visible: window.isVisible() } : null
+    })
+  const original = await read()
+  assert.ok(original?.visible)
+  await page.evaluate(() => window.pigclaude.window.control("close"))
+  await expect.poll(read, { message: "关窗后仍保留原生窗口" }).toEqual({
+    id: original.id,
+    visible: false,
+  })
+  await application.evaluate(({ app }) => {
+    if (process.platform === "darwin") app.emit("activate")
+    else app.emit("second-instance", {}, [], process.cwd())
+  })
+  await expect.poll(read, { message: "唤回相同窗口" }).toEqual(original)
+  assert.equal(await page.evaluate(() => window.pigclaude.window.setCloseToTray(false)), false)
+}
+
 /** 点击系统关闭按钮，由主进程的 closed 事件确认原生窗口已销毁。 */
 export async function verifySystemClose(application, page, out) {
   const eventFile = join(out, "native-window-closed.txt")

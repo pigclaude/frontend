@@ -1,6 +1,6 @@
 // 用假时钟、假会话入口及临时 JSON 验证定时任务的实际触发行为。
 
-import { copyFile, mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises"
+import { copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
@@ -248,6 +248,63 @@ it("同一任务并发触发只调用一次会话，保留五十条记录且不�
   } finally {
     complete.resolve({ status: "stopped" })
   }
+})
+
+it("兼容旧文件并在墙钟回拨后按实际触发顺序保留最近五十条，重开后分页一致", async () => {
+  const f = await fixture()
+  const task = await f.service.create({ ...f.input, enabled: false })
+  async function run(service: ScheduledTaskService) {
+    f.clock.wall += 1_000
+    f.clock.elapsed += 1_000
+    const claim = await service.runNow(task.id)
+    await vi.waitFor(
+      async () => {
+        const { runs } = await service.runs(task.id)
+        expect(runs.find(({ id }) => id === claim.id)?.status).toBe("succeeded")
+      },
+      { interval: 2 },
+    )
+    return claim
+  }
+
+  const oldest = await run(f.service)
+  const secondOldest = await run(f.service)
+  for (let index = 2; index < 50; index += 1) await run(f.service)
+  await f.service.dispose()
+
+  const legacy = JSON.parse(await readFile(f.filePath, "utf8")) as {
+    tasks: Array<{ history: Array<{ triggerSequence?: number }> }>
+  }
+  for (const { history } of legacy.tasks) {
+    for (const record of history) delete record.triggerSequence
+  }
+  await writeFile(f.filePath, JSON.stringify(legacy))
+
+  const migrated = reopen(f)
+  await migrated.start()
+  f.clock.wall -= 10 * minute
+  const first = await run(migrated)
+  const second = await run(migrated)
+  expect(second.triggeredAt < oldest.triggeredAt).toBe(true)
+  expect(await migrated.runs(task.id, 0, 2)).toMatchObject({
+    total: 50,
+    runs: [
+      { id: second.id, triggerSequence: 52, triggeredAt: second.triggeredAt },
+      { id: first.id, triggerSequence: 51, triggeredAt: first.triggeredAt },
+    ],
+  })
+  const all = await migrated.runs(task.id)
+  expect(all.runs.map(({ id }) => id)).not.toContain(oldest.id)
+  expect(all.runs.map(({ id }) => id)).not.toContain(secondOldest.id)
+  await migrated.dispose()
+
+  const reopened = reopen(f)
+  await reopened.start()
+  expect(await reopened.runs(task.id)).toEqual(all)
+  expect(await reopened.runs(task.id, 1, 20)).toEqual({
+    total: 50,
+    runs: all.runs.slice(1, 21),
+  })
 })
 
 it("到点时已有一次运行就记录跳过，退出中止入口并保存最后结果", async () => {

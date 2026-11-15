@@ -12,6 +12,7 @@ import type {
 } from "../../scheduled-tasks-contract"
 import {
   maximumScheduledTaskRuns,
+  newestScheduledRunFirst,
   parseScheduledTaskInput,
   readScheduledTasks,
   writeScheduledTasks,
@@ -182,9 +183,7 @@ export class ScheduledTaskService {
       if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1)
         throw new Error("SCHEDULE_RUN_PAGE_INVALID")
       const { active, history } = findTask(this.#file, id)
-      const rows = [...(active === null ? [] : [active]), ...history].sort((a, b) =>
-        b.triggeredAt.localeCompare(a.triggeredAt),
-      )
+      const rows = [...(active === null ? [] : [active]), ...history].sort(newestScheduledRunFirst)
       return { runs: structuredClone(rows.slice(offset, offset + limit)), total: rows.length }
     })
   }
@@ -426,9 +425,11 @@ function claimRun(
 ): ScheduledTaskRun {
   const reason = missed ? "MISSED" : saved.active === null ? null : "TASK_BUSY"
   const at = timestamp(now)
+  const triggerSequence = saved.task.runCount + 1
   const run: ScheduledTaskRun = {
     id: randomUUID(),
     taskId: saved.task.id,
+    triggerSequence,
     source: scheduledAt === null ? "manual" : "schedule",
     status: reason === null ? "running" : "skipped",
     scheduledAt,
@@ -440,7 +441,7 @@ function claimRun(
     deniedApprovals: 0,
   }
   saved.task.lastRunAt = at
-  saved.task.runCount += 1
+  saved.task.runCount = triggerSequence
   if (run.status === "running") saved.active = run
   else saved.history.unshift(run)
   trimHistory(saved)
@@ -467,7 +468,7 @@ function finishRun(saved: SavedScheduledTask, run: ScheduledTaskRun): void {
   saved.active = null
   if (run.sessionId !== null) saved.task.lastSessionId = run.sessionId
   saved.history.unshift(run)
-  saved.history.sort((a, b) => b.triggeredAt.localeCompare(a.triggeredAt))
+  saved.history.sort(newestScheduledRunFirst)
   trimHistory(saved)
 }
 

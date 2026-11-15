@@ -30,6 +30,8 @@ export type ScheduledTask = ScheduledTaskInput & {
 export type ScheduledTaskRun = {
   id: string
   taskId: string
+  /** 该任务的持久触发序号，历史排序不受本机墙钟调整影响。 */
+  triggerSequence: number
   source: "schedule" | "manual"
   status: ScheduleRunStatus
   scheduledAt: string | null

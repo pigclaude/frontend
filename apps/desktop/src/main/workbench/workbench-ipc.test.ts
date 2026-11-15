@@ -218,6 +218,56 @@ describe("workbench IPC", () => {
     await expect(call("browser-pick", id, " ")).rejects.toThrow("WORKBENCH_INPUT_INVALID")
   })
 
+  it("syncs owned Agent tabs during network grace without authorizing browser actions", async () => {
+    const id = "agent-" + resourceId
+    const sessionId = "session-b"
+    const url = "http://localhost:3000/"
+    const native = browsers()
+    const tabs = [{ id, sessionId }]
+    native["listAgentTabs"]?.mockReturnValue(tabs)
+    state = "network_grace"
+
+    await expect(call("browser-agent-tabs", sessionId)).resolves.toEqual(tabs)
+    await expect(call("browser-active-session", sessionId)).resolves.toBeUndefined()
+    expect(native["listAgentTabs"]).toHaveBeenCalledExactlyOnceWith(
+      trusted.browserWindow,
+      sessionId,
+    )
+    expect(native["setActiveSession"]).toHaveBeenCalledWith(trusted.browserWindow, sessionId)
+    const list = handlers.get("pigclaude:workbench-browser-agent-tabs")
+    await expect(list?.(event(stranger.webContents), sessionId)).rejects.toThrow(
+      "UNTRUSTED_WORKSPACE_REQUEST",
+    )
+    const bounds = { x: 0, y: 0, width: 50, height: 50, scale: 1 }
+    const scope = { id, sessionId }
+    const actions = [
+      call("browser-present", id, bounds, sessionId),
+      call("browser-navigate", id, url, sessionId),
+      call("browser-command", id, "reload", sessionId),
+      call("browser-pick", id, sessionId),
+      call("browser-external", url, scope),
+      call("preview-open", url, scope),
+    ]
+    await Promise.all(
+      actions.map((action) => expect(action).rejects.toThrow("MEMBERSHIP_REQUIRED")),
+    )
+    await call("browser-close", id, sessionId)
+    expect(native["close"]).toHaveBeenCalledExactlyOnceWith(trusted.browserWindow, id, sessionId)
+
+    state = "expired"
+    await expect(call("browser-agent-tabs", sessionId)).rejects.toThrow("MEMBERSHIP_REQUIRED")
+    await expect(call("browser-active-session", sessionId)).rejects.toThrow("MEMBERSHIP_REQUIRED")
+    await expect(call("browser-active-session", null)).resolves.toBeUndefined()
+    state = "active"
+    await expect(call("browser-present", id, bounds, sessionId)).resolves.toBeUndefined()
+    expect(native["present"]).toHaveBeenCalledExactlyOnceWith(
+      trusted.browserWindow,
+      id,
+      bounds,
+      sessionId,
+    )
+  })
+
   it("lists and reads files only inside a registered project", async () => {
     await writeFile(join(project, "notes.md"), "hello\n")
 

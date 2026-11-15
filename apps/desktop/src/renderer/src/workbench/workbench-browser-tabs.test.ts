@@ -2,7 +2,7 @@
 // @vitest-environment jsdom
 import { act } from "react"
 import { expect, it, vi } from "vitest"
-import type { AgentBrowserTab } from "../../../workbench-contract"
+import type { AgentBrowserTab, WorkbenchBridge } from "../../../workbench-contract"
 import { fakeWorkbench, panelTabs, workbenchRoot } from "../test-support/workbench-harness"
 
 const screen = workbenchRoot()
@@ -100,4 +100,51 @@ it("discards a delayed tab list after switching to another session", async () =>
   await act(async () => resolve([first]))
 
   expect(panelTabs().map(({ title }) => title)).toEqual(["current result"])
+})
+
+it("removes a stopped tab in network grace and presents the selected session when membership recovers", async () => {
+  const fake = setup()
+  const first = tab("first", "session-a", "first preview")
+  const second = tab("second", "session-b", "second preview")
+  fake.tabs.set(first.sessionId, [first])
+  fake.tabs.set(second.sessionId, [second])
+  const present = vi.fn<WorkbenchBridge["browserPresent"]>(async () => undefined)
+  const activate = vi.fn<WorkbenchBridge["browserSetActiveSession"]>(async () => undefined)
+  Object.assign(fake.bridge, { browserPresent: present, browserSetActiveSession: activate })
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  )
+  const measure = vi
+    .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+    .mockReturnValue(new DOMRect(10, 20, 640, 480))
+  const bounds = { x: 10, y: 20, width: 640, height: 480, scale: 1 }
+  try {
+    await screen.render(fake.bridge, { sessionId: first.sessionId, membershipActive: true })
+    await vi.waitFor(() => expect(present).toHaveBeenCalledWith(first.id, bounds, first.sessionId))
+
+    await screen.render(fake.bridge, { sessionId: first.sessionId, membershipActive: false })
+    fake.tabs.delete(first.sessionId)
+    await fake.emit({ type: "browser-close", id: first.id, sessionId: first.sessionId })
+    expect(panelTabs()).toEqual([])
+
+    await screen.render(fake.bridge, { sessionId: second.sessionId, membershipActive: false })
+    expect(panelTabs().map(({ title }) => title)).toEqual(["second preview"])
+    expect(activate).toHaveBeenLastCalledWith(second.sessionId)
+    await vi.waitFor(() =>
+      expect(present).toHaveBeenLastCalledWith(second.id, null, second.sessionId),
+    )
+    expect(present).not.toHaveBeenCalledWith(second.id, bounds, second.sessionId)
+
+    await screen.render(fake.bridge, { sessionId: second.sessionId, membershipActive: true })
+    await vi.waitFor(() =>
+      expect(present).toHaveBeenLastCalledWith(second.id, bounds, second.sessionId),
+    )
+    expect(panelTabs().map(({ title }) => title)).toEqual(["second preview"])
+  } finally {
+    measure.mockRestore()
+  }
 })

@@ -78,9 +78,10 @@ vi.mock("./authorization/callback-server", () => ({
     return { close: vi.fn() }
   },
 }))
-vi.mock("./desktop-startup", async () => {
+vi.mock(import("./desktop-startup"), async (importOriginal) => {
   const { StartupPreferences } = await import("./startup-preferences")
   return {
+    ...(await importOriginal()),
     createDesktopStartup: () =>
       new StartupPreferences(
         {

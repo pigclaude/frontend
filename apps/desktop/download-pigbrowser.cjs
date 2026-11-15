@@ -1,14 +1,16 @@
-// 负责发版时从私有仓库的 Release 下载固定的 PigBrowser 开发包，并按 pigbrowser-artifacts.json 的 sha256 校验。
+// 负责从 GitHub Release 下载固定的 PigBrowser 开发包，校验后再交给打包流程。
 
 const { spawnSync } = require("node:child_process")
-const { rmSync } = require("node:fs")
+const { createWriteStream } = require("node:fs")
+const { mkdir, mkdtemp, rename, rm } = require("node:fs/promises")
 const { join } = require("node:path")
+const { pipeline } = require("node:stream/promises")
 const artifacts = require("./pigbrowser-artifacts.json")
 const { hashFile, pigbrowserArtifact, pigbrowserVersion } = require("./pigbrowser-resources.cjs")
 
 const TOKEN_SECRET = "PIGBROWSER_READ_TOKEN"
 
-/** 返回某个平台开发包在私有 Release 里的位置：仓库、`v<版本>` 的 tag、附件名和固定的 sha256。 */
+/** 返回当前平台的仓库、版本 tag、附件名和锁定的 SHA-256。 */
 function pigbrowserRelease(target) {
   const artifact = pigbrowserArtifact(target)
   return {
@@ -19,18 +21,61 @@ function pigbrowserRelease(target) {
   }
 }
 
-/**
- * 用只读令牌经 gh 下载开发包到 dir，返回包的路径。令牌缺失、Release 不存在或还是草稿、
- * 附件不存在时说明缺什么；包和固定的 sha256 对不上时删掉它再失败，不留下可被误用的文件。
- */
-async function fetchPigbrowserArchive({ release, dir, token, run }) {
-  if (!token?.trim()) {
+/** 下载并核对完整文件。传入只读令牌时支持私有仓，失败时保留目录里已有的包。 */
+async function fetchPigbrowserArchive({ release, dir, token, run = runGh, fetcher = fetch }) {
+  await mkdir(dir, { recursive: true })
+  const pending = await mkdtemp(join(dir, ".pigbrowser-"))
+  try {
+    const path = join(pending, release.archive)
+    const where = `${release.repository} 的 Release ${release.tag}`
+    if (token?.trim()) downloadPrivate(release, pending, token.trim(), run, where)
+    else await downloadPublic(release, path, fetcher, where)
+    if ((await hashFile(path)) !== release.sha256) {
+      throw new Error(
+        `PigBrowser 包校验失败：${release.archive} 的 sha256 与 pigbrowser-artifacts.json 不一致`,
+      )
+    }
+    const archive = join(dir, release.archive)
+    await rename(path, archive)
+    return archive
+  } finally {
+    await rm(pending, { recursive: true, force: true })
+  }
+}
+
+async function downloadPublic(release, path, fetcher, where) {
+  const tag = encodeURIComponent(release.tag)
+  const metadata = await fetcher(
+    `https://api.github.com/repos/${release.repository}/releases/tags/${tag}`,
+    { headers: { accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(30_000) },
+  )
+  if (!metadata.ok) {
+    await metadata.body?.cancel()
     throw new Error(
-      `缺少 secret ${TOKEN_SECRET}：读取 ${release.repository} Release 附件的只读令牌`,
+      `匿名读取 ${where} 失败（HTTP ${metadata.status}）。请确认 Release 已发布；私有仓需要只读 ${TOKEN_SECRET}`,
     )
   }
+  const found = await metadata.json()
+  if (found?.draft !== false) throw new Error(`${where} 未公开发布`)
+  const published =
+    Array.isArray(found.assets) &&
+    found.assets.some((asset) => asset?.name === release.archive && asset?.state === "uploaded")
+  if (!published) throw new Error(`${where} 里没有已上传的附件 ${release.archive}`)
+
+  const archive = encodeURIComponent(release.archive)
+  const download = await fetcher(
+    `https://github.com/${release.repository}/releases/download/${tag}/${archive}`,
+    { signal: AbortSignal.timeout(10 * 60_000) },
+  )
+  if (!download.ok || !download.body) {
+    await download.body?.cancel()
+    throw new Error(`下载 ${where} 的附件 ${release.archive} 失败（HTTP ${download.status}）`)
+  }
+  await pipeline(download.body, createWriteStream(path, { flags: "wx" }))
+}
+
+function downloadPrivate(release, dir, token, run, where) {
   const env = { GH_TOKEN: token }
-  const where = `${release.repository} 的 Release ${release.tag}`
   const view = run(
     ["release", "view", release.tag, "--repo", release.repository, "--json", "assets,isDraft"],
     env,
@@ -62,14 +107,6 @@ async function fetchPigbrowserArchive({ release, dir, token, run }) {
   if (download.status !== 0) {
     throw new Error(`下载 ${where} 的附件 ${release.archive} 失败：${download.stderr.trim()}`)
   }
-  const path = join(dir, release.archive)
-  if ((await hashFile(path)) !== release.sha256) {
-    rmSync(path, { force: true })
-    throw new Error(
-      `PigBrowser 包校验失败：${release.archive} 的 sha256 与 pigbrowser-artifacts.json 不一致`,
-    )
-  }
-  return path
 }
 
 function runGh(args, env) {
@@ -96,7 +133,6 @@ async function main() {
       release: pigbrowserRelease(option("--target")),
       dir: option("--dir"),
       token: process.env[TOKEN_SECRET],
-      run: runGh,
     })
     process.stdout.write(`${path}\n`)
   } catch (error) {

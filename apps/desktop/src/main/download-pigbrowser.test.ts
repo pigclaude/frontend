@@ -1,11 +1,11 @@
-// 验证发版时从私有 Release 取 PigBrowser 开发包：令牌、Release 和附件缺失时说清缺什么，下载后按固定 sha256 校验。
+// 验证发版时从公开或私有 Release 下载 PigBrowser 开发包并核对固定 SHA-256。
 import { createHash } from "node:crypto"
 import { writeFileSync } from "node:fs"
-import { mkdtemp, readdir, rm } from "node:fs/promises"
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 type Release = { repository: string; tag: string; archive: string; sha256: string }
 type Run = (
@@ -19,6 +19,7 @@ type DownloadPigbrowser = {
     dir: string
     token?: string
     run: Run
+    fetcher?: typeof fetch
   }): Promise<string>
 }
 
@@ -88,15 +89,70 @@ describe("PigBrowser 开发包的下载来源", () => {
   })
 })
 
-describe("从私有 Release 下载 PigBrowser 开发包", () => {
-  it("缺少令牌时不调用 gh，报出要配置的 secret", async () => {
+function publicRelease(asset = release.archive) {
+  return Response.json({ draft: false, assets: [{ name: asset, state: "uploaded" }] })
+}
+
+describe("从公开 Release 下载 PigBrowser 开发包", () => {
+  it("不带凭据下载已公开的固定附件，校验后返回文件路径", async () => {
     const gh = fakeGh({})
-    await expect(
-      script.fetchPigbrowserArchive({ release, dir, token: " ", run: gh.run }),
-    ).rejects.toThrow("缺少 secret PIGBROWSER_READ_TOKEN")
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(publicRelease())
+      .mockResolvedValueOnce(new Response(content))
+    const path = await script.fetchPigbrowserArchive({
+      release,
+      dir,
+      token: " ",
+      run: gh.run,
+      fetcher,
+    })
+    expect(path).toBe(join(dir, release.archive))
+    expect(await readFile(path, "utf8")).toBe(content)
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      "https://api.github.com/repos/pigbrowser/pigbrowser/releases/tags/v1.2.3",
+      `https://github.com/pigbrowser/pigbrowser/releases/download/v1.2.3/${release.archive}`,
+    ])
+    expect(
+      fetcher.mock.calls.every(([, init]) => !new Headers(init?.headers).has("authorization")),
+    ).toBe(true)
     expect(gh.calls).toHaveLength(0)
   })
 
+  it("无法匿名读取时提示私有仓可以配置只读令牌", async () => {
+    const gh = fakeGh({})
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 404 }))
+    await expect(
+      script.fetchPigbrowserArchive({ release, dir, run: gh.run, fetcher }),
+    ).rejects.toThrow("PIGBROWSER_READ_TOKEN")
+    expect(gh.calls).toHaveLength(0)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
+  it("公开 Release 缺少固定附件时不下载其他文件", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(publicRelease("other.zip"))
+    await expect(
+      script.fetchPigbrowserArchive({ release, dir, run: fakeGh({}).run, fetcher }),
+    ).rejects.toThrow(`里没有已上传的附件 ${release.archive}`)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
+  it("下载到的哈希不匹配时保留已有的正确包", async () => {
+    const path = join(dir, release.archive)
+    writeFileSync(path, content)
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(publicRelease())
+      .mockResolvedValueOnce(new Response("corrupted"))
+    await expect(
+      script.fetchPigbrowserArchive({ release, dir, run: fakeGh({}).run, fetcher }),
+    ).rejects.toThrow("PigBrowser 包校验失败")
+    expect(await readFile(path, "utf8")).toBe(content)
+    expect(await readdir(dir)).toEqual([release.archive])
+  })
+})
+
+describe("从私有 Release 下载 PigBrowser 开发包", () => {
   it("Release 不存在时报出仓库和 tag，并带上 gh 的原话", async () => {
     const gh = fakeGh({ viewError: "release not found\n" })
     await expect(
@@ -143,7 +199,7 @@ describe("从私有 Release 下载 PigBrowser 开发包", () => {
         "--pattern",
         release.archive,
         "--dir",
-        dir,
+        expect.stringContaining(join(dir, ".pigbrowser-")),
         "--clobber",
       ],
     ])

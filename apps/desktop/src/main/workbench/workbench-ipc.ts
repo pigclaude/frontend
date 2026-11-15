@@ -133,6 +133,11 @@ export class WorkbenchIpc {
 
     const project = (root: unknown) =>
       options.roots().then((roots) => workspaceDirectory(root, roots))
+    function requireBrowserSessionSync(): void {
+      const state = options.membership()?.state
+      if (state === undefined || !keepsMembershipRuntime(state))
+        throw new Error("MEMBERSHIP_REQUIRED")
+    }
     handle("list", async (_window, _event, [root, path]) =>
       listWorkbenchDirectory(await project(root), string(path, 4096)),
     )
@@ -267,8 +272,7 @@ export class WorkbenchIpc {
     handle(
       "browser-active-session",
       (window, _event, [sessionId]) => {
-        if (sessionId !== null && options.membership()?.state !== "active")
-          throw new Error("MEMBERSHIP_REQUIRED")
+        if (sessionId !== null) requireBrowserSessionSync()
         this.#browsers.setActiveSession(
           window,
           sessionId === null ? null : browserSessionId(sessionId),
@@ -276,8 +280,13 @@ export class WorkbenchIpc {
       },
       false,
     )
-    handle("browser-agent-tabs", (window, _event, [sessionId]) =>
-      this.#browsers.listAgentTabs(window, browserSessionId(sessionId)),
+    handle(
+      "browser-agent-tabs",
+      (window, _event, [sessionId]) => {
+        requireBrowserSessionSync()
+        return this.#browsers.listAgentTabs(window, browserSessionId(sessionId))
+      },
+      false,
     )
     handle("browser-navigate", (window, _event, [id, url, sessionId]) =>
       this.#browsers.navigate(window, browserId(id), url, optionalSessionId(sessionId)),

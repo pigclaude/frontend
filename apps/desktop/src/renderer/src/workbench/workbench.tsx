@@ -62,6 +62,8 @@ export type WorkbenchProps = {
   root: string | null
   sessionId: string | null
   sessionActive: boolean
+  /** 会员宽限期间保留 Agent 标签；原生页面在核验恢复后重新显示。 */
+  membershipActive?: boolean
   turnActive: boolean
   /** Claude 可能改动过项目的次数；变化时文件树、Git 状态、Diff 和打开的文件都重读。 */
   workspaceRevision: number
@@ -333,7 +335,7 @@ export const Workbench = forwardRef<WorkbenchActions, WorkbenchProps>(
                   id={tab.id}
                   initialUrl={tab.url}
                   agent={agent}
-                  active={active && props.visible}
+                  active={active && props.visible && (!agent || props.membershipActive !== false)}
                   onTitle={(title) => {
                     if (agent) agentTabs.setTitle(tab.id, title)
                     else setState((current) => updateSurface(current, tab.id, { title }))

@@ -1,4 +1,4 @@
-// 负责用临时仓库验证工作台的只读 Git 状态：路径相对项目目录，排除 Claude Code 配置，普通目录不报错。
+// 负责用临时仓库验证工作台的只读 Git 状态：路径相对项目目录，包含项目配置并排除 Claude Code 的 worktree。
 import { execFile } from "node:child_process"
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -37,7 +37,7 @@ afterEach(async () => {
 })
 
 describe("workbench git status", () => {
-  it("lists added, modified, deleted, renamed and untracked files but no Claude settings", async () => {
+  it("lists added, modified, deleted, renamed and untracked files including project settings", async () => {
     const root = join(directory, "project")
     await repository(root, { "a.txt": "a\n", "b.txt": "b\n", "old.txt": "old\n", "c.txt": "c\n" })
     await writeFile(join(root, "a.txt"), "changed\n")
@@ -47,12 +47,14 @@ describe("workbench git status", () => {
     await git(root, "add", "staged.txt")
     await mkdir(join(root, "src", "deep"), { recursive: true })
     await writeFile(join(root, "src", "deep", "fresh.ts"), "export {}\n")
-    await mkdir(join(root, ".claude"))
-    await writeFile(join(root, ".claude", "settings.local.json"), "{}\n")
+    await mkdir(join(root, ".claude", "worktrees"), { recursive: true })
+    await writeFile(join(root, ".claude", "settings.json"), "{}\n")
+    await writeFile(join(root, ".claude", "worktrees", "example.txt"), "internal\n")
 
     const changes = await workbenchStatus(root)
 
     expect(changes?.sort((left, right) => left.path.localeCompare(right.path))).toEqual([
+      { path: ".claude/settings.json", status: "??" },
       { path: "a.txt", status: " M" },
       { path: "b.txt", status: " D" },
       { path: "new.txt", status: "R " },

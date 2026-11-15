@@ -1,7 +1,7 @@
 // 负责给输入区的 @ 引用列出工作区里的文件；只读、跳过依赖和版本库目录，并限制条数与深度。
 
 import { readdir, stat } from "node:fs/promises"
-import { isAbsolute, join, relative, sep } from "node:path"
+import { isAbsolute, join } from "node:path"
 
 /** 单次最多返回的文件数，避免把整个大仓库塞进建议列表。 */
 export const WORKSPACE_FILE_LIMIT = 2000
@@ -23,10 +23,11 @@ const ignoredDirs = new Set([
   ".next",
 ])
 
-/** 列出工作区里的相对路径；保证不跟随符号链接，路径统一用斜杠，按字典序返回。 */
+/** 列出工作区里的相对路径；始终跳过链接和忽略目录，默认也跳过隐藏条目。 */
 export async function listWorkspaceFiles(
   root: string,
   limit = WORKSPACE_FILE_LIMIT,
+  visible: (path: string, name: string) => boolean = (_path, name) => !name.startsWith("."),
 ): Promise<string[]> {
   if (!isAbsolute(root)) throw new Error("WORKSPACE_UNAVAILABLE: 工作区必须是绝对路径")
   const info = await stat(root).catch(() => null)
@@ -34,21 +35,20 @@ export async function listWorkspaceFiles(
     throw new Error("WORKSPACE_UNAVAILABLE: 工作区不存在")
   }
   const files: string[] = []
-  const walk = async (dir: string, depth: number): Promise<void> => {
+  const walk = async (directory: string, depth: number): Promise<void> => {
     if (depth > MAX_DEPTH || files.length >= limit) return
-    const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
+    const entries = await readdir(join(root, directory), { withFileTypes: true }).catch(() => [])
     for (const entry of entries) {
       if (files.length >= limit) return
-      if (entry.isSymbolicLink()) continue
+      const path = directory ? directory + "/" + entry.name : entry.name
+      if (entry.isSymbolicLink() || !visible(path, entry.name)) continue
       if (entry.isDirectory()) {
-        if (ignoredDirs.has(entry.name) || entry.name.startsWith(".")) continue
-        await walk(join(dir, entry.name), depth + 1)
-        continue
+        if (!ignoredDirs.has(entry.name)) await walk(path, depth + 1)
+      } else if (entry.isFile()) {
+        files.push(path)
       }
-      if (!entry.isFile() || entry.name.startsWith(".")) continue
-      files.push(relative(root, join(dir, entry.name)).split(sep).join("/"))
     }
   }
-  await walk(root, 0)
+  await walk("", 0)
   return files.sort()
 }

@@ -7,6 +7,7 @@ export const workbenchZhCN = {
   "workbench.notGit": "当前项目不是 Git 仓库",
   "workbench.largeDiff": "改动太多，打开单个文件查看 Diff",
   "workbench.fileChanged": "磁盘上的文件已变更",
+  "workbench.projectTrustRequired": "此文件仅在完全信任此项目后生效。",
   "workbench.terminalFailed": "无法打开终端",
   "workbench.terminalExited": "终端已退出（{code}）",
   "workbench.browserContext": "网页元素",
@@ -34,6 +35,8 @@ export const workbenchEnUS: Record<keyof typeof workbenchZhCN, string> = {
   "workbench.notGit": "This project is not a Git repository",
   "workbench.largeDiff": "This diff is too large. View changes for an individual file.",
   "workbench.fileChanged": "The file changed on disk",
+  "workbench.projectTrustRequired":
+    "This file takes effect only when you fully trust this project.",
   "workbench.terminalFailed": "Could not open terminal",
   "workbench.terminalExited": "Terminal exited ({code})",
   "workbench.browserContext": "Page element",

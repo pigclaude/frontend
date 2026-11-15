@@ -102,6 +102,37 @@ afterEach(async () => {
 })
 
 describe("workbench file actions", () => {
+  it("shows and saves a project's Claude settings through the file panel bridge", async () => {
+    const settings = ".claude/settings.json"
+    await mkdir(join(project, ".claude"))
+    await writeFile(join(project, settings), "{}\n")
+
+    await expect(call("list", project, "")).resolves.toMatchObject({
+      entries: [{ path: ".claude", kind: "directory" }],
+    })
+    await expect(call("list", project, ".claude")).resolves.toMatchObject({
+      entries: [{ path: settings, kind: "file" }],
+    })
+    const file = await call("read", project, settings)
+    expect(file).toMatchObject({ path: settings, text: "{}\n", binary: false })
+    await call("save", project, settings, '{ "env": {} }\n', null)
+    expect(await readFile(join(project, settings), "utf8")).toBe('{ "env": {} }\n')
+  })
+
+  it("finds project configuration in the file panel without searching hidden worktrees", async () => {
+    await mkdir(join(project, ".claude", "worktrees"), { recursive: true })
+    await writeFile(join(project, ".claude", "settings.json"), "{}\n")
+    await writeFile(join(project, ".claude", "worktrees", "settings.json"), "{}\n")
+    await writeFile(join(project, ".mcp.json"), "{}\n")
+
+    await expect(call("search", project, "settings")).resolves.toMatchObject({
+      entries: [{ path: ".claude/settings.json", kind: "file" }],
+    })
+    await expect(call("search", project, "mcp")).resolves.toMatchObject({
+      entries: [{ path: ".mcp.json", kind: "file" }],
+    })
+  })
+
   it("reports Git changes of a project and nothing for a plain folder", async () => {
     await writeFile(join(project, "notes.md"), "hello\n")
     await expect(call("status", project)).resolves.toBeNull()
@@ -211,8 +242,10 @@ describe("workbench file actions", () => {
     await writeFile(join(project, "notes.md"), "hello\n")
     await writeFile(join(directory, "outside.md"), "outside\n")
     await mkdir(join(project, "docs"))
-    await mkdir(join(project, ".claude"))
-    await writeFile(join(project, ".claude", "settings.local.json"), "{}\n")
+    await mkdir(join(project, ".claude", "worktrees"), { recursive: true })
+    await writeFile(join(project, ".claude", "worktrees", "private.txt"), "hidden\n")
+    await mkdir(join(project, ".git"))
+    await writeFile(join(project, ".git", "config"), "internal\n")
     const links = process.platform === "win32" ? [] : ["link.md"]
     if (links.length > 0) await symlink(join(directory, "outside.md"), join(project, "link.md"))
     const stranger = { sender: { id: "stranger" } } as unknown as IpcMainInvokeEvent
@@ -238,13 +271,18 @@ describe("workbench file actions", () => {
     for (const [name, ...args] of malformed) {
       await expect(call(name, ...args), name).rejects.toThrow("WORKBENCH_INPUT_INVALID")
     }
-    for (const path of ["", "docs", ".claude/settings.local.json", ...links]) {
+    const protectedPaths = [".claude/worktrees", ".claude/worktrees/private.txt", ".git/config"]
+    for (const path of ["", "docs", ...protectedPaths, ...links]) {
       await expect(call("open-file", project, path, null), path).rejects.toThrow(
         "WORKBENCH_PATH_INVALID",
       )
       await expect(call("save-as", project, path), path).rejects.toThrow("WORKBENCH_PATH_INVALID")
     }
-    for (const path of [".claude/settings.local.json", "../outside.md", ...links]) {
+    for (const path of [...protectedPaths, "../outside.md", ...links]) {
+      await expect(call("read", project, path), path).rejects.toThrow("WORKBENCH_PATH_INVALID")
+      await expect(call("save", project, path, "overwrite\n", null), path).rejects.toThrow(
+        "WORKBENCH_PATH_INVALID",
+      )
       await expect(call("reveal", project, path), path).rejects.toThrow("WORKBENCH_PATH_INVALID")
     }
     await expect(call("status", directory)).rejects.toThrow("WORKBENCH_PROJECT_REQUIRED")

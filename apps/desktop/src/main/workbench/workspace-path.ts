@@ -1,7 +1,7 @@
 // 负责解析已登记的项目目录和安全的工作区内相对路径。
 import { lstat, realpath, stat } from "node:fs/promises"
 import { isAbsolute, relative, resolve, sep, win32 } from "node:path"
-import { listedWorkbenchName, privateWorkbenchName } from "./hidden-paths"
+import { listedWorkbenchEntry, protectedWorkbenchPath } from "./hidden-paths"
 
 /** 校验项目仍然存在，并返回解析符号链接后的绝对目录。 */
 export async function workspaceDirectory(
@@ -32,7 +32,12 @@ export async function workspacePath(root: string, path: unknown): Promise<string
   }
   if (path === "") return root
   const parts = path.split("/")
-  if (isAbsolute(path) || win32.isAbsolute(path) || parts.some(invalidSegment)) {
+  if (
+    isAbsolute(path) ||
+    win32.isAbsolute(path) ||
+    parts.some(invalidSegment) ||
+    protectedWorkbenchPath(path)
+  ) {
     throw new Error("WORKBENCH_PATH_INVALID")
   }
   const absolute = resolve(root, ...parts)
@@ -51,14 +56,12 @@ export async function workspacePath(root: string, path: unknown): Promise<string
 }
 
 function invalidSegment(name: string): boolean {
-  return (
-    name === "" || name === "." || name === ".." || privateWorkbenchName(name) || name.includes(":")
-  )
+  return name === "" || name === "." || name === ".." || name.includes(":")
 }
 
 /** 判断资源管理器是否可以列出指定条目；隐藏规则见 hidden-paths。 */
-export function visibleWorkspaceEntry(name: string): boolean {
-  return !invalidSegment(name) && listedWorkbenchName(name)
+export function visibleWorkspaceEntry(directory: string, name: string): boolean {
+  return !invalidSegment(name) && listedWorkbenchEntry(directory, name)
 }
 
 /** 确认本地文件当前仍是普通文件，供保存前的版本核对使用。 */

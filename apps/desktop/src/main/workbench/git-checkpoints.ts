@@ -5,10 +5,11 @@ import { tmpdir } from "node:os"
 import { join, relative, sep } from "node:path"
 import type { WorkbenchCheckpoint } from "../../workbench-contract"
 import { assertWorkbenchGit, runWorkbenchGit } from "./git-command"
-import { protectedWorkbenchPath, workbenchPathspec } from "./hidden-paths"
+import { protectedWorkbenchPath, workbenchPathspec, type WorkbenchPathScope } from "./hidden-paths"
 
 const prefix = "refs/pigclaude/checkpoints/"
 const checkpointId = /^(manual|baseline|final)-[0-9a-f-]{36}$/
+const projectConfigTrailer = "PigClaude-Project-Configuration: included"
 
 function ref(scope: string, id: string): string {
   if (!checkpointId.test(id)) throw new Error("WORKBENCH_CHECKPOINT_INVALID")
@@ -99,6 +100,8 @@ export async function captureWorkbenchCheckpoint(
           ...(origin
             ? ["-m", `PigClaude-Session: ${origin.sessionId}\nPigClaude-Turn: ${origin.turnId}`]
             : []),
+          "-m",
+          projectConfigTrailer,
         ],
         env,
       )
@@ -114,6 +117,11 @@ export async function captureWorkbenchCheckpoint(
 export async function restoreWorkbenchCheckpoint(root: string, id: string): Promise<void> {
   const { gitRoot } = await scopeFor(root)
   const commit = await resolveWorkbenchCheckpoint(root, id)
+  const message = await runWorkbenchGit(gitRoot, ["show", "-s", "--format=%B", commit])
+  const pathScope: WorkbenchPathScope = message.split(/\r?\n/).includes(projectConfigTrailer)
+    ? "workspace"
+    : "legacy-checkpoint"
+  const pathspec = workbenchPathspec(".", pathScope)
   await captureWorkbenchCheckpoint(root)
   const directory = await mkdtemp(join(tmpdir(), "pigclaude-restore-"))
   const env = { GIT_INDEX_FILE: join(directory, "index") }
@@ -126,7 +134,7 @@ export async function restoreWorkbenchCheckpoint(root: string, id: string): Prom
       "-z",
       commit,
       "--",
-      project,
+      project === "." ? "." : ":(literal)" + project,
     ])
     const untracked = await runWorkbenchGit(root, [
       "ls-files",
@@ -134,16 +142,17 @@ export async function restoreWorkbenchCheckpoint(root: string, id: string): Prom
       "--exclude-standard",
       "-z",
       "--",
-      ...workbenchPathspec(),
+      ...pathspec,
     ])
     const selected = new Set(
-      snapshot.split("\0").filter((path) => path && !protectedWorkbenchPath(path)),
+      snapshot
+        .split("\0")
+        .map((path) => (project === "." ? path : path.slice(project.length + 1)))
+        .filter((path) => path && !protectedWorkbenchPath(path, pathScope)),
     )
-    const current = await runWorkbenchGit(root, ["ls-files", "-z", "--", ...workbenchPathspec()])
+    const current = await runWorkbenchGit(root, ["ls-files", "-z", "--", ...pathspec])
     await runWorkbenchGit(gitRoot, ["read-tree", commit], env)
-    const omitted = current
-      .split("\0")
-      .filter((path) => path && !selected.has(project === "." ? path : project + "/" + path))
+    const omitted = current.split("\0").filter((path) => path && !selected.has(path))
     if (omitted.length > 0)
       await runWorkbenchGit(root, ["update-index", "--add", "--remove", "--", ...omitted], env)
     if (selected.size > 0 || omitted.length > 0)
@@ -156,18 +165,13 @@ export async function restoreWorkbenchCheckpoint(root: string, id: string): Prom
           "--source=" + commit,
           "--worktree",
           "--",
-          ...workbenchPathspec(),
+          ...pathspec,
         ],
         env,
       )
     const additions = untracked
       .split("\0")
-      .filter(
-        (path) =>
-          path &&
-          !protectedWorkbenchPath(path) &&
-          !selected.has(project === "." ? path : project + "/" + path),
-      )
+      .filter((path) => path && !protectedWorkbenchPath(path, pathScope) && !selected.has(path))
     if (additions.length > 0) {
       await runWorkbenchGit(root, [
         "clean",

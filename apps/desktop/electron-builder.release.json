@@ -1,0 +1,9 @@
+{
+  "extends": "./electron-builder.json",
+  "extraMetadata": {
+    "pigclaudeEndpoints": {
+      "rustBaseUrl": "https://api.pigclaude.com",
+      "authOrigin": "https://pigclaude.com"
+    }
+  }
+}

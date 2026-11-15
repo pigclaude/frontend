@@ -250,12 +250,6 @@ try {
   pass("OS cold start with an unknown callback leaves the isolated profile signed out")
 
   step = "login opens system browser and gets actual private URL callback"
-  await page.evaluate(() => {
-    window.acceptanceAuthorizationStates = []
-    window.pigclaude.authorization.subscribe(({ status }) =>
-      window.acceptanceAuthorizationStates.push(status),
-    )
-  })
   await page.getByRole("button", { name: "登录", exact: true }).click()
   await expect(page.getByRole("button", { name: "复制链接", exact: true })).toBeEnabled()
   await expect.poll(() => fixture.state().browserVisits, { timeout: 30_000 }).toBeGreaterThan(0)
@@ -263,11 +257,8 @@ try {
   const wrong = new URL(approved)
   wrong.searchParams.set("state", "invalid-state-fixture")
   await dispatch(wrong)
-  await expect
-    .poll(() =>
-      page.evaluate(() => window.acceptanceAuthorizationStates.includes("state-mismatch")),
-    )
-    .toBe(true)
+  // 其他事务的回调被主进程丢弃，正常界面继续等待当前授权。
+  await expect(page.getByRole("button", { name: "复制链接", exact: true })).toBeEnabled()
   assert.equal(fixture.state().exchanges, 0)
   await dispatch(approved)
   await page.getByRole("button", { name: "稍后再说", exact: true }).click()

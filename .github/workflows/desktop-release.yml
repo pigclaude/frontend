@@ -48,6 +48,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - os: macos-15
+            target: darwin-arm64
+            package: --mac dmg --arm64
+            xray_archive: Xray-macos-arm64-v8a.zip
+            xray_sha256: 0a05dca3bd311b0bc5a89c7ce56350cab1e829e131e4b2bcd48eb304fac07e9a
+            executable: release/mac-arm64/PigClaude.app/Contents/MacOS/PigClaude
           - os: windows-2022
             target: win32-x64
             package: --win nsis --x64
@@ -108,7 +114,7 @@ jobs:
         working-directory: apps/desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: pnpm exec electron-builder --config electron-builder.json ${{ matrix.package }} --publish never
+        run: pnpm exec electron-builder --config electron-builder.release.json ${{ matrix.package }} --publish never
       - name: 冒烟测试：解压后的应用能启动，主进程的调试入口已关闭
         if: runner.os != 'Linux'
         working-directory: apps/desktop
@@ -123,6 +129,7 @@ jobs:
           node tests/native-desktop/installed-desktop.mjs $scratch.FullName apps/desktop/release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: desktop-release-${{ matrix.target }}
           if-no-files-found: error

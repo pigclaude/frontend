@@ -85,4 +85,19 @@ describe("三平台发布配置", () => {
   it("更新清单指向公开发布仓库", () => {
     expect(config.publish).toEqual([{ provider: "github", owner: "pigclaude", repo: "release" }])
   })
+
+  it("发布构建继承本机安装包配置并覆盖两项公开服务地址", () => {
+    const releaseConfig = JSON.parse(
+      readFileSync(resolve(import.meta.dirname, "../../electron-builder.release.json"), "utf8"),
+    )
+    expect(releaseConfig).toEqual({
+      extends: "./electron-builder.json",
+      extraMetadata: {
+        pigclaudeEndpoints: {
+          rustBaseUrl: "https://api.pigclaude.com",
+          authOrigin: "https://pigclaude.com",
+        },
+      },
+    })
+  })
 })

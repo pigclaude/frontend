@@ -55,7 +55,7 @@ export function SettingsScreen({
   if (page === "appearance") return <AppearancePage appearance={appearance} />
   if (page === "session")
     return <SessionSettings workspace={defaultWorkspace} models={models} history={history} />
-  if (page === "menubar") return <MenubarSettings onNavigate={onNavigate} />
+  if (page === "menubar") return <MenubarSettings />
   if (page === "network") return <NetworkSettings />
   if (page === "data")
     return <DataSettings userDataPath={appInfo?.userDataPath ?? null} history={history} />

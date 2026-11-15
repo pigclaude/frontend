@@ -11,6 +11,10 @@ export type NativeMenuItemInput =
 /** 外壳使用的窗口能力。 */
 export type WindowBridge = {
   control: (action: "minimize" | "maximize" | "close") => Promise<void>
+  /** 读取窗口关闭时是否隐藏到托盘。 */
+  getCloseToTray: () => Promise<boolean>
+  /** 保存窗口关闭行为，返回落盘的值。 */
+  setCloseToTray: (value: boolean) => Promise<boolean>
   isMaximized: () => Promise<boolean>
   isFullScreen: () => Promise<boolean>
   /** 订阅全屏变化；返回取消订阅函数。 */
@@ -28,6 +32,10 @@ export type WindowBridge = {
 export function windowBridge(): WindowBridge {
   return {
     control: (action) => ipcRenderer.invoke("pigclaude:window", action),
+    getCloseToTray: async () =>
+      (await ipcRenderer.invoke("pigclaude:window-close-to-tray-get")) === true,
+    setCloseToTray: async (value) =>
+      (await ipcRenderer.invoke("pigclaude:window-close-to-tray-set", value)) === true,
     isMaximized: async () => (await ipcRenderer.invoke("pigclaude:is-maximized")) === true,
     isFullScreen: async () => (await ipcRenderer.invoke("pigclaude:is-full-screen")) === true,
     onFullScreenChange: (listener) => {

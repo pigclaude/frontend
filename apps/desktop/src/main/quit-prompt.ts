@@ -14,6 +14,7 @@ export async function askToLeave(
   window: BrowserWindow | null,
   work: LeaveWork,
   action: LeaveAction,
+  signal?: AbortSignal,
 ): Promise<LeaveAnswer> {
   const leaving = action === "quit" ? "退出" : "关闭窗口"
   const detail = work.unsavedFiles > 0 ? [`${work.unsavedFiles} 个文件有未保存的修改。`] : []
@@ -29,6 +30,7 @@ export async function askToLeave(
     defaultId: unsaved ? 0 : 1,
     cancelId: unsaved ? 2 : 1,
     noLink: true,
+    ...(signal ? { signal } : {}),
   }
   const owner = ownerOf(window)
   const { response } = owner

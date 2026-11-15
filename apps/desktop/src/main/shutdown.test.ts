@@ -19,7 +19,12 @@ describe("createQuitCoordinator", () => {
     const quit = vi.fn()
     const onBeforeShutdown = vi.fn()
     const onFailure = vi.fn()
-    const handle = createQuitCoordinator({ shutdown, quit, onFailure, onBeforeShutdown })
+    const { beforeQuit: handle } = createQuitCoordinator({
+      shutdown,
+      quit,
+      onFailure,
+      onBeforeShutdown,
+    })
     const first = quitEvent()
 
     handle(first)
@@ -45,7 +50,7 @@ describe("createQuitCoordinator", () => {
     const quit = vi.fn()
     const onFailure = vi.fn()
     let attempts = 0
-    const handle = createQuitCoordinator({
+    const { beforeQuit: handle } = createQuitCoordinator({
       shutdown: async () => {
         attempts += 1
         if (attempts === 1) throw new Error("shutdown failed")
@@ -72,7 +77,7 @@ describe("createQuitCoordinator", () => {
     const shutdown = vi.fn(async () => undefined)
     const quit = vi.fn()
     const onBeforeShutdown = vi.fn()
-    const handle = createQuitCoordinator({
+    const { beforeQuit: handle } = createQuitCoordinator({
       confirm,
       shutdown,
       quit,
@@ -100,7 +105,7 @@ describe("createQuitCoordinator", () => {
   it("starts shutting down at once when there is nothing to ask about", () => {
     const shutdown = vi.fn(async () => undefined)
     const onBeforeShutdown = vi.fn()
-    const handle = createQuitCoordinator({
+    const { beforeQuit: handle } = createQuitCoordinator({
       confirm: () => true,
       shutdown,
       quit: vi.fn(),
@@ -119,7 +124,7 @@ describe("createQuitCoordinator", () => {
     const shutdown = vi.fn(async () => undefined)
     const quit = vi.fn()
     const onBeforeShutdown = vi.fn()
-    const handle = createQuitCoordinator({
+    const { beforeQuit: handle } = createQuitCoordinator({
       confirm,
       shutdown,
       quit,
@@ -144,7 +149,7 @@ describe("createQuitCoordinator", () => {
     const quit = vi.fn()
     const onFailure = vi.fn()
     let complete: () => void = () => undefined
-    const handle = createQuitCoordinator({
+    const { beforeQuit: handle } = createQuitCoordinator({
       shutdown: () =>
         new Promise<void>((resolve) => {
           complete = resolve

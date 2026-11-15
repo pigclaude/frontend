@@ -2,7 +2,7 @@
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
 import { createServer } from "node:http"
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { promisify } from "node:util"
@@ -32,11 +32,17 @@ export async function verifyWorkbench(page, application, output, provider = fals
   })
   const local = `http://127.0.0.1:${site.address().port}`
   const git = (args) => exec("git", args, { cwd: root, windowsHide: true })
+  const settings = join(root, ".claude", "settings.json")
+  const worktreeFile = join(root, ".claude", "worktrees", "example.txt")
+  const savedSettings = '{ "env": { "WORKBENCH_PROJECT_SETTINGS": "saved" } }\n'
   try {
     await git(["init", "-q", "-b", "main"])
     await git(["config", "core.autocrlf", "false"])
     await writeFile(join(root, "example.txt"), "initial example\n")
-    await git(["add", "--", "example.txt"])
+    await mkdir(join(root, ".claude", "worktrees"), { recursive: true })
+    await writeFile(settings, "{}\n")
+    await writeFile(worktreeFile, "protected worktree file\n")
+    await git(["add", "--", "example.txt", ".claude/settings.json"])
     await git([
       "-c",
       "user.name=Workbench QA",
@@ -92,6 +98,17 @@ export async function verifyWorkbench(page, application, output, provider = fals
     }
     await expect(exampleRow).toHaveAttribute("data-git", "modified")
     await page.screenshot({ path: join(output, "workbench-files.png") })
+
+    await panel.getByRole("treeitem", { name: ".claude", exact: true }).click()
+    await expect(panel.getByRole("treeitem", { name: "worktrees", exact: true })).toHaveCount(0)
+    await panel.getByRole("treeitem", { name: "settings.json", exact: true }).click()
+    await expect(panel.getByText("此文件仅在完全信任此项目后生效。", { exact: true })).toBeVisible()
+    await expect(editor).toHaveValue("{}\n")
+    await editor.fill(savedSettings)
+    await panel.getByRole("button", { name: "保存", exact: true }).click()
+    await expect.poll(() => readFile(settings, "utf8")).toBe(savedSettings)
+    await page.screenshot({ path: join(output, "workbench-project-settings.png") })
+
     await writeFile(join(root, "added.txt"), "new untracked file\n")
     await open("Diff")
     await expect(
@@ -100,6 +117,12 @@ export async function verifyWorkbench(page, application, output, provider = fals
     await expect(
       panel.locator(".workbench-diff").getByText("new untracked file", { exact: true }),
     ).toBeVisible()
+    await expect(
+      panel.locator(".workbench-diff").getByText(/WORKBENCH_PROJECT_SETTINGS/),
+    ).toBeVisible()
+    await expect(panel.locator(".workbench-diff").getByText(/protected worktree file/)).toHaveCount(
+      0,
+    )
     await page.screenshot({ path: join(output, "workbench-diff.png") })
     console.log("PASS file editing, Git decorations and tracked/untracked Git diff")
 
@@ -113,11 +136,15 @@ export async function verifyWorkbench(page, application, output, provider = fals
     assert.ok(checkpoint?.id)
     await writeFile(join(root, "example.txt"), "changed after checkpoint\n")
     await writeFile(join(root, "after-checkpoint.txt"), "created after checkpoint\n")
+    await writeFile(settings, "{}\n")
+    await writeFile(worktreeFile, "worktree changes after checkpoint\n")
     await panel.getByRole("button", { name: "恢复", exact: true }).click()
     await panel.getByRole("button", { name: "确认恢复", exact: true }).click()
     // 恢复时 Git 先删后写文件，途中读可能读不到；确认提示收起表示恢复已经结束。
     await expect(panel.getByText("文件会恢复到这个检查点", { exact: false })).toHaveCount(0)
     assert.equal(await readFile(join(root, "example.txt"), "utf8"), "changed in workbench\n")
+    assert.equal(await readFile(settings, "utf8"), savedSettings)
+    assert.equal(await readFile(worktreeFile, "utf8"), "worktree changes after checkpoint\n")
     await expect
       .poll(() =>
         readFile(join(root, "after-checkpoint.txt"), "utf8").then(
@@ -127,6 +154,9 @@ export async function verifyWorkbench(page, application, output, provider = fals
       )
       .toBe(true)
     console.log("PASS checkpoint restoration preserves project context")
+    console.log(
+      "PASS project settings disclose trust, appear in Diff, and restore from checkpoints",
+    )
 
     await open("浏览器")
     const address = panel.getByRole("textbox", { name: /输入网址/ })

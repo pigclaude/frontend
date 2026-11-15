@@ -26,6 +26,7 @@ import { absoluteFilePath } from "./workbench-path"
 const Markdown = lazy(() =>
   import("@pigclaude/ui-chat").then((module) => ({ default: module.Markdown })),
 )
+const trustedProjectFile = /(?:^|\/)(?:\.claude\/settings[^/]*\.json|\.mcp\.json)$/i
 
 /** 文件面板的属性；标签、草稿和固定预览由工作台管理。 */
 export type FilesSurfaceProps = {
@@ -109,6 +110,8 @@ export function FilesSurface({
   const searchPaths = useCallback((query: string) => bridge.search(root, query), [bridge, root])
 
   const directory = focusDirectory?.path === path ? focusDirectory?.directory : undefined
+  const navigationOnly = aside.open && !aside.docked
+  const showTrustNotice = !navigationOnly && file.file && trustedProjectFile.test(file.file.path)
   const markdown =
     path !== undefined && /\.(md|markdown)$/i.test(path) && file.file !== null && !file.file.binary
   const preferredMode = markdownMode?.path === path ? markdownMode?.mode : undefined
@@ -140,8 +143,13 @@ export function FilesSurface({
     <div
       ref={aside.ref}
       className="files-surface"
-      data-navigation-only={(aside.open && !aside.docked) || undefined}
+      data-navigation-only={navigationOnly || undefined}
     >
+      {showTrustNotice ? (
+        <p className="file-banner is-info" role="status">
+          {text("workbench.projectTrustRequired")}
+        </p>
+      ) : null}
       <FileViewer
         {...file}
         onDraftChange={(value) => {
@@ -179,7 +187,7 @@ export function FilesSurface({
             </article>
           ) : undefined
         }
-        navigationOnly={aside.open && !aside.docked}
+        navigationOnly={navigationOnly}
         navigation={
           aside.open ? (
             <aside

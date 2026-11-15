@@ -18,6 +18,7 @@ import type {
 } from "../../capability-plugin-contract"
 import type { PermissionBroker } from "../session/permission-broker"
 import type { SessionMembership } from "../session/session-types"
+import { CapabilityPluginApprovalAttribution } from "./capability-plugin-approval-attribution"
 import type { CapabilityPluginSnapshot } from "./capability-plugin-manager"
 import type { CapabilityPluginToolDependencies } from "./capability-plugin-tool-dependencies"
 import {
@@ -46,6 +47,7 @@ type Registration = {
 export type CapabilityPluginToolApprovals = {
   lookup(toolName: string, server: Parameters<CanUseTool>[2]["mcpServer"]): Registration | undefined
   available(): boolean
+  rememberCaller: CapabilityPluginApprovalAttribution["remember"]
 }
 
 const unavailable = "This capability plugin is unavailable for this session."
@@ -67,6 +69,7 @@ export async function createSessionPluginTools(
   if (!available()) return undefined
   const servers: Record<string, McpSdkServerConfigWithInstance> = {}
   const registered = new Map<string, Registration & { serverName: string }>()
+  const attribution = new CapabilityPluginApprovalAttribution(context.signal)
   for (const plugin of snapshots) {
     const { id, name, tools } = plugin.manifest
     const approval = plugin.toolApproval
@@ -94,11 +97,18 @@ export async function createSessionPluginTools(
     instance.server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [...definitions.values()],
     }))
-    instance.server.setRequestHandler(CallToolRequestSchema, ({ params }, { signal }) =>
-      definitions.has(params.name)
-        ? callTool(deps, context, plugin, params.name, params.arguments ?? {}, signal)
-        : capabilityPluginToolError("The requested capability plugin tool is unavailable."),
-    )
+    instance.server.setRequestHandler(CallToolRequestSchema, ({ params }, { signal, _meta }) => {
+      if (!definitions.has(params.name))
+        return capabilityPluginToolError("The requested capability plugin tool is unavailable.")
+      const agentId = attribution.take(capabilityPluginToolName(id, params.name), _meta)
+      return callTool(
+        deps,
+        context,
+        plugin,
+        { name: params.name, args: params.arguments ?? {}, agentId },
+        signal,
+      )
+    })
     servers[serverName] = {
       ...config,
       instance,
@@ -117,6 +127,7 @@ export async function createSessionPluginTools(
     servers,
     approvals: {
       available,
+      rememberCaller: (toolName, request) => attribution.remember(toolName, request),
       lookup(toolName, server) {
         if (server?.source !== "sdk") return undefined
         const registration = registered.get(toolName)
@@ -130,8 +141,15 @@ async function callTool(
   deps: CapabilityPluginToolDependencies,
   context: CapabilityPluginToolContext,
   plugin: CapabilityPluginSnapshot,
-  toolName: string,
-  args: Record<string, unknown>,
+  {
+    name: toolName,
+    args,
+    agentId,
+  }: {
+    name: string
+    args: Record<string, unknown>
+    agentId: string | undefined
+  },
   invocation: AbortSignal,
 ): Promise<CallToolResult> {
   const membership = new AbortController()
@@ -158,6 +176,7 @@ async function callTool(
         defaultToNo: true,
         suppressAlwaysAllowRule: true,
         plugin: { id, name, toolName },
+        ...(agentId === undefined ? {} : { agentID: agentId }),
       })
       if (answer.behavior !== "allow")
         return capabilityPluginToolError("The user did not approve this capability plugin call.")

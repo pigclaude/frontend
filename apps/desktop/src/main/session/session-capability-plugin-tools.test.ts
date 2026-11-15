@@ -1,6 +1,7 @@
 // 通过真实会话宿主和 MCP 内存传输验证能力插件工具、权限卡与 Worker 调用。
 
 import { mkdir, realpath } from "node:fs/promises"
+import { randomUUID } from "node:crypto"
 import { join } from "node:path"
 import type { CanUseTool, Options, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -142,6 +143,70 @@ it("为各会话分别快照工具和询问档，跟随档由 SDK 询问时只�
   })
   await expect(spoofed).resolves.toMatchObject({ behavior: "deny" })
   expect(f.invoke).toHaveBeenCalledTimes(1)
+})
+
+it("并发同工具同参数时按每次工具调用的元数据保留子代理归属", async () => {
+  const f = await pluginFixture()
+  const { client, sessionId, canUseTool } = await start(f, "bypassPermissions")
+  const { sdk } = f.query(sessionId)
+  const one = { agentId: "fixture-agent-one", parentToolUseId: "fixture-parent-one" }
+  const two = { agentId: "fixture-agent-two", parentToolUseId: "fixture-parent-two" }
+  for (const [index, agent] of [one, two].entries()) {
+    sdk.emit({
+      type: "system",
+      subtype: "task_started",
+      task_id: agent.agentId,
+      tool_use_id: agent.parentToolUseId,
+      description: "读取合成标签",
+      task_type: "local_agent",
+      uuid: randomUUID(),
+      session_id: sessionId,
+    })
+    await expect(
+      canUseTool(qualifiedName, args, {
+        ...askOptions(),
+        agentID: agent.agentId,
+        toolUseID: `fixture-call-${index}`,
+        requestId: `fixture-approval-${index}`,
+      }),
+    ).resolves.toMatchObject({ behavior: "allow", updatedInput: args })
+  }
+  expect(f.cards()).toHaveLength(0)
+
+  const invoke = (index: number) =>
+    client.callTool({
+      name: tool,
+      arguments: args,
+      _meta: { "claudecode/toolUseId": `fixture-call-${index}` },
+    })
+  const second = invoke(1)
+  await vi.waitFor(() => expect(f.cards()).toHaveLength(1))
+  const first = invoke(0)
+  const pending = Promise.allSettled([first, second])
+  releases.push(() => pending)
+  await vi.waitFor(() => expect(f.cards()).toHaveLength(2))
+  const [secondCard, firstCard] = f.cards()
+  if (!firstCard || !secondCard) throw new Error("缺少并发审批卡")
+  expect([secondCard.subagent, firstCard.subagent]).toEqual([two, one])
+  expect([secondCard.input, firstCard.input]).toEqual([args, args])
+  expect(f.invoke).not.toHaveBeenCalled()
+  await f.host.respondPermission(sessionId, { requestId: firstCard.requestId, decision: "deny" })
+  await f.host.respondPermission(sessionId, { requestId: secondCard.requestId, decision: "allow" })
+  await expect(first).resolves.toMatchObject({ isError: true })
+  await expect(second).resolves.toEqual({ content: [{ type: "text", text: "标签 AB" }] })
+
+  const untracked = invoke(1)
+  await vi.waitFor(() => expect(f.cards()).toHaveLength(3))
+  const card = f.cards()[2]
+  if (!card) throw new Error("缺少没有 SDK 归属的审批")
+  expect(card.subagent).toBeNull()
+  await f.host.respondPermission(sessionId, { requestId: card.requestId, decision: "deny" })
+  await expect(untracked).resolves.toMatchObject({ isError: true })
+  expect(f.invoke).toHaveBeenCalledTimes(1)
+  expect(f.invoke.mock.calls[0]?.[1].input).toEqual({
+    arguments: args,
+    context: { sessionId, workspace: f.workspace },
+  })
 })
 
 it("有效会员丢失后取消在等的审批与正在运行的插件调用", async () => {

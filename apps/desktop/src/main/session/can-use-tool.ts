@@ -40,6 +40,7 @@ export function routeCanUseTool(
           message: "This capability plugin is unavailable for this session.",
         })
       if (plugin.approval === "always_ask") {
+        pluginApprovals.rememberCaller(toolName, options)
         // MCP 回调重新核验资格并生成一次性卡，SDK 的检查不发第二张卡。
         return Promise.resolve({ behavior: "allow", updatedInput: input })
       }

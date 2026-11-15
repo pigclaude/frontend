@@ -36,8 +36,7 @@ export class FileSecretVault implements SecretVault {
     this.assertAvailable()
     await this.enqueue(async () => {
       const secrets = await this.readSecrets()
-      secrets[key] = this.encode(value)
-      await this.writeSecrets(secrets)
+      await this.writeSecrets({ ...secrets, [key]: this.encode(value) })
     })
   }
 
@@ -45,10 +44,15 @@ export class FileSecretVault implements SecretVault {
   async get(key: string): Promise<string | null> {
     this.assertAvailable()
     const secrets = await this.readSecrets()
-    const encoded = secrets[key]
+    const encoded = Object.hasOwn(secrets, key) ? secrets[key] : undefined
     return encoded === undefined
       ? null
       : this.#safeStorage.decryptString(Buffer.from(encoded, "base64"))
+  }
+
+  /** 读取已保存的字段名，不需要解密保存内容。 */
+  async keys(): Promise<readonly string[]> {
+    return Object.keys(await this.readSecrets())
   }
 
   /** 删除一个秘密，保证删除后磁盘文件不再包含该 key。 */
@@ -56,7 +60,7 @@ export class FileSecretVault implements SecretVault {
     this.assertAvailable()
     await this.enqueue(async () => {
       const secrets = await this.readSecrets()
-      if (!(key in secrets)) return
+      if (!Object.hasOwn(secrets, key)) return
       delete secrets[key]
       await this.writeSecrets(secrets)
     })

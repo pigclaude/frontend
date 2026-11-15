@@ -5,7 +5,9 @@ import { constants } from "node:fs"
 import { access, realpath, stat } from "node:fs/promises"
 import { isAbsolute } from "node:path"
 import { routeCanUseTool } from "./can-use-tool"
+import type { BrowserApprovalPort } from "./browser-tool-approval"
 import type { ClaudeAgentStartOptions } from "./claude-query-options"
+import type { ClaudeSessionOptions } from "./claude-session-options"
 import type { SessionEnvironmentInput } from "./session-environment"
 import type { SessionEvent } from "./session-events"
 import type { ActiveSession } from "./session-host-active"
@@ -15,7 +17,6 @@ import type {
   SessionEnvironmentPort,
   SessionErrorCode,
   SessionMembership,
-  SessionStartInput,
   SessionStatusView,
 } from "./session-types"
 import { classifyDaemonError } from "./session-error-mapping"
@@ -99,11 +100,16 @@ export function buildUsageRecord(
   }
 }
 
-/** 把活动会话和启动输入转换成适配器参数；按会话的启动模式启动，canUseTool 按工具名分给提问代理或权限代理。 */
+/** 构造适配器启动参数，保留会话权限路由、MCP 服务和续接选项。 */
 export function buildStartOptions(
   active: ActiveSession,
-  input: SessionStartInput,
-  hasThreadRead: boolean,
+  {
+    input,
+    references,
+    persistence,
+  }: Pick<ClaudeSessionOptions, "input" | "references" | "persistence">,
+  mcpServers: ClaudeAgentStartOptions["mcpServers"],
+  browser?: BrowserApprovalPort,
 ): ClaudeAgentStartOptions {
   return {
     workspace: active.environment.workspace,
@@ -112,13 +118,15 @@ export function buildStartOptions(
       ? {}
       : { projectConfiguration: active.environment.projectConfiguration }),
     permissionMode: active.permissionMode,
-    canUseTool: routeCanUseTool(active.broker, active.questions, hasThreadRead),
+    canUseTool: routeCanUseTool(active.broker, active.questions, references !== undefined, browser),
     abortController: active.abort,
     binaryPath: active.environment.binaryPath,
     ...(input.model === undefined ? {} : { model: input.model }),
     ...(input.thinking === undefined ? {} : { thinking: input.thinking }),
     ...(input.effort === undefined ? {} : { effort: input.effort }),
     ...(input.fast === undefined ? {} : { fast: input.fast }),
+    ...(mcpServers ? { mcpServers } : {}),
+    ...(persistence === undefined ? {} : { persistence }),
   }
 }
 

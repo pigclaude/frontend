@@ -3,6 +3,7 @@
 // 只依赖这一个会话的适配器、事件出口、时钟和定时器，不引用会话宿主或模块级单例。
 
 import { ContextUsageQuery } from "./context-usage-query"
+import { createBrowserApproval, type BrowserToolRegistration } from "./browser-tool-approval"
 import type { PendingAnswerKind } from "./pending-answers"
 import { cancelledPermissionMessage, type PermissionAnswer } from "./permission-broker"
 import type { QuestionAnswer } from "./question-broker"
@@ -56,6 +57,7 @@ export class ClaudeSession {
   readonly #stall: TurnStallWatchdog
   readonly #flags: SessionTurnFlags
   #started = false
+  #sdkDontAsk = false
   readonly #context = new ContextUsageQuery({
     read: () => this.state.adapter.contextUsage(),
     emit: (event) => this.#publish(event),
@@ -109,14 +111,24 @@ export class ClaudeSession {
   }
 
   /** 启动 Claude Code 并进入用户选的权限模式；模式进不去时只提示，启动失败照常抛出。 */
-  async launch(mcpServers: ClaudeAgentStartOptions["mcpServers"]): Promise<void> {
-    const options: ClaudeAgentStartOptions = {
-      ...buildStartOptions(this.state, this.#options.input, this.#options.references !== undefined),
-      ...(mcpServers ? { mcpServers } : {}),
-      ...(this.#options.persistence === undefined
-        ? {}
-        : { persistence: this.#options.persistence }),
+  async launch(
+    mcpServers: ClaudeAgentStartOptions["mcpServers"],
+    browserTools?: BrowserToolRegistration,
+  ): Promise<void> {
+    const active = this.state
+    const browser =
+      browserTools &&
+      createBrowserApproval({
+        broker: active.broker,
+        mode: () => (this.#sdkDontAsk ? "dontAsk" : active.permissionMode),
+        canUse: () => !this.closing,
+        sessionSignal: active.abort.signal,
+        unattended: browserTools.unattended === true,
+      })
+    if (browser && browserTools && !browserTools.unattended) {
+      mcpServers = { ...mcpServers, ...browserTools.create(browser) }
     }
+    const options = buildStartOptions(active, this.#options, mcpServers, browser)
     const project = this.#options.projectPermissions
     if (project === undefined) await this.state.adapter.start(options)
     else {
@@ -374,6 +386,7 @@ export class ClaudeSession {
       case "context-compacted":
         return
       case "started": {
+        this.#sdkDontAsk = event.permissionMode === "dontAsk"
         active.model = event.model
         active.turns.observe(event)
         followReportedMode(active, event.permissionMode, "init", this.#emitModeEvent)
@@ -391,6 +404,7 @@ export class ClaudeSession {
         return
       }
       case "mode":
+        this.#sdkDontAsk = event.permissionMode === "dontAsk"
         followReportedMode(active, event.permissionMode, "status", this.#emitModeEvent)
         return
       case "result":

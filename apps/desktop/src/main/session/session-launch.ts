@@ -135,7 +135,7 @@ export async function launchSession(
   input: SessionStartInput,
   sessionId: string,
   hooks: SessionLaunchHooks,
-  servers?: SessionTools["servers"],
+  tools?: SessionTools,
   storage?: SessionLaunchStorage,
 ): Promise<ClaudeSession> {
   const interrupted = (): SessionHostError | null => {
@@ -223,6 +223,7 @@ export async function launchSession(
   })
   hooks.opened(session, canonicalWorkspace)
   try {
+    let servers = tools?.servers
     if (references !== undefined) {
       const reader = createThreadReadServer((id, input) =>
         references.read(
@@ -234,7 +235,7 @@ export async function launchSession(
       )
       servers = { ...servers, [threadReadServerName]: reader }
     }
-    await session.launch(servers)
+    await session.launch(servers, tools?.browser)
   } catch (error) {
     if (error instanceof SessionClaudeExitError) throw error
     await session.end("会话启动失败", null)

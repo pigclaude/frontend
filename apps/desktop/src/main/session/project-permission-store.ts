@@ -8,6 +8,7 @@ import {
   type ProjectPermissionEntry,
   type ProjectPermissionGrant,
 } from "../../project-permissions-contract"
+import { workbenchBrowserRule } from "./browser-tool-approval"
 import {
   projectPermissionSettings,
   type ProjectPermissionSettings,
@@ -56,6 +57,8 @@ export class ProjectPermissionStore {
     grants: readonly ProjectPermissionGrant[],
     active: () => boolean,
   ): Promise<void> {
+    if (grants.some(({ kind, value }) => kind === "allow" && workbenchBrowserRule(value)))
+      return Promise.reject(new Error("INVALID_SESSION_INPUT"))
     return this.#update(async (entries) => {
       if (!active()) return
       const next = [...entries]
@@ -139,7 +142,12 @@ export class ProjectPermissionStore {
 }
 
 function settingsFor(entries: ProjectPermissionEntry[], projectPath: string) {
-  return projectPermissionSettings(entries.filter((entry) => entry.projectPath === projectPath))
+  return projectPermissionSettings(
+    entries.filter(
+      ({ projectPath: project, kind, value }) =>
+        project === projectPath && (kind !== "allow" || !workbenchBrowserRule(value)),
+    ),
+  )
 }
 
 function parseRules(value: string): unknown {

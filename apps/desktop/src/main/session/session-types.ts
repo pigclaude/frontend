@@ -274,7 +274,9 @@ export type SessionAdapterFactory = (onEvent: (event: AdapterEvent) => void) => 
 
 /** 一个会话专用的工具：启动时交给 Claude Code 的进程内 MCP 服务；close 在会话停放时关掉它们占用的浏览器，可重复调用。 */
 export type SessionTools = {
-  servers: ClaudeAgentStartOptions["mcpServers"]
+  servers?: ClaudeAgentStartOptions["mcpServers"]
+  /** 浏览器服务只有绑定到实际会话的权限代理后才创建。 */
+  browser?: import("./browser-tool-approval").BrowserToolRegistration
   close(): void
 }
 

@@ -34,6 +34,13 @@ export function workbenchBrowserUrl(value: unknown): URL {
   return url
 }
 
+/** Agent 浏览器在申请审批和打开页面前都使用既有的回环地址限制。 */
+export function workbenchAgentBrowserUrl(value: unknown): URL {
+  const url = workbenchBrowserUrl(value)
+  if (!loopback.has(url.hostname)) throw new Error("PREVIEW_URL_NOT_ALLOWED")
+  return url
+}
+
 function allowed(target: string, local: boolean): boolean {
   try {
     const url = workbenchBrowserUrl(target)
@@ -107,8 +114,7 @@ export class WorkbenchBrowsers {
   /** 在会话自己的浏览器中打开本机开发页；只返回标题和正文，不读取存储或页面脚本。 */
   async agentPage(window: BrowserWindow, id: string, input?: string): Promise<string> {
     if (input !== undefined) {
-      const url = workbenchBrowserUrl(input)
-      if (!loopback.has(url.hostname)) throw new Error("PREVIEW_URL_NOT_ALLOWED")
+      const url = workbenchAgentBrowserUrl(input)
       const entry = this.#entry(window, id, true)
       entry.agentOrigin = url.origin
       await this.navigate(window, id, url.href)

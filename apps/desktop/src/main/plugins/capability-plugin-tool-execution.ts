@@ -2,7 +2,7 @@
 
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
 import { z } from "zod"
-import type { CapabilityPluginSnapshot } from "./capability-plugin-manager"
+import type { CapabilityPluginSnapshot } from "./capability-plugin-snapshot"
 import type { CapabilityPluginToolDependencies } from "./capability-plugin-tool-dependencies"
 import {
   PluginSandboxError,

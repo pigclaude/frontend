@@ -7,6 +7,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { promisify } from "node:util"
 import { expect } from "@playwright/test"
+import { verifyClaudeCodePluginMenu } from "./claude-code-plugins.mjs"
 import { verifyTerminalDrawer } from "./terminal-drawer.mjs"
 
 const exec = promisify(execFile)
@@ -55,6 +56,8 @@ export async function verifyWorkbench(page, application, output, provider = fals
     await page.evaluate((root) => window.pigclaude.workspaces.add(root), root)
     await page.reload()
     await expect(page.locator("[data-main-window]")).toBeVisible()
+    await verifyClaudeCodePluginMenu(page, root)
+    console.log("PASS native Claude Code plugin commands and skills appear in the slash menu")
     await verifyTerminalDrawer(page, root, output)
     await page.getByRole("button", { name: "切换右侧面板", exact: true }).click()
     const panel = page.locator(".right-panel-slot")

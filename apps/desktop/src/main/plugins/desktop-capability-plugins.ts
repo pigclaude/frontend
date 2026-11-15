@@ -63,6 +63,10 @@ export function setupDesktopCapabilityPlugins(
     manager,
     sessionOptions: runtime
       ? {
+          claudeCodePlugins: {
+            stage: (directory: string) => manager.stageClaudeCodePlugins(directory),
+            commands: () => manager.claudeCodePluginCommands(),
+          },
           capabilityPluginTools: {
             manager,
             sandbox,

@@ -97,10 +97,10 @@ export function registerCapabilityPluginIpc(options: CapabilityPluginIpcOptions)
     const result = await dialog.showOpenDialog(
       window,
       kind === "directory"
-        ? { properties: ["openDirectory"], title: "选择能力插件目录" }
+        ? { properties: ["openDirectory"], title: "选择插件目录" }
         : {
             properties: ["openFile"],
-            title: "选择能力插件归档",
+            title: "选择插件归档",
             filters: [{ name: "插件归档", extensions: ["zip", "tar", "gz", "tgz"] }],
           },
     )

@@ -1,7 +1,7 @@
 // 定义主进程装配能力插件 MCP 工具所需的安装快照、沙箱与出口端口。
 
 import type { CapabilityPluginSettingsView } from "../../capability-plugin-contract"
-import type { CapabilityPluginManager, CapabilityPluginSnapshot } from "./capability-plugin-manager"
+import type { CapabilityPluginSnapshot } from "./capability-plugin-snapshot"
 import type {
   PluginNetworkAccess,
   PluginSandboxCapabilityScope,
@@ -11,7 +11,10 @@ import type { PluginSandboxHost } from "./plugin-sandbox-host"
 
 /** 会话启动时取已启用工具，调用时核验安装版本，网络能力只在主进程内传递。 */
 export type CapabilityPluginToolDependencies = {
-  manager: Pick<CapabilityPluginManager, "snapshotEnabled" | "canInvoke">
+  manager: {
+    snapshotEnabled(): Promise<CapabilityPluginSnapshot[]>
+    canInvoke(pluginId: string, revision: string): Promise<boolean>
+  }
   sandbox: Pick<PluginSandboxHost, "invoke">
   pluginNetwork: (sessionId: string, access: PluginNetworkAccess) => Promise<PluginSandboxNetwork>
   capabilities?: (

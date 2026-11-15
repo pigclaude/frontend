@@ -7,26 +7,61 @@ import { z } from "zod"
 import {
   capabilityPluginManifestFile,
   type InstalledCapabilityPlugin,
+  type InstalledClaudeCodePlugin,
 } from "../../capability-plugin-contract"
-import type { CapabilityPluginBundle } from "./capability-plugin-bundle"
 import { parseCapabilityPluginManifest } from "./capability-plugin-manifest"
 import { capabilityPluginStoragePaths, isCapabilityPluginId } from "./capability-plugin-paths"
+import {
+  readClaudeCodePluginDirectory,
+  synthesizeClaudeCodePlugin,
+} from "./claude-code-plugin-bundle"
+import type { DesktopPluginBundle } from "./desktop-plugin-bundle"
 
 /** 持久安装元数据；兼容性从当前应用版本计算，不写入记录。 */
 export type CapabilityPluginRecord = Omit<InstalledCapabilityPlugin, "compatible">
 
+/** 包类型决定记录可以发布到 Worker 还是 Claude SDK。 */
+export type DesktopPluginRecord =
+  CapabilityPluginRecord | Omit<InstalledClaudeCodePlugin, "compatible">
+
 const sha256 = /^[0-9a-f]{64}$/
-const saved = z.strictObject({
-  type: z.literal("capability"),
-  manifest: z.unknown(),
+const installedFields = {
   revision: z.uuid(),
   installedAt: z.iso.datetime(),
   sourceKind: z.enum(["directory", "archive"]),
   sha256: z.string().regex(sha256).nullable(),
-  approvedDomains: z.array(z.string()).max(32),
   enabled: z.boolean(),
+}
+const savedCapability = z.strictObject({
+  ...installedFields,
+  type: z.literal("capability"),
+  manifest: z.unknown(),
+  approvedDomains: z.array(z.string()).max(32),
   toolApproval: z.enum(["always_ask", "follow_session"]).default("always_ask"),
 })
+const savedClaudeCode = z.strictObject({
+  ...installedFields,
+  type: z.literal("claude-code"),
+  manifest: z.strictObject({
+    id: z.string().refine(isCapabilityPluginId),
+    name: z.string().min(1),
+    version: z.string().min(1),
+    description: z.string().optional(),
+    commands: z.array(z.string()),
+    skills: z.array(z.string()),
+    agents: z.array(z.string()),
+    ignoredComponents: z.array(z.enum(["hooks", "mcp", "lsp"])),
+    skillExecution: z.array(
+      z.strictObject({
+        name: z.string(),
+        inline: z.boolean(),
+        hooks: z.boolean(),
+        allowedTools: z.boolean(),
+      }),
+    ),
+  }),
+})
+const saved = z.discriminatedUnion("type", [savedCapability, savedClaudeCode])
 const removal = z.strictObject({ keepData: z.boolean() })
 
 /** 已安装、待清理和数据目录都位于独立插件根。 */
@@ -51,16 +86,21 @@ export class CapabilityPluginRecords {
   }
 
   /** 读取合法安装记录，目录撤下后返回空值。 */
-  async read(id: string): Promise<CapabilityPluginRecord | null> {
+  async read(id: string): Promise<DesktopPluginRecord | null> {
     const json = await readJson(join(this.#installed, id, "record.json"))
     if (json === undefined) return null
     try {
       const record = saved.parse(json)
+      if ((record.sourceKind === "archive") !== (record.sha256 !== null))
+        throw new Error("PLUGIN_RECORD_INVALID")
+      if (record.type === "claude-code") {
+        if (record.manifest.id !== id) throw new Error("PLUGIN_RECORD_INVALID")
+        return record
+      }
       const manifest = parseCapabilityPluginManifest(record.manifest)
       if (
         manifest.id !== id ||
-        JSON.stringify(record.approvedDomains) !== JSON.stringify(manifest.networkDomains) ||
-        (record.sourceKind === "archive") !== (record.sha256 !== null)
+        JSON.stringify(record.approvedDomains) !== JSON.stringify(manifest.networkDomains)
       )
         throw new Error("PLUGIN_RECORD_INVALID")
       return { ...record, manifest }
@@ -76,8 +116,8 @@ export class CapabilityPluginRecords {
 
   /** 在私有暂存目录写完整副本，再一次性发布副本和记录。 */
   async install(
-    record: CapabilityPluginRecord,
-    bundle: CapabilityPluginBundle,
+    record: DesktopPluginRecord,
+    bundle: DesktopPluginBundle,
     beforePublish: () => void,
   ): Promise<void> {
     await mkdir(this.#installed, { recursive: true, mode: 0o700 })
@@ -85,19 +125,14 @@ export class CapabilityPluginRecords {
     try {
       const directory = join(stage, "package")
       await mkdir(directory, { mode: 0o700 })
-      await writeFile(
-        join(directory, capabilityPluginManifestFile),
-        JSON.stringify(bundle.manifest),
-        {
-          flag: "wx",
-          mode: 0o600,
-        },
-      )
-      for (const [name, source] of Object.entries(bundle.modules)) {
-        const file = join(directory, name)
-        await mkdir(dirname(file), { recursive: true, mode: 0o700 })
-        await writeFile(file, source, { flag: "wx", mode: 0o600 })
-      }
+      const files =
+        bundle.type === "claude-code"
+          ? bundle.files
+          : [
+              [capabilityPluginManifestFile, JSON.stringify(bundle.manifest)] as const,
+              ...Object.entries(bundle.modules),
+            ]
+      await writePluginFiles(directory, files)
       await writeFile(join(stage, "record.json"), JSON.stringify(record), {
         flag: "wx",
         mode: 0o600,
@@ -109,8 +144,19 @@ export class CapabilityPluginRecords {
     }
   }
 
+  /** 为当次 SDK 进程重建已安装插件，净化后发布独立的会话副本。 */
+  async stageClaudeCodePlugin(id: string, directory: string): Promise<string> {
+    const installed = await readClaudeCodePluginDirectory(this.packageDirectory(id))
+    const { manifest, files } = synthesizeClaudeCodePlugin(installed, id)
+    if (manifest.id !== id) throw new Error("PLUGIN_RECORD_INVALID")
+    const destination = join(directory, id)
+    await mkdir(destination, { mode: 0o700 })
+    await writePluginFiles(destination, files)
+    return destination
+  }
+
   /** 原子替换启停与询问偏好，版本和确认的域名保持原绑定。 */
-  setRecord(record: CapabilityPluginRecord, beforePublish?: () => void): Promise<void> {
+  setRecord(record: DesktopPluginRecord, beforePublish?: () => void): Promise<void> {
     return atomicJson(
       join(this.#installed, record.manifest.id, "record.json"),
       record,
@@ -141,6 +187,17 @@ export class CapabilityPluginRecords {
     await rm(dirname(secretsFile), { recursive: true, force: true })
     if (!keepData) await rm(dataDirectory, { recursive: true, force: true })
     await rm(join(this.#withdrawn, id), { recursive: true, force: true })
+  }
+}
+
+async function writePluginFiles(
+  directory: string,
+  files: Iterable<readonly [string, string | Buffer]>,
+): Promise<void> {
+  for (const [name, source] of files) {
+    const file = join(directory, name)
+    await mkdir(dirname(file), { recursive: true, mode: 0o700 })
+    await writeFile(file, source, { flag: "wx", mode: 0o600 })
   }
 }
 

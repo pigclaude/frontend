@@ -19,7 +19,7 @@ import type {
 import type { PermissionBroker } from "../session/permission-broker"
 import type { SessionMembership } from "../session/session-types"
 import { CapabilityPluginApprovalAttribution } from "./capability-plugin-approval-attribution"
-import type { CapabilityPluginSnapshot } from "./capability-plugin-manager"
+import type { CapabilityPluginSnapshot } from "./capability-plugin-snapshot"
 import type { CapabilityPluginToolDependencies } from "./capability-plugin-tool-dependencies"
 import {
   capabilityPluginInvocation,

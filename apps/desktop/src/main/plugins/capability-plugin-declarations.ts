@@ -5,6 +5,7 @@ import {
   type CapabilityPluginDeclarations,
   type CapabilityPluginRevision,
   type CapabilityPluginSettingsView,
+  type InstalledCapabilityPlugin,
 } from "../../capability-plugin-contract"
 import type { LocalRuntime } from "../runtime/local-runtime"
 import type { CapabilityPluginManager, CapabilityPluginSnapshot } from "./capability-plugin-manager"
@@ -36,7 +37,10 @@ export class CapabilityPluginDeclarationHost {
     const plugins = await this.options.manager.list()
     if (!this.options.active()) return []
     return plugins
-      .filter((plugin) => plugin.enabled && plugin.compatible)
+      .filter(
+        (plugin): plugin is InstalledCapabilityPlugin =>
+          plugin.type === "capability" && plugin.enabled && plugin.compatible,
+      )
       .map(({ manifest, revision }) => ({
         pluginId: manifest.id,
         revision,

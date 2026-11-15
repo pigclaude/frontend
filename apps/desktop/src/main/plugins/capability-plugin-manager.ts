@@ -1,29 +1,38 @@
 // 管理安装披露、不可变包副本、启停和卸载；供会话宿主读取已启用的快照。
 
 import { randomUUID } from "node:crypto"
-import { isAbsolute } from "node:path"
+import { basename, isAbsolute } from "node:path"
 import { keepsMembershipRuntime, type MembershipState } from "@pigclaude/contracts/membership"
 import type {
-  CapabilityPluginInstallDisclosure,
   CapabilityPluginInstallSource,
-  CapabilityPluginManifest,
   CapabilityPluginToolApproval,
   CapabilityPluginRevision,
+  DesktopPluginInstallDisclosure,
   InstalledCapabilityPlugin,
+  InstalledDesktopPlugin,
 } from "../../capability-plugin-contract"
 import {
   readCapabilityPluginDirectory,
   validateCapabilityPluginBundle,
-  type CapabilityPluginBundle,
 } from "./capability-plugin-bundle"
 import { isCapabilityPluginCompatible } from "./capability-plugin-manifest"
 import { capabilityPluginStoragePaths, isCapabilityPluginId } from "./capability-plugin-paths"
-import { CapabilityPluginRecords, type CapabilityPluginRecord } from "./capability-plugin-records"
+import {
+  CapabilityPluginRecords,
+  type CapabilityPluginRecord,
+  type DesktopPluginRecord,
+} from "./capability-plugin-records"
+import type { CapabilityPluginSnapshot } from "./capability-plugin-snapshot"
+import {
+  readDesktopPluginDirectory,
+  validateDesktopPluginBundle,
+  type DesktopPluginBundle,
+} from "./desktop-plugin-bundle"
 import { PluginSandboxError } from "./plugin-sandbox-contract"
 
 type Pending = {
-  disclosure: CapabilityPluginInstallDisclosure
-  bundle: CapabilityPluginBundle
+  disclosure: DesktopPluginInstallDisclosure
+  bundle: DesktopPluginBundle
   expires: number
   epoch: number
 }
@@ -38,16 +47,7 @@ export type CapabilityPluginManagerOptions = {
   stopInstances: (pluginId?: string) => void | Promise<void>
 }
 
-/** 会话启动时获取的快照，仅供主进程接入插件沙箱。 */
-export type CapabilityPluginSnapshot = {
-  manifest: CapabilityPluginManifest
-  revision: string
-  modules: Readonly<Record<string, string>>
-  approvedDomains: readonly string[]
-  toolApproval: CapabilityPluginToolApproval
-  dataDirectory: string
-  secretsFile: string
-}
+export type { CapabilityPluginSnapshot } from "./capability-plugin-snapshot"
 
 /** 由应用主进程持有的一份插件管理器；修改串行发布。 */
 export class CapabilityPluginManager {
@@ -70,7 +70,7 @@ export class CapabilityPluginManager {
   }
 
   /** 列出已安装插件；待清理的卸载目录不会重新出现。 */
-  list(): Promise<InstalledCapabilityPlugin[]> {
+  list(): Promise<InstalledDesktopPlugin[]> {
     return this.#enqueue(async () => {
       for (const id of await this.#records.removingIds())
         await this.#finishRemoval(id).catch(() => undefined)
@@ -78,11 +78,11 @@ export class CapabilityPluginManager {
     })
   }
 
-  /** 读取现成模块和清单，返回绑定当前可信窗口的一次性披露。 */
+  /** 读取能力包或 Claude Code 组件，返回绑定当前可信窗口的一次性披露。 */
   async prepare(
     source: CapabilityPluginInstallSource,
     owner: object,
-  ): Promise<CapabilityPluginInstallDisclosure> {
+  ): Promise<DesktopPluginInstallDisclosure> {
     this.#assertMayInstall(source.kind)
     const epoch = this.#epoch
     this.#pending.delete(owner)
@@ -95,23 +95,28 @@ export class CapabilityPluginManager {
       throw new Error("PLUGIN_ARCHIVE_SHA256_INVALID")
     const files =
       sha256 === null
-        ? await readCapabilityPluginDirectory(source.path)
+        ? await readDesktopPluginDirectory(source.path)
         : await this.options.readArchive(source.path, sha256)
-    const bundle = validateCapabilityPluginBundle(files, this.options.appVersion)
+    const sourceName = basename(source.path)
+    const fallbackId =
+      sha256 === null ? sourceName : sourceName.replace(/\.(?:tar\.gz|tgz|zip)$/i, "")
+    const bundle = validateDesktopPluginBundle(files, this.options.appVersion, fallbackId)
     this.#assertMayInstall(source.kind, epoch)
-    const disclosure: CapabilityPluginInstallDisclosure = {
-      type: "capability",
+    const prepared = {
       confirmationId: randomUUID(),
-      manifest: bundle.manifest,
       sourceKind: source.kind,
       sha256,
     }
+    const disclosure: DesktopPluginInstallDisclosure =
+      bundle.type === "capability"
+        ? { ...prepared, type: "capability", manifest: bundle.manifest }
+        : { ...prepared, type: "claude-code", manifest: bundle.manifest }
     this.#pending.set(owner, { bundle, disclosure, epoch, expires: Date.now() + 300_000 })
     return structuredClone(disclosure)
   }
 
-  /** 用户确认的域名和已披露的模块在同一次安装中绑定，不重新读取原来源。 */
-  confirm(confirmationId: string, owner: object): Promise<InstalledCapabilityPlugin> {
+  /** 发布用户确认时看到的同一份快照，无需重新读取原来源。 */
+  confirm(confirmationId: string, owner: object): Promise<InstalledDesktopPlugin> {
     return this.#enqueue(async () => {
       const pending = this.#pending.get(owner)
       if (
@@ -126,17 +131,23 @@ export class CapabilityPluginManager {
       this.#assertMayInstall(disclosure.sourceKind, epoch)
       if (await this.#records.read(manifest.id)) throw new Error("PLUGIN_ALREADY_INSTALLED")
       await this.#finishRemoval(manifest.id)
-      const record: CapabilityPluginRecord = {
-        type: "capability",
-        manifest,
+      const installed = {
         revision: randomUUID(),
         installedAt: new Date().toISOString(),
         sourceKind: disclosure.sourceKind,
         sha256: disclosure.sha256,
-        approvedDomains: [...manifest.networkDomains],
         enabled: true,
-        toolApproval: "always_ask",
       }
+      const record: DesktopPluginRecord =
+        bundle.type === "claude-code"
+          ? { ...installed, type: bundle.type, manifest: bundle.manifest }
+          : {
+              ...installed,
+              type: bundle.type,
+              manifest: bundle.manifest,
+              approvedDomains: [...bundle.manifest.networkDomains],
+              toolApproval: "always_ask",
+            }
       await this.#records.install(record, bundle, () =>
         this.#assertMayInstall(disclosure.sourceKind, epoch),
       )
@@ -152,14 +163,13 @@ export class CapabilityPluginManager {
   }
 
   /** 启用需要有效会员。停用只改变下次会话能获取的快照。 */
-  setEnabled(pluginId: string, enabled: boolean): Promise<InstalledCapabilityPlugin> {
+  setEnabled(pluginId: string, enabled: boolean): Promise<InstalledDesktopPlugin> {
     assertId(pluginId)
     return this.#enqueue(async () => {
       if (enabled) this.#assertActive()
       const record = await this.#records.read(pluginId)
       if (!record) throw new Error("PLUGIN_NOT_INSTALLED")
-      if (enabled && !isCapabilityPluginCompatible(record.manifest, this.options.appVersion))
-        throw new Error("PLUGIN_VERSION_INCOMPATIBLE")
+      if (enabled && !this.#compatible(record)) throw new Error("PLUGIN_VERSION_INCOMPATIBLE")
       const updated = { ...record, enabled }
       if (record.enabled !== enabled) {
         await this.#records.setRecord(updated, enabled ? () => this.#assertActive() : undefined)
@@ -177,7 +187,7 @@ export class CapabilityPluginManager {
     assertId(id)
     return this.#enqueue(async () => {
       const record = await this.#records.read(id)
-      if (!record) throw new Error("PLUGIN_NOT_INSTALLED")
+      if (!record || record.type !== "capability") throw new Error("PLUGIN_NOT_INSTALLED")
       if (record.toolApproval === mode) return this.#describe(record)
       const updated = { ...record, toolApproval: mode }
       await this.#records.setRecord(updated)
@@ -216,7 +226,7 @@ export class CapabilityPluginManager {
       this.#assertActive()
       const record = await this.#records.read(pluginId)
       this.#assertActive()
-      if (!record || record.revision !== revision || !record.enabled)
+      if (record?.type !== "capability" || record.revision !== revision || !record.enabled)
         throw new Error("PLUGIN_DECLARATION_UNAVAILABLE")
       const plugin = this.#describe(record)
       if (!plugin.compatible) throw new Error("PLUGIN_VERSION_INCOMPATIBLE")
@@ -243,7 +253,7 @@ export class CapabilityPluginManager {
       const epoch = this.#epoch
       const plugins = await Promise.all(
         (await this.#installed()).flatMap((record) =>
-          record.enabled && isCapabilityPluginCompatible(record.manifest, this.options.appVersion)
+          record.type === "capability" && record.enabled && this.#compatible(record)
             ? [this.#snapshot(record).catch(() => null)]
             : [],
         ),
@@ -251,6 +261,32 @@ export class CapabilityPluginManager {
       return this.#epoch === epoch && this.options.membership() === "active"
         ? plugins.filter((value) => value !== null)
         : []
+    })
+  }
+
+  /** 在会话私有目录中准备当次启动的允许组件，先前会话持有自己的副本。 */
+  stageClaudeCodePlugins(directory: string): Promise<readonly string[]> {
+    return this.#enqueue(async () => {
+      const epoch = this.#epoch
+      const paths: string[] = []
+      for (const { manifest } of await this.#enabledClaudeCodePlugins()) {
+        if (this.options.membership() !== "active" || epoch !== this.#epoch) return []
+        const path = await this.#records
+          .stageClaudeCodePlugin(manifest.id, directory)
+          .catch(() => null)
+        if (path !== null) paths.push(path)
+      }
+      return epoch === this.#epoch && this.options.membership() === "active" ? paths : []
+    })
+  }
+
+  /** 草稿菜单使用启用记录中的 Claude Code 完整命令名。 */
+  claudeCodePluginCommands(): Promise<readonly string[]> {
+    return this.#enqueue(async () => {
+      const epoch = this.#epoch
+      const enabled = await this.#enabledClaudeCodePlugins()
+      if (epoch !== this.#epoch || this.options.membership() !== "active") return []
+      return enabled.flatMap(({ manifest: { commands, skills } }) => [...commands, ...skills])
     })
   }
 
@@ -270,8 +306,9 @@ export class CapabilityPluginManager {
       withdrawal === this.#withdrawalEpochs.get(pluginId) &&
       this.options.membership() === "active" &&
       !this.#withdrawing.has(pluginId) &&
-      record?.revision === revision &&
-      isCapabilityPluginCompatible(record.manifest, this.options.appVersion)
+      record?.type === "capability" &&
+      record.revision === revision &&
+      this.#compatible(record)
     )
   }
 
@@ -314,18 +351,32 @@ export class CapabilityPluginManager {
     return () => void this.#listeners.delete(listener)
   }
 
-  #describe(record: CapabilityPluginRecord): InstalledCapabilityPlugin {
-    return {
-      ...record,
-      compatible: isCapabilityPluginCompatible(record.manifest, this.options.appVersion),
-    }
+  #compatible(record: DesktopPluginRecord): boolean {
+    return (
+      record.type === "claude-code" ||
+      isCapabilityPluginCompatible(record.manifest, this.options.appVersion)
+    )
   }
 
-  async #installed(): Promise<CapabilityPluginRecord[]> {
+  #describe(record: CapabilityPluginRecord): InstalledCapabilityPlugin
+  #describe(record: DesktopPluginRecord): InstalledDesktopPlugin
+  #describe(record: DesktopPluginRecord): InstalledDesktopPlugin {
+    return { ...record, compatible: this.#compatible(record) }
+  }
+
+  async #installed(): Promise<DesktopPluginRecord[]> {
     const records = await Promise.all(
       (await this.#records.listIds()).map((id) => this.#records.read(id).catch(() => null)),
     )
     return records.filter((record) => record !== null)
+  }
+
+  async #enabledClaudeCodePlugins() {
+    if (this.options.membership() !== "active") return []
+    return (await this.#installed()).filter(
+      (record): record is Extract<DesktopPluginRecord, { type: "claude-code" }> =>
+        record.type === "claude-code" && record.enabled,
+    )
   }
 
   async #snapshot(record: CapabilityPluginRecord): Promise<CapabilityPluginSnapshot> {

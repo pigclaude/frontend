@@ -94,10 +94,41 @@ async function verify(): Promise<void> {
     await verifyRecovery(host)
     await wait(2_150)
     assert.equal(BrowserWindow.getAllWindows().length, 0)
+    await verifyIdlePartitionReuse()
     console.log("PASS 沙箱窗口与 Worker 完成隔离、超时、取消、崩溃退避和空闲释放")
   } finally {
     await host.dispose()
   }
+}
+
+async function verifyIdlePartitionReuse(): Promise<void> {
+  const host = new PluginSandboxHost(createElectronPluginSandboxLaunch(preload), { idleMs: 40 })
+  const valueSource: PluginSandboxSource = {
+    pluginId: "idle-number-review",
+    revision: "1",
+    egressId: "fixed",
+    entry: "number.mjs",
+    modules: { "number.mjs": "export default () => 7" },
+  }
+  const call = { operation: "number", input: null } as const
+  try {
+    assert.equal(await host.invoke(valueSource, call), 7)
+    const first = BrowserWindow.getAllWindows()[0]?.webContents.session
+    assert.ok(first)
+    await waitForIdleWindows()
+
+    assert.equal(await host.invoke(valueSource, call), 7)
+    const reused = BrowserWindow.getAllWindows()[0]?.webContents.session
+    assert.ok(reused === first, "同一插件版本和出口的空闲重启应复用已清理分区")
+  } finally {
+    await host.dispose()
+  }
+}
+
+async function waitForIdleWindows(): Promise<void> {
+  for (let attempt = 0; attempt < 100 && BrowserWindow.getAllWindows().length > 0; attempt++)
+    await wait(20)
+  assert.equal(BrowserWindow.getAllWindows().length, 0)
 }
 
 async function verifyIsolation(host: PluginSandboxHost): Promise<void> {

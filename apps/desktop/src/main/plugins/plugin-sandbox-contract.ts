@@ -18,6 +18,11 @@ export type PluginSandboxSource = {
   readonly modules: Readonly<Record<string, string>>
 }
 
+/** 实例与内存分区按同一组插件版本和出口标识隔离。 */
+export function pluginSandboxKey(source: PluginSandboxSource): string {
+  return JSON.stringify([source.pluginId, source.revision, source.egressId])
+}
+
 /** Worker 将操作名与输入交给入口模块的默认导出。 */
 export type PluginSandboxCall = { readonly operation: string; readonly input: PluginSandboxJson }
 

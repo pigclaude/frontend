@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto"
 import type { BrowserWindow } from "electron"
 import { beforeEach, expect, it, vi } from "vitest"
 import type { AgentBrowserScope, WorkbenchEvent } from "../../workbench-contract"
+import { configureAgentBrowserRuntime } from "./agent-browser-network"
 import { WorkbenchBrowsers } from "./browser-surface"
 
 const native = vi.hoisted(() => ({
@@ -25,7 +26,11 @@ vi.mock("electron", async () => {
   class Partition extends EventEmitter {
     clearStorageData = vi.fn(async () => undefined)
     clearCache = vi.fn(async () => undefined)
-    webRequest = { onBeforeRequest() {} }
+    webRequest = {
+      onBeforeRequest() {},
+      onBeforeSendHeaders() {},
+      onHeadersReceived() {},
+    }
     setPermissionRequestHandler() {}
     setPermissionCheckHandler() {}
     async setProxy() {}
@@ -122,6 +127,7 @@ function scope(sessionId: string): AgentBrowserScope {
 }
 
 beforeEach(() => {
+  configureAgentBrowserRuntime({ appendSwitch: () => undefined, getSwitchValue: () => "" })
   native.views.length = 0
   native.load.clear()
   native.navigating.clear()

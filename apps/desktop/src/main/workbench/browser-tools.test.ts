@@ -1,7 +1,6 @@
 // 负责验证会话浏览器工具：审批策略按 SDK 字段声明、页面按会话隔离、失败时返回错误内容而不抛出。
 import { randomUUID } from "node:crypto"
 import { mkdtemp, rm } from "node:fs/promises"
-import { randomUUID } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type {

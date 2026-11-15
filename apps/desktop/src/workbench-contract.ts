@@ -54,6 +54,9 @@ export type WorkbenchCheckpoint = {
   createdAt: string
 }
 
+/** 当前通过审批的 Agent 动作及工具栏要展示的目标。 */
+export type WorkbenchBrowserActivity = { kind: "navigate" | "click"; target: string }
+
 /** 内置浏览器在导航时发出的公开状态。 */
 export type WorkbenchBrowserPage = {
   url: string
@@ -61,6 +64,7 @@ export type WorkbenchBrowserPage = {
   loading: boolean
   canGoBack: boolean
   canGoForward: boolean
+  activity?: WorkbenchBrowserActivity
   error?: { code: number; description: string; url: string }
   crashed?: { reason: string }
 }

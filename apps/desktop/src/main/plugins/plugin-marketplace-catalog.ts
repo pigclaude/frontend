@@ -30,3 +30,9 @@ export type PluginMarketplaceLoadedEntry = {
   repo: string | null
   commit: string | null
 }
+
+/** 已装插件的市场归属及内容摘要，用于定位手动更新和核查下载来源。 */
+export type PluginMarketplaceProvenance = Omit<PluginMarketplaceLoadedEntry, "files"> & {
+  sourceId: string
+  entryId: string
+}

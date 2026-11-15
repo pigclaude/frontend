@@ -16,26 +16,47 @@ import {
   synthesizeClaudeCodePlugin,
 } from "./claude-code-plugin-bundle"
 import { pluginBundleFilesDigest, type DesktopPluginBundle } from "./desktop-plugin-bundle"
+import type { PluginMarketplaceProvenance } from "./plugin-marketplace-catalog"
+
+type PublishedPackage = {
+  packageRevision?: true | undefined
+  marketplace?: PluginMarketplaceProvenance | undefined
+}
 
 /** 持久安装元数据；兼容性从当前应用版本计算，不写入记录。 */
-export type CapabilityPluginRecord = Omit<InstalledCapabilityPlugin, "compatible">
+export type CapabilityPluginRecord = Omit<InstalledCapabilityPlugin, "compatible"> &
+  PublishedPackage
 
 /** Claude Code 每次启动只使用和已确认文件表摘要一致的合成副本。 */
-export type ClaudeCodePluginRecord = Omit<InstalledClaudeCodePlugin, "compatible"> & {
-  packageDigest: string
-  menuCommands: string[]
-}
+export type ClaudeCodePluginRecord = Omit<InstalledClaudeCodePlugin, "compatible"> &
+  PublishedPackage & {
+    packageDigest: string
+    menuCommands: string[]
+  }
 
 /** 包类型决定记录可以发布到 Worker 还是 Claude SDK。 */
 export type DesktopPluginRecord = CapabilityPluginRecord | ClaudeCodePluginRecord
 
 const sha256 = /^[0-9a-f]{64}$/
+const marketProvenance = z.strictObject({
+  sourceId: z.string().min(1).max(128),
+  entryId: z.string().min(1).max(128),
+  digest: z.string().regex(sha256),
+  archiveSha256: z.string().regex(sha256).nullable(),
+  repo: z.string().nullable(),
+  commit: z
+    .string()
+    .regex(/^[0-9a-f]{40}$/)
+    .nullable(),
+})
 const installedFields = {
   revision: z.uuid(),
   installedAt: z.iso.datetime(),
   sourceKind: z.enum(["directory", "archive"]),
   sha256: z.string().regex(sha256).nullable(),
   enabled: z.boolean(),
+  packageRevision: z.literal(true).optional(),
+  marketplace: marketProvenance.optional(),
 }
 const savedCapability = z.strictObject({
   ...installedFields,
@@ -117,8 +138,9 @@ export class CapabilityPluginRecords {
   }
 
   /** 已发布的私有包根，只加载管理器写入的模块副本。 */
-  packageDirectory(id: string): string {
-    return join(this.#installed, id, "package")
+  packageDirectory(record: DesktopPluginRecord): string {
+    const path = join(this.#installed, record.manifest.id)
+    return record.packageRevision ? join(path, "revisions", record.revision) : join(path, "package")
   }
 
   /** 在私有暂存目录写完整副本，再一次性发布副本和记录。 */
@@ -132,14 +154,7 @@ export class CapabilityPluginRecords {
     try {
       const directory = join(stage, "package")
       await mkdir(directory, { mode: 0o700 })
-      const files =
-        bundle.type === "claude-code"
-          ? bundle.files
-          : [
-              [capabilityPluginManifestFile, JSON.stringify(bundle.manifest)] as const,
-              ...Object.entries(bundle.modules),
-            ]
-      await writePluginFiles(directory, files)
+      await writePluginFiles(directory, packageFiles(bundle))
       await writeFile(join(stage, "record.json"), JSON.stringify(record), {
         flag: "wx",
         mode: 0o600,
@@ -151,10 +166,32 @@ export class CapabilityPluginRecords {
     }
   }
 
+  /** 先将新包写入独立修订，再通过单次记录替换切到新包。 */
+  async replace(
+    previous: DesktopPluginRecord,
+    next: DesktopPluginRecord & { packageRevision: true },
+    bundle: DesktopPluginBundle,
+    beforePublish: () => void,
+  ): Promise<void> {
+    const directory = this.packageDirectory(next)
+    await mkdir(dirname(directory), { recursive: true, mode: 0o700 })
+    await mkdir(directory, { mode: 0o700 })
+    try {
+      await writePluginFiles(directory, packageFiles(bundle))
+      await this.setRecord(next, beforePublish)
+    } catch (error) {
+      await rm(directory, { recursive: true, force: true }).catch(() => undefined)
+      throw error
+    }
+    await rm(this.packageDirectory(previous), { recursive: true, force: true }).catch(
+      () => undefined,
+    )
+  }
+
   /** 为当次 SDK 进程重建已安装插件，净化后发布独立的会话副本。 */
   async stageClaudeCodePlugin(record: ClaudeCodePluginRecord, directory: string): Promise<string> {
     const { id } = record.manifest
-    const installed = await readClaudeCodePluginDirectory(this.packageDirectory(id))
+    const installed = await readClaudeCodePluginDirectory(this.packageDirectory(record))
     const { manifest, files } = synthesizeClaudeCodePlugin(installed, id)
     if (manifest.id !== id || pluginBundleFilesDigest(files) !== record.packageDigest)
       throw new Error("PLUGIN_RECORD_INVALID")
@@ -197,6 +234,15 @@ export class CapabilityPluginRecords {
     if (!keepData) await rm(dataDirectory, { recursive: true, force: true })
     await rm(join(this.#withdrawn, id), { recursive: true, force: true })
   }
+}
+
+function packageFiles(bundle: DesktopPluginBundle): Iterable<readonly [string, string | Buffer]> {
+  return bundle.type === "claude-code"
+    ? bundle.files
+    : [
+        [capabilityPluginManifestFile, JSON.stringify(bundle.manifest)],
+        ...Object.entries(bundle.modules),
+      ]
 }
 
 async function writePluginFiles(

@@ -10,6 +10,7 @@ import type { PigclaudeApi } from "../api/pigclaude-api-client"
 import { PigclaudeApiError } from "../api/oauth-client"
 import { OAuthTokenManager, codeOf, type OAuthSnapshot } from "../authorization/oauth-token-manager"
 import { recoveryView, type RecoveryMembershipView } from "./recovery-view"
+import { isMembershipNetworkFailure, MembershipNetwork } from "./membership-network"
 import { DESKTOP_BUSINESS_SCOPES } from "@pigclaude/contracts/desktop-membership"
 import { randomUUID } from "node:crypto"
 
@@ -28,11 +29,12 @@ export type MembershipGateOptions = {
   tokenManager?: OAuthTokenManager
   now?: () => number
 }
-/** 每次检查都访问服务端，不从磁盘或旧 active 视图授予离线能力。 */
+/** 业务授权只认实时核验。网络故障期间只保留已启动的会话资源。 */
 export class MembershipGate {
   readonly #api: MembershipGateApi
   readonly #tokens: OAuthTokenManager
   readonly #now: () => number
+  readonly #network: MembershipNetwork
   readonly #unsubscribeInvalidatedGrant: () => void
   readonly #listeners = new Set<(view: MembershipView) => void>()
   #view: MembershipView = initialView()
@@ -46,6 +48,7 @@ export class MembershipGate {
   constructor(options: MembershipGateOptions) {
     this.#api = options.api
     this.#now = options.now ?? Date.now
+    this.#network = new MembershipNetwork(this.#now)
     this.#tokens =
       options.tokenManager ??
       new OAuthTokenManager({
@@ -70,19 +73,25 @@ export class MembershipGate {
     })
   }
 
-  /** 恢复后与每次受限操作前重新核验原账号、版本、关系及会员。 */
-  async inspect(): Promise<MembershipView> {
+  /** 实时核验原账号、版本、关系及会员。authorize 时失败的本次检查不能借用较新的视图。 */
+  async inspect(options: { authorize?: boolean } = {}): Promise<MembershipView> {
     const read = ++this.#reads
     const owner = this.#tokens.owner
-    if (this.#disposed) return this.view()
+    const superseded = (verified = false): MembershipView => {
+      if (options.authorize && !verified) throw new Error("MEMBERSHIP_REQUIRED")
+      return this.view()
+    }
+    if (this.#disposed) return superseded()
+    this.#network.expireOverdue()
     let identity: OAuthSnapshot | undefined
     let recovered: RecoveryMembershipView | undefined
     try {
       const snapshot = await this.#tokens.snapshot()
       if (!snapshot) {
         if (this.current(read, owner)) return this.publish(signedOutView())
-        return this.view()
+        return superseded()
       }
+      if (this.#network.waitingForNetwork()) throw new PigclaudeApiError("SERVER_UNAVAILABLE", null)
       const remote = await this.#tokens.run(async (current) => {
         identity = current
         const facts = await this.readRecovery(current)
@@ -120,7 +129,11 @@ export class MembershipGate {
           ? { ...checked, account: recovered.account, recovery: recovered.recovery }
           : checked
       })
-      if (!this.current(read, owner)) return this.view()
+      if (!this.current(read, owner))
+        return superseded(
+          remote.state === "active" &&
+            (remote.bindingEpoch === null || remote.bindingEpoch === identity?.record.bindingEpoch),
+        )
       this.#visibleOwner = owner
       if (remote.bindingEpoch !== null && remote.bindingEpoch !== identity?.record.bindingEpoch) {
         return this.clearSession(owner, "DEVICE_REVOKED", "AUTHORIZATION_BINDING_STALE")
@@ -135,7 +148,7 @@ export class MembershipGate {
         (code === "ACCOUNT_BANNED" || code === "DEVICE_REVOKED" || code === "invalid_grant")
       )
         return this.clearSession(owner, code)
-      if (!this.current(read, owner)) return this.view()
+      if (!this.current(read, owner)) return superseded()
       const view = recovered ?? (identity ? this.identityView(identity) : initialView())
       const state =
         code === "SAFE_STORAGE_UNAVAILABLE"
@@ -151,9 +164,20 @@ export class MembershipGate {
                 code === "access_denied"
               ? "verification_required"
               : "error"
+      if (state === "error" && isMembershipNetworkFailure(error) && this.#visibleOwner === owner) {
+        if (this.#view.state === "active" || this.#view.state === "network_grace")
+          return this.publishNetworkFailure(owner, code)
+        if (this.#view.state === "expired") return this.view()
+      }
       this.#visibleOwner = owner
       return this.publish({ ...view, state, errorCode: code, serverReason: code })
     }
+  }
+
+  /** 唤醒时在系统网络恢复后重新核验，等待期间对受限请求继续关闸。 */
+  resumeAfterWake(isOnline: () => boolean): void {
+    if (this.#disposed) return
+    this.#network.afterWake(isOnline, () => void this.inspect())
   }
 
   /** 订阅脱敏快照，返回移除当前 listener 的清理函数。 */
@@ -292,6 +316,8 @@ export class MembershipGate {
   /** 释放监听并同步拒绝迟到网络发布。 */
   dispose(): void {
     this.#disposed = true
+    this.#network.clearGrace()
+    this.#network.clearWake()
     this.#unsubscribeInvalidatedGrant()
     this.#reads++
     void this.#tokens.suspend()
@@ -382,7 +408,7 @@ export class MembershipGate {
 
   private normalizeRemote(view: MembershipView): MembershipView {
     const state = view.state as string
-    if (state === "inactive" || state === "revoked")
+    if (state === "inactive" || state === "revoked" || state === "network_grace")
       return { ...view, state: "verification_required", errorCode: "AUTHORIZATION_UNAUTHORIZED" }
     return {
       ...view,
@@ -394,6 +420,7 @@ export class MembershipGate {
 
   private publish(view: MembershipView): MembershipView {
     if (this.#disposed) return this.view()
+    if (view.state !== "network_grace") this.#network.clearGrace()
     this.#revision = Math.max(this.#revision + 1, view.revision)
     this.#view = { ...view, revision: this.#revision, startupPhase: "settled" }
     if (this.#view.account && this.#visibleOwner === this.#tokens.owner) {
@@ -406,6 +433,14 @@ export class MembershipGate {
     const safe = this.view()
     for (const listener of this.#listeners) listener(safe)
     return safe
+  }
+
+  private publishNetworkFailure(owner: number, code: string): MembershipView {
+    const state = this.#network.retainUntil(this.#view.membershipValidUntil, (next) => {
+      if (this.#tokens.isCurrent(owner) && this.#view.state === "network_grace")
+        this.publish({ ...this.#view, state: next })
+    })
+    return this.publish({ ...this.#view, state, errorCode: code, serverReason: code })
   }
 }
 function initialView(): MembershipView {

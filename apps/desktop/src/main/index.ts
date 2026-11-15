@@ -6,6 +6,7 @@ import {
   ipcMain,
   nativeImage,
   nativeTheme,
+  net,
   powerMonitor,
   safeStorage,
   screen,
@@ -400,11 +401,13 @@ async function setupAuthorization(): Promise<void> {
   const checkLive = () => {
     void desktopComposition?.resume()
   }
+  const resumeAfterSleep = () =>
+    desktopComposition?.membershipGate.resumeAfterWake(() => net.isOnline())
   app.on("browser-window-focus", checkLive)
-  powerMonitor.on("resume", checkLive)
+  powerMonitor.on("resume", resumeAfterSleep)
   cleanupLiveEvents = () => {
     app.removeListener("browser-window-focus", checkLive)
-    powerMonitor.removeListener("resume", checkLive)
+    powerMonitor.removeListener("resume", resumeAfterSleep)
   }
   if (app.isPackaged) app.setAsDefaultProtocolClient("pigclaude")
 }

@@ -115,6 +115,31 @@ describe("SessionHost parking", () => {
     await harness.host.dispose()
   })
 
+  it("retains sessions through a network interruption and parks them only after grace expires", async () => {
+    const { harness } = await clockedHarness()
+    try {
+      const [busy, idle] = [await startSession(harness), await startSession(harness)]
+      await harness.host.send(busy, { text: "working" })
+
+      harness.membership.setState("network_grace")
+      await expect(harness.host.send(idle, { text: "new request" })).rejects.toMatchObject({
+        code: "MEMBERSHIP_REQUIRED",
+      })
+      expect(harness.host.status(busy)).toMatchObject({ active: true, turnId: expect.any(String) })
+      expect(harness.runtime.sessions.map((session) => session.closed)).toEqual([false, false])
+
+      harness.membership.setState("error")
+      await waitUntil(() =>
+        harness.environments.instances.every((environment) => environment.cleaned === 1),
+      )
+      harness.membership.setState("active")
+      expect(harness.host.list().map((item) => item.status)).toEqual(["interrupted", "interrupted"])
+      expect(harness.runtime.sessions.map((session) => session.closed)).toEqual([true, true])
+    } finally {
+      await harness.host.dispose()
+    }
+  })
+
   it("parks every session when the main window closes, keeping their events readable", async () => {
     const { harness } = await clockedHarness()
     const [first, second] = [await startSession(harness), await startSession(harness)]

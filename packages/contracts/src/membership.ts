@@ -6,11 +6,17 @@ export type MembershipState =
   | "signed_out"
   | "connecting"
   | "active"
+  | "network_grace"
   | "offline_grace"
   | "expired"
   | "verification_required"
   | "device_revoked"
   | "error"
+
+/** 有效核验和短暂的网络故障都保留已启动的桌面资源；业务执行仍须实时校验。 */
+export function keepsMembershipRuntime(state: MembershipState): boolean {
+  return state === "active" || state === "network_grace"
+}
 
 /** 服务端嵌套会员等级摘要，不携带可变价格或套餐期限。 */
 export interface TierView {

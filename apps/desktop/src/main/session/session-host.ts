@@ -149,7 +149,7 @@ export class SessionHost {
         this.#emitHost({ type: "error", code: "usage_write_failed", message: usageWriteFailed })
       }),
       options.membership.subscribe((view) => {
-        if (view.state !== "active")
+        if (view.state !== "active" && view.state !== "network_grace")
           void this.#handleMembershipLost().catch(() => this.#notifyExitPending())
       }),
       options.runtime.subscribe((event) =>
@@ -256,7 +256,7 @@ export class SessionHost {
     checkpoint?: ActiveSession["checkpoint"],
     tools?: () => SessionTools | undefined,
   ): Promise<void> {
-    if (this.#persistence !== null) this.#assertMembership()
+    this.#assertMembership()
     if (this.#persistence !== null) await this.#ensureResumed(sessionId, tools)
     this.history.assertWritable(sessionId)
     await this.#requireSession(sessionId).send(input, checkpoint)

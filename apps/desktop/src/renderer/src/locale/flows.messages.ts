@@ -163,6 +163,7 @@ export const flowsZhCN = {
   "flows.membership-view.5": "会员已到期，请续期后重新检查。",
   "flows.membership-view.6": "这台设备已被撤销，请重新授权当前设备。",
   "flows.membership-view.7": "暂时无法验证会员状态，请检查 Rust 服务是否运行。",
+  "flows.membership.networkUnavailable": "会员核验暂时失败",
   "flows.authorization-status.1": "已取消授权",
   "flows.authorization-status.2": "浏览器拒绝了授权",
   "flows.authorization-status.3": "授权链接已过期",

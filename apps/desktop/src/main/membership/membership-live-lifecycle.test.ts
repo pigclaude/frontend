@@ -214,7 +214,10 @@ it("offline foreground and each restricted operation recheck without offline per
   const f = await setup({ inspectMembership: inspect })
   await f.gate.inspect()
   online = false
-  expect(await f.composition.resume()).toMatchObject({ state: "error", offlineValidUntil: null })
+  expect(await f.composition.resume()).toMatchObject({
+    state: "network_grace",
+    offlineValidUntil: null,
+  })
   const operation = vi.fn(async () => undefined)
   await expect(f.composition.runAuthorized(operation)).rejects.toThrow("MEMBERSHIP_REQUIRED")
   expect(inspect).toHaveBeenCalledTimes(3)
@@ -276,4 +279,33 @@ it("a superseded failed before-operation read cannot reuse a previous active vie
   heartbeatRelease.resolve(undefined)
   await newer
   await f.composition.dispose()
+})
+
+it("a failed request cannot borrow a concurrent request's successful check", async () => {
+  const entered = deferred<void>()
+  const release = deferred<void>()
+  let reads = 0
+  const f = await setup({
+    inspectMembership: async () => {
+      if (++reads === 2) {
+        entered.resolve(undefined)
+        await release.promise
+        throw Object.assign(new Error(), { code: "SERVER_UNAVAILABLE" })
+      }
+      return membershipView()
+    },
+  })
+  try {
+    await f.gate.inspect()
+    const operation = vi.fn(async () => undefined)
+    const pending = f.composition.runAuthorized(operation).catch((error: unknown) => error)
+    await entered.promise
+    await f.gate.inspect()
+    release.resolve(undefined)
+    expect(await pending).toMatchObject({ message: "MEMBERSHIP_REQUIRED" })
+    expect(operation).not.toHaveBeenCalled()
+    expect(f.gate.view().state).toBe("active")
+  } finally {
+    await f.composition.dispose()
+  }
 })

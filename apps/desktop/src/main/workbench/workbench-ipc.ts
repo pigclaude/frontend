@@ -1,7 +1,7 @@
 // 注册工作台命令，绑定已选择的项目、会员状态和可信的主窗口。
 import { randomUUID } from "node:crypto"
 import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron"
-import type { MembershipView } from "@pigclaude/contracts/membership"
+import { keepsMembershipRuntime, type MembershipView } from "@pigclaude/contracts/membership"
 import type { WorkbenchBrowserAction } from "../../workbench-contract"
 import type { SessionTools } from "../session/session-types"
 import { WorkbenchBrowsers } from "./browser-surface"
@@ -305,7 +305,7 @@ export class WorkbenchIpc {
 
   /** 会员资格失效后释放旧窗口的工作台资源。 */
   membershipChanged(view: MembershipView): void {
-    if (view.state !== "active") void this.dispose().catch(() => undefined)
+    if (!keepsMembershipRuntime(view.state)) void this.dispose().catch(() => undefined)
   }
 
   /** 退出前关闭预览并等待终端结束。 */

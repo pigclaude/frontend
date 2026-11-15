@@ -548,6 +548,14 @@ button.item:hover {
   overflow-wrap: anywhere;
 }
 
+.membership-network-notice {
+  flex: none;
+  margin: 0;
+  padding: 8px 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 /* ─── 窄窗口 ───────────────────────────────────────────── */
 @media (max-width: 960px) {
   .panel {

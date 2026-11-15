@@ -93,7 +93,7 @@ it("在 Linux 用稳定的 AppImage 路径登记 XDG 入口，识别停用并支
     expect(await startup.set(true)).toBe(true)
     const entry = await readFile(file, "utf8")
     expect(entry.split("\n")).toContain(
-      'Exec="/test apps/PigClaude 100%%.AppImage" --pigclaude-autostart',
+      String.raw`Exec=/bin/sh -c "exec \\"\\$@\\"" pigclaude-autostart "/test apps/PigClaude 100%%.AppImage" --pigclaude-autostart`,
     )
     expect(await startup.enabled()).toBe(true)
 

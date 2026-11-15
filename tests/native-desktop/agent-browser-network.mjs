@@ -10,21 +10,21 @@ import ts from "typescript"
 
 const require = createRequire(new URL("../../apps/desktop/package.json", import.meta.url))
 const temp = await mkdtemp(join(tmpdir(), "pigclaude-native-agent-browser-"))
-const workbenchFiles = [
-  "agent-browser-network",
-  "browser-action-execution",
-  "browser-action-request",
-  "browser-context",
-  "browser-element-actions",
-  "browser-element-picker",
-  "browser-preview",
-  "browser-references",
-  "browser-snapshot-world",
-  "browser-surface",
-]
 const files = [
   "browser-permission-contract",
-  ...workbenchFiles.map((file) => "main/workbench/" + file),
+  "main/workbench/agent-browser-actions",
+  "main/workbench/agent-browser-network",
+  "main/workbench/browser-action-execution",
+  "main/workbench/browser-action-request",
+  "main/workbench/browser-context",
+  "main/workbench/browser-element-actions",
+  "main/workbench/browser-element-picker",
+  "main/workbench/browser-preview",
+  "main/workbench/browser-references",
+  "main/workbench/browser-screenshot",
+  "main/workbench/browser-snapshot-world",
+  "main/workbench/browser-surface",
+  "workbench-contract",
 ]
 try {
   for (const file of files) {

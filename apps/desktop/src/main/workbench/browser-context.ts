@@ -1,5 +1,6 @@
 // 配置工作台浏览器分区、允许的地址和内容导航规则。
-import { session, type WebContents } from "electron"
+import { session, type Rectangle, type WebContents, type WebContentsView } from "electron"
+import type { WorkbenchBrowserBounds, WorkbenchBrowserPage } from "../../workbench-contract"
 import { isAgentBrowserAddress, type AgentBrowserNetwork } from "./agent-browser-network"
 
 const partition = "persist:pigclaude-workbench-browser"
@@ -82,6 +83,47 @@ export function browserSession() {
 /** Agent 标签使用各自的非持久分区。 */
 export function agentSession(id: string) {
   return restrictedSession("pigclaude-workbench-agent-" + id)
+}
+
+/** 将浏览器限制到所在主窗口中的内容区，并同步该标签需要的缩放倍率。 */
+export function applyWorkbenchBrowserBounds(
+  view: WebContentsView,
+  available: Rectangle,
+  bounds: WorkbenchBrowserBounds,
+  previousScale: number,
+): number {
+  const x = Math.min(Math.max(0, bounds.x), available.width)
+  const y = Math.min(Math.max(0, bounds.y), available.height)
+  view.setBounds({
+    x,
+    y,
+    width: Math.min(bounds.width, available.width - x),
+    height: Math.min(bounds.height, available.height - y),
+  })
+  if (previousScale !== bounds.scale) view.webContents.setZoomFactor(bounds.scale)
+  return bounds.scale
+}
+
+/** 提取浏览器视图的可公开页面状态；首次已批准的导航可在提交前显示目标地址。 */
+export function workbenchBrowserPage(
+  contents: WebContents,
+  state: {
+    activity?: WorkbenchBrowserPage["activity"]
+    error?: WorkbenchBrowserPage["error"]
+    crashed?: WorkbenchBrowserPage["crashed"]
+  },
+): WorkbenchBrowserPage {
+  const approvedUrl = state.activity?.kind === "navigate" ? state.activity.target : ""
+  return {
+    url: contents.getURL() || state.error?.url || approvedUrl,
+    title: contents.getTitle(),
+    loading: contents.isLoading(),
+    canGoBack: contents.navigationHistory.canGoBack(),
+    canGoForward: contents.navigationHistory.canGoForward(),
+    ...(state.error ? { error: state.error } : {}),
+    ...(state.crashed ? { crashed: state.crashed } : {}),
+    ...(state.activity ? { activity: state.activity } : {}),
+  }
 }
 
 function restrictedSession(name: string) {

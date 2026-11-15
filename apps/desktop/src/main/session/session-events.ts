@@ -41,6 +41,9 @@ export type SessionUsage = {
 export type SubagentRef =
   { parentToolUseId: string; agentId: string | null } | { parentToolUseId: null; agentId: string }
 
+/** 工具结果的有界 JPEG，供实时渲染；会话历史只保存占位。 */
+export type SessionToolResultImage = { type: "image"; mimeType: "image/jpeg"; data: string }
+
 /** 适配器向 SessionHost 广播的事件。 */
 export type SessionEvent =
   | {
@@ -68,6 +71,7 @@ export type SessionEvent =
       type: "tool-result"
       toolUseId: string
       content: string
+      image?: SessionToolResultImage
       isError: boolean
       /** 子代理归属；主线程为 null。 */
       subagent: SubagentRef | null

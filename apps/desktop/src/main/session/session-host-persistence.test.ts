@@ -4,21 +4,22 @@ import { randomUUID } from "node:crypto"
 import { appendFile, mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { setImmediate } from "node:timers/promises"
-import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { deferred } from "../testing/profile-fixture"
-import { ClaudeAgentAdapter } from "./claude-agent-adapter"
-import { collectPrompt, FakeQuery, type CapturedQuery } from "./claude-agent-adapter-fixtures"
-import type { SessionFlagSettings } from "./claude-query"
+import type { FakeQuery } from "./claude-agent-adapter-fixtures"
 import { retainedClaudeProject } from "./session-environment"
-import { SessionHost, type SessionHostOptions } from "./session-host"
-import { FakeMembership, FakeUsage, waitUntil } from "./session-host-fixtures"
+import type { SessionHost } from "./session-host"
+import { waitUntil } from "./session-host-fixtures"
 import { loadSdkFixture } from "./session-replay-fixtures"
-import { FakeRuntime } from "./session-runtime-fixture"
 import { SessionStore } from "./session-store"
-import { newSessionIndex, removeTemporaryDirs, temporaryDir } from "./session-store-fixtures"
+import { newSessionIndex } from "./session-store-fixtures"
+import {
+  disposePersistenceFixtures,
+  hostFixture,
+  savedModel,
+  workspaceFixture,
+} from "./session-host-persistence-fixture"
 
-const savedModel = "claude-sonnet-4"
 const savedProfile = {
   timezone: "America/New_York",
   locale: "fr-FR",
@@ -28,16 +29,7 @@ const savedProfile = {
 }
 const otherProfile = { ...savedProfile, timezone: "Asia/Tokyo", locale: "ja-JP" }
 const transcriptFixture = '{"type":"fixture"}\n'
-const hosts: SessionHost[] = []
-
-afterEach(async () => {
-  const open = hosts.splice(0)
-  try {
-    await Promise.all(open.map((host) => host.dispose()))
-  } finally {
-    await removeTemporaryDirs()
-  }
-})
+afterEach(disposePersistenceFixtures)
 
 describe("SessionHost 保存与续接", () => {
   it("保留已归档的运行会话，省略自动标题并在审批取消时刷新摘要", async () => {
@@ -229,6 +221,48 @@ describe("SessionHost 保存与续接", () => {
     expect(runtime.sessions[0]?.closed).toBe(true)
   })
 
+  it("等待 Agent 浏览器回收才完成停放，续接给新工具同一个实际会话 id", async () => {
+    const fixture = await workspaceFixture()
+    const { host } = hostFixture(fixture, async () => savedProfile)
+    const sessionId = randomUUID()
+    const ids: string[] = []
+    const create = (_approval: unknown, id: string) => {
+      ids.push(id)
+      return {}
+    }
+    let finish = () => {}
+    const cleanup = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    await host.start(
+      { sessionId, workspace: fixture.workspace, permissionMode: "default" },
+      {
+        browser: { create },
+        close: cleanup,
+      },
+    )
+    await writeTranscript(fixture.store, sessionId)
+    let parked = false
+    const stopping = host.stop(sessionId).then(() => {
+      parked = true
+    })
+    try {
+      await vi.waitFor(() => expect(cleanup).toHaveBeenCalledOnce())
+      expect(parked).toBe(false)
+    } finally {
+      finish()
+      await stopping
+    }
+    await host.send(sessionId, { text: "继续这个会话" }, undefined, () => ({
+      browser: { create },
+      close: () => undefined,
+    }))
+    expect(ids).toEqual([sessionId, sessionId])
+  })
+
   it("保存用户正文，停放后重开可只读历史，下一次发送用原环境打开同一个会话", async () => {
     const fixture = await workspaceFixture()
     const original = hostFixture(fixture, async () => savedProfile)
@@ -405,63 +439,6 @@ describe("SessionHost 保存与续接", () => {
     expect(await readFile(indexPath, "utf8")).toBe(original)
   })
 })
-
-async function workspaceFixture() {
-  const userDataPath = await temporaryDir()
-  const root = join(userDataPath, "session-store")
-  const project = join(userDataPath, "project")
-  const workspace = join(userDataPath, "worktree")
-  await Promise.all([mkdir(project), mkdir(workspace)])
-  return { userDataPath, root, project, workspace, store: await SessionStore.open({ root }) }
-}
-
-class PersistenceQuery extends FakeQuery {
-  readonly flagSettings: SessionFlagSettings[] = []
-
-  async applyFlagSettings(settings?: SessionFlagSettings): Promise<void> {
-    if (settings !== undefined) this.flagSettings.push(settings)
-  }
-}
-
-function hostFixture(
-  fixture: Awaited<ReturnType<typeof workspaceFixture>>,
-  resolveProfile: NonNullable<SessionHostOptions["resolveProfile"]>,
-) {
-  const queries: CapturedQuery[] = []
-  const sessions: PersistenceQuery[] = []
-  const prompts: SDKUserMessage[] = []
-  const runtime = new FakeRuntime()
-  const usage = new FakeUsage()
-  const membership = new FakeMembership()
-  const host = new SessionHost({
-    membership,
-    runtime,
-    usage,
-    userDataPath: fixture.userDataPath,
-    defaultWorkspace: () => fixture.workspace,
-    resolveBinaryPath: () => join(fixture.userDataPath, "fake-claude"),
-    resolveProfile,
-    readOrganizationModels: async () => [],
-    sessionStore: Promise.resolve(fixture.store),
-    createAdapter: (onEvent) =>
-      new ClaudeAgentAdapter({
-        onEvent,
-        queryFn: ({ options, prompt }) => {
-          queries.push({ options, prompt })
-          const query = new PersistenceQuery([
-            { value: savedModel, displayName: "Sonnet", description: "已保存模型" },
-          ])
-          if (options.persistSession) {
-            sessions.push(query)
-            void collectPrompt(prompt, prompts)
-          }
-          return query
-        },
-      }),
-  })
-  hosts.push(host)
-  return { host, membership, queries, prompts, sessions, runtime, usage }
-}
 
 async function writeTranscript(store: SessionStore, sessionId: string): Promise<string> {
   const paths = store.paths(sessionId)

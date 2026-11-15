@@ -40,9 +40,13 @@ vi.mock("./browser-surface", () => ({
         "close",
         "closeWindow",
         "closeAgent",
+        "setActiveSession",
+        "listAgentTabs",
+        "requireActiveAgent",
       ])
         self[name] = vi.fn()
       self["external"] = vi.fn(async () => undefined)
+      self["closeWindow"] = vi.fn(async () => undefined)
       self["preview"] = vi.fn(async () => ({ id: "preview" }))
       fakes.browsers.push(self)
     }
@@ -182,8 +186,86 @@ describe("workbench IPC", () => {
     await call("browser-close", resourceId)
     await call("browser-present", resourceId, null)
     expect(terminals()["close"]).toHaveBeenCalledWith(trusted.webContents, resourceId)
-    expect(browsers()["close"]).toHaveBeenCalledWith(trusted.browserWindow, resourceId)
-    expect(browsers()["present"]).toHaveBeenCalledWith(trusted.browserWindow, resourceId, null)
+    expect(browsers()["close"]).toHaveBeenCalledWith(trusted.browserWindow, resourceId, undefined)
+    expect(browsers()["present"]).toHaveBeenCalledWith(
+      trusted.browserWindow,
+      resourceId,
+      null,
+      undefined,
+    )
+  })
+
+  it("passes only validated session scopes to native browser actions", async () => {
+    const id = "agent-" + resourceId
+    const scope = { id, sessionId: "session-a" }
+    await call("browser-active-session", scope.sessionId)
+    await call("browser-agent-tabs", scope.sessionId)
+    await call("browser-command", id, "reload", scope.sessionId)
+    await call("browser-pick", id, scope.sessionId)
+    await call("preview-open", "http://localhost:3000/", scope)
+
+    const native = browsers()
+    expect(native["setActiveSession"]).toHaveBeenCalledWith(trusted.browserWindow, scope.sessionId)
+    expect(native["listAgentTabs"]).toHaveBeenCalledWith(trusted.browserWindow, scope.sessionId)
+    expect(native["command"]).toHaveBeenCalledWith(
+      trusted.browserWindow,
+      id,
+      "reload",
+      scope.sessionId,
+    )
+    expect(native["pick"]).toHaveBeenCalledWith(trusted.browserWindow, id, scope.sessionId)
+    expect(native["requireActiveAgent"]).toHaveBeenCalledWith(trusted.browserWindow, scope)
+    await expect(call("browser-pick", id, " ")).rejects.toThrow("WORKBENCH_INPUT_INVALID")
+  })
+
+  it("syncs owned Agent tabs during network grace without authorizing browser actions", async () => {
+    const id = "agent-" + resourceId
+    const sessionId = "session-b"
+    const url = "http://localhost:3000/"
+    const native = browsers()
+    const tabs = [{ id, sessionId }]
+    native["listAgentTabs"]?.mockReturnValue(tabs)
+    state = "network_grace"
+
+    await expect(call("browser-agent-tabs", sessionId)).resolves.toEqual(tabs)
+    await expect(call("browser-active-session", sessionId)).resolves.toBeUndefined()
+    expect(native["listAgentTabs"]).toHaveBeenCalledExactlyOnceWith(
+      trusted.browserWindow,
+      sessionId,
+    )
+    expect(native["setActiveSession"]).toHaveBeenCalledWith(trusted.browserWindow, sessionId)
+    const list = handlers.get("pigclaude:workbench-browser-agent-tabs")
+    await expect(list?.(event(stranger.webContents), sessionId)).rejects.toThrow(
+      "UNTRUSTED_WORKSPACE_REQUEST",
+    )
+    const bounds = { x: 0, y: 0, width: 50, height: 50, scale: 1 }
+    const scope = { id, sessionId }
+    const actions = [
+      call("browser-present", id, bounds, sessionId),
+      call("browser-navigate", id, url, sessionId),
+      call("browser-command", id, "reload", sessionId),
+      call("browser-pick", id, sessionId),
+      call("browser-external", url, scope),
+      call("preview-open", url, scope),
+    ]
+    await Promise.all(
+      actions.map((action) => expect(action).rejects.toThrow("MEMBERSHIP_REQUIRED")),
+    )
+    await call("browser-close", id, sessionId)
+    expect(native["close"]).toHaveBeenCalledExactlyOnceWith(trusted.browserWindow, id, sessionId)
+
+    state = "expired"
+    await expect(call("browser-agent-tabs", sessionId)).rejects.toThrow("MEMBERSHIP_REQUIRED")
+    await expect(call("browser-active-session", sessionId)).rejects.toThrow("MEMBERSHIP_REQUIRED")
+    await expect(call("browser-active-session", null)).resolves.toBeUndefined()
+    state = "active"
+    await expect(call("browser-present", id, bounds, sessionId)).resolves.toBeUndefined()
+    expect(native["present"]).toHaveBeenCalledExactlyOnceWith(
+      trusted.browserWindow,
+      id,
+      bounds,
+      sessionId,
+    )
   })
 
   it("lists and reads files only inside a registered project", async () => {
@@ -283,7 +365,9 @@ describe("workbench IPC", () => {
       rememberCaller: () => undefined,
       request: async () => false,
     }
-    expect(Object.keys(first.browser?.create(approval) ?? {})).toEqual(["pigclaude_workbench"])
+    expect(Object.keys(first.browser?.create(approval, "first-session") ?? {})).toEqual([
+      "pigclaude_workbench",
+    ])
     expect(browsers()["closeAgent"]).toHaveBeenCalledTimes(1)
     second.close()
     const ids = browsers()["closeAgent"]?.mock.calls.map(([id]) => id)

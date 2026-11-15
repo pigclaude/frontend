@@ -31,6 +31,8 @@ export const permissionZhCN = {
   "permission.browser.unnamed": "无名称",
   "permission.summary.browserSnapshot":
     "读取当前本机页面的标题、标题层级、可交互元素和可见正文，并发送给 Claude",
+  "permission.summary.browserScreenshot":
+    "截取当前本机页面的可见区域（{width} × {height} 像素）并发送给 Claude",
   "permission.summary.search": "Claude 想要搜索",
   "permission.summary.generic": "Claude 请求使用 {tool}",
   "permission.summary.plugin": "Claude 请求调用插件 {plugin} 的 {tool}",
@@ -94,6 +96,8 @@ export const permissionEnUS = {
   "permission.browser.unnamed": "Unnamed",
   "permission.summary.browserSnapshot":
     "Read the current local page's title, heading hierarchy, interactive elements, and visible text, then send them to Claude",
+  "permission.summary.browserScreenshot":
+    "Capture the visible region of the local page ({width} × {height} pixels) and send it to Claude",
   "permission.summary.search": "Claude wants to search",
   "permission.summary.generic": "Claude requests to use {tool}",
   "permission.summary.plugin": "Claude requests {tool} from the {plugin} plugin",

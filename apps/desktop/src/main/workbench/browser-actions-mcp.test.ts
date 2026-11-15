@@ -1,4 +1,4 @@
-// 通过真实内存 MCP 和假会话 SDK 验证浏览器导航、点击及逐次审批的授权边界。
+// 通过真实内存 MCP 和假会话 SDK 验证浏览器动作的会话归属与逐次审批。
 import { randomUUID } from "node:crypto"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -6,13 +6,20 @@ import { join } from "node:path"
 import type { CanUseTool, McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk"
 import type { BrowserWindow, WebContents } from "electron"
 import { afterEach, expect, it, vi } from "vitest"
-import { browserTypeToolName, type BrowserTypeInput } from "../../browser-permission-contract"
+import {
+  browserScreenshotToolName,
+  browserTypeToolName,
+  type BrowserTypeInput,
+} from "../../browser-permission-contract"
+import type { AgentBrowserScope } from "../../workbench-contract"
 import { ClaudeAgentAdapter } from "../session/claude-agent-adapter"
 import { FakeQuery } from "../session/claude-agent-adapter-fixtures"
 import { createHarness } from "../session/session-host-fixtures"
 import type { SessionPermissionMode } from "../session/session-types"
+import { syntheticJpegBase64 } from "../../test-support/synthetic-jpeg"
 import { BrowserActionError, type PreparedBrowserAction } from "./browser-action-request"
 import { connectBrowserClient } from "./browser-approval-mcp-fixture"
+import type { PreparedBrowserScreenshot } from "./browser-screenshot"
 import type { WorkbenchBrowsers } from "./browser-surface"
 import { browserSessionTools } from "./browser-tools"
 
@@ -39,6 +46,13 @@ const passwordContext = {
   role: "textbox",
   name: "Synthetic password field",
   isPassword: true,
+} as const
+
+const screenshotContext = { kind: "screenshot", url: target, width: 2, height: 2 } as const
+const screenshotImage = {
+  type: "image",
+  mimeType: "image/jpeg",
+  data: syntheticJpegBase64,
 } as const
 
 afterEach(async () => {
@@ -84,7 +98,7 @@ async function fixture(permissionMode: SessionPermissionMode = "default") {
   const prepareAgentType = vi.fn(
     async (
       _window: BrowserWindow,
-      _id: string,
+      _scope: AgentBrowserScope,
       input: BrowserTypeInput,
     ): Promise<PreparedBrowserAction> => ({
       context: {
@@ -96,22 +110,29 @@ async function fixture(permissionMode: SessionPermissionMode = "default") {
       execute: executeType,
     }),
   )
+  const capture = vi.fn(async () => screenshotImage)
+  const prepareAgentScreenshot = vi.fn(async (): Promise<PreparedBrowserScreenshot> => ({
+    context: screenshotContext,
+    capture,
+  }))
   const browsers = {
     prepareAgentClick,
     prepareAgentNavigation,
+    prepareAgentScreenshot,
     prepareAgentType,
   } as unknown as WorkbenchBrowsers
   const owner = { isDestroyed: () => false } as unknown as WebContents
   const window = { id: native.size + 1 } as unknown as BrowserWindow
   native.set(owner, window)
-  const id = randomUUID()
+  const id = "agent-" + randomUUID()
   let member = true
 
   const { sessionId } = await h.host.start(
     { workspace, permissionMode },
     {
       browser: {
-        create: (approval) => browserSessionTools(owner, browsers, () => member, approval, id),
+        create: (approval, sessionId) =>
+          browserSessionTools(owner, browsers, () => member, approval, { id, sessionId }),
       },
       close: () => undefined,
     },
@@ -131,8 +152,10 @@ async function fixture(permissionMode: SessionPermissionMode = "default") {
     cards,
     navigate,
     click,
+    capture,
     prepareAgentNavigation,
     prepareAgentClick,
+    prepareAgentScreenshot,
     prepareAgentType,
     executeType,
     loseMembership: () => {
@@ -149,9 +172,11 @@ it("先把历史导航的已核对目标交给所属会话审批，批准后才�
   const invocation = f.client.callTool({ name: "browser_navigate", arguments: { action: "back" } })
   void invocation.catch(() => undefined)
   await vi.waitFor(() => expect(f.cards()).toHaveLength(1))
-  expect(f.prepareAgentNavigation).toHaveBeenCalledExactlyOnceWith(f.window, f.id, {
-    action: "back",
-  })
+  expect(f.prepareAgentNavigation).toHaveBeenCalledExactlyOnceWith(
+    f.window,
+    { id: f.id, sessionId: f.sessionId },
+    { action: "back" },
+  )
   const [card] = f.cards()
   if (!card) throw new Error("缺少导航审批卡")
   expect(card).toMatchObject({
@@ -239,7 +264,11 @@ it("逐次批准真实输入，密码回显脱敏且快照引用保持可用", a
   })
   void invocation.catch(() => undefined)
   await vi.waitFor(() => expect(f.cards()).toHaveLength(1))
-  expect(f.prepareAgentType).toHaveBeenCalledExactlyOnceWith(f.window, f.id, args)
+  expect(f.prepareAgentType).toHaveBeenCalledExactlyOnceWith(
+    f.window,
+    { id: f.id, sessionId: f.sessionId },
+    args,
+  )
   expect(f.executeType).not.toHaveBeenCalled()
   const [card] = f.cards()
   if (!card) throw new Error("缺少输入审批卡")
@@ -285,12 +314,16 @@ it("超出 UTF-16 上限不会准备输入，刚好达到上限的输入补上�
   const call = f.client.callTool({ name: "browser_type", arguments: { ref, text } })
   void call.catch(() => undefined)
   await vi.waitFor(() => expect(f.cards()).toHaveLength(1))
-  expect(f.prepareAgentType).toHaveBeenCalledExactlyOnceWith(f.window, f.id, {
-    ref,
-    text,
-    clear: false,
-    submit: false,
-  })
+  expect(f.prepareAgentType).toHaveBeenCalledExactlyOnceWith(
+    f.window,
+    { id: f.id, sessionId: f.sessionId },
+    {
+      ref,
+      text,
+      clear: false,
+      submit: false,
+    },
+  )
   const [card] = f.cards()
   if (!card) throw new Error("缺少输入审批卡")
   expect(card.browser).toMatchObject({ characterCount: 2048, clear: false, submit: false })
@@ -321,6 +354,43 @@ it.each(["会员", "权限档"])("批准后原生写入前 %s 失效会中止", 
   await expect(call).resolves.toMatchObject({ isError: true })
   expect(f.executeType).toHaveBeenCalledOnce()
   expect(write).not.toHaveBeenCalled()
+})
+
+it("计划档的截图仍经实际工具单独审批，批准后才返回 JPEG", async () => {
+  const f = await fixture("plan")
+  const toolName = browserScreenshotToolName
+  const toolUseID = "plan-screenshot"
+  await expect(f.canUseTool(toolName, {}, sdkRequest(toolUseID))).resolves.toMatchObject({
+    behavior: "allow",
+  })
+  expect(f.cards()).toHaveLength(0)
+  const call = f.client.callTool({
+    name: "browser_screenshot",
+    arguments: {},
+    _meta: { "claudecode/toolUseId": toolUseID },
+  })
+  void call.catch(() => undefined)
+  await vi.waitFor(() => expect(f.cards()).toHaveLength(1))
+  expect(f.prepareAgentScreenshot).toHaveBeenCalledExactlyOnceWith(
+    f.window,
+    { id: f.id, sessionId: f.sessionId },
+    expect.any(AbortSignal),
+    expect.any(Function),
+  )
+  const [card] = f.cards()
+  if (!card) throw new Error("缺少截图审批")
+  expect(card).toMatchObject({
+    toolName,
+    browser: screenshotContext,
+    input: { width: 2, height: 2 },
+  })
+  expect(f.capture).not.toHaveBeenCalled()
+
+  await f.decide(card.requestId, "allow")
+  await expect(call).resolves.toMatchObject({
+    content: [{ type: "text", text: "Browser screenshot (2 × 2)." }, screenshotImage],
+  })
+  expect(f.capture).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal))
 })
 
 it("同参点击各自绑定子代理和目标；会员撤销时批准也不会执行", async () => {
@@ -368,8 +438,8 @@ it("同参点击各自绑定子代理和目标；会员撤销时批准也不会�
   expect(f.cards().map(({ subagent }) => subagent)).toEqual([...actors].reverse())
   expect(f.cards().map(({ browser }) => browser)).toEqual([clickContext, clickContext])
   expect(f.prepareAgentClick.mock.calls).toEqual([
-    [f.window, f.id, ref],
-    [f.window, f.id, ref],
+    [f.window, { id: f.id, sessionId: f.sessionId }, ref],
+    [f.window, { id: f.id, sessionId: f.sessionId }, ref],
   ])
   expect(f.click).not.toHaveBeenCalled()
 

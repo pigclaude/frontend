@@ -110,7 +110,11 @@ export function buildStartOptions(
     references,
     persistence,
     denyUnattended,
-  }: Pick<ClaudeSessionOptions, "input" | "references" | "persistence" | "denyUnattended">,
+    sessionId,
+  }: Pick<
+    ClaudeSessionOptions,
+    "input" | "references" | "persistence" | "denyUnattended" | "sessionId"
+  >,
   mcpServers: ClaudeAgentStartOptions["mcpServers"],
   pluginApprovals?: CapabilityPluginToolApprovals,
   browser?: { tools: BrowserToolRegistration; mode(): PermissionMode },
@@ -127,7 +131,7 @@ export function buildStartOptions(
     })
   const servers =
     browser && browserApproval && !unattended
-      ? { ...mcpServers, ...browser.tools.create(browserApproval) }
+      ? { ...mcpServers, ...browser.tools.create(browserApproval, sessionId) }
       : mcpServers
   return {
     workspace: active.environment.workspace,

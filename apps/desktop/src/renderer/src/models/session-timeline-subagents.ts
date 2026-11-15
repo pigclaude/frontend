@@ -7,6 +7,7 @@
 import type { ThreadEvent } from "@pigclaude/ui-contracts"
 import { maskBrowserSecrets } from "../../../main/session/session-browser-secrets"
 import type { SessionHostEvent } from "../../../main/session/session-types"
+import { sessionToolOutput } from "./session-tool-output"
 
 type MessageEvent = Extract<SessionHostEvent, { type: "message" }>
 type ToolResultEvent = Extract<SessionHostEvent, { type: "tool-result" }>
@@ -25,7 +26,7 @@ export class SubagentCards {
   readonly #running = new Set<string>()
   readonly #handBacks = new Map<string, string>()
   readonly #blocks = new Set<string>()
-  readonly #tools = new Set<string>()
+  readonly #tools = new Map<string, string>()
   readonly #finished = new Set<string>()
 
   /** 投影出的事件都经 push 追加到这一轮。 */
@@ -81,14 +82,15 @@ export class SubagentCards {
     if (event.type === "tool-result") {
       if (this.#finished.has(event.toolUseId)) return
       this.#finished.add(event.toolUseId)
-      const { toolUseId: toolCallId, content: output, isError } = event
+      const { toolUseId: toolCallId, isError } = event
+      const output = sessionToolOutput(event, this.#tools.get(toolCallId))
       this.#push("tool.completed", { toolCallId, output, isError, parentToolUseId }, at)
       return
     }
     for (const block of event.blocks) {
       if (block.type === "tool-use") {
         if (this.#tools.has(block.id)) continue
-        this.#tools.add(block.id)
+        this.#tools.set(block.id, block.name)
         const payload = {
           toolCallId: block.id,
           name: block.name,

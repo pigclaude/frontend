@@ -15,6 +15,7 @@ const toolByContext = {
   navigate: "browser_navigate",
   click: "browser_click",
   type: "browser_type",
+  screenshot: "browser_screenshot",
 } as const satisfies Record<BrowserPermissionContext["kind"], string>
 
 /** 当前工作台注册的浏览器工具名。 */
@@ -39,7 +40,10 @@ export type BrowserApprovalPort = {
 
 /** 会话创建工作台服务时注入权限代理；无人值守时根本不注册。 */
 export type BrowserToolRegistration = {
-  create(approval: BrowserApprovalPort): Record<string, McpSdkServerConfigWithInstance>
+  create(
+    approval: BrowserApprovalPort,
+    sessionId: string,
+  ): Record<string, McpSdkServerConfigWithInstance>
   unattended?: boolean
 }
 
@@ -72,8 +76,8 @@ export function createBrowserApproval(options: {
       return "The browser is unavailable for this session."
     if (options.unattended || options.mode() === "dontAsk")
       return "Browser tools require an interactive session and explicit approval."
-    if (options.mode() === "plan" && tool !== "browser_snapshot")
-      return "Plan mode only allows reading a browser snapshot."
+    if (options.mode() === "plan" && tool !== "browser_snapshot" && tool !== "browser_screenshot")
+      return "Plan mode only allows browser snapshots and screenshots."
     return null
   }
   return {
@@ -84,8 +88,13 @@ export function createBrowserApproval(options: {
     async request(context, invocationSignal, metadata, privateInput) {
       const { kind, ...details } = context
       const tool = toolByContext[kind]
-      const input = kind === "type" ? privateInput : details
-      if (input === undefined) return false
+      let input: Record<string, unknown>
+      if (kind === "type") {
+        if (privateInput === undefined) return false
+        input = { text: privateInput.text }
+      } else {
+        input = kind === "screenshot" ? { width: context.width, height: context.height } : details
+      }
       const signal =
         invocationSignal === undefined
           ? options.sessionSignal

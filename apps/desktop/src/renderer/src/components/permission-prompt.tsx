@@ -156,6 +156,7 @@ const browserSummary = {
   snapshot: "permission.summary.browserSnapshot",
   click: "permission.summary.browserClick",
   type: "permission.summary.browserType",
+  screenshot: "permission.summary.browserScreenshot",
 } satisfies Record<Exclude<BrowserPermissionContext["kind"], "navigate">, TextKey>
 
 const navigationSummary = {
@@ -190,12 +191,16 @@ export function permissionDetail(
       const origin = URL.canParse(url) ? new URL(url).origin : ""
       target = { kind: "url", text: url, ...(origin && url.startsWith(origin) ? { origin } : {}) }
     }
+    const summary = t(
+      browser.kind === "navigate"
+        ? navigationSummary[browser.action]
+        : browserSummary[browser.kind],
+    )
     return {
-      summary: t(
-        browser.kind === "navigate"
-          ? navigationSummary[browser.action]
-          : browserSummary[browser.kind],
-      ),
+      summary:
+        browser.kind === "screenshot"
+          ? fill(summary, { width: String(browser.width), height: String(browser.height) })
+          : summary,
       command: null,
       target,
       ...(browser.kind === "click" || browser.kind === "type" ? { browserElement: browser } : {}),

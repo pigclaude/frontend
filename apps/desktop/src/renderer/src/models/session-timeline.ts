@@ -17,6 +17,7 @@ import type { SessionTurn } from "./session-model"
 import { permissionCards, type SessionPermissionAnswers } from "./session-permissions"
 import { sessionRuns, type SessionRun } from "./session-runs"
 import { SubagentCards, type PushDraft } from "./session-timeline-subagents"
+import { sessionToolOutput } from "./session-tool-output"
 
 /** 投影的输入：一个会话的信封和实时文字、界面上的各轮，以及用户对权限卡片的回答。 */
 export type SessionTimelineInput = {
@@ -183,7 +184,8 @@ function projectRun(
           tools.set(event.toolUseId, name)
           push("tool.started", { toolCallId: event.toolUseId, name, input: null }, at)
         }
-        const { toolUseId: toolCallId, content: output, isError } = event
+        const { toolUseId: toolCallId, isError } = event
+        const output = sessionToolOutput(event, name)
         push("tool.completed", { toolCallId, name, output, isError }, at)
         break
       }

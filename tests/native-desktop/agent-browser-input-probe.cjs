@@ -48,32 +48,54 @@ async function typingProbe(listen) {
   })
   const owner = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
   const browsers = new WorkbenchBrowsers()
-  const id = "agent-typing-probe"
+  const scope = { id: "agent-typing-probe", sessionId: "typing-session" }
+  const { id, sessionId } = scope
   const url = local.url + "/"
   const text = "合成🙂"
   const activity = []
   const send = owner.webContents.send.bind(owner.webContents)
   owner.webContents.send = (channel, event) => {
-    if (channel === "pigclaude:workbench-event" && event.id === id && event.type === "browser-page")
+    if (
+      channel === "pigclaude:workbench-event" &&
+      event.id === id &&
+      event.type === "browser-page"
+    ) {
+      assert.equal(event.sessionId, sessionId)
       activity.push(event.page.activity)
+    }
     send(channel, event)
   }
   try {
     const host = "<title>Workbench fixture</title><input autofocus value='Workbench original'>"
     await owner.loadURL("data:text/html," + encodeURIComponent(host))
-    await browsers.agentPage(owner, id, url)
-    browsers.present(owner, id, { x: 0, y: 0, width: 800, height: 600, scale: 1 })
+    await browsers.agentPage(owner, scope, url)
+    browsers.setActiveSession(owner, sessionId)
+    browsers.present(owner, id, { x: 0, y: 0, width: 800, height: 600, scale: 1 }, sessionId)
     owner.showInactive()
     const fixture = webContents.getAllWebContents().find((contents) => contents.getURL() === url)
     assert(fixture)
-    const page = JSON.parse(await browsers.agentPage(owner, id))
+    const page = JSON.parse(await browsers.agentPage(owner, scope))
     function reference(name) {
       const field = page.elements.find((element) => element.name === name)
       assert(field)
       return field.ref
     }
     const prepare = (name, text, { clear = false, submit = false } = {}) =>
-      browsers.prepareAgentType(owner, id, { ref: reference(name), text, clear, submit })
+      browsers.prepareAgentType(owner, scope, { ref: reference(name), text, clear, submit })
+
+    await assert.rejects(
+      browsers.prepareAgentType(
+        owner,
+        { id, sessionId: "different-session" },
+        {
+          ref: reference("Fixture text"),
+          text,
+          clear: true,
+          submit: true,
+        },
+      ),
+      /new browser snapshot/i,
+    )
 
     const action = await prepare("Fixture text", text, { clear: true, submit: true })
     assert.deepEqual(action.context, {
@@ -150,14 +172,14 @@ async function typingProbe(listen) {
     await losePermissionDuring(await prepare("Fixture text", "Revoked fixture"))
     assert.equal(await fixture.executeJavaScript("document.getElementById('field').value"), text)
     await losePermissionDuring(
-      await browsers.prepareAgentClick(owner, id, reference("Guarded click fixture")),
+      await browsers.prepareAgentClick(owner, scope, reference("Guarded click fixture")),
     )
     assert.equal(
       await fixture.executeJavaScript("document.getElementById('clicked').textContent"),
       "Waiting for fixture click",
     )
     await losePermissionDuring(
-      await browsers.prepareAgentNavigation(owner, id, { url: local.url + "/guarded" }),
+      await browsers.prepareAgentNavigation(owner, scope, { url: local.url + "/guarded" }),
     )
     assert(!visits.includes("/guarded"))
 
@@ -173,7 +195,7 @@ async function typingProbe(listen) {
       "PASS approved browser input, focus checks and revoked writes stay in the owning view\n",
     )
   } finally {
-    browsers.closeWindow(owner)
+    await browsers.closeWindow(owner)
     owner.destroy()
     local.close()
   }

@@ -8,6 +8,7 @@ import { createElement } from "react"
 import { describe, expect, it } from "vitest"
 import type { SubagentRef } from "../../../main/session/session-events"
 import type { SessionHostEvent } from "../../../main/session/session-types"
+import { syntheticJpegBase64 } from "../../../test-support/synthetic-jpeg"
 import type { SessionUiState } from "../models/session-model"
 import {
   buttonNamed,
@@ -135,6 +136,41 @@ describe("chat screen subagents", () => {
     await clickButton(buttonNamed("回到主会话"), "回到主会话")
     expect(screen.container.querySelector(".subagent-view")).toBeNull()
     expect(screen.container.textContent).toContain("子代理已在后台启动")
+  })
+
+  it("only renders the subagent's screenshot inside its own tool row", async () => {
+    const toolUseId = "subagent-screenshot-call"
+    const state = feed(
+      startingState(),
+      ...working,
+      message(
+        "shot",
+        [
+          {
+            type: "tool-use",
+            id: toolUseId,
+            name: "mcp__pigclaude_workbench__browser_screenshot",
+            input: {},
+          },
+        ],
+        call,
+      ),
+      {
+        type: "tool-result",
+        toolUseId,
+        content: "Captured the local preview",
+        image: { type: "image", mimeType: "image/jpeg", data: syntheticJpegBase64 },
+        isError: false,
+        subagent: { parentToolUseId: call, agentId: "agent-1" },
+      },
+    )
+    await screen.render({ fresh: false, session: controller({ state }) })
+    expect(screen.container.querySelector('img[alt="截图"]')).toBeNull()
+
+    await openCard()
+
+    const screenshot = screen.container.querySelector('.subagent-view img[alt="截图"]')
+    expect(screenshot?.getAttribute("src")).toBe(`data:image/jpeg;base64,${syntheticJpegBase64}`)
   })
 
   it("shows the subagent as done with its result only after it ends", async () => {

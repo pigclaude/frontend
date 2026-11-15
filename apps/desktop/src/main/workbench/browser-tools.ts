@@ -1,5 +1,4 @@
 // 提供会话专用的本机预览工具；每次调用先由会话的权限代理审批。
-import { randomUUID } from "node:crypto"
 import { toUSVString } from "node:util"
 import { BrowserWindow, type WebContents } from "electron"
 import {
@@ -8,18 +7,21 @@ import {
   type McpSdkServerConfigWithInstance,
   type McpServerToolPolicy,
 } from "@anthropic-ai/claude-agent-sdk"
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
 import { z } from "zod"
 import {
   browserTypeTextLimit,
   type BrowserPermissionContext,
 } from "../../browser-permission-contract"
+import type { AgentBrowserScope } from "../../workbench-contract"
 import {
   browserToolForContext,
   workbenchBrowserServer,
   type BrowserApprovalPort,
   type WorkbenchBrowserTool,
 } from "../session/browser-tool-approval"
-import { BrowserActionError, type PreparedBrowserAction } from "./browser-action-request"
+import { BrowserActionError } from "./browser-action-request"
+import { BrowserScreenshotError } from "./browser-screenshot"
 import { workbenchAgentBrowserUrl, type WorkbenchBrowsers } from "./browser-surface"
 
 const unavailableMessage =
@@ -28,26 +30,33 @@ const passwordEchoFields = new Set(["url", "title", "text", "name"])
 
 type BrowserAction = {
   context: BrowserPermissionContext
-  execute: PreparedBrowserAction["execute"]
+  execute(
+    signal?: AbortSignal,
+    assertAllowed?: () => void,
+  ): Promise<string | CallToolResult["content"]>
 }
 
 /**
  * 将浏览器工具限定到此次会话的主窗口和临时浏览器；不共享个人浏览器会话，每个工具调用前都询问宿主。
- * id 是这个会话的浏览器标签 id，关闭时用它找到这个会话的浏览器。
+ * scope 由会话宿主创建，导航、读取和捕获都使用同一个会话与标签绑定。
  */
 export function browserSessionTools(
   owner: WebContents,
   browsers: WorkbenchBrowsers,
   canUse: () => boolean,
   approval: BrowserApprovalPort,
-  id: string = randomUUID(),
+  scope: AgentBrowserScope,
 ): Record<string, McpSdkServerConfigWithInstance> {
   async function run(
     actionTool: WorkbenchBrowserTool,
     extra: unknown,
-    prepare: (window: BrowserWindow) => BrowserAction | Promise<BrowserAction>,
+    prepare: (
+      window: BrowserWindow,
+      signal: AbortSignal | undefined,
+      assertAllowed: () => void,
+    ) => BrowserAction | Promise<BrowserAction>,
     typedText?: string,
-  ) {
+  ): Promise<CallToolResult> {
     const invocation = record(extra)
     const signal = invocation?.signal instanceof AbortSignal ? invocation.signal : undefined
     const window = owner.isDestroyed() ? null : BrowserWindow.fromWebContents(owner)
@@ -60,7 +69,7 @@ export function browserSessionTools(
     try {
       if (!window) return unavailable()
       assertAllowed()
-      const action = await prepare(window)
+      const action = await prepare(window, signal, assertAllowed)
       if (browserToolForContext(action.context) !== actionTool) return unavailable()
       assertAllowed()
       const metadata = record(invocation?._meta)
@@ -71,15 +80,26 @@ export function browserSessionTools(
       if (!approved) return failure("The user did not approve this browser action.")
 
       assertAllowed()
-      const snapshot = await action.execute(signal, assertAllowed)
+      const content = await action.execute(signal, assertAllowed)
       assertAllowed()
+      if (typeof content !== "string") return { content }
       const text =
         action.context.kind === "type" && action.context.isPassword && typedText !== undefined
-          ? maskPasswordEcho(snapshot, typedText)
-          : snapshot
-      return { content: [{ type: "text" as const, text }] }
+          ? maskPasswordEcho(content, typedText)
+          : content
+      return { content: [{ type: "text", text }] }
     } catch (error) {
-      return error instanceof BrowserActionError ? failure(error.message) : unavailable()
+      if (error instanceof BrowserActionError || error instanceof BrowserScreenshotError)
+        return failure(error.message)
+      if (error instanceof Error && error.message === "WORKBENCH_BROWSER_LIMIT")
+        return failure(
+          "The shared limit of 12 workbench browsers is reached. Close a browser tab and try again.",
+        )
+      if (actionTool === "browser_screenshot")
+        return failure(
+          "Couldn't capture this local page. Reload the Agent browser tab and try again.",
+        )
+      return unavailable()
     }
   }
 
@@ -93,7 +113,8 @@ export function browserSessionTools(
           const target = workbenchAgentBrowserUrl(url).href
           return {
             context: { kind: "open", url: target },
-            execute: () => browsers.agentPage(window, id, target),
+            execute: (_signal, assertAllowed) =>
+              browsers.agentPage(window, scope, target, assertAllowed),
           }
         }),
       { annotations: { destructiveHint: true } },
@@ -105,7 +126,8 @@ export function browserSessionTools(
       (_input, extra) =>
         run("browser_snapshot", extra, (window) => ({
           context: { kind: "snapshot" },
-          execute: () => browsers.agentPage(window, id),
+          execute: (_signal, assertAllowed) =>
+            browsers.agentPage(window, scope, undefined, assertAllowed),
         })),
       { annotations: { destructiveHint: true, readOnlyHint: true } },
     ),
@@ -119,11 +141,11 @@ export function browserSessionTools(
       async ({ url, action }, extra) => {
         if (url !== undefined && action === undefined)
           return run("browser_navigate", extra, (window) =>
-            browsers.prepareAgentNavigation(window, id, { url }),
+            browsers.prepareAgentNavigation(window, scope, { url }),
           )
         if (url === undefined && action !== undefined)
           return run("browser_navigate", extra, (window) =>
-            browsers.prepareAgentNavigation(window, id, { action }),
+            browsers.prepareAgentNavigation(window, scope, { action }),
           )
         return failure("Provide one local URL or choose back, forward, or reload.")
       },
@@ -134,7 +156,7 @@ export function browserSessionTools(
       "Click an element in this conversation's local preview using a ref from its latest snapshot. Returns the updated snapshot after approval.",
       { ref: z.string().min(1).max(64) },
       ({ ref }, extra) =>
-        run("browser_click", extra, (window) => browsers.prepareAgentClick(window, id, ref)),
+        run("browser_click", extra, (window) => browsers.prepareAgentClick(window, scope, ref)),
       { annotations: { destructiveHint: true } },
     ),
     tool(
@@ -157,10 +179,41 @@ export function browserSessionTools(
         run(
           "browser_type",
           extra,
-          (window) => browsers.prepareAgentType(window, id, { ref, text, clear, submit }),
+          (window) => browsers.prepareAgentType(window, scope, { ref, text, clear, submit }),
           text,
         ),
       { annotations: { destructiveHint: true } },
+    ),
+    tool(
+      "browser_screenshot",
+      "Capture the visible region of the current local Agent page as a JPEG after approval.",
+      {},
+      (_input, extra) =>
+        run("browser_screenshot", extra, async (window, signal, assertAllowed) => {
+          const { context, capture } = await browsers.prepareAgentScreenshot(
+            window,
+            scope,
+            signal,
+            () => {
+              assertAllowed()
+              return true
+            },
+          )
+          return {
+            context,
+            async execute(invocation) {
+              const image = await capture(invocation)
+              return [
+                {
+                  type: "text",
+                  text: `Browser screenshot (${context.width} × ${context.height}).`,
+                },
+                image,
+              ]
+            },
+          }
+        }),
+      { annotations: { destructiveHint: true, readOnlyHint: true } },
     ),
   ]
   const server = createSdkMcpServer({ name: workbenchBrowserServer, tools })

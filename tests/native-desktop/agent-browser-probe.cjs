@@ -86,6 +86,52 @@ async function verifyPostPopupBlocked() {
   }
 }
 
+function peerStatus(frame) {
+  try {
+    const peer = new frame.RTCPeerConnection({ iceServers: [] })
+    peer.close()
+    return "available"
+  } catch (error) {
+    return error.name
+  }
+}
+
+async function verifyMalformedAllowlistBlocked() {
+  const policies = new Map([
+    ["/wrong-member", "response-origin;webrtc=allow"],
+    ["/malformed-value", "(response-origin);webrtc=?no"],
+    ["/malformed-tail", ["(response-origin);webrtc=allow", "(response-origin"]],
+  ])
+  const site = await listen("127.0.0.1", (request, response) => {
+    const policy = policies.get(request.url)
+    if (policy === undefined) return response.writeHead(404).end()
+    response.setHeader("Content-Type", "text/html")
+    response.setHeader("Connection-Allowlist", policy)
+    response.end(`<!doctype html><title>Malformed policy fixture</title><pre id="result"></pre>
+      <script>
+        ${peerStatus.toString()}
+        document.getElementById("result").textContent = JSON.stringify(peerStatus(window));
+      </script>`)
+  })
+  const owner = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
+  const browsers = new WorkbenchBrowsers()
+  const id = "agent-malformed-policy-probe"
+  try {
+    for (const path of policies.keys()) {
+      await browsers.agentPage(owner, id, site.url + path)
+      const status = await readFixtureResult(
+        async () => JSON.parse(await browsers.agentPage(owner, id)).text,
+      )
+      assert.equal(status, "NotAllowedError", path)
+    }
+    process.stdout.write("PASS Agent malformed Connection-Allowlist fails closed\n")
+  } finally {
+    browsers.closeWindow(owner)
+    owner.destroy()
+    site.close()
+  }
+}
+
 async function verifyAgentWebRtcBlocked() {
   let agentWorkerRequests = 0
   const cross = await listen("127.0.0.1", (_request, response) => {
@@ -119,15 +165,7 @@ async function verifyAgentWebRtcBlocked() {
       <iframe id="blank"></iframe><iframe id="inline" srcdoc="Local frame"></iframe>
       <pre id="result"></pre>
       <script>
-        function peerStatus(frame) {
-          try {
-            const peer = new frame.RTCPeerConnection({ iceServers: [] });
-            peer.close();
-            return "available";
-          } catch (error) {
-            return error.name;
-          }
-        }
+        ${peerStatus.toString()}
         async function read(url) {
           return fetch(url).then(response => response.text(), () => "denied");
         }
@@ -311,6 +349,7 @@ app
   .whenReady()
   .then(verifyPostPopupBlocked)
   .then(verifyAgentWebRtcBlocked)
+  .then(verifyMalformedAllowlistBlocked)
   .then(probe)
   .then(
     () => app.exit(0),

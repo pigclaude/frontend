@@ -1,4 +1,33 @@
 // 沙箱页面管理 Worker 和专用消息端口，每次调用结束时先终止当前 Worker。
+const maximumPendingCapabilities = 32
+const utf8 = new TextEncoder()
+
+function isBoundedJson(candidate, limit) {
+  let remaining = limit
+  function visit(value, depth) {
+    remaining -= typeof value === "string" ? value.length + 2 : 1
+    if (remaining < 0 || depth > 64) return false
+    if (value === null || typeof value === "string" || typeof value === "boolean") return true
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) return false
+      remaining -= String(value).length - 1
+      return remaining >= 0
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) if (!visit(item, depth + 1)) return false
+      return true
+    }
+    if (typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) return false
+    for (const key in value) {
+      if (!Object.hasOwn(value, key)) continue
+      remaining -= key.length + 2
+      if (!visit(value[key], depth + 1)) return false
+    }
+    return true
+  }
+  return visit(candidate, 0) && utf8.encode(JSON.stringify(candidate)).byteLength <= limit
+}
+
 function attach(event) {
   if (
     event.source !== window ||
@@ -55,17 +84,33 @@ function attach(event) {
     }
   }
 
+  function sendCapabilityReply(response) {
+    try {
+      active?.broker.postMessage(response)
+    } catch {
+      crash()
+    }
+  }
+
   function forwardCapability({ id, requestId, method, args }) {
     if (
+      !active?.ready ||
       !current ||
       id !== current.id ||
       !Number.isSafeInteger(requestId) ||
-      requestId <= current.lastRequestId ||
-      !current.methods.has(method) ||
-      !Array.isArray(args)
+      requestId <= current.lastRequestId
     )
       return
     current.lastRequestId = requestId
+    if (
+      current.pending.size >= maximumPendingCapabilities ||
+      !current.methods.has(method) ||
+      !Array.isArray(args) ||
+      !isBoundedJson(args, configuration.limit)
+    ) {
+      sendCapabilityReply({ type: "capability-result", id, requestId, ok: false })
+      return
+    }
     current.pending.add(requestId)
     try {
       main.postMessage({ type: "capability", id, requestId, method, args })
@@ -75,24 +120,13 @@ function attach(event) {
   }
 
   function replyToCapability({ id, requestId, ok, value }) {
-    if (
-      !active?.ready ||
-      !current ||
-      current.id !== id ||
-      typeof ok !== "boolean" ||
-      (ok && value === undefined) ||
-      !current.pending.delete(requestId)
-    )
+    if (!active?.ready || !current || current.id !== id || !current.pending.delete(requestId))
       return
-    try {
-      active.broker.postMessage(
-        ok
-          ? { type: "capability-result", id, requestId, ok, value }
-          : { type: "capability-result", id, requestId, ok },
-      )
-    } catch {
-      crash()
-    }
+    sendCapabilityReply(
+      ok === true && isBoundedJson(value, configuration.limit)
+        ? { type: "capability-result", id, requestId, ok: true, value }
+        : { type: "capability-result", id, requestId, ok: false },
+    )
   }
 
   function start() {

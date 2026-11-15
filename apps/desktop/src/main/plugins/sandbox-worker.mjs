@@ -66,14 +66,6 @@ self.addEventListener(
 
     const { entry, limit } = data
     let invoke
-    try {
-      invoke = (await import(entry)).default
-      if (typeof invoke !== "function") throw new NativeError()
-    } catch {
-      send({ type: "fatal", code: "PLUGIN_LOAD_FAILED" })
-      return
-    }
-
     let started = false
     let activeId
     let nextRequestId = 1
@@ -131,8 +123,13 @@ self.addEventListener(
       send(response)
     }
 
-    port.onmessage = ({ data: request }) => {
-      if (!request || typeof request !== "object") return
+    // 在运行插件模块前固定接收器和事件读取，端口对象始终留在宿主闭包内。
+    const readData = Function.prototype.call.bind(
+      Object.getOwnPropertyDescriptor(MessageEvent.prototype, "data").get,
+    )
+    port.onmessage = (event) => {
+      const request = readData(event)
+      if (typeof invoke !== "function" || !request || typeof request !== "object") return
       if (request.type === "invoke" && !started && typeof request.id === "string") {
         started = true
         void run(request)
@@ -144,6 +141,13 @@ self.addEventListener(
         if (request.ok === true) waiter.resolve(request.value)
         else waiter.reject(new NativeError("PLUGIN_CAPABILITY_DENIED"))
       }
+    }
+    try {
+      invoke = (await import(entry)).default
+      if (typeof invoke !== "function") throw new NativeError()
+    } catch {
+      send({ type: "fatal", code: "PLUGIN_LOAD_FAILED" })
+      return
     }
     send({ type: "ready" })
   },

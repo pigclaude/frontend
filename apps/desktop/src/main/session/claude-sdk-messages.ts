@@ -8,6 +8,7 @@ import type {
   AdapterEvent,
   SessionContentBlock,
   SessionEvent,
+  SessionToolResultImage,
   SessionUsage,
   SubagentRef,
 } from "./session-events"
@@ -165,16 +166,39 @@ function toolResults(
   for (const block of content) {
     if (!isRecord(block) || block.type !== "tool_result") continue
     if (typeof block.tool_use_id !== "string") continue
+    const image = toolResultImage(block.content)
     events.push({
       type: "tool-result",
       toolUseId: block.tool_use_id,
       content: toolResultText(block.content),
+      ...(image === undefined ? {} : { image }),
       isError: block.is_error === true,
       subagent,
       ...(backgroundLaunch ? { backgroundLaunch } : {}),
     })
   }
   return events
+}
+
+function toolResultImage(content: unknown): SessionToolResultImage | undefined {
+  if (!Array.isArray(content)) return undefined
+  for (const block of content) {
+    if (!isRecord(block) || block.type !== "image") continue
+    const source =
+      isRecord(block.source) && block.source.type === "base64" ? block.source : undefined
+    const mime = source?.media_type ?? block.mimeType
+    const data = source?.data ?? block.data
+    if (
+      mime === "image/jpeg" &&
+      typeof data === "string" &&
+      data.length <= 2 * 1024 * 1024 &&
+      data.length % 4 === 0 &&
+      data.startsWith("/9j/") &&
+      /^[A-Za-z0-9+/]+={0,2}$/.test(data)
+    )
+      return { type: "image", mimeType: "image/jpeg", data }
+  }
+  return undefined
 }
 
 // CLI 在消息的工具结果元数据里用 status 标出只在后台启动了任务的结果。

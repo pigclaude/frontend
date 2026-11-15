@@ -16,7 +16,9 @@ const files = [
   "browser-action-request",
   "browser-context",
   "browser-element-picker",
+  "browser-preview-windows",
   "browser-references",
+  "browser-screenshot",
   "browser-snapshot-world",
   "browser-surface",
 ]

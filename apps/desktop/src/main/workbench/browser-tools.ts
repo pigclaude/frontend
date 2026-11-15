@@ -7,6 +7,7 @@ import {
   type McpSdkServerConfigWithInstance,
   type McpServerToolPolicy,
 } from "@anthropic-ai/claude-agent-sdk"
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
 import { z } from "zod"
 import type { BrowserPermissionContext } from "../../browser-permission-contract"
 import {
@@ -15,12 +16,13 @@ import {
   type BrowserApprovalPort,
   type WorkbenchBrowserTool,
 } from "../session/browser-tool-approval"
-import { BrowserActionError, type PreparedBrowserAction } from "./browser-action-request"
+import { BrowserActionError } from "./browser-action-request"
+import { BrowserScreenshotError } from "./browser-screenshot"
 import { workbenchAgentBrowserUrl, type WorkbenchBrowsers } from "./browser-surface"
 
 type BrowserAction = {
   context: BrowserPermissionContext
-  execute: PreparedBrowserAction["execute"]
+  execute(signal?: AbortSignal): Promise<string | CallToolResult["content"]>
 }
 
 /**
@@ -37,8 +39,11 @@ export function browserSessionTools(
   async function run(
     actionTool: WorkbenchBrowserTool,
     extra: unknown,
-    prepare: (window: BrowserWindow) => BrowserAction | Promise<BrowserAction>,
-  ) {
+    prepare: (
+      window: BrowserWindow,
+      signal?: AbortSignal,
+    ) => BrowserAction | Promise<BrowserAction>,
+  ): Promise<CallToolResult> {
     const invocation = record(extra)
     const signal = invocation?.signal instanceof AbortSignal ? invocation.signal : undefined
     const window = owner.isDestroyed() ? null : BrowserWindow.fromWebContents(owner)
@@ -48,7 +53,7 @@ export function browserSessionTools(
       const denied = approval.denial(actionTool)
       if (denied !== null) return failure(denied)
 
-      const action = await prepare(window)
+      const action = await prepare(window, signal)
       if (!active() || browserToolForContext(action.context) !== actionTool) return unavailable()
       if (!(await approval.request(action.context, signal, record(invocation?._meta))))
         return failure("The user did not approve this browser action.")
@@ -58,9 +63,15 @@ export function browserSessionTools(
 
       const content = await action.execute(signal)
       if (!active()) return unavailable()
-      return { content: [{ type: "text" as const, text: content }] }
+      return { content: typeof content === "string" ? [{ type: "text", text: content }] : content }
     } catch (error) {
-      return error instanceof BrowserActionError ? failure(error.message) : unavailable()
+      if (error instanceof BrowserActionError || error instanceof BrowserScreenshotError)
+        return failure(error.message)
+      if (actionTool === "browser_screenshot")
+        return failure(
+          "Couldn't capture this local page. Reload the Agent browser tab and try again.",
+        )
+      return unavailable()
     }
   }
 
@@ -117,6 +128,29 @@ export function browserSessionTools(
       ({ ref }, extra) =>
         run("browser_click", extra, (window) => browsers.prepareAgentClick(window, id, ref)),
       { annotations: { destructiveHint: true } },
+    ),
+    tool(
+      "browser_screenshot",
+      "Capture the visible region of the current local Agent page as a JPEG after approval.",
+      {},
+      (_input, extra) =>
+        run("browser_screenshot", extra, async (window, signal) => {
+          const { context, capture } = await browsers.prepareAgentScreenshot(window, id, signal)
+          return {
+            context,
+            async execute(invocation) {
+              const image = await capture(invocation)
+              return [
+                {
+                  type: "text",
+                  text: `Browser screenshot (${context.width} × ${context.height}).`,
+                },
+                image,
+              ]
+            },
+          }
+        }),
+      { annotations: { destructiveHint: true, readOnlyHint: true } },
     ),
   ]
   const server = createSdkMcpServer({ name: workbenchBrowserServer, tools })

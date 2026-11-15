@@ -9,3 +9,7 @@ export type BrowserPermissionContext =
   | { kind: "snapshot" }
   | { kind: "navigate"; action: "url" | "back" | "forward" | "reload"; url: string }
   | { kind: "click"; url: string; ref: string; role: string; name: string }
+  | { kind: "screenshot"; url: string; width: number; height: number }
+
+/** 工作台截图在会话中使用的完整进程内工具名。 */
+export const browserScreenshotToolName = "mcp__pigclaude_workbench__browser_screenshot"

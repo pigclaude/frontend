@@ -14,6 +14,7 @@ const toolByContext = {
   snapshot: "browser_snapshot",
   navigate: "browser_navigate",
   click: "browser_click",
+  screenshot: "browser_screenshot",
 } as const satisfies Record<BrowserPermissionContext["kind"], string>
 
 /** 当前工作台注册的浏览器工具名。 */
@@ -70,8 +71,8 @@ export function createBrowserApproval(options: {
       return "The browser is unavailable for this session."
     if (options.unattended || options.mode() === "dontAsk")
       return "Browser tools require an interactive session and explicit approval."
-    if (options.mode() === "plan" && tool !== "browser_snapshot")
-      return "Plan mode only allows reading a browser snapshot."
+    if (options.mode() === "plan" && tool !== "browser_snapshot" && tool !== "browser_screenshot")
+      return "Plan mode only allows browser snapshots and screenshots."
     return null
   }
   return {
@@ -80,8 +81,10 @@ export function createBrowserApproval(options: {
       attribution.remember(browserToolName(tool), caller)
     },
     async request(context, invocationSignal, metadata) {
-      const { kind, ...input } = context
+      const { kind, ...details } = context
       const tool = toolByContext[kind]
+      const input =
+        kind === "screenshot" ? { width: context.width, height: context.height } : details
       const signal =
         invocationSignal === undefined
           ? options.sessionSignal

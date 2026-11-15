@@ -1,6 +1,5 @@
 // 内置浏览器使用独立沙箱和 WebContentsView，页面没有桌面 preload 或 Node 能力。
-import { BrowserWindow, WebContentsView, shell } from "electron"
-import { randomUUID } from "node:crypto"
+import { WebContentsView, screen, shell, type BrowserWindow } from "electron"
 import type { BrowserNavigationTarget } from "../../browser-permission-contract"
 import type {
   WorkbenchBrowserAction,
@@ -28,16 +27,21 @@ import {
   allowsWorkbenchBrowserAddress,
   browserSession,
   configureContents,
-  isWorkbenchLoopback,
   workbenchAgentBrowserUrl,
   workbenchBrowserUrl,
 } from "./browser-context"
 import { pickWorkbenchBrowserElement } from "./browser-element-picker"
+import { WorkbenchBrowserPreviews } from "./browser-preview-windows"
 import {
   BrowserReferences,
   StaleBrowserReference,
   type AgentBrowserElement,
 } from "./browser-references"
+import {
+  BrowserScreenshotError,
+  prepareBrowserScreenshot,
+  type PreparedBrowserScreenshot,
+} from "./browser-screenshot"
 
 export { workbenchAgentBrowserUrl, workbenchBrowserUrl } from "./browser-context"
 
@@ -70,7 +74,7 @@ function resetBrowserNavigation(entry: Surface): void {
 /** 管理浏览器标签和本机预览窗口；内容尺寸由受信主窗口报告。 */
 export class WorkbenchBrowsers {
   readonly #surfaces = new Map<string, Surface>()
-  readonly #previews = new Map<BrowserWindow, BrowserWindow>()
+  readonly #previews = new WorkbenchBrowserPreviews()
 
   /** 打开指定标签的地址，保留该标签的导航历史。 */
   async navigate(window: BrowserWindow, id: string, input: unknown): Promise<void> {
@@ -210,6 +214,41 @@ export class WorkbenchBrowsers {
     )
   }
 
+  /** 只为当前会话的 Agent 标签准备截图审批；批准后才读取像素。 */
+  prepareAgentScreenshot(
+    window: BrowserWindow,
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<PreparedBrowserScreenshot> {
+    const entry = this.#surfaces.get(id)
+    const missingPage = "Open a local page in this session before requesting a screenshot."
+    if (entry?.window !== window || !entry.agent)
+      return Promise.reject(new BrowserScreenshotError(missingPage))
+    const assertScope = () => {
+      if (
+        window.isDestroyed() ||
+        entry.error ||
+        entry.crashed ||
+        this.#surfaces.get(id) !== entry ||
+        entry.view.webContents.isDestroyed()
+      )
+        throw new BrowserScreenshotError(missingPage)
+    }
+    return prepareBrowserScreenshot(
+      entry.view.webContents,
+      assertScope,
+      () => {
+        const bounds = entry.view.getBounds()
+        const scale = screen.getDisplayMatching(window.getBounds()).scaleFactor
+        return {
+          width: Math.round(bounds.width * scale),
+          height: Math.round(bounds.height * scale),
+        }
+      },
+      signal,
+    )
+  }
+
   /** 执行白名单中的浏览器导航命令。 */
   command(window: BrowserWindow, id: string, action: WorkbenchBrowserAction): void {
     const entry = this.#surfaces.get(id)
@@ -312,35 +351,12 @@ export class WorkbenchBrowsers {
   /** 关闭属于该主窗口的标签和独立预览。 */
   closeWindow(window: BrowserWindow): void {
     for (const id of this.#surfaces.keys()) this.close(window, id)
-    for (const [preview, owner] of this.#previews) if (owner === window) preview.destroy()
+    this.#previews.closeWindow(window)
   }
 
   /** 在独立沙箱窗口预览本机开发地址。 */
-  async preview(window: BrowserWindow, input: unknown): Promise<{ id: string }> {
-    const url = workbenchBrowserUrl(input)
-    if (!isWorkbenchLoopback(url)) throw new Error("PREVIEW_URL_NOT_ALLOWED")
-    const preview = new BrowserWindow({
-      width: 1100,
-      height: 760,
-      show: false,
-      webPreferences: {
-        session: browserSession(),
-        sandbox: true,
-        contextIsolation: true,
-        nodeIntegration: false,
-      },
-    })
-    this.#previews.set(preview, window)
-    preview.once("closed", () => this.#previews.delete(preview))
-    configureContents(preview.webContents, true)
-    try {
-      await preview.loadURL(url.href)
-      preview.show()
-      return { id: randomUUID() }
-    } catch {
-      if (!preview.isDestroyed()) preview.destroy()
-      throw new Error("WORKBENCH_PREVIEW_FAILED")
-    }
+  preview(window: BrowserWindow, input: unknown): Promise<{ id: string }> {
+    return this.#previews.open(window, input)
   }
 
   /** 只将显式的 HTTP(S) 地址交给系统浏览器。 */

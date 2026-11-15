@@ -33,9 +33,9 @@ const timelineRules: { [K in SessionHostEvent["type"]]: TimelineRule<EventOf<K>>
     ...event,
     blocks: event.blocks.map((block, index) => redactBlock(block, `event.blocks.${index}`, marks)),
   }),
-  "tool-result": (event, marks) => ({
+  "tool-result": ({ image, ...event }, marks) => ({
     ...event,
-    content: redactString(event.content, "event.content", marks),
+    content: image ? screenshotPlaceholder : redactString(event.content, "event.content", marks),
   }),
   permission: (event, marks) => ({
     ...event,

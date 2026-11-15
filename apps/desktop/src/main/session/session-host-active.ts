@@ -6,7 +6,11 @@ import {
   type PendingAnswerKind,
   type PendingAnswersOptions,
 } from "./pending-answers"
-import { PermissionBroker, type PermissionRequestEvent } from "./permission-broker"
+import {
+  PermissionBroker,
+  type PermissionBrokerOptions,
+  type PermissionRequestEvent,
+} from "./permission-broker"
 import {
   QuestionBroker,
   type QuestionRequestEvent,
@@ -78,7 +82,7 @@ export type ActiveSessionHooks = {
   onAnswerTimeout: (active: ActiveSession, kind: PendingAnswerKind) => void
   onWaitingChange: (waiting: boolean) => void
   onAdapterEvent: (active: ActiveSession, event: AdapterEvent) => void
-}
+} & Pick<PermissionBrokerOptions, "saveProjectGrants">
 
 /** 组装一个活动会话：两个代理共用一个待答队列，代理、回合控制和适配器的回调都指回这一份会话，初始模式是 CLI 的启动模式。 */
 export function createActiveSession(
@@ -99,6 +103,9 @@ export function createActiveSession(
   })
   const subagents = new SubagentTasks()
   const broker = new PermissionBroker({
+    ...(hooks.saveProjectGrants === undefined
+      ? {}
+      : { saveProjectGrants: hooks.saveProjectGrants }),
     emit: (request) => hooks.emitPermission({ ...request }),
     subagentOf: (agentId) => subagents.refOf(agentId),
     onTimeout: timedOut("permission"),

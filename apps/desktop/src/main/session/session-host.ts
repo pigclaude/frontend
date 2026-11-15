@@ -73,7 +73,7 @@ export type SessionHostOptions = {
   timers?: SessionTimers
   now?: () => number
   newId?: () => string
-}
+} & Pick<SessionLaunchDeps, "projectPermissions">
 
 const usageWriteFailed = "用量记录写入失败"
 const realTimers: SessionTimers = {
@@ -304,7 +304,7 @@ export class SessionHost {
 
   /** 写回指定会话的一次权限回答；未知会话或未知 requestId 都忽略。 */
   async respondPermission(sessionId: string, answer: PermissionAnswer): Promise<void> {
-    this.#registry.live(sessionId)?.respondPermission(answer)
+    await this.#registry.live(sessionId)?.respondPermission(answer)
   }
 
   /** 写回指定会话的提问回答，会员过期时拒绝。 */

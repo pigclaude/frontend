@@ -287,6 +287,8 @@ export type SessionUsagePort = {
 
 /** preload 暴露给 renderer 的 session 命名空间；会话命令都带会话 id，事件都包在信封里。 */
 export type SessionBridge = Partial<SessionHistoryBridge> & {
+  /** 本机项目授权的查看和撤销。 */
+  projectPermissions?: import("../../project-permissions-contract").ProjectPermissionsBridge
   start: (input: SessionStartInput) => Promise<{ sessionId: string }>
   send: (input: SessionTarget & SessionSendInput) => Promise<void>
   cancel: (input: SessionTarget) => Promise<void>

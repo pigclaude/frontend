@@ -5,6 +5,7 @@ import type { LocalStore } from "@pigclaude/local-store"
 import { accountSessionProfile } from "./account-session-profile"
 import { resolveClaudeBinaryPath } from "./claude-binary"
 import { devProviderHostOptions } from "./dev-provider"
+import { ProjectPermissionStore } from "./project-permission-store"
 import { SessionHost } from "./session-host"
 import type { SessionEnvelope } from "./session-envelope"
 import type { SessionMembership, SessionRuntime } from "./session-types"
@@ -33,16 +34,21 @@ export type SessionAssemblyInput = {
 export type SessionServices = {
   usage: UsageRecorder
   host: SessionHost | null
+  projectPermissions: ProjectPermissionStore
 }
 
 /** 创建用量记录器和会话宿主，并订阅会话事件。保证没有运行时时不创建会话宿主。 */
 export function assembleSessionServices(input: SessionAssemblyInput): SessionServices {
   const usage = new UsageRecorder({ filePath: join(input.userDataPath, "usage.jsonl") })
-  if (input.runtime === null) return { usage, host: null }
+  const projectPermissions = new ProjectPermissionStore(
+    join(input.userDataPath, "project-permissions.json"),
+  )
+  if (input.runtime === null) return { usage, host: null, projectPermissions }
   const host = new SessionHost({
     membership: input.membership,
     runtime: input.runtime,
     usage,
+    projectPermissions,
     userDataPath: input.userDataPath,
     resolveBinaryPath: () => resolveClaudeBinaryPath(),
     defaultWorkspace: () => input.homePath,
@@ -52,5 +58,5 @@ export function assembleSessionServices(input: SessionAssemblyInput): SessionSer
     ...devProviderHostOptions(input.isPackaged, input.env),
   })
   host.subscribe(input.onEvent)
-  return { usage, host }
+  return { usage, host, projectPermissions }
 }

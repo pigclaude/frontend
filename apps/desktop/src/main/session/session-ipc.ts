@@ -33,8 +33,6 @@ const permissionModes = new Set<SessionPermissionMode>([
 ])
 const thinkingLevels = new Set<SessionThinking>(["off", "low", "medium", "high"])
 const effortLevels = new Set<SessionEffort>(["low", "medium", "high", "xhigh", "max"])
-const maxUpdatedPermissions = 50
-const maxUpdatedPermissionsBytes = 64 * 1024
 const maxSessionIdLength = 200
 const maxRequestIdLength = 200
 const maxQuestionAnswers = 16
@@ -220,23 +218,29 @@ function readOptionalFast(value: unknown): boolean | undefined {
   throw invalidInput()
 }
 
-/** 解析 session.respondPermission 输入；updatedPermissions 的形状由 PermissionBroker 校验。 */
+/** 解析权限回答，只接受预先登记的 SDK 建议序号和「会话 / 项目」范围。 */
 export function readPermissionAnswer(value: unknown): PermissionAnswer {
-  if (!isRecord(value)) throw invalidInput()
+  if (!isRecord(value) || value.updatedPermissions !== undefined) throw invalidInput()
   const requestId = readString(value.requestId)
   const decision = value.decision
-  if (requestId === null || (decision !== "allow" && decision !== "deny")) {
+  if (
+    requestId === null ||
+    requestId.length > maxRequestIdLength ||
+    (decision !== "allow" && decision !== "deny")
+  )
     throw invalidInput()
-  }
-  const updatedPermissions =
-    value.updatedPermissions === undefined
-      ? undefined
-      : readPermissionUpdates(value.updatedPermissions)
-  return {
-    requestId,
-    decision,
-    ...(updatedPermissions === undefined ? {} : { updatedPermissions }),
-  }
+  const suggestion = value.suggestion
+  if (suggestion === undefined) return { requestId, decision }
+  if (!isRecord(suggestion) || decision !== "allow") throw invalidInput()
+  const { index, scope } = suggestion
+  if (
+    typeof index !== "number" ||
+    !Number.isSafeInteger(index) ||
+    index < 0 ||
+    (scope !== "session" && scope !== "project")
+  )
+    throw invalidInput()
+  return { requestId, decision, suggestion: { index, scope } }
 }
 
 /**
@@ -275,21 +279,6 @@ export function readUsageRange(value: unknown): UsageRange {
     throw invalidInput()
   }
   return value.range
-}
-
-// 权限更新来自 renderer，先限制条数、形状和序列化大小，避免超大对象进入权限代理。
-function readPermissionUpdates(value: unknown): unknown[] {
-  if (!Array.isArray(value)) throw invalidInput()
-  if (value.length > maxUpdatedPermissions) throw invalidInput()
-  if (!value.every((item) => isRecord(item))) throw invalidInput()
-  let serialized: string
-  try {
-    serialized = JSON.stringify(value)
-  } catch {
-    throw invalidInput()
-  }
-  if (serialized.length > maxUpdatedPermissionsBytes) throw invalidInput()
-  return value
 }
 
 function readModel(value: unknown): string {

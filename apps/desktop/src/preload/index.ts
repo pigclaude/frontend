@@ -5,6 +5,7 @@ import { browserProfilesBridge } from "./browser-profiles"
 import { isSessionEnvelope } from "./session-event-filter"
 import { isSessionSummary } from "./session-summary-filter"
 import { sessionHistoryBridge } from "./session-history"
+import { projectPermissionsBridge } from "./project-permissions"
 import { sessionDefaultsBridge, type SessionDefaultsBridge } from "./session-defaults"
 import { windowBridge, type WindowBridge } from "./window-bridge"
 import { workbenchBridge } from "./workbench"
@@ -281,6 +282,7 @@ const bridge: PigclaudeBridge = {
     },
   },
   session: {
+    projectPermissions: projectPermissionsBridge(),
     start: async (input) => {
       const value: unknown = await ipcRenderer.invoke("pigclaude:session-start", input)
       if (!isRecord(value) || typeof value.sessionId !== "string") {

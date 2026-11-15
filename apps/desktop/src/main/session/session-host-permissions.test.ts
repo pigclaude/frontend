@@ -38,9 +38,6 @@ describe("SessionHost permissions", () => {
     harness.host.respondPermission(currentSessionId(harness.host), {
       requestId: allowEvent.requestId,
       decision: "allow",
-      updatedPermissions: [
-        { type: "addRules", rules: [], behavior: "allow", destination: "session" },
-      ],
     })
     await expect(allowPromise).resolves.toMatchObject({ behavior: "allow" })
 

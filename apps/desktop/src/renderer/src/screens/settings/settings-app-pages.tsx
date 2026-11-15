@@ -12,15 +12,12 @@ import { ProjectPermissionRules } from "./project-permission-rules"
 import { WindowCloseSetting } from "./window-close-setting"
 import { StartupSettings } from "./startup-settings"
 
-/** 通用：启动、Dock、快捷键、更新和侧栏会话分组。 */
+/** 通用：启动、Dock、更新和侧栏会话分组。 */
 export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
   const [grouping, setGrouping] = useSidebarGrouping()
   return (
     <SettingPage title={desktopText("settings.settings-app-pages.1")}>
       <StartupSettings />
-      <SettingSection title={desktopText("settings.settings-app-pages.5")}>
-        <SettingRow title={desktopText("settings.settings-app-pages.6")} value="—" />
-      </SettingSection>
       <UpdateSettingsSection appVersion={appVersion} />
       <SettingSection title={desktopText("settings.settings-app-pages.10")}>
         <SettingRow title={desktopText("settings.settings-app-pages.11")}>

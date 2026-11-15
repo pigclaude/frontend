@@ -54,7 +54,25 @@ for (const screen of allScreens.filter((name) => !skipped.has(name))) {
     for (const glass of [0, 1] as const) {
       test(`${screen} ${theme} glass=${glass}`, async ({ page }) => {
         await freezeClock(page)
+        if (screen === "general") {
+          await page.addInitScript(() => {
+            window.pigclaude = {
+              platform: "darwin",
+              startupPreferences: {
+                get: async () => ({ openAtLogin: false, showInDock: true }),
+                set: async (_preference, value) => value,
+              },
+            }
+          })
+        }
         await page.goto(`/?screen=${screen}&theme=${theme}&glass=${glass}`)
+        if (screen === "general") {
+          await expect(page.getByRole("switch", { name: "开机自动启动" })).toHaveAttribute(
+            "aria-checked",
+            "false",
+          )
+          await expect(page.getByRole("switch", { name: "在 Dock 中显示" })).toBeChecked()
+        }
         await settle(page)
         await expect(page).toHaveScreenshot(`${screen}-${theme}-${glass}.png`, options)
       })

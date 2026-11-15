@@ -37,8 +37,6 @@ export const settingsZhCN = {
   "settings.settings-app-pages.3": "开机自动启动",
   "settings.settings-app-pages.4": "在 Dock 中显示",
   "settings.startupPreferenceFailed": "启动设置暂不可用，请重试。",
-  "settings.settings-app-pages.5": "快捷键",
-  "settings.settings-app-pages.6": "呼出托盘面板",
   "settings.settings-app-pages.7": "更新",
   "settings.settings-app-pages.8": "自动检查更新",
   "settings.settings-app-pages.9": "当前版本 {value1}",

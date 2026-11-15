@@ -83,8 +83,8 @@ function configureContents(
       event.preventDefault()
     }
   })
-  contents.setWindowOpenHandler(({ url }) => {
-    if (agent && isAgentBrowserAddress(url)) openInSameTab?.(url)
+  contents.setWindowOpenHandler(({ url, postBody }) => {
+    if (agent && postBody === undefined && isAgentBrowserAddress(url)) openInSameTab?.(url)
     else agent?.markBlocked()
     return { action: "deny" }
   })

@@ -11,6 +11,7 @@ const { WorkbenchBrowsers } = require("./browser-surface.js")
 const userData = join(__dirname, "user-data")
 mkdirSync(userData)
 app.setPath("userData", userData)
+app.on("window-all-closed", () => {})
 
 async function listen(host, handler) {
   const server = createServer(handler)
@@ -25,6 +26,60 @@ async function listen(host, handler) {
       server.closeAllConnections()
       server.close()
     },
+  }
+}
+
+async function verifyPostPopupBlocked() {
+  let submit = false
+  let targetRequests = 0
+  const site = await listen("127.0.0.1", (request, response) => {
+    if (request.url === "/submit-ready") {
+      response.end(submit ? "go" : "wait")
+      return
+    }
+    if (request.url === "/form-target") {
+      targetRequests += 1
+      response.end("form target")
+      return
+    }
+    response.setHeader("Content-Type", "text/html")
+    response.end(`<!doctype html><title>Initial form page</title>
+      <form method="post" action="/form-target" target="_blank">
+        <input name="marker" value="synthetic">
+      </form>
+      <script>
+        const timer = setInterval(async () => {
+          const state = await fetch("/submit-ready").then((response) => response.text());
+          if (state !== "go") return;
+          clearInterval(timer);
+          document.forms[0].requestSubmit();
+        }, 60);
+      </script>`)
+  })
+  const owner = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
+  const browsers = new WorkbenchBrowsers()
+  const id = "agent-post-popup-probe"
+  try {
+    const first = JSON.parse(await browsers.agentPage(owner, id, site.url))
+    let last = first
+    submit = true
+    for (
+      let index = 0;
+      index < 40 && targetRequests === 0 && last.blockedRequests === first.blockedRequests;
+      index += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 75))
+      last = JSON.parse(await browsers.agentPage(owner, id))
+    }
+    assert.equal(targetRequests, 0, "POST popup must not request its target")
+    assert.equal(last.blockedRequests, first.blockedRequests + 1)
+    assert.equal(last.url, site.url + "/")
+    assert.equal(BrowserWindow.getAllWindows().length, 1)
+    process.stdout.write("PASS Agent POST popup blocked without a target request\n")
+  } finally {
+    browsers.closeWindow(owner)
+    owner.destroy()
+    site.close()
   }
 }
 
@@ -121,6 +176,7 @@ async function probe() {
 
 app
   .whenReady()
+  .then(verifyPostPopupBlocked)
   .then(probe)
   .then(
     () => app.exit(0),

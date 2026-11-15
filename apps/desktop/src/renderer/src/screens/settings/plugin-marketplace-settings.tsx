@@ -19,6 +19,7 @@ import {
   PluginMarketplaceCatalog,
   PluginMarketplaceEntryDialog,
 } from "./plugin-marketplace-catalog"
+import { PluginMarketplacePinDialog } from "./plugin-marketplace-pin-dialog"
 import { PluginMarketplaceSourceDialog } from "./plugin-marketplace-source-dialog"
 import { marketplaceErrorKey } from "./plugin-marketplace-view"
 import { pluginInstallDisclosure } from "./plugin-settings-view"
@@ -27,6 +28,7 @@ import "../../styles/plugin-marketplace.css"
 type MarketDialog =
   | { kind: "sources" }
   | { kind: "add" }
+  | { kind: "pin"; sourceId: string }
   | { kind: "details"; sourceId: string; entryId: string }
   | {
       kind: "review"
@@ -99,6 +101,10 @@ export function PluginMarketplaceSettings({
   const sources = view?.sources ?? []
   const enabled = sources.filter((source) => source.enabled)
   const sourcesById = new Map(enabled.map((source) => [source.id, source]))
+  const pinSource =
+    dialog?.kind === "pin"
+      ? sources.find(({ id, kind }) => id === dialog.sourceId && kind !== "directory")
+      : undefined
   const entries = view?.entries.filter(({ sourceId }) => sourcesById.has(sourceId)) ?? []
   const dialogSource =
     dialog?.kind === "details" || dialog?.kind === "review"
@@ -113,6 +119,7 @@ export function PluginMarketplaceSettings({
 
   useEffect(() => {
     if (busy || view === null) return
+    if (dialog?.kind === "pin" && !pinSource) setDialog({ kind: "sources" })
     if (dialog?.kind === "details" && !selected) setDialog(null)
     if (dialog?.kind === "review" && !dialogSource) {
       const current = owner.current
@@ -123,7 +130,7 @@ export function PluginMarketplaceSettings({
       setDialog(null)
       setError("pluginMarketplace.sourceDisabled")
     }
-  }, [busy, view, dialog, dialogSource, selected, installer])
+  }, [busy, view, dialog, dialogSource, selected, pinSource, installer])
 
   async function run(operate: (current: MarketLifetime) => Promise<void>): Promise<void> {
     const current = owner.current
@@ -299,8 +306,24 @@ export function PluginMarketplaceSettings({
           onClose={() => show(null)}
           onAdd={() => show({ kind: "add" })}
           onRefresh={(id) => void run(() => bridge.refresh(id))}
+          onChangePin={(sourceId) => show({ kind: "pin", sourceId })}
           onSetEnabled={(id, enabled) => void run(() => bridge.setEnabled(id, enabled))}
           onRemove={(id) => void run(() => bridge.remove(id))}
+        />
+      ) : null}
+      {pinSource && membershipActive ? (
+        <PluginMarketplacePinDialog
+          key={pinSource.id}
+          source={pinSource}
+          busy={busy}
+          error={errorText}
+          onClose={() => show({ kind: "sources" })}
+          onApply={(pin) =>
+            void run(async (current) => {
+              await bridge.refresh(pinSource.id, pin)
+              if (!current.closed) show({ kind: "sources" })
+            })
+          }
         />
       ) : null}
       {dialog?.kind === "add" && view && membershipActive ? (

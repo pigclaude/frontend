@@ -5,7 +5,11 @@ import { FolderOpen } from "lucide-react"
 import { Button, Dialog, Input, SegmentedControl } from "@pigclaude/ui-primitives"
 import type { PluginMarketplaceSourceInput } from "../../../../plugin-marketplace-contract"
 import { useText, type TextKey } from "../../locale/text"
-import { marketplaceErrorKey, marketplaceSourceLabels } from "./plugin-marketplace-view"
+import {
+  marketplaceErrorKey,
+  marketplaceSourceLabels,
+  marketplaceSourcePin,
+} from "./plugin-marketplace-view"
 
 type SourceKind = PluginMarketplaceSourceInput["kind"]
 
@@ -199,12 +203,10 @@ function validSource(input: {
   if (selected === "directory") return directory ? { kind: selected, path: directory } : null
   if (selected === "github") {
     const repo = input.repo.trim()
-    const commit = input.commit.trim().toLowerCase()
-    return repo && /^[0-9a-f]{40}$/.test(commit) ? { kind: selected, repo, commit } : null
+    const commit = marketplaceSourcePin(selected, input.commit)
+    return repo && commit ? { kind: selected, repo, commit } : null
   }
   const url = input.url.trim()
-  const sha256 = input.sha256.trim().toLowerCase()
-  return /^https:\/\/\S+$/i.test(url) && /^[0-9a-f]{64}$/.test(sha256)
-    ? { kind: selected, url, sha256 }
-    : null
+  const sha256 = marketplaceSourcePin(selected, input.sha256)
+  return /^https:\/\/\S+$/i.test(url) && sha256 ? { kind: selected, url, sha256 } : null
 }

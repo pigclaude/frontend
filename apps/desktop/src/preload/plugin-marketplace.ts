@@ -15,7 +15,8 @@ export function pluginMarketplaceBridge(): PluginMarketplaceBridge {
     list: () => invoke("list"),
     selectDirectory: () => invoke("select-directory"),
     add: (input) => invoke("add", input),
-    refresh: (sourceId) => invoke("refresh", sourceId),
+    refresh: (sourceId, pin) =>
+      pin === undefined ? invoke("refresh", sourceId) : invoke("refresh", sourceId, pin),
     setEnabled: (sourceId, enabled) => invoke("set-enabled", sourceId, enabled),
     remove: (sourceId) => invoke("remove", sourceId),
     prepareInstall: (sourceId, entryId) => invoke("prepare-install", sourceId, entryId),

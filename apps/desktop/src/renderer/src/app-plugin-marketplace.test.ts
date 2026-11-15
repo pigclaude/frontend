@@ -29,6 +29,7 @@ const originalSource: PluginMarketplaceSourceView = {
   refreshedAt: "2026-11-15T00:00:00.000Z",
   entryCount: 2,
   error: null,
+  pin: null,
 }
 
 const installedPlugin: InstalledCapabilityPlugin = {
@@ -114,8 +115,8 @@ const unavailable = async () => {
   throw new Error("FIXTURE_UNEXPECTED_CALL")
 }
 
-function fixture(developerMode = true, entries = [marketEntry]) {
-  let sources = [originalSource]
+function fixture(developerMode = true, entries = [marketEntry], initialSources = [originalSource]) {
+  let sources = initialSources
   const market = {
     list: vi.fn<PluginMarketplaceBridge["list"]>(async () => ({
       developerMode,
@@ -124,7 +125,10 @@ function fixture(developerMode = true, entries = [marketEntry]) {
     })),
     selectDirectory: vi.fn<PluginMarketplaceBridge["selectDirectory"]>(async () => "/market/local"),
     add: vi.fn<PluginMarketplaceBridge["add"]>(async () => undefined),
-    refresh: vi.fn<PluginMarketplaceBridge["refresh"]>(async () => undefined),
+    refresh: vi.fn<PluginMarketplaceBridge["refresh"]>(async (id, pin) => {
+      if (pin !== undefined)
+        sources = sources.map((source) => (source.id === id ? { ...source, pin } : source))
+    }),
     setEnabled: vi.fn<PluginMarketplaceBridge["setEnabled"]>(async (id, enabled) => {
       sources = sources.map((source) => (source.id === id ? { ...source, enabled } : source))
     }),
@@ -184,14 +188,21 @@ function dialog(): HTMLElement {
   return open
 }
 
-async function fillField(label: string, value: string): Promise<void> {
+function fieldByLabel(label: string): HTMLInputElement {
   const field = [...dialog().querySelectorAll("label")].find((item) => item.textContent === label)
   const input = field?.control
   if (!(input instanceof HTMLInputElement)) throw new Error("没有输入框 " + label)
+  return input
+}
+
+async function fillField(label: string, value: string): Promise<void> {
+  const input = fieldByLabel(label)
   await act(async () => {
-    input.focus()
-    await userEvent.setup().paste(value)
+    const user = userEvent.setup()
+    await user.clear(input)
+    await user.paste(value)
   })
+  expect(input.value).toBe(value)
 }
 
 it("停用市场源会隐藏目录条目，已安装列表保持可用", async () => {
@@ -372,4 +383,35 @@ it("离开市场后收到的准备结果会放弃原令牌", async () => {
   expect(f.plugins.confirm).not.toHaveBeenCalled()
   expect(document.querySelector('[role="dialog"]')).toBeNull()
   expect(app.container.textContent).toContain("本地工具")
+})
+
+it.each([
+  { kind: "github", label: "固定提交", length: 40 },
+  { kind: "https", label: "SHA-256 校验值", length: 64 },
+] as const)("停用的 $kind 来源可原地更换 pin，仍隐藏目录", async ({ kind, label, length }) => {
+  const previous = "a".repeat(length)
+  const updated = "b".repeat(length)
+  const f = fixture(
+    true,
+    [marketEntry],
+    [{ ...originalSource, kind, pin: previous, enabled: false }],
+  )
+  await openMarket(f)
+  expect(app.container.textContent).not.toContain("工程手册")
+  await select("市场源", app.container)
+  await select("更换 团队目录 的版本", dialog(), "button[aria-label]")
+  expect(fieldByLabel(label).value).toBe(previous)
+  expect(buttonNamed("保存并刷新", dialog())?.disabled).toBe(true)
+  await fillField(label, "not-a-pin")
+  expect(buttonNamed("保存并刷新", dialog())?.disabled).toBe(true)
+  await fillField(label, updated)
+  expect(buttonNamed("保存并刷新", dialog())?.disabled).toBe(false)
+  await select("保存并刷新", dialog())
+  expect(f.market.refresh).toHaveBeenCalledExactlyOnceWith("team-market", updated)
+  expect(dialog().textContent).toContain("已停用")
+  await select("更换 团队目录 的版本", dialog(), "button[aria-label]")
+  expect(fieldByLabel(label).value).toBe(updated)
+  await select("取消", dialog())
+  await select("关闭", dialog(), '[aria-label="关闭"]')
+  expect(app.container.textContent).not.toContain("工程手册")
 })

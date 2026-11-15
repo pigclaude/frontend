@@ -26,6 +26,12 @@ test("plugin marketplace catalog and managed sources", async ({ page }) => {
   await expect(sources.getByText("研发归档")).toBeVisible()
   await expect(sources.getByText("已停用")).toBeVisible()
   await expect(page).toHaveScreenshot("plugin-marketplace-sources-light.png", screenshot)
+  await sources.getByRole("button", { name: "更换 研发归档 的版本" }).click()
+  const pin = page.getByRole("dialog", { name: "更换市场源版本" })
+  await expect(pin.getByLabel("SHA-256 校验值")).toHaveValue("b".repeat(64))
+  await expect(pin.getByRole("button", { name: "保存并刷新" })).toBeDisabled()
+  await pin.getByLabel("SHA-256 校验值").fill("c".repeat(64))
+  await expect(pin.getByRole("button", { name: "保存并刷新" })).toBeEnabled()
 })
 
 test("plugin marketplace update expansion disclosure", async ({ page }) => {

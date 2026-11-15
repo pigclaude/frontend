@@ -35,6 +35,7 @@ const marketplace: PluginMarketplaceView = {
       refreshedAt: "2026-11-15T03:00:00.000Z",
       entryCount: 3,
       error: null,
+      pin: "a".repeat(40),
     },
     {
       id: "archive-market",
@@ -45,6 +46,7 @@ const marketplace: PluginMarketplaceView = {
       refreshedAt: null,
       entryCount: 0,
       error: null,
+      pin: "b".repeat(64),
     },
   ],
   entries: [

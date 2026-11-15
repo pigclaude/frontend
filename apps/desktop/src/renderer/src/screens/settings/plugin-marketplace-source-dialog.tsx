@@ -22,6 +22,7 @@ export function PluginMarketplaceSourceDialog({
   onClose,
   onAdd,
   onRefresh,
+  onChangePin,
   onSetEnabled,
   onRemove,
 }: {
@@ -32,6 +33,7 @@ export function PluginMarketplaceSourceDialog({
   onClose: () => void
   onAdd: () => void
   onRefresh: (sourceId: string) => void
+  onChangePin: (sourceId: string) => void
   onSetEnabled: (sourceId: string, enabled: boolean) => void
   onRemove: (sourceId: string) => void
 }) {
@@ -132,6 +134,18 @@ export function PluginMarketplaceSourceDialog({
                         disabled={disabled}
                         onCheckedChange={(checked) => onSetEnabled(id, checked)}
                       />
+                      {kind !== "directory" ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          disabled={disabled}
+                          aria-label={fill(t("pluginMarketplace.changeSourcePin"), values)}
+                          onClick={() => onChangePin(id)}
+                        >
+                          {t("pluginMarketplace.changePin")}
+                        </Button>
+                      ) : null}
                       <Button
                         type="button"
                         size="icon"

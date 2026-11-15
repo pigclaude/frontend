@@ -22,6 +22,7 @@ it("按契约转发操作并清理同一个刷新订阅", async () => {
   await market.selectDirectory()
   await market.add(source)
   await market.refresh("source")
+  await market.refresh("source", "b".repeat(40))
   await market.setEnabled("source", false)
   await market.remove("source")
   await market.prepareInstall("source", "entry")
@@ -31,6 +32,7 @@ it("按契约转发操作并清理同一个刷新订阅", async () => {
     ["select-directory"],
     ["add", source],
     ["refresh", "source"],
+    ["refresh", "source", "b".repeat(40)],
     ["set-enabled", "source", false],
     ["remove", "source"],
     ["prepare-install", "source", "entry"],

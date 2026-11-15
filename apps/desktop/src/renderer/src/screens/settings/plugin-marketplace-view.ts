@@ -15,6 +15,13 @@ export const marketplaceSourceLabels: Record<PluginMarketplaceSourceInput["kind"
   directory: "pluginMarketplace.directory",
 }
 
+/** 固定提交和 SHA-256 在提交前规范为对应长度的小写十六进制。 */
+export function marketplaceSourcePin(kind: "github" | "https", value: string): string | null {
+  const pin = value.trim().toLowerCase()
+  const valid = kind === "github" ? /^[0-9a-f]{40}$/ : /^[0-9a-f]{64}$/
+  return valid.test(pin) ? pin : null
+}
+
 /** 刷新失败时沿用主进程返回的最后成功时间和目录条目数。 */
 export function marketplaceSourceMeta(
   source: PluginMarketplaceSourceView,

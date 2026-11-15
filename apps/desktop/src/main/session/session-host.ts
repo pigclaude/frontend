@@ -437,9 +437,9 @@ export class SessionHost {
   // 会话释放：交还名额、关掉会话专用的工具；运行中的会话转为停放，启动中的由启动流程收尾。
   async #released(entry: SessionEntry): Promise<void> {
     const status = this.#registry.statusOnRelease(entry)
+    await this.#closeTools(entry)
     if (status !== null && this.#persistence !== null)
       await this.#persistence.park(entry.sessionId, status)
-    this.#closeTools(entry)
     if (status !== null) entry.phase = "parked"
     this.#concurrency.release(entry.sessionId)
     this.#emitHost({ type: "sessions-changed" })
@@ -447,15 +447,15 @@ export class SessionHost {
 
   #forget(entry: SessionEntry): void {
     this.#concurrency.release(entry.sessionId)
-    this.#closeTools(entry)
+    void this.#closeTools(entry)
     this.#registry.delete(entry)
     this.#emitHost({ type: "sessions-changed" })
   }
 
-  #closeTools(entry: SessionEntry): void {
+  #closeTools(entry: SessionEntry): void | Promise<void> {
     const close = entry.closeTools
     entry.closeTools = null
-    close?.()
+    return close?.()
   }
 
   #observe(entry: SessionEntry, envelope: SessionEnvelope): void {

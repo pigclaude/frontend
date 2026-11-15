@@ -82,6 +82,8 @@ export function fakeWorkbench(files: Record<string, string>): FakeWorkbench {
     status: vi.fn(async () => fake.changes),
     reveal: vi.fn(async () => undefined),
     reportUnsaved: vi.fn(async () => undefined),
+    browserSetActiveSession: vi.fn(async () => undefined),
+    browserListAgentTabs: vi.fn(async () => []),
     unsavedDone: vi.fn(async () => undefined),
     editors: vi.fn(async () => [{ id: "cursor", name: "Cursor" }]),
     openFile: vi.fn(async () => undefined),

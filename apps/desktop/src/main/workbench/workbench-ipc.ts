@@ -2,7 +2,11 @@
 import { randomUUID } from "node:crypto"
 import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron"
 import { keepsMembershipRuntime, type MembershipView } from "@pigclaude/contracts/membership"
-import type { WorkbenchBrowserAction } from "../../workbench-contract"
+import {
+  agentBrowserIdPrefix,
+  type AgentBrowserScope,
+  type WorkbenchBrowserAction,
+} from "../../workbench-contract"
 import type { SessionTools } from "../session/session-types"
 import { WorkbenchBrowsers } from "./browser-surface"
 import { browserSessionTools } from "./browser-tools"
@@ -68,12 +72,20 @@ export class WorkbenchIpc {
 
   /** 为一个会话创建独立的本机网页预览工具；close 关掉这个会话打开的浏览器并清空它的分区。 */
   tools(owner: Electron.WebContents, canUse: () => boolean): SessionTools {
-    const id = randomUUID()
+    const id = agentBrowserIdPrefix + randomUUID()
+    let live = true
     return {
       browser: {
-        create: (approval) => browserSessionTools(owner, this.#browsers, canUse, approval, id),
+        create: (approval, sessionId) =>
+          browserSessionTools(owner, this.#browsers, () => live && canUse(), approval, {
+            id,
+            sessionId,
+          }),
       },
-      close: () => this.#browsers.closeAgent(id),
+      close: () => {
+        live = false
+        return this.#browsers.closeAgent(id)
+      },
     }
   }
 
@@ -246,40 +258,77 @@ export class WorkbenchIpc {
       (_window, event, [id]) => this.#terminals.close(event.sender, resourceId(id)),
       false,
     )
-    handle("browser-navigate", (window, _event, [id, url]) =>
-      this.#browsers.navigate(window, resourceId(id), url),
-    )
-    handle("browser-command", (window, _event, [id, action]) => {
-      if (!browserActions.has(action as WorkbenchBrowserAction))
-        throw new Error("WORKBENCH_INPUT_INVALID")
-      this.#browsers.command(window, resourceId(id), action as WorkbenchBrowserAction)
-    })
     handle(
-      "browser-present",
-      (window, _event, [id, value]) => {
-        const key = resourceId(id)
-        if (value === null) return this.#browsers.present(window, key, null)
-        if (options.membership()?.state !== "active") throw new Error("MEMBERSHIP_REQUIRED")
-        if (typeof value !== "object" || !value) throw new Error("WORKBENCH_INPUT_INVALID")
-        const bounds = value as Record<string, unknown>
-        this.#browsers.present(window, key, {
-          x: number(bounds.x, 0, 32768),
-          y: number(bounds.y, 0, 32768),
-          width: number(bounds.width, 1, 32768),
-          height: number(bounds.height, 1, 32768),
-          scale: number(bounds.scale, 0.1, 1, false),
-        })
+      "browser-active-session",
+      (window, _event, [sessionId]) => {
+        if (sessionId !== null && options.membership()?.state !== "active")
+          throw new Error("MEMBERSHIP_REQUIRED")
+        this.#browsers.setActiveSession(
+          window,
+          sessionId === null ? null : browserSessionId(sessionId),
+        )
       },
       false,
     )
-    handle("browser-pick", (window, _event, [id]) => this.#browsers.pick(window, resourceId(id)))
+    handle("browser-agent-tabs", (window, _event, [sessionId]) =>
+      this.#browsers.listAgentTabs(window, browserSessionId(sessionId)),
+    )
+    handle("browser-navigate", (window, _event, [id, url, sessionId]) =>
+      this.#browsers.navigate(window, browserId(id), url, optionalSessionId(sessionId)),
+    )
+    handle("browser-command", (window, _event, [id, action, sessionId]) => {
+      if (!browserActions.has(action as WorkbenchBrowserAction))
+        throw new Error("WORKBENCH_INPUT_INVALID")
+      this.#browsers.command(
+        window,
+        browserId(id),
+        action as WorkbenchBrowserAction,
+        optionalSessionId(sessionId),
+      )
+    })
     handle(
-      "browser-close",
-      (window, _event, [id]) => this.#browsers.close(window, resourceId(id)),
+      "browser-present",
+      (window, _event, [id, value, sessionId]) => {
+        const key = browserId(id)
+        const scope = optionalSessionId(sessionId)
+        if (value === null) return this.#browsers.present(window, key, null, scope)
+        if (options.membership()?.state !== "active") throw new Error("MEMBERSHIP_REQUIRED")
+        if (typeof value !== "object" || !value) throw new Error("WORKBENCH_INPUT_INVALID")
+        const bounds = value as Record<string, unknown>
+        this.#browsers.present(
+          window,
+          key,
+          {
+            x: number(bounds.x, 0, 32768),
+            y: number(bounds.y, 0, 32768),
+            width: number(bounds.width, 1, 32768),
+            height: number(bounds.height, 1, 32768),
+            scale: number(bounds.scale, 0.1, 1, false),
+          },
+          scope,
+        )
+      },
       false,
     )
-    handle("browser-external", (_window, _event, [url]) => this.#browsers.external(url))
-    handle("preview-open", (window, _event, [url]) => this.#browsers.preview(window, url))
+    handle("browser-pick", (window, _event, [id, sessionId]) =>
+      this.#browsers.pick(window, browserId(id), optionalSessionId(sessionId)),
+    )
+    handle(
+      "browser-close",
+      (window, _event, [id, sessionId]) =>
+        this.#browsers.close(window, browserId(id), optionalSessionId(sessionId)),
+      false,
+    )
+    handle("browser-external", (window, _event, [url, value]) => {
+      const scope = optionalAgentScope(value)
+      if (scope) this.#browsers.requireActiveAgent(window, scope)
+      return this.#browsers.external(url)
+    })
+    handle("preview-open", (window, _event, [url, value]) => {
+      const scope = optionalAgentScope(value)
+      if (scope) this.#browsers.requireActiveAgent(window, scope)
+      return this.#browsers.preview(window, url)
+    })
   }
 
   /** 刷新、崩溃或关闭主窗口会释放其 PTY 和浏览器。 */
@@ -292,7 +341,7 @@ export class WorkbenchIpc {
     this.#windows.set(window, contents)
     const close = () => {
       this.unsaved.forget(contents)
-      this.#browsers.closeWindow(window)
+      void this.#browsers.closeWindow(window).catch(() => undefined)
       void this.#terminals.closeWindow(contents).catch(() => undefined)
     }
     contents.on("did-start-navigation", (_event, _url, inPlace, mainFrame) => {
@@ -312,8 +361,10 @@ export class WorkbenchIpc {
 
   /** 退出前关闭预览并等待终端结束。 */
   async dispose(): Promise<void> {
-    for (const window of this.#windows.keys()) this.#browsers.closeWindow(window)
-    await this.#terminals.dispose()
+    await Promise.all([
+      ...[...this.#windows.keys()].map((window) => this.#browsers.closeWindow(window)),
+      this.#terminals.dispose(),
+    ])
   }
 }
 
@@ -349,4 +400,29 @@ function resourceId(value: unknown): string {
   const id = string(value, 36)
   if (!/^[0-9a-f-]{36}$/.test(id)) throw new Error("WORKBENCH_INPUT_INVALID")
   return id
+}
+
+function browserId(value: unknown): string {
+  if (typeof value === "string" && value.startsWith(agentBrowserIdPrefix))
+    return agentBrowserIdPrefix + resourceId(value.slice(agentBrowserIdPrefix.length))
+  return resourceId(value)
+}
+
+function browserSessionId(value: unknown): string {
+  const id = string(value, 128)
+  if (!id.trim()) throw new Error("WORKBENCH_INPUT_INVALID")
+  return id
+}
+
+function optionalSessionId(value: unknown): string | undefined {
+  return value === undefined ? undefined : browserSessionId(value)
+}
+
+function optionalAgentScope(value: unknown): AgentBrowserScope | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== "object" || !value || !("id" in value) || !("sessionId" in value))
+    throw new Error("WORKBENCH_INPUT_INVALID")
+  const id = browserId(value.id)
+  if (!id.startsWith(agentBrowserIdPrefix)) throw new Error("WORKBENCH_INPUT_INVALID")
+  return { id, sessionId: browserSessionId(value.sessionId) }
 }

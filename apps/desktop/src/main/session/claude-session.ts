@@ -126,7 +126,7 @@ export class ClaudeSession {
         unattended: browserTools.unattended === true,
       })
     if (browser && browserTools && !browserTools.unattended) {
-      mcpServers = { ...mcpServers, ...browserTools.create(browser) }
+      mcpServers = { ...mcpServers, ...browserTools.create(browser, this.#options.sessionId) }
     }
     const options = buildStartOptions(active, this.#options, mcpServers, browser)
     const project = this.#options.projectPermissions

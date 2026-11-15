@@ -10,19 +10,19 @@ import type {
   InstalledDesktopPlugin,
 } from "../../capability-plugin-contract"
 import type { PluginMarketplaceUpdateResult } from "../../plugin-marketplace-contract"
-import {
-  readCapabilityPluginDirectory,
-  validateCapabilityPluginBundle,
-} from "./capability-plugin-bundle"
-import { isCapabilityPluginCompatible } from "./capability-plugin-manifest"
-import { capabilityPluginStoragePaths, isCapabilityPluginId } from "./capability-plugin-paths"
+import { CapabilityPluginAuthorization } from "./capability-plugin-authorization"
+import { isCapabilityPluginId } from "./capability-plugin-paths"
 import {
   CapabilityPluginRecords,
   type CapabilityPluginRecord,
   type ClaudeCodePluginRecord,
   type DesktopPluginRecord,
 } from "./capability-plugin-records"
-import type { CapabilityPluginSnapshot } from "./capability-plugin-snapshot"
+import {
+  describeInstalledPlugin,
+  isDesktopPluginCompatible,
+  type CapabilityPluginSnapshot,
+} from "./capability-plugin-snapshot"
 import { loadLocalDesktopPlugin } from "./desktop-plugin-bundle"
 import {
   createDesktopPluginRecord,
@@ -33,8 +33,11 @@ import {
   type DesktopPluginInstallPlan,
   type PluginMarketplaceInstallRequest,
 } from "./desktop-plugin-installation"
+import {
+  MarketplacePluginRevocations,
+  type PluginMarketplaceRevocation,
+} from "./marketplace-plugin-revocations"
 import type { PluginMarketplaceProvenance } from "./plugin-marketplace-catalog"
-import { PluginSandboxError } from "./plugin-sandbox-contract"
 
 /** 安装与生命周期依赖应用提供的当前会员、开发模式和沙箱清理入口。 */
 export type CapabilityPluginManagerOptions = {
@@ -52,15 +55,22 @@ export type { CapabilityPluginSnapshot } from "./capability-plugin-snapshot"
 export class CapabilityPluginManager {
   readonly #records: CapabilityPluginRecords
   readonly #listeners = new Set<() => void>()
-  readonly #withdrawing = new Set<string>()
-  readonly #withdrawalEpochs = new Map<string, number>()
+  readonly #authorization: CapabilityPluginAuthorization
   readonly #review = new DesktopPluginInstallReview()
+  readonly #revocations = new MarketplacePluginRevocations()
   #epoch = 0
   #writes = Promise.resolve()
 
   /** 绑定私有安装根、沙箱清理和版本信息。 */
   constructor(private readonly options: CapabilityPluginManagerOptions) {
     this.#records = new CapabilityPluginRecords(options.root)
+    this.#authorization = new CapabilityPluginAuthorization({
+      records: this.#records,
+      revocations: this.#revocations,
+      appVersion: options.appVersion,
+      active: () => options.membership() === "active",
+      membershipEpoch: () => this.#epoch,
+    })
   }
 
   /** 仅供管理页确定是否提供目录安装入口。 */
@@ -73,7 +83,7 @@ export class CapabilityPluginManager {
     return this.#enqueue(async () => {
       for (const id of await this.#records.removingIds())
         await this.#finishRemoval(id).catch(() => undefined)
-      return (await this.#installed()).map((record) => this.#describe(record))
+      return (await this.#records.list()).map((record) => this.#describe(record))
     })
   }
 
@@ -105,7 +115,7 @@ export class CapabilityPluginManager {
     return this.#enqueue(
       async () =>
         new Map(
-          (await this.#installed()).map((record) => [
+          (await this.#records.list()).map((record) => [
             record.manifest.id,
             record.marketplace ?? null,
           ]),
@@ -145,7 +155,9 @@ export class CapabilityPluginManager {
       )
         throw new Error("PLUGIN_MARKETPLACE_INSTALLATION_MISMATCH")
       this.#assertInstallPlan(plan)
-      if (!marketplaceFilesChanged(current.marketplace, provenance)) return { kind: "unchanged" }
+      const recovery = this.#revocations.replacingRevokedVersion(current, provenance)
+      if (!recovery && !marketplaceFilesChanged(current.marketplace, provenance))
+        return { kind: "unchanged" }
       const update = { ...plan, previousRevision: current.revision }
       const grown = expandedPluginAccess(current, plan.bundle)
       const fileHashChanged = request.requireFileReview === true
@@ -159,6 +171,19 @@ export class CapabilityPluginManager {
       await this.#publish(update)
       return { kind: "updated" }
     })
+  }
+
+  /** 应用官方入口交付的已验吊销列表；入队前撤回命中版本的运行资格。 */
+  applyMarketplaceRevocations(
+    sourceId: string,
+    revocations: readonly PluginMarketplaceRevocation[],
+  ): Promise<readonly { name: string; reason: string }[]> {
+    const update = this.#revocations.accept(sourceId, revocations)
+    return this.#enqueue(() =>
+      this.#revocations.persist(update, this.#records, this.options.stopInstances, () =>
+        this.#emit(),
+      ),
+    )
   }
 
   /** 发布用户确认时看到的同一份快照，无需重新读取原来源。 */
@@ -178,10 +203,18 @@ export class CapabilityPluginManager {
       if (enabled) this.#assertActive()
       const record = await this.#records.read(pluginId)
       if (!record) throw new Error("PLUGIN_NOT_INSTALLED")
-      if (enabled && !this.#compatible(record)) throw new Error("PLUGIN_VERSION_INCOMPATIBLE")
+      const assertEnabled = () => {
+        this.#assertActive()
+        this.#revocations.assertEnabledAllowed(record)
+      }
+      if (enabled) {
+        assertEnabled()
+        if (!isDesktopPluginCompatible(record, this.options.appVersion))
+          throw new Error("PLUGIN_VERSION_INCOMPATIBLE")
+      }
       const updated = { ...record, enabled }
       if (record.enabled !== enabled) {
-        await this.#records.setRecord(updated, enabled ? () => this.#assertActive() : undefined)
+        await this.#records.setRecord(updated, enabled ? assertEnabled : undefined)
         this.#emit()
       }
       return this.#describe(updated)
@@ -210,7 +243,7 @@ export class CapabilityPluginManager {
     assertId(pluginId)
     return this.#enqueue(async () => {
       if (await this.#records.read(pluginId)) {
-        await this.#duringWithdrawal(pluginId, async () => {
+        await this.#authorization.duringWithdrawal(pluginId, async () => {
           await this.#records.withdraw(pluginId, keepData)
           this.#emit()
         })
@@ -231,9 +264,15 @@ export class CapabilityPluginManager {
       this.#assertActive()
       const record = await this.#records.read(pluginId)
       this.#assertActive()
-      if (record?.type !== "capability" || record.revision !== revision || !record.enabled)
+      if (
+        record?.type !== "capability" ||
+        record.revision !== revision ||
+        !record.enabled ||
+        this.#revocations.reasonFor(record) !== undefined
+      )
         throw new Error("PLUGIN_DECLARATION_UNAVAILABLE")
-      if (!this.#compatible(record)) throw new Error("PLUGIN_VERSION_INCOMPATIBLE")
+      if (!isDesktopPluginCompatible(record, this.options.appVersion))
+        throw new Error("PLUGIN_VERSION_INCOMPATIBLE")
       return operation(record)
     })
   }
@@ -246,7 +285,7 @@ export class CapabilityPluginManager {
     return this.withEnabledPlugin(plugin, (record) => {
       if (!record.manifest.commands.some(({ id }) => id === commandId))
         throw new Error("PLUGIN_DECLARATION_UNAVAILABLE")
-      return this.#snapshot(record)
+      return this.#records.snapshot(record, this.options.appVersion)
     })
   }
 
@@ -255,15 +294,25 @@ export class CapabilityPluginManager {
     return this.#enqueue(async () => {
       if (this.options.membership() !== "active") return []
       const epoch = this.#epoch
+      const records = (await this.#records.list()).filter(
+        (record): record is CapabilityPluginRecord =>
+          record.type === "capability" &&
+          record.enabled &&
+          isDesktopPluginCompatible(record, this.options.appVersion) &&
+          this.#revocations.reasonFor(record) === undefined,
+      )
       const plugins = await Promise.all(
-        (await this.#installed()).flatMap((record) =>
-          record.type === "capability" && record.enabled && this.#compatible(record)
-            ? [this.#snapshot(record).catch(() => null)]
-            : [],
-        ),
+        records.map(async (record) => ({
+          record,
+          snapshot: await this.#records.snapshot(record, this.options.appVersion).catch(() => null),
+        })),
       )
       return this.#epoch === epoch && this.options.membership() === "active"
-        ? plugins.filter((value) => value !== null)
+        ? plugins.flatMap(({ record, snapshot }) =>
+            snapshot !== null && this.#revocations.reasonFor(record) === undefined
+              ? [snapshot]
+              : [],
+          )
         : []
     })
   }
@@ -272,13 +321,16 @@ export class CapabilityPluginManager {
   stageClaudeCodePlugins(directory: string): Promise<readonly string[]> {
     return this.#enqueue(async () => {
       const epoch = this.#epoch
-      const paths: string[] = []
+      const staged: { record: ClaudeCodePluginRecord; path: string }[] = []
       for (const record of await this.#enabledClaudeCodePlugins()) {
         if (this.options.membership() !== "active" || epoch !== this.#epoch) return []
         const path = await this.#records.stageClaudeCodePlugin(record, directory).catch(() => null)
-        if (path !== null) paths.push(path)
+        if (path !== null) staged.push({ record, path })
       }
-      return epoch === this.#epoch && this.options.membership() === "active" ? paths : []
+      if (epoch !== this.#epoch || this.options.membership() !== "active") return []
+      return staged.flatMap(({ record, path }) =>
+        this.#revocations.reasonFor(record) === undefined ? [path] : [],
+      )
     })
   }
 
@@ -288,54 +340,26 @@ export class CapabilityPluginManager {
       const epoch = this.#epoch
       const enabled = await this.#enabledClaudeCodePlugins()
       if (epoch !== this.#epoch || this.options.membership() !== "active") return []
-      return enabled.flatMap(({ menuCommands }) => menuCommands)
+      return enabled.flatMap((record) =>
+        this.#revocations.reasonFor(record) === undefined ? record.menuCommands : [],
+      )
     })
   }
 
-  /** 调用时核对有效会员和仍存在的安装版本；已获快照的会话不受停用影响。 */
-  async canInvoke(pluginId: string, revision: string): Promise<boolean> {
-    if (
-      !isCapabilityPluginId(pluginId) ||
-      this.#withdrawing.has(pluginId) ||
-      this.options.membership() !== "active"
-    )
-      return false
-    const epoch = this.#epoch
-    const withdrawal = this.#withdrawalEpochs.get(pluginId)
-    const record = await this.#records.read(pluginId).catch(() => null)
-    return (
-      epoch === this.#epoch &&
-      withdrawal === this.#withdrawalEpochs.get(pluginId) &&
-      this.options.membership() === "active" &&
-      !this.#withdrawing.has(pluginId) &&
-      record?.type === "capability" &&
-      record.revision === revision &&
-      this.#compatible(record)
-    )
+  /** 核对有效会员、安装修订和官方吊销。 */
+  canInvoke(pluginId: string, revision: string): Promise<boolean> {
+    return this.#authorization.canInvoke(pluginId, revision)
   }
 
-  /** 串行检查一次能力请求与安装修订；发布数据前必须再次通过回调中的核验。 */
+  /** 串行执行一次能力请求，实际发布数据前重新校验授权。 */
   runCapability<T>(
     pluginId: string,
     revision: string,
     signal: AbortSignal,
     operation: (assertCurrent: () => void) => T | Promise<T>,
   ): Promise<T> {
-    const epoch = this.#epoch
-    return this.#enqueue(async () => {
-      const assertCurrent = () => {
-        if (signal.aborted) throw new PluginSandboxError("PLUGIN_CANCELLED")
-        if (epoch !== this.#epoch || this.options.membership() !== "active")
-          throw new PluginSandboxError("PLUGIN_CAPABILITY_DENIED")
-      }
-      assertCurrent()
-      if (!(await this.canInvoke(pluginId, revision)))
-        throw new PluginSandboxError("PLUGIN_CAPABILITY_DENIED")
-      assertCurrent()
-      const result = await operation(assertCurrent)
-      assertCurrent()
-      return result
-    })
+    const call = { pluginId, revision, signal, membershipEpoch: this.#epoch }
+    return this.#enqueue(() => this.#authorization.run(call, operation))
   }
 
   /** 会员失效撤销待确认安装并停止全部实例；短暂网络宽限保留现有实例。 */
@@ -353,63 +377,24 @@ export class CapabilityPluginManager {
     return () => void this.#listeners.delete(listener)
   }
 
-  #compatible(record: DesktopPluginRecord): boolean {
-    return (
-      record.type === "claude-code" ||
-      isCapabilityPluginCompatible(record.manifest, this.options.appVersion)
-    )
-  }
-
   #describe(record: CapabilityPluginRecord): InstalledCapabilityPlugin
   #describe(record: DesktopPluginRecord): InstalledDesktopPlugin
   #describe(record: DesktopPluginRecord): InstalledDesktopPlugin {
-    const { revision, installedAt, sourceKind, sha256, enabled } = record
-    const common = {
-      revision,
-      installedAt,
-      sourceKind,
-      sha256,
-      enabled,
-      compatible: this.#compatible(record),
-    }
-    return record.type === "claude-code"
-      ? { ...common, type: record.type, manifest: record.manifest }
-      : {
-          ...common,
-          type: record.type,
-          manifest: record.manifest,
-          approvedDomains: record.approvedDomains,
-          toolApproval: record.toolApproval,
-        }
-  }
-
-  async #installed(): Promise<DesktopPluginRecord[]> {
-    const records = await Promise.all(
-      (await this.#records.listIds()).map((id) => this.#records.read(id).catch(() => null)),
+    return describeInstalledPlugin(
+      record,
+      this.options.appVersion,
+      this.#revocations.reasonFor(record),
     )
-    return records.filter((record) => record !== null)
   }
 
   async #enabledClaudeCodePlugins() {
     if (this.options.membership() !== "active") return []
-    return (await this.#installed()).filter(
-      (record): record is ClaudeCodePluginRecord => record.type === "claude-code" && record.enabled,
+    return (await this.#records.list()).filter(
+      (record): record is ClaudeCodePluginRecord =>
+        record.type === "claude-code" &&
+        record.enabled &&
+        this.#revocations.reasonFor(record) === undefined,
     )
-  }
-
-  async #snapshot(record: CapabilityPluginRecord): Promise<CapabilityPluginSnapshot> {
-    const files = await readCapabilityPluginDirectory(this.#records.packageDirectory(record))
-    const { manifest, modules } = validateCapabilityPluginBundle(files, this.options.appVersion)
-    if (JSON.stringify(manifest) !== JSON.stringify(record.manifest))
-      throw new Error("PLUGIN_RECORD_INVALID")
-    return {
-      manifest,
-      modules,
-      revision: record.revision,
-      approvedDomains: record.approvedDomains,
-      toolApproval: record.toolApproval,
-      ...capabilityPluginStoragePaths(this.options.root, manifest.id),
-    }
   }
 
   #assertInstallPlan(plan: DesktopPluginInstallPlan): void {
@@ -417,6 +402,7 @@ export class CapabilityPluginManager {
     this.#assertActive()
     if (plan.epoch !== this.#epoch) throw new Error("PLUGIN_CONFIRMATION_INVALID")
     plan.market.assertCurrent()
+    this.#revocations.assertPackageAllowed(plan.market.provenance)
   }
 
   async #publish(plan: DesktopPluginInstallPlan): Promise<InstalledDesktopPlugin> {
@@ -433,24 +419,24 @@ export class CapabilityPluginManager {
       return this.#describe(record)
     }
     if (previous?.revision !== plan.previousRevision) throw new Error("PLUGIN_CONFIRMATION_INVALID")
-    const record = { ...createDesktopPluginRecord(plan, previous), packageRevision: true as const }
-    await this.#duringWithdrawal(id, async () => {
+    const recovery = () =>
+      this.#revocations.replacingRevokedVersion(previous, plan.market?.provenance)
+    const record = {
+      ...createDesktopPluginRecord(plan, recovery() ? { ...previous, enabled: false } : previous),
+      packageRevision: true as const,
+    }
+    const assertReplacement = () => {
       assertCurrent()
+      if (recovery() && record.enabled) throw new Error("PLUGIN_CONFIRMATION_INVALID")
+    }
+    await this.#authorization.duringWithdrawal(id, async () => {
+      assertReplacement()
       await this.options.stopInstances(id)
-      await this.#records.replace(previous, record, plan.bundle, assertCurrent)
+      await this.#records.replace(previous, record, plan.bundle, assertReplacement)
     })
+    this.#revocations.forget(id)
     this.#emit()
     return this.#describe(record)
-  }
-
-  async #duringWithdrawal(id: string, work: () => Promise<void>): Promise<void> {
-    this.#withdrawing.add(id)
-    this.#withdrawalEpochs.set(id, (this.#withdrawalEpochs.get(id) ?? 0) + 1)
-    try {
-      await work()
-    } finally {
-      this.#withdrawing.delete(id)
-    }
   }
 
   async #finishRemoval(id: string): Promise<void> {
@@ -458,6 +444,7 @@ export class CapabilityPluginManager {
     if (plan === null) return
     await this.options.stopInstances(id)
     await this.#records.cleanRemoval(id, plan.keepData)
+    this.#revocations.forget(id)
   }
 
   #assertActive(): void {

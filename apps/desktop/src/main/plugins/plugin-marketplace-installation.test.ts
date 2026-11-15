@@ -1,6 +1,6 @@
 // 用两种已校验的合成包覆盖市场披露、扩权确认和更新失败时的旧版本。
 
-import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
@@ -8,7 +8,10 @@ import {
   capabilityPluginManifestFile,
   type CapabilityPluginPermission,
 } from "../../capability-plugin-contract"
-import { CapabilityPluginManager } from "./capability-plugin-manager"
+import {
+  CapabilityPluginManager,
+  type CapabilityPluginManagerOptions,
+} from "./capability-plugin-manager"
 import { pluginBundleFilesDigest, validateDesktopPluginBundle } from "./desktop-plugin-bundle"
 import type { PluginMarketplaceInstallRequest } from "./desktop-plugin-installation"
 
@@ -25,14 +28,15 @@ async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "pigclaude-marketplace-install-"))
   roots.push(root)
   const stopInstances = vi.fn<(pluginId?: string) => Promise<void>>().mockResolvedValue(undefined)
-  const manager = new CapabilityPluginManager({
+  const options: CapabilityPluginManagerOptions = {
     root,
     appVersion: "0.0.5",
     membership: () => "active",
     developerMode: () => false,
     readArchive: async () => new Map(),
     stopInstances,
-  })
+  }
+  const manager = new CapabilityPluginManager(options)
   let available = true
   const assertCurrent = () => {
     if (!available) throw new Error("PLUGIN_MARKETPLACE_SOURCE_CHANGED")
@@ -40,6 +44,7 @@ async function fixture() {
   return {
     root,
     manager,
+    reopen: () => new CapabilityPluginManager(options),
     stopInstances,
     assertCurrent,
     setAvailable(value: boolean) {
@@ -255,4 +260,175 @@ it("第三方独立归档的摘要变化会询问，包括解包正文一致的�
     additionalDomains: [],
   })
   expect((await f.manager.marketplaceInstallations()).get(id)?.artifactDigest).toBe("a".repeat(64))
+})
+
+it("只吊销官方来源的同名仓库与提交，停止旧 Worker 并保留插件偏好", async () => {
+  const f = await fixture()
+  const owner = {}
+  const request = capability("1.0.0", f.assertCurrent)
+  const prepared = await f.manager.prepareMarketplaceInstall(request, owner)
+  const installed = await f.manager.confirm(prepared.confirmationId, owner)
+  await f.manager.setToolApproval(id, "follow_session")
+
+  const revoked = { name: id, repo: "Fixture/Repo", sha: "a".repeat(40), reason: "合成撤回" }
+  await expect(f.manager.applyMarketplaceRevocations("other-source", [revoked])).resolves.toEqual(
+    [],
+  )
+  await expect(
+    f.manager.applyMarketplaceRevocations(sourceId, [
+      { ...revoked, name: "other-entry" },
+      { ...revoked, repo: "Fixture/Other" },
+      { ...revoked, sha: "c".repeat(40) },
+    ]),
+  ).resolves.toEqual([])
+  await expect(f.manager.canInvoke(id, installed.revision)).resolves.toBe(true)
+
+  f.stopInstances.mockRejectedValueOnce(new Error("合成关闭异常"))
+  await expect(f.manager.applyMarketplaceRevocations(sourceId, [revoked])).resolves.toEqual([
+    { name: id, reason: revoked.reason },
+  ])
+  expect(f.stopInstances).toHaveBeenCalledExactlyOnceWith(id)
+  await expect(f.manager.canInvoke(id, installed.revision)).resolves.toBe(false)
+  await expect(f.manager.snapshotEnabled()).resolves.toEqual([])
+  await expect(f.manager.setEnabled(id, true)).rejects.toThrow("PLUGIN_MARKETPLACE_PLUGIN_REVOKED")
+  await expect(f.manager.list()).resolves.toMatchObject([
+    {
+      enabled: false,
+      revision: installed.revision,
+      manifest: { version: "1.0.0" },
+      revocationReason: revoked.reason,
+      toolApproval: "follow_session",
+    },
+  ])
+  await expect(f.manager.applyMarketplaceRevocations(sourceId, [revoked])).resolves.toEqual([])
+  expect(f.stopInstances).toHaveBeenCalledTimes(1)
+})
+
+it("已在执行的能力请求在落盘前看到吊销，重开保留记录且新提交保持禁用", async () => {
+  const f = await fixture()
+  const owner = {}
+  const request = capability("1.0.0", f.assertCurrent)
+  const review = await f.manager.prepareMarketplaceInstall(request, owner)
+  const installed = await f.manager.confirm(review.confirmationId, owner)
+  await f.manager.setToolApproval(id, "follow_session")
+  const [snapshot] = await f.manager.snapshotEnabled()
+  if (!snapshot) throw new Error("缺少已启用模块")
+  await mkdir(snapshot.dataDirectory, { recursive: true })
+  const settings = join(snapshot.dataDirectory, "settings.json")
+  await writeFile(settings, '{"fixture":"retained"}')
+
+  let start = () => {}
+  const started = new Promise<void>((resolve) => {
+    start = resolve
+  })
+  let release = () => {}
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const result = f.manager.runCapability(
+    id,
+    installed.revision,
+    new AbortController().signal,
+    async (assertCurrent) => {
+      start()
+      await pending
+      assertCurrent()
+    },
+  )
+  const denied = expect(result).rejects.toThrow("PLUGIN_CAPABILITY_DENIED")
+  await started
+  const revoked = { name: id, repo: "fixture/repo", sha: "a".repeat(40), reason: "合成撤回旧提交" }
+  const applied = f.manager.applyMarketplaceRevocations(sourceId, [revoked])
+  try {
+    await expect(f.manager.canInvoke(id, installed.revision)).resolves.toBe(false)
+    expect(f.stopInstances).not.toHaveBeenCalled()
+  } finally {
+    release()
+  }
+  await denied
+  await expect(applied).resolves.toEqual([{ name: id, reason: revoked.reason }])
+
+  const reopened = f.reopen()
+  await expect(reopened.canInvoke(id, installed.revision)).resolves.toBe(false)
+  await expect(reopened.setEnabled(id, true)).rejects.toThrow("PLUGIN_MARKETPLACE_PLUGIN_REVOKED")
+  // 同一内容可以在新的已签名提交上重新发布，旧提交仍不允许替换。
+  await expect(reopened.prepareMarketplaceUpdate(request, owner)).rejects.toThrow(
+    "PLUGIN_MARKETPLACE_PLUGIN_REVOKED",
+  )
+  const next = { ...request, provenance: { ...request.provenance, commit: "b".repeat(40) } }
+  await expect(reopened.prepareMarketplaceUpdate(next, owner)).resolves.toEqual({ kind: "updated" })
+  const [updated] = await reopened.list()
+  expect(updated).toMatchObject({
+    enabled: false,
+    toolApproval: "follow_session",
+    installedAt: installed.installedAt,
+  })
+  expect(updated?.revision).not.toBe(installed.revision)
+  expect(updated?.revocationReason).toBeUndefined()
+  await expect(readFile(settings, "utf8")).resolves.toBe('{"fixture":"retained"}')
+  await expect(reopened.setEnabled(id, true)).resolves.toMatchObject({ enabled: true })
+})
+
+it("仓库级吊销挡住候选和新会话，已经交给 Claude SDK 的合成副本保留", async () => {
+  const f = await fixture()
+  const owner = {}
+  const request = fromFiles(
+    new Map([["commands/read.md", Buffer.from("合成 Claude 指令")]]),
+    devPlugin,
+    f.assertCurrent,
+  )
+  const review = await f.manager.prepareMarketplaceInstall(request, owner)
+  await f.manager.confirm(review.confirmationId, owner)
+  const before = join(f.root, "before-revocation")
+  await mkdir(before)
+  await expect(f.manager.stageClaudeCodePlugins(before)).resolves.toEqual([join(before, devPlugin)])
+
+  const revoked = { name: devPlugin, repo: "Fixture/Repo", reason: "合成仓库撤回" }
+  await expect(f.manager.applyMarketplaceRevocations(sourceId, [revoked])).resolves.toEqual([
+    { name: devPlugin, reason: revoked.reason },
+  ])
+  expect(f.stopInstances).not.toHaveBeenCalled()
+  await expect(f.manager.stageClaudeCodePlugins(before)).resolves.toEqual([])
+  await expect(f.manager.claudeCodePluginCommands()).resolves.toEqual([])
+  await expect(readFile(join(before, devPlugin, "commands/read.md"), "utf8")).resolves.toBe(
+    "合成 Claude 指令",
+  )
+  const next = { ...request, provenance: { ...request.provenance, commit: "b".repeat(40) } }
+  await expect(f.manager.prepareMarketplaceUpdate(next, owner)).rejects.toThrow(
+    "PLUGIN_MARKETPLACE_PLUGIN_REVOKED",
+  )
+})
+
+it("吊销写盘失败仍撤回权限，清洁更新也需要用户手动启用", async () => {
+  const f = await fixture()
+  const owner = {}
+  const request = capability("1.0.0", f.assertCurrent)
+  const review = await f.manager.prepareMarketplaceInstall(request, owner)
+  const installed = await f.manager.confirm(review.confirmationId, owner)
+  const path = join(f.root, "installed", id, "record.json")
+  const previous = await readFile(path)
+  f.stopInstances.mockImplementationOnce(async () => {
+    await rm(path)
+    await mkdir(path)
+  })
+  const revoked = { name: id, repo: "fixture/repo", sha: "a".repeat(40), reason: "合成撤回" }
+  try {
+    await expect(f.manager.applyMarketplaceRevocations(sourceId, [revoked])).rejects.toThrow()
+  } finally {
+    await rm(path, { recursive: true, force: true })
+    await writeFile(path, previous)
+  }
+
+  await expect(f.manager.applyMarketplaceRevocations(sourceId, [])).resolves.toEqual([])
+  await expect(f.manager.canInvoke(id, installed.revision)).resolves.toBe(false)
+  await expect(f.manager.setEnabled(id, true)).rejects.toThrow("PLUGIN_MARKETPLACE_PLUGIN_REVOKED")
+  await expect(f.manager.list()).resolves.toMatchObject([
+    { revision: installed.revision, enabled: false, revocationReason: revoked.reason },
+  ])
+  const next = { ...request, provenance: { ...request.provenance, commit: "b".repeat(40) } }
+  await expect(f.manager.prepareMarketplaceUpdate(next, owner)).resolves.toEqual({
+    kind: "updated",
+  })
+  await expect(f.manager.list()).resolves.toMatchObject([{ enabled: false }])
+  expect((await f.manager.list())[0]?.revocationReason).toBeUndefined()
 })

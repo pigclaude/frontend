@@ -9,8 +9,13 @@ import {
   type InstalledCapabilityPlugin,
   type InstalledClaudeCodePlugin,
 } from "../../capability-plugin-contract"
+import {
+  readCapabilityPluginDirectory,
+  validateCapabilityPluginBundle,
+} from "./capability-plugin-bundle"
 import { parseCapabilityPluginManifest } from "./capability-plugin-manifest"
 import { capabilityPluginStoragePaths, isCapabilityPluginId } from "./capability-plugin-paths"
+import type { CapabilityPluginSnapshot } from "./capability-plugin-snapshot"
 import {
   readClaudeCodePluginDirectory,
   synthesizeClaudeCodePlugin,
@@ -57,6 +62,7 @@ const installedFields = {
   sourceKind: z.enum(["directory", "archive"]),
   sha256: z.string().regex(sha256).nullable(),
   enabled: z.boolean(),
+  revocationReason: z.string().min(1).optional(),
   packageRevision: z.literal(true).optional(),
   marketplace: marketProvenance.optional(),
 }
@@ -137,6 +143,33 @@ export class CapabilityPluginRecords {
       return { ...record, manifest }
     } catch {
       throw new Error("PLUGIN_RECORD_INVALID")
+    }
+  }
+
+  /** 列出有效安装记录，单个损坏记录不阻止其余插件使用。 */
+  async list(): Promise<DesktopPluginRecord[]> {
+    const records = await Promise.all(
+      (await this.listIds()).map((id) => this.read(id).catch(() => null)),
+    )
+    return records.filter((record) => record !== null)
+  }
+
+  /** 从记录绑定的私有模块副本建立当前版本沙箱所需的数据。 */
+  async snapshot(
+    record: CapabilityPluginRecord,
+    appVersion: string,
+  ): Promise<CapabilityPluginSnapshot> {
+    const files = await readCapabilityPluginDirectory(this.packageDirectory(record))
+    const { manifest, modules } = validateCapabilityPluginBundle(files, appVersion)
+    if (JSON.stringify(manifest) !== JSON.stringify(record.manifest))
+      throw new Error("PLUGIN_RECORD_INVALID")
+    return {
+      manifest,
+      modules,
+      revision: record.revision,
+      approvedDomains: record.approvedDomains,
+      toolApproval: record.toolApproval,
+      ...capabilityPluginStoragePaths(this.root, manifest.id),
     }
   }
 

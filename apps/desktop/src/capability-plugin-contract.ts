@@ -97,6 +97,8 @@ export type InstalledCapabilityPlugin = {
   toolApproval: CapabilityPluginToolApproval
   enabled: boolean
   compatible: boolean
+  /** 官方撤回该已装版本时提供的理由。 */
+  revocationReason?: string | undefined
 }
 
 /** 安装时披露但不加载的 Claude Code 插件组件类别。 */
@@ -132,7 +134,13 @@ export type ClaudeCodePluginInstallDisclosure = Pick<
 /** Claude Code 插件的安装记录，不含能力插件专用工具权限。 */
 export type InstalledClaudeCodePlugin = Pick<
   InstalledCapabilityPlugin,
-  "revision" | "installedAt" | "sourceKind" | "sha256" | "enabled" | "compatible"
+  | "revision"
+  | "installedAt"
+  | "sourceKind"
+  | "sha256"
+  | "enabled"
+  | "compatible"
+  | "revocationReason"
 > & { type: "claude-code"; manifest: ClaudeCodePluginManifest }
 
 /** 插件页统一列出两种本机安装记录。 */

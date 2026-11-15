@@ -4,6 +4,7 @@ import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron"
 import { keepsMembershipRuntime, type MembershipView } from "@pigclaude/contracts/membership"
 import type { WorkbenchBrowserAction } from "../../workbench-contract"
 import type { SessionTools } from "../session/session-types"
+import { configureAgentBrowserRuntime } from "./agent-browser-network"
 import { WorkbenchBrowsers } from "./browser-surface"
 import { browserSessionTools } from "./browser-tools"
 import { describeWorkbenchGitFailure, gitExitCode } from "./git-command"
@@ -65,6 +66,11 @@ export class WorkbenchIpc {
   readonly #windows = new Map<BrowserWindow, Electron.WebContents>()
   /** 页面报告的未保存文件；退出、关窗和刷新前由这里请页面保存或放弃。 */
   readonly unsaved = new UnsavedFiles()
+
+  /** 桌面启动时在 Chromium 就绪前装配 Agent 网页的网络边界。 */
+  constructor(commandLine?: Parameters<typeof configureAgentBrowserRuntime>[0]) {
+    if (commandLine !== undefined) configureAgentBrowserRuntime(commandLine)
+  }
 
   /** 为一个会话创建独立的本机网页预览工具；close 关掉这个会话打开的浏览器并清空它的分区。 */
   tools(owner: Electron.WebContents, canUse: () => boolean): SessionTools {

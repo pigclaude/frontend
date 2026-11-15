@@ -49,7 +49,6 @@ import { registerScheduledTasksIpc } from "./scheduled-tasks/ipc"
 import { trackDesktopWake } from "./scheduled-tasks/desktop-wake"
 import type { ScheduledTaskService } from "./scheduled-tasks/service"
 import { WorkbenchIpc } from "./workbench/workbench-ipc"
-import { configureAgentBrowserRuntime } from "./workbench/agent-browser-network"
 import { cleanupStaleSessionDirs } from "./session/session-environment"
 import { startSessionStore } from "./session/session-store-startup"
 import type { SessionHost } from "./session/session-host"
@@ -89,7 +88,6 @@ const { rustBaseUrl, authOrigin, websiteOrigin } = readDesktopRuntimeEndpoints(
   process.env,
   bundleMetadata,
 )
-configureAgentBrowserRuntime(app.commandLine)
 const hasSingleInstanceLock = configureRuntimeProfile(app, process.env["PIGCLAUDE_USER_DATA"])
 const startup = createDesktopStartup()
 const sessionDefaults = new SessionDefaultsStore({
@@ -102,7 +100,7 @@ const startProxyRuntime = createXrayRuntimeStarter({
   resourcesPath: app.isPackaged ? process.resourcesPath : undefined,
 })
 let mainWindow: BrowserWindow | null = null
-const workbench = new WorkbenchIpc()
+const workbench = new WorkbenchIpc(app.commandLine)
 let authorizationService: AuthorizationService | null = null
 let authorizationSetupError: string | undefined
 let desktopComposition: DesktopComposition | null = null
@@ -438,6 +436,7 @@ function sendAuthorizationState(event: AuthorizationStateEvent): void {
 function hasActiveMembership(): boolean {
   return desktopComposition?.membershipGate.view().state === "active"
 }
+
 function sendMembershipView(view: MembershipView): void {
   capabilityPlugins?.membershipChanged(view.state)
   notifications.membership(view.state)
@@ -445,6 +444,7 @@ function sendMembershipView(view: MembershipView): void {
   sendToMainWindow("pigclaude:membership-state", view)
   tray?.refresh()
 }
+
 function sendSessionEvent(
   envelope: SessionEnvelope,
   store: ReturnType<typeof startSessionStore>,

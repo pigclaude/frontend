@@ -9,8 +9,13 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk"
 import type { SessionEffort, SessionPermissionMode } from "./session-events"
 
-/** 一次会话允许动态设置的两个 SDK flag；effortLevel 为 null 时恢复模型默认档位。 */
-export type SessionFlagSettings = { effortLevel?: SessionEffort | null; fastMode?: boolean }
+/** 一次会话通过 SDK 控制通道设置的 flag；effortLevel 为 null 时恢复模型默认档位。 */
+export type SessionFlagSettings = {
+  /** 可信会话的转发头和开发凭据只通过进程控制通道写入。 */
+  env?: Record<string, string>
+  effortLevel?: SessionEffort | null
+  fastMode?: boolean
+}
 
 /** SDK query 返回对象的最小端口；真实 Query 和测试假实现都满足。 */
 export type AdapterQuery = AsyncIterable<SDKMessage> & {

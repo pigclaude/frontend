@@ -1,6 +1,7 @@
 // 用随包 CLI 验证完全信任后项目 hook 和 MCP 生效，实际消息仍使用 PigClaude 的合成转发凭据。
 
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises"
+import { spawn } from "node:child_process"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { query } from "@anthropic-ai/claude-agent-sdk"
@@ -77,6 +78,7 @@ it.skipIf(binary === null || process.platform === "win32")(
       }),
     )
     await new ProjectTrustStore(projectTrustFilePath(data)).setTrusted(workspace, true)
+    let headerInArguments = false
     const h = createHarness({
       workspace,
       userDataPath: data,
@@ -91,6 +93,17 @@ it.skipIf(binary === null || process.platform === "win32")(
               prompt,
               options: {
                 ...options,
+                spawnClaudeCodeProcess: (launch) => {
+                  const header = options.env?.ANTHROPIC_CUSTOM_HEADERS
+                  headerInArguments =
+                    header !== undefined && launch.args.some((arg) => arg.includes(header))
+                  return spawn(launch.command, launch.args, {
+                    cwd: launch.cwd,
+                    env: launch.env,
+                    signal: launch.signal,
+                    stdio: ["pipe", "pipe", "pipe"],
+                  })
+                },
                 env: {
                   ...options.env,
                   HOME: home,
@@ -108,7 +121,7 @@ it.skipIf(binary === null || process.platform === "win32")(
         permissionMode: "default",
         model: "sonnet",
       })
-      await h.host.send(sessionId, { text: "trusted-project-synthetic-turn" })
+      await h.host.send(sessionId, { text: "trusted-project-synthetic-turn", effort: "low" })
       await vi.waitFor(
         () => {
           const modelRequest = gateway.messages.find(({ body }) =>
@@ -127,6 +140,7 @@ it.skipIf(binary === null || process.platform === "win32")(
         locale: "America/Los_Angeles",
         proxy: "",
       })
+      expect(headerInArguments).toBe(false)
       await expect(readFile(mcpMarker, "utf8")).resolves.toBe("started")
       await expect(stat(blockedHelper)).rejects.toMatchObject({ code: "ENOENT" })
     } finally {

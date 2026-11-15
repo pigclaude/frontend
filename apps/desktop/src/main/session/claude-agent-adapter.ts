@@ -14,6 +14,7 @@ import {
 } from "./claude-query"
 import { buildQueryOptions, type ClaudeAgentStartOptions } from "./claude-query-options"
 import { normalizeSdkMessage } from "./claude-sdk-messages"
+import { trustedCredentialEnvironment } from "./trusted-project-settings"
 import { PromptStream } from "./prompt-stream"
 import { SessionClaudeLaunch } from "./session-claude-launch"
 import { classifyDaemonError } from "./session-error-mapping"
@@ -46,6 +47,7 @@ export class ClaudeAgentAdapter {
   readonly #modelsTimeoutMs: number
   #query: AdapterQuery | null = null
   #commandVersion = 0
+  #credentialEnv: Record<string, string> | undefined
   #reportedCommands: string | null = null
   #terminalCommands: readonly string[] = []
   #commands: readonly AgentCommand[] | null = null
@@ -96,6 +98,11 @@ export class ClaudeAgentAdapter {
       query = await this.#queryFn({ prompt, options: sdkOptions })
       this.#query = query
       if (this.#process !== null) await this.#process.ready()
+      const trusted = options.projectConfiguration?.trusted
+      if (trusted !== undefined && !this.#stopped) {
+        this.#credentialEnv = trustedCredentialEnvironment(options.env, trusted)
+        await query.applyFlagSettings({ env: this.#credentialEnv })
+      }
     } catch (error) {
       if (!this.#stopped) {
         this.#emitError(error)
@@ -198,7 +205,9 @@ export class ClaudeAgentAdapter {
 
   /** 等 CLI 确认更新当前会话的思考深度与快速模式；query 不可用时抛错。 */
   async applyFlagSettings(settings: SessionFlagSettings): Promise<void> {
-    await this.#requireQuery().applyFlagSettings(settings)
+    await this.#requireQuery().applyFlagSettings(
+      this.#credentialEnv === undefined ? settings : { ...settings, env: this.#credentialEnv },
+    )
   }
 
   /** 用 summary 模式查询当前上下文占用，原样返回 SDK 的回复；会话未启动或已停止时抛错。 */

@@ -6,6 +6,7 @@ import { join } from "node:path"
 import { expect, it } from "vitest"
 import { ProjectTrustStore, projectTrustFilePath } from "../runtime/project-trust-store"
 import { ClaudeAgentAdapter } from "./claude-agent-adapter"
+import type { SessionFlagSettings } from "./claude-query"
 import { capture, FakeQuery, type CapturedQuery } from "./claude-agent-adapter-fixtures"
 import { placeholderOAuthToken } from "./session-environment"
 import { createHarness } from "./session-host-fixtures"
@@ -16,12 +17,23 @@ it("可信项目使用原生设置来源，撤销后新启动恢复隔离，当�
   const userDataPath = join(root, "data")
   const trust = new ProjectTrustStore(projectTrustFilePath(userDataPath))
   const captured: CapturedQuery[] = []
+  const updates: SessionFlagSettings[] = []
   const h = createHarness({
     workspace,
     userDataPath,
     useRealEnvironment: true,
     createAdapter: (onEvent) =>
-      new ClaudeAgentAdapter({ onEvent, queryFn: capture(new FakeQuery(), captured) }),
+      new ClaudeAgentAdapter({
+        onEvent,
+        queryFn: capture(
+          Object.assign(new FakeQuery(), {
+            applyFlagSettings: async (flags: SessionFlagSettings) => {
+              updates.push(flags)
+            },
+          }),
+          captured,
+        ),
+      }),
   })
   try {
     await mkdir(join(workspace, ".claude"), { recursive: true })
@@ -44,7 +56,7 @@ it("可信项目使用原生设置来源，撤销后新启动恢复隔离，当�
         env: {
           ANTHROPIC_BASE_URL: "http://127.0.0.1:47821",
           AntHropic_Base_Url: "http://127.0.0.1:47821",
-          ANTHROPIC_CUSTOM_HEADERS: `x-pigclaude-session: ${h.runtime.sessionToken}`,
+          ANTHROPIC_CUSTOM_HEADERS: "",
           CLAUDE_CODE_OAUTH_TOKEN: placeholderOAuthToken,
           ANTHROPIC_API_KEY: "",
           ANTHROPIC_AUTH_TOKEN: "",
@@ -54,6 +66,12 @@ it("可信项目使用原生设置来源，撤销后新启动恢复隔离，当�
           HTTPS_PROXY: "",
           TZ: "America/Los_Angeles",
         },
+      },
+    })
+    expect(updates).toContainEqual({
+      env: {
+        ANTHROPIC_CUSTOM_HEADERS: `x-pigclaude-session: ${h.runtime.sessionToken}`,
+        ANTHROPIC_AUTH_TOKEN: "",
       },
     })
     expect(trusted?.settings).not.toHaveProperty("env.USER_PROJECT_TAG")

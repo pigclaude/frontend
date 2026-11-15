@@ -39,6 +39,7 @@ const cloudSwitches = [
   "CLAUDE_CODE_USE_VERTEX",
   "CLAUDE_CODE_USE_FOUNDRY",
 ] as const
+const credentialEnvNames = new Set(["ANTHROPIC_CUSTOM_HEADERS", "ANTHROPIC_AUTH_TOKEN"])
 
 /** 检查 CLI 会读取的项目配置只来自项目范围，并收集需要屏蔽的原始键名。 */
 export async function inspectTrustedSettings(
@@ -81,7 +82,9 @@ export function trustedFlagSettings(
   env: Readonly<Record<string, string>>,
   project: TrustedProjectSettings,
 ): Exclude<Options["settings"], string | undefined> {
-  const fixed = new Map<string, string>(fixedNames.map((key) => [key, env[key] ?? ""]))
+  const fixed = new Map<string, string>(
+    fixedNames.map((key) => [key, credentialEnvNames.has(key) ? "" : (env[key] ?? "")]),
+  )
   fixed.set("ANTHROPIC_API_KEY", "")
   for (const key of cloudSwitches) fixed.set(key, "0")
   for (const key of project.envNames) {
@@ -99,6 +102,17 @@ export function trustedFlagSettings(
       ? {}
       : { enabledPlugins: Object.fromEntries(project.pluginNames.map((id) => [id, false])) }),
   }
+}
+
+/** 启动参数只含空的凭据占位；真实会话头经 SDK 控制通道注入。 */
+export function trustedCredentialEnvironment(
+  env: Readonly<Record<string, string>>,
+  project: TrustedProjectSettings,
+): Record<string, string> {
+  const aliases = project.envNames.filter((key) => credentialEnvNames.has(key.toUpperCase()))
+  return Object.fromEntries(
+    [...credentialEnvNames, ...aliases].map((key) => [key, env[key.toUpperCase()] ?? ""]),
+  )
 }
 
 async function readSettings(path: string): Promise<Record<string, unknown> | null> {

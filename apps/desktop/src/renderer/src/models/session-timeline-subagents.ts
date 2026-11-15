@@ -5,6 +5,7 @@
 // 没有结果、按中断收尾。
 
 import type { ThreadEvent } from "@pigclaude/ui-contracts"
+import { maskBrowserSecrets } from "../../../main/session/session-browser-secrets"
 import type { SessionHostEvent } from "../../../main/session/session-types"
 
 type MessageEvent = Extract<SessionHostEvent, { type: "message" }>
@@ -88,7 +89,11 @@ export class SubagentCards {
       if (block.type === "tool-use") {
         if (this.#tools.has(block.id)) continue
         this.#tools.add(block.id)
-        const payload = { toolCallId: block.id, name: block.name, input: block.input }
+        const payload = {
+          toolCallId: block.id,
+          name: block.name,
+          input: maskBrowserSecrets(block.name, block.input),
+        }
         this.#push("tool.started", { ...payload, parentToolUseId }, at)
         continue
       }

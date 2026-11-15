@@ -1,7 +1,7 @@
 // 负责给浏览器输入工具的参数里写进密码框的内容打码：单个输入（ref、selector、text）和
-// 表单填写（fields 里的 name、type、value）。只认参数里能看出来的密码标记；
-// 只有元素 ref、没有任何密码标记的输入看不出是不是密码框。
+// 表单填写（fields 里的 name、type、value）。内置 browser_type 的不透明引用在审批前也需保护文字。
 
+import { browserTypeToolName } from "../../browser-permission-contract"
 import { isPlainRecord } from "./session-store-guards"
 
 /** 密码打码后的固定占位，不保留原文长度。 */
@@ -21,13 +21,13 @@ const valueKeys = ["text", "value", "values", "keys", "input", "content"]
  */
 export function maskBrowserSecrets<T>(toolName: string, input: T): T {
   if (!/^browser_/i.test(toolName.replace(mcpPrefix, ""))) return input
-  return maskValue(input) as T
+  return maskValue(input, toolName === browserTypeToolName) as T
 }
 
-function maskValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(maskValue)
+function maskValue(value: unknown, opaqueTarget = false): unknown {
+  if (Array.isArray(value)) return value.map((item) => maskValue(item))
   if (!isPlainRecord(value)) return value
-  const target = isPasswordTarget(value)
+  const target = opaqueTarget || isPasswordTarget(value)
   return Object.fromEntries(
     Object.entries(value).map(([key, item]) => {
       if (typeof item === "string" && (secretKeys.test(key) || (target && valueKeys.includes(key))))

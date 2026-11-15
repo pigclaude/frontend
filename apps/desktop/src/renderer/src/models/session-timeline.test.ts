@@ -2,6 +2,7 @@
 // 带真实时间；消息和工具按 id 去重，权限请求与回答、换号和各种结束方式。
 
 import { describe, expect, it } from "vitest"
+import { browserTypeToolName } from "../../../browser-permission-contract"
 import type { SessionHostEvent } from "../../../main/session/session-types"
 import { receive } from "../test-support/session-envelopes"
 import { sessionRecord } from "./session-event-store"
@@ -314,6 +315,40 @@ describe("projectTimeline", () => {
     ])
     expect(approvals[3]?.payload).toEqual({ id: "req-2", decision: "deny" })
     expect(approvals[4]?.payload).not.toHaveProperty("decision")
+  })
+
+  it("浏览器输入的工具动作和审批摘要不直接显示当前审批卡的文字", () => {
+    const unverified = "Synthetic password fixture"
+    const input = { ref: "e7", text: unverified, clear: true }
+    const state = feed(
+      sent(),
+      [started],
+      [
+        message("start-browser-input", [
+          { type: "tool-use", name: browserTypeToolName, id: "type-1", input },
+        ]),
+      ],
+      [
+        message(
+          "start-owned-input",
+          [{ type: "tool-use", name: browserTypeToolName, id: "type-2", input }],
+          { parentToolUseId: "agent-1" },
+        ),
+      ],
+      [
+        {
+          type: "permission",
+          toolName: browserTypeToolName,
+          requestId: "browser-input-permission",
+          input,
+          subagent: null,
+        },
+      ],
+    )
+    const timeline = JSON.stringify(project(state).events)
+    expect(timeline).not.toContain(unverified)
+    expect(timeline).toContain("[已打码]")
+    expect(timeline).toContain("browser-input-permission")
   })
 
   it("settles unanswered permissions when the turn ends, as timeouts when it timed out", () => {

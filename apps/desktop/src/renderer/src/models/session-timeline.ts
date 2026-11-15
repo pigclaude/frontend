@@ -8,6 +8,7 @@
 
 import type { ThreadEvent } from "@pigclaude/ui-contracts"
 import { timelineNotice } from "../../../main/session/session-notice"
+import { maskBrowserSecrets } from "../../../main/session/session-browser-secrets"
 import type { SessionHostEvent } from "../../../main/session/session-types"
 import { latestSessionContext } from "./session-context-usage"
 import { sessionErrorText } from "./session-errors"
@@ -144,7 +145,11 @@ function projectRun(
             if (!subagents.start(block.id, block.name, block.input, at)) {
               push(
                 "tool.started",
-                { toolCallId: block.id, name: block.name, input: block.input },
+                {
+                  toolCallId: block.id,
+                  name: block.name,
+                  input: maskBrowserSecrets(block.name, block.input),
+                },
                 at,
               )
             }
@@ -200,7 +205,7 @@ function projectRun(
         const card = cards.get(event.requestId)
         if (card === undefined) break
         cards.delete(event.requestId)
-        const input = card.input
+        const input = maskBrowserSecrets(card.toolName, card.input)
         push(
           "approval.requested",
           {

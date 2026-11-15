@@ -37,13 +37,18 @@ const timelineRules: { [K in SessionHostEvent["type"]]: TimelineRule<EventOf<K>>
     ...event,
     content: redactString(event.content, "event.content", marks),
   }),
-  permission: (event, marks) => ({
-    ...event,
-    input: redactToolInput(event.toolName, event.input, "event.input", marks),
-    ...(event.suggestions === undefined
-      ? {}
-      : { suggestions: redactUnknown(event.suggestions, "event.suggestions", marks) }),
-  }),
+  permission: (event, marks) => {
+    const browser = event.browser === undefined ? undefined : { ...event.browser }
+    if (browser?.kind === "type" && browser.isPassword) delete browser.characterCount
+    return {
+      ...event,
+      input: redactToolInput(event.toolName, event.input, "event.input", marks),
+      ...(browser === undefined ? {} : { browser }),
+      ...(event.suggestions === undefined
+        ? {}
+        : { suggestions: redactUnknown(event.suggestions, "event.suggestions", marks) }),
+    }
+  },
   question: (event, marks) => ({
     ...event,
     questions: event.questions.map((question, index) => {

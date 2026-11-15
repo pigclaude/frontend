@@ -1,7 +1,9 @@
 // 负责把 SDK 消息归一化为应用的会话事件：只取界面和用量需要的字段，忽略不认识的消息和内容块。
 
 import type { ModelUsage, SDKMessage } from "@anthropic-ai/claude-agent-sdk"
+import { browserTypeToolName } from "../../browser-permission-contract"
 import { readBackgroundTaskSignal } from "./background-tasks"
+import { maskBrowserSecrets } from "./session-browser-secrets"
 import { subagentRef } from "./subagent-tasks"
 import { readTaskSignal } from "./task-signals"
 import type {
@@ -192,11 +194,12 @@ function mapContentBlocks(content: unknown): SessionContentBlock[] {
     } else if (block.type === "thinking" && typeof block.thinking === "string") {
       blocks.push({ type: "thinking", text: block.thinking })
     } else if (block.type === "tool_use" && typeof block.id === "string") {
+      const name = typeof block.name === "string" ? block.name : "unknown"
       blocks.push({
         type: "tool-use",
         id: block.id,
-        name: typeof block.name === "string" ? block.name : "unknown",
-        input: block.input,
+        name,
+        input: name === browserTypeToolName ? maskBrowserSecrets(name, block.input) : block.input,
       })
     }
   }

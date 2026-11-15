@@ -1,7 +1,7 @@
 // 隔离世界里的快照采集脚本。引用跟随元素对象，表只活在隔离世界的全局对象里。
 
-/** 返回可见标题、正文和元素元数据，或只读取一个已经登记的元素。 */
-export const browserSnapshotWorld = String.raw`(({ generation, ref }) => {
+/** 返回可见页面快照，或在隔离世界核对已登记元素与批准的点击坐标。 */
+export const browserSnapshotWorld = String.raw`(({ generation, ref, click }) => {
   const key = Symbol.for("pigclaude.agent-browser-refs");
   let catalog = globalThis[key];
   if (!catalog || catalog.generation !== generation) {
@@ -21,7 +21,7 @@ export const browserSnapshotWorld = String.raw`(({ generation, ref }) => {
   ].join(", ");
   const clean = (value, limit) => (value || "").replace(/\s+/g, " ").trim().slice(0, limit);
   const hasViewport = innerWidth > 0 && innerHeight > 0;
-  const containers = new WeakMap();
+  let containers = new WeakMap();
   const clips = (overflow) => overflow === "hidden" || overflow === "clip";
   const scrolls = (overflow) => overflow === "auto" || overflow === "scroll";
   const hasClipping = (box) => box.clipX || box.clipY;
@@ -140,6 +140,34 @@ export const browserSnapshotWorld = String.raw`(({ generation, ref }) => {
     };
   }
 
+  async function clickPoint(element) {
+    const sameTarget = () => {
+      if (!interactive(element)) return false;
+      const current = describe(element, ref);
+      return current.role === click.role && current.name === click.name && current.type === click.type;
+    };
+    if (!sameTarget()) return null;
+    element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+    // 确保滚动后至少绘制过一帧，再把当前坐标交给 Chromium 的原生输入路由。
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    containers = new WeakMap();
+    if (!sameTarget()) return null;
+    const bounds = element.getBoundingClientRect();
+    const left = Math.max(0, bounds.left);
+    const right = Math.min(innerWidth, bounds.right);
+    const top = Math.max(0, bounds.top);
+    const bottom = Math.min(innerHeight, bounds.bottom);
+    if (right <= left || bottom <= top) return { blocked: true };
+    const x = (left + right) / 2;
+    const y = (top + bottom) / 2;
+    const hit = document.elementFromPoint(x, y);
+    if (!hit || !element.contains(hit)) return { blocked: true };
+    for (let node = hit; node !== element; node = node.parentElement) {
+      if (node.matches(selector) && interactive(node)) return { blocked: true };
+    }
+    return { x, y };
+  }
+
   function visibleBodyText() {
     if (!document.body) return "";
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -175,6 +203,7 @@ export const browserSnapshotWorld = String.raw`(({ generation, ref }) => {
 
   if (ref !== undefined) {
     const element = catalog.byRef.get(ref);
+    if (click !== undefined) return element ? clickPoint(element) : null;
     return element && interactive(element) ? describe(element, ref) : null;
   }
 

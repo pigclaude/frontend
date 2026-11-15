@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto"
 import type { WebContents } from "electron"
+import { BrowserActionError } from "./browser-action-request"
 import { browserSnapshotWorld } from "./browser-snapshot-world"
 
 const snapshotWorld = 1002
@@ -14,6 +15,9 @@ export type AgentBrowserElement = {
   type?: string
 }
 
+/** 目标元素在当前主帧视口内实际命中的 CSS 像素。 */
+export type AgentBrowserPoint = { x: number; y: number }
+
 type Heading = { level: number; text: string }
 
 /** 单份快照的可见页面内容，不含元素对象或输入值。 */
@@ -24,7 +28,7 @@ export type AgentBrowserSnapshot = {
 }
 
 /** 引用已因导航、元素消失或更新的快照而失效。 */
-export class StaleBrowserReference extends Error {
+export class StaleBrowserReference extends BrowserActionError {
   readonly code = "WORKBENCH_BROWSER_REF_STALE"
 
   /** 错误内容给工具调用者指出恢复步骤。 */
@@ -54,6 +58,21 @@ export class BrowserReferences {
     this.#generation = randomUUID()
   }
 
+  /** 捕获文档世代和当前地址，供批准后与其他继续点同步复核。 */
+  documentGuard(): () => void {
+    if (this.contents.isDestroyed()) throw new StaleBrowserReference()
+    const generation = this.#generation
+    const url = this.contents.getURL()
+    return () => {
+      if (
+        this.contents.isDestroyed() ||
+        this.#generation !== generation ||
+        this.contents.getURL() !== url
+      )
+        throw new StaleBrowserReference()
+    }
+  }
+
   /** 从当前文档读取可见内容与元素，把旧帧的结果拦在主进程。 */
   async snapshot(): Promise<AgentBrowserSnapshot> {
     const value = await this.#read()
@@ -71,29 +90,50 @@ export class BrowserReferences {
 
   /** 只解析当前快照里的引用。失效后请求调用者重新拍快照。 */
   async resolve(ref: string): Promise<AgentBrowserElement> {
-    if (ref.length > 64 || !ref.startsWith(`${this.#generation}:`))
-      throw new StaleBrowserReference()
+    this.#assertRef(ref)
     const value = await this.#read(ref)
     if (!isElement(value)) throw new StaleBrowserReference()
     return value
   }
 
-  async #read(ref?: string): Promise<unknown> {
-    if (this.contents.isDestroyed()) throw new StaleBrowserReference()
+  /** 在隔离世界核对已批准的元数据、滚动到中央，并只接受实际打到该元素的点。 */
+  async clickPoint(target: AgentBrowserElement): Promise<AgentBrowserPoint> {
+    this.#assertRef(target.ref)
+    const value = await this.#read(target.ref, target)
+    if (record(value) && value.blocked === true)
+      throw new BrowserActionError(
+        "The approved element is covered or outside the viewport. Please take a new browser snapshot.",
+      )
+    if (
+      !record(value) ||
+      typeof value.x !== "number" ||
+      !Number.isFinite(value.x) ||
+      value.x < 0 ||
+      typeof value.y !== "number" ||
+      !Number.isFinite(value.y) ||
+      value.y < 0
+    )
+      throw new StaleBrowserReference()
+    return { x: value.x, y: value.y }
+  }
+
+  #assertRef(ref: string): void {
+    if (ref.length > 64 || !ref.startsWith(`${this.#generation}:`))
+      throw new StaleBrowserReference()
+  }
+
+  async #read(ref?: string, click?: AgentBrowserElement): Promise<unknown> {
+    const assertCurrent = this.documentGuard()
     const generation = this.#generation
-    const url = this.contents.getURL()
-    const live = (): boolean =>
-      !this.contents.isDestroyed() &&
-      this.#generation === generation &&
-      this.contents.getURL() === url
     try {
       const value: unknown = await this.contents.executeJavaScriptInIsolatedWorld(snapshotWorld, [
-        { code: `${browserSnapshotWorld}(${JSON.stringify({ generation, ref })})` },
+        { code: `${browserSnapshotWorld}(${JSON.stringify({ generation, ref, click })})` },
       ])
-      if (!live()) throw new StaleBrowserReference()
+      assertCurrent()
       return value
     } catch (error) {
-      if (ref !== undefined || !live()) throw new StaleBrowserReference()
+      if (ref !== undefined) throw new StaleBrowserReference()
+      assertCurrent()
       throw error
     }
   }

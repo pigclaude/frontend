@@ -489,16 +489,118 @@ async function snapshotProbe() {
   }
 }
 
+async function actionProbe() {
+  let visits = 0
+  const local = await listen("127.0.0.1", (request, response) => {
+    visits += 1
+    const name = request.url === "/second" ? "Second fixture" : "First fixture"
+    response.setHeader("Content-Type", "text/html")
+    response.end(`<!doctype html><title>${name}</title><h1>${name}</h1>
+      <a href="/first">Return to first</a>
+      <div style="height:900px"></div>
+      <button onclick="if(event.isTrusted) document.querySelector('output').textContent='Clicked fixture'">Count action</button>
+      <output>Waiting for the fixture click</output>`)
+  })
+  const owner = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
+  const browsers = new WorkbenchBrowsers()
+  const id = "agent-action-probe"
+  const first = local.url + "/first"
+  const second = local.url + "/second"
+  const events = []
+  const send = owner.webContents.send.bind(owner.webContents)
+  owner.webContents.send = (channel, event) => {
+    if (channel === "pigclaude:workbench-event" && event.id === id) events.push(event)
+    send(channel, event)
+  }
+  try {
+    await owner.loadURL("data:text/html,<title>Workbench fixture</title>")
+    const prepared = await browsers.prepareAgentNavigation(owner, id, { url: first })
+    assert.deepEqual(prepared.context, { kind: "navigate", action: "url", url: first })
+    assert.equal(visits, 0)
+    assert.equal(events.length, 0)
+    const opened = JSON.parse(await prepared.execute())
+    assert.equal(opened.title, "First fixture")
+    assert.deepEqual(opened.headings, [{ level: 1, text: "First fixture" }])
+    assert(!opened.text.includes("Clicked fixture"))
+    browsers.present(owner, id, { x: 0, y: 0, width: 800, height: 600, scale: 1 })
+    owner.showInactive()
+    const ready = await waitForSnapshot(browsers, owner, id, (page) =>
+      page.elements.some((element) => element.name === "Count action"),
+    )
+    const control = ready.elements.find((element) => element.name === "Count action")
+    assert(control)
+    const targetContents = webContents
+      .getAllWebContents()
+      .find((contents) => contents.getURL() === first)
+    assert(targetContents)
+    const click = await browsers.prepareAgentClick(owner, id, control.ref)
+    assert.deepEqual(click.context, {
+      kind: "click",
+      url: first,
+      ref: control.ref,
+      role: "button",
+      name: "Count action",
+    })
+    assert(!JSON.parse(await browsers.agentPage(owner, id)).text.includes("Clicked fixture"))
+    assert.equal(await targetContents.executeJavaScript("scrollY"), 0)
+    const clicked = JSON.parse(await click.execute())
+    assert(clicked.text.includes("Clicked fixture"), clicked.text)
+    assert(clicked.elements.some((element) => element.name === "Count action"))
+    const pages = events.filter((event) => event.type === "browser-page").map((event) => event.page)
+    assert(
+      pages.some((page) => page.activity?.kind === "navigate" && page.activity.target === first),
+    )
+    assert(
+      pages.some(
+        (page) => page.activity?.kind === "click" && page.activity.target === "Count action",
+      ),
+    )
+    assert.equal(pages.at(-1).activity, undefined)
+
+    const changed = await browsers.prepareAgentClick(owner, id, control.ref)
+    await targetContents.executeJavaScript(
+      "document.querySelector('button').textContent = 'Renamed fixture action'",
+    )
+    await assert.rejects(changed.execute(), /new browser snapshot/i)
+    const stale = await browsers.prepareAgentClick(owner, id, control.ref)
+    const next = await browsers.prepareAgentNavigation(owner, id, { url: second })
+    assert.equal(JSON.parse(await next.execute()).title, "Second fixture")
+    await assert.rejects(stale.execute(), /new browser snapshot/i)
+    const back = await browsers.prepareAgentNavigation(owner, id, { action: "back" })
+    assert.equal(back.context.url, first)
+    assert.equal(JSON.parse(await back.execute()).url, first)
+    const forward = await browsers.prepareAgentNavigation(owner, id, { action: "forward" })
+    assert.equal(forward.context.url, second)
+    assert.equal(JSON.parse(await forward.execute()).url, second)
+    const reload = await browsers.prepareAgentNavigation(owner, id, { action: "reload" })
+    assert.equal(reload.context.url, second)
+    const reloaded = JSON.parse(await reload.execute())
+    assert.equal(reloaded.title, "Second fixture")
+    const link = reloaded.elements.find((element) => element.name === "Return to first")
+    assert(link)
+    const follow = await browsers.prepareAgentClick(owner, id, link.ref)
+    const followed = JSON.parse(await follow.execute())
+    assert.equal(followed.url, first)
+    assert.deepEqual(followed.headings, [{ level: 1, text: "First fixture" }])
+    process.stdout.write("PASS approved agent navigation and native pointer click\n")
+  } finally {
+    browsers.closeWindow(owner)
+    owner.destroy()
+    local.close()
+  }
+}
+
 app
   .whenReady()
   .then(async () => {
-    if (!process.argv.includes("--snapshot-only")) {
+    if (!process.argv.includes("--snapshot-only") && !process.argv.includes("--actions-only")) {
       await verifyPostPopupBlocked()
       await verifyAgentWebRtcBlocked()
       await verifyMalformedAllowlistBlocked()
       await probe()
     }
-    await snapshotProbe()
+    if (!process.argv.includes("--actions-only")) await snapshotProbe()
+    if (!process.argv.includes("--snapshot-only")) await actionProbe()
   })
   .then(
     () => app.exit(0),

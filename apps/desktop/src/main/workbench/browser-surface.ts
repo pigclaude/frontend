@@ -1,10 +1,11 @@
 // 内置浏览器使用独立沙箱和 WebContentsView，页面没有桌面 preload 或 Node 能力。
-import { BrowserWindow, WebContentsView, session, shell, type WebContents } from "electron"
+import { BrowserWindow, WebContentsView, shell } from "electron"
 import { randomUUID } from "node:crypto"
+import type { BrowserNavigationTarget } from "../../browser-permission-contract"
 import type {
   WorkbenchBrowserAction,
+  WorkbenchBrowserActivity,
   WorkbenchBrowserBounds,
-  WorkbenchBrowserElement,
   WorkbenchBrowserPage,
   WorkbenchEvent,
 } from "../../workbench-contract"
@@ -14,101 +15,56 @@ import {
   type AgentBrowserNetwork,
 } from "./agent-browser-network"
 import {
+  assertBrowserActionActive,
+  awaitBrowserAction,
+  clickBrowserPoint,
+  navigateBrowserHistory,
+  planBrowserNavigation,
+  preparedBrowserAction,
+} from "./browser-action-execution"
+import { BrowserActionError, type PreparedBrowserAction } from "./browser-action-request"
+import {
+  agentSession,
+  allowsWorkbenchBrowserAddress,
+  browserSession,
+  configureContents,
+  isWorkbenchLoopback,
+  workbenchAgentBrowserUrl,
+  workbenchBrowserUrl,
+} from "./browser-context"
+import { pickWorkbenchBrowserElement } from "./browser-element-picker"
+import {
   BrowserReferences,
   StaleBrowserReference,
   type AgentBrowserElement,
 } from "./browser-references"
 
-const partition = "persist:pigclaude-workbench-browser"
-const loopback = new Set(["localhost", "127.0.0.1", "[::1]"])
+export { workbenchAgentBrowserUrl, workbenchBrowserUrl } from "./browser-context"
+
 const maxBrowsers = 12
 type Surface = {
   window: BrowserWindow
   view: WebContentsView
   error?: WorkbenchBrowserPage["error"]
   crashed?: WorkbenchBrowserPage["crashed"]
+  activity?: WorkbenchBrowserActivity
   pickVersion: number
   agent: AgentBrowserNetwork | null
   references: BrowserReferences | null
   attached: boolean
   scale: number
 }
+type AgentSurface = Surface & { agent: AgentBrowserNetwork; references: BrowserReferences }
 
-/** 解析允许的浏览器地址，只接受不带内嵌凭据的 HTTP 或 HTTPS。 */
-export function workbenchBrowserUrl(value: unknown): URL {
-  if (typeof value !== "string" || value.length > 4096) throw new Error("URL_NOT_ALLOWED")
-  const url = new URL(value)
-  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) {
-    throw new Error("URL_NOT_ALLOWED")
-  }
-  return url
+function isAgentSurface(entry: Surface): entry is AgentSurface {
+  return entry.agent !== null && entry.references !== null
 }
 
-/** Agent 浏览器在申请审批和打开页面前都使用既有的回环地址限制。 */
-export function workbenchAgentBrowserUrl(value: unknown): URL {
-  const url = workbenchBrowserUrl(value)
-  if (!isAgentBrowserAddress(url.href)) throw new Error("PREVIEW_URL_NOT_ALLOWED")
-  return url
-}
-
-function allowed(target: string, local: boolean): boolean {
-  try {
-    const url = workbenchBrowserUrl(target)
-    return !local || loopback.has(url.hostname)
-  } catch {
-    return false
-  }
-}
-
-function configureContents(
-  contents: WebContents,
-  local = false,
-  agent?: AgentBrowserNetwork,
-  openInSameTab?: (url: string) => void,
-): void {
-  if (agent) contents.setWebRTCIPHandlingPolicy("disable_non_proxied_udp")
-  function canNavigate(target: string, isFrame = false): boolean {
-    if (agent) return (isFrame && target === "about:srcdoc") || isAgentBrowserAddress(target)
-    return (isFrame && target === "about:blank") || allowed(target, local)
-  }
-  contents.on("will-navigate", (event) => {
-    if (!canNavigate(event.url)) {
-      agent?.markBlocked()
-      event.preventDefault()
-    }
-  })
-  contents.on("will-redirect", (event) => {
-    if (!canNavigate(event.url, !event.isMainFrame)) {
-      agent?.markBlocked()
-      event.preventDefault()
-    }
-  })
-  contents.on("will-frame-navigate", (event) => {
-    if (!event.isMainFrame && !canNavigate(event.url, true)) {
-      agent?.markBlocked()
-      event.preventDefault()
-    }
-  })
-  contents.setWindowOpenHandler(({ url, postBody }) => {
-    if (agent && postBody === undefined && isAgentBrowserAddress(url)) openInSameTab?.(url)
-    else agent?.markBlocked()
-    return { action: "deny" }
-  })
-}
-
-function browserSession() {
-  return restrictedSession(partition)
-}
-
-function agentSession(id: string) {
-  return restrictedSession("pigclaude-workbench-agent-" + id)
-}
-
-function restrictedSession(name: string) {
-  const value = session.fromPartition(name)
-  value.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
-  value.setPermissionCheckHandler(() => false)
-  return value
+function resetBrowserNavigation(entry: Surface): void {
+  entry.error = undefined
+  entry.crashed = undefined
+  entry.pickVersion += 1
+  entry.references?.invalidate()
 }
 
 /** 管理浏览器标签和本机预览窗口；内容尺寸由受信主窗口报告。 */
@@ -122,10 +78,7 @@ export class WorkbenchBrowsers {
     const entry = this.#entry(window, id)
     if (entry.agent && !isAgentBrowserAddress(url.href)) throw new Error("PREVIEW_URL_NOT_ALLOWED")
     await entry.agent?.ready
-    entry.error = undefined
-    entry.crashed = undefined
-    entry.pickVersion += 1
-    entry.references?.invalidate()
+    resetBrowserNavigation(entry)
     try {
       await entry.view.webContents.loadURL(url.href)
     } catch (error: unknown) {
@@ -183,6 +136,78 @@ export class WorkbenchBrowsers {
     const element = await entry.references.resolve(ref)
     if (this.#surfaces.get(id) !== entry) throw new StaleBrowserReference()
     return { ...element, url }
+  }
+
+  /** 读取导航的实际目标，批准后才创建或移动会话浏览器。 */
+  async prepareAgentNavigation(
+    window: BrowserWindow,
+    id: string,
+    target: BrowserNavigationTarget,
+  ): Promise<PreparedBrowserAction> {
+    const original = this.#agentSurface(window, id)
+    const verifyDocument = original?.references.documentGuard()
+    const { context, index } = planBrowserNavigation(original?.view.webContents, target)
+    const intent = context.action === "url" ? { url: context.url } : { action: context.action }
+    return preparedBrowserAction(context, async (signal) => {
+      if (signal) assertBrowserActionActive(signal)
+      if (this.#agentSurface(window, id) !== original) throw new StaleBrowserReference()
+      verifyDocument?.()
+      if (!original && this.#surfaces.size >= maxBrowsers)
+        throw new BrowserActionError("Close another browser tab before opening an Agent page.")
+      const entry = original ?? this.#entry(window, id, true)
+      if (!isAgentSurface(entry)) throw new StaleBrowserReference()
+      return this.#runAgentAction(id, entry, context, 20_000, signal, async (control) => {
+        await awaitBrowserAction(entry.agent.ready, control)
+        assertBrowserActionActive(control)
+        if (this.#agentSurface(window, id) !== entry) throw new StaleBrowserReference()
+        verifyDocument?.()
+        const contents = entry.view.webContents
+        const current = planBrowserNavigation(contents, intent)
+        if (current.context.url !== context.url || current.index !== index)
+          throw new StaleBrowserReference()
+        resetBrowserNavigation(entry)
+        this.#send(window, { type: "browser-open", id, url: context.url })
+        if (context.action === "url") await contents.loadURL(context.url)
+        else await navigateBrowserHistory(contents, index, control)
+      })
+    })
+  }
+
+  /** 读取当前引用的角色和名称，批准后才滚动、命中和点击。 */
+  async prepareAgentClick(
+    window: BrowserWindow,
+    id: string,
+    ref: string,
+  ): Promise<PreparedBrowserAction> {
+    const entry = this.#agentSurface(window, id)
+    if (!entry) throw new StaleBrowserReference()
+    const verifyDocument = entry.references.documentGuard()
+    const target = await this.agentElement(window, id, ref)
+    verifyDocument()
+    const context = {
+      kind: "click" as const,
+      url: target.url,
+      ref,
+      role: target.role,
+      name: target.name,
+    }
+    return preparedBrowserAction(context, (signal) =>
+      this.#runAgentAction(id, entry, context, 10_000, signal, async (control) => {
+        const verifyTarget = () => {
+          if (this.#agentSurface(window, id) !== entry || !isAgentBrowserAddress(target.url))
+            throw new StaleBrowserReference()
+          verifyDocument()
+        }
+        verifyTarget()
+        this.#send(window, { type: "browser-open", id, url: target.url })
+        await clickBrowserPoint(
+          entry.view.webContents,
+          () => entry.references.clickPoint(target),
+          verifyTarget,
+          control,
+        )
+      }),
+    )
   }
 
   /** 执行白名单中的浏览器导航命令。 */
@@ -245,31 +270,20 @@ export class WorkbenchBrowsers {
     if (entry?.window !== window || !entry.attached) return
     const contents = entry.view.webContents
     const url = contents.getURL()
-    if (!allowed(url, false)) return
+    if (!allowsWorkbenchBrowserAddress(url)) return
     const version = ++entry.pickVersion
-    contents.focus()
-    const result: unknown = await contents.executeJavaScriptInIsolatedWorld(
-      1001,
-      [{ code: elementPicker }],
-      true,
-    )
+    const selected = await pickWorkbenchBrowserElement(contents)
     if (
       this.#surfaces.get(id) !== entry ||
       version !== entry.pickVersion ||
       url !== contents.getURL()
     )
       return
-    if (typeof result !== "object" || result === null) return
-    const selected = result as Partial<WorkbenchBrowserElement>
-    if (typeof selected.selector !== "string" || typeof selected.text !== "string") return
+    if (!selected) return
     this.#send(window, {
       type: "browser-context",
       id,
-      element: {
-        url,
-        selector: selected.selector.slice(0, 500),
-        text: selected.text.slice(0, 1000),
-      },
+      element: { url, ...selected },
     })
   }
 
@@ -304,7 +318,7 @@ export class WorkbenchBrowsers {
   /** 在独立沙箱窗口预览本机开发地址。 */
   async preview(window: BrowserWindow, input: unknown): Promise<{ id: string }> {
     const url = workbenchBrowserUrl(input)
-    if (!loopback.has(url.hostname)) throw new Error("PREVIEW_URL_NOT_ALLOWED")
+    if (!isWorkbenchLoopback(url)) throw new Error("PREVIEW_URL_NOT_ALLOWED")
     const preview = new BrowserWindow({
       width: 1100,
       height: 760,
@@ -332,6 +346,52 @@ export class WorkbenchBrowsers {
   /** 只将显式的 HTTP(S) 地址交给系统浏览器。 */
   async external(input: unknown): Promise<void> {
     await shell.openExternal(workbenchBrowserUrl(input).href)
+  }
+
+  #agentSurface(window: BrowserWindow, id: string): AgentSurface | undefined {
+    const entry = this.#surfaces.get(id)
+    if (window.isDestroyed()) throw new StaleBrowserReference()
+    if (!entry) return
+    if (entry.window !== window || !isAgentSurface(entry) || entry.view.webContents.isDestroyed())
+      throw new StaleBrowserReference()
+    return entry
+  }
+
+  async #runAgentAction(
+    id: string,
+    entry: AgentSurface,
+    context: PreparedBrowserAction["context"],
+    timeout: number,
+    signal: AbortSignal | undefined,
+    run: (control: AbortSignal) => Promise<void>,
+  ): Promise<string> {
+    if (this.#agentSurface(entry.window, id) !== entry) throw new StaleBrowserReference()
+    if (entry.activity)
+      throw new BrowserActionError("Another approved browser action is still running.")
+    const deadline = AbortSignal.timeout(timeout)
+    const control = signal ? AbortSignal.any([signal, deadline]) : deadline
+    assertBrowserActionActive(control)
+    entry.activity = {
+      kind: context.kind,
+      target: context.kind === "navigate" ? context.url : context.name || context.ref,
+    }
+    try {
+      this.#publish(id, entry)
+      await awaitBrowserAction(run(control), control)
+      assertBrowserActionActive(control)
+      if (this.#agentSurface(entry.window, id) !== entry) throw new StaleBrowserReference()
+      const snapshot = await awaitBrowserAction(this.agentPage(entry.window, id), control)
+      if (this.#agentSurface(entry.window, id) !== entry) throw new StaleBrowserReference()
+      return snapshot
+    } catch (error) {
+      if (error instanceof BrowserActionError) throw error
+      throw new BrowserActionError(
+        "The browser could not complete the approved action. Please take a new browser snapshot.",
+      )
+    } finally {
+      delete entry.activity
+      this.#publish(id, entry)
+    }
   }
 
   #entry(window: BrowserWindow, id: string, agent = false): Surface {
@@ -409,6 +469,7 @@ export class WorkbenchBrowsers {
         canGoForward: contents.navigationHistory.canGoForward(),
         ...(entry.error ? { error: entry.error } : {}),
         ...(entry.crashed ? { crashed: entry.crashed } : {}),
+        ...(entry.activity ? { activity: entry.activity } : {}),
       },
     })
   }
@@ -419,29 +480,3 @@ export class WorkbenchBrowsers {
     }
   }
 }
-
-const elementPicker = `new Promise((resolve) => {
-  const cancelKey = (event) => { if (event.key === "Escape") finish(null) };
-  const select = (event) => {
-    if (!(event.target instanceof Element)) return finish(null);
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    const element = event.target;
-    const path = [];
-    for (let item = element; item && path.length < 5; item = item.parentElement) {
-      if (item.id) { path.unshift("#" + CSS.escape(item.id)); break; }
-      const index = item.parentElement ? Array.from(item.parentElement.children).indexOf(item) + 1 : 1;
-      path.unshift(item.localName + ":nth-child(" + index + ")");
-    }
-    finish({ selector: path.join(" > "), text: (element.textContent || "").trim().slice(0, 1000) });
-  };
-  const timer = setTimeout(() => finish(null), 15000);
-  function finish(value) {
-    clearTimeout(timer);
-    document.removeEventListener("click", select, true);
-    document.removeEventListener("keydown", cancelKey, true);
-    resolve(value);
-  }
-  document.addEventListener("click", select, true);
-  document.addEventListener("keydown", cancelKey, true);
-})`

@@ -12,6 +12,10 @@ const require = createRequire(new URL("../../apps/desktop/package.json", import.
 const temp = await mkdtemp(join(tmpdir(), "pigclaude-native-agent-browser-"))
 const files = [
   "agent-browser-network",
+  "browser-action-execution",
+  "browser-action-request",
+  "browser-context",
+  "browser-element-picker",
   "browser-references",
   "browser-snapshot-world",
   "browser-surface",

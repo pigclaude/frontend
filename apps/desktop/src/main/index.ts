@@ -77,7 +77,13 @@ import { createMainWindowOptions, developmentRendererUrl } from "./window-option
 import { createAppUpdates } from "./updates/app-updates"
 import { registerUpdateIpc } from "./updates/update-ipc"
 import type { UpdateService } from "./updates/update-service"
+import {
+  createElectronPluginSandboxLaunch,
+  registerPluginSandboxScheme,
+} from "./plugins/plugin-sandbox-window"
 
+if (process.type === "browser") registerPluginSandboxScheme()
+const preloadDir = join(__dirname, "../preload")
 const bundleMetadata: unknown = app.isPackaged
   ? JSON.parse(readFileSync(join(app.getAppPath(), "package.json"), "utf8"))
   : undefined
@@ -343,6 +349,7 @@ async function setupAuthorization(): Promise<void> {
     onAuthorizationState: sendAuthorizationState,
     localStore,
     profileUsage,
+    launchPluginSandbox: createElectronPluginSandboxLaunch(join(preloadDir, "plugin-sandbox.js")),
   })
   desktopComposition = composition
   authorizationService = composition.authorizationService
@@ -473,7 +480,7 @@ function createWindow(): void {
   mainWindow = new BrowserWindow(
     createMainWindowOptions({
       platform: process.platform,
-      preloadPath: join(__dirname, "../preload/index.js"),
+      preloadPath: join(preloadDir, "index.js"),
       isPackaged: app.isPackaged,
       dark: nativeTheme.shouldUseDarkColors,
     }),

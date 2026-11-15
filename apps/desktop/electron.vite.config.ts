@@ -66,6 +66,12 @@ export default defineConfig({
       minify: true,
       sourcemap: false,
       externalizeDeps: { exclude: bundledDependencies },
+      rollupOptions: {
+        input: {
+          index: resolve(import.meta.dirname, "src/preload/index.ts"),
+          "plugin-sandbox": resolve(import.meta.dirname, "src/preload/plugin-sandbox.ts"),
+        },
+      },
     },
   },
   renderer: {

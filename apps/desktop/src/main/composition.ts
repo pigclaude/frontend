@@ -21,6 +21,7 @@ import type { DeviceIdentityService } from "./device-identity"
 import type { DeviceInfo } from "./device-identity/device-info"
 import type { AuthorizationStateEvent } from "./authorization/types"
 import { readDesktopRuntimeEndpoints } from "./runtime-endpoints"
+import { PluginSandboxHost, type PluginSandboxLaunch } from "./plugins/plugin-sandbox-host"
 
 /** composition 的依赖，Claude adapter 与第一方 OAuth API 必须独立。 */
 export type DesktopCompositionOptions = {
@@ -42,6 +43,8 @@ export type DesktopCompositionOptions = {
   /** 提供本机账号库时才装配 daemon 和选号；测试可省略。 */
   localStore?: LocalStore
   profileUsage?: BrowserProfileUsage
+  /** 桌面提供隔离窗口工厂。没有插件调用时不创建任何窗口。 */
+  launchPluginSandbox?: PluginSandboxLaunch
 }
 /** composition 提供脱敏服务与本机退出，不跨 profile 或 Claude namespace 清理。 */
 export type DesktopComposition = {
@@ -63,6 +66,8 @@ export type DesktopComposition = {
   signOut: () => Promise<MembershipView>
   /** 本机 daemon 和选号；未提供 localStore 时为 null。 */
   runtime: LocalRuntime | null
+  /** 能力插件使用专属的 Worker 宿主，由桌面主进程负责退出释放。 */
+  pluginSandbox: PluginSandboxHost | null
   /** 按顺序释放本机授权和会员订阅。 */
   dispose: () => Promise<void>
 }
@@ -83,6 +88,9 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
   const tokenManager = new OAuthTokenManager({ api, vault: options.vault, now })
   const membershipGate = new MembershipGate({ api, vault: options.vault, tokenManager, now })
   const withdrawal = new DeviceWithdrawalService(membershipGate, now)
+  const pluginSandbox = options.launchPluginSandbox
+    ? new PluginSandboxHost(options.launchPluginSandbox)
+    : null
   const unsubscribe = options.onMembershipView
     ? membershipGate.subscribe(options.onMembershipView)
     : () => undefined
@@ -236,6 +244,7 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
     authorizationService,
     tokenManager,
     runtime,
+    pluginSandbox,
     resume: () => membershipGate.inspect(),
     runAuthorized,
     signOut: () => {
@@ -258,6 +267,7 @@ export function createDesktopComposition(options: DesktopCompositionOptions): De
       if (disposed) return
       disposed = true
       clearInterval(heartbeat)
+      await pluginSandbox?.dispose()
       await runtime?.dispose()
       stopOperations()
       unsubscribeOperations()

@@ -131,8 +131,8 @@ describe("home provider session recovery", () => {
   })
 })
 
-// OP 交互浏览器可以没有 Home RP Cookie，不能触发 me→登录恢复循环。
-it.each(["/identity/login", "/identity/authorize"])(
+// 身份交互和公开下载都可在没有 Home RP Cookie 的浏览器打开。
+it.each(["/identity/login", "/identity/authorize", "/download"])(
   "does not recover Home session on public %s",
   async (path) => {
     mocks.pathname = path

@@ -23,6 +23,7 @@ describe("home auth query recovery", () => {
     expect(unauthorizedQueryAction(unauthorized, ["me"], "/login")).toBe("ignore")
     expect(unauthorizedQueryAction(unauthorized, ["me"], "/")).toBe("ignore")
     expect(unauthorizedQueryAction(unauthorized, ["me"], "/register")).toBe("ignore")
+    expect(unauthorizedQueryAction(unauthorized, ["me"], "/download")).toBe("ignore")
   })
 
   it("dispatches revalidation callbacks only on private paths", () => {

@@ -16,6 +16,7 @@ export type HomeSessionRevalidationEvent = Event & {
 export function isPublicHomePath(pathname: string): boolean {
   return [
     "/",
+    "/download",
     "/login",
     "/register",
     "/identity/login",

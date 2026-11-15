@@ -13,13 +13,14 @@ const electron = vi.hoisted(() => ({
   handlers: new Map<string, (event: { preventDefault(): void }) => void>(),
   answer: "leave" as "leave" | "stay" | Promise<"leave" | "stay">,
   ask: vi.fn(),
+  quit: vi.fn(),
 }))
 
 vi.mock("electron", () => ({
   app: {
     on: (name: string, handler: (event: { preventDefault(): void }) => void) =>
       electron.handlers.set(name, handler),
-    quit: vi.fn(),
+    quit: electron.quit,
   },
 }))
 
@@ -102,8 +103,33 @@ describe("退出流程", () => {
   beforeEach(() => {
     electron.handlers.clear()
     electron.ask.mockClear()
+    electron.quit.mockClear()
     electron.answer = "leave"
     vi.mocked(askBeforeReload).mockClear()
+  })
+
+  it("主窗口真正关闭就开始退出，隐藏的插件窗口不必先关闭", () => {
+    const ui = fakeWindow()
+    const { unsaved } = setup({ ui, closeToTray: false, work: noPendingWork })
+    unsaved.report(ui.window.webContents, 0)
+    const event = { preventDefault: vi.fn() }
+
+    ui.closeEvents.get("close")?.(event)
+    expect(event.preventDefault).not.toHaveBeenCalled()
+    ui.closeEvents.get("closed")?.(event)
+
+    expect(electron.quit).toHaveBeenCalledOnce()
+  })
+
+  it("清理过程关闭主窗口时不会重复发起退出", async () => {
+    const ui = fakeWindow()
+    const { calls, quit, unsaved } = setup({ ui, closeToTray: false, work: noPendingWork })
+    unsaved.report(ui.window.webContents, 0)
+
+    quit()
+    ui.closeEvents.get("closed")?.({ preventDefault: vi.fn() })
+    expect(electron.quit).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(calls.finishQuit).toHaveBeenCalledWith("normal"))
   })
 
   it("只有已启用的定时任务时也确认退出，正常关窗仍隐藏到托盘", async () => {

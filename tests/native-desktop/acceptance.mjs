@@ -466,9 +466,13 @@ try {
   report.rendererHardening = await verifyRendererHardening(application, page, policyViolations)
   pass("sandboxed main window under a CSP that refuses eval, inline and remote scripts")
   if (platform !== "darwin") {
+    await application.evaluate(({ app, BrowserWindow }) => {
+      const helper = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
+      Reflect.set(app, "acceptanceHiddenPluginWindow", helper)
+    })
     await verifySystemClose(application, page, out)
     await expect.poll(() => processRunning(applicationPid)).toBe(false)
-    pass("system close button exits when close-to-tray is off")
+    pass("system close button exits with a hidden helper when close-to-tray is off")
   }
 } catch (error) {
   report.error = String(error)

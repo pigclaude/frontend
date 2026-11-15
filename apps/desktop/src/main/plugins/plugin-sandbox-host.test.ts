@@ -84,6 +84,53 @@ it("排队中的请求被取消后不发送，调用失败后仍可执行后续�
   }
 })
 
+it("卸载时释放指定插件的实例，其他插件继续使用原实例", async () => {
+  const opens = launcher()
+  const host = new PluginSandboxHost(opens.launch)
+  const other = { ...source, pluginId: "other-plugin" }
+  try {
+    expect(await host.invoke(source, call)).toBe(1)
+    expect(await host.invoke(other, call)).toBe(2)
+    await host.stopInstances(source.pluginId)
+    expect(opens.contexts[0]?.context.close).toHaveBeenCalledOnce()
+    expect(opens.contexts[1]?.context.close).not.toHaveBeenCalled()
+    expect(await host.invoke(other, call)).toBe(2)
+    expect(await host.invoke(source, call)).toBe(3)
+  } finally {
+    await host.dispose()
+  }
+})
+
+it("明确失效时中止运行和排队中的操作，随后可启动全新实例", async () => {
+  const close = vi.fn(async () => undefined)
+  const first = vi.fn<PluginSandboxContext["invoke"]>(
+    (_call, _timeout, signal) =>
+      new Promise((_, reject) => {
+        signal.addEventListener("abort", () => reject(new PluginSandboxError("PLUGIN_CANCELLED")), {
+          once: true,
+        })
+      }),
+  )
+  const launch = vi.fn<PluginSandboxLaunch>()
+  launch.mockResolvedValueOnce({ invoke: first, close })
+  launch.mockResolvedValue({ invoke: async () => "new", close: async () => undefined })
+  const host = new PluginSandboxHost(launch)
+  try {
+    const active = host.invoke(source, call)
+    const queued = host.invoke(source, call)
+    const cancelled = [active, queued].map((operation) =>
+      expect(operation).rejects.toMatchObject({ code: "PLUGIN_CANCELLED" }),
+    )
+    await vi.waitFor(() => expect(first).toHaveBeenCalledOnce())
+    await Promise.all([host.stopInstances(), ...cancelled])
+    expect(close).toHaveBeenCalledOnce()
+    expect(launch).toHaveBeenCalledOnce()
+    expect(await host.invoke(source, call)).toBe("new")
+  } finally {
+    await host.dispose()
+  }
+})
+
 function launcher() {
   const contexts: Array<{
     context: { invoke: PluginSandboxContext["invoke"]; close: ReturnType<typeof vi.fn> }

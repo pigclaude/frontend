@@ -28,6 +28,8 @@ export type QuitCoordinatorOptions = {
 
 /** 退出协调器为两种退出来源提供统一的清理入口。 */
 export type QuitCoordinator = {
+  /** 空闲时允许窗口关闭触发一次新的退出。 */
+  canStartQuit(): boolean
   /** 用户主动退出时先确认，再清理资源。 */
   beforeQuit(event: QuitEvent): void
   /** 系统退出时撤销等待中的确认，立即进入清理。 */
@@ -45,6 +47,7 @@ export function createQuitCoordinator(options: QuitCoordinatorOptions): QuitCoor
   let mode: QuitMode = "normal"
 
   return {
+    canStartQuit: () => phase === "idle",
     beforeQuit(event) {
       if (phase === "done") return
       event.preventDefault()

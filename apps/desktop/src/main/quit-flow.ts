@@ -44,7 +44,7 @@ export function watchPowerShutdown(listener: (event: QuitEvent) => void): void {
 }
 
 /**
- * 注册应用的退出流程：真正关掉最后一个窗口时退出；退出前有工作或未保存的文件时先确认，
+ * 注册应用的退出流程：真正关掉主窗口时退出；退出前有工作或未保存的文件时先确认，
  * 取消就不退出。返回给主窗口装上关窗和刷新确认的函数。
  */
 export function installQuitFlow(options: QuitFlowOptions): (window: BrowserWindow) => void {
@@ -79,9 +79,6 @@ export function installQuitFlow(options: QuitFlowOptions): (window: BrowserWindo
       if (contents) await options.unsaved.discard(contents)
     },
   })
-  app.on("window-all-closed", () => {
-    app.quit()
-  })
   const quitting = createQuitCoordinator({
     confirm: () => {
       const answer = confirmation.confirm("quit")
@@ -103,6 +100,10 @@ export function installQuitFlow(options: QuitFlowOptions): (window: BrowserWindo
     onBeforeShutdown: options.onBeforeShutdown,
   })
   app.on("before-quit", quitting.beforeQuit)
+  const quitWhenIdle = () => {
+    if (quitting.canStartQuit()) app.quit()
+  }
+  app.on("window-all-closed", quitWhenIdle)
   const systemQuit = () => {
     confirmation.allowSystemShutdown()
     activePrompt?.abort()
@@ -114,6 +115,8 @@ export function installQuitFlow(options: QuitFlowOptions): (window: BrowserWindo
   })
   return (window) => {
     confirmation.guardClose(window, options.closeToTray)
+    // 能力插件的隐藏窗口还活着时，Electron 不会发出 window-all-closed。
+    window.on("closed", quitWhenIdle)
     // Windows 可能取消会话结束查询；只在系统确认注销或关机后才清理。
     window.on("session-end", systemQuit)
     guardReload(window.webContents, {

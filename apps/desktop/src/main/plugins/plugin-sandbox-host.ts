@@ -31,6 +31,8 @@ export type PluginSandboxLaunch = (
 export type PluginSandboxHostOptions = { idleMs?: number; restartDelayMs?: number }
 
 type Instance = {
+  pluginId: string
+  abort: AbortController
   queue: Promise<void>
   users: number
   failures: number
@@ -48,6 +50,7 @@ export class PluginSandboxHost {
   readonly #entries = new Map<string, Instance>()
   readonly #shutdown = new AbortController()
   readonly #closing = new Set<Promise<void>>()
+  readonly #stopping = new Set<Promise<void>>()
   readonly #idleMs: number
   readonly #restartDelayMs: number
   #disposing: Promise<void> | undefined
@@ -68,22 +71,23 @@ export class PluginSandboxHost {
     options: PluginSandboxCallOptions = {},
   ): Promise<PluginSandboxJson> {
     if (this.#shutdown.signal.aborted) throw new PluginSandboxError("PLUGIN_SANDBOX_CLOSED")
-    const signal = options.signal
-      ? AbortSignal.any([options.signal, this.#shutdown.signal])
-      : this.#shutdown.signal
-    if (signal.aborted) throw new PluginSandboxError("PLUGIN_CANCELLED")
+    if (options.signal?.aborted) throw new PluginSandboxError("PLUGIN_CANCELLED")
     const timeout = options.timeoutMs ?? callTimeoutMs
     if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > maximumTimeoutMs)
       throw new PluginSandboxError("PLUGIN_PAYLOAD_INVALID")
     const key = pluginSandboxKey(source)
-    const entry = this.#entry(key)
+    const entry = this.#entry(key, source.pluginId)
+    const signals = [this.#shutdown.signal, entry.abort.signal]
+    if (options.signal) signals.push(options.signal)
+    const signal = AbortSignal.any(signals)
     clearTimeout(entry.idle)
     entry.users += 1
     const work = entry.queue
       .then(() => this.#call(entry, source, call, timeout, signal))
       .finally(() => {
         entry.users -= 1
-        if (entry.users === 0 && !this.#shutdown.signal.aborted) this.#startIdleTimer(key, entry)
+        if (entry.users === 0 && this.#entries.get(key) === entry && !this.#shutdown.signal.aborted)
+          this.#startIdleTimer(key, entry)
       })
     entry.queue = work.then(
       () => undefined,
@@ -96,24 +100,38 @@ export class PluginSandboxHost {
   dispose(): Promise<void> {
     if (this.#disposing !== undefined) return this.#disposing
     this.#shutdown.abort()
-    const entries = [...this.#entries.values()]
-    this.#entries.clear()
-    for (const entry of entries) clearTimeout(entry.idle)
-    this.#disposing = Promise.all(
-      entries.map(async (entry) => {
-        await entry.queue
-        await this.#close(entry)
-      }),
-    ).then(async () => {
-      await Promise.all(this.#closing)
-    })
+    this.#disposing = this.stopInstances()
     return this.#disposing
   }
 
-  #entry(key: string): Instance {
+  /** 中止并释放指定插件的各个出口实例；未指定时释放当前全部实例。 */
+  stopInstances(pluginId?: string): Promise<void> {
+    const entries: Instance[] = []
+    for (const [key, entry] of this.#entries) {
+      if (pluginId !== undefined && entry.pluginId !== pluginId) continue
+      this.#entries.delete(key)
+      clearTimeout(entry.idle)
+      entries.push(entry)
+    }
+    const draining = entries.map(async (entry) => {
+      await entry.queue
+      await this.#close(entry)
+    })
+    const stopped = Promise.all([...this.#stopping, ...draining]).then(async () => {
+      await Promise.all(this.#closing)
+    })
+    this.#stopping.add(stopped)
+    void stopped.then(() => this.#stopping.delete(stopped))
+    for (const entry of entries) entry.abort.abort()
+    return stopped
+  }
+
+  #entry(key: string, pluginId: string): Instance {
     const existing = this.#entries.get(key)
     if (existing) return existing
     const entry: Instance = {
+      pluginId,
+      abort: new AbortController(),
       queue: Promise.resolve(),
       users: 0,
       failures: 0,
@@ -189,6 +207,7 @@ export class PluginSandboxHost {
   #startIdleTimer(key: string, entry: Instance): void {
     const delay = Math.max(this.#idleMs, entry.retryAt - Date.now())
     entry.idle = setTimeout(() => {
+      if (this.#entries.get(key) !== entry) return
       this.#entries.delete(key)
       void this.#close(entry)
     }, delay)

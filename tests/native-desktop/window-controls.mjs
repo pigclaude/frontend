@@ -125,7 +125,8 @@ export async function verifyBackgroundClose(application, page) {
 export async function verifySystemClose(application, page, out) {
   const eventFile = join(out, "native-window-closed.txt")
   const { bounds, scale } = await application.evaluate(({ BrowserWindow, screen }, path) => {
-    const window = BrowserWindow.getAllWindows()[0]
+    const window = BrowserWindow.getAllWindows().find((candidate) => candidate.isVisible())
+    if (!window) throw new Error("缺少可见主窗口")
     window.setAlwaysOnTop(true)
     window.focus()
     window.once("closed", () => process.getBuiltinModule("node:fs").writeFileSync(path, "closed"))

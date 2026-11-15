@@ -8,7 +8,8 @@ export const appSettingsZhCN = {
   "appSettings.relayUnavailable": "本机运行时信息尚未接入",
   "appSettings.proxies": "代理",
   "appSettings.proxyOptional": "代理可选",
-  "appSettings.proxyOptionalDetail": "未绑定代理的账号使用系统网络；已绑定代理的请求不会直连",
+  "appSettings.proxyOptionalDetail":
+    "未绑定代理的账号使用系统网络；已绑定代理的请求不会直连。Claude 启动的终端命令和 MCP 子进程也会继承会话的代理设置。",
   "appSettings.proxyBinding": "按账号绑定",
   "appSettings.proxyFailure": "代理不通时",
   "appSettings.proxyFailureDetail": "已绑定代理的请求失败，不会回退到系统网络直连",

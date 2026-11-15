@@ -206,13 +206,22 @@ export type SessionRuntimeLeaseInput = {
   preferredAccountId: string | null
 }
 
+/** CLI 启动时固定的会话环境；代理地址只指向本机桥，release 释放会话持有的资源。 */
+export type SessionRuntimeBinding = {
+  proxyBridgeUrl?: string
+  release(): void
+}
+
 /** 一个会话在 runtime 里的路由句柄。保证 token 只认这一个会话；close 吊销令牌、停止为它选号，可重复调用。 */
 export type SessionRuntimeLease = {
   readonly sessionId: string
   /** 这个会话的 daemon 令牌，只写进它的 CLI 环境，并用于从错误文本里去掉它。 */
   readonly token: string
-  /** CLI 启动前固定这个会话的语言和时区，返回清理后使用的释放操作。 */
-  bindEnvironment(profile: SessionProfile): Promise<() => void>
+  /** CLI 启动前固定语言、时区和代理模式；开发供应商可以关闭账号代理。 */
+  bindEnvironment(
+    profile: SessionProfile,
+    options?: { useAccountProxy: boolean },
+  ): Promise<SessionRuntimeBinding>
   close(): void
 }
 

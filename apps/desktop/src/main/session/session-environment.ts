@@ -14,7 +14,7 @@ import type { SessionStorePaths } from "./session-store-layout"
 export const placeholderOAuthToken = "pigclaude-local"
 
 /** 本机会话使用的 NO_PROXY 值，保证回环请求不经过账号代理。 */
-export const localNoProxy = "127.0.0.1,localhost"
+export const localNoProxy = "127.0.0.1,localhost,[::1],::1"
 
 /** 开发期供应商会话需要从宿主继承的运行变量；不含任何凭据。 */
 const hostEnvNames = ["PATH", "HOME", "SHELL", "TMPDIR", "USER", "LOGNAME"] as const
@@ -46,6 +46,8 @@ export type SessionEnvironmentInput = {
   retainedPaths?: SessionStorePaths
   /** 只在模型目录查询时提供：关闭非必要流量，并把组织模型写进 CLI 的模型缓存。 */
   modelCatalog?: ModelCatalogInput
+  /** 已绑定代理的会话只传本机代理桥地址。 */
+  proxyBridgeUrl?: string
   /** 开发期自定义供应商；提供时替换 daemon 地址和会话 token，并忽略 modelCatalog。 */
   provider?: SessionProvider
 }
@@ -212,8 +214,6 @@ function buildEnvironment(
   })
   env.CLAUDE_CONFIG_DIR = configDir
   env.NODE_OPTIONS = `--require ${JSON.stringify(preloadPath)}`
-  env.NO_PROXY = localNoProxy
-  env.no_proxy = localNoProxy
   // Bash 工具按 CLI 进程的 PATH 找命令；宿主环境里只带 PATH。
   if (process.env.PATH) env.PATH = process.env.PATH
   if (input.provider) {
@@ -233,6 +233,14 @@ function buildEnvironment(
   }
   env.CLAUDE_CODE_OAUTH_TOKEN = placeholderOAuthToken
   env.ANTHROPIC_CUSTOM_HEADERS = `x-pigclaude-session: ${input.sessionToken}`
+  if (input.proxyBridgeUrl !== undefined) {
+    env.HTTP_PROXY = input.proxyBridgeUrl
+    env.http_proxy = input.proxyBridgeUrl
+    env.HTTPS_PROXY = input.proxyBridgeUrl
+    env.https_proxy = input.proxyBridgeUrl
+    env.NO_PROXY = localNoProxy
+    env.no_proxy = localNoProxy
+  }
   // 模型目录查询期间 Claude Code 不能自己发功能开关、bootstrap 和遥测请求。
   if (input.modelCatalog) env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1"
   return env

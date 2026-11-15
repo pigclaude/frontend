@@ -55,7 +55,7 @@ export class FakeRuntime implements SessionRuntime {
       token: session.token,
       bindEnvironment: async (profile) => {
         session.bound.push(profile)
-        return () => undefined
+        return { release: () => undefined }
       },
       close: () => {
         session.closed = true

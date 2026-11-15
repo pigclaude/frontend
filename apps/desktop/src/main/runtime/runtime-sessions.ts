@@ -56,7 +56,7 @@ export class RuntimeSessions {
     return {
       sessionId: input.sessionId,
       token: selection.token,
-      bindEnvironment: (profile) => selection.environment.bind(profile),
+      bindEnvironment: (profile, options) => selection.environment.bind(profile, options),
       close: () => this.#close(input.sessionId, selection),
     }
   }
@@ -80,6 +80,7 @@ export class RuntimeSessions {
   select(sessionId: string, accountId: string): RuntimeAccountChange | null {
     const selection = this.#sessions.get(sessionId)
     if (selection === undefined) return null
+    selection.environment.select(accountId)
     const from = selection.currentAccountId
     const reason =
       from !== null && selection.quotaRejections.has(from)

@@ -93,8 +93,6 @@ describe("SessionEnvironment", () => {
       LC_ALL: "en_US.UTF-8",
       NODE_OPTIONS: `--require ${JSON.stringify(preloadPath)}`,
       ANTHROPIC_CUSTOM_HEADERS: "x-pigclaude-session: session-token-abc",
-      NO_PROXY: "127.0.0.1,localhost",
-      no_proxy: "127.0.0.1,localhost",
     })
     expect(placeholderOAuthToken).toBe("pigclaude-local")
     expect(environment.binaryPath).toBe("/opt/claude/bin/claude")

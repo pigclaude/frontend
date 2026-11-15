@@ -18,13 +18,15 @@ export async function boundSessionEnvironment(
   input: SessionEnvironmentInput,
 ): Promise<SessionEnvironmentPort> {
   if (!profile) throw new SessionHostError("NO_AVAILABLE_ACCOUNT", "账号没有可用的浏览器配置")
-  const release = await session.bindEnvironment({
-    ...profile,
-    timezone: input.timezone,
-    locale: input.locale,
-  })
+  const { proxyBridgeUrl, release } = await session.bindEnvironment(
+    { ...profile, timezone: input.timezone, locale: input.locale },
+    { useAccountProxy: input.provider === undefined },
+  )
   try {
-    const environment = await create(input)
+    const environment = await create({
+      ...input,
+      ...(proxyBridgeUrl === undefined ? {} : { proxyBridgeUrl }),
+    })
     return {
       env: environment.env,
       configDir: environment.configDir,

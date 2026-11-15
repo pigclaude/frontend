@@ -14,6 +14,8 @@ export type ChooseAccountInput = {
   rejectedIds: readonly string[]
   preferredId?: string
   environment?: ProfileEnvironment
+  /** CLI 的代理变量在启动时固定，运行中只能换入同代理模式的账号。 */
+  proxyBound?: boolean
 }
 
 /** daemon 需要的账号材料。保证只包含账号 id、Bearer 凭据和代理地址；proxyUrl 为 null 表示走系统网络。 */
@@ -63,14 +65,9 @@ export class AccountChooser {
     const proxies = new Map((await this.#store.listProxies()).map((proxy) => [proxy.id, proxy]))
     const eligible = (await this.#store.listAccounts()).filter(
       (account) =>
-        isEligible(account, proxies, rejected, nowMs) &&
-        (!input.environment ||
-          sameProfileEnvironment(input.environment, {
-            locale: account.fingerprint.lang,
-            timezone: account.fingerprint.timezone,
-          })),
+        isEligible(account, proxies, rejected, nowMs) && matchesAccountEnvironment(account, input),
     )
-    const refreshed = await this.#refresh(eligible, input.environment)
+    const refreshed = await this.#refresh(eligible, input)
     const byId = new Map(refreshed.map((item) => [item.account.id, item]))
 
     if (input.preferredId !== undefined) {
@@ -105,17 +102,14 @@ export class AccountChooser {
     return (await this.#store.listAccounts()).some(
       (account) =>
         isEligible(account, proxies, rejected, this.#now()) &&
-        !sameProfileEnvironment(environment, {
-          locale: account.fingerprint.lang,
-          timezone: account.fingerprint.timezone,
-        }),
+        !matchesAccountEnvironment(account, input),
     )
   }
 
   // 只刷新通过静态过滤的账号；刷新失败、刷新后凭据为空、非空 proxyId 查不到代理或代理地址为空时跳过，不影响其他账号。
   async #refresh(
     eligible: AccountRecord[],
-    environment: ProfileEnvironment | undefined,
+    constraints: Pick<ChooseAccountInput, "environment" | "proxyBound">,
   ): Promise<EligibleAccount[]> {
     const refreshed: EligibleAccount[] = []
     for (const account of eligible) {
@@ -133,17 +127,19 @@ export class AccountChooser {
           !latest ||
           latest.browserProfileId !== account.browserProfileId ||
           !isEligible(latest, proxies, new Set(), this.#now()) ||
-          (environment &&
-            !sameProfileEnvironment(environment, {
-              locale: latest.fingerprint.lang,
-              timezone: latest.fingerprint.timezone,
-            }))
+          !matchesAccountEnvironment(latest, constraints)
         )
           continue
         const updated = await this.#refresher.refreshIfNeeded(latest)
         const proxy = updated.proxyId === null ? null : proxies.get(updated.proxyId)
         const authorization = updated.credential?.accessToken
-        if (authorization === undefined || proxy === undefined || proxy?.url === "") continue
+        if (
+          authorization === undefined ||
+          proxy === undefined ||
+          proxy?.url === "" ||
+          !matchesAccountEnvironment(updated, constraints)
+        )
+          continue
         refreshed.push({ account: updated, proxy, authorization })
       } catch {
         continue
@@ -153,6 +149,21 @@ export class AccountChooser {
     }
     return refreshed
   }
+}
+
+/** 按照已有 CLI 的语言、时区和代理模式判断账号能否使用；未固定的条件不限制。 */
+export function matchesAccountEnvironment(
+  account: Pick<AccountRecord, "fingerprint" | "proxyId">,
+  { environment, proxyBound }: Pick<ChooseAccountInput, "environment" | "proxyBound">,
+): boolean {
+  return (
+    (proxyBound === undefined || (account.proxyId !== null) === proxyBound) &&
+    (!environment ||
+      sameProfileEnvironment(environment, {
+        locale: account.fingerprint.lang,
+        timezone: account.fingerprint.timezone,
+      }))
+  )
 }
 
 function isEligible(

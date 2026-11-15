@@ -169,7 +169,7 @@ export function sanitizeSessionEvent(event: SessionEvent, token: string): Sessio
     return {
       ...event,
       code: "ACCOUNT_ENVIRONMENT_MISMATCH",
-      message: "可用账号的语言或时区与当前 CLI 不一致，请选择目标账号并重新开始会话",
+      message: "没有与当前会话的语言、时区及代理绑定状态兼容的账号。请选择目标账号并重新开始会话。",
     }
   return { ...event, message: redactSessionToken(event.message, token) }
 }

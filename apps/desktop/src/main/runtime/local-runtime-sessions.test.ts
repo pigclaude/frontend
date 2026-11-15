@@ -195,7 +195,7 @@ describe("LocalRuntime sessions", () => {
     await first.bindEnvironment({ locale: "en-US", timezone: "America/New_York" })
     await expect(
       second.bindEnvironment({ locale: "ja-JP", timezone: "Asia/Tokyo" }),
-    ).resolves.toBeTypeOf("function")
+    ).resolves.toMatchObject({ release: expect.any(Function) })
     await expect(
       first.bindEnvironment({ locale: "en-US", timezone: "America/New_York" }),
     ).rejects.toThrow(/SESSION_ALREADY_ACTIVE/)

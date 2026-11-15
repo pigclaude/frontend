@@ -55,6 +55,7 @@ jobs:
         run: >-
           pnpm --filter @pigclaude/desktop exec vitest run --maxWorkers=1
           src/main/session/session-host-persistence.test.ts
+          src/main/session/session-proxy-routing.integration.test.ts
           src/main/session/retained-claude-process.test.ts
           src/main/session/retained-claude-process-exit.test.ts
           src/main/session/claude-agent-adapter-retained-process.test.ts

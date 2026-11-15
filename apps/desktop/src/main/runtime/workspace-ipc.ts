@@ -6,7 +6,9 @@ import { ipcMain, shell } from "electron"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import { folderLaunch, installedOpenApps, launchInFolder } from "../workbench/open-apps"
 import { registerProjectIpc, settleOpenPath } from "./project-ipc"
+import { registerProjectConfigurationIpc } from "./project-configuration-ipc"
 import { ProjectNameStore } from "./project-names"
+import { projectTrustFilePath, ProjectTrustStore } from "./project-trust-store"
 import { listWorkspaceFiles } from "./workspace-files"
 import { WorkspaceStore } from "./workspace-store"
 import type { WorkbenchIpc } from "../workbench/workbench-ipc"
@@ -23,6 +25,7 @@ export function registerWorkspaceIpc(input: {
 }): void {
   let store: WorkspaceStore | null = null
   let names: ProjectNameStore | null = null
+  let trust: ProjectTrustStore | null = null
   let worktrees: WorktreeRegistry | null = null
   const getStore = () => (store ??= new WorkspaceStore({ filePath: input.filePath() }))
   const getNames = () =>
@@ -33,6 +36,10 @@ export function registerWorkspaceIpc(input: {
     (worktrees ??= new WorktreeRegistry({
       filePath: join(dirname(input.filePath()), "worktrees.json"),
     }))
+  const roots = async () => {
+    const projects = await getStore().list()
+    return [...projects, ...(await getWorktrees().roots(projects))]
+  }
   ipcMain.handle("pigclaude:workspaces-list", async (event) => {
     if (!input.isTrusted(event)) throw new Error("UNTRUSTED_WORKSPACE_REQUEST")
     return getStore().list()
@@ -77,14 +84,17 @@ export function registerWorkspaceIpc(input: {
         throw new Error("PROJECT_OPEN_FAILED")
     },
   })
+  registerProjectConfigurationIpc(ipcMain, {
+    isTrusted: input.isTrusted,
+    memberActive: () => input.membership()?.state === "active",
+    paths: roots,
+    store: () => (trust ??= new ProjectTrustStore(projectTrustFilePath(dirname(input.filePath())))),
+  })
   input.workbench.register({
     isTrusted: input.isTrusted,
     membership: input.membership,
     hasActiveTurn: input.hasActiveTurn,
-    roots: async () => {
-      const projects = await getStore().list()
-      return [...projects, ...(await getWorktrees().roots(projects))]
-    },
+    roots,
     rememberWorktree: (path, from) => getWorktrees().remember(path, from),
   })
 }

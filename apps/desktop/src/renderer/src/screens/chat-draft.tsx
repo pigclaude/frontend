@@ -8,6 +8,8 @@ import type {
 } from "@pigclaude/ui-composer"
 import { NewThreadView } from "@pigclaude/ui-chat"
 import { ToolRenderers } from "../components/tool-renderers"
+import { Button } from "../components/ui/button"
+import { useText } from "../locale/text"
 import type { ComposerConfig } from "../models/composer-config"
 import { projectNameFromPath } from "../models/project-model"
 import type { ProjectDraftEditor } from "../hooks/use-project-draft"
@@ -19,6 +21,7 @@ type Props = {
   projectDraft: ProjectDraftEditor | undefined
   projects: readonly string[]
   projectId: string | null
+  configuration?: { path: string; open: (path: string) => void }
   commands: readonly ComposerCommand[]
   threads: readonly ComposerThreadOption[]
   openIn: ReactNode
@@ -29,7 +32,15 @@ type Props = {
 }
 
 /** 显示尚未创建会话的草稿，启动失败时在草稿输入框下展示原因。 */
-export function ChatDraft({ composer, workspace, projectDraft, projects, ...props }: Props) {
+export function ChatDraft({
+  composer,
+  workspace,
+  projectDraft,
+  projects,
+  configuration,
+  ...props
+}: Props) {
+  const { t } = useText()
   const error = projectDraft?.draft.error
   return (
     <ToolRenderers>
@@ -40,7 +51,23 @@ export function ChatDraft({ composer, workspace, projectDraft, projects, ...prop
           name: projectNameFromPath(path),
           rootPath: path,
         }))}
-        workspaceControls={workspace.controls}
+        workspaceControls={
+          configuration ? (
+            <>
+              {workspace.controls}
+              <Button
+                variant="ghost"
+                size="sm"
+                type="button"
+                onClick={() => configuration.open(configuration.path)}
+              >
+                {t("shell.projectConfig.entry")}
+              </Button>
+            </>
+          ) : (
+            workspace.controls
+          )
+        }
         workspaceStatus={
           <>
             {workspace.status}

@@ -13,6 +13,7 @@ import type { WorkbenchBridge } from "../workbench-contract"
 import type { AuthorizeClaudeAccountInput } from "../main/claude/account-service-inputs"
 import type { OpenAppKind } from "../main/workbench/open-apps"
 import type { MembershipView } from "@pigclaude/contracts/membership"
+import type { ProjectConfigurationBridge } from "../project-configuration-contract"
 import {
   isClaudeAccountEvent,
   isClaudeAccountView,
@@ -103,6 +104,7 @@ export type PigclaudeBridge = {
   egress: {
     check: (proxyId: string) => Promise<EgressView>
   }
+  projectConfiguration: ProjectConfigurationBridge
   workspaces: {
     list: () => Promise<string[]>
     /** 只列出仍可读的最近项目，用于选择续接失败后的草稿目录。 */
@@ -232,6 +234,12 @@ const bridge: PigclaudeBridge = {
   },
   egress: {
     check: (proxyId) => ipcRenderer.invoke("pigclaude:egress-check", proxyId),
+  },
+  projectConfiguration: {
+    report: (path) => ipcRenderer.invoke("pigclaude:project-configuration-read", path),
+    prepare: (path, trusted) =>
+      ipcRenderer.invoke("pigclaude:project-configuration-prepare", path, trusted),
+    confirm: (id) => ipcRenderer.invoke("pigclaude:project-configuration-confirm", id),
   },
   workspaces: {
     list: async () => {

@@ -35,6 +35,7 @@ import {
 } from "@pigclaude/ui-shell/panel-resizer"
 import { titleBarMenus } from "@pigclaude/ui-shell/title-bar-menus"
 import { AppUpdateCenter } from "./app-update-center"
+import { useProjectRowMenu } from "./project-row-menu"
 import { registerShellCommands } from "./shell-commands"
 import { useShellKeys } from "./use-shell-keys"
 
@@ -70,6 +71,7 @@ export type PigclaudeShellProps = {
   /** 项目右键菜单：只改侧栏显示名；从侧栏移除，不删文件。 */
   onRenameProject: (projectId: string, name: string) => void
   onRemoveProject: (projectId: string) => void
+  onProjectConfiguration?: ((path: string) => void) | undefined
   /** 开合右侧工作台，与 ⌘J 相同；没有工作台时不传，命令面板和 `/panel` 都不出现。 */
   onToggleWorkbench?: () => void
   /** 现在能不能开合右侧工作台；和 ⌘J 一样只在会话页和新会话页为 true。 */
@@ -93,6 +95,7 @@ export type PigclaudeShellProps = {
 export function PigclaudeShell(props: PigclaudeShellProps) {
   const { t } = useLocale()
   const { t: text } = useText()
+  const projectMenu = useProjectRowMenu(props)
   const registry = useExtensionRegistry()
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth()
   const [rightWidth, setRightWidth] = useRightWidth()
@@ -223,6 +226,8 @@ export function PigclaudeShell(props: PigclaudeShellProps) {
         updates={<AppUpdateCenter />}
       />
       <aside
+        onContextMenuCapture={projectMenu.onContextMenuCapture}
+        onKeyDownCapture={projectMenu.onKeyDownCapture}
         className={shortcutHints ? "sidebar show-shortcuts" : "sidebar"}
         aria-label={props.inSettings ? t("settings.title") : t("nav.projects")}
       >
@@ -284,6 +289,7 @@ export function PigclaudeShell(props: PigclaudeShellProps) {
         )}
         {props.inSettings ? null : props.notice}
         {props.inSettings ? null : props.footer}
+        {projectMenu.menu}
       </aside>
       {open && !narrow ? <SidebarResizer width={sidebarWidth} onChange={setSidebarWidth} /> : null}
       <div className="drawer-scrim" aria-hidden="true" onClick={() => setDrawerOpen(false)} />

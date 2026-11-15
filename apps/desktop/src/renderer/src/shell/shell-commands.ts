@@ -7,6 +7,7 @@ import type {
   ExtensionRegistry,
 } from "@pigclaude/client-runtime"
 import type { MessageKey } from "@pigclaude/ui-primitives"
+import { pigclaudeProjectCommandNames } from "../../../project-configuration-contract"
 
 /** 外壳命令需要的动作。 */
 export type ShellCommandActions = {
@@ -40,7 +41,7 @@ export function registerShellCommands(
       keywords: [t("palette.keywords.newThread")],
       icon: "plus",
       shortcut: "Mod+n",
-      slash: "new",
+      slash: pigclaudeProjectCommandNames.newSession,
       run: () => actions.onNewSession(),
     },
     {
@@ -63,7 +64,7 @@ export function registerShellCommands(
             keywords: [t("palette.keywords.toggleWorkbench")],
             icon: "tray",
             shortcut: "Mod+j",
-            slash: "panel",
+            slash: pigclaudeProjectCommandNames.workbench,
             available: () => actions.canToggleWorkbench?.() ?? true,
             run: () => actions.onToggleWorkbench?.(),
           } satisfies CommandContribution,

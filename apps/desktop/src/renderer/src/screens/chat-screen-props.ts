@@ -22,6 +22,8 @@ export type ChatScreenProps = {
   proxies: ProxyView[]
   onPickWorkspace: () => void
   onSelectWorkspace: (path: string) => void
+  /** 新会话草稿打开实际工作目录的项目配置。 */
+  onProjectConfiguration?: ((path: string) => void) | undefined
   /** 会话在 path 里开始了；project 是 path 所属的项目。 */
   onWorkspaceUsed: (path: string, project: string, sessionId?: string) => void
   /** 主窗口为新会话分配 id，使草稿启动和发送能跨导航保持原会话归属。 */

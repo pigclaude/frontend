@@ -524,6 +524,30 @@ button.item:hover {
 }
 /* 外观设置把减少动态效果设为「关闭」时写 data-motion="full"，此时不跟随系统偏好 */
 
+.project-configuration-report {
+  display: grid;
+  gap: 10px;
+  max-height: min(48vh, 400px);
+  margin: 0;
+  padding: 4px 20px 8px;
+  overflow: auto;
+  font-size: 13px;
+}
+.project-configuration-report > div {
+  display: grid;
+  grid-template-columns: minmax(96px, 30%) minmax(0, 1fr);
+  gap: 10px;
+}
+.project-configuration-report dt {
+  color: var(--muted);
+}
+.project-configuration-report dd {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 /* ─── 窄窗口 ───────────────────────────────────────────── */
 @media (max-width: 960px) {
   .panel {

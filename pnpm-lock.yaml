@@ -171,6 +171,12 @@ importers:
       electron-updater:
         specifier: 6.8.11
         version: 6.8.11
+      js-yaml:
+        specifier: 4.3.2
+        version: 4.3.2
+      json5:
+        specifier: 2.2.3
+        version: 2.2.3
       lucide-react:
         specifier: 1.0.1
         version: 1.0.1(react@19.2.3)

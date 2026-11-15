@@ -50,6 +50,7 @@ interface PigclaudeBridge {
   proxies?: import("../../preload/index").PigclaudeBridge["proxies"]
   egress?: import("../../preload/index").PigclaudeBridge["egress"]
   workspaces?: import("../../preload/index").PigclaudeBridge["workspaces"]
+  projectConfiguration?: import("../../preload/index").PigclaudeBridge["projectConfiguration"]
   workbench?: import("../../preload/index").PigclaudeBridge["workbench"]
   session?: import("../../preload/index").PigclaudeBridge["session"]
   sessionDefaults?: import("../../preload/index").PigclaudeBridge["sessionDefaults"]

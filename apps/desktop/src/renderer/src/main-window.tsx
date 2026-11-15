@@ -17,6 +17,7 @@ import type { ClaudeAccountsController } from "./hooks/use-claude-accounts"
 import { sessionAccountId, useSession } from "./hooks/use-session"
 import { useSessionHistory } from "./hooks/use-session-history"
 import { SessionDeleteDialog } from "./components/session-delete-dialog"
+import { useProjectConfigurationDialog } from "./components/project-configuration-dialog"
 import type { ProjectDrafts } from "./hooks/use-project-draft"
 import { useComposerReferenceQueue } from "./hooks/use-composer-reference"
 import { useSessionNotices } from "./hooks/use-session-notices"
@@ -101,6 +102,7 @@ export function MainWindow({
   previewWorkbench,
 }: MainWindowProps) {
   const { t } = useText()
+  const projectConfiguration = useProjectConfigurationDialog()
   const toast = useToast()
   const pool = claudeAccounts
   const session = useSession(undefined, location.kind === "session" ? location.sessionId : null)
@@ -318,6 +320,7 @@ export function MainWindow({
         : {})}
       locationKey={page ?? sessionId ?? routedProject ?? location.kind}
       projects={workspaceProjects(sidebarPaths, workspaces.names)}
+      onProjectConfiguration={projectConfiguration.open}
       threads={sidebar.threads}
       activeThreadId={sessionId}
       threadStatus={sidebar.statuses}
@@ -403,6 +406,7 @@ export function MainWindow({
       />
       <AddProjectDialog open={addingProject} onOpenChange={setAddingProject} onAdd={addWorkspace} />
       <SessionDeleteDialog history={history} />
+      {projectConfiguration.dialog}
       {inChat ? (
         <ChatScreen
           {...(bridge
@@ -434,6 +438,7 @@ export function MainWindow({
           session={session}
           workspace={chatWorkspace}
           workspaceProject={chatProject}
+          onProjectConfiguration={projectConfiguration.open}
           workspaceOptions={sidebarPaths}
           accounts={pool.accounts}
           proxies={pool.proxies}

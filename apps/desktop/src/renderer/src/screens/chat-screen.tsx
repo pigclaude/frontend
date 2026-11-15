@@ -83,6 +83,7 @@ export function ChatScreen({
   proxies,
   onPickWorkspace,
   onSelectWorkspace,
+  onProjectConfiguration,
   onWorkspaceUsed,
   identifySessions = false,
   projectDraft,
@@ -415,6 +416,9 @@ export function ChatScreen({
         projectDraft={projectDraft}
         projects={workspaceOptions}
         projectId={workspaceProject}
+        {...(workspace && onProjectConfiguration
+          ? { configuration: { path: workspace, open: onProjectConfiguration } }
+          : {})}
         commands={commands}
         threads={threadOptions}
         openIn={openIn}

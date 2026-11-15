@@ -473,7 +473,7 @@ export function MainWindow({
       ) : null}
       {bridge && workbenchRoot && terminalMounted ? (
         <TerminalDrawer
-          key={workbenchRoot}
+          key={`terminal:${workbenchRoot}`}
           bridge={bridge}
           root={workbenchRoot}
           open={inChat && terminalOpen}

@@ -22,6 +22,7 @@ const logPath = join(root, "programs.log")
 const log = openSync(logPath, "a")
 const scheme = "x-scheme-handler/pigclaude"
 const cold = "pigclaude://authorize/callback?code=cold-fixture&state=cold-fixture"
+const callbackTrace = join(root, "callback-trace.log")
 const result = {
   source: "7dc803a2f0c03d0fcb464c9bf06cb2bc9447d1e3",
   workflowRun: 43993199194,
@@ -40,6 +41,8 @@ const environment = {
   PIGCLAUDE_RUST_BASE_URL: fixture.origin,
   PIGCLAUDE_AUTH_ORIGIN: fixture.origin,
   PIGCLAUDE_UPDATE_CHECK: "0",
+  QA_COLD_CALLBACK: cold,
+  QA_CALLBACK_TRACE: callbackTrace,
 }
 const probe = createServer()
 await new Promise((resolve, reject) => {
@@ -278,7 +281,28 @@ try {
   begin("cold URI launch with isolated XDG integration")
   const desktopId = shippedDesktop[0] ?? "pigclaude.desktop"
   const desktopPath = join(applications, desktopId)
-  const filename = '"' + image + '"'
+  const launcher = join(root, "qa-appimage-handler")
+  await writeFile(
+    launcher,
+    [
+      "#!/bin/bash",
+      "set -eu",
+      "seen=missing",
+      'for argument in "$@"; do',
+      '  case "$argument" in',
+      '    "$QA_COLD_CALLBACK") seen=cold ;;',
+      "    pigclaude://authorize/callback*) seen=callback ;;",
+      "  esac",
+      "done",
+      'printf "%s\\n" "$seen" >>"$QA_CALLBACK_TRACE"',
+      'exec "$QA_IMAGE" "$@"',
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  )
+  const filename = '"' + launcher + '"'
+  const receipts = async () =>
+    (await readFile(callbackTrace, "utf8").catch(() => "")).trim().split("\n").filter(Boolean)
   await writeFile(
     desktopPath,
     [
@@ -299,7 +323,20 @@ try {
   assert.equal(await openUri(cold), 0, "GIO did not dispatch the cold callback")
   const page = await connectWindow()
   const coldProcess = await currentProcess(page)
-  assert(coldProcess.argv.includes(cold), "cold callback did not arrive in the AppImage process")
+  assert.deepEqual(
+    await receipts(),
+    ["cold"],
+    "GIO did not forward the expected cold callback argument",
+  )
+  const coldMount = await run("findmnt", [
+    "-n",
+    "-o",
+    "FSTYPE",
+    "--target",
+    dirname(coldProcess.exe),
+  ])
+  assert.match(coldMount.stdout.trim(), /^fuse(?:$|[.])/)
+  result.coldUriPresentInProc = coldProcess.argv.includes(cold)
   await expect(signIn(page)).toBeVisible()
   await expect.poll(() => membership(page)).toBe("signed_out")
   assert.equal(fixture.state().exchangeAttempts, 0)
@@ -313,6 +350,7 @@ try {
   const wrong = new URL(approved)
   wrong.searchParams.set("state", "invalid-state-fixture")
   assert.equal(await openUri(wrong), 0)
+  await expect.poll(receipts).toEqual(["cold", "callback"])
   await delay(750)
   await expect(copyLink(page)).toBeEnabled()
   assert.equal(fixture.state().exchangeAttempts, 0)
@@ -322,6 +360,7 @@ try {
   if (await skip.isVisible()) await skip.click()
   assert.equal(await openUri(approved), 0)
   await delay(750)
+  await expect.poll(receipts).toEqual(["cold", "callback", "callback", "callback"])
   assert.equal((await currentProcess(page)).pid, coldProcess.pid)
   assert.equal(fixture.state().exchanges, 1)
   assert.equal(fixture.state().exchangeAttempts, 1)

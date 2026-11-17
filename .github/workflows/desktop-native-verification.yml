@@ -1,96 +1,101 @@
-# 在实际 Windows 和 Ubuntu 运行器启动 Electron 并留存窗口验收证据。
+# 在一次性运行器从 test.11 的最终安装包验证系统协议、Chrome、SOCKS5 及区域设置。
 name: Desktop native verification
+run-name: Verify test.11 installed packages, SOCKS5 and Intl
 
 on:
-  push:
-    branches: ["main", "codex/pigcode-ui-native-qa", "codex/pigcode-workbench"]
   workflow_dispatch:
+    inputs:
+      platforms_json:
+        description: 本轮验收平台矩阵
+        required: true
+        type: string
+      dmg_sha:
+        description: test.11 DMG 的 SHA-256
+        required: false
+        type: string
+      windows_sha:
+        description: test.11 NSIS 的 SHA-256
+        required: true
+        type: string
+      linux_sha:
+        description: test.11 AppImage 的 SHA-256
+        required: true
+        type: string
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
-  native:
+  installed:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2022]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 18
+        include: ${{ fromJSON(inputs.platforms_json) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-release-${{ matrix.target }}
+          run-id: 44124290072
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/pigclaude-test11-artifact
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm pigcode:verify
-      - run: pnpm --filter @pigclaude/desktop exec electron --version
-        if: runner.os == 'Windows'
-      - name: Install Linux desktop test tools
+      - name: Prepare clean Ubuntu desktop
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb xauth openbox dbus-x11 gnome-keyring libsecret-tools xdotool imagemagick libglib2.0-bin
-          test -x /usr/bin/gio
-      - name: Prepare Linux Electron
-        if: runner.os == 'Linux'
-        working-directory: apps/desktop
-        run: |
-          node -e 'require("electron")'
-          electron="$(node -p 'require("electron")')"
-          sudo chown root:root "$(dirname "$electron")/chrome-sandbox"
-          sudo chmod 4755 "$(dirname "$electron")/chrome-sandbox"
-          "$electron" --version
-      - run: pnpm --filter @pigclaude/desktop build
-      # 新运行器上第一次启动 PowerShell 很慢：Windows PowerShell 查询设备标识要 4–13 秒，偶尔超过 20 秒；
-      # pwsh 第一次编译 C# 并加载 WinForms 要 6–11 秒。验收测的是界面流程，先各跑一次，不让它算进期限。
-      - name: Warm up Windows PowerShell
-        if: runner.os == 'Windows'
-        run: |
-          powershell.exe -NoLogo -NoProfile -NonInteractive -Command "(Get-CimInstance -ClassName Win32_ComputerSystemProduct -ErrorAction Stop).UUID" | Out-Null
-          pwsh.exe -NoProfile -NonInteractive -File tests/native-desktop/windows-pointer.ps1 capture "$env:RUNNER_TEMP\system-input-warmup.png"
-      - name: Verify saved session and Claude process lifecycle
+          sudo apt-get update -qq -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends xvfb xauth openbox dbus-x11 gnome-keyring libglib2.0-bin xdg-utils libfuse2t64 fuse3 xdotool fonts-noto-cjk
+          if [ ! -c /dev/fuse ]; then sudo modprobe fuse; fi
+          test -f /usr/share/applications/google-chrome.desktop
+      - name: Verify DMG or NSIS installation and runtime
+        if: runner.os != 'Linux'
         timeout-minutes: 10
-        run: >-
-          pnpm --filter @pigclaude/desktop exec vitest run --maxWorkers=1
-          src/main/session/session-host-persistence.test.ts
-          src/main/session/session-project-configuration.integration.test.ts
-          src/main/session/session-project-configuration-native.integration.test.ts
-          src/main/session/session-proxy-routing.integration.test.ts
-          src/main/session/retained-claude-process.test.ts
-          src/main/session/retained-claude-process-exit.test.ts
-          src/main/session/claude-agent-adapter-retained-process.test.ts
-          src/main/login-startup.test.ts
-          src/main/xdg-autostart.integration.test.ts
-      - name: Verify native Electron on Windows
-        if: runner.os == 'Windows'
-        run: |
-          node tests/native-desktop/agent-browser-network.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node tests/native-desktop/acceptance.mjs test-results/native-desktop
-      - name: Verify capability plugin sandbox on Windows
-        if: runner.os == 'Windows'
-        run: node tests/native-desktop/plugin-sandbox.mjs
-      - name: Verify capability plugin sandbox on Linux
+        env:
+          QA_ROOT: ${{ runner.temp }}/pigclaude-test11-install
+          QA_OUTPUT: ${{ runner.temp }}/pigclaude-test11-evidence
+          QA_INSTALLER: ${{ runner.temp }}/pigclaude-test11-artifact/${{ matrix.installer }}
+          QA_EXPECTED_SHA: ${{ inputs[matrix.hash_input] }}
+        run: node tests/native-desktop/test11-installed-desktop.mjs
+      - name: Verify AppImage installation and runtime
         if: runner.os == 'Linux'
-        run: xvfb-run -a node tests/native-desktop/plugin-sandbox.mjs
-      - name: Verify native Electron on Linux
-        if: runner.os == 'Linux'
-        timeout-minutes: 3
+        timeout-minutes: 10
+        env:
+          QA_PACKAGE: ${{ runner.temp }}/pigclaude-test11-artifact
+          QA_ROOT: ${{ runner.temp }}/pigclaude-test11-install
+          QA_OUTPUT: ${{ runner.temp }}/pigclaude-test11-evidence
+          QA_IMAGE: ${{ runner.temp }}/pigclaude-test11-install/PigClaude 100%=stable.AppImage
+          QA_BUILD_COMMIT: ${{ runner.temp }}/pigclaude-test11-artifact/build-commit.txt
+          QA_SHA256: ${{ runner.temp }}/pigclaude-test11-artifact/SHA256SUMS.txt
+          QA_EXPECTED_IMAGE_SHA: ${{ inputs.linux_sha }}
         run: |
-          xvfb-run -a -s "-screen 0 1600x1000x24" dbus-run-session -- bash -euc '
-            eval "$(printf "%s\n" pigclaude-native-qa | gnome-keyring-daemon --unlock --components=secrets)"
+          export XDG_CONFIG_HOME="$QA_ROOT/config"
+          export XDG_DATA_HOME="$QA_ROOT/data"
+          export XDG_CACHE_HOME="$QA_ROOT/cache"
+          export XDG_CURRENT_DESKTOP=GNOME
+          mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$QA_OUTPUT"
+          printf "%s  %s\n" "$QA_EXPECTED_IMAGE_SHA" PigClaude-x86_64.AppImage >"$QA_SHA256"
+          printf "%s\n" 5dd3ef3fd62bf07c37d5c78edfe65cbf3ad07cb5 >"$QA_BUILD_COMMIT"
+          mv "$QA_PACKAGE/PigClaude-x86_64.AppImage" "$QA_IMAGE"
+          chmod +x "$QA_IMAGE"
+          timeout --kill-after=10s 520s xvfb-run -a -s '-screen 0 1600x1000x24' dbus-run-session -- bash -euc '
+            eval "$(printf "%s\n" pigclaude-test11-qa | gnome-keyring-daemon --unlock --components=secrets)"
             export GNOME_KEYRING_CONTROL
-            openbox >/tmp/pigclaude-openbox.log 2>&1 &
-            sleep 1
-            node tests/native-desktop/agent-browser-network.mjs
-            node tests/native-desktop/acceptance.mjs test-results/native-desktop
+            openbox >"$QA_ROOT/openbox.log" 2>&1 &
+            node tests/native-desktop/linux-appimage-protocol-qa.mjs
           '
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: desktop-native-${{ runner.os }}
-          path: test-results/native-desktop
+          name: installed-test11-${{ matrix.target }}
+          path: ${{ runner.temp }}/pigclaude-test11-evidence
           if-no-files-found: warn

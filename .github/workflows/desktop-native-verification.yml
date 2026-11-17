@@ -1,96 +1,85 @@
-# 在实际 Windows 和 Ubuntu 运行器启动 Electron 并留存窗口验收证据。
+# 在独立运行器上定位 GLib 对不同 XDG 命令格式的解析结果。
 name: Desktop native verification
+run-name: Probe GIO desktop entry formats
 
 on:
-  push:
-    branches: ["main", "codex/pigcode-ui-native-qa", "codex/pigcode-workbench"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  native:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, windows-2022]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 18
+  gio:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm pigcode:verify
-      - run: pnpm --filter @pigclaude/desktop exec electron --version
-        if: runner.os == 'Windows'
-      - name: Install Linux desktop test tools
-        if: runner.os == 'Linux'
+      - name: Compare default association and URI dispatch
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb xauth openbox dbus-x11 gnome-keyring libsecret-tools xdotool imagemagick libglib2.0-bin
-          test -x /usr/bin/gio
-      - name: Prepare Linux Electron
-        if: runner.os == 'Linux'
-        working-directory: apps/desktop
-        run: |
-          node -e 'require("electron")'
-          electron="$(node -p 'require("electron")')"
-          sudo chown root:root "$(dirname "$electron")/chrome-sandbox"
-          sudo chmod 4755 "$(dirname "$electron")/chrome-sandbox"
-          "$electron" --version
-      - run: pnpm --filter @pigclaude/desktop build
-      # 新运行器上第一次启动 PowerShell 很慢：Windows PowerShell 查询设备标识要 4–13 秒，偶尔超过 20 秒；
-      # pwsh 第一次编译 C# 并加载 WinForms 要 6–11 秒。验收测的是界面流程，先各跑一次，不让它算进期限。
-      - name: Warm up Windows PowerShell
-        if: runner.os == 'Windows'
-        run: |
-          powershell.exe -NoLogo -NoProfile -NonInteractive -Command "(Get-CimInstance -ClassName Win32_ComputerSystemProduct -ErrorAction Stop).UUID" | Out-Null
-          pwsh.exe -NoProfile -NonInteractive -File tests/native-desktop/windows-pointer.ps1 capture "$env:RUNNER_TEMP\system-input-warmup.png"
-      - name: Verify saved session and Claude process lifecycle
-        timeout-minutes: 10
-        run: >-
-          pnpm --filter @pigclaude/desktop exec vitest run --maxWorkers=1
-          src/main/session/session-host-persistence.test.ts
-          src/main/session/session-project-configuration.integration.test.ts
-          src/main/session/session-project-configuration-native.integration.test.ts
-          src/main/session/session-proxy-routing.integration.test.ts
-          src/main/session/retained-claude-process.test.ts
-          src/main/session/retained-claude-process-exit.test.ts
-          src/main/session/claude-agent-adapter-retained-process.test.ts
-          src/main/login-startup.test.ts
-          src/main/xdg-autostart.integration.test.ts
-      - name: Verify native Electron on Windows
-        if: runner.os == 'Windows'
-        run: |
-          node tests/native-desktop/agent-browser-network.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node tests/native-desktop/acceptance.mjs test-results/native-desktop
-      - name: Verify capability plugin sandbox on Windows
-        if: runner.os == 'Windows'
-        run: node tests/native-desktop/plugin-sandbox.mjs
-      - name: Verify capability plugin sandbox on Linux
-        if: runner.os == 'Linux'
-        run: xvfb-run -a node tests/native-desktop/plugin-sandbox.mjs
-      - name: Verify native Electron on Linux
-        if: runner.os == 'Linux'
-        timeout-minutes: 3
-        run: |
-          xvfb-run -a -s "-screen 0 1600x1000x24" dbus-run-session -- bash -euc '
-            eval "$(printf "%s\n" pigclaude-native-qa | gnome-keyring-daemon --unlock --components=secrets)"
-            export GNOME_KEYRING_CONTROL
-            openbox >/tmp/pigclaude-openbox.log 2>&1 &
-            sleep 1
-            node tests/native-desktop/agent-browser-network.mjs
-            node tests/native-desktop/acceptance.mjs test-results/native-desktop
-          '
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: desktop-native-${{ runner.os }}
-          path: test-results/native-desktop
-          if-no-files-found: warn
+          python3 - <<'PY'
+          import os, pathlib, subprocess, tempfile, time
+          root = pathlib.Path(tempfile.mkdtemp(prefix='gio-appimage-probe-'))
+          mime = "x-scheme-handler/pigclaude-qaprobe"
+          uri = "pigclaude-qaprobe://app/callback?code=fixture%2B&state=dummy"
+          launcher_id = "qaprobe.desktop"
+
+          def invoke(env, *args):
+              p = subprocess.run(args, env=env, text=True, capture_output=True, timeout=8)
+              print(" ", args[0], args[1:3], p.returncode, (p.stdout + p.stderr).strip())
+              return p
+
+          def quote(value):
+              return '"' + ''.join(
+                  "%%" if char == "%" else "\\" * 4 if char == "\\" else
+                  "\\" * 2 + char if char in ['"', '$', chr(96)] else char
+                  for char in value
+              ) + '"'
+
+          def attempt(label, wrapper, extra, field, register, cache=False, dbus=False):
+              print(label)
+              folder = root / label
+              data, config = folder / "data", folder / "config"
+              apps = data / "applications"
+              apps.mkdir(parents=True)
+              config.mkdir()
+              binary = folder / ("PigClaude 100%=stable.AppImage" if wrapper else "probe-browser")
+              binary.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$0.args"\n')
+              binary.chmod(0o700)
+              env = {
+                  **os.environ,
+                  "LC_ALL": "C",
+                  "XDG_DATA_HOME": str(data),
+                  "XDG_CONFIG_HOME": str(config),
+                  "XDG_CURRENT_DESKTOP": "GNOME",
+              }
+              if dbus: env.pop("DBUS_SESSION_BUS_ADDRESS", None)
+              cmd = ('/bin/sh -c ' + quote('exec "$@"') + ' qaprobe ' if wrapper else "") + quote(str(binary)) + " " + field
+              entry = apps / launcher_id
+              entry.write_text(f"[Desktop Entry]\nType=Application\nName=QA Probe\n{extra}Exec={cmd}\nMimeType={mime};\n")
+              print(" ", str(entry.read_text().splitlines()))
+              if cache: invoke(env, "update-desktop-database", str(apps))
+              if register == 'gio':
+                  invoke(env, "gio", "mime", mime, launcher_id)
+              else:
+                  invoke(env, "xdg-mime", "default", launcher_id, mime)
+              for config_file in (config / "mimeapps.list", apps / "mimeapps.list"):
+                  if config_file.exists(): print(" ", str(config_file.read_text().splitlines()))
+              invoke(env, "gio", "mime", mime)
+              invoke(env, "xdg-mime", "query", "default", mime)
+              invoke(env, "gio", "open", uri)
+              capture = str(binary) + ".args"
+              time.sleep(.12)
+              p = pathlib.Path(capture)
+              print(" ", "opening delivered", p.read_text().strip() if p.exists() else None)
+              p.unlink(missing_ok=True)
+              invoke(env, "gio", "launch", str(entry), uri)
+              time.sleep(.12)
+              print(" ", "explicit delivery", p.read_text().strip() if p.exists() else None)
+
+          attempt("direct-visible-u", False, "", "%u", "gio")
+          attempt("direct-hidden-u", False, "NoDisplay=true\n", "%u", "gio")
+          attempt("wrapped-visible-u", True, "", "%u", "gio")
+          attempt("wrapped-hidden-u", True, "NoDisplay=true\n", "%u", "gio")
+          attempt("wrapped-hidden-U", True, "NoDisplay=true\n", "%U", "gio")
+          attempt("wrapped-xdg-u", True, "NoDisplay=true\n", "%u", "xdg")
+          attempt("wrapped-with-cache-u", True, "NoDisplay=true\n", "%u", "gio", cache=True)
+          PY

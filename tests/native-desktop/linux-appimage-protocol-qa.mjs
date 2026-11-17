@@ -49,6 +49,7 @@ let chrome
 let chromeProcess
 let directProcess
 let appPid
+let proxyFailure
 let stage = ""
 const begin = (name) => {
   stage = name
@@ -288,8 +289,45 @@ try {
     "browser",
     "chrome",
   )
+  begin("installed native CLI environment and synthetic protocol")
+  const nativeBinary = join(
+    dirname(appExecutable),
+    "resources",
+    "app.asar.unpacked",
+    "node_modules",
+    "@anthropic-ai",
+    "claude-agent-sdk-linux-x64",
+    "claude",
+  )
+  const native = await execute(
+    "pnpm",
+    [
+      "--filter",
+      "@pigclaude/desktop",
+      "exec",
+      "vitest",
+      "run",
+      "src/main/claude/test11-installed-native-cli.acceptance.test.ts",
+      "--maxWorkers=1",
+    ],
+    {
+      env: {
+        ...env,
+        QA_INSTALLED_CLAUDE: nativeBinary,
+        QA_NATIVE_OUTPUT: join(output, "native-cli.json"),
+      },
+      timeout: 60000,
+      maxBuffer: 1048576,
+    },
+  )
+  await writeFile(join(output, "native-cli.log"), native.stdout + native.stderr)
+  pass("installed native CLI TZ/LANG/LC_ALL and loopback synthetic protocol verified")
   begin("installed SOCKS5 and browser/CLI locale")
-  await verifyInstalledProxy(app, env.PIGCLAUDE_USER_DATA, output, pass, pigBrowser, appPid)
+  try {
+    await verifyInstalledProxy(app, env.PIGCLAUDE_USER_DATA, output, pass, pigBrowser, appPid)
+  } catch (error) {
+    proxyFailure = error
+  }
   await closeApp(app)
 
   begin("protocol cold start with the application stopped")
@@ -305,6 +343,10 @@ try {
   assert.equal(fixture.state().exchangeAttempts, 1)
   result.coldStarted = true
   pass("GIO cold-launched the same AppImage without any installed test launcher")
+  if (proxyFailure) {
+    begin("installed PigBrowser environment")
+    throw proxyFailure
+  }
 } catch (error) {
   result.failure = { stage, message: safe(error.stack ?? error).slice(0, 2300) }
   console.error(result.failure)

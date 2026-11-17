@@ -217,25 +217,7 @@ try {
   result.fuse = await assertMounted(firstPid)
   const entryMtime = (await stat(entry)).mtimeMs
   await first.screenshot({ path: join(output, "first-launch.png") })
-  await closeApp(first)
   pass("AppImage generated the persistent entry and set the default as the current user")
-
-  begin("protocol cold start with the application stopped")
-  assert.equal(await nativeWindow(), null)
-  result.coldDispatchExit = await openUri(coldCallback)
-  assert.equal(result.coldDispatchExit, 0)
-  await expect.poll(() => nativeWindow(), { timeout: 25_000 }).not.toBeNull()
-  const coldWindow = await nativeWindow()
-  appPid = coldWindow.pid
-  assert.notEqual(appPid, firstPid)
-  await assertMounted(appPid)
-  assert.equal((await stat(entry)).mtimeMs, entryMtime)
-  assert.equal(fixture.state().exchangeAttempts, 0)
-  result.coldStarted = true
-  pass("GIO cold-launched the same AppImage without any installed test launcher")
-  process.kill(appPid, "SIGTERM")
-  await expect.poll(() => alive(appPid), { timeout: 10_000 }).toBe(false)
-  appPid = undefined
 
   begin("launch real Chrome and complete authorization from the page")
   // 只为这台一次性运行器的回环测试页面预先确认外部协议提示。
@@ -261,7 +243,7 @@ try {
     "about:blank",
   ])
   chrome = await connectBrowser(chromePort)
-  const app = await mountDirectly()
+  const app = first
   const activePid = appPid
   await signIn(app).click()
   await expect(app.getByRole("button", { name: /^(复制链接|Copy link)$/i })).toBeEnabled()
@@ -293,6 +275,20 @@ try {
     "Chrome opened the real system protocol from the fixture page and the running instance exchanged once",
   )
   await closeApp(app)
+
+  begin("protocol cold start with the application stopped")
+  assert.equal(await nativeWindow(), null)
+  result.coldDispatchExit = await openUri(coldCallback)
+  assert.equal(result.coldDispatchExit, 0)
+  await expect.poll(() => nativeWindow(), { timeout: 25_000 }).not.toBeNull()
+  const coldWindow = await nativeWindow()
+  appPid = coldWindow.pid
+  assert.notEqual(appPid, firstPid)
+  await assertMounted(appPid)
+  assert.equal((await stat(entry)).mtimeMs, entryMtime)
+  assert.equal(fixture.state().exchangeAttempts, 1)
+  result.coldStarted = true
+  pass("GIO cold-launched the same AppImage without any installed test launcher")
 } catch (error) {
   result.failure = { stage, message: safe(error.stack ?? error).slice(0, 2300) }
   console.error(result.failure)

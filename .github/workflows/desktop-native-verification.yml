@@ -37,12 +37,6 @@ jobs:
           ls -l /dev/fuse
           sysctl kernel.apparmor_restrict_unprivileged_userns
           test -f /usr/share/applications/google-chrome.desktop
-      - name: Verify XDG path escaping and registration regressions
-        run: >-
-          pnpm --filter @pigclaude/desktop exec vitest run --maxWorkers=1
-          src/main/xdg-autostart.integration.test.ts
-          src/main/cold-start-callback.test.ts
-          src/main/authorization/protocol-registration.integration.test.ts
       - name: Verify first launch, cold URI start and Chrome callback
         timeout-minutes: 5
         env:

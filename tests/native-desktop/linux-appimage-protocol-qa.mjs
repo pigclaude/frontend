@@ -174,7 +174,12 @@ async function openUri(url) {
 }
 
 async function defaultHandler() {
-  return (await run("xdg-mime", ["query", "default", type])).stdout.trim()
+  const { stdout } = await execute("gio", ["mime", type], {
+    env: { ...env, LC_ALL: "C" },
+    timeout: 10_000,
+  })
+  const firstLine = stdout.split("\n")[0]
+  return firstLine.match(/^Default application for .+: (.+)$/)?.[1] ?? ""
 }
 
 try {
@@ -217,7 +222,8 @@ try {
 
   begin("protocol cold start with the application stopped")
   assert.equal(await nativeWindow(), null)
-  assert.equal(await openUri(coldCallback), 0)
+  result.coldDispatchExit = await openUri(coldCallback)
+  assert.equal(result.coldDispatchExit, 0)
   await expect.poll(() => nativeWindow(), { timeout: 25_000 }).not.toBeNull()
   const coldWindow = await nativeWindow()
   appPid = coldWindow.pid

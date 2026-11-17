@@ -56,9 +56,9 @@ async function registerAppImage(appImage: string, home: string, env: NodeJS.Proc
   })
   if (current !== content) await writeXdgDesktopEntry(entry, content)
 
-  const options = { env: { ...env, XDG_DATA_HOME: data }, timeout: 5_000 }
-  const association = await run("xdg-mime", ["query", "default", mimeType], options)
-  if (association.stdout.trim() !== desktopFile) {
-    await run("xdg-mime", ["default", desktopFile, mimeType], options)
-  }
+  // 让 GIO 同时建立可启动关联和默认项，供系统浏览器与桌面分发器使用。
+  await run("gio", ["mime", mimeType, desktopFile], {
+    env: { ...env, XDG_DATA_HOME: data },
+    timeout: 5_000,
+  })
 }

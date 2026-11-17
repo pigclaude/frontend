@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: cd49276c87d9691f642a973808e7fb9f9817d086
+          ref: 4cb9149ac13b28ba209b5ed2c9757d7923d7d16c
           persist-credentials: false
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -30,6 +30,8 @@ jobs:
           pnpm exec eslint .
           pnpm exec prettier --check .
           pnpm --filter @pigclaude/desktop typecheck
+          test -x /usr/bin/gio
+          pnpm --filter @pigclaude/desktop exec vitest run src/main/authorization/protocol-registration.integration.test.ts
       - name: 获取并校验固定 PigBrowser 与 Xray
         shell: pwsh
         env:
@@ -116,6 +118,7 @@ jobs:
           pnpm --filter @pigclaude/desktop exec vitest run --maxWorkers=1
           src/main/xdg-autostart.integration.test.ts
           src/main/cold-start-callback.test.ts
+          src/main/authorization/protocol-registration.integration.test.ts
       - name: Verify first launch, cold URI start and Chrome callback
         timeout-minutes: 5
         env:

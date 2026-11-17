@@ -1,0 +1,80 @@
+# 在候选分支验证两平台 SOCKS5，所有代理请求均使用回环夹具。
+name: SOCKS5 candidate verification
+
+on:
+  push:
+    branches: [codex/socks5-cross-platform-qa]
+
+permissions:
+  contents: read
+
+jobs:
+  proxy:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            archive: Xray-linux-64.zip
+            sha256: e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214
+            executable: xray
+          - os: windows-2022
+            archive: Xray-windows-64.zip
+            sha256: 2e04a9995a6f2ad1b28c0bb25c708ecb2695e43a1c9c7889c4b6ac2b48cf7a6a
+            executable: xray.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 准备固定 Xray 与本机 TLS 夹具
+        shell: pwsh
+        env:
+          XRAY_ARCHIVE: ${{ matrix.archive }}
+          XRAY_SHA256: ${{ matrix.sha256 }}
+          XRAY_EXECUTABLE: ${{ matrix.executable }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $folder = Join-Path $env:RUNNER_TEMP "pigclaude-socks5"
+          New-Item -ItemType Directory -Path $folder | Out-Null
+          $archive = Join-Path $folder $env:XRAY_ARCHIVE
+          Invoke-WebRequest "https://github.com/XTLS/Xray-core/releases/download/v26.10.31/$env:XRAY_ARCHIVE" -OutFile $archive
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:XRAY_SHA256) { throw "Xray 包校验失败" }
+          Expand-Archive $archive -DestinationPath $folder
+          $xray = Join-Path $folder $env:XRAY_EXECUTABLE
+          if (!(Test-Path $xray -PathType Leaf)) { throw "找不到 Xray 入口" }
+          if (!$IsWindows) {
+            chmod 755 $xray
+            if ($LASTEXITCODE -ne 0) { throw "Xray 权限设置失败" }
+          } elseif (!(Get-Command openssl -ErrorAction SilentlyContinue)) {
+            $gitBin = Join-Path $env:ProgramFiles "Git/usr/bin"
+            if (!(Test-Path (Join-Path $gitBin "openssl.exe"))) { throw "找不到 OpenSSL" }
+            $gitBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
+          "PIGCLAUDE_TEST_XRAY_BIN=$xray" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: 验证 SOCKS5 账密、HTTPS、转发和关闭
+        shell: pwsh
+        run: |
+          openssl version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm --filter @pigclaude/proxy-connection --filter @pigclaude/login-gate --filter @pigclaude/daemon -r test
+          exit $LASTEXITCODE
+      - name: 验证桌面保存、双路出口和代理中断
+        working-directory: apps/desktop
+        shell: pwsh
+        run: |
+          $files = @(
+            "src/main/claude/xray-egress.test.ts",
+            "src/main/claude/xray-runtime-pool.test.ts",
+            "src/main/claude/proxy-auth.test.ts",
+            "src/main/claude/proxy-runtime-boundary.test.ts"
+          )
+          pnpm exec vitest run --maxWorkers=1 @files
+          exit $LASTEXITCODE

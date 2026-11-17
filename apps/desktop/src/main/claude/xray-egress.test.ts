@@ -74,7 +74,7 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
     }
   })
 
-  it("Xray 出口核对失败时不保存新代理", async () => {
+  it.each(["http", "socks5"] as const)("%s 出口核对失败时不保存新代理或直连", async (protocol) => {
     const directory = await mkdtemp(join(tmpdir(), "pigclaude-xray-rejected-proxy-"))
     const fixture = await createProxyFixture()
     const starter = createXrayRuntimeStarter({
@@ -83,20 +83,31 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
       binaryPath: xrayBinary,
     })
     try {
+      const upstream =
+        protocol === "socks5"
+          ? await starter({
+              upstreamProxyUrl: `http://user%40test:p%3Ass@127.0.0.1:${fixture.proxyPort}`,
+            })
+          : null
       const store = new LocalStore(directory)
       const service = new ProxyService({
         store,
         checkUrl: `http://127.0.0.1:${fixture.targetPort}/trace`,
-        startProxyRuntime: starter,
+        startProxyRuntime: async (input) => {
+          const runtime = await starter(input)
+          // 关闭已绑定的 SOCKS5 上游时，本次 Xray 的入口仍然存活。
+          await upstream?.close()
+          return runtime
+        },
       })
       await expect(
         service.saveVerified({
           name: "失败代理",
-          url: `http://bad:bad@127.0.0.1:${fixture.proxyPort}`,
+          url: upstream?.url ?? `http://bad:bad@127.0.0.1:${fixture.proxyPort}`,
         }),
       ).rejects.toMatchObject({ code: "PROXY_UNAVAILABLE" })
       expect(await store.listProxies()).toEqual([])
-      expect(fixture.directRequests()).toBe(0)
+      expect(fixture.targetRequests()).toBe(0)
     } finally {
       await starter.dispose()
       await fixture.close()

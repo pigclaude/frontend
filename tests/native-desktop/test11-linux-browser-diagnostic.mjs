@@ -4,7 +4,17 @@ import { readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 
 /** 从仍挂载的 AppImage 内核采集最小启动的退出码和 stderr。 */
-export async function diagnoseLinuxBrowser(binary, directory, evidence) {
+export async function diagnoseLinuxBrowser(binary, directory, evidence, appPid) {
+  const appEnvironment = await readFile("/proc/" + appPid + "/environ", "utf8").catch(() => "")
+  const relevant = Object.fromEntries(
+    appEnvironment.split("\0").flatMap((entry) => {
+      const index = entry.indexOf("=")
+      const key = entry.slice(0, index)
+      return ["APPDIR", "LD_LIBRARY_PATH", "LD_PRELOAD"].includes(key)
+        ? [[key, entry.slice(index + 1)]]
+        : []
+    }),
+  )
   let stderr = ""
   const child = spawn(
     binary,
@@ -41,6 +51,7 @@ export async function diagnoseLinuxBrowser(binary, directory, evidence) {
     JSON.stringify(
       {
         ...result,
+        appImageEnvironment: relevant,
         apparmor: (
           await readFile("/proc/sys/kernel/apparmor_restrict_unprivileged_userns", "utf8").catch(
             () => "",

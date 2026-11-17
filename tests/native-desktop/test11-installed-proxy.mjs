@@ -31,7 +31,7 @@ async function directControl() {
 }
 
 /** 使用本轮安装副本与独立中转，所有账号授权操作只到自检和取消。 */
-export async function verifyInstalledProxy(app, userData, evidence, pass, browserBinary) {
+export async function verifyInstalledProxy(app, userData, evidence, pass, browserBinary, appPid) {
   const relay = await startInstalledSocksRelay()
   const result = {
     proxy: "authenticated SOCKS5 loopback relay",
@@ -226,7 +226,7 @@ export async function verifyInstalledProxy(app, userData, evidence, pass, browse
       .catch(() => null)
     result.authorization = state
     if (process.platform === "linux" && browserBinary)
-      await diagnoseLinuxBrowser(browserBinary, userData, evidence)
+      await diagnoseLinuxBrowser(browserBinary, userData, evidence, appPid)
     throw error
   } finally {
     await app.evaluate(() => window.pigclaude.claudeAccounts.cancelAuthorization()).catch(() => {})

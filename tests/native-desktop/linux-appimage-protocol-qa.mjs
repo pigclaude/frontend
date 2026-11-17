@@ -295,7 +295,9 @@ try {
   process.kill(appPid, "SIGTERM")
   await expect.poll(() => alive(appPid), { timeout: 15000 }).toBe(false)
   const proxyPage = await mountDirectly()
-  const appExecutable = await readlink("/proc/" + appPid + "/exe")
+  const appExecutable = await readlink("/proc/" + appPid + "/exe").catch(async () =>
+    (await run("sudo", ["-n", "readlink", "/proc/" + appPid + "/exe"])).stdout.trim(),
+  )
   const pigBrowser = join(
     dirname(appExecutable),
     "resources",
@@ -306,7 +308,7 @@ try {
     "chrome",
   )
   begin("installed SOCKS5 and browser/CLI locale")
-  await verifyInstalledProxy(proxyPage, env.PIGCLAUDE_USER_DATA, output, pass, pigBrowser)
+  await verifyInstalledProxy(proxyPage, env.PIGCLAUDE_USER_DATA, output, pass, pigBrowser, appPid)
 } catch (error) {
   result.failure = { stage, message: safe(error.stack ?? error).slice(0, 2300) }
   console.error(result.failure)

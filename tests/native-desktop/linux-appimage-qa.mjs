@@ -11,7 +11,8 @@ import { promisify } from "node:util"
 import { chromium, expect } from "@playwright/test"
 import { startMembershipFixture } from "./installed-membership-fixture.mjs"
 
-const run = promisify(execFile)
+const execute = promisify(execFile)
+const run = (command, args, options = {}) => execute(command, args, { timeout: 10_000, ...options })
 const root = process.env.QA_ROOT
 const evidence = process.env.QA_OUTPUT
 const image = await realpath(process.env.QA_IMAGE)
@@ -51,6 +52,12 @@ const debug = ["--remote-debugging-port=" + port, "--remote-debugging-address=12
 let browser
 let stage = "prepare desktop test"
 let direct
+let activePid
+
+const begin = (next) => {
+  stage = next
+  console.log("CHECK", next)
+}
 
 const pass = (message) => {
   result.checks.push(message)
@@ -59,24 +66,61 @@ const pass = (message) => {
 const safe = (message) =>
   String(message).replace(/(?:pigclaude:\/\/|https?:\/\/|wss?:\/\/)[^\s"')]+/g, "[URL]")
 
-async function mainProcesses() {
-  const pids = (await readdir("/proc")).filter((id) => /^\d+$/.test(id))
-  return (
-    await Promise.all(
-      pids.map(async (pid) => {
-        try {
-          const exe = await readlink(join("/proc", pid, "exe"))
-          if (basename(exe) !== "pigclaude") return null
-          const argv = (await readFile(join("/proc", pid, "cmdline"), "utf8")).split("\0")
-          if (argv.some((argument) => argument.startsWith("--type="))) return null
-          const env = (await readFile(join("/proc", pid, "environ"), "utf8")).split("\0")
-          return env.includes("APPIMAGE=" + image) ? { pid: Number(pid), exe, argv } : null
-        } catch {
-          return null
-        }
-      }),
-    )
-  ).filter(Boolean)
+async function processInfo(pid) {
+  const executable = join("/proc", String(pid), "exe")
+  const exe = await readlink(executable).catch(async () =>
+    (await run("sudo", ["-n", "readlink", executable])).stdout.trim(),
+  )
+  const args = await readFile(join("/proc", String(pid), "cmdline"), "utf8")
+  return { pid, exe, argv: args.split("\0") }
+}
+
+async function windowPid(title) {
+  const match = await run("xdotool", [
+    "search",
+    "--onlyvisible",
+    "--limit",
+    "1",
+    "--name",
+    title,
+  ]).catch(() => null)
+  if (!match?.stdout.trim()) return 0
+  const { stdout } = await run("xdotool", ["getwindowpid", match.stdout.trim()])
+  return Number(stdout.trim())
+}
+
+async function currentProcess(page) {
+  const session = await browser.newBrowserCDPSession()
+  const info = await session.send("SystemInfo.getProcessInfo").catch(() => null)
+  await session.detach()
+  const pid = info?.processInfo.find(({ type }) => type === "browser")?.id
+  if (pid) {
+    activePid = pid
+  } else {
+    await page.evaluate(() => {
+      document.title = "PigClaude AppImage QA"
+    })
+    await expect
+      .poll(() => windowPid("^PigClaude AppImage QA$"), { timeout: 10_000 })
+      .toBeGreaterThan(0)
+    activePid = await windowPid("^PigClaude AppImage QA$")
+  }
+  return processInfo(activePid)
+}
+
+async function isAlive(pid) {
+  if (!pid) return false
+  const stat = await readFile(join("/proc", String(pid), "stat"), "utf8").catch(() => "")
+  return Boolean(stat && !stat.includes(") Z "))
+}
+
+function killProcess(pid) {
+  if (!pid) return
+  try {
+    process.kill(pid, "SIGTERM")
+  } catch (error) {
+    if (error.code !== "ESRCH") throw error
+  }
 }
 
 function start(command, args) {
@@ -109,7 +153,13 @@ async function connectWindow() {
         if (direct?.exitCode != null || direct?.signalCode != null) {
           return "exited " + (direct.exitCode ?? direct.signalCode)
         }
-        return (await fetch(origin + "/json/version").catch(() => null))?.ok ?? false
+        return (
+          (
+            await fetch(origin + "/json/version", { signal: AbortSignal.timeout(1500) }).catch(
+              () => null,
+            )
+          )?.ok ?? false
+        )
       },
       { timeout: 30_000 },
     )
@@ -129,9 +179,10 @@ async function closeWindow(page) {
       await window.pigclaude.window.control("close")
     })
     .catch(() => {})
-  await expect.poll(async () => (await mainProcesses()).length, { timeout: 15_000 }).toBe(0)
+  await expect.poll(() => isAlive(activePid), { timeout: 15_000 }).toBe(false)
   await browser?.close().catch(() => {})
   browser = undefined
+  activePid = undefined
   direct = undefined
 }
 
@@ -141,6 +192,7 @@ const membership = (page) =>
   page.evaluate(async () => (await window.pigclaude.membership.inspect()).state)
 
 try {
+  begin(stage)
   const hash = createHash("sha256")
   for await (const chunk of createReadStream(image)) hash.update(chunk)
   result.sha256 = hash.digest("hex")
@@ -165,14 +217,15 @@ try {
     await run("gio", ["mime", mime, browserDesktop])
   }
 
-  stage = "direct AppImage launch via FUSE"
+  begin("direct AppImage launch via FUSE")
   direct = start(image, debug)
+  direct.unref()
   const initial = await connectWindow()
   await expect(signIn(initial)).toBeVisible()
-  const [started] = await mainProcesses()
-  assert(started, "the actual AppImage process is missing")
+  const started = await currentProcess(initial)
+  result.executable = started.exe
   const bundle = dirname(started.exe)
-  const mount = await run("findmnt", ["-n", "-o", "FSTYPE,OPTIONS", "--target", bundle])
+  const mount = await run("findmnt", ["-n", "-o", "FSTYPE,SOURCE,OPTIONS", "--target", bundle])
   result.mount = mount.stdout.trim()
   assert.match(result.mount, /^fuse[.\s]/)
   result.application = await initial.evaluate(
@@ -193,7 +246,7 @@ try {
   pass("downloaded AppImage mounted via FUSE and displayed the signed-out window")
   await closeWindow(initial)
 
-  stage = "probe unconfigured desktop protocol handoff"
+  begin("probe unconfigured desktop protocol handoff")
   const query = await run("xdg-mime", ["query", "default", scheme]).catch(() => ({ stdout: "" }))
   const handlers = await run("gio", ["mime", scheme], { env: { ...environment, LC_ALL: "C" } })
   const handler = query.stdout.trim()
@@ -206,23 +259,23 @@ try {
   let existingHandlerWorks = false
   if (defaultStatus === 0) {
     try {
-      await expect
-        .poll(async () => (await mainProcesses()).some((item) => item.argv.includes(cold)), {
-          timeout: 15_000,
-        })
-        .toBe(true)
+      await expect.poll(() => windowPid("^PigClaude$"), { timeout: 15_000 }).toBeGreaterThan(0)
+      activePid = await windowPid("^PigClaude$")
+      const coldLaunch = await processInfo(activePid)
+      assert(coldLaunch.argv.includes(cold), "pre-existing handler did not pass the cold callback")
       existingHandlerWorks = true
       pass("pre-existing desktop association cold-launches the AppImage through GIO")
     } catch (error) {
       result.defaultProtocol.error = safe(error.message).slice(0, 900)
     } finally {
-      for (const item of await mainProcesses()) process.kill(item.pid, "SIGTERM")
-      await expect.poll(async () => (await mainProcesses()).length, { timeout: 15_000 }).toBe(0)
+      killProcess(activePid)
+      await expect.poll(() => isAlive(activePid), { timeout: 15_000 }).toBe(false)
+      activePid = undefined
     }
   }
   result.defaultProtocol.delivered = existingHandlerWorks
 
-  stage = "cold URI launch with isolated XDG integration"
+  begin("cold URI launch with isolated XDG integration")
   const desktopId = shippedDesktop[0] ?? "pigclaude.desktop"
   const desktopPath = join(applications, desktopId)
   const filename = '"' + image + '"'
@@ -245,14 +298,14 @@ try {
   assert.equal(associated.stdout.trim(), desktopId)
   assert.equal(await openUri(cold), 0, "GIO did not dispatch the cold callback")
   const page = await connectWindow()
-  const [coldProcess] = await mainProcesses()
-  assert(coldProcess?.argv.includes(cold), "cold callback did not arrive in the AppImage process")
+  const coldProcess = await currentProcess(page)
+  assert(coldProcess.argv.includes(cold), "cold callback did not arrive in the AppImage process")
   await expect(signIn(page)).toBeVisible()
   await expect.poll(() => membership(page)).toBe("signed_out")
   assert.equal(fixture.state().exchangeAttempts, 0)
   pass("registered AppImage cold-started from GIO and ignored an unrelated callback")
 
-  stage = "system browser and warm callbacks"
+  begin("system browser and warm callbacks")
   await signIn(page).click()
   await expect(copyLink(page)).toBeEnabled()
   await expect.poll(() => fixture.state().browserVisits, { timeout: 30_000 }).toBeGreaterThan(0)
@@ -269,9 +322,7 @@ try {
   if (await skip.isVisible()) await skip.click()
   assert.equal(await openUri(approved), 0)
   await delay(750)
-  await expect
-    .poll(async () => (await mainProcesses()).map((item) => item.pid))
-    .toEqual([coldProcess.pid])
+  assert.equal((await currentProcess(page)).pid, coldProcess.pid)
   assert.equal(fixture.state().exchanges, 1)
   assert.equal(fixture.state().exchangeAttempts, 1)
   result.browserVisits = fixture.state().browserVisits
@@ -284,7 +335,7 @@ try {
   console.error(result.failure)
   process.exitCode = 1
 } finally {
-  for (const item of await mainProcesses()) process.kill(item.pid, "SIGTERM")
+  killProcess(activePid)
   if (direct?.pid && direct.exitCode == null && direct.signalCode == null) direct.kill("SIGTERM")
   await browser?.close().catch(() => {})
   await fixture.close()
@@ -294,5 +345,8 @@ try {
   await writeFile(join(evidence, "appimage.log"), logs)
   if (result.failure || result.defaultProtocol?.dispatchExit !== 0) console.log(logs)
   await writeFile(join(evidence, "verified.json"), JSON.stringify(result, null, 2) + "\n")
-  console.log(JSON.stringify(result, null, 2))
+  await new Promise((resolve) =>
+    process.stdout.write(JSON.stringify(result, null, 2) + "\n", resolve),
+  )
+  process.exit(process.exitCode ?? 0)
 }

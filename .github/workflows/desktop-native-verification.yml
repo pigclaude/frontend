@@ -32,12 +32,13 @@ jobs:
       - name: Prepare Ubuntu desktop and FUSE
         run: |
           sudo apt-get update -qq -o Acquire::Retries=3
-          sudo apt-get install -y --no-install-recommends xvfb xauth openbox dbus-x11 gnome-keyring desktop-file-utils libglib2.0-bin libfuse2t64 fuse3
+          sudo apt-get install -y --no-install-recommends xvfb xauth openbox dbus-x11 gnome-keyring desktop-file-utils libglib2.0-bin libfuse2t64 fuse3 xdotool
           if [ ! -c /dev/fuse ]; then sudo modprobe fuse; fi
           ls -l /dev/fuse
           sysctl kernel.apparmor_restrict_unprivileged_userns
           command -v google-chrome
       - name: Verify AppImage and system URI dispatcher
+        timeout-minutes: 4
         env:
           QA_ROOT: ${{ runner.temp }}/pigclaude-appimage-runtime
           QA_IMAGE: ${{ runner.temp }}/pigclaude-artifact/PigClaude-x86_64.AppImage
@@ -49,7 +50,8 @@ jobs:
           export XDG_CACHE_HOME="$QA_ROOT/cache"
           export XDG_CURRENT_DESKTOP=GNOME
           mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$QA_OUTPUT"
-          xvfb-run -a -s '-screen 0 1600x1000x24' dbus-run-session -- bash -euc '
+          timeout --kill-after=10s 170s xvfb-run -a -s '-screen 0 1600x1000x24' dbus-run-session -- bash -euc '
+            echo Starting desktop session
             eval "$(printf "%s\n" pigclaude-appimage-qa | gnome-keyring-daemon --unlock --components=secrets)"
             export GNOME_KEYRING_CONTROL
             openbox >"$QA_ROOT/openbox.log" 2>&1 &

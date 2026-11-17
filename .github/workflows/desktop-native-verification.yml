@@ -1,6 +1,6 @@
-# 下载固定 Linux 测试制品，在独立 Ubuntu 上验收协议。
+# 在独立 Ubuntu 上验收 test.9 的 Linux AppImage，使用草稿 SHA-256 锁定测试输入。
 name: Desktop native verification
-run-name: Verify Linux AppImage automatic protocol registration
+run-name: Verify test.9 Linux AppImage registration and Chrome callback
 
 on:
   workflow_dispatch:
@@ -19,8 +19,8 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          name: linux-appimage-protocol-fix-x64
-          run-id: 44003184191
+          name: desktop-release-linux-x64
+          run-id: 44020021431
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/pigclaude-appimage-package
       - uses: pnpm/action-setup@v4
@@ -46,12 +46,16 @@ jobs:
           QA_BUILD_COMMIT: ${{ runner.temp }}/pigclaude-appimage-package/build-commit.txt
           QA_SHA256: ${{ runner.temp }}/pigclaude-appimage-package/SHA256SUMS.txt
           QA_OUTPUT: ${{ runner.temp }}/pigclaude-appimage-evidence
+          QA_EXPECTED_IMAGE_SHA: 7573e3eaf45773f176b6dd424c5bca27413859ce302ea2075e6d7e365bcc0bf3
+          QA_EXPECTED_BUILD: 62856889263affecc9f99e59a3d34d235203272b
         run: |
           export XDG_CONFIG_HOME="$QA_ROOT/config"
           export XDG_DATA_HOME="$QA_ROOT/data"
           export XDG_CACHE_HOME="$QA_ROOT/cache"
           export XDG_CURRENT_DESKTOP=GNOME
           mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$QA_OUTPUT"
+          printf "%s  %s\n" "$QA_EXPECTED_IMAGE_SHA" PigClaude-x86_64.AppImage >"$QA_SHA256"
+          printf "%s\n" "$QA_EXPECTED_BUILD" >"$QA_BUILD_COMMIT"
           mv "$QA_PACKAGE/PigClaude-x86_64.AppImage" "$QA_IMAGE"
           chmod +x "$QA_IMAGE"
           timeout --kill-after=10s 230s xvfb-run -a -s '-screen 0 1600x1000x24' dbus-run-session -- bash -euc '
@@ -63,6 +67,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: linux-appimage-protocol-evidence
+          name: linux-appimage-test9-evidence
           path: ${{ runner.temp }}/pigclaude-appimage-evidence
           if-no-files-found: warn

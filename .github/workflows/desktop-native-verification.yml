@@ -1,96 +1,63 @@
-# 在实际 Windows 和 Ubuntu 运行器启动 Electron 并留存窗口验收证据。
+# 用独立 Ubuntu x64 运行器验收已打出的 AppImage 和系统协议回跳。
 name: Desktop native verification
+run-name: Linux AppImage startup and protocol callback (7dc803a)
 
 on:
-  push:
-    branches: ["main", "codex/pigcode-ui-native-qa", "codex/pigcode-workbench"]
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
-  native:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, windows-2022]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 18
+  appimage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      QA_ROOT: ${{ runner.temp }}/pigclaude-appimage-runtime
+      QA_IMAGE: ${{ runner.temp }}/pigclaude-artifact/PigClaude-x86_64.AppImage
+      QA_OUTPUT: ${{ runner.temp }}/pigclaude-appimage-evidence
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-release-linux-x64
+          path: ${{ runner.temp }}/pigclaude-artifact
+          run-id: 43993199194
+          github-token: ${{ github.token }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm pigcode:verify
-      - run: pnpm --filter @pigclaude/desktop exec electron --version
-        if: runner.os == 'Windows'
-      - name: Install Linux desktop test tools
-        if: runner.os == 'Linux'
+      - name: Prepare Ubuntu desktop and FUSE
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb xauth openbox dbus-x11 gnome-keyring libsecret-tools xdotool imagemagick libglib2.0-bin
-          test -x /usr/bin/gio
-      - name: Prepare Linux Electron
-        if: runner.os == 'Linux'
-        working-directory: apps/desktop
+          sudo apt-get update -qq -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends xvfb xauth openbox dbus-x11 gnome-keyring desktop-file-utils libglib2.0-bin libfuse2t64 fuse3
+          if [ ! -c /dev/fuse ]; then sudo modprobe fuse; fi
+          ls -l /dev/fuse
+          sysctl kernel.apparmor_restrict_unprivileged_userns
+          command -v google-chrome
+      - name: Verify AppImage and system URI dispatcher
         run: |
-          node -e 'require("electron")'
-          electron="$(node -p 'require("electron")')"
-          sudo chown root:root "$(dirname "$electron")/chrome-sandbox"
-          sudo chmod 4755 "$(dirname "$electron")/chrome-sandbox"
-          "$electron" --version
-      - run: pnpm --filter @pigclaude/desktop build
-      # 新运行器上第一次启动 PowerShell 很慢：Windows PowerShell 查询设备标识要 4–13 秒，偶尔超过 20 秒；
-      # pwsh 第一次编译 C# 并加载 WinForms 要 6–11 秒。验收测的是界面流程，先各跑一次，不让它算进期限。
-      - name: Warm up Windows PowerShell
-        if: runner.os == 'Windows'
-        run: |
-          powershell.exe -NoLogo -NoProfile -NonInteractive -Command "(Get-CimInstance -ClassName Win32_ComputerSystemProduct -ErrorAction Stop).UUID" | Out-Null
-          pwsh.exe -NoProfile -NonInteractive -File tests/native-desktop/windows-pointer.ps1 capture "$env:RUNNER_TEMP\system-input-warmup.png"
-      - name: Verify saved session and Claude process lifecycle
-        timeout-minutes: 10
-        run: >-
-          pnpm --filter @pigclaude/desktop exec vitest run --maxWorkers=1
-          src/main/session/session-host-persistence.test.ts
-          src/main/session/session-project-configuration.integration.test.ts
-          src/main/session/session-project-configuration-native.integration.test.ts
-          src/main/session/session-proxy-routing.integration.test.ts
-          src/main/session/retained-claude-process.test.ts
-          src/main/session/retained-claude-process-exit.test.ts
-          src/main/session/claude-agent-adapter-retained-process.test.ts
-          src/main/login-startup.test.ts
-          src/main/xdg-autostart.integration.test.ts
-      - name: Verify native Electron on Windows
-        if: runner.os == 'Windows'
-        run: |
-          node tests/native-desktop/agent-browser-network.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node tests/native-desktop/acceptance.mjs test-results/native-desktop
-      - name: Verify capability plugin sandbox on Windows
-        if: runner.os == 'Windows'
-        run: node tests/native-desktop/plugin-sandbox.mjs
-      - name: Verify capability plugin sandbox on Linux
-        if: runner.os == 'Linux'
-        run: xvfb-run -a node tests/native-desktop/plugin-sandbox.mjs
-      - name: Verify native Electron on Linux
-        if: runner.os == 'Linux'
-        timeout-minutes: 3
-        run: |
-          xvfb-run -a -s "-screen 0 1600x1000x24" dbus-run-session -- bash -euc '
-            eval "$(printf "%s\n" pigclaude-native-qa | gnome-keyring-daemon --unlock --components=secrets)"
+          chmod +x "$QA_IMAGE"
+          export XDG_CONFIG_HOME="$QA_ROOT/config"
+          export XDG_DATA_HOME="$QA_ROOT/data"
+          export XDG_CACHE_HOME="$QA_ROOT/cache"
+          export XDG_CURRENT_DESKTOP=GNOME
+          mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$QA_OUTPUT"
+          xvfb-run -a -s '-screen 0 1600x1000x24' dbus-run-session -- bash -euc '
+            eval "$(printf "%s\n" pigclaude-appimage-qa | gnome-keyring-daemon --unlock --components=secrets)"
             export GNOME_KEYRING_CONTROL
-            openbox >/tmp/pigclaude-openbox.log 2>&1 &
-            sleep 1
-            node tests/native-desktop/agent-browser-network.mjs
-            node tests/native-desktop/acceptance.mjs test-results/native-desktop
+            openbox >"$QA_ROOT/openbox.log" 2>&1 &
+            node tests/native-desktop/linux-appimage-qa.mjs
           '
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: desktop-native-${{ runner.os }}
-          path: test-results/native-desktop
+          name: linux-appimage-evidence-7dc803a
+          path: ${{ env.QA_OUTPUT }}
           if-no-files-found: warn

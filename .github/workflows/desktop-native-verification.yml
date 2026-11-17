@@ -13,10 +13,6 @@ jobs:
   appimage:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    env:
-      QA_ROOT: ${{ runner.temp }}/pigclaude-appimage-runtime
-      QA_IMAGE: ${{ runner.temp }}/pigclaude-artifact/PigClaude-x86_64.AppImage
-      QA_OUTPUT: ${{ runner.temp }}/pigclaude-appimage-evidence
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,6 +38,10 @@ jobs:
           sysctl kernel.apparmor_restrict_unprivileged_userns
           command -v google-chrome
       - name: Verify AppImage and system URI dispatcher
+        env:
+          QA_ROOT: ${{ runner.temp }}/pigclaude-appimage-runtime
+          QA_IMAGE: ${{ runner.temp }}/pigclaude-artifact/PigClaude-x86_64.AppImage
+          QA_OUTPUT: ${{ runner.temp }}/pigclaude-appimage-evidence
         run: |
           chmod +x "$QA_IMAGE"
           export XDG_CONFIG_HOME="$QA_ROOT/config"
@@ -59,5 +59,5 @@ jobs:
         if: always()
         with:
           name: linux-appimage-evidence-7dc803a
-          path: ${{ env.QA_OUTPUT }}
+          path: ${{ runner.temp }}/pigclaude-appimage-evidence
           if-no-files-found: warn

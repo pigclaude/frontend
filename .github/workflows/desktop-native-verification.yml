@@ -1,6 +1,6 @@
-# 在独立 Ubuntu 上验收 test.9 的 Linux AppImage，使用草稿 SHA-256 锁定测试输入。
+# 在新的 macOS 与 Windows 运行器上安装 test.9 的制品并验收系统授权回跳。
 name: Desktop native verification
-run-name: Verify test.9 Linux AppImage registration and Chrome callback
+run-name: Verify test.9 macOS DMG and Windows NSIS installation
 
 on:
   workflow_dispatch:
@@ -10,63 +10,48 @@ permissions:
   contents: read
 
 jobs:
-  verify-appimage:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 14
+  installed:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: darwin-arm64
+            installer: PigClaude-0.0.1-arm64.dmg
+            sha256: ff831825022f74ac75dc1d1aa050c82287567ea03b0843fc8dfe17c1c32f766d
+          - runner: windows-2022
+            target: win32-x64
+            installer: PigClaude-0.0.1-x64.exe
+            sha256: 029c89eb83e5c2f3f6b265e3b05b7ca571c58bf0493e1e1d15cda30c14e2a399
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          name: desktop-release-linux-x64
+          name: desktop-release-${{ matrix.target }}
           run-id: 44020021431
           github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/pigclaude-appimage-package
+          path: ${{ runner.temp }}/pigclaude-test9-artifact
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Prepare clean Ubuntu desktop
-        run: |
-          sudo apt-get update -qq -o Acquire::Retries=3
-          sudo apt-get install -y --no-install-recommends xvfb xauth openbox dbus-x11 gnome-keyring libglib2.0-bin xdg-utils libfuse2t64 fuse3 xdotool fonts-noto-cjk
-          if [ ! -c /dev/fuse ]; then sudo modprobe fuse; fi
-          ls -l /dev/fuse
-          sysctl kernel.apparmor_restrict_unprivileged_userns
-          test -f /usr/share/applications/google-chrome.desktop
-      - name: Verify first launch, cold URI start and Chrome callback
-        timeout-minutes: 5
+      - name: Install test.9 and verify Chrome and OS dispatch
+        timeout-minutes: 7
         env:
-          QA_PACKAGE: ${{ runner.temp }}/pigclaude-appimage-package
-          QA_ROOT: ${{ runner.temp }}/pigclaude-appimage-runtime
-          QA_IMAGE: ${{ runner.temp }}/pigclaude-appimage-runtime/PigClaude 100%=stable.AppImage
-          QA_BUILD_COMMIT: ${{ runner.temp }}/pigclaude-appimage-package/build-commit.txt
-          QA_SHA256: ${{ runner.temp }}/pigclaude-appimage-package/SHA256SUMS.txt
-          QA_OUTPUT: ${{ runner.temp }}/pigclaude-appimage-evidence
-          QA_EXPECTED_IMAGE_SHA: 7573e3eaf45773f176b6dd424c5bca27413859ce302ea2075e6d7e365bcc0bf3
-          QA_EXPECTED_BUILD: 62856889263affecc9f99e59a3d34d235203272b
-        run: |
-          export XDG_CONFIG_HOME="$QA_ROOT/config"
-          export XDG_DATA_HOME="$QA_ROOT/data"
-          export XDG_CACHE_HOME="$QA_ROOT/cache"
-          export XDG_CURRENT_DESKTOP=GNOME
-          mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$QA_OUTPUT"
-          printf "%s  %s\n" "$QA_EXPECTED_IMAGE_SHA" PigClaude-x86_64.AppImage >"$QA_SHA256"
-          printf "%s\n" "$QA_EXPECTED_BUILD" >"$QA_BUILD_COMMIT"
-          mv "$QA_PACKAGE/PigClaude-x86_64.AppImage" "$QA_IMAGE"
-          chmod +x "$QA_IMAGE"
-          timeout --kill-after=10s 230s xvfb-run -a -s '-screen 0 1600x1000x24' dbus-run-session -- bash -euc '
-            eval "$(printf "%s\n" pigclaude-appimage-qa | gnome-keyring-daemon --unlock --components=secrets)"
-            export GNOME_KEYRING_CONTROL
-            openbox >"$QA_ROOT/openbox.log" 2>&1 &
-            node tests/native-desktop/linux-appimage-protocol-qa.mjs
-          '
+          QA_ROOT: ${{ runner.temp }}/pigclaude-test9-install
+          QA_OUTPUT: ${{ runner.temp }}/pigclaude-test9-install-evidence
+          QA_INSTALLER: ${{ runner.temp }}/pigclaude-test9-artifact/${{ matrix.installer }}
+          QA_EXPECTED_SHA: ${{ matrix.sha256 }}
+        run: node tests/native-desktop/test9-installed-desktop.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: linux-appimage-test9-evidence
-          path: ${{ runner.temp }}/pigclaude-appimage-evidence
+          name: installed-test9-${{ matrix.target }}
+          path: ${{ runner.temp }}/pigclaude-test9-install-evidence
           if-no-files-found: warn

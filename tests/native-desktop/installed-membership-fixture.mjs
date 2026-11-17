@@ -62,7 +62,12 @@ export async function startMembershipFixture(packaged = false) {
         scope: scopes,
         device_context: contextId,
       })
-      pending = { ...input, code: randomUUID(), exchangeReady: false }
+      pending = {
+        ...input,
+        code: randomUUID(),
+        exchangeReady: false,
+        authorizationUrl: authorization.href,
+      }
       contexts.set(pending.code, pending)
       return json({
         contextId,
@@ -167,6 +172,10 @@ export async function startMembershipFixture(packaged = false) {
     origin,
     state() {
       return { browserVisits, exchanges, exchangeAttempts, identities: identities.slice() }
+    },
+    authorizationUrl() {
+      if (!pending) throw new Error("尚未发起授权")
+      return pending.authorizationUrl
     },
     nativeCallback() {
       if (!pending) throw new Error("尚未发起授权")

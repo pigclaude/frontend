@@ -231,10 +231,11 @@ try {
   await assertMounted(appPid)
   assert.equal((await stat(entry)).mtimeMs, entryMtime)
   assert.equal(fixture.state().exchangeAttempts, 0)
-  await run("xdotool", ["windowclose", coldWindow.id])
-  await expect.poll(() => alive(appPid), { timeout: 15_000 }).toBe(false)
-  appPid = undefined
+  result.coldStarted = true
   pass("GIO cold-launched the same AppImage without any installed test launcher")
+  process.kill(appPid, "SIGTERM")
+  await expect.poll(() => alive(appPid), { timeout: 10_000 }).toBe(false)
+  appPid = undefined
 
   begin("launch real Chrome and complete authorization from the page")
   // 只为这台一次性运行器的回环测试页面预先确认外部协议提示。

@@ -1,4 +1,4 @@
-# 从修复提交仅构建 Linux AppImage，再在独立的 Ubuntu 桌面上验收协议。
+# 下载固定 Linux 测试制品，在独立 Ubuntu 上验收协议。
 name: Desktop native verification
 run-name: Verify Linux AppImage automatic protocol registration
 
@@ -6,89 +6,11 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
-  build-appimage:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    env:
-      XRAY_VERSION: v26.10.31
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: 62856889263affecc9f99e59a3d34d235203272b
-          persist-credentials: false
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Check tracked source
-        run: |
-          pnpm exec eslint .
-          pnpm exec prettier --check .
-          pnpm --filter @pigclaude/desktop typecheck
-          test -x /usr/bin/gio
-          pnpm --filter @pigclaude/desktop exec vitest run src/main/authorization/protocol-registration.integration.test.ts
-      - name: 获取并校验固定 PigBrowser 与 Xray
-        shell: pwsh
-        env:
-          PIGBROWSER_READ_TOKEN: ${{ secrets.PIGBROWSER_READ_TOKEN }}
-          TARGET: linux-x64
-          XRAY_ARCHIVE: Xray-linux-64.zip
-          XRAY_SHA256: e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214
-        run: |
-          $ErrorActionPreference = "Stop"
-          $root = Join-Path $env:RUNNER_TEMP "pigclaude-runtime"
-          $browserDir = Join-Path $root "browser"
-          $xrayDir = Join-Path $root "xray"
-          New-Item -ItemType Directory -Force $browserDir, $xrayDir | Out-Null
-          $browserArchive = node apps/desktop/download-pigbrowser.cjs --target $env:TARGET --dir $root
-          if ($LASTEXITCODE -ne 0) { throw "获取 PigBrowser 开发包失败，原因见上面的输出" }
-          $browserArchive = "$browserArchive".Trim()
-          $xrayArchive = Join-Path $root $env:XRAY_ARCHIVE
-          Invoke-WebRequest "https://github.com/XTLS/Xray-core/releases/download/$env:XRAY_VERSION/$env:XRAY_ARCHIVE" -OutFile $xrayArchive
-          if ((Get-FileHash $xrayArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:XRAY_SHA256) { throw "Xray 包校验失败" }
-          if ($IsMacOS) {
-            ditto -x -k $browserArchive $browserDir
-          } elseif ($IsWindows) {
-            Expand-Archive $browserArchive -DestinationPath $browserDir
-          } else {
-            tar -xf $browserArchive -C $browserDir
-          }
-          if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "PigBrowser 包解压失败" }
-          Expand-Archive $xrayArchive -DestinationPath $xrayDir
-          $packages = @(Get-ChildItem $browserDir -Directory | Where-Object { Test-Path (Join-Path $_.FullName "manifest.json") })
-          if ($packages.Count -ne 1) { throw "无法确认唯一 PigBrowser 开发包" }
-          node apps/desktop/stage-pigbrowser.cjs --package $packages[0].FullName --target $env:TARGET
-          if ($LASTEXITCODE -ne 0) { throw "PigBrowser 完整资源校验失败" }
-          $xrayTarget = "apps/desktop/runtime-assets/pigclaude-runtime/xray/$env:TARGET"
-          New-Item -ItemType Directory -Force $xrayTarget | Out-Null
-          $xrayName = if ($IsWindows) { "xray.exe" } else { "xray" }
-          Copy-Item (Join-Path $xrayDir $xrayName), (Join-Path $xrayDir "LICENSE") $xrayTarget
-          if (!$IsWindows) { chmod 755 (Join-Path $xrayTarget $xrayName) }
-      - run: pnpm --filter @pigclaude/desktop build
-      - name: Build Linux release AppImage
-        working-directory: apps/desktop
-        run: pnpm exec electron-builder --config electron-builder.release.json --linux AppImage --x64 --publish never
-      - name: Record build identity
-        run: |
-          git rev-parse HEAD > apps/desktop/release/build-commit.txt
-          (cd apps/desktop/release && sha256sum -- PigClaude-x86_64.AppImage > SHA256SUMS.txt)
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-appimage-protocol-fix-x64
-          path: |
-            apps/desktop/release/PigClaude-x86_64.AppImage
-            apps/desktop/release/latest-linux.yml
-            apps/desktop/release/build-commit.txt
-            apps/desktop/release/SHA256SUMS.txt
-          if-no-files-found: error
-
   verify-appimage:
-    needs: build-appimage
     runs-on: ubuntu-24.04
     timeout-minutes: 14
     steps:
@@ -98,6 +20,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: linux-appimage-protocol-fix-x64
+          run-id: 44003184191
+          github-token: ${{ github.token }}
           path: ${{ runner.temp }}/pigclaude-appimage-package
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4

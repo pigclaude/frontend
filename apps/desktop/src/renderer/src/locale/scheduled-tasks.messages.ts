@@ -57,6 +57,10 @@ export const scheduledTasksZhCN = {
   "scheduledTasks.runMissing": "该运行记录已被移除。",
   "scheduledTasks.reasonMembership": "会员状态不可用",
   "scheduledTasks.reasonProject": "项目目录不可用",
+  "scheduledTasks.worktreeHint": "每次运行时创建独立 worktree",
+  "scheduledTasks.keepAwakeHint":
+    "PigClaude 打开时保持电脑唤醒。重新打开后，最多补跑过去 12 小时内最近一次错过的任务。",
+  "scheduledTasks.reasonWorktree": "无法创建 worktree，请检查项目和起点分支",
   "scheduledTasks.reasonAccount": "没有可用的 Claude 账号",
   "scheduledTasks.reasonDaemon": "本机服务未就绪",
   "scheduledTasks.reasonQueue": "未等到会话名额",
@@ -127,6 +131,11 @@ export const scheduledTasksEnUS = {
   "scheduledTasks.runMissing": "This run record has been removed.",
   "scheduledTasks.reasonMembership": "Membership is unavailable",
   "scheduledTasks.reasonProject": "Project folder is unavailable",
+  "scheduledTasks.worktreeHint": "Create a separate worktree for each run",
+  "scheduledTasks.keepAwakeHint":
+    "Keep the computer awake while PigClaude is open. On reopening, PigClaude catches up the latest missed run within the last 12 hours.",
+  "scheduledTasks.reasonWorktree":
+    "Could not create a worktree. Check the project and base branch.",
   "scheduledTasks.reasonAccount": "No Claude account available",
   "scheduledTasks.reasonDaemon": "Local service is not ready",
   "scheduledTasks.reasonQueue": "No session slot became available",

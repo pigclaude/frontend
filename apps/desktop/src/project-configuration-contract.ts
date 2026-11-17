@@ -10,6 +10,8 @@ export type ProjectTrustStatus = "trusted" | "untrusted" | "blocked"
 export type ProjectConfigurationReport = {
   workspace: string
   trust: ProjectTrustStatus
+  /** 当前路径下是否发现会受启用状态控制的项目设置或 MCP 配置。 */
+  hasProjectSettings: boolean
   instructions: string[]
   counts: { commands: number; skills: number; agents: number }
   hooks: Array<{ event: string; kind: string; command: string | null }>

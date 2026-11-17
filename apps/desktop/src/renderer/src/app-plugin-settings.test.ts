@@ -151,7 +151,7 @@ async function openSettings(bridge: CapabilityPluginsBridge) {
     }
   }
   window.pigclaude.capabilityPlugins = bridge
-  window.history.replaceState({}, "", "/?screen=general")
+  window.history.replaceState({}, "", "/?screen=chat-new")
   await act(async () => app.root.render(createElement(DesktopApp)))
   await flush()
   await click("插件", app.container)
@@ -177,11 +177,34 @@ function dialog(): HTMLElement {
 }
 
 async function prepareArchive(): Promise<HTMLElement> {
-  await click("从归档安装", app.container)
+  await installFrom("从归档安装")
   const source = dialog()
   await enterDigest(sha256, source)
   await click("查看插件披露", source)
   return dialog()
+}
+
+function installMenuItem(name: string): HTMLElement | undefined {
+  return [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+    (item) => item.textContent?.trim() === name,
+  )
+}
+
+async function openInstallMenu(): Promise<void> {
+  const trigger = buttonNamed("添加插件", app.container)
+  if (!trigger) throw new Error("没有添加插件入口")
+  await act(async () => {
+    trigger.focus()
+    await userEvent.setup().keyboard("{ArrowDown}")
+  })
+  await flush()
+  expect(trigger.getAttribute("aria-expanded")).toBe("true")
+}
+
+async function installFrom(name: "从归档安装" | "从目录安装"): Promise<void> {
+  await openInstallMenu()
+  await clickButton(installMenuItem(name), name)
+  await flush()
 }
 
 async function enterDigest(digest: string, source: HTMLElement): Promise<void> {
@@ -197,8 +220,13 @@ async function enterDigest(digest: string, source: HTMLElement): Promise<void> {
 it("在安装归档之前显示声明，取消不安装，确认只提交当前披露的标识", async () => {
   const bridge = fakePlugins()
   await openSettings(bridge)
-  expect(buttonNamed("从目录安装", app.container)).toBeUndefined()
-  const disclosure = await prepareArchive()
+  await openInstallMenu()
+  expect(installMenuItem("从目录安装")).toBeUndefined()
+  await clickButton(installMenuItem("从归档安装"), "从归档安装")
+  await flush()
+  await enterDigest(sha256, dialog())
+  await click("查看插件披露", dialog())
+  const disclosure = dialog()
   expect(bridge.pick).toHaveBeenCalledWith("archive")
   expect(bridge.prepare).toHaveBeenCalledWith({ kind: "archive", path: archive, sha256 })
   expect(disclosure.textContent).toContain("能力插件")
@@ -219,7 +247,7 @@ it("在安装归档之前显示声明，取消不安装，确认只提交当前�
 it("开发模式从本地目录安装，切换启用状态并可选择保留数据后卸载", async () => {
   const bridge = fakePlugins(true)
   await openSettings(bridge)
-  await click("从目录安装", app.container)
+  await installFrom("从目录安装")
   expect(bridge.prepare).toHaveBeenCalledExactlyOnceWith({
     kind: "directory",
     path: "/fixtures/word-count",
@@ -256,7 +284,7 @@ it("开发模式从本地目录安装，切换启用状态并可选择保留数�
 it("从插件页打开宿主渲染的表单并清除密钥，不返显保存的明文", async () => {
   const bridge = fakePlugins(true)
   await openSettings(bridge)
-  await click("从目录安装", app.container)
+  await installFrom("从目录安装")
   await click("确认安装", dialog())
   const open = app.container.querySelector<HTMLElement>('[aria-label="打开 文档字数 的设置"]')
   await clickButton(open ?? undefined, "打开 文档字数 的设置")
@@ -278,7 +306,7 @@ it("从插件页打开宿主渲染的表单并清除密钥，不返显保存的�
 it("校验归档摘要格式，安装确认过期后回到列表并给出可重试提示", async () => {
   const bridge = fakePlugins()
   await openSettings(bridge)
-  await click("从归档安装", app.container)
+  await installFrom("从归档安装")
   let source = dialog()
   await enterDigest("bad-sha256", source)
   await click("查看插件披露", source)
@@ -305,17 +333,17 @@ it("校验归档摘要格式，安装确认过期后回到列表并给出可重�
 it("进入会员网络宽限时放弃尚未确认的安装，会员恢复后重新准备", async () => {
   const bridge = fakePlugins(true)
   const changeMembership = await openSettings(bridge)
-  await click("从目录安装", app.container)
+  await installFrom("从目录安装")
   expect(dialog().textContent).toContain("安装披露")
 
   await changeMembership("network_grace")
   expect(bridge.cancel).toHaveBeenCalledExactlyOnceWith("prepared-1")
-  expect(buttonNamed("从目录安装", app.container)).toBeUndefined()
+  expect(buttonNamed("添加插件", app.container)).toBeUndefined()
   expect(document.body.querySelector('[role="dialog"]')).toBeNull()
   expect(bridge.confirm).not.toHaveBeenCalled()
 
   await changeMembership("active")
-  await click("从目录安装", app.container)
+  await installFrom("从目录安装")
   await click("确认安装", dialog())
   expect(bridge.confirm).toHaveBeenCalledExactlyOnceWith("prepared-2")
 })
@@ -324,7 +352,7 @@ it("Claude Code 插件在确认前披露忽略项和 Skill 执行项，确认后
   let type: DesktopPluginInstallDisclosure["type"] = "capability"
   const bridge = fakePlugins(true, () => type)
   await openSettings(bridge)
-  await click("从目录安装", app.container)
+  await installFrom("从目录安装")
   await click("确认安装", dialog())
   bridge.confirm.mockClear()
 

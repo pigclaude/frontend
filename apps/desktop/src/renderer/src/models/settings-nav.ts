@@ -12,8 +12,6 @@ export type SettingsPageId =
   | "general"
   | "appearance"
   | "session"
-  | "scheduled-tasks"
-  | "plugins"
   | "menubar"
   | "network"
   | "data"
@@ -72,9 +70,15 @@ export const settingsNav: SettingsNavGroup[] = [
     ],
   },
   {
-    label: "数据",
+    label: "数据与统计",
     items: [
       { page: "usage", icon: "bars", label: "用量", keywords: ["Token", "请求", "导出", "CSV"] },
+      {
+        page: "archived",
+        icon: "archive",
+        label: "归档管理",
+        keywords: ["已归档", "会话", "取消归档", "删除", "保留"],
+      },
       {
         page: "environment",
         icon: "shield",
@@ -105,18 +109,6 @@ export const settingsNav: SettingsNavGroup[] = [
         keywords: ["默认工作区", "默认模型", "默认权限", "Claude Code", "时区"],
       },
       {
-        page: "scheduled-tasks",
-        icon: "calendar",
-        label: "定时任务",
-        keywords: ["计划", "提示词", "重复", "立即运行", "运行记录"],
-      },
-      {
-        page: "plugins",
-        icon: "cube",
-        label: "插件",
-        keywords: ["能力插件", "安装", "权限", "启用", "停用", "卸载"],
-      },
-      {
         page: "menubar",
         icon: "tray",
         label: "托盘与菜单栏",
@@ -133,12 +125,6 @@ export const settingsNav: SettingsNavGroup[] = [
         icon: "database",
         label: "数据与隐私",
         keywords: ["数据目录", "accounts.json", "proxies.json", "清除用量", "保留"],
-      },
-      {
-        page: "archived",
-        icon: "archive",
-        label: "已归档",
-        keywords: ["会话", "取消归档", "删除"],
       },
       { page: "about", icon: "info", label: "关于", keywords: ["版本", "设计系统"] },
     ],

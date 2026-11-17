@@ -84,10 +84,14 @@ export async function loadPluginMarketplaceEntry(
       fetcher,
     )
 
-  const selected = normalizePluginMarketplaceSource(entry.source)
+  const pinned = entry.source.kind === "github-subdir" ? entry.source : null
+  const directory = pinned ? normalizeMarketplaceRelativePath(pinned.path).slice(2) : null
+  const selected = normalizePluginMarketplaceSource(
+    pinned ? { ...pinned, kind: "github" } : entry.source,
+  )
   if (selected.kind === "directory") throw unavailable()
   const { files, sha256 } = await loadMarketplaceArchive(selected, fetcher, expected)
-  return loadedEntry(selected, files, sha256)
+  return loadedEntry(selected, directory === null ? files : selectFiles(files, directory), sha256)
 }
 
 async function loadRelativeEntry(

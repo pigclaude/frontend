@@ -172,7 +172,7 @@ export class PluginMarketplace {
         sourceId,
         entryId,
         artifactDigest:
-          entry.source.kind === "relative"
+          entry.source.kind === "relative" || entry.source.kind === "github-subdir"
             ? provenance.digest
             : (provenance.archiveSha256 ?? provenance.digest),
       },
@@ -261,7 +261,10 @@ function officialEntries(
   if (!catalog) return []
   const expired = Date.parse(catalog.expiresAt) <= Date.now()
   return catalog.catalog.entries.map((entry) => {
-    const view = marketplaceEntry(entry, officialPluginMarketplaceId, installed, "reviewed")
+    const view = {
+      ...marketplaceEntry(entry, officialPluginMarketplaceId, installed, "reviewed"),
+      ...(entry.officialListing ? { officialListing: entry.officialListing } : {}),
+    }
     const { source } = entry
     if (
       source.kind === "github" &&

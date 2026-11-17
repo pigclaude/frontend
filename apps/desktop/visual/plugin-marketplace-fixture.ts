@@ -3,6 +3,10 @@
 import type { Page } from "@playwright/test"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import type {
+  CapabilityPluginManifest,
+  InstalledDesktopPlugin,
+} from "../src/capability-plugin-contract"
+import type {
   PluginMarketplaceUpdateResult,
   PluginMarketplaceView,
 } from "../src/plugin-marketplace-contract"
@@ -139,6 +143,93 @@ const officialSnapshot: Pick<PluginMarketplaceView, "sources" | "entries"> = {
   ],
 }
 
+const activeOfficial: Pick<PluginMarketplaceView, "sources" | "entries"> = {
+  sources: officialSnapshot.sources.map((source) => ({ ...source, error: null, entryCount: 5 })),
+  entries: [
+    ...officialSnapshot.entries.map((entry) => {
+      const available = {
+        ...entry,
+        id: `official-${entry.id}`,
+        name: entry.type === "capability" ? "项目索引" : "工程工作流",
+        action: "install" as const,
+        officialListing: { publisherType: "official" as const, category: "开发者工具" },
+      }
+      delete available.blockedBy
+      return available
+    }),
+    ...["测试报告", "接口文档", "提交摘要"].map((name, index) => ({
+      sourceId: "pigclaude-official",
+      id: `community-${index}`,
+      name,
+      type: "claude-code" as const,
+      description:
+        ["从本地测试结果整理失败原因", "根据项目接口定义生成可读文档", "把提交记录整理成发布摘要"][
+          index
+        ] ?? null,
+      version: "1.0.0",
+      author: "社区维护者",
+      permissions: [],
+      domains: [],
+      action: "install" as const,
+      reviewStatus: "reviewed" as const,
+      officialListing: { publisherType: "community" as const, category: "开发者工具" },
+    })),
+  ],
+}
+
+const docsManifest: CapabilityPluginManifest = {
+  apiVersion: 1,
+  id: "docs-index",
+  name: "文档索引",
+  version: "1.3.0",
+  pigclaudeVersion: "*",
+  entry: "index.mjs",
+  description: "为项目文档提供检索工具",
+  tools: [
+    { name: "search_docs", description: "根据标题查询文档", inputSchema: { type: "object" } },
+  ],
+  permissions: ["workspace-read", "network"],
+  networkDomains: ["docs.example.org"],
+  settings: [],
+  commands: [],
+  toolResultTemplates: [],
+}
+
+const installed: InstalledDesktopPlugin[] = [
+  {
+    type: "capability",
+    manifest: { ...docsManifest, version: "1.2.0" },
+    sourceKind: "archive",
+    sha256: "b".repeat(64),
+    revision: "installed-docs",
+    installedAt: "2026-11-15T03:00:00.000Z",
+    approvedDomains: [],
+    toolApproval: "always_ask",
+    enabled: true,
+    compatible: true,
+  },
+  {
+    type: "claude-code",
+    manifest: {
+      id: "project-notes",
+      name: "项目笔记",
+      version: "1.0.0",
+      description: "整理工程决策和交接记录",
+      commands: [],
+      skills: ["project-notes:handoff"],
+      agents: [],
+      ignoredComponents: [],
+      skillExecution: [],
+    },
+    sourceKind: "directory",
+    sha256: null,
+    revision: "installed-notes",
+    installedAt: "2026-11-15T03:00:00.000Z",
+    enabled: false,
+    compatible: true,
+  },
+]
+
 const update: PluginMarketplaceUpdateResult = {
   kind: "review",
   additionalPermissions: ["network"],
@@ -149,23 +240,7 @@ const update: PluginMarketplaceUpdateResult = {
     confirmationId: "review-preview",
     sourceKind: "archive",
     sha256: "c".repeat(64),
-    manifest: {
-      apiVersion: 1,
-      id: "docs-index",
-      name: "文档索引",
-      version: "1.3.0",
-      pigclaudeVersion: "*",
-      entry: "index.mjs",
-      description: "为项目文档提供检索工具",
-      tools: [
-        { name: "search_docs", description: "根据标题查询文档", inputSchema: { type: "object" } },
-      ],
-      permissions: ["workspace-read", "network"],
-      networkDomains: ["docs.example.org"],
-      settings: [],
-      commands: [],
-      toolResultTemplates: [],
-    },
+    manifest: docsManifest,
   },
 }
 
@@ -173,11 +248,18 @@ const update: PluginMarketplaceUpdateResult = {
 export async function installPluginMarketplacePreview(
   page: Page,
   enabled = true,
-  official = false,
+  official?: "active" | "expired",
 ): Promise<void> {
-  const view = { ...marketplace, thirdPartyEnabled: enabled, ...(official ? officialSnapshot : {}) }
+  const shared =
+    official === "active" ? activeOfficial : official === "expired" ? officialSnapshot : null
+  const view = {
+    ...marketplace,
+    thirdPartyEnabled: enabled,
+    sources: [...(shared?.sources ?? []), ...marketplace.sources],
+    entries: [...(shared?.entries ?? []), ...marketplace.entries],
+  }
   await page.addInitScript(
-    ({ membership, marketplace, update }) => {
+    ({ membership, marketplace, installed, update }) => {
       const unavailable = async () => {
         throw new Error("FIXTURE_UNEXPECTED_CALL")
       }
@@ -192,7 +274,7 @@ export async function installPluginMarketplacePreview(
         },
         capabilityPlugins: {
           status: async () => ({ developerMode: true }),
-          list: async () => [],
+          list: async () => installed,
           listDeclarations: async () => [],
           readSettings: unavailable,
           setSetting: unavailable,
@@ -222,6 +304,6 @@ export async function installPluginMarketplacePreview(
         },
       }
     },
-    { membership, marketplace: view, update },
+    { membership, marketplace: view, installed, update },
   )
 }

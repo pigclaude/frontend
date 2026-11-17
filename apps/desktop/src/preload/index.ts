@@ -443,14 +443,18 @@ function isWorkspacePath(value: unknown): value is string {
 }
 
 /** 页面看到的本机应用：不含安装位置。 */
-export type OpenAppView = { id: string; name: string; kind: OpenAppKind }
+export type OpenAppView = { id: string; name: string; kind: OpenAppKind; icon?: string }
 
 function isOpenAppView(value: unknown): value is OpenAppView {
   return (
     isRecord(value) &&
     typeof value.id === "string" &&
     typeof value.name === "string" &&
-    (value.kind === "file-manager" || value.kind === "editor" || value.kind === "terminal")
+    (value.kind === "file-manager" || value.kind === "editor" || value.kind === "terminal") &&
+    (value.icon === undefined ||
+      (typeof value.icon === "string" &&
+        value.icon.length <= 256 * 1024 &&
+        /^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(value.icon)))
   )
 }
 

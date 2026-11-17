@@ -8,9 +8,9 @@ import type { BrowserProfilesController } from "../hooks/use-browser-profiles"
 import type { ClaudeAccountsController } from "../hooks/use-claude-accounts"
 import type { SessionController } from "../hooks/use-session"
 import type { SessionHistoryController } from "../hooks/use-session-history"
-import type { WorkspacesController } from "../hooks/use-workspaces"
 import { toPoolAccount, toPoolProxy } from "../models/claude-account-view"
 import type { NavLocation } from "../models/navigation"
+import { SettingsRegistry } from "../shell/settings-registry"
 import { AccountsScreen } from "./accounts-screen"
 import { BrowserProfilesScreen } from "./browser-profiles-screen"
 import { EnvironmentScreen } from "./environment-screen"
@@ -18,9 +18,6 @@ import { ProxiesScreen } from "./proxies-screen"
 import { SettingsScreen } from "./settings/settings-sections"
 import { UsageScreen } from "./usage-screen"
 import { ArchivedSessions } from "./settings/archived-sessions"
-import { ScheduledTasksSettings } from "./settings/scheduled-tasks-settings"
-import { PluginSettings } from "./settings/plugin-settings"
-import { CapabilityPluginSettingsForm } from "./settings/capability-plugin-settings-form"
 
 type Props = {
   page: string
@@ -31,7 +28,6 @@ type Props = {
   history: SessionHistoryController
   canSelectWorkspace: (workspace: string) => boolean
   workspace: string | null
-  workspaces: Pick<WorkspacesController, "paths" | "names">
   appInfo: AppInfo | null
   appearance: AppearanceController
   onOpenAuthorize: () => void
@@ -41,8 +37,18 @@ type Props = {
   onLogout: () => void
 }
 
-/** 绘制选定的设置页，沿用已打开窗口的账号和会话数据。 */
-export function MainWindowSettings({
+/** 注册设置页，并沿用主窗口管理的账号和会话。 */
+export function MainWindowSettingsRegistry(props: Omit<Props, "page">) {
+  return (
+    <SettingsRegistry
+      render={(page) => <MainWindowSettings {...props} page={page} />}
+      onSelect={props.onOpenSettings}
+      archiveAvailable={props.history.enabled}
+    />
+  )
+}
+
+function MainWindowSettings({
   page,
   membership,
   pool,
@@ -51,7 +57,6 @@ export function MainWindowSettings({
   history,
   canSelectWorkspace,
   workspace,
-  workspaces,
   appInfo,
   appearance,
   onOpenAuthorize,
@@ -60,36 +65,6 @@ export function MainWindowSettings({
   onNavigate,
   onLogout,
 }: Props) {
-  if (page === "plugins")
-    return (
-      <PluginSettings
-        bridge={window.pigclaude?.capabilityPlugins}
-        marketplace={window.pigclaude?.pluginMarketplace}
-        membershipActive={membership.state === "active"}
-        renderSettings={(plugin) =>
-          plugin.manifest.settings.length > 0 ? (
-            <CapabilityPluginSettingsForm plugin={plugin} />
-          ) : null
-        }
-      />
-    )
-  if (page === "scheduled-tasks")
-    return (
-      <ScheduledTasksSettings
-        bridge={window.pigclaude?.scheduledTasks}
-        projectPaths={workspaces.paths}
-        projectNames={workspaces.names}
-        currentProject={workspace}
-        accounts={pool.accounts}
-        models={session.models}
-        modelsLoading={session.modelsLoading}
-        loadModels={session.refreshModels}
-        openSession={(sessionId, projectPath) => {
-          const target = history.summaryForSession(sessionId)?.workspace ?? projectPath
-          if (canSelectWorkspace(target)) onNavigate({ kind: "session", sessionId })
-        }}
-      />
-    )
   const accounts = pool.accounts.map((account) => toPoolAccount(account, pool.proxies))
   if (page === "archived")
     return (

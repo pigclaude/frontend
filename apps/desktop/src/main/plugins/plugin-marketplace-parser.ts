@@ -19,7 +19,8 @@ import {
 export const pluginMarketplaceCatalogBytesLimit = 1024 * 1024
 const decoder = new TextDecoder("utf-8", { fatal: true })
 const label = z.string().trim().min(1).max(256)
-const unsupportedSources = new Set(["npm", "command", "url", "git", "git-subdir"])
+const unsupportedSources = new Set(["npm", "command", "git"])
+const githubUrl = /^https:\/\/github\.com\/([a-z0-9_.-]+\/[a-z0-9_.-]+)$/i
 const entry = z.object({
   name: z.string().refine(isCapabilityPluginId),
   displayName: label.optional(),
@@ -47,11 +48,16 @@ export function parsePluginMarketplaceCatalog(bytes: Uint8Array): PluginMarketpl
     const entries: PluginMarketplaceCatalogEntry[] = []
     for (const row of data.plugins) {
       const value = marketplaceRecord(row)
-      if (!value || !isCapabilityPluginId(value.name) || ids.has(value.name)) throw invalidCatalog()
+      if (!value) throw invalidCatalog()
+      const source = marketplaceRecord(value.source)
+      const sourceKind = source?.source
+      const external = sourceKind === "url" || sourceKind === "git-subdir"
+      const pinned = external ? githubArchiveSource(source) : undefined
+      if (external && (!pinned || !isCapabilityPluginId(value.name))) continue
+      if (!isCapabilityPluginId(value.name) || ids.has(value.name)) throw invalidCatalog()
       ids.add(value.name)
-      const sourceKind = marketplaceRecord(value.source)?.source
       if (typeof sourceKind === "string" && unsupportedSources.has(sourceKind)) continue
-      entries.push(parseEntry(entry.parse(value)))
+      entries.push(parseEntry(entry.parse(value), pinned))
     }
     return { name: data.name, entries }
   } catch {
@@ -59,11 +65,14 @@ export function parsePluginMarketplaceCatalog(bytes: Uint8Array): PluginMarketpl
   }
 }
 
-function parseEntry(data: z.infer<typeof entry>): PluginMarketplaceCatalogEntry {
+function parseEntry(
+  data: z.infer<typeof entry>,
+  pinned: PluginMarketplaceEntrySource | undefined,
+): PluginMarketplaceCatalogEntry {
   const extension = data.pigclaude
   const expected =
     extension?.sha256 === undefined ? null : normalizeMarketplaceChecksum(extension.sha256)
-  const source = entrySource(data.source, expected)
+  const source = pinned ?? entrySource(data.source, expected)
   const domains = (extension?.domains ?? []).map((domain) => {
     const value = normalizePluginNetworkDomain(domain)
     if (value === null) throw invalidCatalog()
@@ -82,6 +91,26 @@ function parseEntry(data: z.infer<typeof entry>): PluginMarketplaceCatalogEntry 
     },
     source,
     expectedSha256: source.kind === "https" ? source.sha256 : expected,
+  }
+}
+
+function githubArchiveSource(
+  fields: Record<string, unknown> | undefined,
+): PluginMarketplaceEntrySource | undefined {
+  if (!fields || typeof fields.url !== "string") return undefined
+  const repo = githubUrl.exec(fields.url)?.[1]?.replace(/\.git$/i, "")
+  if (!repo) return undefined
+  try {
+    const pinned = normalizePluginMarketplaceSource({ kind: "github", repo, commit: fields.sha })
+    if (pinned.kind !== "github") return undefined
+    if (fields.source === "url") return pinned
+    if (typeof fields.path !== "string" || !fields.path) return undefined
+    const path = normalizeMarketplaceRelativePath(
+      fields.path.startsWith("./") ? fields.path : "./" + fields.path,
+    )
+    return path === "./" ? undefined : { ...pinned, kind: "github-subdir", path }
+  } catch {
+    return undefined
   }
 }
 

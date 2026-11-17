@@ -344,6 +344,83 @@ it("混合目录继续列出支持的条目，跳过明确不支持的来源", (
   )
 })
 
+it("固定 GitHub URL 和子目录沿用归档校验，链接、分支和无效标识不扩大读取范围", async () => {
+  const url = "https://github.com/Fixture/Modules.git"
+  const pinned = { url, sha: pluginCommit, ref: "main" }
+  const catalog = parsePluginMarketplaceCatalog(
+    Buffer.from(
+      JSON.stringify({
+        name: "fixture-market",
+        plugins: [
+          { name: "root-plugin", source: { source: "url", ...pinned } },
+          {
+            name: "selected",
+            source: { source: "git-subdir", ...pinned, path: "plugins/selected" },
+          },
+          { name: "unpinned", source: { source: "url", url, ref: "main" } },
+          {
+            name: "external",
+            source: { source: "url", ...pinned, url: "https://example.test/fixture.git" },
+          },
+          { name: "invalid-path", source: { source: "git-subdir", ...pinned, path: "./../other" } },
+          { name: "42vendor", source: { source: "url", ...pinned } },
+        ],
+      }),
+    ),
+  )
+  expect(catalog.entries.map(({ source }) => source)).toEqual([
+    { kind: "github", repo: "fixture/modules", commit: pluginCommit },
+    {
+      kind: "github-subdir",
+      repo: "fixture/modules",
+      commit: pluginCommit,
+      path: "./plugins/selected",
+    },
+  ])
+  const entry = catalog.entries[1]
+  if (!entry) throw new Error("缺少固定子目录条目")
+  const bytes = await archive("modules-" + pluginCommit, {
+    "plugins/selected/skills/notes/SKILL.md": "Selected.",
+    "plugins/other/skills/notes/SKILL.md": "Other.",
+  })
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(reply(bytes))
+  const input = { kind: "github", repo: "fixture/market", commit: catalogCommit } as const
+  const loaded = await loadPluginMarketplaceEntry(input, entry, fetcher)
+  expect([...loaded.files.keys()]).toEqual(["skills/notes/SKILL.md"])
+  expect(loaded).toMatchObject({
+    archiveSha256: digest(bytes),
+    repo: "fixture/modules",
+    commit: pluginCommit,
+  })
+  expect(fetcher.mock.calls[0]?.[0]).toBe(
+    "https://codeload.github.com/fixture/modules/tar.gz/" + pluginCommit,
+  )
+})
+
+it.skipIf(process.platform === "win32")(
+  "固定仓库可读取含根文档链接的目录及普通组件，链接不会进入包",
+  async () => {
+    const prefix = "market-" + catalogCommit
+    const files = {
+      [catalogFile]: '{"name":"fixture","plugins":[{"name":"notes","source":"./"}]}',
+      "CLAUDE.md": "Repository guide.",
+      "skills/notes/SKILL.md": "Read a fixture.",
+    }
+    const bytes = await archive(prefix, files, "CLAUDE.md")
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => reply(bytes))
+    const input = { kind: "github", repo: "fixture/market", commit: catalogCommit } as const
+    const entry = (await loadPluginMarketplaceCatalog(input, fetcher)).entries[0]
+    if (!entry) throw new Error("缺少根插件")
+    const loaded = await loadPluginMarketplaceEntry(input, entry, fetcher)
+    expect([...loaded.files.keys()].sort()).toEqual(["CLAUDE.md", "skills/notes/SKILL.md"])
+    const unsupported = await archive(prefix, files, "skills/notes/SKILL.md")
+    fetcher.mockResolvedValueOnce(reply(unsupported))
+    await expect(loadPluginMarketplaceCatalog(input, fetcher)).rejects.toThrow(
+      "PLUGIN_ARCHIVE_UNSAFE",
+    )
+  },
+)
+
 it.skipIf(process.platform === "win32")("市场元数据的父目录不能是指向另一位置的链接", async () => {
   const root = await temp()
   const metadata = await temp()
@@ -385,9 +462,14 @@ async function file(root: string, path: string, text: string): Promise<void> {
   await writeFile(target, text, "utf8")
 }
 
-async function archive(prefix: string, files: Record<string, string>): Promise<Buffer> {
+async function archive(
+  prefix: string,
+  files: Record<string, string>,
+  guideLink?: string,
+): Promise<Buffer> {
   const root = await temp()
   for (const [path, text] of Object.entries(files)) await file(root, prefix + "/" + path, text)
+  if (guideLink) await symlink(guideLink, join(root, prefix, "AGENTS.md"))
   const target = join(root, "fixture.tgz")
   await create({ cwd: root, gzip: true, portable: true, file: target }, [prefix])
   return readFile(target)

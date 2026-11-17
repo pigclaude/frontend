@@ -461,7 +461,7 @@ function DesktopGate() {
       lastWorkspace={
         history.entries
           .slice(0, history.index + 1)
-          .findLast((entry) => entry.kind === "draft" || entry.kind === "session") ?? {
+          .findLast(({ kind }) => kind !== "settings" && kind !== "flow") ?? {
           kind: "session",
         }
       }

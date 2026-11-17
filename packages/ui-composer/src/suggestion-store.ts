@@ -9,7 +9,9 @@ export interface SuggestionItem {
   id: string
   label: string
   detail?: string | undefined
-  kind: "file" | "thread" | "command"
+  kind: "file" | "thread" | "command" | "skill"
+  scope?: "project" | "user" | "plugin" | "system" | undefined
+  title?: string | undefined
   /** 已归档的会话。 */
   archived?: boolean | undefined
   /** 命令的来源与参数提示；文件没有。 */
@@ -57,7 +59,8 @@ export class SuggestionStore {
       props.loading &&
       props.items.length === 0 &&
       this.snapshot.active &&
-      this.snapshot.kind === kind
+      this.snapshot.kind === kind &&
+      this.snapshot.query === props.query
     const items = stale ? this.snapshot.items : props.items
     const sameQuery = this.snapshot.active && this.snapshot.query === props.query
     const index = sameQuery ? Math.min(this.snapshot.index, Math.max(0, items.length - 1)) : 0

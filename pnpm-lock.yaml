@@ -739,6 +739,9 @@ importers:
 
   packages/ui-settings:
     dependencies:
+      '@pigclaude/ui-composer':
+        specifier: workspace:*
+        version: link:../ui-composer
       '@pigclaude/ui-contracts':
         specifier: workspace:*
         version: link:../ui-contracts

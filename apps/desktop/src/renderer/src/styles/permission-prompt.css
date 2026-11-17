@@ -24,6 +24,7 @@
 }
 
 .perm-host {
+  width: calc(var(--cv-width, var(--cv-col)) - 2 * var(--cv-pad));
   max-width: var(--chat-col);
   margin: 0 auto;
   padding-bottom: var(--space-5);

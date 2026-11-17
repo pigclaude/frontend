@@ -98,3 +98,50 @@ for (const theme of ["light", "dark"] as const) {
     await expect(page).toHaveScreenshot(`chat-finished-answer-${theme}.png`, options)
   })
 }
+
+test("会话正文和输入框对齐，用户与助手的操作按各自规则显示", async ({ page }) => {
+  await openChat(page, "light", true)
+  const assistant = page.locator(".msg-ai").last()
+  const composer = page.locator(".chat-view .composer-shell")
+  const userBubble = page.locator(".msg-user")
+  await expect(assistant).toContainText("锁文件和 package.json 一致。")
+
+  for (const width of [1200, 900, 640]) {
+    await page.setViewportSize({ width, height: 800 })
+    await expect
+      .poll(
+        async () => {
+          const [answerBox, composerBox, bubbleBox] = await Promise.all([
+            assistant.boundingBox(),
+            composer.boundingBox(),
+            userBubble.boundingBox(),
+          ])
+          if (!answerBox || !composerBox || !bubbleBox) throw new Error("会话布局尚未显示")
+          const right = composerBox.x + composerBox.width
+          return Math.max(
+            Math.abs(answerBox.x - composerBox.x),
+            Math.abs(answerBox.x + answerBox.width - right),
+            Math.abs(bubbleBox.x + bubbleBox.width - right),
+          )
+        },
+        { message: `${width}px 会话正文、用户气泡和输入框的边距`, timeout: 2_000 },
+      )
+      .toBeLessThan(1)
+  }
+
+  await page.setViewportSize({ width: 1200, height: 800 })
+  await page.mouse.move(0, 0)
+  const userActions = page.locator(".turn-user-actions")
+  const assistantActions = page.locator(".turn > .turn-actions").last()
+  const assistantTime = assistantActions.locator("time")
+  await expect(userActions.locator("time")).toHaveAttribute("datetime", /^2026-10-26T/)
+  await expect(userActions).toHaveCSS("opacity", "0")
+  await expect(assistantActions).toHaveCSS("opacity", "1")
+  await expect(assistantTime).toHaveCSS("opacity", "0")
+
+  await userBubble.hover()
+  await expect(userActions).toHaveCSS("opacity", "1")
+  await expect(assistantTime).toHaveCSS("opacity", "0")
+  await assistant.hover()
+  await expect(assistantTime).toHaveCSS("opacity", "1")
+})

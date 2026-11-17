@@ -6,7 +6,8 @@ import { installPluginSettingsPreview } from "./plugin-settings-fixture"
 test("local plugin installation disclosure", async ({ page }) => {
   await installPluginSettingsPreview(page)
   await page.goto("/?screen=plugins&theme=dark")
-  await page.getByRole("button", { name: "从目录安装" }).click()
+  await page.getByRole("button", { name: "添加插件" }).click()
+  await page.getByRole("menuitem", { name: "从目录安装" }).click()
   const dialog = page.getByRole("dialog", { name: "安装披露" })
   await expect(dialog.getByText("读取工作区文件")).toBeVisible()
   await expect(dialog.getByText("docs.example.org")).toBeVisible()
@@ -57,7 +58,8 @@ test("Claude Code plugin installation disclosure", async ({ page }) => {
     ],
   })
   await page.goto("/?screen=plugins&theme=dark")
-  await page.getByRole("button", { name: "从目录安装" }).click()
+  await page.getByRole("button", { name: "添加插件" }).click()
+  await page.getByRole("menuitem", { name: "从目录安装" }).click()
   const dialog = page.getByRole("dialog", { name: "安装披露" })
   await expect(dialog.getByText("Claude Code 插件", { exact: true })).toBeVisible()
   await expect(dialog.getByText("插件 hooks, MCP 服务器, LSP 配置", { exact: true })).toBeVisible()

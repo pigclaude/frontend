@@ -40,7 +40,7 @@ function view(state: SessionUiState) {
     state,
     threadId: "session-1",
     workspace: "/workspace",
-    projectName: "workspace",
+    title: "会话",
     instanceId: "claude",
     modelId: "",
     permissionLevel: "approval-required",

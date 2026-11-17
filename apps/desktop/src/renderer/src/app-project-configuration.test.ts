@@ -13,6 +13,7 @@ it("在两个入口查看项目配置，并在确认前披露将运行的内容"
   let current: ProjectConfigurationReport = {
     workspace: "/work/web",
     trust: "untrusted",
+    hasProjectSettings: true,
     instructions: ["CLAUDE.md"],
     counts: { commands: 1, skills: 1, agents: 0 },
     hooks: [{ event: "SessionStart", kind: "command", command: "node ./check-project.js" }],
@@ -68,15 +69,16 @@ it("在两个入口查看项目配置，并在确认前披露将运行的内容"
   expect(dialog().textContent).toContain("PROJECT_TOKEN")
   expect(dialog().textContent).toContain("/new")
 
-  await press(dialog(), "完全信任此项目")
+  expect(dialog().textContent).toContain("在输入框输入 $ 可搜索并调用项目 skills。")
+  await press(dialog(), "启用项目设置与 MCP")
   expect(prepare).toHaveBeenCalledWith("/work/web", true)
   expect(confirm).not.toHaveBeenCalled()
   await press(dialog(), "取消")
   expect(confirm).not.toHaveBeenCalled()
-  await press(dialog(), "完全信任此项目")
-  await press(dialog(), "确认信任")
+  await press(dialog(), "启用项目设置与 MCP")
+  await press(dialog(), "确认启用")
   expect(confirm).toHaveBeenCalledOnce()
-  expect(dialog().textContent).toContain("已信任")
+  expect(dialog().textContent).toContain("已启用")
   await press(dialog(), "关闭")
 
   const add = project.closest(".proj-row")?.querySelector<HTMLElement>(".proj-add")
@@ -85,13 +87,19 @@ it("在两个入口查看项目配置，并在确认前披露将运行的内容"
   await flush()
   await press(app.container, "项目信息")
   expect(report).toHaveBeenLastCalledWith("/work/web")
-  expect(dialog().textContent).toContain("已信任")
-  await press(dialog(), "撤销信任")
+  expect(dialog().textContent).toContain("已启用")
+  await press(dialog(), "停用项目设置与 MCP")
   expect(prepare).toHaveBeenLastCalledWith("/work/web", false)
   expect(confirm).toHaveBeenCalledOnce()
-  await press(dialog(), "确认撤销")
+  await press(dialog(), "确认停用")
   expect(confirm).toHaveBeenCalledTimes(2)
-  expect(dialog().textContent).toContain("未信任")
+  expect(dialog().textContent).toContain("未启用")
+
+  await press(dialog(), "关闭")
+  current = { ...current, hasProjectSettings: false, hooks: [], environment: [], servers: [] }
+  await press(app.container, "项目信息")
+  expect(dialog().textContent).toContain("在输入框输入 $ 可搜索并调用项目 skills。")
+  expect(dialog().textContent).not.toContain("启用项目设置与 MCP")
 })
 
 function dialog(): HTMLElement {
@@ -102,7 +110,7 @@ function dialog(): HTMLElement {
 
 async function press(root: ParentNode, label: string): Promise<void> {
   const button = [...root.querySelectorAll<HTMLButtonElement>("button")].find(
-    (item) => item.textContent?.trim() === label,
+    (item) => (item.getAttribute("aria-label") ?? item.textContent?.trim()) === label,
   )
   if (!button) throw new Error(`找不到按钮 ${label}`)
   await act(async () => button.click())

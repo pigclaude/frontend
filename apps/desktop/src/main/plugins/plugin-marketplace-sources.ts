@@ -33,6 +33,12 @@ const catalogSchema = z.object({
       source: z.discriminatedUnion("kind", [
         z.object({ kind: z.literal("relative"), path: z.string().min(1) }),
         z.object({ kind: z.literal("github"), repo: z.string(), commit: z.string() }),
+        z.object({
+          kind: z.literal("github-subdir"),
+          repo: z.string(),
+          commit: z.string(),
+          path: z.string().min(1),
+        }),
         z.object({ kind: z.literal("https"), url: z.string(), sha256: digest }),
       ]),
       expectedSha256: digest.nullable(),

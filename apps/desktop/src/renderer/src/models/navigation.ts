@@ -1,4 +1,4 @@
-// 负责前进后退的历史：新会话、进行中的会话、设置页与整窗流程都是可以回去的位置。
+// 负责前进后退的历史，保存会话、定时任务、插件、设置与整窗流程的位置。
 // 会话按 id、草稿按项目区分，回退时回到原先打开的会话或项目草稿。
 
 /** 在外壳之外整窗渲染的流程。 */
@@ -8,6 +8,8 @@ export type FlowName = "login" | "onboarding" | "authorize"
 export type NavLocation =
   | { kind: "draft"; projectId?: string }
   | { kind: "session"; sessionId?: string }
+  | { kind: "plugins"; page?: "management" }
+  | { kind: "schedules" }
   | { kind: "settings"; page: string }
   | { kind: "flow"; flow: FlowName }
 
@@ -30,6 +32,7 @@ export function sameLocation(a: NavLocation | null, b: NavLocation | null): bool
   if (!a || !b || a.kind !== b.kind) return false
   if (a.kind === "settings" && b.kind === "settings") return a.page === b.page
   if (a.kind === "session" && b.kind === "session") return a.sessionId === b.sessionId
+  if (a.kind === "plugins" && b.kind === "plugins") return a.page === b.page
   if (a.kind === "draft" && b.kind === "draft") return a.projectId === b.projectId
   if (a.kind === "flow" && b.kind === "flow") return a.flow === b.flow
   return true
@@ -37,7 +40,11 @@ export function sameLocation(a: NavLocation | null, b: NavLocation | null): bool
 
 /** 当前位置；历史为空时为 null。 */
 export function currentLocation(history: NavHistory): NavLocation | null {
-  return history.entries[history.index] ?? null
+  const location = history.entries[history.index]
+  if (location?.kind === "settings" && location.page === "plugins") return { kind: "plugins" }
+  if (location?.kind === "settings" && location.page === "scheduled-tasks")
+    return { kind: "schedules" }
+  return location ?? null
 }
 
 /** 将已删除会话的位置改为原项目草稿，包括当前自动选中的会话。 */

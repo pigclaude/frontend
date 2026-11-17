@@ -1,5 +1,5 @@
 // 负责侧栏项目操作的 IPC：显示名、重命名、从侧栏移除、在文件管理器中显示、在外部应用中打开。
-// 只操作最近工作区里登记过的项目；移除只改列表，不删除任何文件。
+// 侧栏改名和移除只操作最近项目，打开方式还使用工作台已登记的目录。
 
 import type { IpcMain, IpcMainInvokeEvent } from "electron"
 import type { MembershipView } from "@pigclaude/contracts/membership"
@@ -12,10 +12,14 @@ export type ProjectIpcOptions = {
   isTrusted: (event: IpcMainInvokeEvent) => boolean
   membership: () => MembershipView | undefined
   workspaces: () => Pick<WorkspaceStore, "list" | "remove">
+  /** 和工作台一致的目录范围，包含最近项目及其已登记的 worktree。 */
+  openableRoots: () => Promise<readonly string[]>
   names: () => Pick<ProjectNameStore, "names" | "rename" | "forget">
   reveal: (path: string) => Promise<string>
   /** 本机装了的文件管理器、编辑器和终端；每次调用重新检测。 */
   apps: () => InstalledOpenApp[]
+  /** 读取已检测应用的系统图标；安装位置留在主进程。 */
+  appIcon?: (location: string) => Promise<string | null>
   /** 用应用打开项目文件夹；启动失败时抛错。 */
   openWith: (app: InstalledOpenApp, folder: string) => Promise<void>
 }
@@ -67,6 +71,12 @@ export function registerProjectIpc(ipc: Pick<IpcMain, "handle">, options: Projec
     return { path: value, projects }
   }
 
+  async function openable(value: unknown): Promise<string> {
+    if (typeof value !== "string" || !(await options.openableRoots()).includes(value))
+      throw new Error("PROJECT_NOT_FOUND")
+    return value
+  }
+
   handle("names", async () => options.names().names(await options.workspaces().list()), false)
   handle("rename", async ([path, name]) => {
     const project = await registered(path)
@@ -80,16 +90,22 @@ export function registerProjectIpc(ipc: Pick<IpcMain, "handle">, options: Projec
     return next
   })
   handle("reveal", async ([path]) => {
-    const project = await registered(path)
-    if ((await options.reveal(project.path)) !== "") throw new Error("PROJECT_OPEN_FAILED")
+    if ((await options.reveal(await openable(path))) !== "") throw new Error("PROJECT_OPEN_FAILED")
   })
-  handle("apps", async () => options.apps().map(({ id, name, kind }) => ({ id, name, kind })))
+  handle("apps", async () =>
+    Promise.all(
+      options.apps().map(async ({ id, name, kind, location }) => {
+        const icon = await options.appIcon?.(location)
+        return { id, name, kind, ...(icon ? { icon } : {}) }
+      }),
+    ),
+  )
   handle("open-with", async ([path, appId]) => {
-    const project = await registered(path)
+    const folder = await openable(path)
     if (typeof appId !== "string" || appId.length > 64) throw new Error("PROJECT_APP_NOT_FOUND")
     const app = options.apps().find((item) => item.id === appId)
     if (!app) throw new Error("PROJECT_APP_NOT_FOUND")
-    await options.openWith(app, project.path).catch(() => {
+    await options.openWith(app, folder).catch(() => {
       throw new Error("PROJECT_OPEN_FAILED")
     })
   })

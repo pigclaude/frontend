@@ -351,13 +351,6 @@ html[data-platform="linux"] .win-top {
   font-weight: 500;
 }
 
-@media (max-width: 640px) {
-  .thread {
-    padding-right: 16px;
-    padding-left: 16px;
-  }
-}
-
 .settings-page .trail kbd {
   padding: 2px 7px;
   border-radius: var(--r-sm);

@@ -66,10 +66,16 @@ export function useDraftWorkspace(
   }
 
   const needsBase = worktree !== null && !worktree.baseRef && !git.branches?.head
+  const unavailableReason = git.failed
+    ? locale.t("newThread.branch.loadFailed")
+    : git.branches === undefined
+      ? t("workbench.worktreeChecking")
+      : t("workbench.worktreeRequiresRepository")
   const controls =
     bridge && root ? (
       <DraftWorkspaceControls
-        branches={git.branches}
+        branches={git.branches ?? null}
+        unavailableReason={unavailableReason}
         worktree={worktree}
         disabled={switching || creating}
         onOpenBranches={() => void git.refresh()}

@@ -77,6 +77,11 @@ describe("window options", () => {
     expect(glassBackgroundColor("linux", true)).toBeNull()
   })
 
+  it("原生标题栏使用 UI 默认主题的明暗灰阶", () => {
+    expect(defaultTitleBarColors(false)).toEqual({ color: "#EDEDED", symbolColor: "#424242" })
+    expect(defaultTitleBarColors(true)).toEqual({ color: "#151515", symbolColor: "#CECECE" })
+  })
+
   it("只接受浅色、深色和跟随系统", () => {
     expect(readThemeSource("dark")).toBe("dark")
     expect(readThemeSource("system")).toBe("system")

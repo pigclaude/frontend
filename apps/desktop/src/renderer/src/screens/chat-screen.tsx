@@ -35,6 +35,7 @@ import {
   type PermissionView,
 } from "../models/composer-config"
 import { projectNameFromPath } from "../models/project-model"
+import { sessionTitle } from "../shell/workspace-threads"
 import { pendingPermission, waitingSubagents } from "../models/session-permissions"
 import { useSubagentTabs } from "../hooks/use-subagent-tabs"
 import { threadView } from "../models/thread-view"
@@ -79,6 +80,7 @@ export function ChatScreen({
   session,
   workspace,
   workspaceProject = workspace,
+  projectLabel,
   workspaceOptions,
   accounts,
   proxies,
@@ -95,6 +97,7 @@ export function ChatScreen({
   threadOptions = [],
   onOpen,
   smartPunctuation,
+  draftFocus,
   layoutControls,
   openIn,
   onOpenFile,
@@ -167,7 +170,8 @@ export function ChatScreen({
     agents,
     session.modelsLoading && session.models.length === 0 ? null : session.models,
   )
-  const projectName = workspace === null ? "" : projectNameFromPath(workspace)
+  const projectName =
+    projectLabel || (workspaceProject === null ? "" : projectNameFromPath(workspaceProject))
   const threadId = state.sessionId ?? (workspace === null ? "new-thread" : `draft-${workspace}`)
   // 草稿页只在还没有会话时使用；从草稿发第一条消息后即使导航还没切换，也要显示时间线。
   const showDraft = fresh && !live && state.sessionId === null
@@ -368,29 +372,21 @@ export function ChatScreen({
     await session.respondPermission(requestId, choice.decision, choice.suggestion)
   }
 
+  const title = summary?.title || sessionTitle(state, t("shell.session.untitled"))
   const view = useMemo(
     () =>
       threadView({
         state,
         threadId,
         workspace,
-        projectName,
+        title,
         instanceId: agentIdForAccount(activeAccount),
         modelId: selectedModel,
         permissionLevel: shown.level,
         planMode: shown.plan,
         startedAt: startedAt.current,
       }),
-    [
-      state,
-      threadId,
-      workspace,
-      projectName,
-      activeAccount,
-      selectedModel,
-      shown.level,
-      shown.plan,
-    ],
+    [state, threadId, workspace, title, activeAccount, selectedModel, shown.level, shown.plan],
   )
   const waiting = useMemo(() => waitingSubagents(state), [state])
   const subagentTabs = useSubagentTabs({
@@ -421,6 +417,7 @@ export function ChatScreen({
         projectDraft={projectDraft}
         projects={workspaceOptions}
         projectId={workspaceProject}
+        {...(draftFocus === undefined ? {} : { focusKey: draftFocus })}
         {...(workspace && onProjectConfiguration
           ? { configuration: { path: workspace, open: onProjectConfiguration } }
           : {})}

@@ -1,7 +1,7 @@
 // 负责验证预加载脚本的会话信封校验：会话宿主广播的每种事件都交给渲染进程，信封不完整或不一致的值丢弃。
 
 import { describe, expect, it } from "vitest"
-import { isSessionEnvelope } from "./session-event-filter"
+import { isAgentCommandCatalog, isSessionEnvelope } from "./session-event-filter"
 
 const at = "2026-11-14T01:00:00.000Z"
 
@@ -10,6 +10,24 @@ function envelope(event: unknown, overrides: Record<string, unknown> = {}): unkn
 }
 
 describe("session envelope filter", () => {
+  it("将同一工作区的 / 命令和 $ skill 目录完整交给渲染进程", () => {
+    const skill = {
+      name: "review",
+      text: "$review",
+      kind: "skill",
+      scope: "project",
+      path: "/work/.claude/skills/review/SKILL.md",
+    }
+    const commands = [{ name: "compact", text: "/compact", kind: "builtin" }, skill]
+    expect(isAgentCommandCatalog(commands)).toBe(true)
+    expect(isSessionEnvelope(envelope({ type: "commands-changed", commands }, { seq: null }))).toBe(
+      true,
+    )
+    expect(isAgentCommandCatalog([{ ...skill, text: "$elsewhere" }])).toBe(false)
+    expect(isAgentCommandCatalog([{ ...skill, kind: "builtin" }])).toBe(false)
+    expect(isAgentCommandCatalog([{ ...skill, path: {} }])).toBe(false)
+  })
+
   it("passes the mode changes and notices the host announces", () => {
     expect(isSessionEnvelope(envelope({ type: "mode", permissionMode: "auto" }))).toBe(true)
     expect(isSessionEnvelope(envelope({ type: "notice", message: "自动审批不可用" }))).toBe(true)

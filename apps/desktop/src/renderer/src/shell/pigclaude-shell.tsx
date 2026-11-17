@@ -12,11 +12,9 @@ import {
 } from "react"
 import type { Project, Thread } from "@pigclaude/ui-contracts"
 import { useExtensionRegistry } from "@pigclaude/client-runtime"
-import { ListRow, useLocale, useSidebarGrouping } from "@pigclaude/ui-primitives"
-import { useText } from "../locale/text"
+import { useLocale, useSidebarGrouping } from "@pigclaude/ui-primitives"
 import {
   CommandPalette,
-  Icon,
   TitleBar,
   WindowControls,
   WorkspaceSidebar,
@@ -68,7 +66,10 @@ export type PigclaudeShellProps = {
   /** 会话历史操作沿用工作区侧栏的右键菜单。 */
   onRenameThread?: (id: string, title: string) => void
   onArchiveThread?: (id: string) => void
-  onOpenArchived?: () => void
+  onOpenPlugins: () => void
+  pluginsActive: boolean
+  onOpenSchedules: () => void
+  schedulesActive: boolean
   /** 项目右键菜单：只改侧栏显示名；从侧栏移除，不删文件。 */
   onRenameProject: (projectId: string, name: string) => void
   onRemoveProject: (projectId: string) => void
@@ -95,7 +96,6 @@ export type PigclaudeShellProps = {
 /** 组合窗口外壳；窄窗口里侧栏变成抽屉，点遮罩或按 Esc 关闭。 */
 export function PigclaudeShell(props: PigclaudeShellProps) {
   const { t } = useLocale()
-  const { t: text } = useText()
   const projectMenu = useProjectRowMenu(props)
   const registry = useExtensionRegistry()
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth()
@@ -179,6 +179,8 @@ export function PigclaudeShell(props: PigclaudeShellProps) {
         onNewSession: () => latest().props.onNewSession(),
         onToggleSidebar: () => latest().toggleSidebar(),
         onSettings: () => latest().props.onOpenSettings(),
+        onPlugins: () => latest().props.onOpenPlugins(),
+        onSchedules: () => latest().props.onOpenSchedules(),
         onAddProject: () => latest().props.onAddProject(),
         ...(hasWorkbench ? { onToggleWorkbench: () => latest().props.onToggleWorkbench?.() } : {}),
       },
@@ -247,6 +249,17 @@ export function PigclaudeShell(props: PigclaudeShellProps) {
             onAddProject={props.onAddProject}
             onRenameThread={props.onRenameThread}
             onArchiveThread={props.onArchiveThread}
+            activeNav={
+              props.schedulesActive ? "schedules" : props.pluginsActive ? "plugins" : undefined
+            }
+            onOpenSchedules={() => {
+              setDrawerOpen(false)
+              props.onOpenSchedules()
+            }}
+            onOpenPlugins={() => {
+              setDrawerOpen(false)
+              props.onOpenPlugins()
+            }}
             onRenameProject={props.onRenameProject}
             onRemoveProject={props.onRemoveProject}
             onBrowseFiles={
@@ -275,18 +288,6 @@ export function PigclaudeShell(props: PigclaudeShellProps) {
               props.onNewSession(projectId)
             }}
             shortcutHints={shortcutHints}
-          />
-        )}
-        {props.inSettings || !props.onOpenArchived ? null : (
-          <ListRow
-            render={<button type="button" />}
-            className="nav-item"
-            leading={<Icon name="archive" aria-hidden="true" />}
-            title={text("shell.session.archived")}
-            onClick={() => {
-              setDrawerOpen(false)
-              props.onOpenArchived?.()
-            }}
           />
         )}
         {props.inSettings ? null : props.notice}

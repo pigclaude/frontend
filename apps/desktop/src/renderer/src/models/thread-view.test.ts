@@ -23,7 +23,7 @@ function input(overrides: Partial<ThreadViewInput> = {}): ThreadViewInput {
     state: state(),
     threadId: "thread-1",
     workspace: "/work/demo",
-    projectName: "demo",
+    title: "排查登录",
     instanceId: "account-1",
     modelId: "sonnet",
     permissionLevel: "approval-required",
@@ -45,7 +45,7 @@ describe("threadView", () => {
     expect(view.thread).toMatchObject({
       id: "thread-1",
       projectId: "/work/demo",
-      title: "demo",
+      title: "排查登录",
       defaultInstanceId: "account-1",
       lastInstanceId: "account-1",
       lastModelId: "sonnet",
@@ -123,8 +123,8 @@ describe("threadView", () => {
     expect(view.events.map((event) => event.type)).toEqual(["run.started"])
   })
 
-  it("没有工作区、项目名或模型时使用稳定回退值", () => {
-    const view = threadView(input({ workspace: null, projectName: "", modelId: "" }))
+  it("没有工作区或模型时使用稳定回退值，并保留调用者提供的标题", () => {
+    const view = threadView(input({ workspace: null, title: "会话", modelId: "" }))
     expect(view.thread.projectId).toBe("workspace")
     expect(view.thread.title).toBe("会话")
     expect(view.thread.lastModelId).toBeNull()

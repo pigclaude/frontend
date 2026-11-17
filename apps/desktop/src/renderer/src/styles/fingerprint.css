@@ -281,7 +281,6 @@
 
 .fp-row .select-trigger,
 .fp-row .input {
-  height: 26px;
   background: var(--surface);
 }
 

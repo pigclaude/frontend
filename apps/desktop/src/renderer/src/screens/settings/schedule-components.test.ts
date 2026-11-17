@@ -156,6 +156,7 @@ it("运行历史展示跳过原因，打开有结果的会话，删除记录后�
       status: "skipped",
       error: "THREAD_BUSY",
       runId: null,
+      threadId: null,
       finishedAt: null,
     },
   ]
@@ -170,6 +171,7 @@ it("运行历史展示跳过原因，打开有结果的会话，删除记录后�
   await render(
     createElement(ScheduleHistory, {
       scheduleId: "schedule",
+      revision: 0,
       onLoadRuns: load,
       onDeleteRun: remove,
       onOpenThread: open,

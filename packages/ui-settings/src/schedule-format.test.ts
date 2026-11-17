@@ -1,7 +1,7 @@
 // 从固定 Pigcode 提交提取 formatRule 测试组。
 import { describe, expect, it } from "vitest"
 
-import type { ScheduleRule } from "@pigclaude/ui-contracts"
+import { type ScheduleRule } from "@pigclaude/ui-contracts"
 
 import { translate } from "@pigclaude/ui-primitives"
 

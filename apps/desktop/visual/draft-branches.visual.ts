@@ -1,16 +1,16 @@
 // 负责新会话草稿分支与 worktree 控件的视觉回归：项目在 main 分支上，截草稿、打开的分支菜单、
 // 打开 worktree 开关后选起点的菜单，浅色和深色各一套。
 // 页面加载前装一个只在内存里的桌面桥：一个最近工作区、一个账号、读得到分支的工作台和一个不会开始的会话。
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test, type Locator, type Page } from "@playwright/test"
 
 const options = { threshold: 0.1, maxDiffPixels: 0, animations: "disabled" } as const
 
 /** 新会话页按时段问候；把时钟定在基线时刻，截图不受运行时间影响。 */
 const FIXED_TIME = new Date(2026, 9, 26, 15, 0, 0).getTime()
 
-async function openDraft(page: Page, theme: "light" | "dark"): Promise<void> {
+async function openDraft(page: Page, theme: "light" | "dark", git = true): Promise<void> {
   await page.clock.install({ time: FIXED_TIME })
-  await page.addInitScript(() => {
+  await page.addInitScript((git) => {
     const membership = {
       startupPhase: "settled",
       revision: 1,
@@ -35,7 +35,7 @@ async function openDraft(page: Page, theme: "light" | "dark"): Promise<void> {
       {
         get: (_target, name) => {
           if (name === "subscribe") return () => () => undefined
-          if (name === "branches") return async () => branches
+          if (name === "branches") return async () => (git ? branches : null)
           if (typeof name === "string" && lists.has(name)) return async () => []
           return async () => null
         },
@@ -105,14 +105,66 @@ async function openDraft(page: Page, theme: "light" | "dark"): Promise<void> {
         },
       },
     })
-  })
+  }, git)
   await page.goto(`/?screen=chat-new&theme=${theme}&glass=0`)
   await page.evaluate(() => document.fonts.ready)
   await page.addStyleTag({
     content: "*, *::before, *::after { caret-color: transparent !important }",
   })
-  await expect(page.getByRole("button", { name: "切换 Git 分支 · main" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "会话所在的项目: demo-app" })).toBeVisible()
+  if (git) await expect(page.getByRole("button", { name: "切换 Git 分支 · main" })).toBeVisible()
 }
+
+async function bounds(locator: Locator) {
+  const box = await locator.boundingBox()
+  if (!box) throw new Error("控件没有可见边界")
+  return box
+}
+
+test("普通目录保留 worktree 入口并说明启用条件", async ({ page }) => {
+  await openDraft(page, "light", false)
+  const worktree = page.getByRole("switch", { name: "worktree" })
+  await expect(worktree).toBeVisible({ timeout: 3000 })
+  await expect(worktree).toBeDisabled()
+  await expect(worktree).toHaveAccessibleDescription("请添加并选择一个 Git 仓库来使用 worktree。")
+})
+
+test("新会话项目栏在宽窄窗口里与输入框和发送按钮对齐", async ({ page }) => {
+  await openDraft(page, "light")
+  const project = page.locator(".new-thread-view .draft-project")
+  const branch = page.locator(".new-thread-view .draft-branch")
+  const worktree = page.locator(".draft-worktree [role='switch']")
+  const wrapper = page.locator(".composer-frame")
+  const editor = page.locator(".composer-editor .tiptap p")
+  const send = page.getByRole("button", { name: "发送" })
+
+  for (const width of [1200, 620, 390]) {
+    await page.setViewportSize({ width, height: 800 })
+    const [frameBox, projectBox, branchBox, switchBox, editorBox, sendBox] = await Promise.all([
+      bounds(wrapper),
+      bounds(project.locator("svg").first()),
+      bounds(branch.locator("svg").first()),
+      bounds(worktree),
+      bounds(editor),
+      bounds(send),
+    ])
+    expect(Math.abs(projectBox.x - editorBox.x), "项目图标与输入文字左侧").toBeLessThan(1)
+    expect(
+      Math.abs(switchBox.x + switchBox.width - sendBox.x - sendBox.width),
+      "worktree 开关与发送按钮右侧",
+    ).toBeLessThan(1)
+    expect(
+      Math.abs(projectBox.y + projectBox.height / 2 - switchBox.y - switchBox.height / 2),
+      "项目与 worktree 在同一行",
+    ).toBeLessThan(1)
+    if (frameBox.width <= 380) {
+      expect(Math.abs(branchBox.x - projectBox.x), "折行后的分支与项目左侧").toBeLessThan(1)
+      expect(branchBox.y).toBeGreaterThan(projectBox.y + projectBox.height)
+    } else {
+      expect(Math.abs(branchBox.y - projectBox.y), "分支与项目在同一行").toBeLessThan(1)
+    }
+  }
+})
 
 for (const theme of ["light", "dark"] as const) {
   test(`draft branches ${theme}`, async ({ page }) => {

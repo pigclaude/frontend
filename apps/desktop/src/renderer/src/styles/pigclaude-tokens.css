@@ -20,8 +20,11 @@
   --tl-edge: oklch(0% 0 0 / 0.3);
 }
 
-/* 颜色选择器的色域：白到透明、黑到透明、色相彩虹和拖柄白圈，与主题无关 */
 :root {
+  /* 标题、计划与主搜索使用比大号操作按钮高一档的输入尺寸。 */
+  --control-xl: calc(var(--control-lg) + var(--space-2));
+
+  /* 颜色选择器的色域与主题无关。 */
   --picker-white: oklch(100% 0 0);
   --picker-black: oklch(0% 0 0);
   --picker-edge: oklch(0% 0 0 / 0.14);

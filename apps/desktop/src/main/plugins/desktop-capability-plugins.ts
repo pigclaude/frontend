@@ -7,6 +7,7 @@ import { capabilityPluginsChangedChannel } from "../../capability-plugin-contrac
 import { capabilityPluginNoticeChannel } from "../../capability-plugin-notice-contract"
 import { pluginMarketplaceChangedChannel } from "../../plugin-marketplace-contract"
 import type { DesktopComposition } from "../composition"
+import { discoverPersonalClaudeSkills } from "../session/personal-claude-skills"
 import { createCapabilityPluginScope } from "./capability-plugin-capabilities"
 import { CapabilityPluginDeclarationHost } from "./capability-plugin-declarations"
 import { registerCapabilityPluginIpc } from "./capability-plugin-ipc"
@@ -142,26 +143,33 @@ export function setupDesktopCapabilityPlugins(
     officialReady: marketplace
       .reconcileCachedOfficialRevocations()
       .catch(() => console.error("PLUGIN_MARKETPLACE_OFFICIAL_REVOKE_FAILED")),
-    sessionOptions: runtime
-      ? {
-          claudeCodePlugins: {
-            stage: (directory: string) => manager.stageClaudeCodePlugins(directory),
-            commands: () => manager.claudeCodePluginCommands(),
-          },
-          capabilityPluginTools: {
-            manager,
-            sandbox,
-            pluginNetwork: runtime.pluginNetwork.bind(runtime),
-            capabilities,
-            async settings({ manifest, revision }: CapabilityPluginSnapshot, signal: AbortSignal) {
-              if (!manifest.settings.some((field) => field.type !== "secret")) return undefined
-              return manager.runCapability(manifest.id, revision, signal, () =>
-                settings.values(manifest),
-              )
+    sessionOptions: {
+      claudeCodePlugins: {
+        stage: (directory: string) =>
+          runtime ? manager.stageClaudeCodePlugins(directory) : Promise.resolve([]),
+        commands: () => (runtime ? manager.claudeCodePluginCommands() : Promise.resolve([])),
+        personalSkills: discoverPersonalClaudeSkills,
+      },
+      ...(runtime
+        ? {
+            capabilityPluginTools: {
+              manager,
+              sandbox,
+              pluginNetwork: runtime.pluginNetwork.bind(runtime),
+              capabilities,
+              async settings(
+                { manifest, revision }: CapabilityPluginSnapshot,
+                signal: AbortSignal,
+              ) {
+                if (!manifest.settings.some((field) => field.type !== "secret")) return undefined
+                return manager.runCapability(manifest.id, revision, signal, () =>
+                  settings.values(manifest),
+                )
+              },
             },
-          },
-        }
-      : {},
+          }
+        : {}),
+    },
     declarations,
     /** 卸下安装和市场缓存订阅。 */
     stopEvents(): void {

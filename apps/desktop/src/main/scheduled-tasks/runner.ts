@@ -12,7 +12,11 @@ export type ScheduledTaskRunnerPorts = {
   checkAccount(): Promise<boolean>
   startDaemon(): Promise<boolean>
   defaultModel(): Promise<string | null>
-  runSession(task: ScheduledTaskInput, signal: AbortSignal): Promise<ScheduledTaskOutcome>
+  runSession(
+    task: ScheduledTaskInput,
+    signal: AbortSignal,
+    workspace?: string,
+  ): Promise<ScheduledTaskOutcome>
 }
 
 /** 按定时策略准备并执行一轮。退出时不会从迟到的检查结果进入会话。 */

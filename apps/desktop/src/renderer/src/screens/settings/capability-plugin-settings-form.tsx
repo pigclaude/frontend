@@ -114,7 +114,6 @@ function PluginSettings({
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
                         aria-label={fill(t("capabilityPlugins.clearSecretField"), {
                           field: field.label,
                         })}
@@ -128,9 +127,7 @@ function PluginSettings({
               })}
             </div>
             <div className="section-actions">
-              <Button type="submit" size="sm">
-                {t("capabilityPlugins.save")}
-              </Button>
+              <Button type="submit">{t("capabilityPlugins.save")}</Button>
               {status === "saved" ? (
                 <span role="status" className="hint">
                   {t("capabilityPlugins.saved")}

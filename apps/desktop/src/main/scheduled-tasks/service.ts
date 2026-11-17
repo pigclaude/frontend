@@ -136,7 +136,14 @@ export class ScheduledTaskService {
       const saved = findTask(draft, id)
       const old = saved.task
       const ruleChanged = JSON.stringify(old.rule) !== JSON.stringify(config.rule)
-      saved.task = { ...old, ...config }
+      saved.task = {
+        ...config,
+        id: old.id,
+        nextRunAt: old.nextRunAt,
+        lastRunAt: old.lastRunAt,
+        lastSessionId: old.lastSessionId,
+        runCount: old.runCount,
+      }
       if (ruleChanged) saved.handledLocallyThrough = null
       if (old.enabled !== config.enabled || old.endsAt !== config.endsAt || ruleChanged)
         resetPlan(saved, this.#clock.now())

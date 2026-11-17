@@ -33,6 +33,7 @@ export async function executeScheduledTurn(
   { host, active, send }: Ports,
   task: ScheduledTaskInput,
   signal: AbortSignal,
+  workspace = task.projectPath,
 ): Promise<ScheduledTaskOutcome> {
   if (signal.aborted) return stopped
 
@@ -73,11 +74,13 @@ export async function executeScheduledTurn(
       await host.start(
         {
           sessionId,
-          workspace: task.projectPath,
+          workspace,
           projectPath: task.projectPath,
           permissionMode: task.permissionMode,
           ...(task.model === null ? {} : { model: task.model }),
           ...(task.accountId === null ? {} : { accountId: task.accountId }),
+          ...(task.effort === undefined ? {} : { effort: task.effort }),
+          ...(task.fast === undefined ? {} : { fast: task.fast }),
         },
         undefined,
         {

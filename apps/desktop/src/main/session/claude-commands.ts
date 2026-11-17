@@ -21,6 +21,16 @@ const reservedNames = new Set([
   "terminal-setup",
 ])
 
+/** 只展示输入框支持的原生 skill 名，保留 CLI 内置命令的优先级。 */
+export function isClaudeSkillName(name: string): boolean {
+  return (
+    /^[a-zA-Z0-9][\w.:-]{0,127}$/.test(name) &&
+    !/^\d[\d_]*(?:[kKmMbBtT]|[eE]\d+)?$/.test(name) &&
+    !allowedBuiltinNames.has(name) &&
+    !reservedNames.has(name)
+  )
+}
+
 /** 映射命令名与插入文字，保留 CLI 同名时实际调用的条目。 */
 export function claudeCommands(
   candidates: readonly (Pick<SlashCommand, "name" | "builtin"> &

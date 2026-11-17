@@ -1,6 +1,7 @@
-// 定义桌面调度服务、会话入口和设置页共用的定时任务数据。
+// 定义桌面调度服务、会话入口和定时任务页共用的数据。
 
-import type { ScheduleRule, ScheduleRunStatus } from "@pigclaude/ui-contracts"
+import type { ScheduleRule, ScheduleRunStatus, WorktreeStart } from "@pigclaude/ui-contracts"
+import type { SessionEffort } from "./main/session/session-types"
 
 /** 定时会话支持的四个权限档。 */
 export type ScheduledTaskPermissionMode = "default" | "acceptEdits" | "auto" | "bypassPermissions"
@@ -8,14 +9,24 @@ export type ScheduledTaskPermissionMode = "default" | "acceptEdits" | "auto" | "
 /** 本机保存的任务配置。endsAt 是界面按本机日期选出的结束时刻。 */
 export type ScheduledTaskInput = {
   projectPath: string
+  title?: string | undefined
   prompt: string
+  /** 保存输入框里的文件标记，执行时使用 prompt 的纯文本。 */
+  draft?: { document: string } | null | undefined
   rule: ScheduleRule
   endsAt: string | null
   enabled: boolean
   model: string | null
   permissionMode: ScheduledTaskPermissionMode
   accountId: string | null
+  effort?: SessionEffort | undefined
+  fast?: boolean | undefined
+  /** 每次触发从所选 ref 新建独立工作树。 */
+  worktree?: WorktreeStart | undefined
 }
+
+/** 定时任务允许的最短重复间隔。 */
+export const minimumScheduledTaskMinutes = 15
 
 /** 配置及调度状态。runCount 统计包含跳过在内的触发次数。 */
 export type ScheduledTask = ScheduledTaskInput & {
@@ -80,7 +91,7 @@ export const scheduledTaskChannelPrefix = "pigclaude:scheduled-tasks-"
 /** 调度数据落盘后发送的无正文刷新事件。 */
 export const scheduledTasksChangedChannel = scheduledTaskChannelPrefix + "changed"
 
-/** 设置页使用的本机调度命令。保存返回 null 表示用户取消完全访问确认。 */
+/** 定时任务页使用的本机调度命令。保存返回 null 表示用户取消完全访问确认。 */
 export type ScheduledTasksBridge = {
   list: () => Promise<ScheduledTask[]>
   create: (input: ScheduledTaskInput) => Promise<ScheduledTask | null>

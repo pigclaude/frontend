@@ -32,7 +32,7 @@ export function pigcodeNativeFrom(bridge: PigclaudeBridge): PigcodeNative {
     ...(workspaces
       ? {
           listOpenApps: async () =>
-            (await workspaces.apps()).map((app) => ({ ...app, icon: null })),
+            (await workspaces.apps()).map((app) => ({ ...app, icon: app.icon ?? null })),
           openWithApp: (appId: string, path: string) => workspaces.openWith(path, appId),
           openFolder: (path: string) => workspaces.reveal(path),
         }

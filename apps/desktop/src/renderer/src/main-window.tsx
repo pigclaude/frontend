@@ -1,23 +1,20 @@
 // 负责登录后的主窗口：把工作区、当前会话和账号状态接到 Pigcode 外壳，并按当前位置画内容区页面。
 // 聊天、账号、代理、环境和用量接真实会话与本地数据；只有浏览器预览会传入演示工作台。
 import { useCallback, useRef, useState } from "react"
-import type { MembershipView } from "@pigclaude/contracts/membership"
 import { OpenInButton, useToast } from "@pigclaude/ui-shell"
 import { PanelLayoutControls } from "@pigclaude/ui-workbench"
 import { Workbench, type FilesRequest, type WorkbenchActions } from "./workbench/workbench"
 import { TerminalDrawer } from "./workbench/terminal-drawer"
-import type { PreviewWorkbench } from "./fixtures/preview-workbench"
 import { workspaceRevision } from "./models/workspace-revision"
 import { ChatScreen } from "./screens/chat-screen"
-import { MainWindowSettings } from "./screens/main-window-settings"
-import type { BrowserProfilesController } from "./hooks/use-browser-profiles"
+import { MainWindowSettingsRegistry } from "./screens/main-window-settings"
+import { PluginsScreen } from "./screens/plugins-screen"
+import { ScheduledTasksScreen } from "./screens/scheduled-tasks-screen"
 import { useDesktopAppInfo } from "./hooks/use-desktop-app-info"
-import type { ClaudeAccountsController } from "./hooks/use-claude-accounts"
 import { sessionAccountId, useSession } from "./hooks/use-session"
 import { useSessionHistory } from "./hooks/use-session-history"
 import { SessionDeleteDialog } from "./components/session-delete-dialog"
 import { useProjectConfigurationDialog } from "./components/project-configuration-dialog"
-import type { ProjectDrafts } from "./hooks/use-project-draft"
 import { useCapabilityPluginContributions } from "./shell/use-capability-plugin-contributions"
 import { useComposerReferenceQueue } from "./hooks/use-composer-reference"
 import { useSessionNotices } from "./hooks/use-session-notices"
@@ -29,21 +26,15 @@ import { fill, useText } from "./locale/text"
 import { composerSessionOptions } from "./models/composer-session-options"
 import { projectNameFromPath, workspaceErrorMessage } from "./models/project-model"
 import { toPoolAccount } from "./models/claude-account-view"
-import type { NavLocation } from "./models/navigation"
 import { useSessionReferenceRecovery } from "./screens/session-reference-recovery"
-import type { AppearanceController } from "./hooks/use-appearance"
-import type { ResolvedTheme } from "./models/theme-model"
+import type { MainWindowProps } from "./main-window-props"
 import { AddProjectDialog } from "./shell/add-project-dialog"
 import { PigclaudeShell } from "./shell/pigclaude-shell"
 import { projectActions } from "./shell/project-actions"
 import { SettingsSidebar } from "./shell/settings-sidebar"
 import { SidebarFooter } from "./shell/sidebar-footer"
 import { SidebarNotice, sessionNotice } from "./shell/sidebar-notice"
-import {
-  SettingsContributionView,
-  SettingsRegistry,
-  settingsLocation,
-} from "./shell/settings-registry"
+import { SettingsContributionView, settingsLocation } from "./shell/settings-registry"
 import {
   newSessionWorkspace,
   sessionAgentNames,
@@ -52,33 +43,6 @@ import {
   workspaceProjects,
   workspaceThreads,
 } from "./shell/workspace-threads"
-
-/** 主窗口需要的位置状态与事件；账号控制器由 App 持有，避免同一页面出现两份陈旧列表。 */
-export type MainWindowProps = {
-  location: NavLocation
-  /** 历史中最近访问的工作区，整窗授权回来时设置页仍能回到它。 */
-  lastWorkspace: NavLocation
-  /** 旧测试和开发预览使用的页面名；导航本身以 location 为唯一状态。 */
-  screen?: string
-  canGoBack: boolean
-  canGoForward: boolean
-  membership: MembershipView
-  drafts: ProjectDrafts
-  claudeAccounts: ClaudeAccountsController
-  browserProfiles?: BrowserProfilesController
-  onNavigate: (location: NavLocation) => void
-  /** 用各个已删除会话的原项目草稿替换导航记录。 */
-  onSessionsDeleted: (projects: ReadonlyMap<string, string>, selection: string | null) => void
-  onBack: () => void
-  onForward: () => void
-  onOpenAuthorize: () => void
-  onReauthorizeAccount?: (accountId: string) => void
-  onLogout: () => void
-  theme: ResolvedTheme
-  appearance: AppearanceController
-  /** 浏览器预览里代替桌面桥的演示工作台和它的项目。 */
-  previewWorkbench?: PreviewWorkbench | undefined
-}
 
 /** 画外壳与内容区；离开设置时回到离开前的工作区位置。 */
 export function MainWindow({
@@ -117,6 +81,7 @@ export function MainWindow({
   const currentLocation = useRef(location)
   currentLocation.current = location
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [draftFocus, setDraftFocus] = useState(0)
   const [addingProject, setAddingProject] = useState(false)
   const workbench = useRef<WorkbenchActions>(null)
   const [rightOpen, setRightOpen] = useState(false)
@@ -202,6 +167,8 @@ export function MainWindow({
   const currentDraft = useRef(draftProject)
   currentDraft.current = draftProject
   const workbenchRoot = chatWorkspace
+  const canToggleWorkbench = inChat && workbenchRoot !== null
+  const workbenchOpen = canToggleWorkbench && rightOpen
   const turnActive = sessionActive && session.state.activeTurnId !== null
   const toggleRight = useCallback(() => {
     setRightOpen((open) => !open)
@@ -213,7 +180,7 @@ export function MainWindow({
     setTerminalOpen((open) => !open)
   }, [workbenchRoot])
 
-  useWorkspaceShortcuts(!!bridge && inChat, workbenchRoot, toggleTerminal, toggleRight)
+  useWorkspaceShortcuts(!!bridge && canToggleWorkbench, workbenchRoot, toggleTerminal, toggleRight)
 
   function settings(next: string): void {
     onNavigate(settingsLocation(next))
@@ -225,7 +192,7 @@ export function MainWindow({
       sidebarPaths,
       projectOf(sessionWorkspace) ?? workspace,
     )
-    openDraft(path)
+    if (openDraft(path)) setDraftFocus((value) => value + 1)
   }
 
   function openThread(id: string): void {
@@ -265,7 +232,8 @@ export function MainWindow({
     void workspaces
       .add(path)
       .then(() => {
-        openDraft(path)
+        if (currentLocation.current.kind === "schedules") selection.select(path)
+        else openDraft(path)
         toast(fill(t("shell.project.added"), { name: projectNameFromPath(path) }), "folder")
       })
       .catch((error: unknown) =>
@@ -277,27 +245,6 @@ export function MainWindow({
     return path === workbenchRoot || (workbench.current?.confirmSwitch() ?? true)
   }
 
-  const renderSettingsPage = (page: string) => (
-    <MainWindowSettings
-      page={page}
-      membership={membership}
-      pool={pool}
-      browserProfiles={browserProfiles}
-      session={session}
-      history={history}
-      canSelectWorkspace={canSelectWorkspace}
-      workspace={workspace}
-      workspaces={workspaces}
-      appInfo={appInfo}
-      appearance={appearance}
-      onOpenAuthorize={onOpenAuthorize}
-      onReauthorizeAccount={onReauthorizeAccount}
-      onOpenSettings={settings}
-      onNavigate={onNavigate}
-      onLogout={onLogout}
-    />
-  )
-
   return (
     <PigclaudeShell
       {...(screen === undefined ? {} : { dataScreen: screen })}
@@ -305,7 +252,7 @@ export function MainWindow({
       {...(bridge
         ? {
             workbench: {
-              open: inChat && rightOpen,
+              open: workbenchOpen,
               maximized: rightMax,
               content: (
                 <Workbench
@@ -318,7 +265,7 @@ export function MainWindow({
                   membershipActive={membership.state === "active"}
                   turnActive={turnActive}
                   workspaceRevision={workspaceRevision(session.state)}
-                  visible={inChat && rightOpen}
+                  visible={workbenchOpen}
                   open={rightOpen}
                   maximized={rightMax}
                   onToggle={toggleRight}
@@ -348,8 +295,16 @@ export function MainWindow({
         setExpanded((current) => toggleExpanded(current, projectId, open))
       }
       onNewSession={newSession}
+      onOpenPlugins={() => {
+        if (canSelectWorkspace(workspace)) onNavigate({ kind: "plugins" })
+      }}
+      pluginsActive={location.kind === "plugins"}
+      onOpenSchedules={() => {
+        if (canSelectWorkspace(workspace)) onNavigate({ kind: "schedules" })
+      }}
+      schedulesActive={location.kind === "schedules"}
       {...(bridge
-        ? { onBrowseFiles: browseFiles, onToggleWorkbench: toggleRight, canToggleWorkbench: inChat }
+        ? { onBrowseFiles: browseFiles, onToggleWorkbench: toggleRight, canToggleWorkbench }
         : {})}
       onOpenThread={openThread}
       onReferenceThread={composerReferences.reference}
@@ -358,7 +313,6 @@ export function MainWindow({
         ? {
             onRenameThread: history.rename,
             onArchiveThread: (id: string) => void history.archive(id, true),
-            onOpenArchived: () => settings("archived"),
           }
         : {})}
       {...projectActions({
@@ -407,10 +361,21 @@ export function MainWindow({
         />
       }
     >
-      <SettingsRegistry
-        render={renderSettingsPage}
-        onSelect={settings}
-        archiveAvailable={history.enabled}
+      <MainWindowSettingsRegistry
+        membership={membership}
+        pool={pool}
+        browserProfiles={browserProfiles}
+        session={session}
+        history={history}
+        canSelectWorkspace={canSelectWorkspace}
+        workspace={workspace}
+        appInfo={appInfo}
+        appearance={appearance}
+        onOpenAuthorize={onOpenAuthorize}
+        onReauthorizeAccount={onReauthorizeAccount}
+        onOpenSettings={settings}
+        onNavigate={onNavigate}
+        onLogout={onLogout}
       />
       <AddProjectDialog open={addingProject} onOpenChange={setAddingProject} onAdd={addWorkspace} />
       <SessionDeleteDialog history={history} />
@@ -426,10 +391,11 @@ export function MainWindow({
             ? {
                 layoutControls: (
                   <PanelLayoutControls
-                    rightOpen={rightOpen}
-                    onToggleRight={toggleRight}
+                    rightOpen={workbenchOpen}
+                    onToggleRight={workbenchOpen ? undefined : toggleRight}
                     terminalOpen={terminalOpen}
-                    {...(workbenchRoot ? { onToggleTerminal: toggleTerminal } : {})}
+                    onToggleTerminal={toggleTerminal}
+                    disabled={!canToggleWorkbench}
                   />
                 ),
                 onOpenFile: (path: string) => {
@@ -444,13 +410,15 @@ export function MainWindow({
               }
             : {})}
           {...(chatWorkspace ? { openIn: <OpenInButton path={chatWorkspace} /> } : {})}
-          fresh={location.kind === "draft"}
+          fresh={sessionId === null}
+          draftFocus={draftFocus}
           referenceRequest={composerReferences.request}
           threadOptions={threadOptions}
           key={sessionId ?? draftProject}
           session={session}
           workspace={chatWorkspace}
           workspaceProject={chatProject}
+          projectLabel={chatProject ? workspaces.names[chatProject] : undefined}
           onProjectConfiguration={projectConfiguration.open}
           workspaceOptions={sidebarPaths}
           accounts={pool.accounts}
@@ -494,6 +462,25 @@ export function MainWindow({
         />
       ) : null}
       {page !== null ? <SettingsContributionView page={page} /> : null}
+      {location.kind === "plugins" ? (
+        <PluginsScreen
+          management={location.page === "management"}
+          membershipActive={membership.state === "active"}
+          onOpenManagement={() => onNavigate({ kind: "plugins", page: "management" })}
+          onOpenMarketplace={onBack}
+        />
+      ) : null}
+      {location.kind === "schedules" ? (
+        <ScheduledTasksScreen
+          projectPaths={sidebarPaths}
+          projectNames={workspaces.names}
+          currentProject={draftProject}
+          accounts={pool.accounts}
+          session={session}
+          onAddProject={() => setAddingProject(true)}
+          onOpenThread={openThread}
+        />
+      ) : null}
     </PigclaudeShell>
   )
 }

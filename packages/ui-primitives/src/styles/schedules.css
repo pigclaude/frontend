@@ -366,7 +366,19 @@
   font-size: var(--fs-sm);
 }
 .schedule-crumbs + .page-head {
-  margin-top: var(--space-5);
+  margin-top: var(--space-6);
+}
+.schedule-editor .page-head {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.schedule-editor .page-head .actions {
+  flex-wrap: wrap;
+  align-items: center;
+  max-width: 100%;
+}
+.schedule-editor .page-head .actions:empty {
+  display: none;
 }
 .schedule-back {
   display: inline-flex;
@@ -389,8 +401,7 @@
 .schedule-crumb-current {
   color: var(--fg-2);
 }
-.schedules .page-head .actions,
-.schedule-editor .page-head .actions {
+.schedules .page-head .actions {
   align-items: center;
 }
 /* 编辑时标题下面是「设置 / 历史」两个页签，下边一条细线 */
@@ -408,7 +419,7 @@
 .schedule-form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-8);
+  gap: var(--space-7);
 }
 .schedule-tabs + .schedule-form {
   margin-top: var(--space-8);
@@ -432,15 +443,6 @@
 .schedule-status-chip > span:first-of-type {
   margin-left: calc(var(--space-3) * -1);
 }
-.schedule-form-notice {
-  padding: var(--space-4) var(--space-5);
-  border-radius: var(--r-md);
-  background: var(--surface-sunken);
-  color: var(--muted);
-  font-size: var(--fs-sm);
-  line-height: 1.5;
-}
-
 /*
   计划框：输入框样子的一行，里面是频率、星期或几号、几点几分的小胶囊（.pill-select，在 controls.css），
   最右边是时区。

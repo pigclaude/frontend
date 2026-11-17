@@ -1,0 +1,5 @@
+/* 归档搜索与管理清单之间拉开留白。 */
+.archived-session-search {
+  width: min(320px, calc(100% - 2 * var(--space-4)));
+  margin: var(--space-3) var(--space-4);
+}

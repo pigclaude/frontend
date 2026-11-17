@@ -1,8 +1,7 @@
 // 管理市场缓存、来源对话框和绑定一次安装或更新的确认生命周期。
 
 import { useEffect, useReducer, useRef, useState } from "react"
-import { Settings2 } from "lucide-react"
-import { Button, SearchField } from "@pigclaude/ui-primitives"
+import { Button } from "@pigclaude/ui-primitives"
 import type {
   CapabilityPluginsBridge,
   DesktopPluginInstallDisclosure,
@@ -19,19 +18,25 @@ import {
   PluginMarketplaceCatalog,
   PluginMarketplaceEntryDialog,
 } from "./plugin-marketplace-catalog"
+import {
+  PluginMarketplaceBrowseBar,
+  PluginMarketplaceHeader,
+  type MarketplaceBrowse,
+} from "./plugin-marketplace-navigation"
 import { PluginMarketplacePinDialog } from "./plugin-marketplace-pin-dialog"
 import { PluginMarketplaceSourceDialog } from "./plugin-marketplace-source-dialog"
+import { PluginMarketplaceThirdPartyConsent } from "./plugin-marketplace-third-party"
 import {
-  PluginMarketplaceThirdPartyConsent,
-  PluginMarketplaceThirdPartySwitch,
-} from "./plugin-marketplace-third-party"
-import { marketplaceBlockedMessage, marketplaceErrorKey } from "./plugin-marketplace-view"
+  marketplaceBlockedMessage,
+  marketplaceErrorKey,
+  marketplaceSourceName,
+} from "./plugin-marketplace-view"
 import { pluginInstallDisclosure } from "./plugin-settings-view"
 import "../../styles/plugin-marketplace.css"
 
 type MarketDialog =
   | { kind: "sources" }
-  | { kind: "third-party-consent" }
+  | { kind: "third-party-consent"; next: "sources" | "add" }
   | { kind: "add" }
   | { kind: "pin"; sourceId: string }
   | { kind: "details"; sourceId: string; entryId: string }
@@ -55,12 +60,16 @@ export function PluginMarketplaceSettings({
   bridge,
   installer,
   membershipActive,
-  onInstalled,
+  browse,
+  onBrowseChange,
+  onOpenManagement,
 }: {
   bridge: PluginMarketplaceBridge
   installer: Installer
   membershipActive: boolean
-  onInstalled: () => void
+  browse: MarketplaceBrowse
+  onBrowseChange: (browse: MarketplaceBrowse) => void
+  onOpenManagement: () => void
 }) {
   const { t } = useText()
   const [view, setView] = useState<PluginMarketplaceView | null>(null)
@@ -70,7 +79,6 @@ export function PluginMarketplaceSettings({
   const [revision, refresh] = useReducer((value: number) => value + 1, 0)
   const [busy, setBusy] = useState(false)
   const [dialog, setDialog] = useState<MarketDialog | null>(null)
-  const [query, setQuery] = useState("")
   const owner = useRef<MarketLifetime | null>(null)
   const reads = useRef(0)
 
@@ -121,13 +129,12 @@ export function PluginMarketplaceSettings({
       : undefined
   const entries =
     view?.entries.filter(
-      ({ sourceId, reviewStatus }) =>
-        sourcesById.has(sourceId) && (thirdPartyEnabled || reviewStatus === "reviewed"),
+      ({ sourceId }) =>
+        sourcesById.has(sourceId) &&
+        (thirdPartyEnabled || sourcesById.get(sourceId)?.kind === "official"),
     ) ?? []
-  const visibleIds = new Set(entries.map(({ sourceId }) => sourceId))
-  const catalogSources = thirdPartyEnabled
-    ? enabled
-    : enabled.filter(({ id, kind }) => kind === "official" || visibleIds.has(id))
+  const catalogSources = enabled.filter(({ kind }) => kind === "official" || thirdPartyEnabled)
+  const hasDisabledSources = sources.some(({ kind, enabled }) => kind !== "official" && !enabled)
   const entryDialog = dialog?.kind === "details" || dialog?.kind === "review" ? dialog : null
   const dialogSource = entryDialog ? sourcesById.get(entryDialog.sourceId) : undefined
   const selected = entryDialog
@@ -196,18 +203,32 @@ export function PluginMarketplaceSettings({
     setDialog(next)
   }
 
-  function saveThirdParty(enabled: boolean): void {
+  function saveThirdParty(enabled: boolean, next: "sources" | "add" = "sources"): void {
     void run(async (current) => {
       await bridge.setThirdPartyEnabled(enabled)
       if (current.closed) return
       reads.current += 1
       setView((snapshot) => snapshot && { ...snapshot, thirdPartyEnabled: enabled })
-      setDialog(null)
+      setDialog({ kind: next })
     })
   }
 
   function openAdd(): void {
-    if (thirdPartyEnabled && !disabled) show({ kind: "add" })
+    if (!disabled)
+      show(thirdPartyEnabled ? { kind: "add" } : { kind: "third-party-consent", next: "add" })
+  }
+
+  function refreshSource(id: string): void {
+    if (thirdPartyEnabled || sourcesById.get(id)?.kind === "official")
+      void run(() => bridge.refresh(id))
+  }
+
+  function refreshMarkets(): void {
+    void run(async () => {
+      const results = await Promise.allSettled(catalogSources.map(({ id }) => bridge.refresh(id)))
+      const failed = results.find(({ status }) => status === "rejected")
+      if (failed?.status === "rejected") throw failed.reason
+    })
   }
 
   function showReview(
@@ -224,11 +245,12 @@ export function PluginMarketplaceSettings({
   }
 
   function apply(entry: PluginMarketplaceEntryView): void {
-    const { sourceId, id, action, reviewStatus } = entry
+    const { sourceId, id, action } = entry
+    const source = sourcesById.get(sourceId)
     if (
       (action !== "install" && action !== "update") ||
-      !sourcesById.has(sourceId) ||
-      (!thirdPartyEnabled && reviewStatus !== "reviewed")
+      !source ||
+      (!thirdPartyEnabled && source.kind !== "official")
     )
       return
     void run(async (current) => {
@@ -247,7 +269,6 @@ export function PluginMarketplaceSettings({
           update: result,
         })
       } else if (!current.closed) {
-        if (result.kind === "updated") onInstalled()
         setNotice(
           result.kind === "updated"
             ? "pluginMarketplace.statusUpdated"
@@ -275,7 +296,6 @@ export function PluginMarketplaceSettings({
       try {
         await installer.confirm(confirmationId)
         if (!current.closed) {
-          onInstalled()
           setNotice(
             review.update ? "pluginMarketplace.statusUpdated" : "pluginMarketplace.statusInstalled",
           )
@@ -290,170 +310,165 @@ export function PluginMarketplaceSettings({
   }
 
   return (
-    <div className="plugin-market">
-      {view ? (
-        <PluginMarketplaceThirdPartySwitch
-          enabled={thirdPartyEnabled}
-          disabled={disabled}
-          error={thirdPartyIssue}
-          onChange={(enabled) =>
-            enabled ? show({ kind: "third-party-consent" }) : saveThirdParty(false)
-          }
-        />
-      ) : null}
-      <div className="market-toolbar">
-        {thirdPartyEnabled || entries.length > 0 ? (
-          <SearchField
-            className="market-search"
-            value={query}
-            onValueChange={setQuery}
-            placeholder={t("pluginMarketplace.search")}
-            clearLabel={t("pluginSettings.clearSearch")}
+    <>
+      <PluginMarketplaceHeader
+        canRefresh={!disabled && catalogSources.length > 0}
+        canOpenSources={view !== null && !busy}
+        canAdd={view !== null && !disabled}
+        onRefresh={refreshMarkets}
+        onOpenSources={() => show({ kind: "sources" })}
+        onAdd={openAdd}
+        onOpenManagement={onOpenManagement}
+      />
+      <div className="plugin-market marketplace-catalog">
+        <PluginMarketplaceBrowseBar browse={browse} disabled={busy} onChange={onBrowseChange} />
+        {!membershipActive && readError !== "pluginMarketplace.membership" ? (
+          <p className="hint">{t("pluginMarketplace.membership")}</p>
+        ) : null}
+        {notice ? (
+          <p className="market-notice" role="status">
+            {t(notice)}
+          </p>
+        ) : null}
+        {busy && !dialog ? (
+          <p className="hint" role="status">
+            {t("pluginSettings.reviewing")}
+          </p>
+        ) : null}
+        {readError ? (
+          <div className="market-error">
+            <p className="error-text" role="alert">
+              {t(readError)}
+            </p>
+            <Button type="button" size="sm" disabled={busy} onClick={refresh}>
+              {t("pluginSettings.retry")}
+            </Button>
+          </div>
+        ) : null}
+        {errorText && !dialog ? (
+          <p className="market-error error-text" role="alert">
+            {errorText}
+          </p>
+        ) : null}
+        {thirdPartyIssue && browse.scope === "personal" ? (
+          <p className="market-error error-text" role="alert">
+            {thirdPartyIssue}
+          </p>
+        ) : null}
+        {view === null && !readError ? (
+          <p className="hint" role="status">
+            {t("pluginMarketplace.loading")}
+          </p>
+        ) : null}
+        {view ? (
+          <PluginMarketplaceCatalog
+            sources={catalogSources}
+            entries={entries}
+            browse={browse}
+            disabled={disabled}
+            hasDisabledSources={hasDisabledSources}
+            thirdPartyEnabled={thirdPartyEnabled}
+            onDetails={(entry) =>
+              show({ kind: "details", sourceId: entry.sourceId, entryId: entry.id })
+            }
+            onApply={apply}
+            onAdd={openAdd}
+            onManageSources={() => show({ kind: "sources" })}
+            onRefresh={refreshSource}
           />
         ) : null}
-        <Button
-          type="button"
-          className="market-sources-btn"
-          disabled={view === null || busy}
-          onClick={() => show({ kind: "sources" })}
-        >
-          <Settings2 className="ic ic-sm" aria-hidden="true" />
-          {t("pluginMarketplace.sources")}
-        </Button>
+        {dialog?.kind === "sources" ? (
+          <PluginMarketplaceSourceDialog
+            sources={sources}
+            busy={busy}
+            membershipActive={membershipActive}
+            thirdPartyEnabled={thirdPartyEnabled}
+            error={errorText}
+            thirdPartyError={thirdPartyIssue}
+            onClose={() => show(null)}
+            onAdd={openAdd}
+            onThirdPartyChange={(enabled) =>
+              enabled
+                ? show({ kind: "third-party-consent", next: "sources" })
+                : saveThirdParty(false)
+            }
+            onRefresh={refreshSource}
+            onChangePin={(sourceId) => {
+              if (thirdPartyEnabled) show({ kind: "pin", sourceId })
+            }}
+            onSetEnabled={(id, enabled) => void run(() => bridge.setEnabled(id, enabled))}
+            onRemove={(id) => void run(() => bridge.remove(id))}
+          />
+        ) : null}
+        {dialog?.kind === "third-party-consent" && membershipActive ? (
+          <PluginMarketplaceThirdPartyConsent
+            busy={busy}
+            error={errorText}
+            onCancel={() => show(dialog.next === "sources" ? { kind: "sources" } : null)}
+            onConfirm={() => saveThirdParty(true, dialog.next)}
+          />
+        ) : null}
+        {pinSource && membershipActive && thirdPartyEnabled ? (
+          <PluginMarketplacePinDialog
+            key={pinSource.id}
+            source={pinSource}
+            busy={busy}
+            error={errorText}
+            onClose={() => show({ kind: "sources" })}
+            onApply={(pin) =>
+              void run(async (current) => {
+                await bridge.refresh(pinSource.id, pin)
+                if (!current.closed) show({ kind: "sources" })
+              })
+            }
+          />
+        ) : null}
+        {dialog?.kind === "add" && view && membershipActive && thirdPartyEnabled ? (
+          <PluginMarketplaceAddSource
+            developerMode={view.developerMode}
+            busy={busy}
+            error={errorText}
+            sources={sources}
+            selectDirectory={bridge.selectDirectory}
+            onClose={() => show({ kind: "sources" })}
+            onAdd={(input) =>
+              void run(async (current) => {
+                await bridge.add(input)
+                if (!current.closed) {
+                  onBrowseChange({ scope: "personal", query: "" })
+                  show({ kind: "sources" })
+                }
+              })
+            }
+          />
+        ) : null}
+        {dialog?.kind === "details" && selected && dialogSource ? (
+          <PluginMarketplaceEntryDialog
+            entry={selected}
+            source={dialogSource}
+            busy={busy}
+            disabled={disabled}
+            error={errorText}
+            onClose={() => show(null)}
+            onApply={apply}
+          />
+        ) : null}
+        {dialog?.kind === "review" &&
+        dialogSource &&
+        selected &&
+        membershipActive &&
+        reviewAllowed ? (
+          <PluginInstallDisclosure
+            facts={pluginInstallDisclosure(dialog.disclosure, t)}
+            sourceName={marketplaceSourceName(dialogSource, t)}
+            reviewStatus={selected.reviewStatus}
+            update={dialog.update}
+            busy={busy}
+            onCancel={cancelReview}
+            onConfirm={() => confirmReview(dialog)}
+          />
+        ) : null}
       </div>
-      {!membershipActive && readError !== "pluginMarketplace.membership" ? (
-        <p className="hint">{t("pluginMarketplace.membership")}</p>
-      ) : null}
-      {notice ? (
-        <p className="market-notice" role="status">
-          {t(notice)}
-        </p>
-      ) : null}
-      {busy && !dialog ? (
-        <p className="hint" role="status">
-          {t("pluginSettings.reviewing")}
-        </p>
-      ) : null}
-      {readError ? (
-        <div className="market-error">
-          <p className="error-text" role="alert">
-            {t(readError)}
-          </p>
-          <Button type="button" size="sm" disabled={busy} onClick={refresh}>
-            {t("pluginSettings.retry")}
-          </Button>
-        </div>
-      ) : null}
-      {errorText && !dialog ? (
-        <p className="market-error error-text" role="alert">
-          {errorText}
-        </p>
-      ) : null}
-      {view === null && !readError ? (
-        <p className="hint" role="status">
-          {t("pluginMarketplace.loading")}
-        </p>
-      ) : null}
-      {view ? (
-        <PluginMarketplaceCatalog
-          sources={catalogSources}
-          entries={entries}
-          query={query}
-          disabled={disabled}
-          hasDisabledSources={sources.length > 0 && enabled.length === 0}
-          thirdPartyEnabled={thirdPartyEnabled}
-          onDetails={(entry) =>
-            show({ kind: "details", sourceId: entry.sourceId, entryId: entry.id })
-          }
-          onApply={apply}
-          onAdd={openAdd}
-        />
-      ) : null}
-      {dialog?.kind === "sources" ? (
-        <PluginMarketplaceSourceDialog
-          sources={sources}
-          busy={busy}
-          membershipActive={membershipActive}
-          thirdPartyEnabled={thirdPartyEnabled}
-          error={errorText}
-          thirdPartyError={thirdPartyIssue}
-          onClose={() => show(null)}
-          onAdd={openAdd}
-          onRefresh={(id) => {
-            if (thirdPartyEnabled || sourcesById.get(id)?.kind === "official")
-              void run(() => bridge.refresh(id))
-          }}
-          onChangePin={(sourceId) => {
-            if (thirdPartyEnabled) show({ kind: "pin", sourceId })
-          }}
-          onSetEnabled={(id, enabled) => void run(() => bridge.setEnabled(id, enabled))}
-          onRemove={(id) => void run(() => bridge.remove(id))}
-        />
-      ) : null}
-      {dialog?.kind === "third-party-consent" && membershipActive ? (
-        <PluginMarketplaceThirdPartyConsent
-          busy={busy}
-          error={errorText}
-          onCancel={() => show(null)}
-          onConfirm={() => saveThirdParty(true)}
-        />
-      ) : null}
-      {pinSource && membershipActive && thirdPartyEnabled ? (
-        <PluginMarketplacePinDialog
-          key={pinSource.id}
-          source={pinSource}
-          busy={busy}
-          error={errorText}
-          onClose={() => show({ kind: "sources" })}
-          onApply={(pin) =>
-            void run(async (current) => {
-              await bridge.refresh(pinSource.id, pin)
-              if (!current.closed) show({ kind: "sources" })
-            })
-          }
-        />
-      ) : null}
-      {dialog?.kind === "add" && view && membershipActive && thirdPartyEnabled ? (
-        <PluginMarketplaceAddSource
-          developerMode={view.developerMode}
-          busy={busy}
-          error={errorText}
-          selectDirectory={bridge.selectDirectory}
-          onClose={() => show({ kind: "sources" })}
-          onAdd={(input) =>
-            void run(async (current) => {
-              await bridge.add(input)
-              if (!current.closed) show({ kind: "sources" })
-            })
-          }
-        />
-      ) : null}
-      {dialog?.kind === "details" && selected && dialogSource ? (
-        <PluginMarketplaceEntryDialog
-          entry={selected}
-          source={dialogSource}
-          busy={busy}
-          disabled={disabled}
-          error={errorText}
-          onClose={() => show(null)}
-          onApply={apply}
-        />
-      ) : null}
-      {dialog?.kind === "review" &&
-      dialogSource &&
-      selected &&
-      membershipActive &&
-      reviewAllowed ? (
-        <PluginInstallDisclosure
-          facts={pluginInstallDisclosure(dialog.disclosure, t)}
-          sourceName={dialogSource.catalogName}
-          reviewStatus={selected.reviewStatus}
-          update={dialog.update}
-          busy={busy}
-          onCancel={cancelReview}
-          onConfirm={() => confirmReview(dialog)}
-        />
-      ) : null}
-    </div>
+    </>
   )
 }

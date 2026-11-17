@@ -106,7 +106,7 @@ it.skipIf(binary === null)(
         permissionMode: "default",
         model: "sonnet",
       })
-      await h.host.send(sessionId, { text: "/verify-project" })
+      await h.host.send(sessionId, { text: "Use $verify-project to check the workspace." })
       await vi
         .waitFor(
           () => {
@@ -134,7 +134,8 @@ it.skipIf(binary === null)(
       })
       expect(messages).toContain("REPOSITORY_INSTRUCTIONS")
       expect(messages).toContain("WORKSPACE_IMPORTED_INSTRUCTIONS")
-      expect(messages).toContain("PROJECT_SKILL_INSTRUCTIONS")
+      expect(messages.includes("PROJECT_SKILL_INSTRUCTIONS")).toBe(true)
+      expect(messages.includes("to check the workspace.")).toBe(true)
       if (testInlineCommand) expect(messages).toContain("PROJECT_SKILL_COMMAND")
       expect(messages).not.toMatch(
         /OUTSIDE_INSTRUCTIONS|PERSONAL_INSTRUCTIONS|HOME_ANCESTOR_INSTRUCTIONS/,

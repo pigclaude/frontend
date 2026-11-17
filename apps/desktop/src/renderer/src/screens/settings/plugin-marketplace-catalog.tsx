@@ -1,24 +1,43 @@
 // 展示启用市场源的目录和条目详情，安装与更新动作取主进程投影。
 
-import { useId } from "react"
-import { Download, Search, Store, TriangleAlert } from "lucide-react"
-import { Badge, Button, Dialog, EmptyState, EntityAvatar } from "@pigclaude/ui-primitives"
+import { useId, useState } from "react"
+import {
+  Download,
+  Puzzle,
+  RefreshCw,
+  Search,
+  SquareTerminal,
+  Store,
+  TriangleAlert,
+} from "lucide-react"
+import { Badge, Button, Dialog, EmptyState } from "@pigclaude/ui-primitives"
 import type {
   PluginMarketplaceEntryView,
   PluginMarketplaceSourceView,
 } from "../../../../plugin-marketplace-contract"
 import { fill, useText, type TextKey } from "../../locale/text"
+import type { MarketplaceBrowse } from "./plugin-marketplace-navigation"
 import {
   marketplaceBlockedMessage,
   marketplaceErrorKey,
-  marketplaceSourceMeta,
+  marketplaceSourceName,
 } from "./plugin-marketplace-view"
 import { pluginPermissionText } from "./plugin-settings-view"
 
 type EntryAction = (entry: PluginMarketplaceEntryView) => void
+const collapsedCount = 6
 
 function typeLabel(type: PluginMarketplaceEntryView["type"]): TextKey {
   return type === "claude-code" ? "pluginSettings.claudeCode" : "pluginSettings.capability"
+}
+
+function MarketplaceEntryIcon({ type }: { type: PluginMarketplaceEntryView["type"] }) {
+  const Icon = type === "claude-code" ? SquareTerminal : Puzzle
+  return (
+    <span className="market-icon marketplace-entry-icon" data-plugin-type={type} aria-hidden="true">
+      <Icon className="ic" />
+    </span>
+  )
 }
 
 /** 标注主进程确认的审核状态，市场目录和安装披露使用同样的标识。 */
@@ -36,45 +55,63 @@ export function MarketplaceReviewBadge({
   )
 }
 
-/** 目录按来源分组，不从显示名称或版本推测安装状态。 */
+/** 公开和社区按签名目录的维护方及用途分组，个人按市场源分组。 */
 export function PluginMarketplaceCatalog({
   sources,
   entries,
-  query,
+  browse,
   disabled,
   hasDisabledSources,
   thirdPartyEnabled,
   onDetails,
   onApply,
   onAdd,
+  onManageSources,
+  onRefresh,
 }: {
   sources: readonly PluginMarketplaceSourceView[]
   entries: readonly PluginMarketplaceEntryView[]
-  query: string
+  browse: MarketplaceBrowse
   disabled: boolean
   hasDisabledSources: boolean
   thirdPartyEnabled: boolean
   onDetails: EntryAction
   onApply: EntryAction
   onAdd: () => void
+  onManageSources: () => void
+  onRefresh: (sourceId: string) => void
 }) {
   const { t } = useText()
-  const needle = query.trim().toLowerCase()
+  const personal = browse.scope === "personal"
+  const community = browse.scope === "community"
+  const scopedSources = sources.filter(({ kind }) => (kind === "official") !== personal)
+  const sourceIds = new Set(scopedSources.map(({ id }) => id))
+  const needle = browse.query.trim().toLowerCase()
   const grouped = new Map<string, PluginMarketplaceEntryView[]>()
   for (const entry of entries) {
+    if (!sourceIds.has(entry.sourceId)) continue
+    if (!personal && (entry.officialListing?.publisherType === "community") !== community) continue
+    const category = entry.officialListing?.category ?? t(typeLabel(entry.type))
     if (
       needle &&
-      ![entry.id, entry.name, entry.author, entry.description, t(typeLabel(entry.type))].some(
-        (text) => text?.toLowerCase().includes(needle),
-      )
+      ![
+        entry.id,
+        entry.name,
+        entry.author,
+        entry.description,
+        category,
+        t(typeLabel(entry.type)),
+      ].some((text) => text?.toLowerCase().includes(needle))
     )
       continue
-    const group = grouped.get(entry.sourceId)
+    const key = personal ? entry.sourceId : category
+    const group = grouped.get(key)
     if (group) group.push(entry)
-    else grouped.set(entry.sourceId, [entry])
+    else grouped.set(key, [entry])
   }
 
-  if (sources.length === 0) {
+  if (personal && (!thirdPartyEnabled || scopedSources.length === 0)) {
+    const canAdd = thirdPartyEnabled && !hasDisabledSources
     const title = !thirdPartyEnabled
       ? "pluginMarketplace.thirdPartyOff"
       : hasDisabledSources
@@ -86,74 +123,118 @@ export function PluginMarketplaceCatalog({
         icon={<Store className="ic" aria-hidden="true" />}
         title={t(title)}
         actions={
-          thirdPartyEnabled && !hasDisabledSources && !disabled ? (
-            <Button type="button" size="sm" onClick={onAdd}>
-              {t("pluginMarketplace.addSource")}
+          disabled ? null : (
+            <Button type="button" size="sm" onClick={canAdd ? onAdd : onManageSources}>
+              {t(canAdd ? "pluginMarketplace.addSource" : "pluginMarketplace.manageSources")}
             </Button>
-          ) : null
+          )
         }
       />
     )
   }
-  if (needle && grouped.size === 0) {
-    return (
-      <EmptyState
-        className="market-empty"
-        icon={<Search className="ic" aria-hidden="true" />}
-        title={t("pluginMarketplace.noMatches")}
-      />
-    )
-  }
+  const sections = personal
+    ? scopedSources
+        .filter(({ id }) => !needle || grouped.has(id))
+        .map((source) => ({ key: source.id, heading: marketplaceSourceName(source, t), source }))
+    : [...grouped.keys()].map((heading) => ({ key: heading, heading, source: undefined }))
   return (
     <>
-      {sources
-        .filter(({ id }) => !needle || grouped.has(id))
-        .map((source) => (
+      {personal
+        ? null
+        : scopedSources.map(({ id, error }) => <MarketplaceSourceIssue key={id} error={error} />)}
+      {sections.length ? (
+        sections.map(({ key, heading, source }) => (
           <MarketplaceSection
-            key={source.id}
-            source={source}
-            entries={grouped.get(source.id) ?? []}
+            key={key}
+            heading={heading}
+            entries={grouped.get(key) ?? []}
             disabled={disabled}
+            searching={needle !== ""}
+            error={source?.error ?? null}
             onDetails={onDetails}
             onApply={onApply}
+            onRefresh={source ? () => onRefresh(source.id) : undefined}
           />
-        ))}
+        ))
+      ) : (
+        <EmptyState
+          className="market-empty"
+          icon={needle ? <Search className="ic" /> : <Puzzle className="ic" />}
+          title={t(
+            needle
+              ? "pluginMarketplace.noMatches"
+              : community
+                ? "pluginMarketplace.noCommunity"
+                : "pluginMarketplace.noEntries",
+          )}
+          description={!needle && community ? t("pluginMarketplace.communityEmptyHint") : undefined}
+        />
+      )}
     </>
   )
 }
 
+function MarketplaceSourceIssue({ error }: { error: string | null }) {
+  const { t } = useText()
+  return error ? (
+    <p className="market-section-error">
+      <TriangleAlert className="ic ic-xs" aria-hidden="true" />
+      {t(marketplaceErrorKey(error, "pluginMarketplace.refreshFailed"))}
+    </p>
+  ) : null
+}
+
 function MarketplaceSection({
-  source,
+  heading,
   entries,
   disabled,
+  searching,
+  error,
   onDetails,
   onApply,
+  onRefresh,
 }: {
-  source: PluginMarketplaceSourceView
+  heading: string
   entries: readonly PluginMarketplaceEntryView[]
   disabled: boolean
+  searching: boolean
+  error: string | null
   onDetails: EntryAction
   onApply: EntryAction
+  onRefresh: (() => void) | undefined
 }) {
-  const { t, locale } = useText()
+  const { t } = useText()
   const headingId = useId()
+  const [expanded, setExpanded] = useState(false)
+  const collapsible = !searching && entries.length > collapsedCount
+  const visibleEntries = collapsible && !expanded ? entries.slice(0, collapsedCount) : entries
+  const refreshLabel = fill(t("pluginMarketplace.refreshSource"), { market: heading })
   return (
     <section className="market-section" aria-labelledby={headingId}>
       <header className="market-section-head">
-        <h2 id={headingId} className="market-section-title">
-          {source.catalogName}
-        </h2>
-        <p className="market-section-meta">{marketplaceSourceMeta(source, locale, t)}</p>
-        {source.error ? (
-          <p className="market-section-error">
-            <TriangleAlert className="ic ic-xs" aria-hidden="true" />
-            {t(marketplaceErrorKey(source.error, "pluginMarketplace.refreshFailed"))}
-          </p>
-        ) : null}
+        <div className="market-section-titlebar">
+          <h2 id={headingId} className="market-section-title">
+            {heading}
+          </h2>
+          {onRefresh ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              disabled={disabled}
+              aria-label={refreshLabel}
+              title={refreshLabel}
+              onClick={onRefresh}
+            >
+              <RefreshCw className="ic ic-sm" aria-hidden="true" />
+            </Button>
+          ) : null}
+        </div>
       </header>
+      <MarketplaceSourceIssue error={error} />
       {entries.length ? (
         <div className="market-grid">
-          {entries.map((entry) => (
+          {visibleEntries.map((entry) => (
             <div key={entry.id} className="market-tile">
               <button
                 type="button"
@@ -161,19 +242,14 @@ function MarketplaceSection({
                 aria-label={fill(t("pluginMarketplace.details"), { plugin: entry.name })}
                 onClick={() => onDetails(entry)}
               >
-                <EntityAvatar
-                  id={source.id + "/" + entry.id}
-                  name={entry.name}
-                  className="market-icon"
-                />
+                <MarketplaceEntryIcon type={entry.type} />
                 <span className="market-tile-text">
                   <span className="market-tile-name">
                     <span className="truncate">{entry.name}</span>
                     <MarketplaceReviewBadge status={entry.reviewStatus} />
                   </span>
-                  <span className="market-tile-desc truncate">
-                    {t(typeLabel(entry.type))}
-                    {entry.version ? ` · ${entry.version}` : ""}
+                  <span className="market-tile-desc marketplace-entry-summary">
+                    {entry.description || t(typeLabel(entry.type))}
                   </span>
                 </span>
               </button>
@@ -184,8 +260,24 @@ function MarketplaceSection({
           ))}
         </div>
       ) : (
-        <p className="market-section-empty">{t("pluginMarketplace.noEntries")}</p>
+        <EmptyState
+          className="market-empty"
+          icon={<Puzzle className="ic" aria-hidden="true" />}
+          title={t("pluginMarketplace.noEntries")}
+        />
       )}
+      {collapsible ? (
+        <button
+          type="button"
+          className="market-more"
+          aria-expanded={expanded}
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded
+            ? t("pluginMarketplace.showLess")
+            : fill(t("pluginMarketplace.showAll"), { count: entries.length })}
+        </button>
+      ) : null}
     </section>
   )
 }
@@ -218,11 +310,7 @@ export function PluginMarketplaceEntryDialog({
         closeDisabled={busy}
         title={
           <>
-            <EntityAvatar
-              id={source.id + "/" + entry.id}
-              name={entry.name}
-              className="market-icon"
-            />
+            <MarketplaceEntryIcon type={entry.type} />
             {entry.name}
           </>
         }
@@ -244,7 +332,7 @@ export function PluginMarketplaceEntryDialog({
           {entry.description ? <p className="agent-description">{entry.description}</p> : null}
           <dl className="ext-facts">
             <dt>{t("pluginMarketplace.marketplace")}</dt>
-            <dd>{source.catalogName}</dd>
+            <dd>{marketplaceSourceName(source, t)}</dd>
             {entry.author ? (
               <>
                 <dt>{t("pluginMarketplace.author")}</dt>
@@ -305,8 +393,8 @@ function MarketplaceApplyButton({
   return (
     <Button
       type="button"
-      size="sm"
-      variant={primary ? "primary" : "secondary"}
+      size={primary ? "lg" : "md"}
+      variant={primary ? "primary" : "plain"}
       className={primary ? undefined : "market-pill"}
       disabled={disabled}
       aria-label={fill(
@@ -315,7 +403,7 @@ function MarketplaceApplyButton({
       )}
       onClick={() => onApply(entry)}
     >
-      {update ? null : <Download className="ic ic-sm" aria-hidden="true" />}
+      {!update && primary ? <Download className="ic ic-sm" aria-hidden="true" /> : null}
       {t(update ? "pluginMarketplace.update" : "pluginMarketplace.install")}
     </Button>
   )

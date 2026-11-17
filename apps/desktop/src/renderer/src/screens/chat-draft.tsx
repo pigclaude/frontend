@@ -1,6 +1,7 @@
 // 把桌面会话草稿接到 Pigcode 的新会话页，保留项目控件与启动错误。
 
 import type { ComponentProps, ReactNode } from "react"
+import { SlidersHorizontal } from "lucide-react"
 import type {
   ComposerCommand,
   ComposerSubmitOptions,
@@ -8,12 +9,12 @@ import type {
 } from "@pigclaude/ui-composer"
 import { NewThreadView } from "@pigclaude/ui-chat"
 import { ToolRenderers } from "../components/tool-renderers"
-import { Button } from "../components/ui/button"
 import { useText } from "../locale/text"
 import type { ComposerConfig } from "../models/composer-config"
 import { projectNameFromPath } from "../models/project-model"
 import type { ProjectDraftEditor } from "../hooks/use-project-draft"
 import type { DraftWorkspace } from "./draft-workspace"
+import "../styles/chat-draft.css"
 
 type Props = {
   composer: ComposerConfig
@@ -27,6 +28,7 @@ type Props = {
   threads: readonly ComposerThreadOption[]
   openIn: ReactNode
   layoutControls: ReactNode
+  focusKey?: number
   onSelectProject: (path: string) => void
   onAddProject: () => void
   onSubmit: (text: string, options: ComposerSubmitOptions) => void
@@ -39,10 +41,12 @@ export function ChatDraft({
   projectDraft,
   projects,
   configuration,
+  layoutControls,
   ...props
 }: Props) {
   const { t } = useText()
   const error = projectDraft?.draft.error
+  const pending = workspace.busy || projectDraft?.draft.pending === true
   return (
     <ToolRenderers>
       <NewThreadView
@@ -52,23 +56,23 @@ export function ChatDraft({
           name: projectNameFromPath(path),
           rootPath: path,
         }))}
-        workspaceControls={
-          configuration ? (
-            <>
-              {workspace.controls}
-              <Button
-                variant="ghost"
-                size="sm"
+        layoutControls={
+          <>
+            {configuration ? (
+              <button
+                className="icon-btn"
                 type="button"
+                aria-label={t("shell.projectConfig.entry")}
+                title={t("shell.projectConfig.entry")}
                 onClick={() => configuration.open(configuration.path)}
               >
-                {t("shell.projectConfig.entry")}
-              </Button>
-            </>
-          ) : (
-            workspace.controls
-          )
+                <SlidersHorizontal className="ic" aria-hidden="true" />
+              </button>
+            ) : null}
+            {layoutControls}
+          </>
         }
+        workspaceControls={workspace.controls}
         workspaceStatus={
           <>
             {workspace.status}
@@ -79,7 +83,7 @@ export function ChatDraft({
             ) : null}
           </>
         }
-        pending={workspace.busy || projectDraft?.draft.pending === true}
+        pending={pending}
         draftKey={composer.draftKey}
         agents={composer.agents}
         catalog={composer.catalog}

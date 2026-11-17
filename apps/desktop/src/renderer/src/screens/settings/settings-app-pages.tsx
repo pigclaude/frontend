@@ -7,8 +7,6 @@ import { SettingPage, SettingRow, SettingSection } from "./setting-page"
 import { DefaultModelRow, DefaultPermissionRow } from "./session-default-rows"
 import { UpdateSettingsSection } from "./update-settings"
 import { KeepAwakeSetting } from "./keep-awake-setting"
-import type { SessionHistoryController } from "../../hooks/use-session-history"
-import { SessionRetentionSettings } from "./session-retention-settings"
 import { ProjectPermissionRules } from "./project-permission-rules"
 import { WindowCloseSetting } from "./window-close-setting"
 import { StartupSettings } from "./startup-settings"
@@ -43,11 +41,9 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
 export function SessionSettings({
   workspace,
   models = [],
-  history,
 }: {
   workspace?: string | null
   models?: readonly ClaudeModel[]
-  history?: SessionHistoryController
 }) {
   const permissions = window.pigclaude?.session?.projectPermissions
   const plugins = window.pigclaude?.capabilityPlugins
@@ -84,7 +80,6 @@ export function SessionSettings({
           <LockedValue>{desktopText("settings.settings-app-pages.38")}</LockedValue>
         </SettingRow>
       </SettingSection>
-      {history?.enabled ? <SessionRetentionSettings history={history} /> : null}
       {permissions ? <ProjectPermissionRules bridge={permissions} /> : null}
       {plugins ? <CapabilityPluginToolApprovalSettings bridge={plugins} /> : null}
     </SettingPage>

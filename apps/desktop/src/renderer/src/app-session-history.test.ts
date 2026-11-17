@@ -173,6 +173,21 @@ async function openApp(status: SavedSessionSummary["status"] = "parked", schedul
   }
 }
 
+async function openArchive(): Promise<HTMLElement[]> {
+  await clickButton(
+    app.container.querySelector<HTMLElement>('button[aria-label="搜索"]') ?? undefined,
+    "搜索",
+  )
+  await flush()
+  const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')]
+  await clickButton(
+    options.find((item) => item.textContent?.trim() === "归档管理"),
+    "归档管理",
+  )
+  await flush()
+  return options
+}
+
 it("定时标签与标题独立显示，重命名仍读取原始标题", async () => {
   await openApp("parked", true)
   const row = app.container.querySelector(".proj-sessions .sess")
@@ -204,6 +219,7 @@ it(
       "会话",
     )
     await flush()
+    expect(app.container.querySelector('.panel-top [role="tab"]')?.textContent).toBe("自定义标题")
     await clickButton(
       app.container.querySelector<HTMLElement>('[aria-label="在标签页中打开 general-purpose"]') ??
         undefined,
@@ -215,18 +231,8 @@ it(
     expect(app.container.querySelector(".subagent-view")?.textContent).toContain(
       "归档前的子代理记录",
     )
-    await clickButton(
-      app.container.querySelector<HTMLElement>('button[aria-label="搜索"]') ?? undefined,
-      "搜索",
-    )
-    await flush()
-    const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')]
+    const options = await openArchive()
     expect(options.some((item) => item.textContent?.includes("自定义标题"))).toBe(false)
-    await clickButton(
-      options.find((item) => item.textContent?.trim() === "已归档"),
-      "已归档",
-    )
-    await flush()
     await click("打开")
     expect(app.container.querySelector(".subagent-view")?.textContent).toContain(
       "归档前的子代理记录",
@@ -250,9 +256,9 @@ it(
   async () => {
     const calls = await openApp()
     await menu("归档")
-    await click("已归档")
+    await openArchive()
     await click("打开")
-    await click("已归档")
+    await openArchive()
     await click("删除")
     const dialog = () => document.body.querySelector('[role="dialog"]') ?? document.body
     await click("取消", dialog())
@@ -282,7 +288,7 @@ it(
 it("returns an unarchived session to the sidebar", async () => {
   const calls = await openApp()
   await menu("归档")
-  await click("已归档")
+  await openArchive()
   await click("取消归档")
   expect(calls.archive).toHaveBeenLastCalledWith({ sessionId: id, archived: false })
   expect(app.container.textContent).toContain("没有已归档的会话")
@@ -296,10 +302,10 @@ it("returns an unarchived session to the sidebar", async () => {
 it("cannot reopen a conversation the retention policy deleted while it was archived", async () => {
   const calls = await openApp()
   await menu("归档")
-  await click("已归档")
+  await openArchive()
   await click("打开")
   expect(app.container.querySelector(".chat-page")?.textContent).toContain("归档前的问题")
-  await click("已归档")
+  await openArchive()
   expect(app.container.textContent).toContain("原会话")
   await act(async () => calls.expire())
   await flush()
@@ -348,7 +354,7 @@ it(
   { timeout: 15_000 },
   async () => {
     const calls = await openApp()
-    await click("已归档")
+    await openArchive()
     await click("数据与隐私")
     expect(app.container.textContent).toContain("1,500")
     await click("清除全部会话")
@@ -362,7 +368,7 @@ it(
     expect(calls.clearHistory).toHaveBeenCalledOnce()
     expect(button("清除全部会话")?.disabled).toBe(true)
 
-    await click("会话")
+    await click("归档管理")
     const control = () =>
       app.container.querySelector<HTMLElement>('[role="switch"][aria-label="自动删除未活动的会话"]')
     expect(control()?.getAttribute("aria-checked")).toBe("false")

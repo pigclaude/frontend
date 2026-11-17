@@ -93,6 +93,7 @@ export function describeProjectConfiguration(
   return {
     workspace: input.workspace,
     trust: input.trust,
+    hasProjectSettings: input.settings.length > 0 || input.mcp.length > 0,
     instructions: input.instructions,
     counts: {
       commands: input.commands.filter((item) => item.kind === "command").length,

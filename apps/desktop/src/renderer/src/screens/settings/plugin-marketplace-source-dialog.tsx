@@ -18,7 +18,9 @@ import {
   marketplaceErrorKey,
   marketplaceSourceLabels,
   marketplaceSourceMeta,
+  marketplaceSourceName,
 } from "./plugin-marketplace-view"
+import { PluginMarketplaceThirdPartySwitch } from "./plugin-marketplace-third-party"
 
 const sourceIcons = { github: GitBranch, https: Link2, directory: Folder, official: ShieldCheck }
 
@@ -32,6 +34,7 @@ export function PluginMarketplaceSourceDialog({
   thirdPartyError,
   onClose,
   onAdd,
+  onThirdPartyChange,
   onRefresh,
   onChangePin,
   onSetEnabled,
@@ -45,6 +48,7 @@ export function PluginMarketplaceSourceDialog({
   thirdPartyError: string | null
   onClose: () => void
   onAdd: () => void
+  onThirdPartyChange: (enabled: boolean) => void
   onRefresh: (sourceId: string) => void
   onChangePin: (sourceId: string) => void
   onSetEnabled: (sourceId: string, enabled: boolean) => void
@@ -63,8 +67,13 @@ export function PluginMarketplaceSourceDialog({
         closeDisabled={busy}
       >
         <Dialog.Body>
+          <PluginMarketplaceThirdPartySwitch
+            enabled={thirdPartyEnabled}
+            disabled={disabled}
+            onChange={onThirdPartyChange}
+          />
           <div className="marketplace-sources-bar">
-            <Button type="button" size="sm" disabled={sourceActionsDisabled} onClick={onAdd}>
+            <Button type="button" disabled={sourceActionsDisabled} onClick={onAdd}>
               <Plus className="ic ic-sm" aria-hidden="true" />
               {t("pluginMarketplace.addSource")}
             </Button>
@@ -84,10 +93,11 @@ export function PluginMarketplaceSourceDialog({
           ) : (
             <ul className="marketplace-source-list">
               {sources.map((source) => {
-                const { id, kind, label, catalogName } = source
+                const { id, kind, label } = source
                 const official = kind === "official"
                 const enabled = official || source.enabled
                 const Icon = sourceIcons[kind]
+                const catalogName = marketplaceSourceName(source, t)
                 const values = { market: catalogName }
                 return (
                   <li
@@ -101,9 +111,11 @@ export function PluginMarketplaceSourceDialog({
                     <div className="marketplace-source-text">
                       <span className="marketplace-source-name">
                         <span className="truncate">{catalogName}</span>
-                        <span className="marketplace-source-type">
-                          {t(marketplaceSourceLabels[kind])}
-                        </span>
+                        {!official || catalogName !== t("pluginMarketplace.officialCatalog") ? (
+                          <span className="marketplace-source-type">
+                            {t(marketplaceSourceLabels[kind])}
+                          </span>
+                        ) : null}
                         {enabled ? null : (
                           <span className="marketplace-source-type is-off">
                             {t("pluginMarketplace.disabled")}

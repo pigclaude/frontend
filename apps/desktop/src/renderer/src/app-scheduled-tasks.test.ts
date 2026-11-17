@@ -1,4 +1,4 @@
-// 通过设置侧栏验证任务编辑、状态筛选、立即运行及历史到会话的真实页面入口。
+// 从主侧栏验证定时任务的创建、编辑、筛选、立即运行及历史到会话的入口。
 // @vitest-environment jsdom
 
 import { act, createElement } from "react"
@@ -17,10 +17,26 @@ import { idleStatus } from "./test-support/session-bridge-fake"
 
 const app = desktopAppRoot()
 
+it("定时任务从主侧栏打开，设置侧栏没有重复入口", async () => {
+  installFakeDesktopBridge()
+  if (!window.pigclaude) throw new Error("桌面夹具尚未装配")
+  window.pigclaude.scheduledTasks = fakeTasks([])
+  await act(async () => app.root.render(createElement(DesktopApp)))
+  await flush()
+  await click("定时任务")
+  expect(app.container.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe("定时任务")
+  expect(app.container.querySelector('[data-screen="scheduled-tasks"]')).not.toBeNull()
+  const settings = app.container.querySelector<HTMLElement>('button[aria-label="设置"]')
+  await clickButton(settings ?? undefined, "设置")
+  await flush()
+  expect(buttonNamed("定时任务", app.container)).toBeUndefined()
+})
+
 function task(id: string, prompt: string, options: Partial<ScheduledTask> = {}): ScheduledTask {
   return {
     id,
     projectPath: "/work/api",
+    title: prompt,
     prompt,
     rule: { kind: "daily", time: "09:00" },
     endsAt: null,
@@ -116,11 +132,11 @@ function fakeTasks(initial: ScheduledTask[]) {
   return bridge
 }
 
-async function openSettings(bridge: ScheduledTasksBridge) {
+async function openSchedules(bridge: ScheduledTasksBridge) {
   installFakeDesktopBridge()
   const desktop = window.pigclaude
   if (!desktop?.session) throw new Error("桌面夹具尚未装配")
-  window.history.replaceState({}, "", "/?screen=general")
+  window.history.replaceState({}, "", "/?screen=chat-new")
   desktop.scheduledTasks = bridge
   const status = vi.fn(async () => idleStatus)
   desktop.session.status = status
@@ -138,38 +154,56 @@ async function click(name: string, area: ParentNode = app.container) {
   await flush()
 }
 
-function select(label: string): HTMLSelectElement {
-  const control = [...app.container.querySelectorAll("label")]
-    .find((node) => node.textContent?.startsWith(label))
-    ?.querySelector("select")
-  if (!control) throw new Error("没有下拉框：" + label)
-  return control
+async function clickMatching(selector: string, name: RegExp): Promise<void> {
+  const control = [...document.querySelectorAll<HTMLElement>(selector)].find((node) =>
+    name.test(node.textContent?.trim() ?? ""),
+  )
+  await clickButton(control, name.source)
+  await flush()
+}
+
+async function cardAction(id: string, name: string): Promise<void> {
+  const more = app.container.querySelector<HTMLElement>(
+    `[data-schedule="${id}"] .schedule-card-menu`,
+  )
+  await clickButton(more ?? undefined, "更多操作")
+  await flush()
+  await clickMatching('[role="menuitem"]', new RegExp(`^${name}$`))
+}
+
+async function chooseMode(current: string, next: RegExp): Promise<void> {
+  const model = app.container.querySelector<HTMLButtonElement>('button[aria-label^="Agent 与模型"]')
+  await clickButton(model ?? undefined, "Agent 与模型")
+  await flush()
+  const permission = document.querySelector<HTMLElement>(`button[aria-label="权限: ${current}"]`)
+  await clickButton(permission ?? undefined, "权限")
+  await flush()
+  await clickMatching('[role="menuitemradio"]', next)
 }
 
 it("筛选任务、立即运行、暂停，再从历史打开会话并向服务发出删除和翻页请求", async () => {
   const active = task("task-active", "检查构建")
   const paused = task("task-paused", "整理变更", { enabled: false, nextRunAt: null })
   const bridge = fakeTasks([active, paused])
-  const { status } = await openSettings(bridge)
+  const { status } = await openSchedules(bridge)
   await click("已暂停")
   expect(app.container.textContent).toContain(paused.prompt)
   expect(app.container.textContent).not.toContain(active.prompt)
-  await click("已启用")
-  const card = app.container.querySelector("article")
-  if (!card) throw new Error("没有启用任务")
-  await click("立即运行", card)
+  await click("运行中")
+  await cardAction(active.id, "立即运行")
   expect(bridge.runNow).toHaveBeenCalledExactlyOnceWith(active.id)
-  expect(app.container.textContent).toContain("已请求立即运行")
-  await click("暂停", card)
+  expect(app.container.textContent).toContain("已启动任务")
+  await cardAction(active.id, "暂停")
   expect(bridge.setEnabled).toHaveBeenCalledExactlyOnceWith(active.id, false)
-  expect(app.container.textContent).toContain("没有符合此状态的任务")
+  expect(app.container.textContent).toContain("没有符合条件的任务")
 
   await click("全部")
   const updated = [...app.container.querySelectorAll("article")].find((node) =>
     node.textContent?.includes(active.prompt),
   )
   if (!updated) throw new Error("没有更新后的任务")
-  await click("运行记录", updated)
+  await click(active.prompt, updated)
+  await click("历史")
   expect(app.container.textContent).toContain("账号：工作号")
   expect(app.container.textContent).toContain("项目目录不可用")
   expect(app.container.textContent).toContain("原因暂不可用")
@@ -197,47 +231,42 @@ it("筛选任务、立即运行、暂停，再从历史打开会话并向服务�
 it("取消完全访问确认后保留草稿，保存新任务后能编辑已持久化配置", async () => {
   const bridge = fakeTasks([])
   bridge.create.mockImplementationOnce(async () => null)
-  await openSettings(bridge)
+  await openSchedules(bridge)
   await click("新建任务")
-  const prompt = app.container.querySelector("textarea")
-  if (!prompt) throw new Error("没有提示词输入框")
+  const prompt = app.container.querySelector<HTMLElement>(".composer .tiptap")
+  const title = app.container.querySelector<HTMLInputElement>(".schedule-form input.input")
+  if (!prompt || !title) throw new Error("没有任务标题或指令输入框")
   await act(async () => {
+    await userEvent.type(title, "构建日报")
     await userEvent.type(prompt, "记录最新构建结果")
-    await userEvent.selectOptions(select("项目"), "/work/web")
-    await userEvent.selectOptions(select("模型"), "claude-sonnet")
-    await userEvent.selectOptions(select("Claude 账号"), "acc-work")
-    await userEvent.selectOptions(select("权限档"), "bypassPermissions")
   })
-  const end = app.container.querySelector<HTMLInputElement>('input[type="date"]')
-  const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set
-  if (!end || !setValue) throw new Error("没有结束日期输入框")
-  await act(async () => {
-    setValue.call(end, "2099-12-31")
-    end.dispatchEvent(new Event("input", { bubbles: true }))
-  })
-  expect(app.container.textContent).toContain("保存时需要再次确认")
-  await click("保存任务")
-  expect(prompt.value).toBe("记录最新构建结果")
-  expect(bridge.create).toHaveBeenCalledExactlyOnceWith({
-    accountId: "acc-work",
-    enabled: true,
-    endsAt: new Date(2099, 11, 31, 23, 59, 59, 999).toISOString(),
-    model: "claude-sonnet",
-    permissionMode: "bypassPermissions",
-    projectPath: "/work/web",
-    prompt: "记录最新构建结果",
-    rule: { kind: "daily", time: "09:00" },
-  })
-  await click("保存任务")
-  expect(app.container.textContent).toContain("记录最新构建结果")
-
-  await click("编辑任务")
-  await act(async () => userEvent.selectOptions(select("权限档"), "acceptEdits"))
-  const enabled = app.container.querySelector<HTMLElement>('[role="switch"][aria-label="启用任务"]')
-  await clickButton(enabled ?? undefined, "启用任务")
-  await click("保存任务")
+  const project = app.container.querySelector<HTMLElement>("button.draft-project")
+  await clickButton(project ?? undefined, "项目")
+  await flush()
+  await clickMatching('[role="menuitem"]', /\/work\/web/)
+  await chooseMode("监督审批", /完全访问/)
+  await click("启用完全访问", document)
+  await click("创建任务")
+  expect(prompt.textContent).toBe("记录最新构建结果")
+  expect(bridge.create).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({
+      title: "构建日报",
+      enabled: true,
+      endsAt: null,
+      permissionMode: "bypassPermissions",
+      projectPath: "/work/web",
+      prompt: "记录最新构建结果",
+      draft: expect.objectContaining({ document: expect.any(String) }),
+      rule: { kind: "daily", time: "09:00" },
+    }),
+  )
+  await click("创建任务")
+  await click("构建日报")
+  expect(app.container.querySelector(".composer .tiptap")?.textContent).toBe("记录最新构建结果")
+  await chooseMode("完全访问", /接受编辑/)
+  await click("保存")
   expect(bridge.update).toHaveBeenCalledExactlyOnceWith(
     "created",
-    expect.objectContaining({ permissionMode: "acceptEdits", enabled: false }),
+    expect.objectContaining({ permissionMode: "acceptEdits", enabled: true }),
   )
 })

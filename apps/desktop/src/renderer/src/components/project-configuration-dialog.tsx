@@ -84,6 +84,8 @@ function ProjectConfigurationDialog({
 
   const shown = confirmation?.report ?? report
   const grant = confirmation?.trusted ?? shown?.trust !== "trusted"
+  const canChangeSettings =
+    shown && shown.trust !== "blocked" && (shown.hasProjectSettings || shown.trust === "trusted")
   const action = confirmation
     ? t(grant ? "shell.projectConfig.confirmTrust" : "shell.projectConfig.confirmRevoke")
     : t(grant ? "shell.projectConfig.trust" : "shell.projectConfig.revoke")
@@ -131,7 +133,7 @@ function ProjectConfigurationDialog({
           >
             {t(confirmation ? "shell.projectConfig.cancel" : "shell.projectConfig.close")}
           </Button>
-          {shown && shown.trust !== "blocked" ? (
+          {canChangeSettings ? (
             <Button
               disabled={busy || (grant && shown.unreadable.length > 0)}
               variant="primary"
@@ -148,12 +150,16 @@ function ProjectConfigurationDialog({
 
 function ReportDetails({ report }: { report: ProjectConfigurationReport }) {
   const { t } = useText()
+  const hasSettings = report.hasProjectSettings || report.trust !== "untrusted"
   const rows: Array<{ label: string; items: string[] }> = [
-    { label: t("shell.projectConfig.status"), items: [t(`shell.projectConfig.${report.trust}`)] },
     { label: t("shell.projectConfig.instructions"), items: report.instructions },
     {
       label: t("shell.projectConfig.items"),
       items: [fill(t("shell.projectConfig.counts"), report.counts)],
+    },
+    {
+      label: t("shell.projectConfig.status"),
+      items: hasSettings ? [t(`shell.projectConfig.${report.trust}`)] : [],
     },
     {
       label: t("shell.projectConfig.hooks"),
@@ -190,15 +196,24 @@ function ReportDetails({ report }: { report: ProjectConfigurationReport }) {
       items: report.unreadable,
     })
   return (
-    <dl className="project-configuration-report">
-      {rows.map(({ label, items }) => (
-        <div key={label}>
-          <dt>{label}</dt>
-          <dd>
-            {items.length === 0 ? "—" : items.map((item, index) => <span key={index}>{item}</span>)}
-          </dd>
-        </div>
-      ))}
-    </dl>
+    <>
+      {report.counts.skills > 0 ? (
+        <p className="dialog-desc">{t("shell.projectConfig.skillHint")}</p>
+      ) : null}
+      <dl className="project-configuration-report">
+        {rows
+          .filter(({ items }) => items.length > 0)
+          .map(({ label, items }) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>
+                {items.map((item, index) => (
+                  <span key={index}>{item}</span>
+                ))}
+              </dd>
+            </div>
+          ))}
+      </dl>
+    </>
   )
 }

@@ -11,6 +11,16 @@ import { fakeSessionBridge, idleStatus } from "./test-support/session-bridge-fak
 
 const app = desktopAppRoot()
 
+it("启动时没有可恢复的会话就显示可选择项目的草稿", async () => {
+  const { starts } = installFakeDesktopBridge(["/work/api"])
+  window.history.replaceState({}, "", "/?screen=chat")
+  await act(async () => app.root.render(createElement(DesktopApp)))
+  await flush()
+
+  expect(app.container.querySelector('button[aria-label="会话所在的项目: api"]')).not.toBeNull()
+  expect(starts).toHaveLength(0)
+})
+
 it("托盘可打开运行中的归档会话，再跳到账号页或新的草稿", async () => {
   installFakeDesktopBridge()
   const bridge = window.pigclaude

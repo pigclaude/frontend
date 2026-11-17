@@ -1,9 +1,30 @@
-/* 新增 shadcn 控件的样式。只引用 tokens.css 和 glass.css 里的变量。 */
+/* 桌面端控件适配使用组件库的尺寸、圆角与主题变量。 */
 
 .btn-icon {
-  width: 28px;
-  height: 28px;
+  width: var(--control-md);
+  height: var(--control-md);
   padding: 0;
+}
+
+/* 同行的页头和表单操作使用大号按钮尺寸。 */
+:is(.page-head .actions, .dialog-foot, .section-actions) > .btn,
+.btn.send[data-form-action] {
+  height: var(--control-lg);
+}
+
+:is(.page-head .actions, .dialog-foot, .section-actions) > .btn-icon {
+  width: var(--control-lg);
+}
+
+.install-dialog-input > .btn-sm {
+  height: var(--control-md);
+  border-radius: var(--r-md);
+}
+
+/* 单行主搜索和任务标题沿用计划框的输入尺寸。 */
+:is(.input, .search-field).control-xl,
+.schedule-form > .field > .input {
+  height: var(--control-xl);
 }
 .select-trigger:hover {
   background: var(--hover);
@@ -61,9 +82,9 @@
 }
 
 .seg .seg-item {
-  height: 22px;
-  padding: 0 10px;
-  border-radius: 5px;
+  height: var(--control-sm);
+  padding: 0 var(--space-5);
+  border-radius: calc(var(--r-md) - var(--space-1));
   color: var(--fg-2);
   font-size: var(--fs-sm);
   font-weight: var(--font-weight-ui);
@@ -197,7 +218,7 @@
 .cp-preview {
   flex: none;
   width: 28px;
-  height: 28px;
+  height: var(--control-md);
   border-radius: var(--r-md);
   box-shadow: inset 0 0 0 var(--hair) var(--border-strong);
 }

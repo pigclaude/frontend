@@ -3,12 +3,13 @@
 import { randomUUID } from "node:crypto"
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute } from "node:path"
-import { scheduleRuleSchema } from "@pigclaude/ui-contracts"
+import { scheduleRuleSchema, worktreeStartSchema } from "@pigclaude/ui-contracts"
 import { z } from "zod"
-import type {
-  ScheduledTaskInput,
-  ScheduledTaskOutcome,
-  ScheduledTaskRun,
+import {
+  minimumScheduledTaskMinutes,
+  type ScheduledTaskInput,
+  type ScheduledTaskOutcome,
+  type ScheduledTaskRun,
 } from "../../scheduled-tasks-contract"
 
 /** 每个任务最多保留的触发记录数，包含正在运行的一条记录。 */
@@ -23,7 +24,7 @@ const rule = z.unknown().transform((input, ctx) => {
     ctx.addIssue({ code: "custom", message: "SCHEDULE_RULE_INVALID" })
     return z.NEVER
   }
-  if (valid.data.kind === "everyMinutes" && valid.data.every < 15) {
+  if (valid.data.kind === "everyMinutes" && valid.data.every < minimumScheduledTaskMinutes) {
     ctx.addIssue({ code: "custom", message: "SCHEDULE_INTERVAL_TOO_SHORT" })
     return z.NEVER
   }
@@ -31,13 +32,21 @@ const rule = z.unknown().transform((input, ctx) => {
 })
 const taskInput = z.object({
   projectPath: z.string().refine((path) => isAbsolute(path) && !path.includes("\0")),
+  title: z.string().trim().max(120).optional(),
   prompt: z.string().refine((text) => text.trim().length > 0),
+  draft: z
+    .object({ document: z.string().min(1).max(1_000_000) })
+    .nullable()
+    .optional(),
   rule,
   endsAt: optionalTime,
   enabled: z.boolean(),
   model: id.nullable(),
   permissionMode: z.enum(["default", "acceptEdits", "auto", "bypassPermissions"]),
   accountId: id.nullable(),
+  effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
+  fast: z.boolean().optional(),
+  worktree: worktreeStartSchema.optional(),
 })
 const run = z.object({
   id,

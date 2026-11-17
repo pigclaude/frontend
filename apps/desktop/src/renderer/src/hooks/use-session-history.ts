@@ -55,7 +55,7 @@ export function useSessionHistory({
   const selectedArchive =
     selection !== null && !summaries.some((item) => item.sessionId === selection)
   const readPage =
-    page === "session" && saving ? null : (page ?? (selectedArchive ? "archived" : null))
+    page === "archived" && saving ? null : (page ?? (selectedArchive ? "archived" : null))
   const archivedRefresh = readPage === "archived" ? summaries : null
   const statsRefresh = readPage === "data" ? hostRemoved : null
 
@@ -85,16 +85,19 @@ export function useSessionHistory({
     let current = true
     const load =
       readPage === "archived"
-        ? readArchived()
+        ? Promise.all([
+            readArchived(),
+            page === "archived"
+              ? bridge.retention?.().then((value) => {
+                  if (current) setRetention(value)
+                })
+              : undefined,
+          ])
         : readPage === "data"
           ? bridge.dataStats?.().then((value) => {
               if (current) setStats(value)
             })
-          : readPage === "session"
-            ? bridge.retention?.().then((value) => {
-                if (current) setRetention(value)
-              })
-            : undefined
+          : undefined
     setLoadError(null)
     setLoading(load !== undefined)
     void load
@@ -107,7 +110,7 @@ export function useSessionHistory({
     return () => {
       current = false
     }
-  }, [archivedRefresh, bridge, enabled, readArchived, readPage, refresh, statsRefresh])
+  }, [archivedRefresh, bridge, enabled, page, readArchived, readPage, refresh, statsRefresh])
 
   const rename = useCallback(
     (sessionId: string, title: string) => {

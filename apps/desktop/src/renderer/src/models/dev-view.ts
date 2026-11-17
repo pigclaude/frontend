@@ -21,8 +21,6 @@ const settingsPageNames = [
   "general",
   "appearance",
   "session",
-  "scheduled-tasks",
-  "plugins",
   "menubar",
   "network",
   "data",
@@ -31,7 +29,14 @@ const settingsPageNames = [
 
 /** 开发期地址里 screen 参数能用的页面名。 */
 export type DevScreen =
-  "login" | "onboarding" | "authorize" | "chat-new" | "chat" | (typeof settingsPageNames)[number]
+  | "login"
+  | "onboarding"
+  | "authorize"
+  | "chat-new"
+  | "chat"
+  | "plugins"
+  | "scheduled-tasks"
+  | (typeof settingsPageNames)[number]
 
 /** 全部页面名；视觉回归按这个顺序截图。 */
 export const allScreens: readonly DevScreen[] = [
@@ -39,6 +44,8 @@ export const allScreens: readonly DevScreen[] = [
   "onboarding",
   "chat-new",
   "chat",
+  "scheduled-tasks",
+  "plugins",
   ...settingsPageNames,
   "authorize",
 ]
@@ -64,6 +71,8 @@ export function locationOfScreen(name: DevScreen): NavLocation {
   }
   if (name === "chat-new") return { kind: "draft" }
   if (name === "chat") return { kind: "session" }
+  if (name === "plugins") return { kind: "plugins" }
+  if (name === "scheduled-tasks") return { kind: "schedules" }
   return { kind: "settings", page: name }
 }
 
@@ -71,6 +80,9 @@ export function locationOfScreen(name: DevScreen): NavLocation {
 export function screenOfLocation(location: NavLocation): string {
   if (location.kind === "draft") return "chat-new"
   if (location.kind === "session") return "chat"
+  if (location.kind === "plugins")
+    return location.page === "management" ? "plugin-management" : "plugins"
+  if (location.kind === "schedules") return "scheduled-tasks"
   if (location.kind === "settings") return location.page
   return location.flow
 }

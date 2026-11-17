@@ -175,20 +175,23 @@ export function marketplaceFixture(
   return { market, plugins }
 }
 
-/** 从桌面设置的真实入口打开插件市场。 */
+/** 从工作区侧栏的真实入口打开插件市场。 */
 export async function openMarketplace(
   app: DesktopAppRoot,
   { market, plugins }: ReturnType<typeof marketplaceFixture>,
+  scope: "公开" | "社区" | "个人" = "个人",
 ): Promise<void> {
   installFakeDesktopBridge()
   if (!window.pigclaude) throw new Error("桌面桥未初始化")
   window.pigclaude.pluginMarketplace = market
   window.pigclaude.capabilityPlugins = plugins
-  window.history.replaceState({}, "", "/?screen=general")
+  window.history.replaceState({}, "", "/?screen=chat-new")
   await act(async () => app.root.render(createElement(DesktopApp)))
   await flush()
   await select("插件", app.container)
-  await select("插件市场", app.container, '[role="radio"]')
+  expect(buttonNamed("插件", app.container)?.getAttribute("aria-current")).toBe("page")
+  expect(app.container.querySelector('[data-screen="plugins"]')).not.toBeNull()
+  if (scope !== "公开") await select(scope, app.container, '[role="radio"]')
 }
 
 /** 按可访问名称触发现有页面控件，并等到界面更新。 */
@@ -198,7 +201,10 @@ export async function select(name: string, scope: ParentNode, selector?: string)
       ? [...scope.querySelectorAll<HTMLElement>(selector)].find(
           (node) => (node.getAttribute("aria-label") ?? node.textContent?.trim()) === name,
         )
-      : buttonNamed(name, scope),
+      : (buttonNamed(name, scope) ??
+          [...scope.querySelectorAll<HTMLButtonElement>("button[aria-label]")].find(
+            (button) => button.getAttribute("aria-label") === name,
+          )),
     name,
   )
   await flush()

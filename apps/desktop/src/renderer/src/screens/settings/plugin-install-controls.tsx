@@ -1,8 +1,8 @@
 // 管理本地来源选择、归档校验值、安装披露和单次确认的完整交互。
 
 import { useEffect, useId, useRef, useState } from "react"
-import { Download, FolderOpen } from "lucide-react"
-import { Button, InstallDialog } from "@pigclaude/ui-primitives"
+import { ChevronDown, Download, FolderOpen, Plus } from "lucide-react"
+import { Button, InstallDialog, Menu } from "@pigclaude/ui-primitives"
 import type {
   CapabilityPluginInstallSource,
   CapabilityPluginsBridge,
@@ -121,21 +121,29 @@ export function PluginInstallControls({
   const disableSource = busy || step !== null
   return (
     <>
-      {developerMode ? (
-        <Button type="button" disabled={disableSource} onClick={() => choose("directory")}>
-          <FolderOpen className="ic ic-sm" aria-hidden="true" />
-          {t("pluginSettings.installDirectory")}
-        </Button>
-      ) : null}
-      <Button
-        type="button"
-        variant="primary"
-        disabled={disableSource}
-        onClick={() => choose("archive")}
-      >
-        <Download className="ic ic-sm" aria-hidden="true" />
-        {t("pluginSettings.installArchive")}
-      </Button>
+      <Menu.Root>
+        <Menu.Trigger disabled={disableSource} render={<Button type="button" variant="primary" />}>
+          <Plus className="ic ic-sm" aria-hidden="true" />
+          {t("pluginSettings.add")}
+          <ChevronDown className="ic ic-xs" aria-hidden="true" />
+        </Menu.Trigger>
+        <Menu.Portal>
+          <Menu.Positioner align="end" sideOffset={4}>
+            <Menu.Popup>
+              <Menu.Item onClick={() => choose("archive")}>
+                <Download className="ic ic-sm" aria-hidden="true" />
+                {t("pluginSettings.installArchive")}
+              </Menu.Item>
+              {developerMode ? (
+                <Menu.Item onClick={() => choose("directory")}>
+                  <FolderOpen className="ic ic-sm" aria-hidden="true" />
+                  {t("pluginSettings.installDirectory")}
+                </Menu.Item>
+              ) : null}
+            </Menu.Popup>
+          </Menu.Positioner>
+        </Menu.Portal>
+      </Menu.Root>
       {step?.kind === "archive" ? (
         <InstallDialog
           open

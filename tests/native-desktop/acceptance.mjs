@@ -335,7 +335,7 @@ try {
   await page.keyboard.press(`${mod}+k`)
   await expect(page.getByRole("dialog", { name: "行动" })).toBeVisible()
   await page.keyboard.press("Escape")
-  const settingsPages = [
+  const paletteDestinations = [
     ["profile", "我的账户"],
     ["accounts", "Claude 账号"],
     ["browser-profiles", "浏览器指纹"],
@@ -352,7 +352,7 @@ try {
     ["data", "数据与隐私"],
     ["about", "关于"],
   ]
-  for (const [id, label] of settingsPages) {
+  for (const [id, label] of paletteDestinations) {
     await page.keyboard.press(`${mod}+k`)
     const palette = page.getByRole("dialog", { name: "行动" })
     await palette.getByPlaceholder("搜索或执行命令…").fill(label)
@@ -369,20 +369,30 @@ try {
   await expect(page.getByRole("button", { name: "浏览器指纹", exact: true })).toBeVisible()
   await expect(page.getByRole("button", { name: "代理", exact: true })).toBeHidden()
   await page.getByRole("button", { name: "返回应用" }).click()
-  await expect(screen(page, "chat")).toBeVisible()
-  pass("15 settings palette destinations, sidebar search and return to workspace")
-  // 输入框晚一帧才自动聚焦；不等它就移开焦点，快捷键可能落进输入框而被外壳忽略。
+  await expect(screen(page, "scheduled-tasks")).toBeVisible()
+  pass("palette destinations, settings search and return to scheduled tasks")
+
+  const composerWorkspace = join(userData, "composer-workspace")
+  await mkdir(composerWorkspace)
+  await page.getByLabel("添加项目", { exact: true }).click()
+  const addProject = page.getByRole("dialog", { name: "添加项目", exact: true })
+  await addProject.getByRole("textbox", { name: "文件夹", exact: true }).fill(composerWorkspace)
+  await addProject.getByRole("button", { name: "添加", exact: true }).click()
+  await expect(page.getByText("已添加工作区 composer-workspace", { exact: true })).toBeVisible()
+  // 对话框退出动画期间，外壳会忽略命令面板快捷键。
+  await expect(page.locator(".dialog")).toHaveCount(0)
+  await page.keyboard.press(`${mod}+n`)
+  await expect(screen(page, "chat-new")).toBeVisible()
+  // 等草稿输入框完成自动聚焦，再验证插件命令写入。
   await expect(page.getByLabel("给 agent 的消息", { exact: true })).toBeFocused()
   await verifyPluginDeclarations(page, userData, mod)
   pass("native capability-plugin commands insert plain text without replacing or sending the draft")
-  await page.evaluate(() => document.activeElement?.blur())
-  await page.keyboard.press(`${mod}+n`)
-  await expect(screen(page, "chat-new")).toBeVisible()
   await page.evaluate(() => document.activeElement?.blur())
   await page.keyboard.press(`${mod}+b`)
   await expect(page.getByRole("button", { name: "展开侧栏", exact: true })).toBeVisible()
   await page.keyboard.press(`${mod}+b`)
   pass("native renderer shortcuts and history branch truncation")
+  await page.evaluate((root) => window.pigclaude.workspaces.remove(root), composerWorkspace)
   await verifyWorkbench(
     page,
     application,

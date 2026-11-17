@@ -84,6 +84,9 @@ export function buildQueryOptions(
         }
       : {}),
     ...(options.mcpServers ? { mcpServers: options.mcpServers } : {}),
+    ...(projectConfiguration?.personalSkills?.directory
+      ? { additionalDirectories: [projectConfiguration.personalSkills.directory] }
+      : {}),
     ...(options.claudeCodePluginPaths?.length
       ? { plugins: options.claudeCodePluginPaths.map((path) => ({ type: "local", path })) }
       : {}),

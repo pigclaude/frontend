@@ -6,12 +6,14 @@ import type { LocalRuntime } from "../runtime/local-runtime"
 import type { SessionDefaultsStore } from "../runtime/session-defaults"
 import type { SessionServices } from "../session/session-assembly"
 import { assertWorkspace } from "../session/session-host-support"
+import { WorktreeRegistry } from "../workbench/worktree-registry"
 import {
   observeScheduledTaskPresentation,
   type ScheduledTaskPresentationOptions,
 } from "./presentation"
 import { createScheduledTaskRunner, type ScheduledTaskRunnerPorts } from "./runner"
 import { ScheduledTaskService } from "./service"
+import { runScheduledWorkspace } from "./workspace"
 
 /** 会话宿主与本机 runtime 就绪后，从同一套桌面依赖装配调度器。 */
 export function setupDesktopScheduledTasks(options: {
@@ -47,6 +49,7 @@ export function createDesktopScheduledTaskService(options: {
   presentation: Omit<ScheduledTaskPresentationOptions, "service">
 }): ScheduledTaskService {
   let membershipChecks = Promise.resolve()
+  const worktrees = new WorktreeRegistry({ filePath: join(options.userDataPath, "worktrees.json") })
   const runner = createScheduledTaskRunner({
     checkMembership: (signal) => {
       // 同时到点的任务按顺序核验，避免较新的检查使同批较早的授权结果失效。
@@ -70,7 +73,8 @@ export function createDesktopScheduledTaskService(options: {
       return options.runtime.daemonBaseUrl !== null
     },
     defaultModel: async () => (await options.defaults.get()).model,
-    runSession: options.runSession,
+    runSession: (task, signal) =>
+      runScheduledWorkspace(task, signal, worktrees, options.runSession),
   })
   const service = new ScheduledTaskService({
     filePath: join(options.userDataPath, "scheduled-tasks.json"),

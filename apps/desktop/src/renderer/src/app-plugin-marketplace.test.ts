@@ -34,7 +34,7 @@ it("停用市场源会隐藏目录条目，已安装列表保持可用", async (
   expect(f.market.refresh).toHaveBeenCalledExactlyOnceWith("team-market")
   await select("关闭", dialog(), '[aria-label="关闭"]')
   expect(app.container.textContent).not.toContain("工程手册")
-  await select("已安装", app.container, '[role="radio"]')
+  await select("插件管理", app.container)
   expect(app.container.textContent).toContain("本地工具")
   expect(f.plugins.uninstall).not.toHaveBeenCalled()
 })
@@ -73,6 +73,26 @@ it("市场添加表单要求固定提交或 SHA，开发目录使用原生选择
   await select("添加市场源", dialog())
   expect(f.market.selectDirectory).toHaveBeenCalledOnce()
   expect(f.market.add).toHaveBeenNthCalledWith(3, { kind: "directory", path: "/market/local" })
+})
+
+it("常用市场预填固定提交，只有用户提交才读取并添加来源", async () => {
+  const f = fixture(false)
+  await openMarketplace(app, f)
+  await select("添加", app.container)
+  const sources = [
+    ["Claude Code 插件目录", "anthropics/claude-plugins-official"],
+    ["Matt Pocock Skills", "mattpocock/skills"],
+  ] as const
+  for (const [index, [label, repo]] of sources.entries()) {
+    await select(label, dialog())
+    expect(fieldByLabel("GitHub 仓库").value).toBe(repo)
+    const commit = fieldByLabel("固定提交").value
+    expect(commit).toMatch(/^[a-f0-9]{40}$/)
+    expect(f.market.add).toHaveBeenCalledTimes(index)
+    await select("添加市场源", dialog())
+    expect(f.market.add).toHaveBeenLastCalledWith({ kind: "github", repo, commit })
+    if (index === 0) await select("添加市场源", dialog())
+  }
 })
 
 it("正式模式隐藏开发目录，刷新错误保留来源，删除先确认且保留已安装插件", async () => {
@@ -194,7 +214,7 @@ it("离开市场后收到的准备结果会放弃原令牌", async () => {
   await openMarketplace(app, f)
   await select("安装 工程手册", app.container, "button[aria-label]")
   expect(app.container.textContent).toContain("正在读取插件…")
-  await select("已安装", app.container, '[role="radio"]')
+  await select("插件管理", app.container)
   await act(async () => finish(claudeDisclosure))
   expect(f.plugins.cancel).toHaveBeenCalledExactlyOnceWith("prepared-guide")
   expect(f.plugins.confirm).not.toHaveBeenCalled()

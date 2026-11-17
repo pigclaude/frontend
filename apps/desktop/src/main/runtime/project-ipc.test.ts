@@ -28,7 +28,14 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true })
 })
 
-async function setup(options: { trusted?: boolean; membership?: MembershipView["state"] } = {}) {
+async function setup(
+  options: {
+    trusted?: boolean
+    membership?: MembershipView["state"]
+    additionalRoots?: string[]
+    appIcon?: (path: string) => Promise<string | null>
+  } = {},
+) {
   const handlers = new Map<string, Handler>()
   const workspaces = new WorkspaceStore({ filePath: join(directory, "workspaces.json") })
   const names = new ProjectNameStore({ filePath: join(directory, "project-names.json") })
@@ -45,6 +52,7 @@ async function setup(options: { trusted?: boolean; membership?: MembershipView["
       isTrusted: () => options.trusted ?? true,
       membership: () => ({ state: options.membership ?? "active" }) as MembershipView,
       workspaces: () => workspaces,
+      openableRoots: async () => [...(await workspaces.list()), ...(options.additionalRoots ?? [])],
       names: () => names,
       reveal: async (path) => {
         revealed.push(path)
@@ -54,6 +62,7 @@ async function setup(options: { trusted?: boolean; membership?: MembershipView["
         { id: "finder", name: "Finder", kind: "file-manager", location: "/Finder.app" },
         { id: "cursor", name: "Cursor", kind: "editor", location: "/Applications/Cursor.app" },
       ],
+      ...(options.appIcon ? { appIcon: options.appIcon } : {}),
       openWith: async (app, folder) => {
         if (!state.launch) throw new Error("spawn /Applications/Cursor.app ENOENT")
         opened.push(`${app.id} ${folder}`)
@@ -144,5 +153,20 @@ describe("registerProjectIpc", () => {
       /^PROJECT_NOT_FOUND$/,
     )
     await expect(workspaces.list()).resolves.toEqual([project, other])
+  })
+
+  it("用所选编辑器打开工作台已登记的目录", async () => {
+    const worktree = join(directory, "checkout")
+    const icon = "data:image/png;base64,YQ=="
+    const { invoke, opened } = await setup({
+      additionalRoots: [worktree],
+      appIcon: async (path) => (path.endsWith("/Finder.app") ? icon : null),
+    })
+    await expect(invoke("apps")).resolves.toEqual([
+      { id: "finder", name: "Finder", kind: "file-manager", icon },
+      { id: "cursor", name: "Cursor", kind: "editor" },
+    ])
+    await expect(invoke("open-with", worktree, "cursor")).resolves.toBeUndefined()
+    expect(opened).toEqual([`cursor ${worktree}`])
   })
 })

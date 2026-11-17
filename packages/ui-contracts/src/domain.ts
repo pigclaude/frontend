@@ -1,6 +1,8 @@
 /** 定义 Pigcode 的持久领域实体与 Agent 功能描述。 */
 import { z } from "zod"
 
+import { DEFAULT_RUNTIME_MODE, runtimeModeSchema } from "./runtime-modes"
+
 /**
  * Agent 功能：一个 Agent 支持哪些功能。
  *
@@ -51,15 +53,21 @@ export const knownReasoningEfforts = [
 export const reasoningEffortSchema = z.string().trim().min(1).max(64)
 
 /**
- * Agent 在输入框 `/` 菜单里提供的一条命令：CLI 自己的命令，或用户、项目、插件装的 skill 与自定义命令。
+ * Agent 在输入框 `/`、`$` 菜单里提供的一条命令或 Skill。
  * 选中后把 text 插进输入框，作为消息的一部分发给 CLI，由 CLI 自己展开。
  */
 export const agentCommandSchema = z.object({
   /** 不带前缀的名字，例如 compact、codex:review。 */
   name: z.string().min(1),
-  /** 插进输入框的文字：Claude 是 `/名字`，Codex 的 skill 是 `$名字`。 */
+  /** 原生调用文字；`/名字` 进入命令菜单，`$名字` 进入 Skill 菜单。 */
   text: z.string().min(1),
   description: z.string().optional(),
+  /** Skill 的展示与来源信息；调用时始终使用 text 中的原生名称。 */
+  displayName: z.string().optional(),
+  shortDescription: z.string().optional(),
+  path: z.string().optional(),
+  scope: z.string().optional(),
+  pluginId: z.string().optional(),
   /** 参数提示，例如 `<file>`。 */
   argumentHint: z.string().optional(),
   /** builtin 是 CLI 自带的命令；skill 是 skill、插件命令与自定义命令。 */
@@ -190,6 +198,76 @@ export const scheduleRuleSchema = z.discriminatedUnion("kind", [
 /** 定时任务的状态：运行中、已暂停，或者过了结束日期、不会再运行的已完成。 */
 export const scheduleStatusSchema = z.enum(["active", "paused", "completed"])
 
+/** 分支选择器使用完整 ref，以免混淆同名的本地和远端分支。 */
+export const worktreeStartSchema = z.object({
+  baseRef: z
+    .string()
+    .max(4096)
+    .regex(/^refs\/(heads|remotes)\/.+/)
+    .optional(),
+})
+
+export type WorktreeStart = z.infer<typeof worktreeStartSchema>
+
+export const threadReferencesSchema = z
+  .array(z.object({ kind: z.literal("thread"), threadId: z.string().min(1) }))
+  .max(10)
+
+/** 指令用纯文本执行；保存编辑器文档以便再次打开时保留引用标记。 */
+export const scheduleDraftSchema = z.object({
+  document: z.string().min(1),
+  references: threadReferencesSchema.optional(),
+})
+
+/** 项目任务的执行配置；未选择实例时，在每次触发时使用当前默认 Agent。 */
+export const scheduleExecutionSchema = z
+  .object({
+    instanceId: z.string().min(1).optional(),
+    modelId: z.string().min(1).optional(),
+    effort: reasoningEffortSchema.optional(),
+    fast: z.boolean().optional(),
+    ultracode: z.boolean().optional(),
+    planMode: z.boolean().optional(),
+    worktree: worktreeStartSchema.optional(),
+    permissionMode: runtimeModeSchema.default(DEFAULT_RUNTIME_MODE),
+  })
+  .refine((value) => !value.modelId || value.instanceId, "model requires an Agent instance")
+  .refine(
+    (value) => !(value.effort || value.fast || value.ultracode) || value.modelId,
+    "effort, fast and Ultracode require a model",
+  )
+
+export const scheduleTargetSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("project"),
+    projectId: z.string().min(1),
+    execution: scheduleExecutionSchema,
+  }),
+  z.object({ kind: z.literal("thread"), threadId: z.string().min(1) }),
+])
+
+/** 定时任务；nextRunAt 在 Host 重启后继续生效，为 null 时任务已完成。 */
+export const scheduleSchema = z.object({
+  id: z.string().min(1),
+  target: scheduleTargetSchema,
+  /** 可以留空，界面显示「未命名定时任务」。 */
+  title: z.string().max(120),
+  prompt: z.string().min(1),
+  draft: scheduleDraftSchema.nullable(),
+  rule: scheduleRuleSchema,
+  /** 结束日期：这一刻之后不再运行；null 表示永不结束。 */
+  endsAt: z.string().datetime().nullable(),
+  enabled: z.boolean(),
+  status: scheduleStatusSchema,
+  nextRunAt: z.string().datetime().nullable(),
+  lastRunAt: z.string().datetime().nullable(),
+  lastRunId: z.string().nullable(),
+  /** 真正启动了 run 的次数；跳过的不算。 */
+  runCount: z.number().int().nonnegative(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+})
+
 /** 一次触发的结果：进行中、成功、失败、被停止，或者因为会话正忙、Agent 不可用而跳过。 */
 export const scheduleRunStatusSchema = z.enum([
   "running",
@@ -205,7 +283,8 @@ export const scheduleRunSchema = z.object({
   scheduleId: z.string().min(1),
   source: z.enum(["schedule", "manual"]),
   status: scheduleRunStatusSchema,
-  threadId: z.string().min(1),
+  /** 当次运行的会话；没能创建或打开会话时为空。 */
+  threadId: z.string().min(1).nullable(),
   /** 启动了的 run；跳过或启动失败时为 null。 */
   runId: z.string().nullable(),
   /** 跳过或失败的原因：THREAD_BUSY、AGENT_UNAVAILABLE，或者启动时的错误信息。 */
@@ -236,6 +315,13 @@ export type Thread = z.infer<typeof threadSchema>
 
 /** GitHub PR 摘要的类型。 */
 export type PullRequestInfo = z.infer<typeof pullRequestInfoSchema>
+
+/** 定时任务的类型。 */
+export type Schedule = z.infer<typeof scheduleSchema>
+
+export type SchedulePromptDraft = z.infer<typeof scheduleDraftSchema>
+
+export type ScheduleExecution = z.infer<typeof scheduleExecutionSchema>
 
 /** 定时任务运行规则的类型。 */
 export type ScheduleRule = z.infer<typeof scheduleRuleSchema>

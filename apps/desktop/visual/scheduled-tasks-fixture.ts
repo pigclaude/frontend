@@ -7,6 +7,7 @@ const projects = ["/work/pigclaude", "/work/release"]
 const scheduled: ScheduledTask = {
   id: "check-build",
   projectPath: "/work/pigclaude",
+  title: "检查构建",
   prompt: "检查主分支的构建和测试结果，汇总失败的步骤。",
   rule: { kind: "daily", time: "09:00" },
   endsAt: null,
@@ -23,6 +24,7 @@ const paused: ScheduledTask = {
   ...scheduled,
   id: "summarize-release",
   projectPath: "/work/release",
+  title: "整理发布事项",
   prompt: "汇总这周的版本变更，列出待确认的发布事项。",
   rule: { kind: "weekly", days: [1, 5], time: "16:30" },
   enabled: false,
@@ -62,11 +64,16 @@ const skipped: ScheduledTaskRun = {
 export async function installScheduledTasksPreview(page: Page): Promise<void> {
   await page.addInitScript(
     ({ projects, tasks, runs }) => {
+      let keepAwake = false
       const unavailable = async () => {
         throw new Error("SCHEDULE_SERVICE_UNAVAILABLE")
       }
       window.pigclaude = {
         platform: "darwin",
+        keepAwake: {
+          get: async () => keepAwake,
+          set: async (value) => (keepAwake = value),
+        },
         workspaces: {
           list: async () => projects,
           add: unavailable,

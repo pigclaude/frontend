@@ -13,8 +13,12 @@ import {
 const decompress = promisify(gunzip)
 const blockBytes = 512
 
-/** 读取经过哈希验证的 tgz。启用 tar 的严格头校验与 PAX 解析，忽略条目也会使包无效。 */
-export async function readPluginTar(bytes: Buffer, entries: PluginArchiveEntries): Promise<void> {
+/** 严格读取 tgz；固定 GitHub 归档可丢弃仓库根的 AGENTS.md 文档链接。 */
+export async function readPluginTar(
+  bytes: Buffer,
+  entries: PluginArchiveEntries,
+  githubRoot?: string,
+): Promise<void> {
   const archive = await decompress(bytes, { maxOutputLength: pluginArchiveLimits.expandedBytes })
   if (
     archive.length < blockBytes * 2 ||
@@ -48,6 +52,18 @@ export async function readPluginTar(bytes: Buffer, entries: PluginArchiveEntries
     })
     parser.on("entry", (entry: ReadEntry) => {
       try {
+        if (
+          githubRoot &&
+          entry.type === "SymbolicLink" &&
+          entry.size === 0 &&
+          entry.path.toLowerCase() === githubRoot + "/agents.md" &&
+          entry.linkpath === "CLAUDE.md"
+        ) {
+          // 保留路径冲突和条目计数检查，链接及目标均不因这个条目进入文件表。
+          entries.reserve(entry.path, false, 0)
+          entry.resume()
+          return
+        }
         const directory = entry.type === "Directory"
         if ((!directory && entry.type !== "File" && entry.type !== "OldFile") || entry.linkpath)
           throw new PluginArchiveError("PLUGIN_ARCHIVE_UNSAFE")

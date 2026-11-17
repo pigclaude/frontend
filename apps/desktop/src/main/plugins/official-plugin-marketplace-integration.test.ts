@@ -28,6 +28,7 @@ const entry: PluginMarketplaceCatalogEntry = {
     permissions: [],
     domains: [],
   },
+  officialListing: { publisherType: "community", category: "开发者工具" },
   source: { kind: "github", repo, commit },
   expectedSha256: archive,
 }
@@ -122,7 +123,9 @@ it("官方市场独立于第三方，核对归档摘要，过期保留安装且�
       thirdPartyEnabled: false,
       thirdPartyError: "PLUGIN_MARKETPLACE_CACHE_INVALID",
       sources: [{ id: officialPluginMarketplaceId, kind: "official" }],
-      entries: [{ id, reviewStatus: "reviewed", action: "install" }],
+      entries: [
+        { id, reviewStatus: "reviewed", action: "install", officialListing: entry.officialListing },
+      ],
     })
     await expect(market.prepareInstall(officialPluginMarketplaceId, id, owner)).rejects.toThrow(
       "PLUGIN_MARKETPLACE_OFFICIAL_PACKAGE_MISMATCH",

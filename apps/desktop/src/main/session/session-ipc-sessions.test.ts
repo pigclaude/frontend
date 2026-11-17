@@ -44,6 +44,14 @@ describe("session IPC with several sessions", () => {
     try {
       await mkdir(directory, { recursive: true })
       await writeFile(join(directory, "local.md"), "synthetic")
+      const skills = join(workspace, ".claude", "skills")
+      await mkdir(join(skills, "inspect"), { recursive: true })
+      await mkdir(join(skills, "internal"), { recursive: true })
+      await writeFile(
+        join(skills, "inspect", "SKILL.md"),
+        "---\ndescription: Inspect the project\n---\n",
+      )
+      await writeFile(join(skills, "internal", "SKILL.md"), "---\nuser-invocable: false\n---\n")
       await expect(invoke("pigclaude:session-commands", { workspace }, false)).rejects.toThrow(
         "UNTRUSTED_SESSION_REQUEST",
       )
@@ -52,6 +60,16 @@ describe("session IPC with several sessions", () => {
         kind: "skill",
         text: "/local",
       })
+      const draft = await invoke("pigclaude:session-commands", { workspace })
+      expect(draft).toContainEqual({
+        name: "inspect",
+        kind: "skill",
+        text: "$inspect",
+        scope: "project",
+        path: expect.stringContaining("SKILL.md"),
+        description: "Inspect the project",
+      })
+      expect(draft).not.toContainEqual(expect.objectContaining({ text: "$internal" }))
       expect(harness.adapters.instances).toHaveLength(0)
       await invoke("pigclaude:session-start", startInput(harness, "draft-a"))
       harness.adapters.last.emit({

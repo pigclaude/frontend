@@ -105,7 +105,9 @@ export async function verifyWorkbench(page, application, output, provider = fals
     await panel.getByRole("treeitem", { name: ".claude", exact: true }).click()
     await expect(panel.getByRole("treeitem", { name: "worktrees", exact: true })).toHaveCount(0)
     await panel.getByRole("treeitem", { name: "settings.json", exact: true }).click()
-    await expect(panel.getByText("此文件仅在完全信任此项目后生效。", { exact: true })).toBeVisible()
+    await expect(
+      panel.getByText("启用项目设置与 MCP 后，此文件会从下一次会话开始生效。", { exact: true }),
+    ).toBeVisible()
     await expect(editor).toHaveValue("{}\n")
     await editor.fill(savedSettings)
     await panel.getByRole("button", { name: "保存", exact: true }).click()

@@ -53,8 +53,7 @@ export function SettingsScreen({
   if (page === "switching") return <SwitchingSettings accounts={accounts} onNavigate={onNavigate} />
   if (page === "general") return <GeneralSettings appVersion={appInfo?.appVersion ?? null} />
   if (page === "appearance") return <AppearancePage appearance={appearance} />
-  if (page === "session")
-    return <SessionSettings workspace={defaultWorkspace} models={models} history={history} />
+  if (page === "session") return <SessionSettings workspace={defaultWorkspace} models={models} />
   if (page === "menubar") return <MenubarSettings />
   if (page === "network") return <NetworkSettings />
   if (page === "data")

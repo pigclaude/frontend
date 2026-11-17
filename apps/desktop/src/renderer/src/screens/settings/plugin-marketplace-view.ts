@@ -3,6 +3,7 @@
 import { formatRelativeTime, type Locale } from "@pigclaude/ui-primitives"
 import type {
   PluginMarketplaceEntryView,
+  PluginMarketplaceSourceInput,
   PluginMarketplaceSourceView,
 } from "../../../../plugin-marketplace-contract"
 import { fill, type TextKey } from "../../locale/text"
@@ -14,6 +15,45 @@ export const marketplaceSourceLabels: Record<PluginMarketplaceSourceView["kind"]
   https: "pluginMarketplace.https",
   directory: "pluginMarketplace.directory",
   official: "pluginMarketplace.official",
+}
+
+/** 预填常用的个人市场源。每个来源固定到已核对的上游提交，按普通市场源添加。 */
+export const marketplaceSourcePresets = [
+  {
+    name: "pluginMarketplace.presetClaude",
+    input: {
+      kind: "github",
+      repo: "anthropics/claude-plugins-official",
+      commit: "b5b01ac4f889fec0c4c6bb89f27ca7c8574473f6",
+    },
+  },
+  {
+    name: "pluginMarketplace.presetMatt",
+    input: {
+      kind: "github",
+      repo: "mattpocock/skills",
+      commit: "5863806dd4e15c63174bee4e7515a4256792ecfa",
+    },
+  },
+] as const satisfies readonly {
+  name: TextKey
+  input: Extract<PluginMarketplaceSourceInput, { kind: "github" }>
+}[]
+
+/** 为已知目录展示本地化名称，其他市场使用来源公布的目录名称。 */
+export function marketplaceSourceName(
+  source: PluginMarketplaceSourceView,
+  t: (key: TextKey) => string,
+): string {
+  if (source.kind === "github") {
+    const preset = marketplaceSourcePresets.find(({ input }) =>
+      source.label.startsWith(input.repo + "@"),
+    )
+    if (preset) return t(preset.name)
+  }
+  return source.kind === "official" && source.catalogName === source.id
+    ? t("pluginMarketplace.officialCatalog")
+    : source.catalogName
 }
 
 /** 固定提交和 SHA-256 在提交前规范为对应长度的小写十六进制。 */

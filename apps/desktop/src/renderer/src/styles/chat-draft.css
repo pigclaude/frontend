@@ -1,0 +1,13 @@
+/* 新会话项目栏和输入框共用左右边距，切换 Git 状态时保持行高。 */
+.new-thread-view .composer-frame .composer-frame-bar {
+  padding: var(--space-3) var(--space-4);
+}
+
+.new-thread-view .composer-frame-bar .draft-project,
+.new-thread-view .composer-frame-bar .draft-branch {
+  padding-inline-start: var(--space-2);
+}
+
+.new-thread-view .composer-frame-bar .draft-worktree {
+  padding-inline-end: 0;
+}

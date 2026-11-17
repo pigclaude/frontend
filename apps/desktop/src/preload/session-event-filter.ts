@@ -9,6 +9,15 @@ import {
 import type { AgentCommand } from "@pigclaude/ui-contracts"
 
 const isoUtc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+const commandMetadata = [
+  "description",
+  "argumentHint",
+  "displayName",
+  "shortDescription",
+  "path",
+  "scope",
+  "pluginId",
+]
 
 /**
  * 判断主进程发来的值是不是合规的会话信封。要保存的会话事件必须带正整数序号，只用于实时的事件
@@ -41,10 +50,12 @@ export function isAgentCommandCatalog(value: unknown): value is readonly AgentCo
         isRecord(command) &&
         typeof command.name === "string" &&
         command.name.length > 0 &&
-        command.text === `/${command.name}` &&
         (command.kind === "builtin" || command.kind === "skill") &&
-        (command.description === undefined || typeof command.description === "string") &&
-        (command.argumentHint === undefined || typeof command.argumentHint === "string"),
+        (command.text === `/${command.name}` ||
+          (command.kind === "skill" && command.text === "$" + command.name)) &&
+        commandMetadata.every(
+          (key) => command[key] === undefined || typeof command[key] === "string",
+        ),
     )
   )
 }

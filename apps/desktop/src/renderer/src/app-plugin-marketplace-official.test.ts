@@ -59,8 +59,8 @@ it("关闭第三方时官方仍可浏览和刷新，过期与吊销条目只可�
     [official, originalSource],
     false,
   )
-  await openMarketplace(app, f)
-  expect(app.container.textContent).toContain("PigClaude 官方目录")
+  await openMarketplace(app, f, "公开")
+  expect(app.container.textContent).toContain("能力插件")
   expect(app.container.textContent).toContain("已审核")
   expect(app.container.textContent).not.toContain("工程手册")
   expect(app.container.querySelector('[aria-label="安装 官方索引"]')).not.toBeNull()
@@ -92,7 +92,7 @@ it("关闭第三方时官方仍可浏览和刷新，过期与吊销条目只可�
 
 it("刷新后条目过期，自动释放已打开的安装披露", async () => {
   const f = marketplaceFixture(false, [available], [official], false)
-  await openMarketplace(app, f)
+  await openMarketplace(app, f, "公开")
   f.market.prepareInstall.mockResolvedValueOnce(capabilityDisclosure)
   f.market.list.mockResolvedValueOnce({
     developerMode: false,
@@ -107,7 +107,7 @@ it("刷新后条目过期，自动释放已打开的安装披露", async () => {
   expect(app.container.textContent).toContain("官方目录已过期")
 })
 
-it("第三方缓存错误只出现在第三方区域，官方条目仍可见且可刷新", async () => {
+it("第三方缓存错误单独显示，官方条目仍可见且可刷新", async () => {
   const f = marketplaceFixture(false, [available], [official])
   f.market.list.mockResolvedValue({
     developerMode: false,
@@ -116,11 +116,13 @@ it("第三方缓存错误只出现在第三方区域，官方条目仍可见且�
     sources: [official],
     entries: [available],
   })
-  await openMarketplace(app, f)
-  expect(app.container.querySelector('.marketplace-policy [role="alert"]')?.textContent).toBe(
+  await openMarketplace(app, f, "公开")
+  expect(app.container.textContent).toContain("官方索引")
+  expect(app.container.querySelector('.marketplace-catalog [role="alert"]')).toBeNull()
+  await select("个人", app.container, '[role="radio"]')
+  expect(app.container.querySelector('.marketplace-catalog [role="alert"]')?.textContent).toBe(
     "无法读取本机的第三方市场缓存。",
   )
-  expect(app.container.textContent).toContain("官方索引")
   await select("市场源", app.container)
   expect(dialog().textContent).toContain("无法读取本机的第三方市场缓存。")
   await select("刷新 PigClaude 官方目录", dialog(), "button[aria-label]")
@@ -134,19 +136,38 @@ it("无缓存的官方目录仍显示固定验签错误和刷新入口", async (
     [
       {
         ...official,
+        catalogName: official.id,
         entryCount: 0,
         error: "PLUGIN_MARKETPLACE_OFFICIAL_SIGNATURE_INVALID",
       },
     ],
     false,
   )
-  await openMarketplace(app, f)
-  expect(app.container.textContent).toContain("PigClaude 官方目录")
+  await openMarketplace(app, f, "公开")
   expect(app.container.textContent).toContain("官方目录签名无效")
   expect(app.container.textContent).not.toContain("PLUGIN_MARKETPLACE_OFFICIAL_SIGNATURE_INVALID")
-  await select("市场源", app.container)
-  await select("刷新 PigClaude 官方目录", dialog(), "button[aria-label]")
+  await select("刷新市场", app.container, "button[aria-label]")
   expect(f.market.refresh).toHaveBeenCalledExactlyOnceWith("pigclaude-official")
+  await select("市场源", app.container)
+  expect(dialog().textContent).toContain("PigClaude 官方目录")
+})
+
+it("刷新市场覆盖官方目录和所有启用的个人来源，并保留其它成功的刷新", async () => {
+  const f = marketplaceFixture(
+    false,
+    [available, marketEntry],
+    [official, originalSource, { ...originalSource, id: "paused-market", enabled: false }],
+  )
+  f.market.refresh.mockImplementation(async (id) => {
+    if (id === official.id) throw new Error("PLUGIN_MARKETPLACE_OFFICIAL_UNAVAILABLE")
+  })
+  await openMarketplace(app, f, "公开")
+  await select("刷新市场", app.container, "button[aria-label]")
+  expect(f.market.refresh.mock.calls).toEqual([[official.id], [originalSource.id]])
+  expect(app.container.querySelector('[role="alert"]')?.textContent).toBe(
+    "无法读取官方目录，请稍后刷新。",
+  )
+  expect(app.container.textContent).toContain("官方索引")
 })
 
 it("吊销的已安装插件显示原因、禁止启用并保留卸载", async () => {
@@ -156,8 +177,8 @@ it("吊销的已安装插件显示原因、禁止启用并保留卸载", async (
   f.plugins.uninstall.mockImplementationOnce(async () => {
     records = []
   })
-  await openMarketplace(app, f)
-  await select("已安装", app.container, '[role="radio"]')
+  await openMarketplace(app, f, "公开")
+  await select("插件管理", app.container)
   const toggle = app.container.querySelector('[role="switch"][aria-label="启用 本地工具"]')
   expect(toggle?.matches(':disabled, [aria-disabled="true"]')).toBe(true)
   expect(f.plugins.setEnabled).not.toHaveBeenCalled()

@@ -100,12 +100,85 @@ describe("registry commands", () => {
     expect(editor().textContent?.trim()).toBe("/inspect")
     expect(fake.starts).toEqual([])
   })
+
+  it.each(["$", "¥", "￥"])("在草稿输入框用 %s 按项目查找并插入 skill", async (trigger) => {
+    const fake = installFakeDesktopBridge(["/work/api"])
+    const session = window.pigclaude?.session
+    if (!session) throw new Error("缺少测试会话桥")
+    const commands = vi.fn(async () => [
+      { name: "fixture-check", kind: "skill" as const, text: "$fixture-check", scope: "project" },
+    ])
+    session.commands = commands
+    await act(async () => app.root.render(createElement(DesktopApp)))
+    await flush()
+
+    const user = userEvent.setup()
+    await act(async () => user.type(editor(), "请运行 " + trigger + "fixture"))
+    await vi.waitFor(
+      () =>
+        expect(document.querySelector('[role="option"]')?.textContent).toContain("fixture-check"),
+      { timeout: 1_000 },
+    )
+    await act(async () => user.keyboard("{Enter}"))
+    expect(editor().textContent?.trim()).toBe("请运行 $fixture-check")
+    expect(commands).toHaveBeenCalledWith({ workspace: "/work/api" })
+    expect(fake.starts).toHaveLength(0)
+  })
   it("lists /new and /panel from the registry in the composer's / menu", async () => {
     await render()
 
     const listed = await runSlash("")
     expect(listed.some((text) => text.includes("/new"))).toBe(true)
     expect(listed.some((text) => text.includes("/panel"))).toBe(true)
+  })
+
+  it("输入 /matt 同时列出项目和个人 skill，选择个人项后插入原生提及", async () => {
+    installFakeDesktopBridge(["/work/api"])
+    const session = window.pigclaude?.session
+    if (!session) throw new Error("缺少测试会话桥")
+    session.commands = async () => [
+      { name: "ask-matt", text: "$ask-matt", kind: "skill", scope: "project" },
+      { name: "mattpocock-skills:pr", text: "/mattpocock-skills:pr", kind: "skill" },
+      {
+        name: "mattpocock-skills:pr",
+        text: "$mattpocock-skills:pr",
+        kind: "skill",
+        scope: "user",
+        path: "/user/.claude/plugins/cache/mattpocock/skills/pr/SKILL.md",
+      },
+    ]
+    await act(async () => app.root.render(createElement(DesktopApp)))
+    await flush()
+    const user = userEvent.setup()
+    await act(async () => user.type(editor(), "/matt"))
+    const item = await vi.waitFor(
+      () => {
+        const items = [...document.querySelectorAll<HTMLElement>('[role="option"]')]
+        expect(items).toHaveLength(2)
+        expect(items.some((row) => row.textContent?.includes("/skill:ask-matt"))).toBe(true)
+        const personal = items.find((row) =>
+          row.textContent?.includes("/skill:mattpocock-skills:pr"),
+        )
+        expect(personal?.textContent).toContain("个人")
+        if (!personal) throw new Error("缺少个人 skill")
+        return personal
+      },
+      { timeout: 1_000 },
+    )
+    await act(async () => user.click(item))
+    expect(editor().textContent?.trim()).toBe("$mattpocock-skills:pr")
+  })
+
+  it("按新建会话快捷键时重新聚焦已有草稿", async () => {
+    await render()
+    expect(screen()).toBe("chat-new")
+    await act(async () => {
+      editor().blur()
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "n", metaKey: true, bubbles: true, cancelable: true }),
+      )
+    })
+    await vi.waitFor(() => expect(document.activeElement).toBe(editor()))
   })
 
   it("/panel toggles the right panel like ⌘J", async () => {
@@ -135,6 +208,7 @@ describe("registry commands", () => {
       await flush()
     }
     expect(screen()).toBe("chat")
+    expect(app.container.querySelector('.panel-top [role="tab"]')?.textContent).toBe("检查依赖")
 
     await runSlash("new")
     expect(screen()).toBe("chat-new")

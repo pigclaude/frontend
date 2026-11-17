@@ -1,8 +1,10 @@
-// 负责展示已归档会话。打开时只切到保存的会话，续接由聊天页的下一次发送触发。
+// 负责归档管理的保留期和会话查找；打开归档时只查看保存的会话。
 
+import { useState } from "react"
 import {
   Button,
   EmptyState,
+  SearchField,
   SettingPage,
   SettingRow,
   SettingSection,
@@ -12,6 +14,8 @@ import type { SessionHistoryController } from "../../hooks/use-session-history"
 import { useText } from "../../locale/text"
 import { projectNameFromPath } from "../../models/project-model"
 import type { SavedSessionSummary } from "../../models/saved-session"
+import { SessionRetentionSettings } from "./session-retention-settings"
+import "../../styles/archive-management.css"
 
 /** 显示归档清单，并提供打开、取消归档和删除入口。 */
 export function ArchivedSessions({
@@ -23,21 +27,39 @@ export function ArchivedSessions({
 }) {
   const { t, locale } = useText()
   const date = new Intl.DateTimeFormat(locale, { dateStyle: "medium" })
+  const [query, setQuery] = useState("")
+  const needle = query.trim().toLocaleLowerCase(locale)
+  const sessions = history.archived.filter((session) =>
+    [session.title, projectNameFromPath(session.projectPath ?? session.workspace)].some((text) =>
+      text?.toLocaleLowerCase(locale).includes(needle),
+    ),
+  )
   return (
     <ScrollPanel>
-      <SettingPage title={t("shell.session.archived")}>
+      <SettingPage title={t("shell.session.archiveManagement")}>
         {history.loadError !== null ? (
           <p className="error-text" role="alert">
             {history.loadError}
           </p>
         ) : null}
-        {history.loading && history.archived.length === 0 ? (
-          <p role="status">{t("shell.session.loadHistory")}</p>
-        ) : history.archived.length === 0 ? (
-          <EmptyState title={t("shell.session.archivedEmpty")} />
-        ) : (
-          <SettingSection>
-            {history.archived.map((session) => {
+        <SessionRetentionSettings history={history} />
+        <SettingSection title={t("shell.session.archivedList")}>
+          {history.archived.length > 0 ? (
+            <SearchField
+              className="archived-session-search"
+              value={query}
+              onValueChange={setQuery}
+              placeholder={t("shell.session.archivedSearch")}
+            />
+          ) : null}
+          {history.loading && history.archived.length === 0 ? (
+            <p role="status">{t("shell.session.loadHistory")}</p>
+          ) : sessions.length === 0 ? (
+            <EmptyState
+              title={t(needle ? "shell.session.archivedNoMatches" : "shell.session.archivedEmpty")}
+            />
+          ) : (
+            sessions.map((session) => {
               const project = projectNameFromPath(session.projectPath ?? session.workspace)
               const timestamp = session.archivedAt ? Date.parse(session.archivedAt) : NaN
               const description = Number.isFinite(timestamp)
@@ -69,9 +91,9 @@ export function ArchivedSessions({
                   </Button>
                 </SettingRow>
               )
-            })}
-          </SettingSection>
-        )}
+            })
+          )}
+        </SettingSection>
       </SettingPage>
     </ScrollPanel>
   )

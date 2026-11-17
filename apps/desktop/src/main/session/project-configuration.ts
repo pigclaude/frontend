@@ -4,6 +4,7 @@ import { createWriteStream, watch, type FSWatcher, type Stats } from "node:fs"
 import { mkdir, mkdtemp, open, readdir, rename, rm, stat } from "node:fs/promises"
 import { dirname, join, relative } from "node:path"
 import { pipeline } from "node:stream/promises"
+import type { StagedPersonalClaudeSkills } from "./personal-claude-skills"
 import {
   canonicalProjectPath,
   containsProjectPath,
@@ -22,6 +23,8 @@ export type SessionProjectConfiguration = {
   claudeMdExcludes: string[]
   /** 已确认信任时使用实际配置目录及启动时锁定的路由键。 */
   trusted?: TrustedProjectSettings
+  /** 已复制到本次会话目录的个人 skills；项目配置与账号仍使用原有隔离。 */
+  personalSkills?: StagedPersonalClaudeSkills
   dispose(): Promise<void>
 }
 

@@ -1,4 +1,82 @@
-/* 插件页披露对话框和卸载选项沿用现有详情的布局与颜色。 */
+/* 主应用插件页和本机插件的披露、详情与卸载。 */
+.plugins-screen {
+  container-name: plugins-screen;
+}
+
+.plugins-screen .plugins-header {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.plugins-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.plugins-header .plugins-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: 100%;
+}
+
+.plugins-header-actions .btn-secondary {
+  background: var(--field);
+  box-shadow: none;
+}
+
+.plugins-header-actions .btn-secondary:hover {
+  background: var(--active);
+}
+
+.plugins-screen .plugins-toolbar {
+  justify-content: space-between;
+  margin: 0 0 var(--space-7);
+}
+
+.plugins-screen .plugins-toolbar .market-search {
+  flex: 0 1 320px;
+  min-width: 0;
+}
+
+.plugin-installed-count {
+  color: var(--fg);
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.plugin-installed-count span {
+  margin-inline-start: var(--space-1);
+  color: var(--muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.plugin-management .market-section-title {
+  padding-inline: 0;
+  border-color: var(--divider);
+  font-size: var(--fs-lg);
+}
+
+.plugin-management .market-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+}
+
+.plugin-management-note {
+  margin-top: var(--space-6);
+}
+
+@container plugins-screen (max-width: 520px) {
+  .plugins-screen .plugins-toolbar .market-search {
+    flex-basis: 100%;
+  }
+}
+
 .dialog.plugin-disclosure,
 .dialog.plugin-settings-dialog {
   width: min(520px, calc(100vw - 48px));

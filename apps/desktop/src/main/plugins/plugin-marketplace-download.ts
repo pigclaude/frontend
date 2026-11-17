@@ -27,7 +27,9 @@ export async function loadMarketplaceArchive(
     byteLimit: pluginArchiveLimits.inputBytes,
     allowHttpsRedirects: source.kind === "https",
   })
-  return readPluginArchiveBytes(bytes, expected)
+  const githubRoot =
+    source.kind === "github" ? `${source.repo.split("/").at(-1)}-${source.commit}` : undefined
+  return readPluginArchiveBytes(bytes, expected, githubRoot)
 }
 
 /** 有界读取 HTTPS 响应，可由普通归档来源选择是否接受 HTTPS 跳转。 */

@@ -229,7 +229,11 @@ export class SessionHost {
   }
 
   /** 为本次定时运行新建、执行并停放会话，首轮由定时入口独占。 */
-  runScheduledTask(task: ScheduledTaskInput, signal: AbortSignal): Promise<ScheduledTaskOutcome> {
+  runScheduledTask(
+    task: ScheduledTaskInput,
+    signal: AbortSignal,
+    workspace = task.projectPath,
+  ): Promise<ScheduledTaskOutcome> {
     return executeScheduledTurn(
       {
         host: this,
@@ -242,6 +246,7 @@ export class SessionHost {
       },
       task,
       signal,
+      workspace,
     )
   }
 

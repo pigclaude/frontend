@@ -89,4 +89,34 @@ describe("registerWorkspaceIpc", () => {
 
     await expect(invoke("projects-names")).resolves.toEqual({})
   })
+
+  it("允许顶栏打开已登记的 worktree，不把它当作侧栏项目改名或移除", async () => {
+    registerWorkspaceIpc({
+      filePath: () => join(directory, "workspaces.json"),
+      isTrusted: () => true,
+      workbench: { register: () => undefined } as unknown as Parameters<
+        typeof registerWorkspaceIpc
+      >[0]["workbench"],
+      membership: () =>
+        ({ state: "active" }) as ReturnType<
+          Parameters<typeof registerWorkspaceIpc>[0]["membership"]
+        >,
+      hasActiveTurn: () => false,
+    })
+    const project = join(directory, "api")
+    const worktree = join(directory, "checkout")
+    const unknown = join(directory, "unknown")
+    await Promise.all([project, worktree, unknown].map((path) => mkdir(path)))
+    await invoke("workspaces-add", project)
+    await writeFile(
+      join(directory, "worktrees.json"),
+      JSON.stringify([{ path: worktree, project }]),
+    )
+
+    await expect(invoke("projects-reveal", worktree)).resolves.toBeUndefined()
+    await expect(invoke("projects-reveal", unknown)).rejects.toThrow("PROJECT_NOT_FOUND")
+    await expect(invoke("projects-rename", worktree, "新名称")).rejects.toThrow("PROJECT_NOT_FOUND")
+    await expect(invoke("projects-remove", worktree)).rejects.toThrow("PROJECT_NOT_FOUND")
+    await expect(invoke("workspaces-list")).resolves.toEqual([project])
+  })
 })

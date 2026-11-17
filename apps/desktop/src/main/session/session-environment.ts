@@ -9,6 +9,8 @@ import { buildSessionEnv } from "@pigclaude/session-env"
 import { ProjectTrustStore, projectTrustFilePath } from "../runtime/project-trust-store"
 import type { ClaudeCodePluginSessionSource } from "./claude-code-plugin-session-source"
 import { cliModelCache, type OrganizationModel } from "./claude-bootstrap"
+import { stagePersonalClaudeSkills } from "./personal-claude-skills"
+import { scanProjectCommands } from "./project-command-catalog"
 import {
   prepareProjectConfiguration,
   type SessionProjectConfiguration,
@@ -167,6 +169,25 @@ export class SessionEnvironment {
           undefined,
           trustedDirectory ?? undefined,
         )
+        if (pluginDirectory && input.claudeCodePlugins?.personalSkills) {
+          const personal = await input.claudeCodePlugins.personalSkills().catch(() => [])
+          if (personal.length > 0) {
+            const projectSkills = personal.some(({ plugin }) => plugin === undefined)
+              ? (await scanProjectCommands(input.workspace)).map(({ name }) => name)
+              : []
+            const { pluginPaths: personalPlugins, ...personalSkills } =
+              await stagePersonalClaudeSkills(
+                personal,
+                pluginDirectory,
+                pluginPaths,
+                new Set(projectSkills),
+                projectConfiguration.directory !== null,
+              )
+            pluginPaths = [...pluginPaths, ...personalPlugins]
+            if (personalSkills.skills.length > 0)
+              projectConfiguration = { ...projectConfiguration, personalSkills }
+          }
+        }
         await assertCanonicalSessionWorkspace(input.workspace)
       }
       await writeFile(preloadPath, preloadSource, { mode: sessionDirectoryMode })

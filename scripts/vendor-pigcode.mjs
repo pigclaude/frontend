@@ -12,6 +12,7 @@ import {
 } from "./pigcode-ui-contracts.mjs"
 import { vendoredPackages } from "./pigcode-package-map.mjs"
 import { projectPluginManagerSlots } from "./pigcode-plugin-manager.mjs"
+import { projectSchedules } from "./pigcode-schedules.mjs"
 
 const frontend = join(import.meta.dirname, "..")
 const lockFile = join(frontend, "pigcode-source.json")
@@ -25,7 +26,7 @@ const partialPackages = {
     "src/global.d.ts",
     "src/vite-env.d.ts",
   ],
-  // 拷入外观、通用页面及定时规则和历史组件。定时任务列表与完整编辑器由 PigClaude 自己实现。
+  // 拷入外观、通用页面和定时任务；本机调度由桌面适配层接入。
   "ui-settings": [
     "src/appearance-code.tsx",
     "src/appearance-fields.tsx",
@@ -39,10 +40,15 @@ const partialPackages = {
     "src/global.d.ts",
     "src/preferences.ts",
     "src/schedule-custom-repeat.tsx",
+    "src/schedule-composer.tsx",
+    "src/schedule-confirm-dialog.tsx",
+    "src/schedule-editor.tsx",
     "src/schedule-format.ts",
     "src/schedule-history.tsx",
     "src/schedule-rule-field.tsx",
     "src/schedule-rule-parts.tsx",
+    "src/schedule-types.ts",
+    "src/schedules-page.tsx",
     "src/schedules-page.test.tsx",
     "src/sensitive-text.tsx",
     "src/vite-env.d.ts",
@@ -68,6 +74,8 @@ export { DEFAULT_RULE, formatRule } from "./schedule-format"
 export { ScheduleHistory, type ScheduleRunsPage } from "./schedule-history"
 export { ScheduleRuleField, type RuleValue } from "./schedule-rule-field"
 export { MinutePill, Preview, TimePills, TimeZone } from "./schedule-rule-parts"
+export { SchedulesPage } from "./schedules-page"
+export type { CreateScheduleInput, RunNowResult, ScheduleAgentOptions, ScheduleComposerSources, ScheduleWorkspaceControlsProps, UpdateScheduleInput } from "./schedules-page"
 `,
   "ui-plugin-manager": `/** 已安装插件的列表、详情与展示数据。 */
 export { PluginDetailsDialog } from "./plugin-details"
@@ -100,6 +108,7 @@ export const productNameFiles = new Set([
   "src/locale/messages.zh-CN.ts",
   "src/locale/messages.en-US.ts",
   "src/locale/new-thread.messages.ts",
+  "src/locale/schedules.messages.ts",
   "src/add-project-dialog.test.tsx",
   "src/update-center.tsx",
 ])
@@ -219,6 +228,61 @@ function projectBrowserToolbarSlot(source, path) {
   return source
 }
 
+// 个人和项目技能也能从 / 菜单查找；中文输入法的人民币符号可打开专用技能菜单。
+function projectSkillSuggestionTriggers(source) {
+  const edits = [
+    ["  exitSuggestion,\n", "  exitSuggestion,\n  findSuggestionMatch,\n"],
+    [
+      '          char: "$",\n          pluginKey: SKILL_SUGGESTION_KEY,\n',
+      '          char: "$",\n          pluginKey: SKILL_SUGGESTION_KEY,\n' +
+        "          findSuggestionMatch: (options) => {\n" +
+        '            for (const char of "$¥￥") {\n' +
+        "              const match = findSuggestionMatch({ ...options, char })\n" +
+        "              if (match) return match\n" +
+        "            }\n" +
+        "            return null\n" +
+        "          },\n",
+    ],
+    [
+      '            const all = firstPerLabel([\n              ...availableCommands(),\n              ...ordered(agentListed.filter((command) => !command.insert?.startsWith("$"))),\n            ])\n            return commandItems(all, query)',
+      '            const skills = searchSkills(agentListed, "").filter((command) => skillScope(command))\n' +
+        "            const skillsById = new Map(skills.map((skill) => [skill.id, skill]))\n" +
+        '            const nativeCommands = new Set(skills.map(({ skill }) => "/" + skill?.name.toLowerCase()))\n' +
+        "            const entries = agentListed.filter((command) =>\n" +
+        '              skillsById.has(command.id) || (!command.insert?.startsWith("$") &&\n' +
+        '                (command.source !== "skill" || !nativeCommands.has(command.label.toLowerCase()))),\n' +
+        "            )\n" +
+        "            const all = firstPerLabel([...availableCommands(), ...ordered(entries)])\n" +
+        "            const requestedSkill = /^skill(?::(.*))?$/i.exec(query.trim())\n" +
+        '            const matches = requestedSkill ? searchSkills(skills, requestedSkill[1] ?? "") : searchCommands(all, query)\n' +
+        '            return commandItems(matches, "").map((item) => {\n' +
+        "              const skill = skillsById.get(item.id)\n" +
+        '              return skill ? { ...item, label: "/skill:" + skillLabel(skill), scope: skillScope(skill) } : item\n' +
+        "            })",
+    ],
+  ]
+  for (const [before, after] of edits) {
+    const at = source.indexOf(before)
+    if (at < 0 || source.indexOf(before, at + before.length) >= 0)
+      throw new Error("Pigcode Skill 输入触发位置已变动")
+    source = source.replace(before, after)
+  }
+  return source
+}
+
+// 有明确用户作用域的 Claude 插件技能在建议里显示为「个人」。
+function projectPersonalSkillScope(source) {
+  const before = "  if (!skill) return undefined\n"
+  const personal = '  if (["user", "personal"].includes(skill.scope ?? "")) return "user"\n'
+  const pluginId = "    skill.pluginId ||\n"
+  if (!source.includes(before) || !source.includes(personal) || !source.includes(pluginId))
+    throw new Error("Pigcode Skill 作用域位置已变动")
+  return source
+    .replace(personal, "")
+    .replace(pluginId, "")
+    .replace(before, before + '  if (skill.pluginId) return "plugin"\n' + personal)
+}
+
 async function vendor(repo, commit) {
   const resolved = git(repo, "rev-parse", `${commit}^{commit}`).toString().trim()
   const listed = git(repo, "ls-tree", "-r", "--name-only", resolved, "packages").toString()
@@ -267,7 +331,15 @@ async function vendor(repo, commit) {
       if (path === "packages/ui-shell/src/workspace-sidebar.tsx")
         output = addThreadLabelSlot(output)
       if (item.source === "ui-plugin-manager") output = projectPluginManagerSlots(output, rest)
+      if (item.source === "ui-settings") output = projectSchedules(output, rest)
       if (item.source === "ui-workbench") output = projectBrowserToolbarSlot(output, rest)
+      if (
+        path === "packages/ui-composer/src/composer-editor.ts" &&
+        output.includes("SKILL_SUGGESTION_KEY")
+      )
+        output = projectSkillSuggestionTriggers(output)
+      if (path === "packages/ui-composer/src/skill-search.ts")
+        output = projectPersonalSkillScope(output)
       if (rest === "package.json") output = rewriteManifest(output, item)
       if (rest === "tsconfig.json") output = rewriteTsconfig(output)
       // 改名后部分行超出 100 列：按本仓库 Prettier 配置重排，守卫记录的是重排后的内容。
@@ -298,7 +370,7 @@ async function vendor(repo, commit) {
   const lock = {
     repository: "pigcode/pigcode",
     commit: resolved,
-    rule: '@pigcode/contracts → @pigclaude/ui-contracts，选取声明和纯函数；定时规则测试选取已拷入功能的测试组；工作区侧栏增加通用会话角标槽；浏览器工具栏增加通用状态槽；插件列表和详情增加类型标签、详情内容、启停可用性和卸载选项插槽；其余 @pigcode/<package> → @pigclaude/<package>；"pigcode.<key>" 存储键 → "pigclaude.<key>"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排',
+    rule: '@pigcode/contracts → @pigclaude/ui-contracts，选取声明和纯函数；定时规则测试选取已拷入功能的测试组；工作区侧栏增加通用会话角标槽；浏览器工具栏增加通用状态槽；Skill 菜单接受中文输入法的人民币符号，/ 菜单增加带来源的技能项；插件列表和详情增加类型标签、详情内容、启停可用性和卸载选项插槽；其余 @pigcode/<package> → @pigclaude/<package>；"pigcode.<key>" 存储键 → "pigclaude.<key>"；登记的文案和默认主题显示名改为 PigClaude；主题文件解析同时接受旧 schema；package.json 与 tsconfig.json 另按 rewriteManifest / rewriteTsconfig 调整；最后按本仓库 Prettier 配置重排',
     files,
   }
   await writeFile(lockFile, `${JSON.stringify(lock, null, 2)}\n`)

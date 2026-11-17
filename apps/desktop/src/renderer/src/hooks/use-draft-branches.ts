@@ -5,7 +5,8 @@ import type { WorkbenchBranches, WorkbenchBridge } from "../../../workbench-cont
 
 /** 草稿分支的读取结果；accept 接收切换或新建分支后主进程返回的分支，不再等下一次读取。 */
 export type DraftBranches = {
-  branches: WorkbenchBranches | null
+  /** undefined 表示正在首次读取，null 表示没有可用的 Git 仓库。 */
+  branches: WorkbenchBranches | null | undefined
   failed: boolean
   refresh: () => Promise<void>
   accept: (next: WorkbenchBranches | null) => void
@@ -16,7 +17,7 @@ export function useDraftBranches(
   bridge: WorkbenchBridge | undefined,
   root: string | null,
 ): DraftBranches {
-  const [branches, setBranches] = useState<WorkbenchBranches | null>(null)
+  const [branches, setBranches] = useState<WorkbenchBranches | null>()
   const [failed, setFailed] = useState(false)
   const request = useRef(0)
   const lastRead = useRef(0)
@@ -35,7 +36,7 @@ export function useDraftBranches(
   }, [bridge, root])
 
   useEffect(() => {
-    setBranches(null)
+    setBranches(undefined)
     setFailed(false)
     if (!bridge || !root) return
     const reload = () => void refresh()

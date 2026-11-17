@@ -14,20 +14,22 @@ import {
 } from "@pigclaude/ui-primitives"
 
 /** 在新 worktree 里开始会话；baseRef 为空时从当前 HEAD 起步。 */
-export type DraftWorktree = { baseRef?: string }
+export type DraftWorktree = { baseRef?: string | undefined }
 
 type Props = {
   branches: WorkbenchBranches | null
+  unavailableReason: string
+  worktreeHint?: string
   worktree: DraftWorktree | null
   disabled: boolean
   onOpenBranches: () => void
-  onSwitchBranch: (branch: string) => void
+  onSwitchBranch?: (branch: string) => void
   onWorktree: (worktree: DraftWorktree | null) => void
   /** 新建并切到分支；失败时抛出带可读原因的 Error，对话框留着并显示原因。 */
-  onCreateBranch: (branch: string) => Promise<unknown>
+  onCreateBranch?: (branch: string) => Promise<unknown>
 }
 
-/** 没有分支信息（普通目录或读取失败）时什么都不画。 */
+/** 有项目时保留 worktree 开关，在 Git 不可用时说明启用条件。 */
 export function DraftWorkspaceControls(props: Props) {
   const { t } = useLocale()
   const [creating, setCreating] = useState(false)
@@ -36,25 +38,37 @@ export function DraftWorkspaceControls(props: Props) {
     branches?.head || branches?.localBranches.length || branches?.remoteBranches.length,
   )
 
-  if (!branches) return null
+  const hint = !branches
+    ? props.unavailableReason
+    : canCreateWorktree
+      ? (props.worktreeHint ?? t("newThread.worktree.hint"))
+      : t("newThread.worktree.noCommit")
 
   return (
     <>
-      <span className="draft-workspace-divider" aria-hidden="true" />
-      <BranchPicker {...props} branches={branches} onCreate={() => setCreating(true)} />
-      <label
-        className="draft-worktree"
-        data-checked={worktree !== null || undefined}
-        title={t(canCreateWorktree ? "newThread.worktree.hint" : "newThread.worktree.noCommit")}
-      >
+      {branches ? (
+        <>
+          <span className="draft-workspace-divider" aria-hidden="true" />
+          {worktree || props.onSwitchBranch ? (
+            <BranchPicker
+              {...props}
+              branches={branches}
+              onCreate={props.onCreateBranch ? () => setCreating(true) : undefined}
+            />
+          ) : null}
+        </>
+      ) : null}
+      <label className="draft-worktree" data-checked={worktree !== null || undefined} title={hint}>
         <span>worktree</span>
         <Switch
+          aria-label="worktree"
+          aria-description={hint}
           checked={worktree !== null}
           disabled={disabled || (!canCreateWorktree && !worktree)}
           onCheckedChange={(checked) => props.onWorktree(checked ? {} : null)}
         />
       </label>
-      {creating ? (
+      {creating && props.onCreateBranch ? (
         <CreateBranchDialog onSave={props.onCreateBranch} onClose={() => setCreating(false)} />
       ) : null}
     </>
@@ -73,7 +87,7 @@ function BranchPicker({
   onCreate,
 }: Pick<Props, "worktree" | "disabled" | "onOpenBranches" | "onSwitchBranch" | "onWorktree"> & {
   branches: WorkbenchBranches
-  onCreate: () => void
+  onCreate?: (() => void) | undefined
 }) {
   const { t } = useLocale()
   const [open, setOpen] = useState(false)
@@ -123,7 +137,7 @@ function BranchPicker({
   function pick(ref: string) {
     setOpen(false)
     if (worktree) onWorktree(ref === CURRENT_HEAD ? {} : { baseRef: ref })
-    else if (ref !== selected) onSwitchBranch(labelOf(ref))
+    else if (ref !== selected) onSwitchBranch?.(labelOf(ref))
   }
 
   return (
@@ -204,7 +218,7 @@ function BranchPicker({
             ) : null}
             {worktree ? (
               <p className="draft-branch-note">{t("newThread.worktree.baseHint")}</p>
-            ) : (
+            ) : onCreate ? (
               <div className="draft-branch-footer">
                 <button
                   type="button"
@@ -218,7 +232,7 @@ function BranchPicker({
                   {t("newThread.branch.create")}
                 </button>
               </div>
-            )}
+            ) : null}
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>

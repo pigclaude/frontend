@@ -117,5 +117,7 @@ export function SettingsContributionView({ page }: { page: string }) {
 
 /** 设置导航位置转换：侧栏只处理 page 字符串，主导航仍保持 NavLocation 联合类型。 */
 export function settingsLocation(page: string): NavLocation {
+  if (page === "plugins") return { kind: "plugins" }
+  if (page === "scheduled-tasks") return { kind: "schedules" }
   return { kind: "settings", page }
 }

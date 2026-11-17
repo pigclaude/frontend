@@ -8,7 +8,16 @@
 
 /* ─── 输入框卡片 ───────────────────────────────────────── */
 .composer-wrap {
-  padding: 0 32px var(--space-6);
+  flex: none;
+  padding: var(--space-3) 0 var(--space-9);
+}
+.composer-wrap > :is(.composer-shell, .subagent-readonly) {
+  width: calc(var(--cv-width, var(--cv-col)) - 2 * var(--cv-pad));
+}
+@container conversation (max-width: 639px) {
+  .composer-wrap {
+    padding-bottom: var(--space-7);
+  }
 }
 .composer-shell {
   max-width: var(--chat-col);
@@ -81,15 +90,14 @@
   grid-area: send;
 }
 /*
-  卡片上方带一条（新会话草稿的项目选择）：浅灰的外框包住这一条和卡片，圆角和卡片相同，
-  卡片的上沿两角露出底下的灰，看起来是一张卡片从这条下面伸出来。
+  浅灰外框包住卡片与工作区控件；控件可放在卡片上方或下方，圆角处露出底下的灰色。
 */
 .composer-frame {
   border-radius: var(--r-xl);
   background: var(--field);
   box-shadow: inset 0 0 0 var(--hair) var(--divider);
 }
-.composer-head {
+.composer-frame-bar {
   display: flex;
   align-items: center;
   gap: var(--space-1);
@@ -235,6 +243,12 @@
     background var(--t-fast),
     transform var(--t-fast);
 }
+.btn.send[data-form-action] {
+  width: auto;
+  padding-inline: var(--space-5);
+  border-radius: var(--r-md);
+  white-space: nowrap;
+}
 .send:hover {
   background: color-mix(in oklab, var(--fg) 86%, var(--bg));
 }
@@ -270,9 +284,6 @@
 }
 
 @media (max-width: 720px) {
-  .composer-wrap {
-    padding: 0 12px 12px;
-  }
   .composer .chip-btn .chip-label-optional {
     display: none;
   }

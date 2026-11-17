@@ -1,4 +1,4 @@
-// 在市场页显示主进程保存的授权，并在开启前让用户确认风险。
+// 在市场源里显示主进程保存的授权，并在开启前让用户确认风险。
 
 import { ShieldAlert } from "lucide-react"
 import { Button, Dialog, Switch } from "@pigclaude/ui-primitives"
@@ -9,18 +9,16 @@ import { SettingRow } from "./setting-page"
 export function PluginMarketplaceThirdPartySwitch({
   enabled,
   disabled,
-  error,
   onChange,
 }: {
   enabled: boolean
   disabled: boolean
-  error: string | null
   onChange: (enabled: boolean) => void
 }) {
   const { t } = useText()
   const label = t("pluginMarketplace.thirdParty")
   return (
-    <div className="marketplace-policy group">
+    <div className="marketplace-policy">
       <SettingRow title={label} description={t("pluginMarketplace.thirdPartyDescription")}>
         <Switch
           aria-label={label}
@@ -29,11 +27,6 @@ export function PluginMarketplaceThirdPartySwitch({
           onCheckedChange={onChange}
         />
       </SettingRow>
-      {error ? (
-        <p className="marketplace-policy-error error-text" role="alert">
-          {error}
-        </p>
-      ) : null}
     </div>
   )
 }

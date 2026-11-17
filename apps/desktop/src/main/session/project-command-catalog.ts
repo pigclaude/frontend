@@ -2,11 +2,14 @@
 
 import { readdir, stat } from "node:fs/promises"
 import { join } from "node:path"
+import { readProjectConfigurationFile } from "./project-configuration-file"
+import { readClaudeSkillInvocation, type ClaudeSkillInvocation } from "./claude-skill-invocations"
 import {
   canonicalProjectPath,
   containsProjectPath,
   isMissingProjectPath,
   resolveProjectConfigurationScope,
+  type ProjectConfigurationScope,
 } from "./project-configuration-scope"
 
 /** 文件是当前项目范围内的规范路径，只在主进程扫描本地元数据时使用。 */
@@ -18,7 +21,35 @@ export type ProjectCommandSource = {
 
 /** 用完整命名空间区分命令，同名来源选离工作目录最近的文件。 */
 export async function scanProjectCommands(workspace: string): Promise<ProjectCommandSource[]> {
-  const { directories, personalDirectory } = await resolveProjectConfigurationScope(workspace)
+  return scanCommands(await resolveProjectConfigurationScope(workspace))
+}
+
+/** 读取同一项目范围内的命令和手动可选 skills；只从技能文件中提取必要元数据。 */
+export async function scanProjectCommandCatalog(
+  workspace: string,
+): Promise<{ commands: ProjectCommandSource[]; skills: ClaudeSkillInvocation[] }> {
+  const scope = await resolveProjectConfigurationScope(workspace)
+  const root = scope.directories.at(-1)
+  if (root === undefined) return { commands: [], skills: [] }
+  const commands = await scanCommands(scope)
+  const metadata = await Promise.all(
+    commands
+      .filter(({ kind }) => kind === "skill")
+      .map(async ({ name, file }) => {
+        const source = await readProjectConfigurationFile(file, file, {
+          root,
+          personalDirectory: scope.personalDirectory,
+        })
+        return source?.text == null ? null : readClaudeSkillInvocation(name, file, source.text)
+      }),
+  )
+  return { commands, skills: metadata.filter((item) => item !== null) }
+}
+
+async function scanCommands({
+  directories,
+  personalDirectory,
+}: ProjectConfigurationScope): Promise<ProjectCommandSource[]> {
   const root = directories.at(-1)
   if (!root) return []
   const find = async (path: string): Promise<string | null> => {

@@ -4,7 +4,12 @@ import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import type { AgentCommand } from "@pigclaude/ui-contracts"
 import { resolveClaudeBinaryPath } from "./claude-binary"
 import { claudeCommands, draftBuiltinCommands } from "./claude-commands"
-import { scanProjectCommands } from "./project-command-catalog"
+import {
+  claudeSkillChoice,
+  claudeSkillContent,
+  type ClaudeSkillInvocation,
+} from "./claude-skill-invocations"
+import { scanProjectCommandCatalog, scanProjectCommands } from "./project-command-catalog"
 import { queryClaudeModels, type ClaudeModelsOptions } from "./claude-model-query"
 import {
   closeQuietly,
@@ -53,6 +58,8 @@ export class ClaudeAgentAdapter {
   #terminalCommands: readonly string[] = []
   #commands: readonly AgentCommand[] | null = null
   #workspace: string | null = null
+  #skillWorkspace: string | null = null
+  #personalSkills: readonly ClaudeSkillInvocation[] = []
   #prompt: PromptStream | null = null
   #started = false
   #stopped = false
@@ -75,6 +82,8 @@ export class ClaudeAgentAdapter {
     if (this.#started) throw new Error("SESSION_ALREADY_ACTIVE: adapter already started")
     this.#started = true
     this.#workspace = options.workspace
+    this.#skillWorkspace = options.projectConfiguration?.directory ?? null
+    this.#personalSkills = options.projectConfiguration?.personalSkills?.skills ?? []
     const prompt = new PromptStream()
     this.#prompt = prompt
     const task = this.#startQuery(options, prompt)
@@ -122,12 +131,31 @@ export class ClaudeAgentAdapter {
   }
 
   /** 把一条用户消息写入 SDK 的流式输入；会话未启动或已停止时抛出。 */
-  async send(text: string): Promise<void> {
+  async send(text: string, userTextOffset?: number): Promise<void> {
     const prompt = this.#prompt
     if (prompt === null || this.#stopped) throw new Error("session is not active")
+    const workspace = this.#skillWorkspace
+    const content =
+      workspace === null && this.#personalSkills.length === 0
+        ? text
+        : await claudeSkillContent(
+            text,
+            async () => {
+              const project =
+                workspace === null
+                  ? []
+                  : await scanProjectCommandCatalog(workspace).then(
+                      ({ skills }) => skills,
+                      () => [],
+                    )
+              return [...project, ...this.#personalSkills]
+            },
+            userTextOffset,
+          )
+    if (this.#stopped || this.#prompt !== prompt) throw new Error("session is not active")
     prompt.push({
       type: "user",
-      message: { role: "user", content: text },
+      message: { role: "user", content },
       parent_tool_use_id: null,
       session_id: "",
     })
@@ -315,9 +343,13 @@ export class ClaudeAgentAdapter {
   }
 
   #publishCommands(commands: readonly AgentCommand[]): void {
-    if (JSON.stringify(commands) === JSON.stringify(this.#commands)) return
-    this.#commands = commands
-    this.#emit({ type: "commands-changed", commands })
+    const combined = [
+      ...commands,
+      ...this.#personalSkills.map((skill) => claudeSkillChoice(skill, "user")),
+    ]
+    if (JSON.stringify(combined) === JSON.stringify(this.#commands)) return
+    this.#commands = combined
+    this.#emit({ type: "commands-changed", commands: combined })
   }
 
   #emit(event: AdapterEvent): void {

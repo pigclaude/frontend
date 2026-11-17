@@ -55,6 +55,11 @@ export function composerLevel(mode: PermissionMode): RuntimeMode | null {
 }
 
 /** 档位和计划开关对应的 Claude Code 权限模式；计划开关打开时一律是 plan。 */
+export function sessionPermissionMode(
+  level: RuntimeMode,
+  plan: false,
+): Exclude<SessionPermissionMode, "plan">
+export function sessionPermissionMode(level: RuntimeMode, plan: boolean): SessionPermissionMode
 export function sessionPermissionMode(level: RuntimeMode, plan: boolean): SessionPermissionMode {
   if (plan) return "plan"
   switch (level) {

@@ -6,16 +6,17 @@ import {
 import { composerCommands } from "./composer-commands"
 // 负责会话输入区：TipTap 正文（@ 文件、/ 命令）、agent/模型/思考深度/速度/权限选择，以及发送/停止。
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react"
-import { ArrowUp, AtSign, Plus, Slash, Square } from "lucide-react"
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import type { AgentCommand } from "@pigclaude/ui-contracts"
-import { Button, Menu, useLocale } from "@pigclaude/ui-primitives"
+import { useLocale } from "@pigclaude/ui-primitives"
+import { ComposerAttachMenu, ComposerSubmit } from "./composer-actions"
+import { formContent, readComposerDraft, type ComposerForm } from "./composer-form"
 import {
   getComposerKeyAction,
   nextPermissionMode,
   type ComposerAgent,
   type ComposerModelCatalog,
   type ComposerModelChoice,
+  type ComposerRunOptions,
   type PermissionMode,
   type ReasoningEffort,
 } from "./composer-options"
@@ -37,7 +38,7 @@ import {
   setPlainText,
   type ComposerCommand,
 } from "./composer-editor"
-import { useAgentCommandSource } from "./agent-commands"
+import { useAgentCommandSource, type AgentCommandLoader } from "./agent-commands"
 import { ContextMeter, type ContextUsage } from "./context-meter"
 import { ComposerModelControls } from "./composer-model-controls"
 import { useRunPreferences } from "./model-preferences"
@@ -59,6 +60,8 @@ export interface ComposerSubmitOptions {
   ultracode?: true
   /** @ 引用的会话；没有引用时不出现。 */
   references?: ComposerReference[]
+  /** 表单保存时保留编辑器文档，供重新编辑。 */
+  document?: string
 }
 
 /** 会话输入区 props；agent、模型、权限都由调用方控制，思考深度与收藏保存在本机偏好里。 */
@@ -103,6 +106,12 @@ export interface ComposerProps {
   focusKey?: number | undefined
   /** 输入框卡片上方的一条，和卡片连成一体，例如新会话草稿里的项目选择。 */
   header?: ReactNode
+  /** 输入框卡片下方的工作区控件，与卡片共用外框。 */
+  footer?: ReactNode
+  /** 表单中提交后保留草稿，Enter 换行，Mod+Enter 提交。 */
+  form?: ComposerForm
+  /** 指定时让调用方保存这次运行的模型选项。 */
+  runOptions?: ComposerRunOptions | undefined
   /** 草稿归属（通常是线程 id）；切换后保存旧草稿、恢复新草稿。 */
   draftKey?: string | null
   /** @ 引用时可选的项目文件（相对路径）。 */
@@ -112,7 +121,7 @@ export interface ComposerProps {
   /** / 命令；内置的切换模型与权限之外的命令由调用方提供。 */
   commands?: readonly ComposerCommand[]
   /** 读一个 Agent 实例的 / 命令与 skill；输入框获得焦点时预取当前实例的，调用方负责缓存。 */
-  loadAgentCommands?: ((instanceId: string) => Promise<readonly AgentCommand[]>) | undefined
+  loadAgentCommands?: AgentCommandLoader | undefined
 }
 
 /** 绘制 TipTap 输入区并保证空内容不可提交。 */
@@ -141,6 +150,9 @@ export function Composer({
   autoFocus = false,
   focusKey,
   header,
+  footer,
+  form,
+  runOptions,
   draftKey = null,
   files,
   threads,
@@ -149,8 +161,15 @@ export function Composer({
 }: ComposerProps) {
   const { t, locale } = useLocale()
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [initialContent] = useState(() => (form ? formContent(form.draft) : null))
   const store = useMemo(() => new SuggestionStore(), [])
-  const { effort, fast, ultracode } = useRunPreferences(agentId, catalog, modelId)
+  const { effort, fast, ultracode } = useRunPreferences(
+    agentId,
+    catalog,
+    modelId,
+    runOptions?.value,
+  )
+  const acceptsExternalContext = form === undefined
   const executionModes =
     explicitModes ?? agents.find((agent) => agent.id === agentId)?.executionModes
   const availableModes = RUNTIME_MODE_OPTIONS
@@ -175,6 +194,7 @@ export function Composer({
     onSubmit,
     running,
     disabled,
+    form,
     effort,
     fast,
     ultracode,
@@ -182,7 +202,7 @@ export function Composer({
     availableModes,
     onPermissionMode,
     placeholder: placeholder ?? t("composer.placeholder"),
-    inputLabel: t("composer.input"),
+    inputLabel: form?.inputLabel ?? t("composer.input"),
     smartPunctuation,
     files,
     threads,
@@ -194,7 +214,7 @@ export function Composer({
   const editorRef = useRef<Editor | null>(null)
   const draftKeyRef = useRef<string | null>(draftKey)
   const attached = useComposerContexts(
-    Boolean(disabled),
+    disabled || !acceptsExternalContext,
     () => editorRef.current?.commands.focus(),
     draftKey,
   )
@@ -207,7 +227,7 @@ export function Composer({
   function send(): void {
     const editor = editorRef.current
     const current = latest.current
-    if (!editor || current.disabled || current.running) return
+    if (!editor || current.disabled || current.running || current.form?.submitDisabled) return
     const text = editorText(editor)
     const { contexts, clear } = contextsRef.current
     if (!text && contexts.length === 0) return
@@ -219,7 +239,9 @@ export function Composer({
       ...(current.fast ? { fast: true as const } : {}),
       ...(current.ultracode ? { ultracode: true as const } : {}),
       ...(references.length > 0 ? { references } : {}),
+      ...(current.form ? { document: JSON.stringify(editor.getJSON()) } : {}),
     })
+    if (current.form) return
     if (text) rememberSent(text)
     historyRef.current = null
     editor.commands.clearContent(true)
@@ -248,6 +270,7 @@ export function Composer({
 
   const editor = useEditor({
     immediatelyRender: true,
+    ...(initialContent ? { content: initialContent } : {}),
     onFocus: () => void latest.current.agentCommands?.(),
     extensions: composerExtensions(
       {
@@ -261,7 +284,11 @@ export function Composer({
       store,
     ),
     editorProps: {
-      attributes: () => ({ class: "tiptap", "aria-label": latest.current.inputLabel }),
+      attributes: () => ({
+        class: "tiptap",
+        "aria-label": latest.current.inputLabel,
+        ...(latest.current.form ? { role: "textbox", "aria-multiline": "true" } : {}),
+      }),
       handlePaste: (view, event) =>
         editorRef.current ? pastePlainText(editorRef.current, view, event) : false,
       handleKeyDown: (_view, event) => {
@@ -287,6 +314,8 @@ export function Composer({
         const plain = !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey
         if (plain && event.key === "ArrowUp" && browseHistory(current, 1)) return true
         if (plain && event.key === "ArrowDown" && browseHistory(current, -1)) return true
+        if (latest.current.form && event.key === "Enter" && !(event.metaKey || event.ctrlKey))
+          return false
         const action = getComposerKeyAction(event.key, event.shiftKey)
         if (action === "ignore" || action === "newline") return false
         event.preventDefault()
@@ -297,12 +326,13 @@ export function Composer({
     onUpdate: ({ editor: updated }) => {
       if (historyRef.current && editorText(updated) !== historyRef.current.text)
         historyRef.current = null
+      latest.current.form?.onChange(readComposerDraft(updated))
     },
   })
   editorRef.current = editor
 
   useEffect(() => {
-    editor?.setEditable(!disabled)
+    editor?.setEditable(!disabled, false)
   }, [editor, disabled])
 
   useEffect(() => {
@@ -368,7 +398,7 @@ export function Composer({
 
   // 文件树的「添加到对话」、侧栏的「在输入框里引用」：在光标处插入引用，与输入 @ 选中的效果相同。
   useEffect(() => {
-    if (!editor) return undefined
+    if (!editor || !acceptsExternalContext) return undefined
     const onMention = (event: Event): void => {
       const mention = mentionOf(event)
       if (!mention || disabled) return
@@ -383,7 +413,7 @@ export function Composer({
     }
     window.addEventListener(COMPOSER_MENTION_EVENT, onMention)
     return () => window.removeEventListener(COMPOSER_MENTION_EVENT, onMention)
-  }, [editor, disabled])
+  }, [editor, disabled, acceptsExternalContext])
 
   const typed =
     useEditorState({
@@ -410,38 +440,18 @@ export function Composer({
       <SuggestionPanel store={store} />
       <ComposerContextChips contexts={attached.contexts} onRemove={attached.remove} />
       <EditorContent editor={editor} className="composer-editor" />
-      <Menu.Root>
-        <Menu.Trigger
-          className="icon-btn composer-attach"
-          type="button"
-          aria-label={t("composer.attach")}
-          title={t("composer.attach")}
-          disabled={disabled}
-        >
-          <Plus className="ic" aria-hidden="true" />
-        </Menu.Trigger>
-        <Menu.Portal>
-          <Menu.Positioner side={menuSide} align="start" sideOffset={8}>
-            <Menu.Popup>
-              <Menu.Item onClick={() => insertTrigger("@")}>
-                <AtSign className="ic" aria-hidden="true" />
-                <span className="grow">{t("composer.attach.file")}</span>
-                <span className="menu-meta">@</span>
-              </Menu.Item>
-              <Menu.Item disabled={!empty} onClick={() => insertTrigger("/")}>
-                <Slash className="ic" aria-hidden="true" />
-                <span className="grow">{t("composer.attach.command")}</span>
-                <span className="menu-meta">/</span>
-              </Menu.Item>
-            </Menu.Popup>
-          </Menu.Positioner>
-        </Menu.Portal>
-      </Menu.Root>
+      <ComposerAttachMenu
+        empty={empty}
+        disabled={disabled}
+        side={menuSide}
+        onTrigger={insertTrigger}
+      />
       <ComposerModelControls
         agents={agents}
         agentId={agentId}
         modelId={modelId}
         catalog={catalog}
+        runOptions={runOptions}
         onLoadModels={onLoadModels}
         onSelectModel={(choice) => onSelectModel?.(choice)}
         selectable={Boolean(onSelectModel)}
@@ -456,39 +466,24 @@ export function Composer({
         onOpenChange={setPickerOpen}
       />
       {contextUsage ? <ContextMeter usage={contextUsage} /> : null}
-      {running && canInterrupt ? (
-        <Button
-          variant="plain"
-          className="send is-stop"
-          type="button"
-          aria-label={t("chat.interrupt")}
-          title={t("chat.interrupt")}
-          onClick={onStop}
-        >
-          <Square className="ic" aria-hidden="true" />
-        </Button>
-      ) : running ? null : (
-        <Button
-          variant="plain"
-          className="send"
-          type="button"
-          aria-label={t("chat.send")}
-          title={t("chat.send")}
-          aria-disabled={empty || disabled ? true : undefined}
-          onClick={() => sendRef.current()}
-        >
-          <ArrowUp className="ic" aria-hidden="true" />
-        </Button>
-      )}
+      <ComposerSubmit
+        running={running}
+        canInterrupt={canInterrupt}
+        formLabel={form?.submitLabel}
+        disabled={empty || disabled || Boolean(form?.submitDisabled)}
+        onSubmit={() => sendRef.current()}
+        onStop={onStop}
+      />
     </div>
   )
 
   return (
     <div className="composer-shell">
-      {header ? (
+      {header || footer ? (
         <div className="composer-frame">
-          <div className="composer-head">{header}</div>
+          {header ? <div className="composer-frame-bar composer-head">{header}</div> : null}
           {card}
+          {footer ? <div className="composer-frame-bar composer-foot">{footer}</div> : null}
         </div>
       ) : (
         card

@@ -1,6 +1,6 @@
 // 负责把外壳的内置命令登记到 Command 扩展点：新会话、开合侧栏、开合右侧面板、设置、添加项目。
 // 命令面板和输入框的 `/` 都从这里读，带 slash 的命令在输入框里就是 `/new`、`/panel`。
-// Pigcode 的内置命令表固定带「插件」，PigClaude 没有插件，所以用同样的写法登记自己的这几条。
+// 插件市场也是一个可以从命令面板打开的主应用页面。
 import type {
   CommandContribution,
   ContributionOwner,
@@ -14,6 +14,8 @@ export type ShellCommandActions = {
   onNewSession: () => void
   onToggleSidebar: () => void
   onSettings: () => void
+  onPlugins?: () => void
+  onSchedules?: () => void
   onAddProject: () => void
   /** 开合右侧工作台，与 ⌘J 相同；没有工作台时不提供，面板和 `/panel` 都不出现。 */
   onToggleWorkbench?: () => void
@@ -89,6 +91,29 @@ export function registerShellCommands(
       icon: "folder-plus",
       run: () => actions.onAddProject(),
     },
+    ...(actions.onPlugins
+      ? [
+          {
+            id: "open-plugins",
+            owner: shell,
+            order: -20,
+            title: { key: "settings.plugins" },
+            icon: "cube",
+            run: () => actions.onPlugins?.(),
+          } satisfies CommandContribution,
+        ]
+      : []),
+    ...(actions.onSchedules
+      ? [
+          {
+            id: "open-schedules",
+            owner: shell,
+            order: -25,
+            title: { key: "settings.schedules.pageTitle" },
+            run: () => actions.onSchedules?.(),
+          } satisfies CommandContribution,
+        ]
+      : []),
   ]
   const disposers = commands.map((command) => registry.register("command", command))
   return () => {

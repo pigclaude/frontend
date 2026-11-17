@@ -2,8 +2,9 @@
 // 加上它们登记过的 worktree。
 
 import { dirname, join } from "node:path"
-import { ipcMain, shell } from "electron"
+import { app, ipcMain, shell } from "electron"
 import type { MembershipView } from "@pigclaude/contracts/membership"
+import { openAppIcon } from "../workbench/open-app-icon"
 import { folderLaunch, installedOpenApps, launchInFolder } from "../workbench/open-apps"
 import { registerProjectIpc, settleOpenPath } from "./project-ipc"
 import { registerProjectConfigurationIpc } from "./project-configuration-ipc"
@@ -74,9 +75,12 @@ export function registerWorkspaceIpc(input: {
     isTrusted: input.isTrusted,
     membership: input.membership,
     workspaces: getStore,
+    openableRoots: roots,
     names: getNames,
     reveal: (path) => settleOpenPath(shell.openPath(path)),
     apps: () => installedOpenApps(),
+    appIcon: (location) =>
+      openAppIcon(location, (path) => app.getFileIcon(path, { size: "normal" })),
     openWith: async (app, folder) => {
       const launch = folderLaunch(app, folder)
       if (launch) return launchInFolder(launch.command, launch.args, folder)

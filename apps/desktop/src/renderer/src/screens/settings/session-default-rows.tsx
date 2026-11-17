@@ -127,8 +127,7 @@ export function DefaultAccountRow({ accounts }: { accounts: readonly ClaudeAccou
 
 // 计划开关关着时得到的模式不会是 plan；类型上收窄到能作为默认的四档。
 function permissionModeOf(level: RuntimeMode): DefaultPermissionMode {
-  const mode = sessionPermissionMode(level, false)
-  return mode === "plan" ? "default" : mode
+  return sessionPermissionMode(level, false)
 }
 
 function FullAccessDialog({

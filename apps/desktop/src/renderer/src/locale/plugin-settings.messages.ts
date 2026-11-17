@@ -2,7 +2,11 @@
 
 /** 当前发行版的插件设置文案。 */
 export const pluginSettingsZhCN = {
-  "pluginSettings.title": "插件",
+  "pluginSettings.manage": "插件管理",
+  "pluginSettings.backToMarketplace": "返回插件市场",
+  "pluginSettings.browseMarketplace": "浏览插件市场",
+  "pluginSettings.refresh": "刷新已安装插件",
+  "pluginSettings.add": "添加插件",
   "pluginSettings.description": "启用和停用从下一次会话开始生效。",
   "pluginSettings.loading": "正在读取已安装的插件…",
   "pluginSettings.loadFailed": "无法读取本机插件。",
@@ -74,7 +78,11 @@ export const pluginSettingsZhCN = {
 
 /** 对应的英文文案。 */
 export const pluginSettingsEnUS = {
-  "pluginSettings.title": "Plugins",
+  "pluginSettings.manage": "Manage plugins",
+  "pluginSettings.backToMarketplace": "Back to plugin marketplace",
+  "pluginSettings.browseMarketplace": "Browse plugin marketplace",
+  "pluginSettings.refresh": "Refresh installed plugins",
+  "pluginSettings.add": "Add plugin",
   "pluginSettings.description": "Enabling or disabling a plugin takes effect in new sessions.",
   "pluginSettings.loading": "Loading installed plugins…",
   "pluginSettings.loadFailed": "Couldn't load local plugins.",

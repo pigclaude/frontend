@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@pigclaude/ui-contracts": "workspace:*",
+    "@pigclaude/ui-composer": "workspace:*",
     "@pigclaude/ui-primitives": "workspace:*",
     "lucide-react": "1.0.1"
   },

@@ -13,8 +13,8 @@ export type ThreadViewInput = {
   /** 会话 id；草稿用固定值，保证输入框草稿键稳定。 */
   threadId: string
   workspace: string | null
-  /** 项目名，取工作区最后一段。 */
-  projectName: string
+  /** 会话标题，由聊天页传入侧栏同源的显示值。 */
+  title: string
   /** 当前实例（账号）与模型；界面用来显示线程头和模型选择器。 */
   instanceId: string
   modelId: string
@@ -35,7 +35,7 @@ export type ThreadView = {
 
 /** 把会话状态转成线程和时间线事件；没有活动会话时事件为空。 */
 export function threadView(input: ThreadViewInput): ThreadView {
-  const { state, threadId, workspace, projectName, instanceId, modelId, startedAt } = input
+  const { state, threadId, workspace, title, instanceId, modelId, startedAt } = input
   const { permissionLevel, planMode } = input
   const timeline = projectTimeline({
     threadId,
@@ -53,7 +53,7 @@ export function threadView(input: ThreadViewInput): ThreadView {
     thread: {
       id: threadId,
       projectId: workspace ?? "workspace",
-      title: projectName || "会话",
+      title,
       defaultAgentId: "claude",
       defaultInstanceId: instanceId,
       lastAgentId: "claude",

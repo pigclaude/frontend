@@ -6,6 +6,7 @@ import { installChatBridge, type ChatBridgeWindow } from "./chat-bridge"
 const report: ProjectConfigurationReport = {
   workspace: "/Users/me/work/api",
   trust: "untrusted",
+  hasProjectSettings: true,
   instructions: ["CLAUDE.md", ".claude/CLAUDE.md"],
   counts: { commands: 3, skills: 2, agents: 1 },
   hooks: [{ event: "SessionStart", kind: "command", command: "node ./scripts/check-project.js" }],
@@ -38,7 +39,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.getByRole("menuitem", { name: "项目配置" }).click()
     const card = page.getByRole("dialog", { name: "项目配置" })
     await expect(card.getByText("SERVICE_TOKEN")).toBeVisible()
-    if (theme === "dark") await card.getByRole("button", { name: "完全信任此项目" }).click()
+    if (theme === "dark") await card.getByRole("button", { name: "启用项目设置与 MCP" }).click()
     await expect(card).toHaveScreenshot(`project-configuration-${theme}.png`, {
       animations: "disabled",
     })

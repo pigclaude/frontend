@@ -17,6 +17,8 @@ export type ChatScreenProps = {
   workspace: string | null
   /** workspace 所属的项目；workspace 是 worktree 时是它的项目，否则就是 workspace 本身。 */
   workspaceProject?: string | null
+  /** 项目在侧栏设置过的显示名；会话标题另取当前会话。 */
+  projectLabel?: string | undefined
   workspaceOptions: string[]
   accounts: ClaudeAccountView[]
   proxies: ProxyView[]
@@ -43,6 +45,8 @@ export type ChatScreenProps = {
   onOpen: (location: NavLocation) => void
   smartPunctuation: boolean
   layoutControls?: ReactNode
+  /** 重新发起新会话时，把焦点放回当前项目的草稿。 */
+  draftFocus?: number
   /** 线程头的「在应用中打开」按钮；有项目时由调用方给出。 */
   openIn?: ReactNode
   onOpenFile?: (path: string) => void

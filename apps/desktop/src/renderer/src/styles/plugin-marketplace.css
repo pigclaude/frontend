@@ -1,15 +1,124 @@
-/* 市场分段、来源对话框和更新差异复用插件页的控件与布局。 */
-.plugin-marketplace-switcher {
-  width: fit-content;
-  margin-bottom: var(--space-5);
+/* 市场目录的分组、插件条目和来源对话框。 */
+.plugin-marketplace-switcher.seg {
+  gap: var(--space-2);
+  padding: 0;
+  background: transparent;
+}
+
+.plugins-screen .plugin-marketplace-switcher .seg-item {
+  height: var(--control-md);
+  padding-inline: var(--space-5);
+  border-radius: var(--r-full);
+  font-size: var(--fs-md);
+}
+
+.plugins-screen .plugin-marketplace-switcher .seg-item:hover {
+  background: var(--hover);
+}
+
+.plugins-screen .plugin-marketplace-switcher .seg-item[data-checked] {
+  background: var(--active);
+  box-shadow: none;
+}
+
+.marketplace-catalog .market-section {
+  margin-top: var(--space-6);
+}
+
+.marketplace-catalog .market-section + .market-section {
+  margin-top: var(--space-9);
+}
+
+.marketplace-catalog .market-section-head {
+  justify-content: center;
+  min-height: var(--control-md);
+  padding: 0 0 var(--space-3);
+  border-color: var(--divider);
+}
+
+.marketplace-catalog .market-section-title {
+  overflow-wrap: anywhere;
+  font-size: var(--fs-lg);
+}
+
+.marketplace-catalog .market-section-error {
+  margin-top: var(--space-4);
+}
+
+.marketplace-catalog .market-grid {
+  gap: var(--space-3) var(--space-7);
+  margin-top: var(--space-4);
+}
+
+.marketplace-catalog .market-tile {
+  gap: var(--space-4);
+  min-height: 58px;
+  padding: var(--space-3) var(--space-4);
+}
+
+.marketplace-catalog .market-tile-main {
+  gap: var(--space-5);
+  align-self: stretch;
+}
+
+.marketplace-entry-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.marketplace-entry-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--market-icon-size);
+  height: var(--market-icon-size);
+  border-radius: var(--r-lg);
+  background: var(--field);
+  color: var(--fg-2);
+}
+
+.marketplace-entry-icon[data-plugin-type="claude-code"] {
+  background: color-mix(in oklab, var(--brand-claude) 15%, transparent);
+  color: color-mix(in oklab, var(--brand-claude) 50%, var(--fg));
+}
+
+.marketplace-catalog .btn.market-pill {
+  height: var(--control-md);
+  background: var(--field);
+}
+
+.marketplace-catalog .market-pill:hover {
+  background: var(--active);
+}
+
+.marketplace-catalog .market-empty {
+  min-height: 168px;
+  margin-top: var(--space-8);
+}
+
+.marketplace-catalog .market-section .market-empty {
+  min-height: 108px;
+  margin-top: var(--space-4);
 }
 
 .marketplace-policy {
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-4);
+  border-radius: var(--r-panel);
+  background: var(--field);
 }
 
-.marketplace-policy-error {
-  padding: var(--space-2) var(--space-5) var(--space-4);
+.marketplace-policy .list-row {
+  padding: var(--space-4) var(--space-5);
+}
+
+.marketplace-source-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
 }
 
 [data-motion="reduce"] .dialog:is(.marketplace-sources, .marketplace-dialog) {

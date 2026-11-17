@@ -1,17 +1,21 @@
 // 保存主进程读取的市场条目来源与下载证据，可信窗口只看到条目的展示字段。
 
 import type {
+  OfficialPluginListing,
   PluginMarketplaceEntryInfo,
   PluginMarketplaceSourceInput,
 } from "../../plugin-marketplace-contract"
 
 /** 条目来自当前目录中相对路径，或另一个可校验的固定来源。 */
 export type PluginMarketplaceEntrySource =
-  { kind: "relative"; path: string } | Exclude<PluginMarketplaceSourceInput, { kind: "directory" }>
+  | { kind: "relative"; path: string }
+  | { kind: "github-subdir"; repo: string; commit: string; path: string }
+  | Exclude<PluginMarketplaceSourceInput, { kind: "directory" }>
 
 /** 规范化的目录条目；下载摘要保留在主进程。 */
 export type PluginMarketplaceCatalogEntry = {
   info: PluginMarketplaceEntryInfo
+  officialListing?: OfficialPluginListing
   source: PluginMarketplaceEntrySource
   expectedSha256: string | null
 }

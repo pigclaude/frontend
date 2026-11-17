@@ -256,7 +256,8 @@ export type SessionEnvironmentFactory = (
 /** 会话适配器端口；真实实现是 ClaudeAgentAdapter。 */
 export type SessionAdapterPort = {
   start(options: ClaudeAgentStartOptions): Promise<void>
-  send(text: string): Promise<void>
+  /** userTextOffset 跳过放在消息正文之前的引用材料。 */
+  send(text: string, userTextOffset?: number): Promise<void>
   interrupt(): Promise<void>
   /** 停止一个在途的后台任务；任务已经结束或会话已停止时不抛错。 */
   stopTask(taskId: string): Promise<void>

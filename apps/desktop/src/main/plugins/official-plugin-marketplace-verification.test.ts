@@ -234,6 +234,27 @@ it("返回全量固定 GitHub 条目和规范化的提交/仓库吊销", () => {
   ])
 })
 
+it("从已签名目录读取维护方与用途，保留旧条目并忽略无效的展示字段", () => {
+  const bytes = catalog(1, {
+    plugins: [
+      { ...pinned, publisherType: "community", category: " 开发者工具 " },
+      { ...pinned, name: "legacy" },
+      { ...pinned, name: "invalid-listing", publisherType: "other", category: ["a"] },
+    ],
+  })
+  const { verified } = verifyOfficialPluginMarketplace(
+    bytes,
+    current.detach(bytes),
+    undefined,
+    publicKeys,
+  )
+  expect(verified.catalog.entries.map(({ officialListing }) => officialListing)).toEqual([
+    { publisherType: "community", category: "开发者工具" },
+    undefined,
+    undefined,
+  ])
+})
+
 it.each([
   ["不支持的来源", { name: "unexpected", source: { source: "npm" } }],
   [

@@ -1,13 +1,22 @@
-// 将本机任务状态、日期和已登记原因解析成设置页可显示的数据。
+// 在本机调度配置和上游定时任务界面之间转换数据，只展示已登记的运行原因。
 
-import type { ScheduleRun } from "@pigclaude/ui-contracts"
+import type { Schedule, ScheduleExecution, ScheduleRun } from "@pigclaude/ui-contracts"
+import type { CreateScheduleInput, RunNowResult } from "@pigclaude/ui-settings"
 import type {
   ScheduledTask,
+  ScheduledTaskInput,
   ScheduledTaskRun,
   ScheduledTaskRunsPage,
-} from "../../../../scheduled-tasks-contract"
-import { fill, type TextKey } from "../../locale/text"
-import { projectNameFromPath } from "../../models/project-model"
+} from "../../../scheduled-tasks-contract"
+import { fill, type TextKey } from "../locale/text"
+import {
+  accountIdForAgent,
+  agentIdForAccount,
+  DEFAULT_PERMISSION_LEVEL,
+  effortForComposer,
+  permissionView,
+  sessionPermissionMode,
+} from "./composer-config"
 
 /** 定时任务列表区分启用、暂停和规则已结束。 */
 export type ScheduledTaskStatus = "active" | "paused" | "completed"
@@ -18,15 +27,75 @@ export function taskStatus(task: ScheduledTask): ScheduledTaskStatus {
   return task.nextRunAt === null ? "completed" : "active"
 }
 
-/** 优先使用用户在工作区登记的显示名称，保留未知或已移除项目的目录名。 */
-export function taskProjectName(path: string, names: Readonly<Record<string, string>>): string {
-  return (Object.hasOwn(names, path) ? names[path] : undefined) || projectNameFromPath(path) || path
+const undated = new Date(0).toISOString()
+
+/** 本机任务映射为项目任务，旧记录没有标题或 Compose 文档时仍可编辑。 */
+export function scheduleView(task: ScheduledTask): Schedule {
+  const execution: ScheduleExecution = {
+    permissionMode: permissionView(task.permissionMode, DEFAULT_PERMISSION_LEVEL).level,
+    ...(task.accountId || task.model
+      ? { instanceId: agentIdForAccount(task.accountId ?? "") }
+      : {}),
+    ...(task.model ? { modelId: task.model } : {}),
+    ...(task.effort ? { effort: task.effort } : {}),
+    ...(task.fast ? { fast: true } : {}),
+    ...(task.worktree ? { worktree: task.worktree } : {}),
+  }
+  return {
+    id: task.id,
+    target: { kind: "project", projectId: task.projectPath, execution },
+    title: task.title ?? "",
+    prompt: task.prompt,
+    draft: task.draft ?? null,
+    rule: task.rule,
+    endsAt: task.endsAt,
+    enabled: task.enabled,
+    status: taskStatus(task),
+    nextRunAt: task.nextRunAt,
+    lastRunAt: task.lastRunAt,
+    lastRunId: task.lastSessionId,
+    runCount: task.runCount,
+    createdAt: undated,
+    updatedAt: task.lastRunAt ?? undated,
+  }
+}
+
+/** 编辑器提交的项目、时间和执行选项转换为本机无人值守任务。 */
+export function nativeScheduleInput(
+  input: Omit<CreateScheduleInput, "draft"> & {
+    draft?: CreateScheduleInput["draft"] | null
+  },
+): ScheduledTaskInput {
+  const { execution } = input
+  return {
+    projectPath: input.projectId,
+    title: input.title,
+    prompt: input.prompt,
+    draft: input.draft ?? null,
+    rule: input.rule,
+    endsAt: input.endsAt,
+    enabled: input.enabled,
+    model: execution.modelId ?? null,
+    accountId: accountIdForAgent(execution.instanceId ?? "") || null,
+    permissionMode: sessionPermissionMode(execution.permissionMode, false),
+    effort: effortForComposer(execution.effort ?? null),
+    fast: execution.fast,
+    worktree: execution.worktree,
+  }
+}
+
+/** 立即运行在记录落盘后返回；已有同任务运行时使用上游的忙碌提示。 */
+export function runNowView(run: ScheduledTaskRun): RunNowResult {
+  if (run.status === "running") return { status: "started", runId: run.id }
+  if (run.reason === "TASK_BUSY") return { status: "busy", runId: null }
+  return { status: run.status === "skipped" ? "unavailable" : "failed", runId: null }
 }
 
 const reasonKeys = new Map<string, TextKey>([
   ["MEMBERSHIP_REQUIRED", "scheduledTasks.reasonMembership"],
   ["PROJECT_UNAVAILABLE", "scheduledTasks.reasonProject"],
   ["WORKSPACE_UNAVAILABLE", "scheduledTasks.reasonProject"],
+  ["SCHEDULE_WORKTREE_FAILED", "scheduledTasks.reasonWorktree"],
   ["NO_AVAILABLE_ACCOUNT", "scheduledTasks.reasonAccount"],
   ["DAEMON_UNAVAILABLE", "scheduledTasks.reasonDaemon"],
   ["SESSION_LIMIT_REACHED", "scheduledTasks.reasonQueue"],
@@ -61,24 +130,6 @@ export function taskErrorKey(error: unknown): TextKey {
   return (code && errorKeys.get(code)) || "scheduledTasks.operationFailed"
 }
 
-/** ISO 结束时间显示为本机日历日期。 */
-export function taskDateInput(endsAt: string | null): string {
-  if (endsAt === null) return ""
-  const date = new Date(endsAt)
-  return [
-    String(date.getFullYear()).padStart(4, "0"),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-")
-}
-
-/** 选定日期包含当天，保存为本机午夜前一毫秒。 */
-export function taskEndOfDay(value: string): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
-  const date = new Date(value + "T23:59:59.999")
-  return Number.isFinite(date.getTime()) ? date.toISOString() : null
-}
-
 /** 运行时间与分页沿用 Pigcode 历史；用状态详情承载可读原因及账号。 */
 export function taskHistoryPage(
   page: ScheduledTaskRunsPage,
@@ -109,7 +160,7 @@ function historyRow(
     scheduleId: run.taskId,
     source: run.source,
     status: run.status,
-    threadId: run.sessionId ?? "",
+    threadId: run.sessionId,
     runId: run.sessionId,
     error: details.length === 0 ? null : details.join(" · "),
     triggeredAt: run.triggeredAt,

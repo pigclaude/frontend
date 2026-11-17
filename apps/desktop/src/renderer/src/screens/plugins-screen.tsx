@@ -1,52 +1,86 @@
-// 连接设置页、已安装的插件和可信安装桥，复用 Pigcode 的列表和详情。
+// 负责主应用的插件市场与安装管理，复用 Pigcode 的列表和详情。
 
 import { useEffect, useId, useReducer, useRef, useState, type ReactNode } from "react"
-import { Box, Check } from "lucide-react"
-import {
-  Button,
-  Checkbox,
-  Dialog,
-  EmptyState,
-  SearchField,
-  SegmentedControl,
-} from "@pigclaude/ui-primitives"
+import { ArrowLeft, Box, Check, RefreshCw } from "lucide-react"
+import { Button, Checkbox, Dialog, EmptyState, SearchField } from "@pigclaude/ui-primitives"
 import { PluginDetailsDialog, PluginList } from "@pigclaude/ui-plugin-manager"
+import { PageErrorBoundary, ScrollPanel } from "@pigclaude/ui-shell"
 import type {
   CapabilityPluginsBridge,
-  InstalledCapabilityPlugin,
   InstalledDesktopPlugin,
-} from "../../../../capability-plugin-contract"
-import type { PluginMarketplaceBridge } from "../../../../plugin-marketplace-contract"
-import { fill, useText, type TextKey } from "../../locale/text"
-import { ClaudeCodePluginFacts } from "./claude-code-plugin-facts"
-import { PluginInstallControls } from "./plugin-install-controls"
-import { PluginMarketplaceSettings } from "./plugin-marketplace-settings"
+} from "../../../capability-plugin-contract"
+import { fill, useText, type TextKey } from "../locale/text"
+import { CapabilityPluginSettingsForm } from "./settings/capability-plugin-settings-form"
+import { ClaudeCodePluginFacts } from "./settings/claude-code-plugin-facts"
+import { PluginInstallControls } from "./settings/plugin-install-controls"
+import type { MarketplaceBrowse } from "./settings/plugin-marketplace-navigation"
+import { PluginMarketplaceSettings } from "./settings/plugin-marketplace-settings"
 import {
   installedPluginSummary,
   pluginRevocationReason,
   pluginSettingsError,
-} from "./plugin-settings-view"
-import { SettingPage } from "./setting-page"
-import "../../styles/plugin-settings.css"
+} from "./settings/plugin-settings-view"
+import "../styles/plugin-settings.css"
 
 type PluginData = { developerMode: boolean; installed: InstalledDesktopPlugin[] }
 type Details = { id: string; confirmUninstall: boolean; keepData: boolean }
-type PluginPage = "installed" | "marketplace"
-
-/** 已安装的插件及管理动作；设置插槽只挂载宿主提供的声明式内容。 */
-export function PluginSettings({
-  bridge,
-  marketplace,
+/** 市场和管理使用独立导航位置，来回切换时保留目录分段与搜索词。 */
+export function PluginsScreen({
+  management,
   membershipActive,
-  renderSettings,
+  onOpenManagement,
+  onOpenMarketplace,
 }: {
-  bridge: CapabilityPluginsBridge | undefined
-  marketplace?: PluginMarketplaceBridge | undefined
+  management: boolean
   membershipActive: boolean
-  renderSettings?: (plugin: InstalledCapabilityPlugin) => ReactNode
+  onOpenManagement: () => void
+  onOpenMarketplace: () => void
 }) {
   const { t } = useText()
-  const [page, setPage] = useState<PluginPage>("installed")
+  const bridge = window.pigclaude?.capabilityPlugins
+  const marketplace = window.pigclaude?.pluginMarketplace
+  const [browse, setBrowse] = useState<MarketplaceBrowse>({ scope: "public", query: "" })
+  return (
+    <PageErrorBoundary
+      key={management ? "management" : "marketplace"}
+      fallback={(reason) => (
+        <EmptyState title={t("pluginSettings.loadFailed")} description={reason} />
+      )}
+    >
+      <ScrollPanel>
+        <section className="page wide plugins-screen" aria-labelledby="plugins-heading">
+          {!management && bridge && marketplace ? (
+            <PluginMarketplaceSettings
+              bridge={marketplace}
+              installer={bridge}
+              membershipActive={membershipActive}
+              browse={browse}
+              onBrowseChange={setBrowse}
+              onOpenManagement={onOpenManagement}
+            />
+          ) : (
+            <PluginManagement
+              bridge={bridge}
+              membershipActive={membershipActive}
+              onOpenMarketplace={management && marketplace ? onOpenMarketplace : undefined}
+            />
+          )}
+        </section>
+      </ScrollPanel>
+    </PageErrorBoundary>
+  )
+}
+
+function PluginManagement({
+  bridge,
+  membershipActive,
+  onOpenMarketplace,
+}: {
+  bridge: CapabilityPluginsBridge | undefined
+  membershipActive: boolean
+  onOpenMarketplace: (() => void) | undefined
+}) {
+  const { t } = useText()
   const [data, setData] = useState<PluginData | null>(null)
   const [revision, refresh] = useReducer((value: number) => value + 1, 0)
   const [loadError, setLoadError] = useState<TextKey | null>(null)
@@ -98,13 +132,12 @@ export function PluginSettings({
   const entries = new Map(data?.installed.map((plugin) => [plugin.manifest.id, plugin]))
   const settings = new Map<string, ReactNode>()
   const plugins = [...entries.values()].map((plugin) => {
-    const content =
-      plugin.type === "capability" &&
+    const content = plugin.type === "capability" &&
       membershipActive &&
       plugin.enabled &&
       pluginRevocationReason(plugin) === null &&
       plugin.compatible &&
-      renderSettings?.(plugin)
+      plugin.manifest.settings.length > 0 && <CapabilityPluginSettingsForm plugin={plugin} />
     if (content) settings.set(plugin.manifest.id, content)
     return installedPluginSummary(plugin, t, Boolean(content))
   })
@@ -137,52 +170,47 @@ export function PluginSettings({
     if (canToggle(id)) void modify(id, (service) => service.setEnabled(id, enabled))
   }
 
-  const title = t("pluginSettings.title")
-  const navigation =
-    bridge && marketplace ? (
-      <SegmentedControl<PluginPage>
-        className="plugin-marketplace-switcher"
-        aria-label={t("pluginMarketplace.view")}
-        value={page}
-        onValueChange={setPage}
-        options={[
-          { value: "installed", label: t("pluginMarketplace.installed") },
-          { value: "marketplace", label: t("pluginMarketplace.catalog") },
-        ]}
-      />
-    ) : null
-
-  if (bridge && marketplace && page === "marketplace") {
-    return (
-      <SettingPage title={title} width="wide">
-        {navigation}
-        <PluginMarketplaceSettings
-          bridge={marketplace}
-          installer={bridge}
-          membershipActive={membershipActive}
-          onInstalled={refresh}
-        />
-      </SettingPage>
-    )
-  }
-
   return (
-    <SettingPage
-      title={title}
-      sub={t("pluginSettings.description")}
-      width="wide"
-      actions={
-        bridge && data && membershipActive && !loadError ? (
-          <PluginInstallControls
-            bridge={bridge}
-            developerMode={data.developerMode}
-            onError={setOperationError}
-            onInstalled={refresh}
-          />
-        ) : null
-      }
-    >
-      {navigation}
+    <div className="plugin-management">
+      <header className="page-head plugins-header">
+        <div className="plugins-title">
+          {onOpenMarketplace ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={t("pluginSettings.backToMarketplace")}
+              title={t("pluginSettings.backToMarketplace")}
+              onClick={onOpenMarketplace}
+            >
+              <ArrowLeft className="ic" aria-hidden="true" />
+            </Button>
+          ) : null}
+          <h1 id="plugins-heading">{t("pluginSettings.manage")}</h1>
+        </div>
+        <div className="actions plugins-header-actions">
+          {bridge ? (
+            <Button
+              type="button"
+              size="icon"
+              aria-label={t("pluginSettings.refresh")}
+              title={t("pluginSettings.refresh")}
+              disabled={pendingId !== null}
+              onClick={refresh}
+            >
+              <RefreshCw className="ic ic-sm" aria-hidden="true" />
+            </Button>
+          ) : null}
+          {bridge && data && membershipActive && !loadError ? (
+            <PluginInstallControls
+              bridge={bridge}
+              developerMode={data.developerMode}
+              onError={setOperationError}
+              onInstalled={refresh}
+            />
+          ) : null}
+        </div>
+      </header>
       {!membershipActive && data ? <p className="hint">{t("pluginSettings.membership")}</p> : null}
       {operationError ? (
         <p role="alert" className="error-text">
@@ -210,13 +238,18 @@ export function PluginSettings({
         <div className="plugin-market">
           {plugins.length ? (
             <>
-              <SearchField
-                className="market-search"
-                value={query}
-                onValueChange={setQuery}
-                placeholder={t("pluginSettings.search")}
-                clearLabel={t("pluginSettings.clearSearch")}
-              />
+              <div className="market-toolbar plugins-toolbar">
+                <p className="plugin-installed-count">
+                  {t("pluginMarketplace.installed")} <span>{plugins.length}</span>
+                </p>
+                <SearchField
+                  className="market-search control-xl"
+                  value={query}
+                  onValueChange={setQuery}
+                  placeholder={t("pluginSettings.search")}
+                  clearLabel={t("pluginSettings.clearSearch")}
+                />
+              </div>
               <PluginList
                 plugins={plugins}
                 kindLabels={{ agent: claudeCodeLabel }}
@@ -231,12 +264,20 @@ export function PluginSettings({
                 }
                 onOpenSettings={setSettingsId}
               />
+              <p className="hint plugin-management-note">{t("pluginSettings.description")}</p>
             </>
           ) : (
             <EmptyState
-              className="group market-empty"
+              className="market-empty"
               icon={<Box className="ic" aria-hidden="true" />}
               title={t("pluginSettings.empty")}
+              actions={
+                onOpenMarketplace ? (
+                  <Button type="button" size="sm" onClick={onOpenMarketplace}>
+                    {t("pluginSettings.browseMarketplace")}
+                  </Button>
+                ) : null
+              }
             />
           )}
         </div>
@@ -277,7 +318,7 @@ export function PluginSettings({
           </Dialog.Content>
         </Dialog.Root>
       ) : null}
-    </SettingPage>
+    </div>
   )
 }
 

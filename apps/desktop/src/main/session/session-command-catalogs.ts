@@ -3,7 +3,8 @@
 import type { AgentCommand } from "@pigclaude/ui-contracts"
 import type { ClaudeCodePluginSessionSource } from "./claude-code-plugin-session-source"
 import { claudeCommands, draftBuiltinCommands } from "./claude-commands"
-import { scanProjectCommands } from "./project-command-catalog"
+import { claudeSkillChoice } from "./claude-skill-invocations"
+import { scanProjectCommandCatalog } from "./project-command-catalog"
 import type { SessionHost } from "./session-host"
 
 type Catalog = {
@@ -27,7 +28,7 @@ export function trackSessionCommandCatalogs(
   })
 }
 
-/** 活跃命令取实际 SDK；只有草稿的项目占位列表才加当前已启用插件的声明。 */
+/** 活跃命令取 SDK；项目 Skill 选项使用同一工作目录的本地元数据。 */
 export async function readCommandCatalog(
   host: SessionHost | null,
   workspace: string,
@@ -35,15 +36,37 @@ export async function readCommandCatalog(
 ): Promise<readonly AgentCommand[]> {
   const catalog = host === null ? undefined : catalogs.get(host)
   const current = sessionId === undefined ? undefined : catalog?.live.get(sessionId)
-  if (current !== undefined) return current
-
-  const [project, pluginNames] = await Promise.all([
-    scanProjectCommands(workspace),
+  const [project, pluginNames, personal] = await Promise.all([
+    scanProjectCommandCatalog(workspace).catch((error: unknown) => {
+      if (current === undefined) throw error
+      return { commands: [], skills: [] }
+    }),
     sessionId === undefined ? catalog?.plugins?.commands().catch(() => []) : undefined,
+    sessionId === undefined ? catalog?.plugins?.personalSkills?.().catch(() => []) : undefined,
   ])
-  return claudeCommands([
-    ...draftBuiltinCommands(),
-    ...project.map(({ name }) => ({ name })),
-    ...(pluginNames ?? []).map((name) => ({ name })),
-  ])
+  const commands =
+    current ??
+    claudeCommands([
+      ...draftBuiltinCommands(),
+      ...project.commands.map(({ name }) => ({ name })),
+      ...(pluginNames ?? []).map((name) => ({ name })),
+    ])
+  const selectable = new Set(
+    commands
+      .filter(({ kind, text }) => kind === "skill" && text.startsWith("/"))
+      .map(({ name }) => name),
+  )
+  const taken = new Set([...project.commands.map(({ name }) => name), ...(pluginNames ?? [])])
+  const appPluginNames = new Set((pluginNames ?? []).map((name) => name.split(":", 1)[0]))
+  return [
+    ...commands,
+    ...project.skills
+      .filter(({ name }) => selectable.has(name))
+      .map((skill) => claudeSkillChoice(skill, "project")),
+    ...(personal ?? [])
+      .filter(
+        ({ name, plugin }) => !taken.has(name) && (!plugin || !appPluginNames.has(plugin.name)),
+      )
+      .map((skill) => claudeSkillChoice(skill, "user")),
+  ]
 }

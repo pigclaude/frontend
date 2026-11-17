@@ -1,5 +1,5 @@
 /**
- * 定时任务表单的下拉：field 是输入框样子（会话选择），pill 是计划框里的小胶囊（频率、几点、几分）。
+ * 定时任务表单的下拉：field 是输入框样子，pill 是计划框里的小胶囊。
  * 多选的星期几是一个胶囊，点开是带勾选的列表。
  */
 import { Check, ChevronDown } from "lucide-react"
@@ -34,7 +34,7 @@ export function ChoiceSelect<T extends string>({
         className={cn(variant === "pill" ? "pill-select" : "input select-trigger", className)}
         aria-label={label}
       >
-        <Select.Value className={variant === "pill" ? undefined : "grow truncate"}>
+        <Select.Value className={variant === "pill" ? "truncate" : "grow truncate"}>
           {(current: string) =>
             options.find((option) => option.value === current)?.label ?? current
           }

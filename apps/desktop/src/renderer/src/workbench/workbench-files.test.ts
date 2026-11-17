@@ -36,7 +36,7 @@ describe("workbench files", () => {
       ".mcp.json": '{ "mcpServers": {} }\n',
       "notes.txt": "ordinary project file",
     })
-    const notice = "此文件仅在完全信任此项目后生效。"
+    const notice = "启用项目设置与 MCP 后，此文件会从下一次会话开始生效。"
 
     await click(treeRow(".claude"))
     await click(treeRow("settings.local.json"))

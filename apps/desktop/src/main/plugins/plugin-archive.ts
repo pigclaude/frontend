@@ -32,6 +32,7 @@ export async function readCapabilityPluginArchive(
 export async function readPluginArchiveBytes(
   bytes: Buffer,
   expectedSha256: string | null,
+  githubRoot?: string,
 ): Promise<{ files: ReadonlyMap<string, Buffer>; sha256: string }> {
   const expected = expectedSha256 === null ? null : archiveChecksum(expectedSha256)
   try {
@@ -41,7 +42,7 @@ export async function readPluginArchiveBytes(
     if (expected !== null && sha256 !== expected)
       throw new PluginArchiveError("PLUGIN_ARCHIVE_SHA256_MISMATCH")
     const entries = new PluginArchiveEntries()
-    if (bytes[0] === 0x1f && bytes[1] === 0x8b) await readPluginTar(bytes, entries)
+    if (bytes[0] === 0x1f && bytes[1] === 0x8b) await readPluginTar(bytes, entries, githubRoot)
     else await readPluginZip(bytes, entries)
     return { files: entries.finish(), sha256 }
   } catch (error) {

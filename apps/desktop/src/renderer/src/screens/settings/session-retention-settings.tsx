@@ -28,11 +28,6 @@ export function SessionRetentionSettings({ history }: { history: SessionHistoryC
 
   return (
     <SettingSection>
-      {history.loadError === null ? null : (
-        <p className="error-text" role="alert">
-          {history.loadError}
-        </p>
-      )}
       <SettingRow
         title={t("shell.session.retention")}
         description={t("shell.session.retentionHint")}

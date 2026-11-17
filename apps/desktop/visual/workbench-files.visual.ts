@@ -29,6 +29,29 @@ async function openSource(panel: Locator): Promise<void> {
   await expect(panel.locator(".code-layer .tok").first()).toBeVisible()
 }
 
+test("右栏展开时接管自己的控制按钮，底部终端始终在会话顶栏", async ({ page }) => {
+  await page.goto("/?screen=chat-new&theme=light&glass=0&workbench=1")
+  const header = page.locator(".panel-top")
+  const terminal = header.getByRole("button", { name: "切换底部终端" })
+  const terminalButton = await terminal.elementHandle()
+  await header.getByRole("button", { name: "切换右侧面板" }).click()
+  const rightBar = page.locator(".right-panel-bar")
+  await expect(header.getByRole("button", { name: "切换右侧面板" })).toHaveCount(0, {
+    timeout: 1_000,
+  })
+  await expect(rightBar.getByRole("button", { name: "切换右侧面板" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  )
+  await expect(rightBar.getByRole("button", { name: "切换底部终端" })).toHaveCount(0)
+  expect(await terminal.evaluate((button, before) => button === before, terminalButton)).toBe(true)
+  await rightBar.getByRole("button", { name: "切换右侧面板" }).click()
+  await expect(header.getByRole("button", { name: "切换右侧面板" })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  )
+})
+
 for (const theme of ["light", "dark"] as const) {
   test(`workbench files ${theme}`, async ({ page }) => {
     const panel = await openFiles(page, theme)

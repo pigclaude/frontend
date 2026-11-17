@@ -56,6 +56,8 @@ const entry = z.object({
   name: pluginName,
   description: nonempty,
   version: nonempty,
+  publisherType: z.unknown().optional(),
+  category: z.unknown().optional(),
   source: z.object({ source: z.literal("github"), repo, sha: commit }),
   pigclaude: z.object({
     kind: z.enum(["capability", "claude-code"]),
@@ -65,6 +67,7 @@ const entry = z.object({
     review: z.object({ status: z.literal("reviewed"), reviewedAt: timestamp }),
   }),
 })
+const displayCategory = z.string().trim().min(1).max(64)
 const officialCatalog = z.object({
   name: pluginName,
   owner: z.object({ name: nonempty }),
@@ -199,7 +202,23 @@ function verifiedCatalog(bytes: Uint8Array, signer: string): OfficialPluginMarke
     )
       throw new Error(invalidCatalog)
     return {
-      catalog,
+      catalog: {
+        ...catalog,
+        entries: catalog.entries.map((item, index) => {
+          const published = raw.plugins[index]
+          const publisher = published?.publisherType
+          const category = displayCategory.safeParse(published?.category)
+          if (publisher !== "official" && publisher !== "community" && !category.success)
+            return item
+          return {
+            ...item,
+            officialListing: {
+              publisherType: publisher === "community" ? "community" : "official",
+              ...(category.success ? { category: category.data } : {}),
+            },
+          }
+        }),
+      },
       serial,
       issuedAt,
       expiresAt,

@@ -1,14 +1,18 @@
 // 收集固定提交、带校验值的 HTTPS 归档或从主进程选取的开发目录。
 
 import { useId, useState, type ComponentProps, type FormEvent } from "react"
-import { FolderOpen } from "lucide-react"
+import { FolderOpen, GitBranch } from "lucide-react"
 import { Button, Dialog, Input, SegmentedControl } from "@pigclaude/ui-primitives"
-import type { PluginMarketplaceSourceInput } from "../../../../plugin-marketplace-contract"
+import type {
+  PluginMarketplaceSourceInput,
+  PluginMarketplaceSourceView,
+} from "../../../../plugin-marketplace-contract"
 import { useText, type TextKey } from "../../locale/text"
 import {
   marketplaceErrorKey,
   marketplaceSourceLabels,
   marketplaceSourcePin,
+  marketplaceSourcePresets,
 } from "./plugin-marketplace-view"
 
 type SourceKind = PluginMarketplaceSourceInput["kind"]
@@ -18,6 +22,7 @@ export function PluginMarketplaceAddSource({
   developerMode,
   busy,
   error,
+  sources,
   selectDirectory,
   onClose,
   onAdd,
@@ -25,6 +30,7 @@ export function PluginMarketplaceAddSource({
   developerMode: boolean
   busy: boolean
   error: string | null
+  sources: readonly PluginMarketplaceSourceView[]
   selectDirectory: () => Promise<string | null>
   onClose: () => void
   onAdd: (input: PluginMarketplaceSourceInput) => void
@@ -46,6 +52,10 @@ export function PluginMarketplaceAddSource({
   const selected = kind === "directory" && !developerMode ? "github" : kind
   const input = validSource({ selected, repo, commit, url, sha256, directory })
   const issue = selectionError ? t(selectionError) : error
+  const suggestions = marketplaceSourcePresets.filter(
+    ({ input }) =>
+      !sources.some(({ kind, label }) => kind === "github" && label.startsWith(input.repo + "@")),
+  )
 
   async function pickDirectory(): Promise<void> {
     if (disabled) return
@@ -76,6 +86,30 @@ export function PluginMarketplaceAddSource({
       >
         <form onSubmit={submit}>
           <Dialog.Body>
+            {suggestions.length ? (
+              <div className="field">
+                <span className="label">{t("pluginMarketplace.suggestedSources")}</span>
+                <div className="marketplace-source-presets">
+                  {suggestions.map(({ name, input }) => (
+                    <Button
+                      key={input.repo}
+                      type="button"
+                      disabled={disabled}
+                      title={input.repo}
+                      onClick={() => {
+                        setKind("github")
+                        setRepo(input.repo)
+                        setCommit(input.commit)
+                        setSelectionError(null)
+                      }}
+                    >
+                      <GitBranch className="ic ic-sm" aria-hidden="true" />
+                      {t(name)}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <SegmentedControl<SourceKind>
               aria-label={t("pluginMarketplace.sourceKind")}
               options={available.map((value) => ({
@@ -133,12 +167,7 @@ export function PluginMarketplaceAddSource({
                 </label>
                 <div className="install-dialog-input">
                   <Input id={directoryId} className="mono" readOnly value={directory ?? ""} />
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={disabled}
-                    onClick={() => void pickDirectory()}
-                  >
+                  <Button type="button" disabled={disabled} onClick={() => void pickDirectory()}>
                     <FolderOpen className="ic ic-sm" aria-hidden="true" />
                     {t("pluginMarketplace.selectDirectory")}
                   </Button>

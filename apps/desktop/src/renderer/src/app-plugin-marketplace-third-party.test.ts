@@ -25,36 +25,46 @@ function control(name: string, scope: ParentNode): HTMLButtonElement | undefined
   )
 }
 
+function thirdPartySwitch(): Element | null {
+  return dialog().querySelector(`[role="switch"][aria-label="${label}"]`)
+}
+
 it("第三方市场默认关闭，只有确认风险才开启，关闭不等待下一次读取", async () => {
   const reviewed = {
     ...marketEntry,
     id: "reviewed",
+    sourceId: "official-catalog",
     name: "官方手册",
     reviewStatus: "reviewed",
   } as const
   const f = marketplaceFixture(
     true,
     [marketEntry, reviewed],
-    [{ ...originalSource, kind: "github", pin: "a".repeat(40) }],
+    [
+      { ...originalSource, kind: "github", pin: "a".repeat(40) },
+      {
+        ...originalSource,
+        id: reviewed.sourceId,
+        kind: "official",
+        catalogName: "PigClaude 官方目录",
+      },
+    ],
     false,
   )
-  await openMarketplace(app, f)
+  await openMarketplace(app, f, "公开")
   expect(app.container.textContent).not.toContain("工程手册")
   expect(app.container.textContent).toContain("官方手册")
-  expect(
-    app.container
-      .querySelector('[role="switch"][aria-label="第三方市场"]')
-      ?.getAttribute("aria-checked"),
-  ).toBe("false")
+  expect(control("查看 官方手册 的市场详情", app.container)?.textContent).toContain("已审核")
+  expect(app.container.querySelector('[role="switch"][aria-label="第三方市场"]')).toBeNull()
 
   await select("市场源", app.container)
+  expect(thirdPartySwitch()?.getAttribute("aria-checked")).toBe("false")
   expect(buttonNamed("添加市场源", dialog())?.disabled).toBe(true)
   expect(control("刷新 团队目录", dialog())?.disabled).toBe(true)
   expect(control("更换 团队目录 的版本", dialog())?.disabled).toBe(true)
   expect(control("删除 团队目录", dialog())?.disabled).toBe(false)
-  await select("关闭", dialog(), '[aria-label="关闭"]')
 
-  await select(label, app.container, '[role="switch"]')
+  await select(label, dialog(), '[role="switch"]')
   expect(dialog().textContent).toContain("未经 PigClaude 审核")
   expect(dialog().textContent).toContain("Skill")
   expect(f.market.setThirdPartyEnabled).not.toHaveBeenCalled()
@@ -62,23 +72,29 @@ it("第三方市场默认关闭，只有确认风险才开启，关闭不等待�
   expect(f.market.setThirdPartyEnabled).not.toHaveBeenCalled()
   expect(app.container.textContent).not.toContain("工程手册")
 
-  await select(label, app.container, '[role="switch"]')
+  await select(label, dialog(), '[role="switch"]')
   await select("开启第三方市场", dialog())
   expect(f.market.setThirdPartyEnabled).toHaveBeenCalledExactlyOnceWith(true)
+  expect(thirdPartySwitch()?.getAttribute("aria-checked")).toBe("true")
+  await select("关闭", dialog(), '[aria-label="关闭"]')
+  await select("个人", app.container, '[role="radio"]')
   const entry = control("查看 工程手册 的市场详情", app.container)
   expect(entry?.textContent).toContain("未审核")
-  expect(control("查看 官方手册 的市场详情", app.container)?.textContent).not.toContain("未审核")
+  expect(app.container.textContent).not.toContain("官方手册")
   await select("查看 工程手册 的市场详情", app.container, "button[aria-label]")
   expect(dialog().textContent).toContain("未审核")
   await select("关闭", dialog(), '[aria-label="关闭"]')
 
+  await select("市场源", app.container)
   f.market.list.mockImplementationOnce(() => new Promise(() => undefined))
-  await select(label, app.container, '[role="switch"]')
+  await select(label, dialog(), '[role="switch"]')
   expect(f.market.setThirdPartyEnabled.mock.calls).toEqual([[true], [false]])
-  expect(document.querySelector('[role="dialog"]')).toBeNull()
+  expect(thirdPartySwitch()?.getAttribute("aria-checked")).toBe("false")
+  await select("关闭", dialog(), '[aria-label="关闭"]')
   expect(app.container.textContent).not.toContain("工程手册")
+  await select("公开", app.container, '[role="radio"]')
   expect(app.container.textContent).toContain("官方手册")
-  await select("已安装", app.container, '[role="radio"]')
+  await select("插件管理", app.container)
   expect(app.container.textContent).toContain("本地工具")
 })
 

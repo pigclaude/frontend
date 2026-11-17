@@ -34,9 +34,16 @@ export type PluginMarketplaceEntryInfo = {
   domains: string[]
 }
 
+/** 已验签目录发布的维护方和用途，仅用于浏览分组。 */
+export type OfficialPluginListing = {
+  publisherType: "official" | "community"
+  category?: string
+}
+
 /** 条目绑定来源 ID，动作由主进程根据已安装记录判定。 */
 export type PluginMarketplaceEntryView = PluginMarketplaceEntryInfo & {
   sourceId: string
+  officialListing?: OfficialPluginListing
   action: "install" | "installed" | "update" | "blocked"
   blockedBy?: "expired" | "revoked"
   reviewStatus: "unreviewed" | "reviewed"

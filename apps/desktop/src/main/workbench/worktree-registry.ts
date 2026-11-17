@@ -7,6 +7,7 @@ import { dirname, isAbsolute } from "node:path"
 const defaultMaxEntries = 200
 
 type Entry = { path: string; project: string }
+const writesByPath = new Map<string, Promise<void>>()
 
 /** 登记文件的绝对路径和最多保留的条数。 */
 export type WorktreeRegistryOptions = { filePath: string; maxEntries?: number }
@@ -28,10 +29,30 @@ export class WorktreeRegistry {
    */
   async remember(path: string, from: string): Promise<void> {
     if (!isAbsolute(path) || !isAbsolute(from)) throw new Error("WORKBENCH_PATH_INVALID")
-    const entries = await this.#read()
-    const project = entries.find((entry) => entry.path === from)?.project ?? from
-    const next = [...entries.filter((entry) => entry.path !== path), { path, project }]
-    await this.#write(next.slice(-this.#maxEntries))
+    await this.#change((entries) => {
+      const project = entries.find((entry) => entry.path === from)?.project ?? from
+      return [...entries.filter((entry) => entry.path !== path), { path, project }]
+    })
+  }
+
+  /** 移除已清理的工作树登记，只影响指定路径。 */
+  forget(path: string): Promise<void> {
+    return this.#change((entries) => entries.filter((entry) => entry.path !== path))
+  }
+
+  async #change(update: (entries: Entry[]) => Entry[]): Promise<void> {
+    const previous = writesByPath.get(this.#filePath) ?? Promise.resolve()
+    const write = previous
+      .catch(() => undefined)
+      .then(async () => {
+        await this.#write(update(await this.#read()).slice(-this.#maxEntries))
+      })
+    writesByPath.set(this.#filePath, write)
+    try {
+      await write
+    } finally {
+      if (writesByPath.get(this.#filePath) === write) writesByPath.delete(this.#filePath)
+    }
   }
 
   /** 属于 projects 里某个项目、目录仍然存在的 worktree，按登记顺序。 */

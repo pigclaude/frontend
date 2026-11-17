@@ -5,6 +5,7 @@ import { readdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { chromium, expect } from "@playwright/test"
 import { startInstalledSocksRelay } from "./test11-socks-relay.mjs"
+import { diagnoseLinuxBrowser } from "./test11-linux-browser-diagnostic.mjs"
 
 async function findBrowserPort(userData) {
   const root = join(userData, "local", "browser-profiles")
@@ -30,7 +31,7 @@ async function directControl() {
 }
 
 /** 使用本轮安装副本与独立中转，所有账号授权操作只到自检和取消。 */
-export async function verifyInstalledProxy(app, userData, evidence, pass) {
+export async function verifyInstalledProxy(app, userData, evidence, pass, browserBinary) {
   const relay = await startInstalledSocksRelay()
   const result = {
     proxy: "authenticated SOCKS5 loopback relay",
@@ -80,6 +81,53 @@ export async function verifyInstalledProxy(app, userData, evidence, pass) {
     assert.equal(profile.proxyId, saved.id)
     assert.equal(profile.fingerprint.lang, result.locale)
     assert.equal(profile.fingerprint.timezone, result.timezone)
+
+    result.directServiceReachableBeforeFailure = await directControl()
+    relay.fail()
+    const deniedBefore = relay.snapshot().denied
+    const failed = await app.evaluate(
+      async ({ id, url }) => {
+        const proxy = await window.pigclaude.proxies.test(id)
+        let egress
+        try {
+          egress = await window.pigclaude.egress.check(id)
+        } catch {
+          egress = { ok: false }
+        }
+        let newProxyRejected = false
+        try {
+          await window.pigclaude.proxies.saveVerified({ name: "failed test.11 SOCKS5", url })
+        } catch {
+          newProxyRejected = true
+        }
+        return {
+          ok: proxy.lastTest?.ok,
+          egressOk: egress.ok,
+          newProxyRejected,
+          count: (await window.pigclaude.proxies.list()).length,
+        }
+      },
+      { id: saved.id, url: relay.url },
+    )
+    assert.equal(failed.ok, false)
+    assert.equal(failed.egressOk, false)
+    assert.equal(failed.newProxyRejected, true)
+    assert(relay.snapshot().denied > deniedBefore, "失败请求没有抵达绑定的代理入口")
+    assert.equal(failed.count, 1)
+    result.directServiceReachableAfterFailure = await directControl()
+    result.failedProxy = {
+      testRejected: !failed.ok,
+      egressRejected: !failed.egressOk,
+      proxyIngressObserved: true,
+      count: failed.count,
+    }
+    result.checks.push(
+      "selected requests failed with bound SOCKS5 down while direct control remained reachable",
+    )
+    pass("installed proxy test and egress check fail closed while direct control stays reachable")
+    relay.restore()
+    const restored = await app.evaluate((id) => window.pigclaude.proxies.test(id), saved.id)
+    assert.equal(restored.lastTest?.ok, true, "恢复夹具后代理仍不可用")
 
     await app.evaluate((browserProfileId) => {
       window.test11AuthorizationFinished = false
@@ -166,49 +214,6 @@ export async function verifyInstalledProxy(app, userData, evidence, pass) {
       .toBe(true)
     await browser.close().catch(() => {})
     browser = undefined
-    result.directServiceReachableBeforeFailure = await directControl()
-    relay.fail()
-    const deniedBefore = relay.snapshot().denied
-    const failed = await app.evaluate(
-      async ({ id, url }) => {
-        const proxy = await window.pigclaude.proxies.test(id)
-        let egress
-        try {
-          egress = await window.pigclaude.egress.check(id)
-        } catch {
-          egress = { ok: false }
-        }
-        let newProxyRejected = false
-        try {
-          await window.pigclaude.proxies.saveVerified({ name: "failed test.11 SOCKS5", url })
-        } catch {
-          newProxyRejected = true
-        }
-        return {
-          ok: proxy.lastTest?.ok,
-          egressOk: egress.ok,
-          newProxyRejected,
-          count: (await window.pigclaude.proxies.list()).length,
-        }
-      },
-      { id: saved.id, url: relay.url },
-    )
-    assert.equal(failed.ok, false)
-    assert.equal(failed.egressOk, false)
-    assert.equal(failed.newProxyRejected, true)
-    assert(relay.snapshot().denied > deniedBefore, "失败请求没有抵达绑定的代理入口")
-    assert.equal(failed.count, 1)
-    result.directServiceReachableAfterFailure = await directControl()
-    result.failedProxy = {
-      testRejected: !failed.ok,
-      egressRejected: !failed.egressOk,
-      proxyIngressObserved: true,
-      count: failed.count,
-    }
-    result.checks.push(
-      "selected requests failed with bound SOCKS5 down while direct control remained reachable",
-    )
-    pass("installed proxy test and egress check fail closed while direct control stays reachable")
   } catch (error) {
     result.failure = {
       message: String(error.message).replace(/(?:https?:|socks5:)[^\s]+/g, "[URL]"),
@@ -220,6 +225,8 @@ export async function verifyInstalledProxy(app, userData, evidence, pass) {
       }))
       .catch(() => null)
     result.authorization = state
+    if (process.platform === "linux" && browserBinary)
+      await diagnoseLinuxBrowser(browserBinary, userData, evidence)
     throw error
   } finally {
     await app.evaluate(() => window.pigclaude.claudeAccounts.cancelAuthorization()).catch(() => {})

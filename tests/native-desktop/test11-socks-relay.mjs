@@ -90,6 +90,9 @@ export async function startInstalledSocksRelay() {
       failing = true
       for (const socket of sockets) socket.destroy()
     },
+    restore() {
+      failing = false
+    },
     async close() {
       for (const socket of sockets) socket.destroy()
       await new Promise((resolve, reject) => {

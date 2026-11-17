@@ -2,7 +2,7 @@
 
 import type { AccountRecord, ClaudeCredential, LocalStore } from "@pigclaude/local-store"
 import { createProxyAgent } from "@pigclaude/proxy-connection"
-import type { ProxyAgent } from "undici"
+import type { Dispatcher } from "undici"
 import { ClaudeAccountError } from "./errors"
 import {
   SubscriptionOAuthError,
@@ -65,7 +65,7 @@ export class CredentialRefresher {
     if (account.proxyId !== null && proxy === null) {
       throw new ClaudeAccountError("PROXY_UNAVAILABLE", "账号绑定的代理不存在")
     }
-    let dispatcher: ProxyAgent | null = null
+    let dispatcher: Dispatcher | null = null
     if (proxy !== null) {
       try {
         dispatcher = createProxyAgent(proxy.url)

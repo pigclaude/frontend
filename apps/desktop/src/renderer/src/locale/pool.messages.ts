@@ -75,7 +75,7 @@ export const poolZhCN = {
   "pool.proxies-screen.testAll": "全部测试",
   "pool.proxies-screen.add": "添加代理",
   "pool.proxies-screen.empty":
-    "还没有代理。代理可选；未绑定代理的账号使用系统网络。添加一个出口固定的 HTTP/HTTPS 代理，给需要固定出口的账号使用。",
+    "还没有代理。代理可选；未绑定代理的账号使用系统网络。添加一个出口固定的 HTTP、HTTPS 或 SOCKS5 代理，给需要固定出口的账号使用。",
   "pool.proxies-screen.testNamed": "测试 {value1}",
   "pool.proxies-screen.testing": "测试中…",
   "pool.proxies-screen.test": "测试",
@@ -133,7 +133,7 @@ export const poolZhCN = {
   "pool.proxy-dialogs.6": "保存后需要重新测试出口。为保护密码，编辑时需要重新填写完整地址。",
   "pool.proxy-dialogs.7": "地址",
   "pool.proxy-dialogs.8": "重新填写完整地址 http://user:pass@host:8000",
-  "pool.proxy-dialogs.9": "支持 http、https；不支持 SOCKS5",
+  "pool.proxy-dialogs.9": "支持 HTTP、HTTPS 和 SOCKS5",
   "pool.proxy-dialogs.10": "重新填写完整地址，包含密码",
   "pool.proxy-dialogs.11": "名称",
   "pool.proxy-dialogs.12": "取消",

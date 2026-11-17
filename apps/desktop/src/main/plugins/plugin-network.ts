@@ -2,7 +2,7 @@
 
 import { createHmac, randomBytes } from "node:crypto"
 import { createProxyAgent } from "@pigclaude/proxy-connection"
-import { fetch, type ProxyAgent } from "undici"
+import { fetch, type Dispatcher } from "undici"
 import { isProhibitedPluginDomain, normalizePluginNetworkDomain } from "./plugin-network-domains"
 import {
   PluginSandboxError,
@@ -51,7 +51,7 @@ export async function createPluginSandboxNetwork(
       const signal = AbortSignal.any([scope, request.signal])
       const url = target(request.url)
       if (url === null || signal.aborted) return Response.error()
-      let proxy: ProxyAgent | undefined
+      let proxy: Dispatcher | undefined
       try {
         const currentProxy = await readProxy()
         if (currentProxy !== expectedProxy || signal.aborted) return Response.error()

@@ -38,7 +38,7 @@ it("启动失败但已确认退出时，允许重新尝试", async () => {
 })
 
 describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
-  it("新代理通过 Xray 出口核对后才保存", async () => {
+  it.each(["http", "socks5"] as const)("新 %s 代理通过 Xray 出口核对后才保存", async (protocol) => {
     const directory = await mkdtemp(join(tmpdir(), "pigclaude-xray-new-proxy-"))
     const fixture = await createProxyFixture()
     const starter = createXrayRuntimeStarter({
@@ -53,12 +53,16 @@ describe.skipIf(!xrayBinary)("真实 Xray 桌面出口核对", () => {
         checkUrl: `http://127.0.0.1:${fixture.targetPort}/trace`,
         startProxyRuntime: starter,
       })
+      const httpUpstream = `http://user%40test:p%3Ass@127.0.0.1:${fixture.proxyPort}`
+      const upstream =
+        protocol === "socks5" ? await starter({ upstreamProxyUrl: httpUpstream }) : null
       const result = await service.saveVerified({
         name: "验收代理",
-        url: `http://user%40test:p%3Ass@127.0.0.1:${fixture.proxyPort}`,
+        url: upstream?.url ?? httpUpstream,
       })
       expect(result.lastTest).toMatchObject({ ok: true, ip: "198.51.100.42" })
-      expect(result.url).toContain("***")
+      if (protocol === "http") expect(result.url).toContain("***")
+      else expect(result.url).toBe(upstream?.url)
       expect(result.url).not.toContain("p%3Ass")
       expect(await store.listProxies()).toHaveLength(1)
       expect(fixture.accepted()).toBe(2)

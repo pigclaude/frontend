@@ -13,7 +13,7 @@ const directUpstream = vi.hoisted(() => ({
 vi.mock("undici", async () => {
   const actual = await vi.importActual<typeof import("undici")>("undici")
   return {
-    ProxyAgent: actual.ProxyAgent,
+    ...actual,
     fetch: (
       input: Parameters<typeof actual.fetch>[0],
       init?: Parameters<typeof actual.fetch>[1],

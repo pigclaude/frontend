@@ -1,5 +1,6 @@
 // 按代理配置复用 Xray，并在没有使用者时延迟回收。
 
+import { isAccountProxyProtocol } from "@pigclaude/contracts/claude-account"
 import { createHash } from "node:crypto"
 import type { ProxyRuntime, StartProxyRuntime } from "@pigclaude/login-gate/proxy-runtime"
 import { ClaudeAccountError } from "./errors"
@@ -137,7 +138,7 @@ export function createXrayRuntimePool(
     let canonical: string
     try {
       const url = new URL(input.upstreamProxyUrl)
-      if (url.protocol !== "http:" && url.protocol !== "https:") throw unavailable()
+      if (!isAccountProxyProtocol(url.protocol)) throw unavailable()
       canonical = url.href
     } catch {
       throw unavailable()

@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "socks": "2.8.10",
     "undici": "6.21.2"
   },
   "devDependencies": {

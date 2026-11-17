@@ -1,4 +1,5 @@
 // 负责登录后的全屏新手引导：三步分屏、顶部进度、每步可跳过，随时「稍后再说」进入主界面。
+import { isAccountProxyProtocol } from "@pigclaude/contracts/claude-account"
 import { desktopText } from "../locale/text"
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react"
 import { Icon } from "../components/icon"
@@ -152,8 +153,7 @@ function ProxyStep({
     let name: string
     try {
       const parsed = new URL(address.trim())
-      if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || !parsed.host)
-        throw new Error()
+      if (!isAccountProxyProtocol(parsed.protocol) || !parsed.host) throw new Error()
       name = parsed.host
     } catch {
       setError(desktopText("flows.onboarding-screen.13"))

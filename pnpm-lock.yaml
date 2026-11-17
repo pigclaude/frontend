@@ -460,6 +460,9 @@ importers:
 
   packages/proxy-connection:
     dependencies:
+      socks:
+        specifier: 2.8.10
+        version: 2.8.10
       undici:
         specifier: 6.21.2
         version: 6.21.2

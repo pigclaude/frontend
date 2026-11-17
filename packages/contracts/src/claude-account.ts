@@ -142,6 +142,11 @@ export type ProxyView = {
   lastTest: ProxyTestView | null
 }
 
+/** 校验账号代理支持的上游协议，供设置和运行时统一判断。 */
+export function isAccountProxyProtocol(protocol: string): boolean {
+  return protocol === "http:" || protocol === "https:" || protocol === "socks5:"
+}
+
 /** Claude 账号登录流程阶段。 */
 export type ClaudeAccountPhase =
   | "preparing"

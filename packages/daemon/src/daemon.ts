@@ -8,7 +8,7 @@
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import { createProxyAgent } from "@pigclaude/proxy-connection"
-import { fetch as undiciFetch, type ProxyAgent } from "undici"
+import { fetch as undiciFetch, type Dispatcher } from "undici"
 import { oauthBetaHeader, requestHeaders, sessionHeaderName } from "./daemon-headers.ts"
 import { daemonOrigin, daemonUpstreamUrl } from "./daemon-origin.ts"
 import { endpointKind } from "./daemon-endpoints.ts"
@@ -245,7 +245,7 @@ export class LocalDaemon {
         body: method === "GET" || method === "HEAD" || body.length === 0 ? undefined : body,
         signal: abort.signal,
       }
-      let agent: ProxyAgent | undefined
+      let agent: Dispatcher | undefined
       let continueWithNext = false
       try {
         let upstream: Awaited<ReturnType<typeof undiciFetch>> | undefined
@@ -337,7 +337,7 @@ function fetchDirect(input: UpstreamRequest): ReturnType<typeof undiciFetch> {
 
 // 只有带上代理 dispatcher 才会经过账号代理。空 proxyUrl 在选号之后直接返回 503，null 走直连。
 function fetchThroughProxy(
-  agent: ProxyAgent,
+  agent: Dispatcher,
   input: UpstreamRequest,
 ): ReturnType<typeof undiciFetch> {
   return undiciFetch(input.url, {

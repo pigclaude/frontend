@@ -3,7 +3,7 @@
 import { isIP } from "node:net"
 import { createProxyAgent } from "@pigclaude/proxy-connection"
 import nodeFetch from "node-fetch"
-import { ProxyAgent, fetch as undiciFetch } from "undici"
+import { fetch as undiciFetch, type Dispatcher } from "undici"
 import { XraySocksAgent } from "./xray-socks-agent.ts"
 
 /** 出口核对失败原因。 */
@@ -67,7 +67,7 @@ export async function checkEgress(input: {
   } catch {
     return { ok: false, reason: "proxy", message: "请勿登录" }
   }
-  let upstreamAgent: ProxyAgent | null = null
+  let upstreamAgent: Dispatcher | null = null
   let upstreamSignal: AbortSignal | undefined
   let destroyUpstream: (() => void) | undefined
   let destroying: Promise<void> | undefined

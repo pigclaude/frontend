@@ -18,31 +18,36 @@ const binary = process.env["PIGCLAUDE_TEST_CHROMIUM_BIN"]
 const xray = process.env["PIGCLAUDE_TEST_XRAY_BIN"]
 const authorization = "https://claude.test/oauth/authorize?state=synthetic-private-state"
 
-it.skipIf(!binary || !xray)(
-  "实际内核完成自检后显示本机报告，等待用户继续授权",
-  async () => {
-    await withEnvironmentBrowser(async ({ page, report, requests }) => {
-      expect(await page.title()).toBe("PigClaude 授权环境自检")
-      await expect.poll(() => report()?.verdict).toBe("passed")
-      expect(await page.locator("main").getAttribute("data-verdict")).toBe("passed")
-      expect(await page.locator("form").getAttribute("action")).toBe(
-        "https://claude.test/oauth/authorize",
-      )
-      expect(await page.locator('input[name="state"]').inputValue()).toBe("synthetic-private-state")
-      expect(await page.locator("body").textContent()).not.toContain("CheckCC")
-      expect(requests().direct).toBe(0)
-      expect(requests().viaProxy).toBeGreaterThanOrEqual(3)
-      const exported: unknown = await page.evaluate(`(async()=>{
+it.skipIf(!binary || !xray).each(["http", "socks5"] as const)(
+  "实际内核经 %s 上游完成自检后显示本机报告，等待用户继续授权",
+  async (upstreamProtocol) => {
+    await withEnvironmentBrowser(
+      async ({ page, report, requests }) => {
+        expect(await page.title()).toBe("PigClaude 授权环境自检")
+        await expect.poll(() => report()?.verdict).toBe("passed")
+        expect(await page.locator("main").getAttribute("data-verdict")).toBe("passed")
+        expect(await page.locator("form").getAttribute("action")).toBe(
+          "https://claude.test/oauth/authorize",
+        )
+        expect(await page.locator('input[name="state"]').inputValue()).toBe(
+          "synthetic-private-state",
+        )
+        expect(await page.locator("body").textContent()).not.toContain("CheckCC")
+        expect(requests().direct).toBe(0)
+        expect(requests().viaProxy).toBeGreaterThanOrEqual(3)
+        const exported: unknown = await page.evaluate(`(async()=>{
       let text;URL.createObjectURL=blob=>{text=blob.text();return "blob:synthetic"};
       HTMLAnchorElement.prototype.click=function(){};
       document.getElementById("export").click();return await text;
     })()`)
-      expect(exported).toEqual(expect.any(String))
-      expect(exported).not.toContain("1.1.1.1")
-      expect(exported).not.toContain("synthetic-private-state")
-      expect(exported).not.toContain("socks5://")
-      expect(exported).not.toContain("binding")
-    })
+        expect(exported).toEqual(expect.any(String))
+        expect(exported).not.toContain("1.1.1.1")
+        expect(exported).not.toContain("synthetic-private-state")
+        expect(exported).not.toContain("socks5://")
+        expect(exported).not.toContain("binding")
+      },
+      { upstreamProtocol },
+    )
   },
   90_000,
 )
@@ -156,6 +161,7 @@ async function withEnvironmentBrowser(
     requests: () => { direct: number; viaProxy: number }
   }) => Promise<void>,
   options: {
+    upstreamProtocol?: "http" | "socks5"
     secondaryIp?: string
     challenge?: boolean
     languageOverride?: string
@@ -262,9 +268,10 @@ async function withEnvironmentBrowser(
   let failure: unknown
   const cleanupErrors: unknown[] = []
   try {
-    const runtime = await start({
-      upstreamProxyUrl: `http://synthetic:password@127.0.0.1:${fixture.proxyPort}`,
-    })
+    const httpUpstream = `http://synthetic:password@127.0.0.1:${fixture.proxyPort}`
+    const socksUpstream =
+      options.upstreamProtocol === "socks5" ? await start({ upstreamProxyUrl: httpUpstream }) : null
+    const runtime = await start({ upstreamProxyUrl: socksUpstream?.url ?? httpUpstream })
     const launched = await adapter.launch({
       accountId: "environment-test",
       authorizeUrl: authorization,

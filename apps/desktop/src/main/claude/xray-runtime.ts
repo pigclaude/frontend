@@ -1,5 +1,6 @@
 // 负责通过标准输入启动和回收 Xray，并将本机 SOCKS5 入口连接到账号绑定的上游代理。
 
+import { isAccountProxyProtocol } from "@pigclaude/contracts/claude-account"
 import { spawn, type ChildProcess } from "node:child_process"
 import { connect, createServer } from "node:net"
 import { dirname, join } from "node:path"
@@ -71,13 +72,7 @@ export function createXrayRuntimeStarter(options: XrayRuntimeOptions): XrayRunti
     const config = {
       log: { loglevel: "warning" },
       inbounds: [{ listen: "127.0.0.1", port, protocol: "socks", settings: { udp: true } }],
-      outbounds: [
-        {
-          protocol: "http",
-          settings: upstream.settings,
-          ...(upstream.tls ? { streamSettings: { security: "tls" } } : {}),
-        },
-      ],
+      outbounds: [upstream],
     }
     let child: ChildProcess | null = null
     let exited: Promise<void> | undefined
@@ -233,18 +228,13 @@ function watchdogPath(resourcesPath: string | undefined): string {
     : join(moduleDirectory, "../../xray-watchdog.cjs")
 }
 
-function parseUpstream(value: string): {
-  settings: {
-    servers: Array<{ address: string; port: number; users?: Array<{ user: string; pass: string }> }>
-  }
-  tls: boolean
-} {
+function parseUpstream(value: string) {
   try {
     const url = new URL(value)
     if (
-      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      !isAccountProxyProtocol(url.protocol) ||
       !url.hostname ||
-      url.pathname !== "/" ||
+      (url.pathname !== "" && url.pathname !== "/") ||
       url.search !== "" ||
       url.hash !== ""
     ) {
@@ -252,17 +242,26 @@ function parseUpstream(value: string): {
     }
     const user = decodeURIComponent(url.username)
     const pass = decodeURIComponent(url.password)
+    const socks = url.protocol === "socks5:"
     return {
+      protocol: socks ? "socks" : "http",
       settings: {
         servers: [
           {
             address: url.hostname.replace(/^\[|\]$/g, ""),
-            port: url.port === "" ? (url.protocol === "https:" ? 443 : 80) : Number(url.port),
+            port:
+              url.port === ""
+                ? socks
+                  ? 1080
+                  : url.protocol === "https:"
+                    ? 443
+                    : 80
+                : Number(url.port),
             ...(user !== "" || pass !== "" ? { users: [{ user, pass }] } : {}),
           },
         ],
       },
-      tls: url.protocol === "https:",
+      ...(url.protocol === "https:" ? { streamSettings: { security: "tls" } } : {}),
     }
   } catch {
     throw unavailable()

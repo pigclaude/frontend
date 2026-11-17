@@ -1,12 +1,16 @@
 // 负责代理的新增、修改、删除、测试和出口核对；视图不包含代理密码。
 
 import { randomUUID } from "node:crypto"
-import type { EgressView, ProxyView } from "@pigclaude/contracts/claude-account"
+import {
+  isAccountProxyProtocol,
+  type EgressView,
+  type ProxyView,
+} from "@pigclaude/contracts/claude-account"
 import type { IpProxy, LocalStore } from "@pigclaude/local-store"
 import { checkEgress, parseExitIp } from "@pigclaude/login-gate/egress-check"
 import type { StartProxyRuntime } from "@pigclaude/login-gate/proxy-runtime"
 import { createProxyAgent } from "@pigclaude/proxy-connection"
-import { fetch as undiciFetch, type ProxyAgent } from "undici"
+import { fetch as undiciFetch, type Dispatcher } from "undici"
 import { ClaudeAccountError } from "./errors"
 import { isValidBridgeUrl } from "./launch-argument-guard"
 import type { BrowserProfileUsage } from "./browser-profile-usage"
@@ -47,7 +51,7 @@ export class ProxyService {
     return proxies.map(toView)
   }
 
-  /** 新增或修改代理。保证 URL 是 HTTP/HTTPS 且不以明文密码进入视图。 */
+  /** 新增或修改 HTTP、HTTPS 或 SOCKS5 代理。返回的视图隐藏密码。 */
   async save(input: { id?: string; name: string; url: string }): Promise<ProxyView> {
     const name = input.name.trim()
     if (name === "") throw new ClaudeAccountError("INVALID_INPUT", "代理名称不能为空")
@@ -115,7 +119,7 @@ export class ProxyService {
     const startedAt = Date.now()
     let ip: string | null = null
     let ok = false
-    let dispatcher: ProxyAgent | null = null
+    let dispatcher: Dispatcher | null = null
     try {
       dispatcher = createProxyAgent(proxy.url)
       const response = await undiciFetch(this.#checkUrl, {
@@ -197,8 +201,8 @@ function assertProxyUrl(value: string): void {
   } catch {
     throw new ClaudeAccountError("PROXY_INVALID", "代理地址无效")
   }
-  if ((url.protocol !== "http:" && url.protocol !== "https:") || url.host === "") {
-    throw new ClaudeAccountError("PROXY_INVALID", "代理只支持 HTTP/HTTPS")
+  if (!isAccountProxyProtocol(url.protocol) || url.host === "") {
+    throw new ClaudeAccountError("PROXY_INVALID", "代理只支持 HTTP/HTTPS/SOCKS5")
   }
 }
 

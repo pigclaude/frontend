@@ -84,11 +84,11 @@ export const flowsZhCN = {
   "flows.onboarding-screen.10": " 步",
   "flows.onboarding-screen.11": "添加账号",
   "flows.onboarding-screen.12": "开始第一个会话",
-  "flows.onboarding-screen.13": "代理地址无效，请输入 HTTP 或 HTTPS 代理地址。",
+  "flows.onboarding-screen.13": "代理地址无效，请输入 HTTP、HTTPS 或 SOCKS5 代理地址。",
   "flows.onboarding-screen.14": "代理验证失败，请检查代理和 Xray 后重试。",
   "flows.onboarding-screen.15": "代理地址",
   "flows.onboarding-screen.16":
-    "支持 http、https，添加前会先测试一次；也可以跳过，让账号使用系统网络",
+    "支持 HTTP、HTTPS 和 SOCKS5，添加前会先测试一次；也可以跳过，让账号使用系统网络",
   "flows.onboarding-screen.17": "正在验证…",
   "flows.onboarding-screen.18": "测试并添加",
   "flows.onboarding-screen.19": "跳过",

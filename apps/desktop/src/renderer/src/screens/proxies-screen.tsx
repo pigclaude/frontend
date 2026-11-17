@@ -15,7 +15,7 @@ export type ProxiesScreenProps = {
   onTest?: (proxyId: string) => Promise<void> | void
   onSave?: (input: { id?: string; name: string; url: string }) => Promise<void> | void
   onRemove?: (proxyId: string) => Promise<void> | void
-  /** 最近一次代理操作的错误，例如地址不是 HTTP/HTTPS。 */
+  /** 最近一次代理操作的错误，例如使用了不支持的协议。 */
   error?: string | null
 }
 

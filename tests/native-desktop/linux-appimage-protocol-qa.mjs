@@ -276,6 +276,20 @@ try {
   pass(
     "Chrome opened the real system protocol from the fixture page and the running instance exchanged once",
   )
+  const appExecutable = await readlink("/proc/" + appPid + "/exe").catch(async () =>
+    (await run("sudo", ["-n", "readlink", "/proc/" + appPid + "/exe"])).stdout.trim(),
+  )
+  const pigBrowser = join(
+    dirname(appExecutable),
+    "resources",
+    "pigclaude-runtime",
+    "pigbrowser",
+    "linux-x64",
+    "browser",
+    "chrome",
+  )
+  begin("installed SOCKS5 and browser/CLI locale")
+  await verifyInstalledProxy(app, env.PIGCLAUDE_USER_DATA, output, pass, pigBrowser, appPid)
   await closeApp(app)
 
   begin("protocol cold start with the application stopped")
@@ -291,24 +305,6 @@ try {
   assert.equal(fixture.state().exchangeAttempts, 1)
   result.coldStarted = true
   pass("GIO cold-launched the same AppImage without any installed test launcher")
-
-  process.kill(appPid, "SIGTERM")
-  await expect.poll(() => alive(appPid), { timeout: 15000 }).toBe(false)
-  const proxyPage = await mountDirectly()
-  const appExecutable = await readlink("/proc/" + appPid + "/exe").catch(async () =>
-    (await run("sudo", ["-n", "readlink", "/proc/" + appPid + "/exe"])).stdout.trim(),
-  )
-  const pigBrowser = join(
-    dirname(appExecutable),
-    "resources",
-    "pigclaude-runtime",
-    "pigbrowser",
-    "linux-x64",
-    "browser",
-    "chrome",
-  )
-  begin("installed SOCKS5 and browser/CLI locale")
-  await verifyInstalledProxy(proxyPage, env.PIGCLAUDE_USER_DATA, output, pass, pigBrowser, appPid)
 } catch (error) {
   result.failure = { stage, message: safe(error.stack ?? error).slice(0, 2300) }
   console.error(result.failure)

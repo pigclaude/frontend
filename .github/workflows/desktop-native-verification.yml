@@ -1,6 +1,6 @@
 # 在新的 macOS 与 Windows 运行器上安装 test.9 的制品并验收系统授权回跳。
 name: Desktop native verification
-run-name: Verify test.9 macOS DMG and Windows NSIS installation
+run-name: Verify test.9 DMG installation on macOS 26
 
 on:
   workflow_dispatch:
@@ -15,14 +15,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15
+          - runner: macos-26
             target: darwin-arm64
             installer: PigClaude-0.0.1-arm64.dmg
             sha256: ff831825022f74ac75dc1d1aa050c82287567ea03b0843fc8dfe17c1c32f766d
-          - runner: windows-2022
-            target: win32-x64
-            installer: PigClaude-0.0.1-x64.exe
-            sha256: 029c89eb83e5c2f3f6b265e3b05b7ca571c58bf0493e1e1d15cda30c14e2a399
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     steps:

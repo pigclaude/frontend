@@ -38,11 +38,10 @@ it("首次启动 Linux AppImage 会注册链接到稳定制品路径的桌面入
   try {
     await writeFile(image, "", { mode: 0o700 })
     await writeFile(
-      join(directory, "xdg-mime"),
+      join(directory, "gio"),
       [
         "#!/bin/sh",
-        'if [ "$1" = "query" ]; then exit 0; fi',
-        'test -f "$XDG_DATA_HOME/applications/$2" || exit 1',
+        'test -f "$XDG_DATA_HOME/applications/$3" || exit 1',
         'printf "%s\\n" "$@" > "$XDG_DATA_HOME/registration"',
         "",
       ].join("\n"),
@@ -62,7 +61,7 @@ it("首次启动 Linux AppImage 会注册链接到稳定制品路径的桌面入
     expect(launcher).toContain("%u")
     expect(launcher).toContain("MimeType=x-scheme-handler/pigclaude;")
     expect(await readFile(join(data, "registration"), "utf8")).toBe(
-      "default\npigclaude-appimage.desktop\nx-scheme-handler/pigclaude\n",
+      "mime\nx-scheme-handler/pigclaude\npigclaude-appimage.desktop\n",
     )
     expect(fixture.registrationCalls).toBe(0)
   } finally {

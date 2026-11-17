@@ -19,6 +19,7 @@ it.skipIf(process.platform !== "linux" || !existsSync(gio))(
     const callback = "pigclaude://authorize/callback?code=safe-fixture%2B&state=state-fixture"
     const env = {
       PATH: "/usr/bin:/bin",
+      APPIMAGE: image,
       XDG_CONFIG_HOME: join(home, "config"),
       XDG_DATA_HOME: join(home, "data"),
       XDG_CONFIG_DIRS: join(home, "system-config"),
@@ -27,11 +28,13 @@ it.skipIf(process.platform !== "linux" || !existsSync(gio))(
     }
     try {
       await writeFile(image, '#!/bin/sh\nprintf "%s\\n" "$@" > "$0.args"\n', { mode: 0o700 })
+      const nativeRegister = vi.fn()
       await registerDesktopAuthorizationProtocol(
-        { isPackaged: true, getPath: () => home, setAsDefaultProtocolClient: vi.fn() },
+        { isPackaged: true, getPath: () => home, setAsDefaultProtocolClient: nativeRegister },
         "linux",
         env,
       )
+      expect(nativeRegister).not.toHaveBeenCalled()
       await promisify(execFile)(gio, ["open", callback], { env, timeout: 5_000 })
       await vi.waitFor(
         async () => expect(await readFile(image + ".args", "utf8")).toBe(callback + "\n"),

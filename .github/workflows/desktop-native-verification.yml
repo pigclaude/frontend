@@ -1,96 +1,147 @@
-# 在实际 Windows 和 Ubuntu 运行器启动 Electron 并留存窗口验收证据。
+# 从修复提交仅构建 Linux AppImage，再在独立的 Ubuntu 桌面上验收协议。
 name: Desktop native verification
+run-name: Verify Linux AppImage automatic protocol registration
 
 on:
-  push:
-    branches: ["main", "codex/pigcode-ui-native-qa", "codex/pigcode-workbench"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  native:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, windows-2022]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 18
+  build-appimage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      XRAY_VERSION: v26.10.31
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: cd49276c87d9691f642a973808e7fb9f9817d086
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm pigcode:verify
-      - run: pnpm --filter @pigclaude/desktop exec electron --version
-        if: runner.os == 'Windows'
-      - name: Install Linux desktop test tools
-        if: runner.os == 'Linux'
+      - name: Check tracked source
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb xauth openbox dbus-x11 gnome-keyring libsecret-tools xdotool imagemagick libglib2.0-bin
-          test -x /usr/bin/gio
-      - name: Prepare Linux Electron
-        if: runner.os == 'Linux'
-        working-directory: apps/desktop
+          pnpm exec eslint .
+          pnpm exec prettier --check .
+          pnpm --filter @pigclaude/desktop typecheck
+      - name: 获取并校验固定 PigBrowser 与 Xray
+        shell: pwsh
+        env:
+          PIGBROWSER_READ_TOKEN: ${{ secrets.PIGBROWSER_READ_TOKEN }}
+          TARGET: linux-x64
+          XRAY_ARCHIVE: Xray-linux-64.zip
+          XRAY_SHA256: e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214
         run: |
-          node -e 'require("electron")'
-          electron="$(node -p 'require("electron")')"
-          sudo chown root:root "$(dirname "$electron")/chrome-sandbox"
-          sudo chmod 4755 "$(dirname "$electron")/chrome-sandbox"
-          "$electron" --version
+          $ErrorActionPreference = "Stop"
+          $root = Join-Path $env:RUNNER_TEMP "pigclaude-runtime"
+          $browserDir = Join-Path $root "browser"
+          $xrayDir = Join-Path $root "xray"
+          New-Item -ItemType Directory -Force $browserDir, $xrayDir | Out-Null
+          $browserArchive = node apps/desktop/download-pigbrowser.cjs --target $env:TARGET --dir $root
+          if ($LASTEXITCODE -ne 0) { throw "获取 PigBrowser 开发包失败，原因见上面的输出" }
+          $browserArchive = "$browserArchive".Trim()
+          $xrayArchive = Join-Path $root $env:XRAY_ARCHIVE
+          Invoke-WebRequest "https://github.com/XTLS/Xray-core/releases/download/$env:XRAY_VERSION/$env:XRAY_ARCHIVE" -OutFile $xrayArchive
+          if ((Get-FileHash $xrayArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:XRAY_SHA256) { throw "Xray 包校验失败" }
+          if ($IsMacOS) {
+            ditto -x -k $browserArchive $browserDir
+          } elseif ($IsWindows) {
+            Expand-Archive $browserArchive -DestinationPath $browserDir
+          } else {
+            tar -xf $browserArchive -C $browserDir
+          }
+          if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "PigBrowser 包解压失败" }
+          Expand-Archive $xrayArchive -DestinationPath $xrayDir
+          $packages = @(Get-ChildItem $browserDir -Directory | Where-Object { Test-Path (Join-Path $_.FullName "manifest.json") })
+          if ($packages.Count -ne 1) { throw "无法确认唯一 PigBrowser 开发包" }
+          node apps/desktop/stage-pigbrowser.cjs --package $packages[0].FullName --target $env:TARGET
+          if ($LASTEXITCODE -ne 0) { throw "PigBrowser 完整资源校验失败" }
+          $xrayTarget = "apps/desktop/runtime-assets/pigclaude-runtime/xray/$env:TARGET"
+          New-Item -ItemType Directory -Force $xrayTarget | Out-Null
+          $xrayName = if ($IsWindows) { "xray.exe" } else { "xray" }
+          Copy-Item (Join-Path $xrayDir $xrayName), (Join-Path $xrayDir "LICENSE") $xrayTarget
+          if (!$IsWindows) { chmod 755 (Join-Path $xrayTarget $xrayName) }
       - run: pnpm --filter @pigclaude/desktop build
-      # 新运行器上第一次启动 PowerShell 很慢：Windows PowerShell 查询设备标识要 4–13 秒，偶尔超过 20 秒；
-      # pwsh 第一次编译 C# 并加载 WinForms 要 6–11 秒。验收测的是界面流程，先各跑一次，不让它算进期限。
-      - name: Warm up Windows PowerShell
-        if: runner.os == 'Windows'
+      - name: Build Linux release AppImage
+        working-directory: apps/desktop
+        run: pnpm exec electron-builder --config electron-builder.release.json --linux AppImage --x64 --publish never
+      - name: Record build identity
         run: |
-          powershell.exe -NoLogo -NoProfile -NonInteractive -Command "(Get-CimInstance -ClassName Win32_ComputerSystemProduct -ErrorAction Stop).UUID" | Out-Null
-          pwsh.exe -NoProfile -NonInteractive -File tests/native-desktop/windows-pointer.ps1 capture "$env:RUNNER_TEMP\system-input-warmup.png"
-      - name: Verify saved session and Claude process lifecycle
-        timeout-minutes: 10
+          git rev-parse HEAD > apps/desktop/release/build-commit.txt
+          (cd apps/desktop/release && sha256sum -- PigClaude-x86_64.AppImage > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage-protocol-fix-x64
+          path: |
+            apps/desktop/release/PigClaude-x86_64.AppImage
+            apps/desktop/release/latest-linux.yml
+            apps/desktop/release/build-commit.txt
+            apps/desktop/release/SHA256SUMS.txt
+          if-no-files-found: error
+
+  verify-appimage:
+    needs: build-appimage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-appimage-protocol-fix-x64
+          path: ${{ runner.temp }}/pigclaude-appimage-package
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Prepare clean Ubuntu desktop
+        run: |
+          sudo apt-get update -qq -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends xvfb xauth openbox dbus-x11 gnome-keyring libglib2.0-bin xdg-utils libfuse2t64 fuse3 xdotool fonts-noto-cjk
+          if [ ! -c /dev/fuse ]; then sudo modprobe fuse; fi
+          ls -l /dev/fuse
+          sysctl kernel.apparmor_restrict_unprivileged_userns
+          test -f /usr/share/applications/google-chrome.desktop
+      - name: Verify XDG path escaping and registration regressions
         run: >-
           pnpm --filter @pigclaude/desktop exec vitest run --maxWorkers=1
-          src/main/session/session-host-persistence.test.ts
-          src/main/session/session-project-configuration.integration.test.ts
-          src/main/session/session-project-configuration-native.integration.test.ts
-          src/main/session/session-proxy-routing.integration.test.ts
-          src/main/session/retained-claude-process.test.ts
-          src/main/session/retained-claude-process-exit.test.ts
-          src/main/session/claude-agent-adapter-retained-process.test.ts
-          src/main/login-startup.test.ts
           src/main/xdg-autostart.integration.test.ts
-      - name: Verify native Electron on Windows
-        if: runner.os == 'Windows'
+          src/main/cold-start-callback.test.ts
+      - name: Verify first launch, cold URI start and Chrome callback
+        timeout-minutes: 5
+        env:
+          QA_PACKAGE: ${{ runner.temp }}/pigclaude-appimage-package
+          QA_ROOT: ${{ runner.temp }}/pigclaude-appimage-runtime
+          QA_IMAGE: ${{ runner.temp }}/pigclaude-appimage-runtime/PigClaude 100%=stable.AppImage
+          QA_BUILD_COMMIT: ${{ runner.temp }}/pigclaude-appimage-package/build-commit.txt
+          QA_SHA256: ${{ runner.temp }}/pigclaude-appimage-package/SHA256SUMS.txt
+          QA_OUTPUT: ${{ runner.temp }}/pigclaude-appimage-evidence
         run: |
-          node tests/native-desktop/agent-browser-network.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node tests/native-desktop/acceptance.mjs test-results/native-desktop
-      - name: Verify capability plugin sandbox on Windows
-        if: runner.os == 'Windows'
-        run: node tests/native-desktop/plugin-sandbox.mjs
-      - name: Verify capability plugin sandbox on Linux
-        if: runner.os == 'Linux'
-        run: xvfb-run -a node tests/native-desktop/plugin-sandbox.mjs
-      - name: Verify native Electron on Linux
-        if: runner.os == 'Linux'
-        timeout-minutes: 3
-        run: |
-          xvfb-run -a -s "-screen 0 1600x1000x24" dbus-run-session -- bash -euc '
-            eval "$(printf "%s\n" pigclaude-native-qa | gnome-keyring-daemon --unlock --components=secrets)"
+          export XDG_CONFIG_HOME="$QA_ROOT/config"
+          export XDG_DATA_HOME="$QA_ROOT/data"
+          export XDG_CACHE_HOME="$QA_ROOT/cache"
+          export XDG_CURRENT_DESKTOP=GNOME
+          mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$QA_OUTPUT"
+          mv "$QA_PACKAGE/PigClaude-x86_64.AppImage" "$QA_IMAGE"
+          chmod +x "$QA_IMAGE"
+          timeout --kill-after=10s 230s xvfb-run -a -s '-screen 0 1600x1000x24' dbus-run-session -- bash -euc '
+            eval "$(printf "%s\n" pigclaude-appimage-qa | gnome-keyring-daemon --unlock --components=secrets)"
             export GNOME_KEYRING_CONTROL
-            openbox >/tmp/pigclaude-openbox.log 2>&1 &
-            sleep 1
-            node tests/native-desktop/agent-browser-network.mjs
-            node tests/native-desktop/acceptance.mjs test-results/native-desktop
+            openbox >"$QA_ROOT/openbox.log" 2>&1 &
+            node tests/native-desktop/linux-appimage-protocol-qa.mjs
           '
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: desktop-native-${{ runner.os }}
-          path: test-results/native-desktop
+          name: linux-appimage-protocol-evidence
+          path: ${{ runner.temp }}/pigclaude-appimage-evidence
           if-no-files-found: warn

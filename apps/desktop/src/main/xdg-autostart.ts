@@ -1,8 +1,8 @@
 // 负责生成和移除本用户的 XDG 自启入口，程序路径始终按桌面入口格式引用。
 
-import { randomUUID } from "node:crypto"
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
-import { dirname, isAbsolute, join } from "node:path"
+import { readFile, rm } from "node:fs/promises"
+import { isAbsolute, join } from "node:path"
+import { writeXdgDesktopEntry, xdgExecCommand } from "./xdg-desktop-entry"
 
 /** 为 PigClaude 的固定桌面入口读写自动启动状态，不执行入口中的命令。 */
 export function createXdgAutostart(
@@ -19,14 +19,7 @@ export function createXdgAutostart(
       [...executable].some((character) => character.charCodeAt(0) < 32)
     )
       throw new Error("STARTUP_EXECUTABLE_PATH_INVALID")
-    // GIO 在展开字段码前检查命令的首个词，因此让实际路径只作为参数。
-    return [
-      "/bin/sh -c",
-      quoteExecArgument('exec "$@"'),
-      "pigclaude-autostart",
-      quoteExecArgument(executable),
-      backgroundArg,
-    ].join(" ")
+    return xdgExecCommand(executable, "pigclaude-autostart", backgroundArg)
   }
 
   return {
@@ -57,29 +50,10 @@ export function createXdgAutostart(
         "Exec=" + command(),
         "",
       ]
-      const temporary = filePath + "." + randomUUID() + ".tmp"
-      await mkdir(dirname(filePath), { recursive: true, mode: 0o700 })
-      try {
-        await writeFile(temporary, content.join("\n"), { mode: 0o600, flag: "wx" })
-        await rename(temporary, filePath)
-      } finally {
-        await rm(temporary, { force: true }).catch(() => undefined)
-      }
+      await writeXdgDesktopEntry(filePath, content.join("\n"))
       return true
     },
   }
-}
-
-function quoteExecArgument(value: string): string {
-  const escaped = [...value]
-    .map((character) => {
-      if (character === "%") return "%%"
-      if (character === "\\") return "\\\\\\\\"
-      if (['"', "$", "`"].includes(character)) return "\\\\" + character
-      return character
-    })
-    .join("")
-  return '"' + escaped + '"'
 }
 
 function desktopEntry(content: string): Map<string, string> {

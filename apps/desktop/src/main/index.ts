@@ -11,6 +11,7 @@ import {
   createAuthorizationCallbackReceiver,
   type AuthorizationCallbackReceiver,
 } from "./authorization/callback-receiver"
+import { registerDesktopAuthorizationProtocol } from "./authorization/protocol-registration"
 import type { AuthorizationService } from "./authorization/service"
 import type { AuthorizationStateEvent } from "./authorization/types"
 import { registerAuthorizationIpc } from "./authorization/authorization-ipc"
@@ -407,7 +408,7 @@ async function setupAuthorization(): Promise<void> {
     capabilityPlugins?.stopEvents()
     unsubscribeAccounts()
   }
-  if (app.isPackaged) app.setAsDefaultProtocolClient("pigclaude")
+  await registerDesktopAuthorizationProtocol(app, process.platform, process.env)
 }
 
 async function handleCallbackUrl(url: string): Promise<AuthorizationStateEvent | null> {

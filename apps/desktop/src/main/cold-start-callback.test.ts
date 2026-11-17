@@ -1,4 +1,7 @@
 // 负责从真实主进程首 argv 接线验证合成回调；平台和系统端口替身不代表真实安装验收。
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import {
   activeCallbackReceptionUrl,
@@ -25,6 +28,47 @@ afterEach(async () => {
   restoreColdStartProcess()
   vi.clearAllTimers()
   vi.useRealTimers()
+})
+
+it("首次启动 Linux AppImage 会注册链接到稳定制品路径的桌面入口", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "pigclaude-appimage-registration-"))
+  const data = join(directory, "data")
+  const image = join(directory, "PigClaude 100%=stable.AppImage")
+  const entry = join(data, "applications", "pigclaude-appimage.desktop")
+  try {
+    await writeFile(image, "", { mode: 0o700 })
+    await writeFile(
+      join(directory, "xdg-mime"),
+      [
+        "#!/bin/sh",
+        'if [ "$1" = "query" ]; then exit 0; fi',
+        'test -f "$XDG_DATA_HOME/applications/$2" || exit 1',
+        'printf "%s\\n" "$@" > "$XDG_DATA_HOME/registration"',
+        "",
+      ].join("\n"),
+      { mode: 0o700 },
+    )
+    vi.stubEnv("PATH", directory)
+    vi.stubEnv("APPIMAGE", image)
+    vi.stubEnv("XDG_DATA_HOME", data)
+    setColdStartProcess("linux", ["/tmp/.mount_fixture/pigclaude"])
+    const { fixture } = createCallbackReceptionFixture()
+    fixture.userData = join(directory, "profile")
+    await import("./index")
+    await finishCallbackReceptionStartup()
+
+    const launcher = await readFile(entry, "utf8")
+    expect(launcher).toContain("PigClaude 100%%=stable.AppImage")
+    expect(launcher).toContain("%u")
+    expect(launcher).toContain("MimeType=x-scheme-handler/pigclaude;")
+    expect(await readFile(join(data, "registration"), "utf8")).toBe(
+      "default\npigclaude-appimage.desktop\nx-scheme-handler/pigclaude\n",
+    )
+    expect(fixture.registrationCalls).toBe(0)
+  } finally {
+    vi.unstubAllEnvs()
+    await rm(directory, { recursive: true, force: true })
+  }
 })
 
 it.each([

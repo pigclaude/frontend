@@ -1,7 +1,10 @@
 // 负责把系统私有协议事件短暂、有界地交给现有授权服务，不保存或重建授权事务。
 
+/** 系统登记的桌面授权协议名称。 */
+export const privateAuthorizationScheme = "pigclaude"
+
 /** 桌面私有协议的固定回调基地址；会话和参数仍由授权服务校验。 */
-export const privateAuthorizationRedirectUri = "pigclaude://authorize/callback"
+export const privateAuthorizationRedirectUri = `${privateAuthorizationScheme}://authorize/callback`
 
 type OpenUrlListener = (event: { preventDefault(): void }, url: string) => void
 type SecondInstanceListener = (event: unknown, commandLine: string[]) => void

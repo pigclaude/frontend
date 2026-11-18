@@ -1,5 +1,5 @@
 name: Desktop native verification
-run-name: Verify test.14 Windows OAuth installation and replacement
+run-name: Verify test.14 macOS and Linux OAuth installation and replacement
 "on":
   workflow_dispatch:
     inputs:
@@ -9,7 +9,13 @@ run-name: Verify test.14 Windows OAuth installation and replacement
       build_run:
         required: true
         type: string
-      installer_sha256:
+      macos_dmg_sha256:
+        required: true
+        type: string
+      macos_zip_sha256:
+        required: true
+        type: string
+      linux_sha256:
         required: true
         type: string
 permissions:
@@ -18,16 +24,23 @@ permissions:
 env:
   XRAY_VERSION: v26.10.31
 jobs:
-  windows-test14:
+  test14-native:
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: windows-2022
-            target: win32-x64
-            package: "--win nsis --x64"
-            xray_archive: Xray-windows-64.zip
-            xray_sha256: 2e04a9995a6f2ad1b28c0bb25c708ecb2695e43a1c9c7889c4b6ac2b48cf7a6a
-            executable: release/win-unpacked/PigClaude.exe
+          - os: macos-15
+            target: darwin-arm64
+            package: "--mac dmg --arm64"
+            xray_archive: Xray-macos-arm64-v8a.zip
+            xray_sha256: 0a05dca3bd311b0bc5a89c7ce56350cab1e829e131e4b2bcd48eb304fac07e9a
+            executable: release/mac-arm64/PigClaude.app/Contents/MacOS/PigClaude
+          - os: ubuntu-24.04
+            target: linux-x64
+            package: "--linux AppImage --x64"
+            xray_archive: Xray-linux-64.zip
+            xray_sha256: e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214
+            executable: release/linux-unpacked/pigclaude
     runs-on: ${{ matrix.os }}
     timeout-minutes: 32
     steps:
@@ -36,9 +49,10 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: 核对对照包的代码与固定提交
+        shell: bash
         env:
           QA_BUILD_SHA: ${{ inputs.source_commit }}
-        run: git diff --exit-code $env:QA_BUILD_SHA HEAD -- apps/desktop packages
+        run: git diff --exit-code "$QA_BUILD_SHA" HEAD -- apps/desktop packages
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -52,31 +66,18 @@ jobs:
           TARGET: ${{ matrix.target }}
           XRAY_ARCHIVE: ${{ matrix.xray_archive }}
           XRAY_SHA256: ${{ matrix.xray_sha256 }}
-        run: >
+        run: |
           $ErrorActionPreference = "Stop"
-
           $root = Join-Path $env:RUNNER_TEMP "pigclaude-runtime"
-
           $browserDir = Join-Path $root "browser"
-
           $xrayDir = Join-Path $root "xray"
-
           New-Item -ItemType Directory -Force $browserDir, $xrayDir | Out-Null
-
           $browserArchive = node apps/desktop/download-pigbrowser.cjs --target $env:TARGET --dir $root
-
           if ($LASTEXITCODE -ne 0) { throw "获取 PigBrowser 开发包失败，原因见上面的输出" }
-
           $browserArchive = "$browserArchive".Trim()
-
           $xrayArchive = Join-Path $root $env:XRAY_ARCHIVE
-
-          Invoke-WebRequest "https://github.com/XTLS/Xray-core/releases/download/$env:XRAY_VERSION/$env:XRAY_ARCHIVE"
-          -OutFile $xrayArchive
-
-          if ((Get-FileHash $xrayArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:XRAY_SHA256) { throw "Xray
-          包校验失败" }
-
+          Invoke-WebRequest "https://github.com/XTLS/Xray-core/releases/download/$env:XRAY_VERSION/$env:XRAY_ARCHIVE" -OutFile $xrayArchive
+          if ((Get-FileHash $xrayArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:XRAY_SHA256) { throw "Xray 包校验失败" }
           if ($IsMacOS) {
             ditto -x -k $browserArchive $browserDir
           } elseif ($IsWindows) {
@@ -84,61 +85,85 @@ jobs:
           } else {
             tar -xf $browserArchive -C $browserDir
           }
-
           if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "PigBrowser 包解压失败" }
-
           Expand-Archive $xrayArchive -DestinationPath $xrayDir
-
-          $packages = @(Get-ChildItem $browserDir -Directory | Where-Object { Test-Path (Join-Path $_.FullName
-          "manifest.json") })
-
+          $packages = @(Get-ChildItem $browserDir -Directory | Where-Object { Test-Path (Join-Path $_.FullName "manifest.json") })
           if ($packages.Count -ne 1) { throw "无法确认唯一 PigBrowser 开发包" }
-
           node apps/desktop/stage-pigbrowser.cjs --package $packages[0].FullName --target $env:TARGET
-
           if ($LASTEXITCODE -ne 0) { throw "PigBrowser 完整资源校验失败" }
-
           $xrayTarget = "apps/desktop/runtime-assets/pigclaude-runtime/xray/$env:TARGET"
-
           New-Item -ItemType Directory -Force $xrayTarget | Out-Null
-
           $xrayName = if ($IsWindows) { "xray.exe" } else { "xray" }
-
           Copy-Item (Join-Path $xrayDir $xrayName), (Join-Path $xrayDir "LICENSE") $xrayTarget
-
           if (!$IsWindows) { chmod 755 (Join-Path $xrayTarget $xrayName) }
       - run: pnpm --filter @pigclaude/desktop build
-      - name: 构建文件版对照安装包
+      - name: 构建独立的文件版对照安装包
         working-directory: apps/desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: >-
-          pnpm exec electron-builder --config electron-builder.release.json --config.buildVersion=0.0.1.13
-          --config.extraMetadata.pigclaudeQaBuild=oauth-file-baseline ${{ matrix.package }} --publish never
+        run: pnpm exec electron-builder --config electron-builder.release.json --config.buildVersion=0.0.1.13 --config.extraMetadata.pigclaudeQaBuild=oauth-file-baseline ${{ matrix.package }} --publish never
       - uses: actions/download-artifact@v4
         with:
-          name: desktop-release-win32-x64
+          name: desktop-release-${{ matrix.target }}
           run-id: ${{ inputs.build_run }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/pigclaude-test14/candidate
-      - name: 验证原始 test.14 安装、授权、重启和来回覆盖
-        timeout-minutes: 12
-        shell: pwsh
+      - name: 核对并试装 macOS test.14 草稿 DMG
+        if: runner.os == 'macOS'
+        shell: bash
         env:
           QA_BUILD_SHA: ${{ inputs.source_commit }}
           QA_BUILD_RUN: ${{ inputs.build_run }}
-          QA_EXPECTED_SHA: ${{ inputs.installer_sha256 }}
-          QA_INSTALLER: ${{ runner.temp }}/pigclaude-test14/candidate/PigClaude-0.0.1-x64.exe
-          QA_BASELINE_INSTALLER: ${{ github.workspace }}/apps/desktop/release/PigClaude-0.0.1-x64.exe
+          QA_EXPECTED_SHA: ${{ inputs.macos_dmg_sha256 }}
+          QA_ZIP_SHA: ${{ inputs.macos_zip_sha256 }}
           QA_ROOT: ${{ runner.temp }}/pigclaude-test14/qa
           QA_OUTPUT: ${{ runner.temp }}/pigclaude-test14/evidence
+          QA_BASELINE_DMG: ${{ github.workspace }}/apps/desktop/release/PigClaude-0.0.1-arm64.dmg
+          QA_CANDIDATE_DMG: ${{ runner.temp }}/pigclaude-test14/candidate/PigClaude-0.0.1-arm64.dmg
         run: |-
-          $ErrorActionPreference = "Stop"
-          $env:QA_BASELINE_SHA = (Get-FileHash -Algorithm SHA256 $env:QA_BASELINE_INSTALLER).Hash.ToLowerInvariant()
-          node tests/native-desktop/test14-windows-oauth.mjs
+          set -eu
+          mkdir -p "$QA_ROOT" "$QA_OUTPUT"
+          git rev-parse "$QA_BUILD_SHA^{tree}" > "$QA_ROOT/source-tree.txt"
+          zip=$(dirname "$QA_CANDIDATE_DMG")/PigClaude-0.0.1-arm64.zip
+          printf "%s  %s\n" "$QA_ZIP_SHA" "$zip" | shasum -a 256 -c
+          hdiutil verify "$QA_CANDIDATE_DMG"
+          status=0
+          node tests/native-desktop/test14-mac-oauth.mjs || status=$?
+          test ! -f "$QA_ROOT/mac-verified.json" || cp "$QA_ROOT/mac-verified.json" "$QA_OUTPUT/verified.json"
+          exit "$status"
+      - name: 核对并运行 Ubuntu test.14 草稿 AppImage
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          QA_EXPECTED_COMMIT: ${{ inputs.source_commit }}
+          QA_BUILD_RUN: ${{ inputs.build_run }}
+          QA_EXPECTED_SHA: ${{ inputs.linux_sha256 }}
+          QA_ROOT: ${{ runner.temp }}/pigclaude-test14/qa
+          QA_OUTPUT: ${{ runner.temp }}/pigclaude-test14/evidence
+          QA_ALTERNATE: ${{ github.workspace }}/apps/desktop/release/PigClaude-x86_64.AppImage
+          QA_CANDIDATE: ${{ runner.temp }}/pigclaude-test14/candidate/PigClaude-x86_64.AppImage
+        run: |-
+          set -eu
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb xauth libfuse2t64 openbox xdotool dbus-x11 gnome-keyring xdg-utils libsecret-1-0
+          if [ ! -c /dev/fuse ]; then sudo modprobe fuse; fi
+          test -c /dev/fuse
+          export QA_IMAGE="$QA_ROOT/PigClaude 100%=stable.AppImage"
+          export QA_BUILD_COMMIT="$QA_ROOT/source-base.txt"
+          export QA_ALTERNATE_SHA="$(sha256sum "$QA_ALTERNATE" | cut -d " " -f1)"
+          export XDG_CONFIG_HOME="$QA_ROOT/config" XDG_DATA_HOME="$QA_ROOT/data" XDG_CACHE_HOME="$QA_ROOT/cache" XDG_CURRENT_DESKTOP=GNOME
+          mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$QA_OUTPUT"
+          printf "%s\n" "$QA_EXPECTED_COMMIT" > "$QA_BUILD_COMMIT"
+          install -m 0755 "$QA_CANDIDATE" "$QA_IMAGE"
+          xvfb-run -a -s "-screen 0 1600x1000x24" dbus-run-session -- bash -euc '
+            eval "$(printf "%s\n" pigclaude-test14-qa | gnome-keyring-daemon --unlock --components=secrets)"
+            export GNOME_KEYRING_CONTROL
+            openbox >"$QA_ROOT/openbox.log" 2>&1 &
+            node tests/native-desktop/test14-linux-oauth.mjs
+          '
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: windows-test14-oauth-verification
+          name: test14-oauth-${{ matrix.target }}
           path: ${{ runner.temp }}/pigclaude-test14/evidence
           if-no-files-found: warn

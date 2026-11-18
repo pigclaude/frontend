@@ -1,14 +1,34 @@
 // 验证打包拒绝缺少固定 PigBrowser 清单的占位资源，并核对安装资源目录约定。
 
+import { execFile } from "node:child_process"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
-import { expect, it } from "vitest"
+import { promisify } from "node:util"
+import { expect, it, vi } from "vitest"
 
 const checkResources = createRequire(import.meta.url)(
   resolve(import.meta.dirname, "../../verify-runtime-resources.cjs"),
 ) as (context: unknown) => Promise<void>
+
+it("稳定签名候选固定 Developer ID 团队，缺少团队时拒绝打包", () => {
+  const loadConfig = createRequire(import.meta.url)(
+    resolve(import.meta.dirname, "../../electron-builder.macos-signed.cjs"),
+  ) as () => unknown
+  try {
+    vi.stubEnv("PIGCLAUDE_MAC_TEAM_ID", "")
+    expect(loadConfig).toThrow("PIGCLAUDE_MAC_TEAM_ID")
+    vi.stubEnv("PIGCLAUDE_MAC_TEAM_ID", "FIXTURE123")
+    expect(loadConfig()).toMatchObject({
+      extends: "./electron-builder.release.json",
+      mac: { identity: "(FIXTURE123)", forceCodeSigning: true },
+      afterAllArtifactBuild: expect.any(Function),
+    })
+  } finally {
+    vi.unstubAllEnvs()
+  }
+})
 
 it.each([
   ["darwin", 3, "arm64", "Chromium.app/Contents/MacOS/Chromium", "xray"],
@@ -51,6 +71,7 @@ it("安装包资源目录与运行时解析目录一致", async () => {
     beforePack: "./verify-runtime-resources.cjs",
     afterPack: "./prepare-packaged-runtime.cjs",
     afterAllArtifactBuild: "./verify-macos-dmg-resources.cjs",
+    appImage: { executableArgs: [] },
     mac: { signIgnore: ["/Contents/Resources/pigclaude-runtime/pigbrowser(?:/|$)"] },
     extraResources: [
       { from: "runtime-assets/pigclaude-runtime", to: "pigclaude-runtime" },
@@ -59,3 +80,26 @@ it("安装包资源目录与运行时解析目录一致", async () => {
     ],
   })
 })
+
+it.skipIf(process.platform === "win32")(
+  "AppImage 入口原样交付协议参数并保留 Electron 沙箱",
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pigclaude-appimage-entry-"))
+    const run = promisify(execFile)
+    const launcher = resolve(import.meta.dirname, "../../linux-appimage-entry.sh")
+    const callback = "pigclaude://authorize/callback?code=fixture&state=fixture"
+    const env = { ...process.env, APPDIR: directory, APPIMAGE_EXIT_AFTER_INSTALL: "" }
+    try {
+      await writeFile(join(directory, "pigclaude"), '#!/bin/sh\nprintf "%s\\n" "$@"\n', {
+        mode: 0o755,
+      })
+      await expect(
+        run("sh", [launcher, callback, "--pigclaude-autostart"], { env }),
+      ).resolves.toMatchObject({
+        stdout: `${callback}\n--pigclaude-autostart\n`,
+      })
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  },
+)

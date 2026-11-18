@@ -1,55 +1,28 @@
-# 使用两份固定测试草稿的原始 DMG，在一次性运行器验证手动替换。
+# 在一次性 Windows 运行器验证真实桌面入口读写统一 OAuth 文件。
 name: Desktop native verification
-run-name: Verify test.11 restart and test.13 macOS replacement
+run-name: Windows OAuth session file verification
 
 on:
   workflow_dispatch:
 
 permissions:
-  actions: read
   contents: read
 
 jobs:
-  macos-replacement:
-    runs-on: macos-26
-    timeout-minutes: 23
-    env:
-      QA_BUILD_RUN: "44238044565"
-      QA_BUILD_SHA: adb1bfccf5d5c7672c456536b238acfb245ede6a
-      QA_BASELINE_SHA: f574411af6a0bca358124401b4b374f2dd89287e50a87f4ca133985c04cd144a
-      QA_EXPECTED_SHA: 521657ab93b5f320ff21e4f49c49ae252741a656698c1daa57996b5945c99ffb
+  windows-oauth-file:
+    runs-on: windows-2022
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v4
-        with:
-          name: desktop-release-darwin-arm64
-          run-id: 44124290072
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/pigclaude-closeout/baseline
-      - uses: actions/download-artifact@v4
-        with:
-          name: desktop-release-darwin-arm64
-          run-id: 44238044565
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/pigclaude-closeout/candidate
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: pnpm install --frozen-lockfile
-      - name: 替换应用并核对会员、偏好和协议
-        timeout-minutes: 10
-        env:
-          QA_BASELINE_INSTALLER: ${{ runner.temp }}/pigclaude-closeout/baseline/PigClaude-0.0.1-arm64.dmg
-          QA_INSTALLER: ${{ runner.temp }}/pigclaude-closeout/candidate/PigClaude-0.0.1-arm64.dmg
-          QA_ROOT: ${{ runner.temp }}/pigclaude-closeout/runtime
-          QA_OUTPUT: ${{ runner.temp }}/pigclaude-closeout/evidence
-        run: node tests/native-desktop/test13-installed-desktop.mjs
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: macos-test11-test13-replacement
-          path: ${{ runner.temp }}/pigclaude-closeout/evidence
-          if-no-files-found: warn
+      - name: 验证统一文件、刷新屏障和完整桌面 IPC
+        working-directory: apps/desktop
+        run: |
+          node -e "require('electron')"
+          pnpm exec vitest run --testTimeout=20000 src/main/authorization/oauth-session-file.test.ts src/main/authorization/oauth-token-manager.test.ts src/main/profile-sign-out-ipc.test.ts

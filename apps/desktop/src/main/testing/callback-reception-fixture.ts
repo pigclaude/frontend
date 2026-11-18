@@ -149,8 +149,8 @@ vi.mock("../device-identity", () => ({
 vi.mock("../device-identity/device-info", () => ({
   readDeviceInfo: async () => ({ name: "fixture", osVersion: "fixture", appVersion: "0.0.1" }),
 }))
-vi.mock("../secret-vault", () => ({
-  FileSecretVault: class {
+vi.mock("../authorization/oauth-session-file", () => ({
+  OAuthSessionFile: class {
     constructor() {
       return fixture.vault!
     }

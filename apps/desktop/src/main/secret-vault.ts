@@ -1,13 +1,12 @@
 // 负责把授权秘密交给 Electron safeStorage 加密后原子写入本机文件。
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
-import { basename, dirname, join } from "node:path"
-import { randomUUID } from "node:crypto"
+import { readFile } from "node:fs/promises"
+import { writePrivateFile } from "./private-file"
 
 /** Electron safeStorage 的最小能力，保证测试可以替换平台实现。 */
 export type SafeStoragePort = {
-  isEncryptionAvailable(): boolean
-  encryptString(value: string): Buffer
-  decryptString(value: Buffer): string
+  isEncryptionAvailable(): boolean | Promise<boolean>
+  encryptString(value: string): Buffer | Promise<Buffer>
+  decryptString(value: Buffer): string | Promise<string>
 }
 
 /** 授权秘密仓库接口，保证调用方不能读取底层文件格式。 */
@@ -37,21 +36,21 @@ export class FileSecretVault implements SecretVault {
 
   /** 加密并保存一个秘密，保证同一时刻只替换完整 JSON。 */
   async set(key: string, value: string, beforePublish?: () => void): Promise<void> {
-    this.assertAvailable()
     await this.enqueue(async () => {
+      await this.assertAvailable()
       const secrets = await this.readSecrets()
-      await this.writeSecrets({ ...secrets, [key]: this.encode(value) }, beforePublish)
+      const encrypted = await this.#safeStorage.encryptString(value)
+      await this.writeSecrets({ ...secrets, [key]: encrypted.toString("base64") }, beforePublish)
     })
   }
 
   /** 读取并解密一个秘密，不存在时返回 null。 */
   async get(key: string): Promise<string | null> {
-    this.assertAvailable()
     const secrets = await this.readSecrets()
     const encoded = Object.hasOwn(secrets, key) ? secrets[key] : undefined
-    return encoded === undefined
-      ? null
-      : this.#safeStorage.decryptString(Buffer.from(encoded, "base64"))
+    if (encoded === undefined) return null
+    await this.assertAvailable()
+    return this.#safeStorage.decryptString(Buffer.from(encoded, "base64"))
   }
 
   /** 读取已保存的字段名，不需要解密保存内容。 */
@@ -61,8 +60,8 @@ export class FileSecretVault implements SecretVault {
 
   /** 删除一个秘密，保证删除后磁盘文件不再包含该 key。 */
   async delete(key: string, beforePublish?: () => void): Promise<void> {
-    this.assertAvailable()
     await this.enqueue(async () => {
+      await this.assertAvailable()
       const secrets = await this.readSecrets()
       if (!Object.hasOwn(secrets, key)) return
       delete secrets[key]
@@ -72,8 +71,8 @@ export class FileSecretVault implements SecretVault {
 
   /** 删除指定前缀的全部加密材料，保证撤销不会遗漏旧授权记录。 */
   async deletePrefix(prefix: string): Promise<void> {
-    this.assertAvailable()
     await this.enqueue(async () => {
+      await this.assertAvailable()
       const secrets = await this.readSecrets()
       let changed = false
       for (const key of Object.keys(secrets)) {
@@ -85,14 +84,10 @@ export class FileSecretVault implements SecretVault {
     })
   }
 
-  private assertAvailable(): void {
-    if (!this.#safeStorage.isEncryptionAvailable()) {
+  private async assertAvailable(): Promise<void> {
+    if (!(await this.#safeStorage.isEncryptionAvailable())) {
       throw new Error("系统安全存储不可用")
     }
-  }
-
-  private encode(value: string): string {
-    return this.#safeStorage.encryptString(value).toString("base64")
   }
 
   private async readSecrets(): Promise<Record<string, string>> {
@@ -112,16 +107,7 @@ export class FileSecretVault implements SecretVault {
   ): Promise<void> {
     const contents = JSON.stringify(secrets)
     if (Buffer.byteLength(contents) > this.maximumBytes) throw new Error("秘密文件超过大小限制")
-    await mkdir(dirname(this.#path), { recursive: true })
-    const temporary = join(dirname(this.#path), `.${basename(this.#path)}.${randomUUID()}.tmp`)
-    try {
-      await writeFile(temporary, contents, { encoding: "utf8", mode: 0o600 })
-      beforePublish?.()
-      await rename(temporary, this.#path)
-    } catch (error: unknown) {
-      await rm(temporary, { force: true })
-      throw error
-    }
+    await writePrivateFile(this.#path, contents, beforePublish)
   }
 
   private enqueue(write: () => Promise<void>): Promise<void> {

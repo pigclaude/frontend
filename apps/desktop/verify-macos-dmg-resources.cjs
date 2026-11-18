@@ -11,7 +11,7 @@ const run = promisify(execFile)
 const target = "darwin-arm64"
 
 /** 只在完成封装的 DMG 中检查资源，验证失败会阻止构建交付。 */
-async function verifyMacDmg(artifact) {
+async function verifyMacDmg(artifact, signingRequirement) {
   const mount = await mkdtemp(join(tmpdir(), "pigclaude-verify-dmg-"))
   try {
     await run(
@@ -34,6 +34,11 @@ async function verifyMacDmg(artifact) {
       )
       const result = await verifyPigbrowserPackage(resources, target)
       await run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app], { timeout: 60_000 })
+      if (signingRequirement) {
+        await run("/usr/bin/codesign", ["--verify", `-R=${signingRequirement}`, app], {
+          timeout: 60_000,
+        })
+      }
       process.stdout.write(
         basename(artifact) + " 已验证 " + result.entries + " 项固定 PigBrowser 资源\n",
       )
@@ -45,10 +50,10 @@ async function verifyMacDmg(artifact) {
   }
 }
 
-/** 由 electron-builder 在所有制品生成后调用，每个 DMG 都必须通过验证。 */
-module.exports = async function verifyMacDmgArtifacts(result) {
+/** 封装后验证每个 DMG 的资源和签名，可同时校验指定的应用签名要求。 */
+module.exports = async function verifyMacDmgArtifacts(result, signingRequirement) {
   for (const artifact of result.artifactPaths.filter((file) => file.endsWith(".dmg"))) {
-    await verifyMacDmg(artifact)
+    await verifyMacDmg(artifact, signingRequirement)
   }
   return []
 }

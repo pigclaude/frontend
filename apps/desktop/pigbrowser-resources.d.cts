@@ -11,10 +11,11 @@ export function pigbrowserArtifact(target: string): {
   executable: string
 }
 
-/** 核对完整开发包后返回入口和核验项数；任何差异均拒绝。 */
+/** 核对完整开发包后返回入口和核验项数；安装态可核验固定 Linux 沙箱链接。 */
 export function verifyPigbrowserPackage(
   root: string,
   target: string,
+  options?: { allowLinuxSandboxLink?: boolean },
 ): Promise<{
   executable: string
   entries: number

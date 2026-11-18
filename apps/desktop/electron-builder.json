@@ -33,7 +33,7 @@
     "node_modules/node-pty/**"
   ],
   "beforePack": "./verify-runtime-resources.cjs",
-  "afterPack": "./preserve-macos-pigbrowser-resources.cjs",
+  "afterPack": "./prepare-packaged-runtime.cjs",
   "afterAllArtifactBuild": "./verify-macos-dmg-resources.cjs",
   "extraResources": [
     {

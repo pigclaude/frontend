@@ -101,7 +101,7 @@ describe("proxies screen", () => {
   it("shows an optional-proxy empty state and the no-direct-fallback rule", async () => {
     await render([])
     expect(container.textContent).toContain("还没有代理。代理可选；未绑定代理的账号使用系统网络")
-    expect(container.textContent).toContain("添加一个出口固定的 HTTP/HTTPS 代理")
+    expect(container.textContent).toContain("添加一个出口固定的 HTTP、HTTPS 或 SOCKS5 代理")
     expect(container.textContent).toContain("已绑定代理的请求不会直连")
   })
 
@@ -110,15 +110,15 @@ describe("proxies screen", () => {
     await render([tested], { onSave })
     await clickButton(button("添加代理"), "添加代理")
 
-    expect(dialog()?.textContent).toContain("不支持 SOCKS5")
+    expect(dialog()?.textContent).toContain("地址支持 HTTP、HTTPS 和 SOCKS5")
     expect(button("添加", dialog() ?? document.body)?.disabled).toBe(true)
-    await type("proxy-url", "  http://user:secret@203.0.113.9:8000  ")
+    await type("proxy-url", "  socks5://user:secret@203.0.113.9:1080  ")
     await type("proxy-name", " LA-02 ")
     await clickButton(button("添加", dialog() ?? document.body), "添加")
 
     expect(onSave).toHaveBeenCalledWith({
       name: "LA-02",
-      url: "http://user:secret@203.0.113.9:8000",
+      url: "socks5://user:secret@203.0.113.9:1080",
     })
     expect(document.body.querySelector('[role="dialog"]')).toBeNull()
   })

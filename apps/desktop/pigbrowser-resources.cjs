@@ -6,6 +6,12 @@ const { lstat, readFile, readdir, readlink } = require("node:fs/promises")
 const { isAbsolute, join, relative, resolve } = require("node:path")
 const artifacts = require("./pigbrowser-artifacts.json")
 
+/** Linux 安装包只接入这个由官方 Chrome 包安装的系统沙箱助手。 */
+const linuxSystemSandboxLink = Object.freeze({
+  path: "browser/chrome-sandbox",
+  target: "/opt/google/chrome/chrome-sandbox",
+})
+
 /** 返回资源合同固定的 native 内核版本。 */
 function pigbrowserVersion() {
   return artifacts.version
@@ -18,8 +24,8 @@ function pigbrowserArtifact(target) {
   return artifact
 }
 
-/** 核对完整开发包，拒绝缺损、增加、改写或来自其他版本的资源。 */
-async function verifyPigbrowserPackage(root, target) {
+/** 核对完整开发包；安装态可额外核验 Linux 的固定系统沙箱链接。 */
+async function verifyPigbrowserPackage(root, target, { allowLinuxSandboxLink = false } = {}) {
   const artifact = pigbrowserArtifact(target)
   const manifest = await readFile(join(root, "manifest.json"))
   if (createHash("sha256").update(manifest).digest("hex") !== artifact.manifestSha256) {
@@ -61,6 +67,20 @@ async function verifyPigbrowserPackage(root, target) {
     }
   }
   const actual = await listFiles(root)
+  if (
+    allowLinuxSandboxLink &&
+    target === "linux-x64" &&
+    actual.includes(linuxSystemSandboxLink.path)
+  ) {
+    const link = join(root, linuxSystemSandboxLink.path)
+    if (
+      !(await lstat(link)).isSymbolicLink() ||
+      (await readlink(link)) !== linuxSystemSandboxLink.target
+    ) {
+      throw new Error("PigBrowser 系统沙箱助手链接不一致")
+    }
+    expected.add(linuxSystemSandboxLink.path)
+  }
   if (actual.length !== expected.size || actual.some((path) => !expected.has(path))) {
     throw new Error("PigBrowser 目录含有未列入固定清单的资源")
   }
@@ -84,4 +104,10 @@ async function listFiles(root, prefix = "") {
   return paths
 }
 
-module.exports = { hashFile, pigbrowserArtifact, pigbrowserVersion, verifyPigbrowserPackage }
+module.exports = {
+  hashFile,
+  linuxSystemSandboxLink,
+  pigbrowserArtifact,
+  pigbrowserVersion,
+  verifyPigbrowserPackage,
+}

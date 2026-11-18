@@ -8,6 +8,7 @@ import { join } from "node:path"
 import { randomUUID } from "node:crypto"
 import { query } from "@anthropic-ai/claude-agent-sdk"
 import { ClaudeAgentAdapter } from "../session/claude-agent-adapter"
+import { claudeLaunchEnvironment } from "../session/claude-linux-locale"
 import { SessionEnvironment, placeholderOAuthToken } from "../session/session-environment"
 import { matchesRuntimeBinary, runtimeHostArch } from "./runtime-binary"
 import { resolveClaudeBinaryPath } from "../session/claude-binary"
@@ -117,7 +118,7 @@ export async function probeNativeCli(input: {
       available.some((name) => name.replace(/\.utf-?8(?=@|$)/i, ".UTF-8") === session.env.LANG)
     const versionResult = await run(binary, ["--version"], {
       cwd: directory,
-      env: safeEnvironment,
+      env: claudeLaunchEnvironment(binary, safeEnvironment),
       timeout: 5_000,
       killSignal: "SIGKILL",
       maxBuffer: 4_096,

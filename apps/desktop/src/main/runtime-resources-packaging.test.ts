@@ -49,7 +49,7 @@ it("安装包资源目录与运行时解析目录一致", async () => {
   )
   expect(config).toMatchObject({
     beforePack: "./verify-runtime-resources.cjs",
-    afterPack: "./preserve-macos-pigbrowser-resources.cjs",
+    afterPack: "./prepare-packaged-runtime.cjs",
     afterAllArtifactBuild: "./verify-macos-dmg-resources.cjs",
     mac: { signIgnore: ["/Contents/Resources/pigclaude-runtime/pigbrowser(?:/|$)"] },
     extraResources: [

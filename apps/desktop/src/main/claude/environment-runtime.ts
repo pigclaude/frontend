@@ -16,7 +16,7 @@ export async function approvedEnvironmentBrowser(
     const path = resolve(binary)
     if (!path.endsWith(suffix)) return false
     const root = path.slice(0, -suffix.length)
-    const verified = await verifyPigbrowserPackage(root, target)
+    const verified = await verifyPigbrowserPackage(root, target, { allowLinuxSandboxLink: true })
     return resolve(verified.executable) === path
   } catch {
     return false

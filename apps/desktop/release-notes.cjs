@@ -54,7 +54,7 @@ function releaseNotes({ version, test, installers, pigbrowserVersion, xrayVersio
     "Linux 的 AppImage：",
     "",
     "- 需要系统装有 FUSE 2（Ubuntu 22.04 及以后是 `libfuse2` 或 `libfuse2t64`）。",
-    "- Ubuntu 24.04 等用 AppArmor 限制非特权用户命名空间的系统上，Chromium 沙箱可能起不来，应用无法启动。",
+    "- Ubuntu 24.04 等限制非特权用户命名空间的系统上，PigBrowser 需要 Google Chrome 官方 Linux 软件包提供的系统沙箱助手。可先安装官方 `.deb`，再打开 PigBrowser。",
     "",
   ].join("\n")
 }

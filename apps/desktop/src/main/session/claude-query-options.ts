@@ -2,6 +2,7 @@
 
 import type { CanUseTool, Options, ThinkingConfig } from "@anthropic-ai/claude-agent-sdk"
 import { maxSessionRetentionDays } from "../../session-history-contract"
+import { claudeLaunchEnvironment } from "./claude-linux-locale"
 import type { SessionEffort, SessionPermissionMode, SessionThinking } from "./session-events"
 import type { SessionProjectConfiguration } from "./project-configuration"
 import { trustedFlagSettings } from "./trusted-project-settings"
@@ -46,7 +47,7 @@ export function isolatedQueryOptions(
   return {
     cwd,
     pathToClaudeCodeExecutable: binaryPath,
-    env: { ...env },
+    env: claudeLaunchEnvironment(binaryPath, env),
     settingSources: [],
     persistSession: false,
     includePartialMessages: true,

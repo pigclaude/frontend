@@ -1,6 +1,6 @@
-# 使用两份固定测试草稿的原始 NSIS，在一次性运行器验证覆盖安装。
+# 使用两份固定测试草稿的原始 DMG，在一次性运行器验证手动替换。
 name: Desktop native verification
-run-name: Verify test.11 to test.13 Windows replacement
+run-name: Verify test.11 to test.13 macOS replacement
 
 on:
   workflow_dispatch:
@@ -10,27 +10,27 @@ permissions:
   contents: read
 
 jobs:
-  windows-replacement:
-    runs-on: windows-2022
-    timeout-minutes: 17
+  macos-replacement:
+    runs-on: macos-26
+    timeout-minutes: 23
     env:
       QA_BUILD_RUN: "44238044565"
       QA_BUILD_SHA: adb1bfccf5d5c7672c456536b238acfb245ede6a
-      QA_BASELINE_SHA: 86f5bddbaee55ed59c21ebf2c016ccb7bb9f397b79d6d76299e39e4abb74012c
-      QA_EXPECTED_SHA: 3750a0d0f0302aceb5c9f0fcada832c32a15914ab9c9f603e0fee40ad92f7bea
+      QA_BASELINE_SHA: f574411af6a0bca358124401b4b374f2dd89287e50a87f4ca133985c04cd144a
+      QA_EXPECTED_SHA: 521657ab93b5f320ff21e4f49c49ae252741a656698c1daa57996b5945c99ffb
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          name: desktop-release-win32-x64
+          name: desktop-release-darwin-arm64
           run-id: 44124290072
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/pigclaude-closeout/baseline
       - uses: actions/download-artifact@v4
         with:
-          name: desktop-release-win32-x64
+          name: desktop-release-darwin-arm64
           run-id: 44238044565
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/pigclaude-closeout/candidate
@@ -39,17 +39,17 @@ jobs:
         with:
           node-version: 22
       - run: pnpm install --frozen-lockfile
-      - name: 覆盖安装并核对会员、自启和协议
+      - name: 替换应用并核对会员、偏好和协议
         timeout-minutes: 10
         env:
-          QA_BASELINE_INSTALLER: ${{ runner.temp }}/pigclaude-closeout/baseline/PigClaude-0.0.1-x64.exe
-          QA_INSTALLER: ${{ runner.temp }}/pigclaude-closeout/candidate/PigClaude-0.0.1-x64.exe
+          QA_BASELINE_INSTALLER: ${{ runner.temp }}/pigclaude-closeout/baseline/PigClaude-0.0.1-arm64.dmg
+          QA_INSTALLER: ${{ runner.temp }}/pigclaude-closeout/candidate/PigClaude-0.0.1-arm64.dmg
           QA_ROOT: ${{ runner.temp }}/pigclaude-closeout/runtime
           QA_OUTPUT: ${{ runner.temp }}/pigclaude-closeout/evidence
         run: node tests/native-desktop/test13-installed-desktop.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: windows-test11-test13-replacement
+          name: macos-test11-test13-replacement
           path: ${{ runner.temp }}/pigclaude-closeout/evidence
           if-no-files-found: warn

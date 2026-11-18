@@ -1,9 +1,9 @@
-// 使用 test.11 和 test.13 的原始 NSIS 验证按用户覆盖安装、会员恢复、协议和自启。
+// 在一次性 Mac 上用 test.11 与 test.13 的最终 DMG 演练手动替换。
 import assert from "node:assert/strict"
 import { execFile, spawn } from "node:child_process"
 import { createHash } from "node:crypto"
 import { closeSync, createReadStream, existsSync, openSync } from "node:fs"
-import { mkdir, readFile, realpath, writeFile } from "node:fs/promises"
+import { mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises"
 import { createServer } from "node:net"
 import { basename, join } from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
@@ -34,7 +34,6 @@ const runtime = {
   PIGCLAUDE_USER_DATA: userData,
   PIGCLAUDE_RUST_BASE_URL: fixture.origin,
   PIGCLAUDE_AUTH_ORIGIN: fixture.origin,
-  PIGCLAUDE_UPDATE_CHECK: "0",
 }
 const environment = { ...process.env, ...runtime }
 const macEnv = Object.entries(runtime).flatMap(([key, value]) => ["--env", key + "=" + value])
@@ -200,15 +199,6 @@ async function sha256(path) {
   return hash.digest("hex")
 }
 
-async function loginItem() {
-  const { stdout } = await windows(
-    "Get-ItemPropertyValue -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'com.pigclaude.desktop.autostart'",
-  )
-  assert(stdout.toLowerCase().includes(executable.toLowerCase()))
-  assert(stdout.includes("--pigclaude-autostart"))
-  return stdout.trim()
-}
-
 async function closeApp(page) {
   await page
     .evaluate(async () => {
@@ -261,7 +251,7 @@ async function chromeFromFixtureUrl() {
 
 try {
   begin("SHA-256 and clean install baseline")
-  assert(win)
+  assert.equal(process.platform, "darwin")
   result.sha256 = await sha256(installer)
   assert.equal(result.sha256, process.env.QA_EXPECTED_SHA)
   result.baselineSha256 = await sha256(baselineInstaller)
@@ -293,7 +283,8 @@ try {
   begin("real install, initial startup, and native protocol association")
   await install(baselineInstaller)
   result.installMethod = win ? "per-user NSIS /S" : "mounted DMG copied into /Applications"
-  const originalCode = await sha256(join(installed, "resources", "app.asar"))
+  const installedAsar = join(installed, "Contents", "Resources", "app.asar")
+  const originalCode = await sha256(installedAsar)
   const firstPort = await freePort()
   if (win) start(executable, debugArgs(firstPort))
   else
@@ -347,33 +338,38 @@ try {
     "a Chrome click reached the running installed app and the authorization exchanged exactly once",
   )
 
-  begin("keep membership, preferences and login item across an in-place replacement")
+  begin("retain the original profile and test native safeStorage after manual DMG replacement")
   const before = await app.evaluate(async () => {
     const { membership, startupPreferences, updates, window } = globalThis.pigclaude
     const facts = await membership.inspect()
     await window.setCloseToTray(false)
     await updates.setAutoCheck(false)
-    await startupPreferences.set("openAtLogin", true)
+    await startupPreferences.set("showInDock", false)
     return {
       state: facts.state,
       userId: facts.account?.userId,
       bindingEpoch: facts.bindingEpoch,
-      startAtLogin: (await startupPreferences.get()).openAtLogin,
+      showInDock: (await startupPreferences.get()).showInDock,
       autoCheck: (await updates.state()).autoCheck,
       closeToTray: await window.getCloseToTray(),
     }
   })
   assert.equal(before.state, "active")
-  assert(before.userId && before.bindingEpoch && before.startAtLogin)
+  assert(before.userId && before.bindingEpoch)
+  assert.equal(before.showInDock, false)
   assert.equal(before.autoCheck, false)
   assert.equal(before.closeToTray, false)
-  const startupEntry = await loginItem()
   await closeApp(app)
+  await run("/usr/bin/sudo", ["-n", "/bin/mv", installed, join(root, "baseline-PigClaude.app")])
   await install()
-  assert.notEqual(await sha256(join(installed, "resources", "app.asar")), originalCode)
+  assert.notEqual(await sha256(installedAsar), originalCode)
+  result.installReplacedCode = true
   const port = await freePort()
-  start(executable, debugArgs(port))
-  const updated = await connectApp(port)
+  await run("/usr/bin/open", ["-g", "-a", installed, ...macEnv, "--args", ...debugArgs(port)])
+  const updated = await connectApp(port).catch((error) => {
+    result.keychainRecovery = "renderer-unreachable-after-replacement"
+    throw error
+  })
   await expect.poll(() => membership(updated), { timeout: 25_000 }).toBe("active")
   const after = await updated.evaluate(async () => {
     const { membership, startupPreferences, updates, window } = globalThis.pigclaude
@@ -382,21 +378,27 @@ try {
       state: facts.state,
       userId: facts.account?.userId,
       bindingEpoch: facts.bindingEpoch,
-      startAtLogin: (await startupPreferences.get()).openAtLogin,
+      showInDock: (await startupPreferences.get()).showInDock,
       autoCheck: (await updates.state()).autoCheck,
       closeToTray: await window.getCloseToTray(),
     }
   })
   assert.deepEqual(after, before)
-  assert.equal(await loginItem(), startupEntry)
   assert.equal(fixture.state().exchangeAttempts, 1)
-  result.installReplacedCode = true
-  result.kept = { membership: true, bindingEpoch: true, loginItem: true, preferences: true }
+  result.kept = { membership: true, bindingEpoch: true, preferences: true }
   const updatedPid = await pid()
   assert(updatedPid && updatedPid !== firstPid)
   pass(
-    "installed code changed and the original membership, startup registration and preferences were restored",
+    "installed code changed and the original membership, Dock and update preferences were restored",
   )
+
+  const check = await updated.evaluate(async () => {
+    const result = await window.pigclaude.updates.check()
+    const state = await window.pigclaude.updates.state()
+    return { status: result.status, phase: state.phase, version: state.version }
+  })
+  assert.deepEqual(check, { status: "up-to-date", phase: "idle", version: null })
+  result.publicUpdate = check
 
   begin("quit, then cold launch via the default OS handler")
   await closeApp(updated)
@@ -413,7 +415,7 @@ try {
     await run("/usr/bin/open", ["-g", ...macEnv, "-u", coldUri, "--args", ...debugArgs(port)])
     await expect.poll(pid, { timeout: 35_000 }).not.toBeNull()
     const launched = await pid()
-    assert(launched && launched !== firstPid)
+    assert(launched && launched !== updatedPid)
     const coldPage = await connectApp(port)
     await expect.poll(() => membership(coldPage), { timeout: 25_000 }).toBe("active")
     await coldPage.screenshot({ path: join(evidence, "cold-launch.png") })

@@ -1,28 +1,144 @@
-# 在一次性 Windows 运行器验证真实桌面入口读写统一 OAuth 文件。
 name: Desktop native verification
-run-name: Windows OAuth session file verification
-
-on:
+run-name: Verify test.14 Windows OAuth installation and replacement
+"on":
   workflow_dispatch:
-
+    inputs:
+      source_commit:
+        required: true
+        type: string
+      build_run:
+        required: true
+        type: string
+      installer_sha256:
+        required: true
+        type: string
 permissions:
+  actions: read
   contents: read
-
+env:
+  XRAY_VERSION: v26.10.31
 jobs:
-  windows-oauth-file:
-    runs-on: windows-2022
-    timeout-minutes: 12
+  windows-test14:
+    strategy:
+      matrix:
+        include:
+          - os: windows-2022
+            target: win32-x64
+            package: "--win nsis --x64"
+            xray_archive: Xray-windows-64.zip
+            xray_sha256: 2e04a9995a6f2ad1b28c0bb25c708ecb2695e43a1c9c7889c4b6ac2b48cf7a6a
+            executable: release/win-unpacked/PigClaude.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 32
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: 核对对照包的代码与固定提交
+        env:
+          QA_BUILD_SHA: ${{ inputs.source_commit }}
+        run: git diff --exit-code $env:QA_BUILD_SHA HEAD -- apps/desktop packages
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: 验证统一文件、刷新屏障和完整桌面 IPC
+      - name: 获取并校验固定 PigBrowser 与 Xray
+        shell: pwsh
+        env:
+          PIGBROWSER_READ_TOKEN: ${{ secrets.PIGBROWSER_READ_TOKEN }}
+          TARGET: ${{ matrix.target }}
+          XRAY_ARCHIVE: ${{ matrix.xray_archive }}
+          XRAY_SHA256: ${{ matrix.xray_sha256 }}
+        run: >
+          $ErrorActionPreference = "Stop"
+
+          $root = Join-Path $env:RUNNER_TEMP "pigclaude-runtime"
+
+          $browserDir = Join-Path $root "browser"
+
+          $xrayDir = Join-Path $root "xray"
+
+          New-Item -ItemType Directory -Force $browserDir, $xrayDir | Out-Null
+
+          $browserArchive = node apps/desktop/download-pigbrowser.cjs --target $env:TARGET --dir $root
+
+          if ($LASTEXITCODE -ne 0) { throw "获取 PigBrowser 开发包失败，原因见上面的输出" }
+
+          $browserArchive = "$browserArchive".Trim()
+
+          $xrayArchive = Join-Path $root $env:XRAY_ARCHIVE
+
+          Invoke-WebRequest "https://github.com/XTLS/Xray-core/releases/download/$env:XRAY_VERSION/$env:XRAY_ARCHIVE"
+          -OutFile $xrayArchive
+
+          if ((Get-FileHash $xrayArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:XRAY_SHA256) { throw "Xray
+          包校验失败" }
+
+          if ($IsMacOS) {
+            ditto -x -k $browserArchive $browserDir
+          } elseif ($IsWindows) {
+            Expand-Archive $browserArchive -DestinationPath $browserDir
+          } else {
+            tar -xf $browserArchive -C $browserDir
+          }
+
+          if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "PigBrowser 包解压失败" }
+
+          Expand-Archive $xrayArchive -DestinationPath $xrayDir
+
+          $packages = @(Get-ChildItem $browserDir -Directory | Where-Object { Test-Path (Join-Path $_.FullName
+          "manifest.json") })
+
+          if ($packages.Count -ne 1) { throw "无法确认唯一 PigBrowser 开发包" }
+
+          node apps/desktop/stage-pigbrowser.cjs --package $packages[0].FullName --target $env:TARGET
+
+          if ($LASTEXITCODE -ne 0) { throw "PigBrowser 完整资源校验失败" }
+
+          $xrayTarget = "apps/desktop/runtime-assets/pigclaude-runtime/xray/$env:TARGET"
+
+          New-Item -ItemType Directory -Force $xrayTarget | Out-Null
+
+          $xrayName = if ($IsWindows) { "xray.exe" } else { "xray" }
+
+          Copy-Item (Join-Path $xrayDir $xrayName), (Join-Path $xrayDir "LICENSE") $xrayTarget
+
+          if (!$IsWindows) { chmod 755 (Join-Path $xrayTarget $xrayName) }
+      - run: pnpm --filter @pigclaude/desktop build
+      - name: 构建文件版对照安装包
         working-directory: apps/desktop
-        run: |
-          node -e "require('electron')"
-          pnpm exec vitest run --testTimeout=20000 src/main/authorization/oauth-session-file.test.ts src/main/authorization/oauth-token-manager.test.ts src/main/profile-sign-out-ipc.test.ts
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: >-
+          pnpm exec electron-builder --config electron-builder.release.json --config.buildVersion=0.0.1.13
+          --config.extraMetadata.pigclaudeQaBuild=oauth-file-baseline ${{ matrix.package }} --publish never
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-release-win32-x64
+          run-id: ${{ inputs.build_run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/pigclaude-test14/candidate
+      - name: 验证原始 test.14 安装、授权、重启和来回覆盖
+        timeout-minutes: 12
+        shell: pwsh
+        env:
+          QA_BUILD_SHA: ${{ inputs.source_commit }}
+          QA_BUILD_RUN: ${{ inputs.build_run }}
+          QA_EXPECTED_SHA: ${{ inputs.installer_sha256 }}
+          QA_INSTALLER: ${{ runner.temp }}/pigclaude-test14/candidate/PigClaude-0.0.1-x64.exe
+          QA_BASELINE_INSTALLER: ${{ github.workspace }}/apps/desktop/release/PigClaude-0.0.1-x64.exe
+          QA_ROOT: ${{ runner.temp }}/pigclaude-test14/qa
+          QA_OUTPUT: ${{ runner.temp }}/pigclaude-test14/evidence
+        run: |-
+          $ErrorActionPreference = "Stop"
+          $env:QA_BASELINE_SHA = (Get-FileHash -Algorithm SHA256 $env:QA_BASELINE_INSTALLER).Hash.ToLowerInvariant()
+          node tests/native-desktop/test14-windows-oauth.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-test14-oauth-verification
+          path: ${{ runner.temp }}/pigclaude-test14/evidence
+          if-no-files-found: warn

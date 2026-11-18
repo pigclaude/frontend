@@ -22,7 +22,7 @@ export class CapabilityPluginSecrets {
 
   /** 返回这个插件自己的密钥值，缺少密钥时返回 null。 */
   async read(pluginId: string, key: string): Promise<string | null> {
-    await this.#requireEncryption()
+    this.#requireEncryption()
     return this.#vault(pluginId).get(key)
   }
 
@@ -33,7 +33,7 @@ export class CapabilityPluginSecrets {
     value: string | null,
     beforePublish?: () => void,
   ): Promise<void> {
-    await this.#requireEncryption()
+    this.#requireEncryption()
     const vault = this.#vault(pluginId)
     if (value === null) await vault.delete(key, beforePublish)
     else await vault.set(key, value, beforePublish)
@@ -48,8 +48,8 @@ export class CapabilityPluginSecrets {
     return vault
   }
 
-  async #requireEncryption(): Promise<void> {
-    if (!(await this.secureStorage.isEncryptionAvailable()))
+  #requireEncryption(): void {
+    if (!this.secureStorage.isEncryptionAvailable())
       throw new Error("PLUGIN_SECRET_STORAGE_UNAVAILABLE")
   }
 }
@@ -61,8 +61,8 @@ export function createCapabilityPluginSecrets(
   platform: NodeJS.Platform = process.platform,
 ): CapabilityPluginSecrets {
   return new CapabilityPluginSecrets(root, {
-    isEncryptionAvailable: async () => {
-      if (!(await storage.isEncryptionAvailable())) return false
+    isEncryptionAvailable: () => {
+      if (!storage.isEncryptionAvailable()) return false
       if (platform !== "linux") return true
       const backend = storage.getSelectedStorageBackend()
       return backend !== "basic_text" && backend !== "unknown"

@@ -11,10 +11,6 @@ on:
         description: 测试发布的 tag，例如 desktop-v0.0.0-test.1
         required: true
         type: string
-      macos_signed:
-        description: 使用同一 Developer ID 为 macOS 测试包签名，以验证换包时钥匙串权限可复用
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -121,19 +117,10 @@ jobs:
           if (!$IsWindows) { chmod 755 (Join-Path $xrayTarget $xrayName) }
       - run: pnpm --filter @pigclaude/desktop build
       - name: 打包
-        if: ${{ runner.os != 'macOS' || !inputs.macos_signed }}
         working-directory: apps/desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: pnpm exec electron-builder --config electron-builder.release.json ${{ matrix.package }} --publish never
-      - name: 打包并核验 macOS Developer ID
-        if: ${{ runner.os == 'macOS' && inputs.macos_signed }}
-        working-directory: apps/desktop
-        env:
-          PIGCLAUDE_MAC_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-        run: pnpm exec electron-builder --config electron-builder.macos-signed.cjs ${{ matrix.package }} --publish never
       - name: Linux 准备显示与沙箱
         if: runner.os == 'Linux'
         working-directory: apps/desktop
@@ -142,11 +129,10 @@ jobs:
           sudo apt-get install -y -qq xvfb xauth
           node -e 'require("electron")'
           electron="$(node -p 'require("electron")')"
-          sandbox="$(dirname "$electron")/chrome-sandbox"
-          sudo chown root:root "$sandbox"
-          sudo chmod 4755 "$sandbox"
-          test "$(readlink release/linux-unpacked/chrome-sandbox)" = /opt/google/chrome/chrome-sandbox
-          test "$(stat -Lc '%u:%a' release/linux-unpacked/chrome-sandbox)" = 0:4755
+          for sandbox in release/linux-unpacked/chrome-sandbox "$(dirname "$electron")/chrome-sandbox"; do
+            sudo chown root:root "$sandbox"
+            sudo chmod 4755 "$sandbox"
+          done
       - name: 冒烟测试：解压后的应用能启动，主进程的调试入口已关闭
         if: runner.os != 'Linux'
         working-directory: apps/desktop

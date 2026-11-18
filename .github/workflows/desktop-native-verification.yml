@@ -1,96 +1,136 @@
-# 在实际 Windows 和 Ubuntu 运行器启动 Electron 并留存窗口验收证据。
+# 在干净的系统运行器上使用 test.13 的原始构建制品验收。
 name: Desktop native verification
+run-name: Verify test.13 from build ${{ inputs.build_run }}
 
 on:
-  push:
-    branches: ["main", "codex/pigcode-ui-native-qa", "codex/pigcode-workbench"]
   workflow_dispatch:
+    inputs:
+      build_run:
+        description: test.13 构建工作流编号
+        required: true
+        type: string
+      build_sha:
+        description: test.13 frontend 提交
+        required: true
+        type: string
+      dmg_sha:
+        description: 最终 DMG 的 SHA-256
+        required: true
+        type: string
+      windows_sha:
+        description: 最终 NSIS 的 SHA-256
+        required: true
+        type: string
+      linux_sha:
+        description: 最终 AppImage 的 SHA-256
+        required: true
+        type: string
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
-  native:
+  installed:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2022]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 18
+        include:
+          - runner: macos-26
+            target: darwin-arm64
+            installer: PigClaude-0.0.1-arm64.dmg
+            hash_input: dmg_sha
+          - runner: windows-2022
+            target: win32-x64
+            installer: PigClaude-0.0.1-x64.exe
+            hash_input: windows_sha
+          - runner: ubuntu-24.04
+            target: linux-x64
+            installer: PigClaude-x86_64.AppImage
+            hash_input: linux_sha
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    env:
+      QA_INSTALLER: ${{ runner.temp }}/pigclaude-test13-artifact/${{ matrix.installer }}
+      QA_EXPECTED_SHA: ${{ inputs[matrix.hash_input] }}
+      QA_OUTPUT: ${{ runner.temp }}/pigclaude-test13-evidence
+      QA_ROOT: ${{ runner.temp }}/pigclaude-test13-installed
+      QA_BUILD_SHA: ${{ inputs.build_sha }}
+      QA_BUILD_RUN: ${{ inputs.build_run }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: 核对制品的源码提交
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD^)" = "$QA_BUILD_SHA"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QA_BUILD_RUN" --jq .head_sha)" = "$QA_BUILD_SHA"
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-release-${{ matrix.target }}
+          run-id: ${{ inputs.build_run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/pigclaude-test13-artifact
       - uses: pnpm/action-setup@v4
+        if: runner.os != 'macOS'
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm pigcode:verify
-      - run: pnpm --filter @pigclaude/desktop exec electron --version
+        if: runner.os != 'macOS'
+      - name: 只读挂载最终 DMG 并核对资源与签名
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          mkdir -p "$QA_OUTPUT"
+          actual=$(shasum -a 256 "$QA_INSTALLER" | awk '{print $1}')
+          test "$actual" = "$QA_EXPECTED_SHA"
+          hdiutil verify "$QA_INSTALLER" > "$QA_OUTPUT/dmg-verify.txt"
+          node apps/desktop/verify-macos-dmg-resources.cjs "$QA_INSTALLER" | tee "$QA_OUTPUT/resources-and-signature.txt"
+          QA_ACTUAL_SHA="$actual" node --input-type=module <<'JS'
+          import { execFileSync } from "node:child_process"
+          import { readFileSync, writeFileSync } from "node:fs"
+          import { join } from "node:path"
+          const log = readFileSync(join(process.env.QA_OUTPUT, "resources-and-signature.txt"), "utf8")
+          const result = {
+            buildCommit: process.env.QA_BUILD_SHA,
+            buildRun: Number(process.env.QA_BUILD_RUN),
+            sha256: process.env.QA_ACTUAL_SHA,
+            os: "macOS " + execFileSync("sw_vers", ["-productVersion"], { encoding: "utf8" }).trim(),
+            arch: process.arch,
+            dmgVerified: true,
+            codeSignatureDeepStrict: true,
+            fixedPigBrowserResources: Number(/已验证 (\d+) 项/.exec(log)?.[1]),
+          }
+          if (result.fixedPigBrowserResources !== 1040) throw new Error("固定资源计数不符")
+          writeFileSync(join(process.env.QA_OUTPUT, "verified.json"), JSON.stringify(result, null, 2) + "\n")
+          JS
+      - name: 安装 Windows NSIS 并核对系统协议与 Chrome 回跳
         if: runner.os == 'Windows'
-      - name: Install Linux desktop test tools
+        timeout-minutes: 8
+        run: node tests/native-desktop/test13-installed-desktop.mjs
+      - name: 准备 Ubuntu 系统 locale 与 FUSE
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb xauth openbox dbus-x11 gnome-keyring libsecret-tools xdotool imagemagick libglib2.0-bin
-          test -x /usr/bin/gio
-      - name: Prepare Linux Electron
+          sudo apt-get update -qq -o Acquire::Retries=3
+          sudo apt-get install -y -qq --no-install-recommends libfuse2t64 fuse3 locales
+          sudo localedef -i en_US -f UTF-8 en_US.UTF-8
+          sudo localedef -i fr_FR -f UTF-8 fr_FR.UTF-8
+          if [ ! -c /dev/fuse ]; then sudo modprobe fuse; fi
+          test "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = 1
+      - name: 在最终 AppImage 验证两组原生 CLI Intl
         if: runner.os == 'Linux'
-        working-directory: apps/desktop
-        run: |
-          node -e 'require("electron")'
-          electron="$(node -p 'require("electron")')"
-          sudo chown root:root "$(dirname "$electron")/chrome-sandbox"
-          sudo chmod 4755 "$(dirname "$electron")/chrome-sandbox"
-          "$electron" --version
-      - run: pnpm --filter @pigclaude/desktop build
-      # 新运行器上第一次启动 PowerShell 很慢：Windows PowerShell 查询设备标识要 4–13 秒，偶尔超过 20 秒；
-      # pwsh 第一次编译 C# 并加载 WinForms 要 6–11 秒。验收测的是界面流程，先各跑一次，不让它算进期限。
-      - name: Warm up Windows PowerShell
-        if: runner.os == 'Windows'
-        run: |
-          powershell.exe -NoLogo -NoProfile -NonInteractive -Command "(Get-CimInstance -ClassName Win32_ComputerSystemProduct -ErrorAction Stop).UUID" | Out-Null
-          pwsh.exe -NoProfile -NonInteractive -File tests/native-desktop/windows-pointer.ps1 capture "$env:RUNNER_TEMP\system-input-warmup.png"
-      - name: Verify saved session and Claude process lifecycle
-        timeout-minutes: 10
-        run: >-
-          pnpm --filter @pigclaude/desktop exec vitest run --maxWorkers=1
-          src/main/session/session-host-persistence.test.ts
-          src/main/session/session-project-configuration.integration.test.ts
-          src/main/session/session-project-configuration-native.integration.test.ts
-          src/main/session/session-proxy-routing.integration.test.ts
-          src/main/session/retained-claude-process.test.ts
-          src/main/session/retained-claude-process-exit.test.ts
-          src/main/session/claude-agent-adapter-retained-process.test.ts
-          src/main/login-startup.test.ts
-          src/main/xdg-autostart.integration.test.ts
-      - name: Verify native Electron on Windows
-        if: runner.os == 'Windows'
-        run: |
-          node tests/native-desktop/agent-browser-network.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node tests/native-desktop/acceptance.mjs test-results/native-desktop
-      - name: Verify capability plugin sandbox on Windows
-        if: runner.os == 'Windows'
-        run: node tests/native-desktop/plugin-sandbox.mjs
-      - name: Verify capability plugin sandbox on Linux
-        if: runner.os == 'Linux'
-        run: xvfb-run -a node tests/native-desktop/plugin-sandbox.mjs
-      - name: Verify native Electron on Linux
-        if: runner.os == 'Linux'
-        timeout-minutes: 3
-        run: |
-          xvfb-run -a -s "-screen 0 1600x1000x24" dbus-run-session -- bash -euc '
-            eval "$(printf "%s\n" pigclaude-native-qa | gnome-keyring-daemon --unlock --components=secrets)"
-            export GNOME_KEYRING_CONTROL
-            openbox >/tmp/pigclaude-openbox.log 2>&1 &
-            sleep 1
-            node tests/native-desktop/agent-browser-network.mjs
-            node tests/native-desktop/acceptance.mjs test-results/native-desktop
-          '
+        timeout-minutes: 5
+        run: bash tests/native-desktop/test13-installed-linux-intl.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: desktop-native-${{ runner.os }}
-          path: test-results/native-desktop
+          name: installed-test13-${{ matrix.target }}
+          path: ${{ runner.temp }}/pigclaude-test13-evidence
           if-no-files-found: warn

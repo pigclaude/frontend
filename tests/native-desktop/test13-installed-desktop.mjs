@@ -1,4 +1,4 @@
-// 从 test.13 的最终 DMG 和 NSIS 实际安装应用，用系统关联和真实 Chrome 验证回跳。
+// 使用 test.11 和 test.13 的原始 NSIS 验证按用户覆盖安装、会员恢复、协议和自启。
 import assert from "node:assert/strict"
 import { execFile, spawn } from "node:child_process"
 import { createHash } from "node:crypto"
@@ -14,6 +14,7 @@ import { startMembershipFixture } from "./installed-membership-fixture.mjs"
 const run = promisify(execFile)
 const win = process.platform === "win32"
 const installer = await realpath(process.env.QA_INSTALLER)
+const baselineInstaller = await realpath(process.env.QA_BASELINE_INSTALLER)
 const root = process.env.QA_ROOT
 const evidence = process.env.QA_OUTPUT
 await mkdir(root, { recursive: true })
@@ -42,6 +43,8 @@ const result = {
   buildCommit: process.env.QA_BUILD_SHA,
   artifactRun: Number(process.env.QA_BUILD_RUN),
   installer: basename(installer),
+  baselineRelease: "desktop-v0.0.1-test.11",
+  offlineReplacement: true,
   platform: process.platform,
   arch: process.arch,
   checks: [],
@@ -141,11 +144,11 @@ async function connectApp(port) {
   return page
 }
 
-async function install() {
+async function install(packagePath = installer) {
   if (win) {
     await windows(
       "$ErrorActionPreference='Stop'; $p = Start-Process -FilePath $env:QA_INSTALLER -ArgumentList ('/S /D=' + $env:QA_INSTALL_PATH) -Wait -PassThru; exit $p.ExitCode",
-      { QA_INSTALLER: installer, QA_INSTALL_PATH: installed },
+      { QA_INSTALLER: packagePath, QA_INSTALL_PATH: installed },
       150_000,
     )
     assert(existsSync(executable), "NSIS did not install the expected executable")
@@ -164,7 +167,7 @@ async function install() {
   await mkdir(mount, { recursive: true })
   await run(
     "/usr/bin/hdiutil",
-    ["attach", "-readonly", "-nobrowse", "-mountpoint", mount, installer],
+    ["attach", "-readonly", "-nobrowse", "-mountpoint", mount, packagePath],
     {
       timeout: 100_000,
     },
@@ -190,6 +193,21 @@ async function install() {
 const signIn = (page) => page.getByRole("button", { name: /^(登录|Sign in|Log in)$/i })
 const membership = (page) =>
   page.evaluate(async () => (await window.pigclaude.membership.inspect()).state)
+
+async function sha256(path) {
+  const hash = createHash("sha256")
+  for await (const chunk of createReadStream(path)) hash.update(chunk)
+  return hash.digest("hex")
+}
+
+async function loginItem() {
+  const { stdout } = await windows(
+    "Get-ItemPropertyValue -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'com.pigclaude.desktop.autostart'",
+  )
+  assert(stdout.toLowerCase().includes(executable.toLowerCase()))
+  assert(stdout.includes("--pigclaude-autostart"))
+  return stdout.trim()
+}
 
 async function closeApp(page) {
   await page
@@ -243,10 +261,11 @@ async function chromeFromFixtureUrl() {
 
 try {
   begin("SHA-256 and clean install baseline")
-  const hash = createHash("sha256")
-  for await (const chunk of createReadStream(installer)) hash.update(chunk)
-  result.sha256 = hash.digest("hex")
+  assert(win)
+  result.sha256 = await sha256(installer)
   assert.equal(result.sha256, process.env.QA_EXPECTED_SHA)
+  result.baselineSha256 = await sha256(baselineInstaller)
+  assert.equal(result.baselineSha256, process.env.QA_BASELINE_SHA)
   assert(
     !existsSync(installed) && !existsSync(userData),
     "test installation/profile already exists",
@@ -272,8 +291,9 @@ try {
   pass("installer SHA-256 matches test.13 and the runner has no app or protocol registration")
 
   begin("real install, initial startup, and native protocol association")
-  await install()
+  await install(baselineInstaller)
   result.installMethod = win ? "per-user NSIS /S" : "mounted DMG copied into /Applications"
+  const originalCode = await sha256(join(installed, "resources", "app.asar"))
   const firstPort = await freePort()
   if (win) start(executable, debugArgs(firstPort))
   else
@@ -327,14 +347,65 @@ try {
     "a Chrome click reached the running installed app and the authorization exchanged exactly once",
   )
 
-  begin("quit, then cold launch via the default OS handler")
+  begin("keep membership, preferences and login item across an in-place replacement")
+  const before = await app.evaluate(async () => {
+    const { membership, startupPreferences, updates, window } = globalThis.pigclaude
+    const facts = await membership.inspect()
+    await window.setCloseToTray(false)
+    await updates.setAutoCheck(false)
+    await startupPreferences.set("openAtLogin", true)
+    return {
+      state: facts.state,
+      userId: facts.account?.userId,
+      bindingEpoch: facts.bindingEpoch,
+      startAtLogin: (await startupPreferences.get()).openAtLogin,
+      autoCheck: (await updates.state()).autoCheck,
+      closeToTray: await window.getCloseToTray(),
+    }
+  })
+  assert.equal(before.state, "active")
+  assert(before.userId && before.bindingEpoch && before.startAtLogin)
+  assert.equal(before.autoCheck, false)
+  assert.equal(before.closeToTray, false)
+  const startupEntry = await loginItem()
   await closeApp(app)
+  await install()
+  assert.notEqual(await sha256(join(installed, "resources", "app.asar")), originalCode)
+  const port = await freePort()
+  start(executable, debugArgs(port))
+  const updated = await connectApp(port)
+  await expect.poll(() => membership(updated), { timeout: 25_000 }).toBe("active")
+  const after = await updated.evaluate(async () => {
+    const { membership, startupPreferences, updates, window } = globalThis.pigclaude
+    const facts = await membership.inspect()
+    return {
+      state: facts.state,
+      userId: facts.account?.userId,
+      bindingEpoch: facts.bindingEpoch,
+      startAtLogin: (await startupPreferences.get()).openAtLogin,
+      autoCheck: (await updates.state()).autoCheck,
+      closeToTray: await window.getCloseToTray(),
+    }
+  })
+  assert.deepEqual(after, before)
+  assert.equal(await loginItem(), startupEntry)
+  assert.equal(fixture.state().exchangeAttempts, 1)
+  result.installReplacedCode = true
+  result.kept = { membership: true, bindingEpoch: true, loginItem: true, preferences: true }
+  const updatedPid = await pid()
+  assert(updatedPid && updatedPid !== firstPid)
+  pass(
+    "installed code changed and the original membership, startup registration and preferences were restored",
+  )
+
+  begin("quit, then cold launch via the default OS handler")
+  await closeApp(updated)
   assert.equal(await pid(), null)
   if (win) {
     await windows("Start-Process -FilePath $env:QA_CALLBACK", { QA_CALLBACK: coldUri })
     await expect.poll(pid, { timeout: 35_000 }).not.toBeNull()
     const launched = await pid()
-    assert(launched && launched !== firstPid)
+    assert(launched && launched !== updatedPid)
     await expect.poll(() => windowsHandle(launched), { timeout: 30_000 }).toBeGreaterThan(0)
   } else {
     const port = await freePort()

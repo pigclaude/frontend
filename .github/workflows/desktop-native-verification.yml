@@ -1,143 +1,55 @@
-# 在干净的系统运行器上使用 test.13 的原始构建制品验收。
+# 使用两份固定测试草稿的原始 NSIS，在一次性运行器验证覆盖安装。
 name: Desktop native verification
-run-name: Verify test.13 from build ${{ inputs.build_run }}
+run-name: Verify test.11 to test.13 Windows replacement
 
 on:
   workflow_dispatch:
-    inputs:
-      build_run:
-        description: test.13 构建工作流编号
-        required: true
-        type: string
-      build_sha:
-        description: test.13 frontend 提交
-        required: true
-        type: string
-      dmg_sha:
-        description: 最终 DMG 的 SHA-256
-        required: true
-        type: string
-      windows_sha:
-        description: 最终 NSIS 的 SHA-256
-        required: true
-        type: string
-      linux_sha:
-        description: 最终 AppImage 的 SHA-256
-        required: true
-        type: string
 
 permissions:
   actions: read
   contents: read
 
 jobs:
-  installed:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-26
-            target: darwin-arm64
-            installer: PigClaude-0.0.1-arm64.dmg
-            hash_input: dmg_sha
-          - runner: windows-2022
-            target: win32-x64
-            installer: PigClaude-0.0.1-x64.exe
-            hash_input: windows_sha
-          - runner: ubuntu-24.04
-            target: linux-x64
-            installer: PigClaude-x86_64.AppImage
-            hash_input: linux_sha
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
+  windows-replacement:
+    runs-on: windows-2022
+    timeout-minutes: 17
     env:
-      QA_EXPECTED_SHA: ${{ inputs[matrix.hash_input] }}
-      QA_BUILD_SHA: ${{ inputs.build_sha }}
-      QA_BUILD_RUN: ${{ inputs.build_run }}
+      QA_BUILD_RUN: "44238044565"
+      QA_BUILD_SHA: adb1bfccf5d5c7672c456536b238acfb245ede6a
+      QA_BASELINE_SHA: 86f5bddbaee55ed59c21ebf2c016ccb7bb9f397b79d6d76299e39e4abb74012c
+      QA_EXPECTED_SHA: 3750a0d0f0302aceb5c9f0fcada832c32a15914ab9c9f603e0fee40ad92f7bea
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          fetch-depth: 2
-      - name: 核对制品的源码提交
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          test "$(git rev-parse HEAD^)" = "$QA_BUILD_SHA"
-          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QA_BUILD_RUN" --jq .head_sha)" = "$QA_BUILD_SHA"
       - uses: actions/download-artifact@v4
         with:
-          name: desktop-release-${{ matrix.target }}
-          run-id: ${{ inputs.build_run }}
+          name: desktop-release-win32-x64
+          run-id: 44124290072
           github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/pigclaude-test13-artifact
-      - name: 设置本轮安装与证据路径
-        shell: bash
-        env:
-          ARTIFACT_NAME: ${{ matrix.installer }}
-        run: |
-          {
-            printf 'QA_INSTALLER=%s/pigclaude-test13-artifact/%s\n' "$RUNNER_TEMP" "$ARTIFACT_NAME"
-            printf 'QA_OUTPUT=%s/pigclaude-test13-evidence\n' "$RUNNER_TEMP"
-            printf 'QA_ROOT=%s/pigclaude-test13-installed\n' "$RUNNER_TEMP"
-          } >> "$GITHUB_ENV"
+          path: ${{ runner.temp }}/pigclaude-closeout/baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-release-win32-x64
+          run-id: 44238044565
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/pigclaude-closeout/candidate
       - uses: pnpm/action-setup@v4
-        if: runner.os != 'macOS'
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: pnpm install --frozen-lockfile
-        if: runner.os != 'macOS'
-      - name: 只读挂载最终 DMG 并核对资源与签名
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(uname -m)" = arm64
-          mkdir -p "$QA_OUTPUT"
-          actual=$(shasum -a 256 "$QA_INSTALLER" | awk '{print $1}')
-          test "$actual" = "$QA_EXPECTED_SHA"
-          hdiutil verify "$QA_INSTALLER" > "$QA_OUTPUT/dmg-verify.txt"
-          node apps/desktop/verify-macos-dmg-resources.cjs "$QA_INSTALLER" | tee "$QA_OUTPUT/resources-and-signature.txt"
-          QA_ACTUAL_SHA="$actual" node --input-type=module <<'JS'
-          import { execFileSync } from "node:child_process"
-          import { readFileSync, writeFileSync } from "node:fs"
-          import { join } from "node:path"
-          const log = readFileSync(join(process.env.QA_OUTPUT, "resources-and-signature.txt"), "utf8")
-          const result = {
-            buildCommit: process.env.QA_BUILD_SHA,
-            buildRun: Number(process.env.QA_BUILD_RUN),
-            sha256: process.env.QA_ACTUAL_SHA,
-            os: "macOS " + execFileSync("sw_vers", ["-productVersion"], { encoding: "utf8" }).trim(),
-            arch: process.arch,
-            dmgVerified: true,
-            codeSignatureDeepStrict: true,
-            fixedPigBrowserResources: Number(/已验证 (\d+) 项/.exec(log)?.[1]),
-          }
-          if (result.fixedPigBrowserResources !== 1040) throw new Error("固定资源计数不符")
-          writeFileSync(join(process.env.QA_OUTPUT, "verified.json"), JSON.stringify(result, null, 2) + "\n")
-          JS
-      - name: 安装 Windows NSIS 并核对系统协议与 Chrome 回跳
-        if: runner.os == 'Windows'
-        timeout-minutes: 8
+      - name: 覆盖安装并核对会员、自启和协议
+        timeout-minutes: 10
+        env:
+          QA_BASELINE_INSTALLER: ${{ runner.temp }}/pigclaude-closeout/baseline/PigClaude-0.0.1-x64.exe
+          QA_INSTALLER: ${{ runner.temp }}/pigclaude-closeout/candidate/PigClaude-0.0.1-x64.exe
+          QA_ROOT: ${{ runner.temp }}/pigclaude-closeout/runtime
+          QA_OUTPUT: ${{ runner.temp }}/pigclaude-closeout/evidence
         run: node tests/native-desktop/test13-installed-desktop.mjs
-      - name: 准备 Ubuntu 系统 locale 与 FUSE
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update -qq -o Acquire::Retries=3
-          sudo apt-get install -y -qq --no-install-recommends libfuse2t64 fuse3 locales
-          sudo localedef -i en_US -f UTF-8 en_US.UTF-8
-          sudo localedef -i fr_FR -f UTF-8 fr_FR.UTF-8
-          if [ ! -c /dev/fuse ]; then sudo modprobe fuse; fi
-          test "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = 1
-      - name: 在最终 AppImage 验证两组原生 CLI Intl
-        if: runner.os == 'Linux'
-        timeout-minutes: 5
-        run: bash tests/native-desktop/test13-installed-linux-intl.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: installed-test13-${{ matrix.target }}
-          path: ${{ runner.temp }}/pigclaude-test13-evidence
+          name: windows-test11-test13-replacement
+          path: ${{ runner.temp }}/pigclaude-closeout/evidence
           if-no-files-found: warn

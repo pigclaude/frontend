@@ -1,6 +1,6 @@
 # 使用两份固定测试草稿的原始 DMG，在一次性运行器验证手动替换。
 name: Desktop native verification
-run-name: Verify test.11 to test.13 macOS replacement
+run-name: Verify test.11 restart and test.13 macOS replacement
 
 on:
   workflow_dispatch:

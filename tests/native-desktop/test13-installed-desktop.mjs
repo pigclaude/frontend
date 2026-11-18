@@ -211,6 +211,35 @@ async function closeApp(page) {
   appBrowser = undefined
 }
 
+async function startInstalledWithEvidence(profile, label, direct = false) {
+  const port = await freePort()
+  if (direct) start(executable, debugArgs(port))
+  else await run("/usr/bin/open", ["-n", "-g", "-a", installed, ...profile, "--args", ...debugArgs(port)])
+  const active = await pid()
+  try {
+    return await connectApp(port)
+  } catch (error) {
+    const running = (await pid().catch(() => null)) ?? active
+    const diagnostic = { processAlive: running !== null, keychainFrames: false, appKitFrames: false }
+    if (running) {
+      const samplePath = join(root, label + "-sample.txt")
+      await run("/usr/bin/sample", [String(running), "2", "10", "-file", samplePath], {
+        timeout: 10_000,
+      }).catch(() => {})
+      const sample = await readFile(samplePath, "utf8").catch(() => "")
+      diagnostic.sampleCollected = sample.length > 0
+      diagnostic.keychainFrames = /SecKeychain|securityd|KeychainPassword|AppleKeychain|LocalAuthentication|OSCrypt/i.test(sample)
+      diagnostic.appKitFrames = /NSApplicationMain|AppKit|CFRunLoopRun/i.test(sample)
+      const frames = sample.split("\n").filter(line =>
+        /SecKeychain|securityd|KeychainPassword|AppleKeychain|LocalAuthentication|OSCrypt/i.test(line))
+      if (frames.length > 0) await writeFile(join(evidence, label + "-keychain-frames.txt"), frames.slice(0, 30).join("\n") + "\n")
+    }
+    result[label] = diagnostic
+    console.log("RESTART", label, JSON.stringify(diagnostic))
+    throw error
+  }
+}
+
 async function chromeFromFixtureUrl() {
   const chromePath = win
     ? [process.env.PROGRAMFILES, process.env["PROGRAMFILES(X86)"], process.env.LOCALAPPDATA]
@@ -360,16 +389,20 @@ try {
   assert.equal(before.autoCheck, false)
   assert.equal(before.closeToTray, false)
   await closeApp(app)
-  await run("/usr/bin/sudo", ["-n", "/bin/mv", installed, join(root, "baseline-PigClaude.app")])
+  begin("restart the same installed test.11 DMG with the same encrypted profile")
+  const baselineRestart = await startInstalledWithEvidence(macEnv, "baselineRestartDiagnostic")
+  await expect.poll(() => membership(baselineRestart), { timeout: 20_000 }).toBe("active")
+  assert.equal(fixture.state().exchangeAttempts, 1)
+  await closeApp(baselineRestart)
+  result.sameVersionRestart = true
+  pass("the original signed application restored the existing membership across a complete restart")
+  begin("replace the signed DMG at the same path and restore the same profile")
+  const archive = join(root, "baseline-app-backup")
+  await run("/usr/bin/sudo", ["-n", "/bin/mv", installed, archive])
   await install()
   assert.notEqual(await sha256(installedAsar), originalCode)
   result.installReplacedCode = true
-  const port = await freePort()
-  await run("/usr/bin/open", ["-g", "-a", installed, ...macEnv, "--args", ...debugArgs(port)])
-  const updated = await connectApp(port).catch((error) => {
-    result.keychainRecovery = "renderer-unreachable-after-replacement"
-    throw error
-  })
+  const updated = await startInstalledWithEvidence(macEnv, "replacementDiagnostic")
   await expect.poll(() => membership(updated), { timeout: 25_000 }).toBe("active")
   const after = await updated.evaluate(async () => {
     const { membership, startupPreferences, updates, window } = globalThis.pigclaude

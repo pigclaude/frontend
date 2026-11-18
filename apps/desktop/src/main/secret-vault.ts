@@ -1,7 +1,6 @@
 // 负责把授权秘密交给 Electron safeStorage 加密后原子写入本机文件。
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
-import { basename, dirname, join } from "node:path"
-import { randomUUID } from "node:crypto"
+import { readFile } from "node:fs/promises"
+import { writePrivateFile } from "./private-file"
 
 /** Electron safeStorage 的最小能力，保证测试可以替换平台实现。 */
 export type SafeStoragePort = {
@@ -112,16 +111,7 @@ export class FileSecretVault implements SecretVault {
   ): Promise<void> {
     const contents = JSON.stringify(secrets)
     if (Buffer.byteLength(contents) > this.maximumBytes) throw new Error("秘密文件超过大小限制")
-    await mkdir(dirname(this.#path), { recursive: true })
-    const temporary = join(dirname(this.#path), `.${basename(this.#path)}.${randomUUID()}.tmp`)
-    try {
-      await writeFile(temporary, contents, { encoding: "utf8", mode: 0o600 })
-      beforePublish?.()
-      await rename(temporary, this.#path)
-    } catch (error: unknown) {
-      await rm(temporary, { force: true })
-      throw error
-    }
+    await writePrivateFile(this.#path, contents, beforePublish)
   }
 
   private enqueue(write: () => Promise<void>): Promise<void> {

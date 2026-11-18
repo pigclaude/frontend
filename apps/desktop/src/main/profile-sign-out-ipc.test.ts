@@ -1,17 +1,21 @@
 // 负责贯通真实入口、回环 HTTP、composition、IPC 与 preload，验证授权结果及本机退出。
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, it, vi } from "vitest"
 import type { AuthorizationStateEvent } from "./authorization/types"
 import type { PigclaudeBridge } from "../preload/index"
 import { FileSecretVault } from "./secret-vault"
-import { fixtureSafeStorage, seedProfile } from "./testing/profile-fixture"
+import { OAuthSessionFile } from "./authorization/oauth-session-file"
+import { fixtureSafeStorage, oauthSessionFixture, seedProfile } from "./testing/profile-fixture"
 
 const fixture = vi.hoisted(() => ({
   directory: "",
   contextFailure: false,
   exchangeFailure: false,
+  keychainAccess: vi.fn(() => {
+    throw new Error("设备 OAuth 不应调用 safeStorage")
+  }),
   redirectUri: "",
   closeCallback: async (): Promise<void> => undefined,
   opening: undefined as ((url: string) => Promise<void>) | undefined,
@@ -129,9 +133,12 @@ vi.mock("electron", () => ({
   nativeTheme: { on: () => {}, shouldUseDarkColors: false },
   screen: { getPrimaryDisplay: () => ({ workAreaSize: { width: 1920, height: 1080 } }) },
   safeStorage: {
-    isEncryptionAvailable: () => true,
-    encryptString: (value: string) => Buffer.from(`fixture-encrypted:${value}`),
-    decryptString: (value: Buffer) => value.toString().slice("fixture-encrypted:".length),
+    isEncryptionAvailable: fixture.keychainAccess,
+    encryptString: fixture.keychainAccess,
+    decryptString: fixture.keychainAccess,
+    isAsyncEncryptionAvailable: fixture.keychainAccess,
+    encryptStringAsync: fixture.keychainAccess,
+    decryptStringAsync: fixture.keychainAccess,
   },
   shell: {
     openExternal: async (url: string) => {
@@ -170,16 +177,11 @@ vi.mock("./authorization/callback-server", async (importOriginal) => {
 it("preload sign-out clears real vault keys and broadcasts authoritative signed_out without remote logout", async () => {
   const directory = await mkdtemp(join(tmpdir(), "pigclaude-sign-out-ipc-"))
   fixture.directory = directory
-  const vault = new FileSecretVault(
-    join(directory, "authorization-secrets.json"),
-    fixtureSafeStorage,
-  )
-  await seedProfile(vault)
-  const identity = JSON.stringify({
-    deviceId: "device-fixture",
-    deviceFingerprintHash: "fingerprint-fixture",
-  })
-  await vault.set("device:identity", identity)
+  const legacyPath = join(directory, "authorization-secrets.json")
+  await seedProfile(new FileSecretVault(legacyPath, fixtureSafeStorage))
+  const legacy = await readFile(legacyPath, "utf8")
+  const vault = new OAuthSessionFile(directory)
+  await vault.set("membership:session", JSON.stringify(oauthSessionFixture()))
   const localFetch = globalThis.fetch
   let recoveryReads = 0
   let inactive = false
@@ -393,9 +395,7 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     expect(events.at(-1)).toBe("signed_out")
     expect(fixture.shownNotifications).not.toHaveBeenCalled()
     expect(await vault.get("membership:session")).toBeNull()
-    expect(await vault.get("authorization:pigclaude-login:old-user")).toBeNull()
-    expect(await vault.get("authorization:claude-account:other-account")).toBe("old-claude-secret")
-    expect(await vault.get("device:identity")).toBe(identity)
+    expect(await readFile(legacyPath, "utf8")).toBe(legacy)
 
     const started = await bridge.authorization.start({ purpose: "pigclaude-login", mode: "login" })
     expect(started.ok).toBe(true)
@@ -459,7 +459,8 @@ it("preload sign-out clears real vault keys and broadcasts authoritative signed_
     })
     expect(withdrawals).toBe(1)
     expect(fixture.shownNotifications).toHaveBeenCalledOnce()
-    expect(await vault.get("authorization:claude-account:other-account")).toBe("old-claude-secret")
+    expect(await readFile(legacyPath, "utf8")).toBe(legacy)
+    expect(fixture.keychainAccess).not.toHaveBeenCalled()
     fixture.appEvents.get("before-quit")?.({ preventDefault: () => undefined })
     expect(fixture.powerEvents.has("resume")).toBe(false)
     expect(fixture.appEvents.has("browser-window-focus")).toBe(false)

@@ -1,5 +1,5 @@
 // 负责创建桌面窗口、承接浏览器授权回调并保存主进程秘密。
-import { app, BrowserWindow, ipcMain, nativeTheme, safeStorage, screen, shell } from "electron"
+import { app, BrowserWindow, ipcMain, nativeTheme, screen, shell } from "electron"
 import { join } from "node:path"
 import { readFileSync } from "node:fs"
 import { scheduledTasksChangedChannel } from "../scheduled-tasks-contract"
@@ -65,7 +65,7 @@ import { createDesktopKeepAwake } from "./desktop-keep-awake"
 import { registerKeepAwakeIpc } from "./keep-awake"
 import { shutdownDesktopResources } from "./shutdown-resources"
 import type { UsageRecorder } from "./session/usage-recorder"
-import { FileSecretVault } from "./secret-vault"
+import { OAuthSessionFile } from "./authorization/oauth-session-file"
 import { forwardFullScreen } from "./window-ipc"
 import { WindowClosePreference } from "./window-close-preference"
 import { WindowNavigation } from "./window-navigation"
@@ -298,22 +298,19 @@ async function shutdownDesktop(): Promise<void> {
     },
   })
 }
-
 async function setupAuthorization(): Promise<void> {
+  const userData = app.getPath("userData")
   // 启动前清掉上次崩溃遗留的会话目录；此时还没有当前会话，调用后创建的目录不受影响。
-  await cleanupStaleSessionDirs(app.getPath("userData")).catch(() => undefined)
-  const sessionStore = startSessionStore(app.getPath("userData"))
-  const vault = new FileSecretVault(
-    join(app.getPath("userData"), "authorization-secrets.json"),
-    safeStorage,
-  )
+  await cleanupStaleSessionDirs(userData).catch(() => undefined)
+  const sessionStore = startSessionStore(userData)
+  const vault = new OAuthSessionFile(userData)
   const deviceIdentity = new DeviceIdentityService()
   // 不等读取：Windows 首次启动 PowerShell 要几秒；登录时授权服务等同一次读取，失败会重读。
   void deviceIdentity.read().catch((error: unknown) => console.error(errorMessage(error)))
   callbackServer = await createCallbackServer(handleCallbackUrl)
   const systemLocale = () => app.getSystemLocale()
   const profileUsage = new BrowserProfileUsage()
-  const localStore = new LocalStore(join(app.getPath("userData"), "local"), { systemLocale })
+  const localStore = new LocalStore(join(userData, "local"), { systemLocale })
   const composition = createDesktopComposition({
     authOrigin,
     websiteOrigin,

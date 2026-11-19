@@ -1,6 +1,6 @@
 # 只读核对 Ubuntu 构建环境的官方 Chrome 沙箱助手。
 name: Desktop native verification
-run-name: Inspect Ubuntu Chrome sandbox for test.15
+run-name: Verify Ubuntu Chrome sandbox preparation for test.15
 
 on:
   workflow_dispatch:
@@ -13,13 +13,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: 检查系统 Chrome 助手的来源和权限
+      - name: Linux 准备系统 Chrome 沙箱助手
+        shell: bash
         run: |
-          command -v google-chrome || true
-          google-chrome --version || true
-          path=/opt/google/chrome/chrome-sandbox
-          stat -Lc '%F %u:%g:%a' "$path" || true
-          dpkg-query -S "$path" || true
-          dpkg-query -W google-chrome-stable || true
-          readlink -f "$path" || true
-          cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns || true
+          helper=/opt/google/chrome/chrome-sandbox
+          test -f "$helper"
+          test "$(readlink -f "$helper")" = "$helper"
+          test "$(stat -c '%u:%g' "$helper")" = 0:0
+          sudo chmod 0755 "$helper"
+          checksum=$(dpkg-query --control-show google-chrome-stable md5sums | awk -v path="${helper#/}" '$2 == path { print $1 }')
+          test -n "$checksum"
+          printf '%s  %s\n' "$checksum" "$helper" | md5sum --check -
+          sudo chmod 4755 "$helper"
+          stat -c '%u:%g:%a' "$helper"
+          test "$(stat -c '%u:%g:%a' "$helper")" = 0:0:4755

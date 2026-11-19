@@ -129,10 +129,11 @@ jobs:
           sudo apt-get install -y -qq xvfb xauth
           node -e 'require("electron")'
           electron="$(node -p 'require("electron")')"
-          for sandbox in release/linux-unpacked/chrome-sandbox "$(dirname "$electron")/chrome-sandbox"; do
-            sudo chown root:root "$sandbox"
-            sudo chmod 4755 "$sandbox"
-          done
+          sandbox="$(dirname "$electron")/chrome-sandbox"
+          sudo chown root:root "$sandbox"
+          sudo chmod 4755 "$sandbox"
+          test "$(readlink release/linux-unpacked/chrome-sandbox)" = /opt/google/chrome/chrome-sandbox
+          test "$(stat -Lc '%u:%a' release/linux-unpacked/chrome-sandbox)" = 0:4755
       - name: 冒烟测试：解压后的应用能启动，主进程的调试入口已关闭
         if: runner.os != 'Linux'
         working-directory: apps/desktop

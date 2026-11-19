@@ -72,6 +72,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Linux 准备系统 Chrome 沙箱助手
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          helper=/opt/google/chrome/chrome-sandbox
+          test -f "$helper"
+          test "$(readlink -f "$helper")" = "$helper"
+          test "$(stat -c '%u:%g' "$helper")" = 0:0
+          sudo chmod 0755 "$helper"
+          checksum=$(dpkg-query --control-show google-chrome-stable md5sums | awk -v path="${helper#/}" '$2 == path { print $1 }')
+          test -n "$checksum"
+          printf '%s  %s\n' "$checksum" "$helper" | md5sum --check -
+          sudo chmod 4755 "$helper"
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -132,8 +145,12 @@ jobs:
           sandbox="$(dirname "$electron")/chrome-sandbox"
           sudo chown root:root "$sandbox"
           sudo chmod 4755 "$sandbox"
-          test "$(readlink release/linux-unpacked/chrome-sandbox)" = /opt/google/chrome/chrome-sandbox
-          test "$(stat -Lc '%u:%a' release/linux-unpacked/chrome-sandbox)" = 0:4755
+          packaged_sandbox=release/linux-unpacked/chrome-sandbox
+          target=$(readlink "$packaged_sandbox")
+          permissions=$(stat -Lc '%u:%a' "$packaged_sandbox")
+          printf 'Chrome 沙箱助手：%s (%s)\n' "$target" "$permissions"
+          test "$target" = /opt/google/chrome/chrome-sandbox
+          test "$permissions" = 0:4755
       - name: 冒烟测试：解压后的应用能启动，主进程的调试入口已关闭
         if: runner.os != 'Linux'
         working-directory: apps/desktop

@@ -1,18 +1,43 @@
-# 只读核对 Ubuntu 构建环境的官方 Chrome 沙箱助手。
+# 核对三平台草稿原始制品，在干净 Ubuntu 运行器验收最终 AppImage。
 name: Desktop native verification
-run-name: Verify Ubuntu Chrome sandbox preparation for test.15
+run-name: Verify test.15 checksums and AppImage sandbox and OAuth
 
 on:
   workflow_dispatch:
+    inputs:
+      source_commit:
+        required: true
+        type: string
+      build_run:
+        required: true
+        type: string
+      sha256_manifest:
+        required: true
+        type: string
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
-  inspect-sandbox:
+  test15-appimage:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 22
+    env:
+      QA_BUILD_RUN: ${{ inputs.build_run }}
+      QA_SOURCE_COMMIT: ${{ inputs.source_commit }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: 准备隔离验收路径
+        run: |
+          {
+            echo "QA_ROOT=$RUNNER_TEMP/pigclaude-test15/session"
+            echo "QA_OUTPUT=$RUNNER_TEMP/pigclaude-test15/evidence"
+            echo "QA_PRODUCT=$RUNNER_TEMP/pigclaude-test15/products"
+          } >> "$GITHUB_ENV"
       - name: Linux 准备系统 Chrome 沙箱助手
         shell: bash
         run: |
@@ -25,5 +50,84 @@ jobs:
           test -n "$checksum"
           printf '%s  %s\n' "$checksum" "$helper" | md5sum --check -
           sudo chmod 4755 "$helper"
-          stat -c '%u:%g:%a' "$helper"
-          test "$(stat -c '%u:%g:%a' "$helper")" = 0:0:4755
+      - name: 核对验收源码
+        run: git diff --exit-code "$QA_SOURCE_COMMIT" HEAD -- apps/desktop packages
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-release-*
+          merge-multiple: true
+          run-id: ${{ inputs.build_run }}
+          github-token: ${{ github.token }}
+          path: ${{ env.QA_PRODUCT }}
+      - name: 复算四份原始安装制品及更新附件的 SHA-256
+        env:
+          QA_SHA256_MANIFEST: ${{ inputs.sha256_manifest }}
+        run: |
+          mkdir -p "$QA_OUTPUT"
+          python3 - <<'PY'
+          import hashlib, json, os, re
+          from pathlib import Path
+
+          files = Path(os.environ['QA_PRODUCT'])
+          output = Path(os.environ['QA_OUTPUT'])
+          expected = json.loads(os.environ['QA_SHA256_MANIFEST'])
+          legal = {
+              'PigClaude-0.0.1-arm64.dmg', 'PigClaude-0.0.1-arm64.zip',
+              'PigClaude-0.0.1-x64.exe', 'PigClaude-x86_64.AppImage',
+              'PigClaude-0.0.1-arm64.dmg.blockmap', 'PigClaude-0.0.1-arm64.zip.blockmap',
+              'PigClaude-0.0.1-x64.exe.blockmap', 'latest-linux.yml', 'latest-mac.yml', 'latest.yml',
+          }
+          assert set(expected) == legal
+          checked = {}
+          for name, digest in expected.items():
+              assert re.fullmatch('[a-f0-9]{64}', digest)
+              with (files/name).open('rb') as file:
+                  checksum = hashlib.file_digest(file, 'sha256').hexdigest()
+              assert checksum == digest, name
+              checked[name] = checksum
+              print(name, 'SHA-256 OK')
+          (output/'checksums.json').write_text(json.dumps(checked, indent=2)+'\n')
+          PY
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 准备隔离 Ubuntu 的显示和 FUSE
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb xauth libfuse2t64 openbox xdotool dbus-x11 gnome-keyring xdg-utils squashfs-tools
+          if [ ! -c /dev/fuse ]; then sudo modprobe fuse; fi
+          test -c /dev/fuse
+          test "$(stat -Lc '%u:%a' /opt/google/chrome/chrome-sandbox)" = 0:4755
+      - name: 验收最终 AppImage 的启动器、插件命令与冷启动 OAuth 恢复
+        timeout-minutes: 9
+        run: |
+          export QA_CANDIDATE="$QA_PRODUCT/PigClaude-x86_64.AppImage"
+          export QA_IMAGE="$QA_ROOT/PigClaude 100%=stable.AppImage"
+          export QA_BUILD_COMMIT="$QA_ROOT/source-tree.txt"
+          export QA_FRONTEND_BASE="$QA_ROOT/frontend-base.txt"
+          export QA_EXPECTED_SHA="$(jq -r '.["PigClaude-x86_64.AppImage"]' "$QA_OUTPUT/checksums.json")"
+          export XDG_CONFIG_HOME="$QA_ROOT/config" XDG_DATA_HOME="$QA_ROOT/data" XDG_CACHE_HOME="$QA_ROOT/cache" XDG_CURRENT_DESKTOP=GNOME
+          mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$QA_OUTPUT"
+          git rev-parse "$QA_SOURCE_COMMIT^{tree}" > "$QA_BUILD_COMMIT"
+          printf '%s\n' "$QA_SOURCE_COMMIT" > "$QA_FRONTEND_BASE"
+          install -m 0755 "$QA_CANDIDATE" "$QA_IMAGE"
+          offset=$("$QA_IMAGE" --appimage-offset)
+          unsquashfs -o "$offset" -cat "$QA_IMAGE" AppRun > "$QA_ROOT/packed-AppRun"
+          cmp "$QA_ROOT/packed-AppRun" apps/desktop/linux-appimage-entry.sh
+          unsquashfs -o "$offset" -cat "$QA_IMAGE" pigclaude.desktop | grep -Fx 'Exec=AppRun %U'
+          unsquashfs -o "$offset" -ll "$QA_IMAGE" chrome-sandbox | grep -F '/opt/google/chrome/chrome-sandbox'
+          xvfb-run -a -s "-screen 0 1600x1000x24" dbus-run-session -- bash -euc '
+            eval "$(printf "%s\n" pigclaude-test15-qa | gnome-keyring-daemon --unlock --components=secrets)"
+            export GNOME_KEYRING_CONTROL
+            openbox >"$QA_ROOT/openbox.log" 2>&1 &
+            node tests/native-desktop/sandbox-oauth-acceptance.mjs
+          '
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test15-checksums-and-appimage-verification
+          path: ${{ env.QA_OUTPUT }}
+          if-no-files-found: warn

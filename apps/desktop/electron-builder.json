@@ -104,6 +104,9 @@
     "executableName": "pigclaude",
     "category": "Development"
   },
+  "appImage": {
+    "executableArgs": []
+  },
   "publish": [
     {
       "provider": "github",

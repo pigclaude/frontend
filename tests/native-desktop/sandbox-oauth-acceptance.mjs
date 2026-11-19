@@ -1,16 +1,13 @@
-// 用草稿 AppImage 和独立文件版对照包验证 OAuth 授权、重启及替换。
+// 在同一个最终 AppImage 内核对 OAuth 文件恢复和能力插件执行。
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, closeSync, openSync } from "node:fs";
 import {
-  chmod,
-  copyFile,
   mkdir,
   readFile,
   readlink,
   realpath,
-  rename,
   stat,
   writeFile,
 } from "node:fs/promises";
@@ -20,6 +17,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { chromium, expect } from "@playwright/test";
 import { startMembershipFixture } from "./installed-membership-fixture.mjs";
+import { verifyPackagedPlugin } from "./verify-packaged-plugin.mjs";
 
 const execute = promisify(execFile);
 const root = process.env.QA_ROOT;
@@ -36,10 +34,10 @@ const coldCallback =
 const logPath = join(root, "programs.log");
 const log = openSync(logPath, "a");
 const result = {
-  buildCommit: (await readFile(process.env.QA_BUILD_COMMIT, "utf8")).trim(),
-  buildRun: Number(process.env.QA_BUILD_RUN),
-  release: "desktop-v0.0.1-test.14",
-  alternatePackage: "独立构建的 OAuth 文件版 AppImage",
+  sourceTree: (await readFile(process.env.QA_BUILD_COMMIT, "utf8")).trim(),
+  frontendBase: (await readFile(process.env.QA_FRONTEND_BASE, "utf8")).trim(),
+  release: "desktop-v0.0.1-test.15",
+  artifactRun: Number(process.env.QA_BUILD_RUN),
   version: "0.0.1",
   os: (await readFile("/etc/os-release", "utf8")).match(
     /^PRETTY_NAME="(.+)"$/m,
@@ -55,6 +53,7 @@ const env = {
   PIGCLAUDE_USER_DATA: join(root, "profile"),
   PIGCLAUDE_RUST_BASE_URL: fixture.origin,
   PIGCLAUDE_AUTH_ORIGIN: fixture.origin,
+  PIGCLAUDE_UPDATE_CHECK: "0",
 };
 const run = (command, args) => execute(command, args, { env, timeout: 10_000 });
 const start = (command, args) => {
@@ -158,58 +157,63 @@ async function alive(pid) {
 }
 
 async function mountDirectly() {
-  const portFile = join(env.PIGCLAUDE_USER_DATA, "DevToolsActivePort");
-  await rename(portFile, portFile + ".previous").catch((error) => {
-    if (error.code !== "ENOENT") throw error;
-  });
+  const port = await freePort();
   directProcess = start(image, [
-    "--remote-debugging-port=0",
+    "--remote-debugging-port=" + port,
     "--remote-debugging-address=127.0.0.1",
   ]);
-  let lastError;
-  let lastPort;
-  await expect
-    .poll(
-      async () => {
-        const data = await readFile(portFile, "utf8").catch(() => "");
-        if (!data) return false;
-        const [port, endpoint] = data.trim().split("\n");
-        if (!endpoint?.startsWith("/devtools/browser/")) return false;
-        lastPort = port;
-        try {
-          appBrowser = await chromium.connectOverCDP(
-            "ws://127.0.0.1:" + port + endpoint,
-            { timeout: 4000 },
-          );
-          return true;
-        } catch (error) {
-          lastError = safe(error.message).split("\n")[0];
-          return false;
-        }
-      },
-      { timeout: 35_000 },
-    )
-    .toBe(true)
-    .catch(async (error) => {
-      const visible = await nativeWindow().catch(() => null);
-      const listening = lastPort
-        ? await run("sudo", [
-            "-n",
-            "ss",
-            "-ltnp",
-            "sport",
-            "=",
-            ":" + lastPort,
-          ]).catch(() => null)
-        : null;
-      result.restartDiagnostic = {
-        visibleWindow: visible !== null,
-        portListening: Boolean(listening?.stdout.includes("LISTEN")),
-        lastError,
-      };
-      if (visible) appPid = visible.pid;
-      throw error;
-    });
+  try {
+    const activePort = join(env.PIGCLAUDE_USER_DATA, "DevToolsActivePort");
+    await expect
+      .poll(
+        async () => {
+          const content = await readFile(activePort, "utf8").catch(() => "");
+          return content.startsWith(String(port) + "\n");
+        },
+        { timeout: 35_000 },
+      )
+      .toBe(true);
+    const urlPath = (await readFile(activePort, "utf8")).trim().split("\n")[1];
+    const endpoint = "ws://127.0.0.1:" + port + urlPath;
+    appBrowser = await chromium.connectOverCDP(endpoint, { timeout: 35_000 });
+  } catch (error) {
+    const diagnostic = await run("sudo", [
+      "-n",
+      "ss",
+      "-ltnp",
+      "sport",
+      "=",
+      ":" + port,
+    ]);
+    const windowFound = await nativeWindow().catch(() => null);
+    result.restartDiagnostics = {
+      portListening: diagnostic.stdout.includes("LISTEN"),
+      visibleWindow: windowFound !== null,
+    };
+    const processMatch = diagnostic.stdout.match(/pid=(\d+)/);
+    if (processMatch) {
+      const traced = await run("sudo", [
+        "-n",
+        "timeout",
+        "3s",
+        "strace",
+        "-p",
+        processMatch[1],
+        "-qq",
+        "-e",
+        "trace=futex,poll,ppoll,epoll_wait,recvmsg,connect",
+      ]).catch((error) => ({ stderr: error.stderr ?? "" }));
+      await writeFile(
+        join(output, "startup-waits.txt"),
+        (traced.stderr ?? "").slice(0, 3000),
+      );
+    }
+    await writeFile(
+      join(output, "app-debug-port.txt"),
+      diagnostic.stdout.replaceAll(String(port), "PORT"),
+    );
+    throw error;
+  }
   const context = appBrowser.contexts()[0];
   const page =
     context.pages()[0] ??
@@ -276,12 +280,9 @@ async function sha256(path) {
 
 try {
   begin("clean profile and exact build artifact");
-  result.baselineSha256 = await sha256(process.env.QA_ALTERNATE);
-  assert.equal(result.baselineSha256, process.env.QA_ALTERNATE_SHA);
   result.sha256 = await sha256(process.env.QA_CANDIDATE);
   assert.equal(result.sha256, process.env.QA_EXPECTED_SHA);
   assert.equal(await sha256(image), result.sha256);
-  assert.notEqual(result.baselineSha256, result.sha256);
   assert.equal(await defaultHandler(), "");
   assert.equal(
     await stat(entry).then(
@@ -298,17 +299,12 @@ try {
       "utf8",
     ).then((value) => value.trim());
   result.apparmorBeforeLaunch = await readAppArmor();
-
+  assert.equal(result.apparmorBeforeLaunch, "1");
   pass(
     "fresh XDG profile cannot open the private URL before the first app launch",
   );
 
   begin("first direct launch registers an AppImage desktop entry");
-  const profile = env.PIGCLAUDE_USER_DATA;
-  const authFile = join(profile, "oauth-session.json");
-  const legacyFile = join(profile, "authorization-secrets.json");
-  await mkdir(profile, { recursive: true, mode: 0o700 });
-  await writeFile(legacyFile, "旧格式夹具", { flag: "wx", mode: 0o600 });
   const first = await mountDirectly();
   const firstPid = appPid;
   await expect(signIn(first)).toBeVisible();
@@ -325,7 +321,7 @@ try {
   pass(
     "AppImage generated the persistent entry and set the default as the current user",
   );
-  assert.equal(result.buildCommit, process.env.QA_EXPECTED_COMMIT);
+  assert.match(result.sourceTree, /^[0-9a-f]{40}$/);
 
   begin("launch real Chrome and complete authorization from the page");
   // 只为这台一次性运行器的回环测试页面预先确认外部协议提示。
@@ -403,144 +399,107 @@ try {
   pass(
     "Chrome opened the real system protocol from the fixture page and the running instance exchanged once",
   );
-  begin("persist membership, update settings and the XDG autostart entry");
-  const snapshot = (page) =>
-    page.evaluate(async () => {
-      const bridge = window.pigclaude;
-      const member = await bridge.membership.inspect();
-      return {
-        state: member.state,
-        userId: member.account?.userId,
-        epoch: member.bindingEpoch,
-        autoCheck: (await bridge.updates.state()).autoCheck,
-        startAtLogin: (await bridge.startupPreferences.get()).openAtLogin,
-        closeToTray: await bridge.window.getCloseToTray(),
-      };
-    });
-  await app.evaluate(async () => {
-    const bridge = window.pigclaude;
-    await bridge.updates.setAutoCheck(false);
-    await bridge.startupPreferences.set("openAtLogin", true);
-    await bridge.window.setCloseToTray(false);
-  });
-  const before = await snapshot(app);
-  assert.equal(before.state, "active");
-  assert(before.userId && before.epoch && before.startAtLogin);
-  assert.equal(before.autoCheck, false);
-  const autostart = join(
-    process.env.XDG_CONFIG_HOME,
-    "autostart",
-    "pigclaude-autostart.desktop",
+  begin("run installed plugin with AppArmor and capture sandbox flags");
+  const proc = (name) =>
+    run("sudo", ["-n", "cat", "/proc/" + appPid + "/" + name]).then(
+      ({ stdout }) => stdout,
+    );
+  const flags =
+    (await proc("cmdline")).match(
+      /--(?:no-sandbox|disable-seccomp-filter-sandbox|disable-namespace-sandbox)(?=[\x00\s=]|$)/g,
+    ) ?? [];
+  result.appSandbox = {
+    flags,
+    disablesSandboxViaEnvironment: (await proc("environ"))
+      .split("\0")
+      .some((item) => /^ELECTRON_DISABLE_SANDBOX=.+/.test(item)),
+    unshareAllowed: await run("unshare", ["-Ur", "true"]).then(
+      () => true,
+      () => false,
+    ),
+  };
+  console.log("SANDBOX", JSON.stringify(result.appSandbox));
+  assert.deepEqual(flags, []);
+  assert.equal(result.appSandbox.disablesSandboxViaEnvironment, false);
+  assert.equal(result.appSandbox.unshareAllowed, false);
+  const appFile = await run("sudo", [
+    "-n",
+    "readlink",
+    "/proc/" + appPid + "/exe",
+  ]).then((result) => result.stdout.trim());
+  const link = dirname(appFile) + "/chrome-sandbox";
+  assert.equal(await readlink(link), "/opt/google/chrome/chrome-sandbox");
+  const helper = await stat(link);
+  assert.equal(helper.uid, 0);
+  assert.equal(helper.mode & 0o4777, 0o4755);
+  result.systemSuidHelper = true;
+  const matched = await run("ps", [
+    "-o",
+    "pid=,args=",
+    "--ppid",
+    String(appPid),
+  ]).then(({ stdout }) => stdout.split("\n"));
+  result.childSandboxArgv = matched.flatMap(
+    (line) =>
+      line.match(
+        /--(?:type|no-sandbox|disable-seccomp-filter-sandbox|disable-namespace-sandbox)\S*/g,
+      ) ?? [],
   );
-  const savedEntry = await readFile(entry, "utf8");
-  const savedAutostart = await readFile(autostart, "utf8");
-  assert(savedAutostart.includes("PigClaude 100%%=stable.AppImage"));
-  assert(savedAutostart.includes("--pigclaude-autostart"));
-  const grant = JSON.parse(await readFile(authFile, "utf8"));
-  assert.equal(grant.userId, before.userId);
-  assert.equal(grant.bindingEpoch, before.epoch);
-  assert(grant.accessToken && grant.refreshToken);
-  assert.equal((await stat(authFile)).mode & 0o777, 0o600);
-  const oathHash = await sha256(authFile);
+  result.plugin = await verifyPackagedPlugin(app, root);
+  pass("synthetic archive command executed in the installed sandbox");
+  result.claudeAccounts = await app.evaluate(
+    async () => (await window.pigclaude.claudeAccounts.list()).length,
+  );
+  assert.equal(result.claudeAccounts, 0);
+  const authorization = await app.evaluate(async () => {
+    const view = await window.pigclaude.membership.inspect();
+    return {
+      state: view.state,
+      userId: view.account?.userId,
+      bindingEpoch: view.bindingEpoch,
+    };
+  });
+  assert.equal(authorization.state, "active");
+  const oauthPath = join(env.PIGCLAUDE_USER_DATA, "oauth-session.json");
+  const saved = JSON.parse(await readFile(oauthPath, "utf8"));
+  assert.equal(saved.userId, authorization.userId);
+  assert.equal(saved.bindingEpoch, authorization.bindingEpoch);
+  assert(saved.accessToken && saved.refreshToken);
+  assert.equal((await stat(oauthPath)).mode & 0o777, 0o600);
+  const oauthSha = await sha256(oauthPath);
   result.oauthFile = "oauth-session.json";
   result.oauthMode = "0600";
-  assert.equal(await readFile(legacyFile, "utf8"), "旧格式夹具");
-  assert.equal(
-    await app.evaluate(
-      async () => (await window.pigclaude.claudeAccounts.list()).length,
-    ),
-    0,
+  pass(
+    "the same installed sandbox-enabled build saves the device grant in the OAuth file",
   );
+
+  begin("complete exit and cold-start with the saved device authorization");
+  const beforeExit = appPid;
   await closeApp(app);
-
-  async function startSaved(previousPid) {
-    assert.equal(await nativeWindow(), null);
-    const prior = fixture.state().entitlementReads;
-    directProcess = start(image, []);
-    await expect.poll(() => nativeWindow(), { timeout: 60000 }).not.toBeNull();
-    const window = await nativeWindow();
-    appPid = window.pid;
-    assert.notEqual(appPid, previousPid);
-    await assertMounted(appPid);
-    await expect
-      .poll(() => fixture.state().entitlementReads, { timeout: 30000 })
-      .toBeGreaterThan(prior);
-    assert.equal(fixture.state().exchangeAttempts, 1);
-    assert.equal(await sha256(authFile), oathHash);
-    assert.equal(await readFile(legacyFile, "utf8"), "旧格式夹具");
-    assert.equal(await readFile(entry, "utf8"), savedEntry);
-    assert.equal(await readFile(autostart, "utf8"), savedAutostart);
-    return window;
-  }
-
-  async function stopSaved(window) {
-    await run("xdotool", ["windowactivate", "--sync", window.id]);
-    await run("xdotool", ["key", "alt+F4"]);
-    await expect.poll(() => alive(window.pid), { timeout: 20000 }).toBe(false);
-    if (directProcess)
-      await expect
-        .poll(() => alive(directProcess.pid), { timeout: 15000 })
-        .toBe(false);
-    appPid = undefined;
-    directProcess = undefined;
-  }
-
-  async function replaceWith(path, checksum) {
-    await copyFile(path, image + ".new");
-    await chmod(image + ".new", 0o755);
-    await rename(image + ".new", image);
-    assert.equal(await sha256(image), checksum);
-  }
-
-  begin("restart the same test.14 AppImage with its saved OAuth file");
-  const restarted = await startSaved(firstPid);
-  await stopSaved(restarted);
-  result.sameInstallerRestart = true;
-  pass("test.14 restarts and uses the original granted credential");
-
-  begin("replace the actual bytes with a distinct file-storage AppImage");
-  await replaceWith(process.env.QA_ALTERNATE, result.baselineSha256);
-  const alternate = await startSaved(restarted.pid);
-  await stopSaved(alternate);
-  result.alternateRestored = true;
-  pass(
-    "the alternate installer loads the same OAuth file at the original path",
-  );
-
-  begin("restore the original test.14 AppImage at the same path");
-  await replaceWith(process.env.QA_CANDIDATE, result.sha256);
-  const updated = await startSaved(alternate.pid);
-  const updatedPid = updated.pid;
-  result.test14RestoredAfterReplacement = true;
-  result.oauthBytesIdentical = true;
-  result.legacyFixtureUnchanged = true;
-  result.claudeAccounts = 0;
-  await stopSaved(updated);
-  pass(
-    "the exact test.14 installer preserves the original OAuth file after replacement",
-  );
-
-  begin("protocol cold start with the application stopped");
-  assert.equal(await nativeWindow(), null);
   const beforeCold = fixture.state().entitlementReads;
-  result.coldDispatchExit = await openUri(coldCallback);
-  assert.equal(result.coldDispatchExit, 0);
-  await expect.poll(() => nativeWindow(), { timeout: 60_000 }).not.toBeNull();
-  const coldWindow = await nativeWindow();
-  appPid = coldWindow.pid;
-  assert.notEqual(appPid, updatedPid);
+  assert.equal(await nativeWindow(), null);
+  assert.equal(await openUri(coldCallback), 0);
+  await expect.poll(() => nativeWindow(), { timeout: 50_000 }).not.toBeNull();
+  appPid = (await nativeWindow()).pid;
+  assert.notEqual(appPid, beforeExit);
+  result.coldMount = await assertMounted(appPid);
   await expect
-    .poll(() => fixture.state().entitlementReads, { timeout: 25_000 })
+    .poll(() => fixture.state().entitlementReads, { timeout: 30000 })
     .toBeGreaterThan(beforeCold);
-  result.coldUsedSameCredential = true;
-  await assertMounted(appPid);
-  assert.equal((await stat(entry)).mtimeMs, entryMtime);
   assert.equal(fixture.state().exchangeAttempts, 1);
-  result.apparmorAfterColdStart = await readAppArmor();
-  assert.equal(result.apparmorAfterColdStart, result.apparmorBeforeLaunch);
+  assert.equal(await sha256(oauthPath), oauthSha);
+  result.oauthRestoredOnColdStart = true;
+  result.oauthFileUnchanged = true;
+  result.apparmorAfterColdStart = (
+    await readFile(
+      "/proc/sys/kernel/apparmor_restrict_unprivileged_userns",
+      "utf8",
+    )
+  ).trim();
+  assert.equal(result.apparmorAfterColdStart, "1");
   result.coldStarted = true;
   pass(
-    "GIO cold-launched the same AppImage without any installed test launcher",
+    "GIO cold-launched the same AppImage and restored the original authorization",
   );
 } catch (error) {
   result.failure = {

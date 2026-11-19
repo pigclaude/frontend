@@ -1,7 +1,7 @@
 // 负责中央页一步式邮箱密码表单：验证码门禁、登录/注册提交、密码显隐和底部切换入口。
 "use client"
 
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent, type ReactNode } from "react"
 import Link from "next/link"
 import { Button } from "@pigclaude/web-ui/components/button"
 import { Input } from "@pigclaude/web-ui/components/input"
@@ -25,9 +25,25 @@ const labelClass = "text-[13px] font-medium text-[var(--fg-2)]"
 const linkClass =
   "h-auto rounded-sm p-0 text-[13px] font-medium text-[var(--accent-ink)] underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
 
+type LoginVerification = ReturnType<typeof useTurnstileCaptcha>
+
+function PasswordLoginVerification({
+  admin,
+  children,
+}: {
+  admin: boolean
+  children: (captcha: LoginVerification) => ReactNode
+}) {
+  const captcha = useTurnstileCaptcha({
+    loadConfig: admin ? identityApi.adminCaptcha : identityApi.captcha,
+    action: admin ? "admin_login" : "home_login",
+  })
+  return children(captcha)
+}
+
 /**
- * 渲染邮箱、密码、人机验证和主按钮；每次提交都经父级 `onMutate` 取得唯一 mutation owner，
- * 验证码 token 一次性使用。`onModeChange` 只切换同一交互内的布局，不重新发起授权。
+ * 登录提交使用一次性人机验证；注册时由发码步骤执行人机验证，建号只提交邮箱验证码。
+ * 两种提交均经父级 `onMutate` 取得唯一 owner，切换模式沿用同一授权交互。
  */
 export function LoginForm({
   interaction,
@@ -60,10 +76,6 @@ export function LoginForm({
   const admin = interaction.realm === "Admin"
   const register = !admin && interaction.registrationAllowed
   const current: LoginMode = register ? mode : "login"
-  const captcha = useTurnstileCaptcha({
-    loadConfig: admin ? identityApi.adminCaptcha : identityApi.captcha,
-    action: admin ? "admin_login" : current === "register" ? "home_register" : "home_login",
-  })
   useEffect(() => {
     if (current !== "register") return
     let active = true
@@ -85,22 +97,109 @@ export function LoginForm({
   // 邮件可用性未确认前不允许发码或注册，避免提交必然失败的请求。
   const mailPending = current === "register" && mailAvailable === null
   const codeMissing = current === "register" && !/^\d{6}$/.test(emailCode)
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (blocked || mailPending || !captcha.ready || codeMissing) return
-    // 父级同步取得当前交互 owner，密码与其他 mutation 共用同一排他门禁。
-    onMutate(() =>
-      captcha.run((captchaToken) =>
+  function renderForm(captcha: LoginVerification | null) {
+    const captchaPending = current === "login" && !captcha?.ready
+    const submitBlocked = blocked || mailPending || captchaPending || codeMissing
+    function submit(event: FormEvent<HTMLFormElement>) {
+      event.preventDefault()
+      if (submitBlocked) return
+      const request = (captchaToken?: string) =>
         identityApi.password(interaction, {
           mode: current,
           email,
           password,
           ...(current === "register" ? { emailCode } : {}),
           ...(captchaToken ? { captchaToken } : {}),
-        }),
-      ),
+        })
+      onMutate(() => (captcha ? captcha.run(request) : request()))
+    }
+    return (
+      <form className="flex flex-col gap-4" onSubmit={submit} aria-busy={pending} noValidate>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="email" className={labelClass}>
+            邮箱
+          </Label>
+          <Input
+            id="email"
+            type="email"
+            className={fieldClass}
+            placeholder={admin ? "admin@pigclaude.com" : "you@example.com"}
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            autoComplete={admin ? "username" : "email"}
+            spellCheck={false}
+            required
+          />
+        </div>
+        {current === "register" && (
+          <EmailCodeField
+            interaction={interaction}
+            email={email}
+            value={emailCode}
+            onChange={setEmailCode}
+            disabled={blocked || mailPending}
+            fieldClass={fieldClass}
+            labelClass={labelClass}
+          />
+        )}
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="password" className={labelClass}>
+            密码
+          </Label>
+          <div className="relative">
+            <Input
+              id="password"
+              className={`${fieldClass} pr-10`}
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete={current === "login" ? "current-password" : "new-password"}
+              required
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={showPassword ? "隐藏密码" : "显示密码"}
+              aria-pressed={showPassword}
+              onClick={() => setShowPassword((value) => !value)}
+              className="absolute top-1/2 right-2 size-7 -translate-y-1/2 text-muted-foreground hover:bg-[var(--raise-2)] hover:text-foreground dark:hover:bg-[var(--raise-2)]"
+            >
+              <LineIcon name={showPassword ? "eye-off" : "eye"} className="size-4" />
+            </Button>
+          </div>
+        </div>
+        {current === "login" && !admin && (
+          <p className="text-right">
+            <Button
+              type="button"
+              variant="link"
+              className={linkClass}
+              disabled={blocked}
+              onClick={onForgotPassword}
+            >
+              忘记密码？
+            </Button>
+          </p>
+        )}
+        {captcha && <TurnstileCaptcha {...captcha.field} />}
+        <Button
+          type="submit"
+          className="mt-1 h-9 w-full font-semibold hover:bg-[var(--btn-primary-hover)] active:bg-[var(--btn-primary-active)]"
+          disabled={submitBlocked}
+        >
+          {pending
+            ? current === "register"
+              ? "正在创建账号…"
+              : "正在登录…"
+            : current === "register"
+              ? "创建账号"
+              : "登录"}
+        </Button>
+      </form>
     )
   }
+
   return (
     <div className="flex flex-col gap-6">
       {notice && (
@@ -108,94 +207,14 @@ export function LoginForm({
           {notice}
         </p>
       )}
-      {current === "register" && mailAvailable === false ? (
+      {current === "login" ? (
+        <PasswordLoginVerification admin={admin}>{renderForm}</PasswordLoginVerification>
+      ) : mailAvailable === false ? (
         <p className="text-[13px] leading-5 text-muted-foreground">
           邮箱注册暂未开放，可以用 Google 或 GitHub 注册
         </p>
       ) : (
-        <form className="flex flex-col gap-4" onSubmit={submit} aria-busy={pending} noValidate>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="email" className={labelClass}>
-              邮箱
-            </Label>
-            <Input
-              id="email"
-              type="email"
-              className={fieldClass}
-              placeholder={admin ? "admin@pigclaude.com" : "you@example.com"}
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              autoComplete={admin ? "username" : "email"}
-              spellCheck={false}
-              required
-            />
-          </div>
-          {current === "register" && (
-            <EmailCodeField
-              interaction={interaction}
-              email={email}
-              value={emailCode}
-              onChange={setEmailCode}
-              disabled={blocked || mailPending}
-              fieldClass={fieldClass}
-              labelClass={labelClass}
-            />
-          )}
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="password" className={labelClass}>
-              密码
-            </Label>
-            <div className="relative">
-              <Input
-                id="password"
-                className={`${fieldClass} pr-10`}
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete={current === "login" ? "current-password" : "new-password"}
-                required
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label={showPassword ? "隐藏密码" : "显示密码"}
-                aria-pressed={showPassword}
-                onClick={() => setShowPassword((value) => !value)}
-                className="absolute top-1/2 right-2 size-7 -translate-y-1/2 text-muted-foreground hover:bg-[var(--raise-2)] hover:text-foreground dark:hover:bg-[var(--raise-2)]"
-              >
-                <LineIcon name={showPassword ? "eye-off" : "eye"} className="size-4" />
-              </Button>
-            </div>
-          </div>
-          {current === "login" && !admin && (
-            <p className="text-right">
-              <Button
-                type="button"
-                variant="link"
-                className={linkClass}
-                disabled={blocked}
-                onClick={onForgotPassword}
-              >
-                忘记密码？
-              </Button>
-            </p>
-          )}
-          <TurnstileCaptcha {...captcha.field} />
-          <Button
-            type="submit"
-            className="mt-1 h-9 w-full font-semibold hover:bg-[var(--btn-primary-hover)] active:bg-[var(--btn-primary-active)]"
-            disabled={blocked || mailPending || !captcha.ready || codeMissing}
-          >
-            {pending
-              ? current === "register"
-                ? "正在创建账号…"
-                : "正在登录…"
-              : current === "register"
-                ? "创建账号"
-                : "登录"}
-          </Button>
-        </form>
+        renderForm(null)
       )}
       {admin ? (
         <p className="text-center">

@@ -92,6 +92,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   Reflect.deleteProperty(window, "turnstile")
@@ -99,6 +100,81 @@ afterEach(() => {
 })
 
 describe("home Turnstile auth boundary", () => {
+  it("注册只在人机验证后发码，填入邮件验证码即可提交", async () => {
+    const get = mocks.fetch.getMockImplementation()!
+    mocks.fetch.mockImplementation(async (url, init) =>
+      String(url).endsWith("/email-code")
+        ? response({ type: "sent", resendAfterSeconds: 60 }, 202)
+        : get(url, init),
+    )
+    await mount("register")
+    await waitFor(() => expect(widgets.some((widget) => widget.action === "email_code")).toBe(true))
+    expect(screen.getAllByLabelText("安全验证")).toHaveLength(1)
+    expect(widgets.map((widget) => widget.action)).toEqual(["email_code"])
+
+    fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
+    const send = screen.getByRole("button", { name: "发送验证码" }) as HTMLButtonElement
+    expect(send.disabled).toBe(true)
+    act(() => widgets[0].callback("email-code-proof"))
+    fireEvent.click(send)
+    await screen.findByRole("button", { name: /秒后重发/ })
+    expect(screen.queryByLabelText("安全验证")).toBeNull()
+    expect(posts()).toHaveLength(1)
+    expect(posts()[0][0]).toBe("/v1/identity/interactions/interaction-1/email-code")
+    expect(JSON.parse(String(posts()[0][1]?.body)).captchaToken).toBe("email-code-proof")
+
+    const register = screen.getByRole("button", { name: "创建账号" }) as HTMLButtonElement
+    expect(register.disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText("验证码"), { target: { value: "123456" } })
+    fireEvent.click(register)
+    await waitFor(() => expect(posts()).toHaveLength(2))
+    expect(posts()[1][0]).toBe("/v1/identity/interactions/interaction-1/password")
+    expect(JSON.parse(String(posts()[1][1]?.body))).toEqual({
+      realm: "User",
+      csrf: "csrf-marker",
+      mode: "register",
+      email: "ada@example.com",
+      password: "password",
+      emailCode: "123456",
+    })
+  })
+
+  it("冷却结束后只在用户请求重发时重新展示人机验证", async () => {
+    const get = mocks.fetch.getMockImplementation()!
+    mocks.fetch.mockImplementation(async (url, init) =>
+      String(url).endsWith("/email-code")
+        ? response({ type: "sent", resendAfterSeconds: 1 }, 202)
+        : get(url, init),
+    )
+    await mount("register")
+    await waitFor(() => expect(widgets).toHaveLength(1))
+    fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
+    act(() => widgets[0].callback("first-email-proof"))
+    vi.useFakeTimers()
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "发送验证码" }))
+    })
+    expect(posts()).toHaveLength(1)
+    expect(screen.queryByLabelText("安全验证")).toBeNull()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000)
+    })
+    expect(screen.queryByLabelText("安全验证")).toBeNull()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "发送验证码" }))
+    })
+    expect(screen.getAllByLabelText("安全验证")).toHaveLength(1)
+    expect(posts()).toHaveLength(1)
+    act(() => widgets[1].callback("resend-email-proof"))
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "发送验证码" }))
+    })
+    expect(posts()).toHaveLength(2)
+    expect(JSON.parse(String(posts()[1][1]?.body)).captchaToken).toBe("resend-email-proof")
+  })
+
   it("settled_auth_reloads_changed_site_key", async () => {
     let reads = 0
     mocks.params = new URLSearchParams("redirect=%2Faccount%3Fcursor%3Da%252Bb&state=byte%2Bexact")
@@ -189,23 +265,23 @@ describe("home Turnstile auth boundary", () => {
     act(() => widgets[1].callback("login-only-token"))
     fireEvent.click(screen.getByRole("button", { name: "注册" }))
     await waitFor(() => expect(widgets.some((widget) => widget.action === "email_code")).toBe(true))
-    await waitFor(() =>
-      expect(widgets.some((widget) => widget.action === "home_register")).toBe(true),
-    )
     fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
-    fireEvent.change(screen.getByLabelText("验证码"), { target: { value: "123456" } })
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
     act(() => widgets[1].callback("late-login-token"))
+    fireEvent.click(screen.getByRole("button", { name: "发送验证码" }))
+    expect(posts()).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole("button", { name: "登录" }))
+    await waitFor(() => expect(widgets.at(-1)?.action).toBe("home_login"))
     submit()
     expect(posts()).toHaveLength(0)
-    const registerIndex = widgets.findIndex((widget) => widget.action === "home_register")
-    act(() => widgets[registerIndex].callback("register-token"))
+    act(() => widgets.at(-1)?.callback("new-login-token"))
     submit()
     await waitFor(() => expect(posts()).toHaveLength(1))
     expect(posts()[0][0]).toBe("/v1/identity/interactions/interaction-1/password")
     const body = JSON.parse(String(posts()[0][1]?.body))
-    expect(body.captchaToken).toBe("register-token")
-    expect(body.emailCode).toBe("123456")
+    expect(body.mode).toBe("login")
+    expect(body.captchaToken).toBe("new-login-token")
   })
 
   it.each([
@@ -242,12 +318,17 @@ describe("home Turnstile auth boundary", () => {
       await mount(mode)
       fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
       fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
-      if (mode === "register")
+      if (mode === "register") {
         fireEvent.change(screen.getByLabelText("验证码"), { target: { value: "123456" } })
-      const action = mode === "register" ? "home_register" : "home_login"
-      await waitFor(() => expect(widgets.some((widget) => widget.action === action)).toBe(true))
-      const index = widgets.findIndex((widget) => widget.action === action)
-      act(() => widgets[index].callback("redirect-token"))
+        await waitFor(() =>
+          expect(
+            (screen.getByRole("button", { name: "创建账号" }) as HTMLButtonElement).disabled,
+          ).toBe(false),
+        )
+      } else {
+        await waitFor(() => expect(widgets).toHaveLength(1))
+        act(() => widgets[0].callback("redirect-token"))
+      }
       submit()
       await waitFor(() => expect(mocks.push).toHaveBeenCalledWith(redirect))
       expect(mocks.fetch.mock.calls.map(([url]) => url)).not.toContain("/v1/user/me")
@@ -269,49 +350,33 @@ describe("home Turnstile auth boundary", () => {
     expect((document.querySelector("button[type=submit]") as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it.each([
-    ["login", "home_login", "/v1/identity/interactions/interaction-1/password"],
-    ["register", "home_register", "/v1/identity/interactions/interaction-1/password"],
-  ] as const)(
-    "sends the current %s token once and requires a new token after credential failure",
-    async (mode, action, path) => {
-      await mount(mode)
-      fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
-      fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
-      if (mode === "register")
-        fireEvent.change(screen.getByLabelText("验证码"), { target: { value: "123456" } })
-      await waitFor(() => expect(widgets.some((widget) => widget.action === action)).toBe(true))
-      const first = widgets.findIndex((widget) => widget.action === action)
-      submit()
-      expect(posts()).toHaveLength(0)
-      act(() => widgets[first].callback("first-token"))
-      submit()
-      submit()
-      await waitFor(() => expect(posts()).toHaveLength(1))
-      expect(posts()[0][0]).toBe(path)
-      expect(JSON.parse(String(posts()[0][1]?.body))).toEqual({
-        email: "ada@example.com",
-        password: "password",
-        realm: "User",
-        csrf: "csrf-marker",
-        mode,
-        ...(mode === "register" ? { emailCode: "123456" } : {}),
-        captchaToken: "first-token",
-      })
-      await waitFor(() =>
-        expect(widgets.filter((widget) => widget.action === action)).toHaveLength(2),
-      )
-      act(() => widgets[first].callback("late-old-token"))
-      submit()
-      expect(posts()).toHaveLength(1)
-      const second = widgets.reduce(
-        (last, widget, index) => (widget.action === action ? index : last),
-        -1,
-      )
-      act(() => widgets[second].callback("new-token"))
-      submit()
-      await waitFor(() => expect(posts()).toHaveLength(2))
-      expect(JSON.parse(String(posts()[1][1]?.body)).captchaToken).toBe("new-token")
-    },
-  )
+  it("sends the login token once and requires a new token after credential failure", async () => {
+    await mount()
+    fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "ada@example.com" } })
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "password" } })
+    await waitFor(() => expect(widgets).toHaveLength(1))
+    submit()
+    expect(posts()).toHaveLength(0)
+    act(() => widgets[0].callback("first-token"))
+    submit()
+    submit()
+    await waitFor(() => expect(posts()).toHaveLength(1))
+    expect(posts()[0][0]).toBe("/v1/identity/interactions/interaction-1/password")
+    expect(JSON.parse(String(posts()[0][1]?.body))).toEqual({
+      email: "ada@example.com",
+      password: "password",
+      realm: "User",
+      csrf: "csrf-marker",
+      mode: "login",
+      captchaToken: "first-token",
+    })
+    await waitFor(() => expect(widgets).toHaveLength(2))
+    act(() => widgets[0].callback("late-old-token"))
+    submit()
+    expect(posts()).toHaveLength(1)
+    act(() => widgets[1].callback("new-token"))
+    submit()
+    await waitFor(() => expect(posts()).toHaveLength(2))
+    expect(JSON.parse(String(posts()[1][1]?.body)).captchaToken).toBe("new-token")
+  })
 })

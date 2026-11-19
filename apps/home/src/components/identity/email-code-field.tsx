@@ -15,8 +15,8 @@ import { useEmailCodeRequestOwner } from "./use-email-code-request-owner"
 const DEFAULT_RESEND_SECONDS = 60
 
 /**
- * 渲染验证码行和独立的人机验证；发送成功后按服务端秒数倒计时，429 时采用
- * `retryAfterSeconds` 继续等待，避免把限流伪装成普通失败。
+ * 发码前显示人机验证，发码成功后隐藏验证直到用户请求重发或修改收件邮箱。
+ * 倒计时采用服务端返回值，429 时继续按 `retryAfterSeconds` 等待。
  */
 export function EmailCodeField({
   interaction,
@@ -37,6 +37,7 @@ export function EmailCodeField({
 }) {
   const [resendIn, setResendIn] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [showCaptcha, setShowCaptcha] = useState(true)
   const beginRequest = useEmailCodeRequestOwner(interaction, email)
   const captcha = useTurnstileCaptcha({
     loadConfig: identityApi.captcha,
@@ -53,10 +54,15 @@ export function EmailCodeField({
   useEffect(() => {
     setResendIn(0)
     setError(null)
+    setShowCaptcha(true)
   }, [email])
 
   async function send() {
-    if (disabled || resendIn > 0 || !captcha.ready || email.trim() === "") return
+    if (disabled || resendIn > 0 || email.trim() === "") return
+    if (!captcha.ready) {
+      setShowCaptcha(true)
+      return
+    }
     const request = beginRequest()
     if (!request) return
     setError(null)
@@ -72,6 +78,7 @@ export function EmailCodeField({
       setResendIn(
         result.resendAfterSeconds > 0 ? result.resendAfterSeconds : DEFAULT_RESEND_SECONDS,
       )
+      setShowCaptcha(false)
     } catch (reason) {
       if (!request.ownsResult()) return
       if (reason instanceof ApiError && reason.status === 429) {
@@ -84,7 +91,7 @@ export function EmailCodeField({
     }
   }
 
-  const blocked = disabled || resendIn > 0 || !captcha.ready || email.trim() === ""
+  const blocked = disabled || resendIn > 0 || (showCaptcha && !captcha.ready) || email.trim() === ""
   return (
     <div className="flex flex-col gap-2">
       <Label htmlFor="email-code" className={labelClass}>
@@ -112,7 +119,7 @@ export function EmailCodeField({
           {resendIn > 0 ? `${resendIn} 秒后重发` : "发送验证码"}
         </Button>
       </div>
-      <TurnstileCaptcha {...captcha.field} />
+      {showCaptcha && <TurnstileCaptcha {...captcha.field} />}
       {error && (
         <p role="alert" className="text-[13px] leading-5 text-[var(--danger-ink)]">
           {error}

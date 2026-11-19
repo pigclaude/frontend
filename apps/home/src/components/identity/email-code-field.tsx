@@ -9,6 +9,7 @@ import { Label } from "@pigclaude/web-ui/components/label"
 import { TurnstileCaptcha } from "@pigclaude/web-ui/components/turnstile-captcha"
 import { useTurnstileCaptcha } from "@pigclaude/web-ui/hooks/use-turnstile-captcha"
 import { identityApi, identityErrorMessage, type IdentityInteraction } from "@/lib/identity-api"
+import type { RunIdentityRequest } from "@/lib/identity-interaction-requests"
 import { useEmailCodeRequestOwner } from "./use-email-code-request-owner"
 
 /** 服务端未给出冷却秒数时的默认倒计时。 */
@@ -20,6 +21,7 @@ const DEFAULT_RESEND_SECONDS = 60
  */
 export function EmailCodeField({
   interaction,
+  runRequest,
   email,
   value,
   onChange,
@@ -28,6 +30,7 @@ export function EmailCodeField({
   labelClass,
 }: {
   interaction: IdentityInteraction
+  runRequest: RunIdentityRequest
   email: string
   value: string
   onChange: (value: string) => void
@@ -68,13 +71,17 @@ export function EmailCodeField({
     setError(null)
     try {
       const result = await captcha.run((captchaToken) =>
-        identityApi.emailCode(interaction, {
-          purpose: "register",
-          email,
-          ...(captchaToken ? { captchaToken } : {}),
-        }),
+        runRequest((live) =>
+          request.ownsResult()
+            ? identityApi.emailCode(live, {
+                purpose: "register",
+                email,
+                ...(captchaToken ? { captchaToken } : {}),
+              })
+            : Promise.resolve(null),
+        ),
       )
-      if (!request.ownsResult()) return
+      if (!result || !request.ownsResult()) return
       setResendIn(
         result.resendAfterSeconds > 0 ? result.resendAfterSeconds : DEFAULT_RESEND_SECONDS,
       )

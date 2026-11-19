@@ -9,6 +9,7 @@ import { Label } from "@pigclaude/web-ui/components/label"
 import { TurnstileCaptcha } from "@pigclaude/web-ui/components/turnstile-captcha"
 import { useTurnstileCaptcha } from "@pigclaude/web-ui/hooks/use-turnstile-captcha"
 import { identityApi, identityErrorMessage, type IdentityInteraction } from "@/lib/identity-api"
+import type { RunIdentityRequest } from "@/lib/identity-interaction-requests"
 import { useEmailCodeRequestOwner } from "./use-email-code-request-owner"
 
 /** 服务端未给出冷却秒数时的默认倒计时。 */
@@ -28,11 +29,13 @@ type ResetStep = "email" | "code"
  */
 export function PasswordResetForm({
   interaction,
+  runRequest,
   disabled,
   onCancel,
   onDone,
 }: {
   interaction: IdentityInteraction
+  runRequest: RunIdentityRequest
   disabled: boolean
   onCancel: () => void
   onDone: (email: string) => void
@@ -77,13 +80,17 @@ export function PasswordResetForm({
     setError(null)
     try {
       const result = await captcha.run((captchaToken) =>
-        identityApi.emailCode(interaction, {
-          purpose: "reset_password",
-          email: trimmedEmail,
-          ...(captchaToken ? { captchaToken } : {}),
-        }),
+        runRequest((live) =>
+          request.ownsResult()
+            ? identityApi.emailCode(live, {
+                purpose: "reset_password",
+                email: trimmedEmail,
+                ...(captchaToken ? { captchaToken } : {}),
+              })
+            : Promise.resolve(null),
+        ),
       )
-      if (!request.ownsResult()) return
+      if (!result || !request.ownsResult()) return
       setResendIn(
         result.resendAfterSeconds > 0 ? result.resendAfterSeconds : DEFAULT_RESEND_SECONDS,
       )
@@ -117,22 +124,32 @@ export function PasswordResetForm({
       setError("两次输入的密码不一致")
       return
     }
+    const request = beginRequest()
+    if (!request) return
     setPending(true)
     setError(null)
     // 成功只回到登录表单；不创建会话，也不推进当前交互。
-    void identityApi
-      .resetPassword(interaction, {
-        email: trimmedEmail,
-        emailCode: code,
-        newPassword: password,
-      })
+    void runRequest((live) =>
+      request.ownsResult()
+        ? identityApi.resetPassword(live, {
+            email: trimmedEmail,
+            emailCode: code,
+            newPassword: password,
+          })
+        : Promise.resolve(null),
+    )
       .then(
-        () => onDone(trimmedEmail),
+        (result) => {
+          if (result && request.ownsResult()) onDone(trimmedEmail)
+        },
         (reason: unknown) => {
-          setError(identityErrorMessage(reason))
-          setPending(false)
+          if (request.ownsResult()) {
+            setError(identityErrorMessage(reason))
+            setPending(false)
+          }
         },
       )
+      .finally(request.release)
   }
 
   return (

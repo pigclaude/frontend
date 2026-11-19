@@ -1,6 +1,6 @@
 // 负责按服务器交互阶段呈现中央身份页面，独立于 Home RP 会话。
 "use client"
-import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { ApiError } from "@pigclaude/api/client"
 import { consumeRegistrationHint } from "@pigclaude/api/web-oidc"
@@ -20,6 +20,7 @@ import {
   type IdentityContinuation,
   type IdentityInteraction,
 } from "@/lib/identity-api"
+import { createIdentityInteractionRequests } from "@/lib/identity-interaction-requests"
 
 const alertClass =
   "rounded-md border border-[color-mix(in_oklab,var(--danger),transparent_65%)] bg-[color-mix(in_oklab,var(--danger),transparent_94%)] px-3 py-2.5 text-[13px] leading-5 text-[var(--danger-ink)]"
@@ -60,6 +61,7 @@ function InteractionSession({
   const [resetting, setResetting] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [prefillEmail, setPrefillEmail] = useState("")
+  const requests = useMemo(() => view && createIdentityInteractionRequests(view), [view])
   const hintRead = useRef(false)
   const mutationOwner = useRef<symbol | null>(null)
   const generation = useRef(0)
@@ -135,14 +137,14 @@ function InteractionSession({
     }
   }
   async function act(
-    request: () => Promise<IdentityContinuation>,
+    request: (interaction: IdentityInteraction) => Promise<IdentityContinuation>,
     kind: "password" | "other" = "other",
     hooks: {
       onResult?: (result: IdentityContinuation) => void
       onError?: (message: string) => void
     } = {},
   ) {
-    if (!mounted.current || mutationOwner.current !== null) return
+    if (!requests || !mounted.current || mutationOwner.current !== null) return
     // 在任何异步验证码/HTTP操作开始前捕获生命周期和唯一 owner。
     const current = generation.current
     const owner = Symbol()
@@ -153,8 +155,10 @@ function InteractionSession({
     setError(null)
     setMembershipRequired(false)
     try {
-      const result = await request()
-      if (ownsMutation()) {
+      const result = await requests.run((interaction) =>
+        ownsMutation() ? request(interaction) : Promise.resolve(null),
+      )
+      if (result && ownsMutation()) {
         continueWith(result)
         hooks.onResult?.(result)
       }
@@ -173,10 +177,10 @@ function InteractionSession({
       }
     }
   }
-  const deadline = view?.expiresAt
+  const deadline = requests?.renewOnExpiry ? undefined : view?.expiresAt
   const [, rerenderAtDeadline] = useState(0)
   useEffect(() => {
-    // 页面长时间停留时在服务器期限到达那一刻切换为过期提示，而不是等用户提交后才报错。
+    // 需要回到原入口的交互到期时立即显示提示。
     if (deadline === undefined) return
     const remaining = deadline * 1000 - Date.now()
     if (remaining <= 0) return
@@ -186,8 +190,8 @@ function InteractionSession({
     )
     return () => window.clearTimeout(timer)
   }, [deadline])
-  const expired = view !== null && view.expiresAt * 1000 <= Date.now()
-  if (!view)
+  const expired = deadline !== undefined && deadline * 1000 <= Date.now()
+  if (!view || !requests)
     return (
       <section className="flex w-full max-w-[400px] flex-col gap-4">
         {error ? (
@@ -246,6 +250,7 @@ function InteractionSession({
             {resettingPassword ? (
               <PasswordResetForm
                 interaction={view}
+                runRequest={requests.run}
                 disabled={pending !== null}
                 onCancel={() => setResetting(false)}
                 onDone={(email) => {
@@ -261,12 +266,13 @@ function InteractionSession({
                   interaction={view}
                   disabled={pending !== null}
                   onStart={(provider) => {
-                    void act(() => identityApi.provider(view, provider))
+                    void act((interaction) => identityApi.provider(interaction, provider))
                   }}
                 />
                 <LoginForm
                   key={view.interactionId}
                   interaction={view}
+                  runRequest={requests.run}
                   mode={mode}
                   initialEmail={prefillEmail}
                   notice={notice}
@@ -338,10 +344,10 @@ function InteractionSession({
               interaction={view}
               disabled={pending !== null}
               onConsent={() => {
-                void act(() => identityApi.decide(view, "consent"))
+                void act((interaction) => identityApi.decide(interaction, "consent"))
               }}
               onDeny={() => {
-                void act(() => identityApi.decide(view, "deny"))
+                void act((interaction) => identityApi.decide(interaction, "deny"))
               }}
             />
           )}
@@ -351,13 +357,13 @@ function InteractionSession({
               interaction={view}
               disabled={pending !== null}
               onApprove={(reauthorize) => {
-                void act(() => identityApi.approveDevice(view, reauthorize))
+                void act((interaction) => identityApi.approveDevice(interaction, reauthorize))
               }}
               onDeny={() => {
-                void act(() => identityApi.decide(view, "deny"))
+                void act((interaction) => identityApi.decide(interaction, "deny"))
               }}
               onSwitchAccount={() => {
-                void act(() => identityApi.switchAccount(view), "other", {
+                void act(identityApi.switchAccount, "other", {
                   // 换号后回到登录表单，不沿用之前切到的注册布局。
                   onResult: (result) => {
                     if (result.type === "require_login") setMode("login")

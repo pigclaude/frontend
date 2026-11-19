@@ -14,6 +14,7 @@ import {
   type IdentityContinuation,
   type IdentityInteraction,
 } from "@/lib/identity-api"
+import type { RunIdentityRequest } from "@/lib/identity-interaction-requests"
 import { EmailCodeField } from "./email-code-field"
 
 /** 中央页表单所处的布局：登录或注册。 */
@@ -47,6 +48,7 @@ function PasswordLoginVerification({
  */
 export function LoginForm({
   interaction,
+  runRequest,
   mode,
   onModeChange,
   onForgotPassword,
@@ -57,10 +59,11 @@ export function LoginForm({
   notice = null,
 }: {
   interaction: IdentityInteraction
+  runRequest: RunIdentityRequest
   mode: LoginMode
   onModeChange: (mode: LoginMode) => void
   onForgotPassword: () => void
-  onMutate: (request: () => Promise<IdentityContinuation>) => void
+  onMutate: (request: (live: IdentityInteraction) => Promise<IdentityContinuation>) => void
   pending: boolean
   disabled: boolean
   /** 重设密码成功后带回来的邮箱，保证用户不必重新输入。 */
@@ -103,15 +106,17 @@ export function LoginForm({
     function submit(event: FormEvent<HTMLFormElement>) {
       event.preventDefault()
       if (submitBlocked) return
-      const request = (captchaToken?: string) =>
-        identityApi.password(interaction, {
-          mode: current,
-          email,
-          password,
-          ...(current === "register" ? { emailCode } : {}),
-          ...(captchaToken ? { captchaToken } : {}),
-        })
-      onMutate(() => (captcha ? captcha.run(request) : request()))
+      onMutate((live) => {
+        const request = (captchaToken?: string) =>
+          identityApi.password(live, {
+            mode: current,
+            email,
+            password,
+            ...(current === "register" ? { emailCode } : {}),
+            ...(captchaToken ? { captchaToken } : {}),
+          })
+        return captcha ? captcha.run(request) : request()
+      })
     }
     return (
       <form className="flex flex-col gap-4" onSubmit={submit} aria-busy={pending} noValidate>
@@ -134,6 +139,7 @@ export function LoginForm({
         {current === "register" && (
           <EmailCodeField
             interaction={interaction}
+            runRequest={runRequest}
             email={email}
             value={emailCode}
             onChange={setEmailCode}

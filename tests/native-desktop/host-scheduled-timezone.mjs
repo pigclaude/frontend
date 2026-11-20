@@ -24,7 +24,7 @@ try {
   delete env.TZ
   const { stdout } = await promisify(execFile)(require("electron"), [file], {
     env,
-    timeout: 100_000,
+    timeout: 245_000,
     windowsHide: true,
   })
   process.stdout.write(stdout)

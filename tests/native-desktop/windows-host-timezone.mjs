@@ -30,8 +30,11 @@ try {
   assert.equal(result.before, 0)
   assert.equal(result.freshProcess, 420)
   console.log("WINDOWS_CLOCK", JSON.stringify(result))
-  const capabilities = await run("powercfg.exe", ["/a"])
-  console.log(capabilities.stdout.trim())
+  const capabilities = await run("powercfg.exe", ["/a"]).then(
+    ({ stdout }) => stdout,
+    ({ stdout, stderr }) => stdout + stderr,
+  )
+  console.log(capabilities.trim())
 } finally {
   await run("tzutil.exe", ["/s", saved])
 }

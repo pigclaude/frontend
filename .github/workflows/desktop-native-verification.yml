@@ -75,6 +75,10 @@ jobs:
       - name: Measure system timezone refresh on Windows
         if: runner.os == 'Windows'
         run: node tests/native-desktop/windows-host-timezone.mjs
+      - name: Verify installed Claude Code plugins in bundled CLI
+        run: >-
+          pnpm --filter @pigclaude/desktop exec vitest run --maxWorkers=1
+          src/main/session/qa-claude-code-plugin-native.integration.test.ts
       - name: Verify capability plugin sandbox on Windows
         if: runner.os == 'Windows'
         run: node tests/native-desktop/plugin-sandbox.mjs

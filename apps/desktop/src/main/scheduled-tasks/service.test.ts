@@ -181,6 +181,26 @@ it("新时区已到的本地时刻可补跑，回到原时区也只认领一次�
   expect(f.service.summary().next?.nextRunAt).toBe("2026-11-16T09:00:00.000Z")
 })
 
+it("时区读取失败时不按旧时区认领，下一次巡检按系统新时区重排", async () => {
+  vi.stubEnv("TZ", "UTC")
+  const f = await fixture()
+  const task = await f.service.create({ ...f.input, rule: { kind: "daily", time: "09:00" } })
+  await f.service.dispose()
+
+  let zoneAvailable = false
+  f.clock.timeZone = () => (zoneAvailable ? "America/Phoenix" : null)
+  vi.stubEnv("TZ", "America/Phoenix")
+  f.clock.advance(hour)
+  const service = reopen(f)
+  await service.start()
+  expect((await service.runs(task.id)).total).toBe(0)
+
+  zoneAvailable = true
+  f.clock.advance(minute)
+  expect((await service.list())[0]?.nextRunAt).toBe("2026-11-15T16:00:00.000Z")
+  expect(f.run).not.toHaveBeenCalled()
+})
+
 it("运行时未提供 IANA 时区名时仍能保存排期并重开", async () => {
   vi.stubEnv("TZ", "UTC+3")
   const f = await fixture()

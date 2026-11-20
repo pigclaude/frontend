@@ -2,7 +2,7 @@
 
 import { readFile, rm } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
-import { writeXdgDesktopEntry, xdgExecCommand } from "./xdg-desktop-entry"
+import { writeXdgFile, xdgExecCommand } from "./xdg-desktop-entry"
 
 /** 为 PigClaude 的固定桌面入口读写自动启动状态，不执行入口中的命令。 */
 export function createXdgAutostart(
@@ -50,7 +50,7 @@ export function createXdgAutostart(
         "Exec=" + command(),
         "",
       ]
-      await writeXdgDesktopEntry(filePath, content.join("\n"))
+      await writeXdgFile(filePath, content.join("\n"))
       return true
     },
   }

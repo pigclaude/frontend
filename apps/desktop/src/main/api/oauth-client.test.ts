@@ -162,6 +162,36 @@ describe("OAuthClient native public protocol", () => {
       expect(call.init?.credentials).toBe("omit")
     }
   })
+  it("routes OAuth forms to the issuer and desktop resources to the API origin", async () => {
+    const apiOrigin = "https://api.pigclaude.com"
+    const authorizationOrigin = "https://www.pigclaude.com"
+    const urls: string[] = []
+    const client = new OAuthClient({
+      baseUrl: apiOrigin,
+      authorizationOrigin,
+      fetcher: async (url) => {
+        urls.push(String(url))
+        return json(String(url).endsWith("/v1/desktop/session") ? session : token)
+      },
+    })
+
+    await client.exchangeCode({
+      clientId: "pigclaude-desktop",
+      redirectUri: "pigclaude://authorize/callback",
+      code: "code",
+      codeVerifier: "verifier",
+    })
+    await client.refreshToken(token.refresh_token)
+    await client.revokeToken(token.refresh_token)
+    await client.readDesktopSession(token.access_token)
+
+    expect(urls).toEqual([
+      authorizationOrigin + "/oauth2/token",
+      authorizationOrigin + "/oauth2/token",
+      authorizationOrigin + "/oauth2/revoke",
+      apiOrigin + "/v1/desktop/session",
+    ])
+  })
   it("reads all verified session identifiers losslessly through Bearer", async () => {
     const client = new OAuthClient({
       baseUrl,

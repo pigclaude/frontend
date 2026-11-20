@@ -7,9 +7,20 @@ type ShowableWindow = Pick<
   "isDestroyed" | "isMinimized" | "restore" | "show" | "focus"
 >
 
-/** 唤回未销毁的主窗口并聚焦；没有可唤回的窗口时返回 false。 */
+type FirstPaintWindow = ShowableWindow & {
+  once(event: "ready-to-show", listener: () => void): unknown
+}
+
+const firstPaints = new WeakMap<ShowableWindow, { foregroundRequested: boolean }>()
+
+/** 唤回未销毁的主窗口并聚焦。渲染首帧前先记住请求。 */
 export function showMainWindow(window: ShowableWindow | null): boolean {
   if (!window || window.isDestroyed()) return false
+  const firstPaint = firstPaints.get(window)
+  if (firstPaint) {
+    firstPaint.foregroundRequested = true
+    return true
+  }
   if (window.isMinimized()) window.restore()
   window.show()
   window.focus()
@@ -24,6 +35,17 @@ export function createMainWindowVisibility(
   let phase: "running" | "shutting_down" | "cleanup_failed" = "running"
   const restoreExisting = (): boolean => phase !== "shutting_down" && showMainWindow(window())
   return {
+    /** 加载页面前登记首帧，所有唤回入口都等首帧后再显示该窗口。 */
+    trackFirstPaint(created: FirstPaintWindow, showOnFirstPaint: boolean) {
+      const firstPaint = { foregroundRequested: false }
+      firstPaints.set(created, firstPaint)
+      created.once("ready-to-show", () => {
+        firstPaints.delete(created)
+        if (phase === "shutting_down" || window() !== created || created.isDestroyed()) return
+        if (firstPaint.foregroundRequested) showMainWindow(created)
+        else if (showOnFirstPaint) created.show()
+      })
+    },
     /** 唤回现有窗口；关闭期间不改变窗口状态。 */
     restoreExisting,
     /** 正常运行时没有窗口才创建，退出一旦开始就只唤回已有窗口。 */

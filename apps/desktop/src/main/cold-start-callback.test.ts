@@ -56,10 +56,15 @@ it("首次启动 Linux AppImage 会注册链接到稳定制品路径的桌面入
     await import("./index")
     await finishCallbackReceptionStartup()
 
-    const launcher = await readFile(entry, "utf8")
-    expect(launcher).toContain("PigClaude 100%%=stable.AppImage")
-    expect(launcher).toContain("%u")
-    expect(launcher).toContain("MimeType=x-scheme-handler/pigclaude;")
+    const desktopEntry = await readFile(entry, "utf8")
+    const launcher = await readFile(
+      join(data, "applications", "pigclaude-appimage-launcher.sh"),
+      "utf8",
+    )
+    expect(launcher).toContain(`exec '${image}' "$@"`)
+    expect(desktopEntry).toContain("pigclaude-appimage-launcher.sh")
+    expect(desktopEntry).toContain("%u")
+    expect(desktopEntry).toContain("MimeType=x-scheme-handler/pigclaude;")
     expect(await readFile(join(data, "registration"), "utf8")).toBe(
       "mime\nx-scheme-handler/pigclaude\npigclaude-appimage.desktop\n",
     )

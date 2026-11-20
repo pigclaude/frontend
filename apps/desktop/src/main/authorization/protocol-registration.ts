@@ -5,11 +5,12 @@ import { readFile, stat } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
 import { promisify } from "node:util"
 import type { App } from "electron"
-import { writeXdgDesktopEntry, xdgExecCommand } from "../xdg-desktop-entry"
+import { writeXdgFile, xdgScriptExec } from "../xdg-desktop-entry"
 import { privateAuthorizationScheme } from "./callback-receiver"
 
 const run = promisify(execFile)
 const desktopFile = "pigclaude-appimage.desktop"
+const launcherFile = "pigclaude-appimage-launcher.sh"
 const mimeType = "x-scheme-handler/" + privateAuthorizationScheme
 
 /** AppImage 使用保存在磁盘上的启动路径，其余发布版沿用 Electron 的系统注册。 */
@@ -40,25 +41,36 @@ async function registerAppImage(appImage: string, home: string, env: NodeJS.Proc
 
   const dataHome = env["XDG_DATA_HOME"]
   const data = dataHome && isAbsolute(dataHome) ? dataHome : join(home, ".local", "share")
-  const entry = join(data, "applications", desktopFile)
+  const applications = join(data, "applications")
+  const launcher = join(applications, launcherFile)
+  const entry = join(applications, desktopFile)
+  const exec = xdgScriptExec(launcher, "%u")
+  // 启动器保留安装路径中的空格等字符，回调作为参数传递给 AppImage。
+  const quotedAppImage = "'" + appImage.replaceAll("'", "'\\''") + "'"
+  await writeIfChanged(launcher, `#!/bin/sh\nexec ${quotedAppImage} "$@"\n`)
+
   const content = [
     "[Desktop Entry]",
     "Type=Application",
     "Name=PigClaude",
     "NoDisplay=true",
-    "Exec=" + xdgExecCommand(appImage, "pigclaude-appimage", "%u"),
+    "Exec=" + exec,
     "MimeType=" + mimeType + ";",
     "",
   ].join("\n")
-  const current = await readFile(entry, "utf8").catch((error: unknown) => {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null
-    throw error
-  })
-  if (current !== content) await writeXdgDesktopEntry(entry, content)
+  await writeIfChanged(entry, content)
 
   // 让 GIO 同时建立可启动关联和默认项，供系统浏览器与桌面分发器使用。
   await run("gio", ["mime", mimeType, desktopFile], {
     env: { ...env, XDG_DATA_HOME: data },
     timeout: 5_000,
   })
+}
+
+async function writeIfChanged(path: string, content: string): Promise<void> {
+  const current = await readFile(path, "utf8").catch((error: unknown) => {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null
+    throw error
+  })
+  if (current !== content) await writeXdgFile(path, content)
 }

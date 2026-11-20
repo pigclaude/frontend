@@ -225,6 +225,7 @@ export class OAuthClient {
       contentType?: string
       accessToken?: string
     },
+    origin = this.#baseUrl,
   ): Promise<unknown> {
     const headers: Record<string, string> = { accept: "application/json" }
     if (options.contentType) headers["content-type"] = options.contentType
@@ -241,7 +242,7 @@ export class OAuthClient {
       return await Promise.race([
         deadline,
         (async () => {
-          const response = await this.#fetcher(new URL(path, this.#baseUrl).toString(), {
+          const response = await this.#fetcher(new URL(path, origin).toString(), {
             method: options.method,
             headers,
             ...(options.body === undefined ? {} : { body: options.body }),
@@ -278,12 +279,17 @@ export class OAuthClient {
     }
   }
 
+  /** OAuth 令牌表单由授权发行方处理。 */
   private form(path: string, body: Record<string, string>): Promise<unknown> {
-    return this.request(path, {
-      method: "POST",
-      body: new URLSearchParams(body).toString(),
-      contentType: "application/x-www-form-urlencoded",
-    })
+    return this.request(
+      path,
+      {
+        method: "POST",
+        body: new URLSearchParams(body).toString(),
+        contentType: "application/x-www-form-urlencoded",
+      },
+      this.#authorizationOrigin,
+    )
   }
 }
 

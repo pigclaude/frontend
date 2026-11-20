@@ -7,8 +7,7 @@ import type { StartupPreference, StartupPreferencesView } from "../startup-prefe
 import { hasAutostartArgument, type LoginStartup } from "./login-startup"
 
 type StartupWindow = {
-  once(event: "show" | "ready-to-show", listener: () => void): unknown
-  show(): void
+  once(event: "show", listener: () => void): unknown
 }
 type DockPreference = { filePath: string; apply(visible: boolean): void | Promise<void> }
 
@@ -39,12 +38,12 @@ export class StartupPreferences {
     await this.#applyDock(this.#showInDock).catch(reportDockFailure)
   }
 
-  /** 只让首个登录启动窗口停留在后台，用户主动唤回后恢复其 Dock 选择。 */
-  attachWindow(window: StartupWindow): void {
-    const hidden = this.#hideFirstWindow && !this.#openRequested
+  /** 返回首帧是否应显示，登录自启时等待用户唤回并恢复 Dock 选择。 */
+  attachWindow(window: StartupWindow): boolean {
+    const showOnFirstPaint = !this.#hideFirstWindow || this.#openRequested
     this.#hideFirstWindow = false
     if (this.#dockSuppressed) window.once("show", () => this.#restoreDock())
-    if (!hidden) window.once("ready-to-show", () => window.show())
+    return showOnFirstPaint
   }
 
   /** 正常再次启动可唤回主窗口。启动项重复执行不会唤醒已有窗口。 */

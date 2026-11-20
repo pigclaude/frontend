@@ -125,11 +125,20 @@ it("honors a macOS reopen during login startup and shows the checking window bef
     await vi.waitFor(() => expect(fixture.inspect).toHaveBeenCalledOnce())
     expect(fixture.reportDeviceInfo).not.toHaveBeenCalled()
     expect(fixture.windows).toBe(1)
+
+    // Dock 再次激活时，已有的原生窗口仍在等待渲染首帧。
+    fixture.activate?.()
+    fixture.activate?.()
+    expect(fixture.windows).toBe(1)
+    expect(fixture.show).not.toHaveBeenCalled()
+    expect(fixture.focus).not.toHaveBeenCalled()
+
     fixture.readyToShow?.()
     expect(fixture.show).toHaveBeenCalledOnce()
+    expect(fixture.focus).toHaveBeenCalledOnce()
 
     fixture.activate?.()
-    expect(fixture.focus).toHaveBeenCalledOnce()
+    expect(fixture.focus).toHaveBeenCalledTimes(2)
   } finally {
     proceed.resolve(undefined)
   }

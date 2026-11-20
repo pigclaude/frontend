@@ -65,6 +65,7 @@ export class ScheduledTaskService {
   #cancelTimer: (() => void) | undefined
   #pollDeadline: number | undefined
   #sample: { wall: number; elapsed: number } | null = null
+  #timeZoneUnavailable = false
 
   /** 构造服务时没有任务触发，调用 start 后启动巡检。 */
   constructor(private readonly options: ScheduledTaskServiceOptions) {
@@ -76,9 +77,9 @@ export class ScheduledTaskService {
     if (this.#abort.signal.aborted) return Promise.reject(new Error("SCHEDULE_SERVICE_CLOSED"))
     return (this.#startup ??= this.#enqueue(async () => {
       this.#assertOpen()
-      const timeZoneUnavailable = await this.#refresh(true, true)
+      await this.#refresh(true, true)
       this.#started = true
-      this.#arm(timeZoneUnavailable)
+      this.#arm()
     }).catch((error: unknown) => {
       this.#startup = undefined
       throw error
@@ -268,8 +269,8 @@ export class ScheduledTaskService {
       if (this.#suspended || this.#abort.signal.aborted) return
       this.#pollDeadline = this.#clock.monotonicNow() + scheduledTaskPollMs
       try {
-        const timeZoneUnavailable = await this.#refresh(force, false)
-        this.#arm(timeZoneUnavailable)
+        await this.#refresh(force, false)
+        this.#arm()
       } catch (error) {
         this.#arm(true)
         throw error
@@ -277,15 +278,17 @@ export class ScheduledTaskService {
     })
   }
 
-  async #refresh(force: boolean, recover: boolean): Promise<boolean> {
+  async #refresh(force: boolean, recover: boolean): Promise<void> {
     await this.#flushFinished()
     const draft = structuredClone(this.#file)
-    const enabled = !this.#suspended && draft.tasks.some(({ task }) => task.enabled)
-    const timeZone = enabled ? await this.#clock.timeZone(this.#abort.signal) : draft.timeZone
-    const timeZoneUnavailable = enabled && timeZone === null
+    const readsTimeZone =
+      !this.#suspended && draft.tasks.some(({ task }) => task.enabled && needsHostTimeZone(task))
+    const timeZone = readsTimeZone ? await this.#clock.timeZone(this.#abort.signal) : draft.timeZone
+    const timeZoneUnavailable = readsTimeZone && timeZone === null
     const sample = { wall: this.#clock.now(), elapsed: this.#clock.monotonicNow() }
     const zoneChanged = !this.#suspended && timeZone !== null && draft.timeZone !== timeZone
-    const recalculate = force || zoneChanged || wallClockJumped(this.#sample, sample)
+    const recalculate =
+      force || this.#timeZoneUnavailable || zoneChanged || wallClockJumped(this.#sample, sample)
     if (zoneChanged) draft.timeZone = timeZone
     const runs: ScheduledTaskRun[] = []
     const executions: ScheduledTaskRequest[] = []
@@ -296,8 +299,8 @@ export class ScheduledTaskService {
         finishRun(saved, stopped)
         runs.push(stopped)
       }
-      // 系统时区未确认时保留游标，到下一次巡检再认领。
-      if (this.#suspended || timeZoneUnavailable) continue
+      // 需要本地时区的任务保留游标，固定分钟间隔仍按 UTC 锚点认领。
+      if (this.#suspended || (timeZoneUnavailable && needsHostTimeZone(saved.task))) continue
       if (recalculate && Date.parse(saved.eligibleFrom) > sample.wall) {
         saved.eligibleFrom = timestamp(sample.wall)
         changed = true
@@ -324,8 +327,8 @@ export class ScheduledTaskService {
     }
     if (changed || runs.length > 0) await this.#commit(draft, runs)
     if (!timeZoneUnavailable) this.#sample = sample
+    this.#timeZoneUnavailable = timeZoneUnavailable
     for (const execution of executions) this.#execute(execution)
-    return timeZoneUnavailable
   }
 
   #execute(request: ScheduledTaskRequest): void {
@@ -373,7 +376,13 @@ export class ScheduledTaskService {
     // 保存配置时沿用已安排的巡检截止，再和任务触发时间一起选择定时器。
     const elapsed = this.#clock.monotonicNow()
     const pollAfter = (this.#pollDeadline ??= elapsed + scheduledTaskPollMs) - elapsed
-    const next = this.summary().next?.nextRunAt
+    const next = this.#timeZoneUnavailable
+      ? this.#file.tasks
+          .filter(({ task }) => task.enabled && !needsHostTimeZone(task))
+          .map(({ task }) => task.nextRunAt)
+          .filter((time) => time !== null)
+          .sort()[0]
+      : this.summary().next?.nextRunAt
     const until = next == null ? pollAfter : Date.parse(next) - this.#clock.now()
     const delay = Math.max(1, retry ? pollAfter : Math.min(pollAfter, until))
     this.#cancelTimer = this.#clock.after(delay, () => {
@@ -442,6 +451,10 @@ function findTask(file: ScheduledTasksFile, id: string): SavedScheduledTask {
   const saved = file.tasks.find(({ task }) => task.id === id)
   if (saved === undefined) throw new Error("SCHEDULE_TASK_NOT_FOUND")
   return saved
+}
+
+function needsHostTimeZone(task: ScheduledTask): boolean {
+  return task.rule.kind !== "everyMinutes"
 }
 
 function nextForTask(saved: SavedScheduledTask, now: number): string | null {

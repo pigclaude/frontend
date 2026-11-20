@@ -1,6 +1,8 @@
 // 使用 Pigcode 的本地规则计算下次触发，并从十二小时窗口选出一次补跑。
 
+import { execFile } from "node:child_process"
 import { performance } from "node:perf_hooks"
+import { promisify } from "node:util"
 import { nextScheduleRunBefore, type ScheduleRule } from "@pigclaude/ui-contracts"
 import type { ScheduledTask, ScheduledTaskInput } from "../../scheduled-tasks-contract"
 
@@ -8,7 +10,7 @@ import type { ScheduledTask, ScheduledTaskInput } from "../../scheduled-tasks-co
 export type ScheduleClock = {
   now(): number
   monotonicNow(): number
-  timeZone(): string
+  timeZone(signal?: AbortSignal): string | Promise<string>
   after(delay: number, callback: () => void): () => void
 }
 
@@ -16,15 +18,49 @@ export type ScheduleClock = {
 export const systemScheduleClock: ScheduleClock = {
   now: Date.now,
   monotonicNow: () => performance.now(),
-  timeZone: () =>
-    Intl.DateTimeFormat().resolvedOptions().timeZone ??
-    process.env["TZ"] ??
-    `offset:${new Date().getTimezoneOffset()}`,
+  timeZone: readSystemTimeZone,
   after: (delay, callback) => {
     const timer = setTimeout(callback, delay)
     timer.unref()
     return () => clearTimeout(timer)
   },
+}
+
+const run = promisify(execFile)
+const systemTimeZoneProbe =
+  "process.stdout.write(Intl.DateTimeFormat().resolvedOptions().timeZone ?? '')"
+
+async function readSystemTimeZone(signal?: AbortSignal): Promise<string> {
+  if (process.env["TZ"] === undefined) {
+    if (process.platform === "win32") await refreshWindowsTimeZone(signal)
+    else {
+      // 触发 POSIX 上 Node 对系统时区的重新检测。
+      delete process.env["TZ"]
+    }
+  }
+  return (
+    Intl.DateTimeFormat().resolvedOptions().timeZone ??
+    process.env["TZ"] ??
+    `offset:${new Date().getTimezoneOffset()}`
+  )
+}
+
+async function refreshWindowsTimeZone(signal?: AbortSignal): Promise<void> {
+  // Windows 上旧进程的 ICU 会保留原时区，使用同一个随包运行时读取系统现值。
+  const zone = await run(process.execPath, ["-e", systemTimeZoneProbe], {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+    windowsHide: true,
+    timeout: 5000,
+    signal,
+  }).then(
+    ({ stdout }) => stdout.trim(),
+    () => "",
+  )
+  if (!zone || signal?.aborted || process.env["TZ"] !== undefined) return
+  if (zone === Intl.DateTimeFormat().resolvedOptions().timeZone) return
+  // 设置时更新 ICU 默认值。随后删除显式值，保留子进程继承系统配置的行为。
+  process.env["TZ"] = zone
+  delete process.env["TZ"]
 }
 
 /** 到点定时器同时作为最长一分钟的墙钟巡检。 */

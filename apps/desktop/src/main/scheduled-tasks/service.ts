@@ -280,8 +280,8 @@ export class ScheduledTaskService {
   async #refresh(force: boolean, recover: boolean): Promise<void> {
     await this.#flushFinished()
     const draft = structuredClone(this.#file)
+    const timeZone = await this.#clock.timeZone(this.#abort.signal)
     const sample = { wall: this.#clock.now(), elapsed: this.#clock.monotonicNow() }
-    const timeZone = this.#clock.timeZone()
     const zoneChanged = !this.#suspended && draft.timeZone !== timeZone
     const recalculate = force || zoneChanged || wallClockJumped(this.#sample, sample)
     if (zoneChanged) draft.timeZone = timeZone

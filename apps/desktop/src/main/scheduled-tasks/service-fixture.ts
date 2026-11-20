@@ -63,7 +63,7 @@ class FakeClock implements ScheduleClock {
 
   now = () => this.wall
   monotonicNow = () => this.elapsed
-  timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone
+  timeZone: ScheduleClock["timeZone"] = () => Intl.DateTimeFormat().resolvedOptions().timeZone
   after(delay: number, callback: () => void): () => void {
     this.timers.set(callback, this.elapsed + delay)
     return () => void this.timers.delete(callback)

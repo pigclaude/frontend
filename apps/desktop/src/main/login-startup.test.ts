@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, it, vi } from "vitest"
 import { createLoginStartup } from "./login-startup"
+import { StartupPreferences } from "./startup-preferences"
 
 it("在 Windows 登记带后台启动参数的当前程序，并识别系统里停用的项目", async () => {
   const executable = "C:\\Program Files\\PigClaude\\PigClaude.exe"
@@ -89,11 +90,16 @@ it("在 Linux 用稳定的 AppImage 路径登记 XDG 入口，识别停用并支
       native,
     })
     const file = join(config, "autostart", "pigclaude-autostart.desktop")
+    const launcher = join(config, "autostart", "pigclaude-autostart.sh")
     expect(await startup.enabled()).toBe(false)
     expect(await startup.set(true)).toBe(true)
     const entry = await readFile(file, "utf8")
     expect(entry.split("\n")).toContain(
-      String.raw`Exec=/bin/sh -c "exec \\"\\$@\\"" pigclaude-autostart "/test apps/PigClaude 100%%.AppImage" --pigclaude-autostart`,
+      "Exec=/bin/sh ./pigclaude-autostart.sh --pigclaude-autostart",
+    )
+    expect(entry.split("\n")).toContain("Path=" + join(config, "autostart"))
+    expect(await readFile(launcher, "utf8")).toBe(
+      "#!/bin/sh\nexec '/test apps/PigClaude 100%.AppImage' \"$@\"\n",
     )
     expect(await startup.enabled()).toBe(true)
 
@@ -101,12 +107,57 @@ it("在 Linux 用稳定的 AppImage 路径登记 XDG 入口，识别停用并支
     expect(await startup.enabled()).toBe(false)
     expect(await startup.set(false)).toBe(false)
     await expect(readFile(file)).rejects.toMatchObject({ code: "ENOENT" })
+    await expect(readFile(launcher)).rejects.toMatchObject({ code: "ENOENT" })
     expect(startup.openedAutomatically(["--pigclaude-autostart"])).toBe(true)
     expect(native.setLoginItemSettings).not.toHaveBeenCalled()
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
 })
+
+it.each(["", "Hidden=true\n", "X-GNOME-Autostart-enabled=false\n"])(
+  "启动时更新旧 XDG 入口并尊重外部停用选项 %j",
+  async (disabled) => {
+    const directory = await mkdtemp(join(tmpdir(), "pigclaude-migrate-startup-"))
+    try {
+      const startup = createLoginStartup({
+        platform: "linux",
+        packaged: true,
+        executable: "/test apps/PigClaude 100%.AppImage",
+        home: directory,
+        env: {},
+        native: { getLoginItemSettings: vi.fn(), setLoginItemSettings: vi.fn() },
+      })
+      await startup.set(true)
+      const file = join(directory, ".config", "autostart", "pigclaude-autostart.desktop")
+      const launcher = join(directory, ".config", "autostart", "pigclaude-autostart.sh")
+      await rm(launcher)
+      const legacy = [
+        "[Desktop Entry]",
+        "Type=Application",
+        "Name=PigClaude",
+        String.raw`Exec=/bin/sh -c "exec \\"\\$@\\"" pigclaude-autostart "/test apps/PigClaude 100%%.AppImage" --pigclaude-autostart`,
+        "OnlyShowIn=OPENBOX;",
+        disabled,
+      ].join("\n")
+      await writeFile(file, legacy)
+      const preferences = new StartupPreferences(startup, null)
+      await preferences.prepare([])
+      expect((await preferences.get()).openAtLogin).toBe(disabled === "")
+      if (disabled) {
+        expect(await readFile(file, "utf8")).toBe(legacy)
+        await expect(readFile(launcher)).rejects.toMatchObject({ code: "ENOENT" })
+      } else {
+        const migrated = await readFile(file, "utf8")
+        expect(migrated).toContain("OnlyShowIn=OPENBOX;\n")
+        expect(migrated).toContain("Exec=/bin/sh ./pigclaude-autostart.sh --pigclaude-autostart")
+        expect(migrated).not.toContain("Exec=/bin/sh -c")
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  },
+)
 
 it("开发运行不登记 Electron 程序，系统静默拒绝时报告失败", async () => {
   const native = {

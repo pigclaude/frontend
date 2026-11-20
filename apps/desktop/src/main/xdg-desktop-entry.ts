@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto"
 import { mkdir, rename, rm, writeFile } from "node:fs/promises"
 import { dirname } from "node:path"
 
-/** 把 AppImage 路径放在参数位置，保留安装路径和 XDG 字段码的原意。 */
+/** 生成旧版自启命令，供升级时识别已登记的入口。 */
 export function xdgExecCommand(executable: string, launcher: string, argument: string): string {
   // GIO 会先校验 Exec 的第一项。固定的 shell 只负责按原样转交参数。
   return [
@@ -14,6 +14,12 @@ export function xdgExecCommand(executable: string, launcher: string, argument: s
     quoteExecArgument(executable),
     argument,
   ].join(" ")
+}
+
+/** 生成只执行指定程序的启动脚本，并按原样转交参数。 */
+export function xdgLauncherScript(executable: string): string {
+  const quoted = "'" + executable.replaceAll("'", "'\\''") + "'"
+  return "#!/bin/sh\nexec " + quoted + ' "$@"\n'
 }
 
 /** 用独立脚本承载 shell 命令，使 xdg-open 的通用分发器也能解析简单路径。 */

@@ -18,6 +18,8 @@ export type LoginStartup = {
   enabled(): Promise<boolean | null>
   /** 仅在用户修改设置时登记或移除启动项。 */
   set(enabled: boolean): Promise<boolean>
+  /** 在应用启动时迁移当前安装对应的旧 XDG 登记。 */
+  migrateLegacyEntry?(): Promise<void>
   /** 根据系统或自启入口传入的参数识别本次启动来源。 */
   openedAutomatically(argv: readonly string[]): boolean
 }

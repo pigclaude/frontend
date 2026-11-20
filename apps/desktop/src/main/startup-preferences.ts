@@ -32,6 +32,11 @@ export class StartupPreferences {
     } catch {
       console.error("STARTUP_ORIGIN_READ_FAILED")
     }
+    if (this.login.migrateLegacyEntry) {
+      this.#writes = this.#writes
+        .then(() => this.login.migrateLegacyEntry?.())
+        .catch(() => console.error("STARTUP_LOGIN_ITEM_MIGRATION_FAILED"))
+    }
     if (this.dock === null) return
     this.#showInDock = await readDock(this.dock.filePath)
     this.#dockSuppressed = this.#hideFirstWindow && !this.#openRequested

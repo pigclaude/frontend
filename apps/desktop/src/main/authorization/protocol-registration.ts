@@ -5,7 +5,7 @@ import { readFile, stat } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
 import { promisify } from "node:util"
 import type { App } from "electron"
-import { writeXdgFile, xdgScriptExec } from "../xdg-desktop-entry"
+import { writeXdgFile, xdgLauncherScript, xdgScriptExec } from "../xdg-desktop-entry"
 import { privateAuthorizationScheme } from "./callback-receiver"
 
 const run = promisify(execFile)
@@ -45,9 +45,7 @@ async function registerAppImage(appImage: string, home: string, env: NodeJS.Proc
   const launcher = join(applications, launcherFile)
   const entry = join(applications, desktopFile)
   const exec = xdgScriptExec(launcher, "%u")
-  // 启动器保留安装路径中的空格等字符，回调作为参数传递给 AppImage。
-  const quotedAppImage = "'" + appImage.replaceAll("'", "'\\''") + "'"
-  await writeIfChanged(launcher, `#!/bin/sh\nexec ${quotedAppImage} "$@"\n`)
+  await writeIfChanged(launcher, xdgLauncherScript(appImage))
 
   const content = [
     "[Desktop Entry]",

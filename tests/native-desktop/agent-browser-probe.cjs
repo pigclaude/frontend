@@ -1,6 +1,6 @@
 // 使用进程内的合成网页检查原生 Chromium 的 Agent 分区，不访问远程或真实账号。
 
-const { app, BrowserWindow, nativeImage, webContents } = require("electron")
+const { app, BrowserWindow, nativeImage, screen, webContents } = require("electron")
 const { createServer } = require("node:http")
 const { networkInterfaces } = require("node:os")
 const { mkdirSync } = require("node:fs")
@@ -10,6 +10,7 @@ const { WorkbenchBrowsers } = require("./main/workbench/browser-surface.js")
 const { configureAgentBrowserRuntime } = require("./main/workbench/agent-browser-network.js")
 const { typingProbe } = require("./agent-browser-input-probe.cjs")
 
+const highDpi = process.argv.includes("--high-dpi-only")
 configureAgentBrowserRuntime(app.commandLine)
 
 const userData = join(__dirname, "user-data")
@@ -561,6 +562,7 @@ async function actionProbe() {
       .getAllWebContents()
       .find((contents) => contents.getURL() === first)
     assert(targetContents)
+    if (highDpi) assert.equal(await targetContents.executeJavaScript("devicePixelRatio"), 1.5)
     const click = await browsers.prepareAgentClick(owner, scope, control.ref)
     assert.deepEqual(click.context, {
       kind: "click",
@@ -647,6 +649,16 @@ async function screenshotProbe() {
       scope.sessionId,
     )
     const shown = await browsers.prepareAgentScreenshot(owner, scope)
+    if (highDpi) {
+      assert.equal(screen.getDisplayMatching(owner.getBounds()).scaleFactor, 1.5)
+      const page = webContents
+        .getAllWebContents()
+        .find((contents) => contents.getURL() === local.url + "/")
+      assert(page)
+      assert.equal(await page.executeJavaScript("devicePixelRatio"), 1.5)
+      assert.equal(shown.context.width, 1200)
+      assert.equal(shown.context.height, 900)
+    }
     assert.equal((await shown.capture()).mimeType, "image/jpeg")
     browsers.present(owner, scope.id, null, scope.sessionId)
     const originallyAttached = owner.contentView.children.length
@@ -686,6 +698,14 @@ async function screenshotProbe() {
 app
   .whenReady()
   .then(async () => {
+    if (highDpi) {
+      await actionProbe()
+      await screenshotProbe()
+      process.stdout.write(
+        "PASS 150% renderer click and 1200x900 JPEG on " + process.platform + "\n",
+      )
+      return
+    }
     if (process.argv.includes("--type-only")) return typingProbe(listen)
     if (process.argv.includes("--screenshot-only")) {
       await screenshotProbe()

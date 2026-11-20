@@ -76,9 +76,9 @@ export class ScheduledTaskService {
     if (this.#abort.signal.aborted) return Promise.reject(new Error("SCHEDULE_SERVICE_CLOSED"))
     return (this.#startup ??= this.#enqueue(async () => {
       this.#assertOpen()
-      await this.#refresh(true, true)
+      const timeZoneUnavailable = await this.#refresh(true, true)
       this.#started = true
-      this.#arm()
+      this.#arm(timeZoneUnavailable)
     }).catch((error: unknown) => {
       this.#startup = undefined
       throw error
@@ -268,8 +268,8 @@ export class ScheduledTaskService {
       if (this.#suspended || this.#abort.signal.aborted) return
       this.#pollDeadline = this.#clock.monotonicNow() + scheduledTaskPollMs
       try {
-        await this.#refresh(force, false)
-        this.#arm()
+        const timeZoneUnavailable = await this.#refresh(force, false)
+        this.#arm(timeZoneUnavailable)
       } catch (error) {
         this.#arm(true)
         throw error
@@ -277,12 +277,14 @@ export class ScheduledTaskService {
     })
   }
 
-  async #refresh(force: boolean, recover: boolean): Promise<void> {
+  async #refresh(force: boolean, recover: boolean): Promise<boolean> {
     await this.#flushFinished()
     const draft = structuredClone(this.#file)
-    const timeZone = await this.#clock.timeZone(this.#abort.signal)
+    const enabled = !this.#suspended && draft.tasks.some(({ task }) => task.enabled)
+    const timeZone = enabled ? await this.#clock.timeZone(this.#abort.signal) : draft.timeZone
+    const timeZoneUnavailable = enabled && timeZone === null
     const sample = { wall: this.#clock.now(), elapsed: this.#clock.monotonicNow() }
-    const zoneChanged = !this.#suspended && draft.timeZone !== timeZone
+    const zoneChanged = !this.#suspended && timeZone !== null && draft.timeZone !== timeZone
     const recalculate = force || zoneChanged || wallClockJumped(this.#sample, sample)
     if (zoneChanged) draft.timeZone = timeZone
     const runs: ScheduledTaskRun[] = []
@@ -294,7 +296,8 @@ export class ScheduledTaskService {
         finishRun(saved, stopped)
         runs.push(stopped)
       }
-      if (this.#suspended) continue
+      // 系统时区未确认时保留游标，到下一次巡检再认领。
+      if (this.#suspended || timeZoneUnavailable) continue
       if (recalculate && Date.parse(saved.eligibleFrom) > sample.wall) {
         saved.eligibleFrom = timestamp(sample.wall)
         changed = true
@@ -320,8 +323,9 @@ export class ScheduledTaskService {
       }
     }
     if (changed || runs.length > 0) await this.#commit(draft, runs)
-    this.#sample = sample
+    if (!timeZoneUnavailable) this.#sample = sample
     for (const execution of executions) this.#execute(execution)
+    return timeZoneUnavailable
   }
 
   #execute(request: ScheduledTaskRequest): void {

@@ -79,7 +79,8 @@ it("在 macOS 使用登录项 API，并识别系统报告的自动启动", async
 it("在 Linux 用稳定的 AppImage 路径登记 XDG 入口，识别停用并支持移除", async () => {
   const directory = await mkdtemp(join(tmpdir(), "pigclaude-xdg-autostart-"))
   try {
-    const config = join(directory, "xdg")
+    // 让 POSIX 上的夹具也覆盖桌面入口路径里的反斜杠。
+    const config = join(directory, "xdg\\profile")
     const native = { getLoginItemSettings: vi.fn(), setLoginItemSettings: vi.fn() }
     const startup = createLoginStartup({
       platform: "linux",
@@ -89,15 +90,16 @@ it("在 Linux 用稳定的 AppImage 路径登记 XDG 入口，识别停用并支
       env: { XDG_CONFIG_HOME: config, APPIMAGE: "/test apps/PigClaude 100%.AppImage" },
       native,
     })
-    const file = join(config, "autostart", "pigclaude-autostart.desktop")
-    const launcher = join(config, "autostart", "pigclaude-autostart.sh")
+    const autostartDirectory = join(config, "autostart")
+    const file = join(autostartDirectory, "pigclaude-autostart.desktop")
+    const launcher = join(autostartDirectory, "pigclaude-autostart.sh")
     expect(await startup.enabled()).toBe(false)
     expect(await startup.set(true)).toBe(true)
     const entry = await readFile(file, "utf8")
     expect(entry.split("\n")).toContain(
       "Exec=/bin/sh ./pigclaude-autostart.sh --pigclaude-autostart",
     )
-    expect(entry.split("\n")).toContain("Path=" + join(config, "autostart"))
+    expect(entry.split("\n")).toContain("Path=" + autostartDirectory.replaceAll("\\", "\\\\"))
     expect(await readFile(launcher, "utf8")).toBe(
       "#!/bin/sh\nexec '/test apps/PigClaude 100%.AppImage' \"$@\"\n",
     )

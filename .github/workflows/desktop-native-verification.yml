@@ -72,6 +72,9 @@ jobs:
           node tests/native-desktop/agent-browser-network.mjs --high-dpi-only --force-device-scale-factor=1.5
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tests/native-desktop/acceptance.mjs test-results/native-desktop
+      - name: Measure system timezone refresh on Windows
+        if: runner.os == 'Windows'
+        run: node tests/native-desktop/windows-host-timezone.mjs
       - name: Verify capability plugin sandbox on Windows
         if: runner.os == 'Windows'
         run: node tests/native-desktop/plugin-sandbox.mjs

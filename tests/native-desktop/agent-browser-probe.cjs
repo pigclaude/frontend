@@ -645,7 +645,7 @@ async function screenshotProbe() {
     browsers.present(
       owner,
       scope.id,
-      { x: 0, y: 0, width: 800, height: 600, scale: 1 },
+      { x: 0, y: 0, width: highDpi ? 480 : 800, height: highDpi ? 320 : 600, scale: 1 },
       scope.sessionId,
     )
     const shown = await browsers.prepareAgentScreenshot(owner, scope)
@@ -656,8 +656,8 @@ async function screenshotProbe() {
         .find((contents) => contents.getURL() === local.url + "/")
       assert(page)
       assert.equal(await page.executeJavaScript("devicePixelRatio"), 1.5)
-      assert.equal(shown.context.width, 1200)
-      assert.equal(shown.context.height, 900)
+      assert.equal(shown.context.width, 720)
+      assert.equal(shown.context.height, 480)
     }
     assert.equal((await shown.capture()).mimeType, "image/jpeg")
     browsers.present(owner, scope.id, null, scope.sessionId)
@@ -702,7 +702,7 @@ app
       await actionProbe()
       await screenshotProbe()
       process.stdout.write(
-        "PASS 150% renderer click and 1200x900 JPEG on " + process.platform + "\n",
+        "PASS 150% renderer click and 720x480 JPEG on " + process.platform + "\n",
       )
       return
     }

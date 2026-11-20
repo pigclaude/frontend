@@ -1,7 +1,7 @@
 {
   "appId": "com.pigclaude.desktop",
   "productName": "PigClaude",
-  "electronVersion": "43.4.1",
+  "electronVersion": "43.8.12",
   "directories": {
     "output": "release"
   },

@@ -4,12 +4,11 @@ import { resolve } from "node:path"
 import { describe, expect, it } from "vitest"
 
 const configPath = resolve(import.meta.dirname, "../../electron-builder.json")
+const manifestPath = resolve(import.meta.dirname, "../../package.json")
 
 describe("macOS 安装包配置", () => {
   it("使用独立产品名，避免安装包默认复用开发版用户数据", () => {
-    const manifest = JSON.parse(
-      readFileSync(resolve(import.meta.dirname, "../../package.json"), "utf8"),
-    )
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"))
     expect(manifest.productName).toBe("PigClaude")
   })
 
@@ -17,10 +16,11 @@ describe("macOS 安装包配置", () => {
     expect(existsSync(configPath)).toBe(true)
     if (!existsSync(configPath)) return
     const config = JSON.parse(readFileSync(configPath, "utf8"))
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"))
     expect(config).toMatchObject({
       appId: "com.pigclaude.desktop",
       productName: "PigClaude",
-      electronVersion: "43.4.1",
+      electronVersion: manifest.devDependencies.electron,
       asar: true,
       protocols: [{ name: "PigClaude authorization", schemes: ["pigclaude"] }],
       mac: {

@@ -1,10 +1,7 @@
-# 推版本 tag 时构建三平台安装包和更新清单，冒烟测试后作为草稿发布到 pigclaude/release，维护者确认后公开。
-# 手动触发只做测试发布：tag 必须形如 desktop-v0.0.0-test.1，草稿标成预发布并在说明里写明是测试。
+# 只生成 #115 的 macOS 隔离验收制品。
 name: Desktop release
 
 on:
-  push:
-    tags: ["v*.*.*"]
   workflow_dispatch:
     inputs:
       test_tag:
@@ -54,18 +51,6 @@ jobs:
             xray_archive: Xray-macos-arm64-v8a.zip
             xray_sha256: 0a05dca3bd311b0bc5a89c7ce56350cab1e829e131e4b2bcd48eb304fac07e9a
             executable: release/mac-arm64/PigClaude.app/Contents/MacOS/PigClaude
-          - os: windows-2022
-            target: win32-x64
-            package: --win nsis --x64
-            xray_archive: Xray-windows-64.zip
-            xray_sha256: 2e04a9995a6f2ad1b28c0bb25c708ecb2695e43a1c9c7889c4b6ac2b48cf7a6a
-            executable: release/win-unpacked/PigClaude.exe
-          - os: ubuntu-24.04
-            target: linux-x64
-            package: --linux AppImage --x64
-            xray_archive: Xray-linux-64.zip
-            xray_sha256: e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214
-            executable: release/linux-unpacked/pigclaude
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
@@ -174,45 +159,3 @@ jobs:
             apps/desktop/release/*.AppImage
             apps/desktop/release/*.blockmap
             apps/desktop/release/latest*.yml
-
-  publish:
-    needs: [target, build]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: desktop-release-*
-          merge-multiple: true
-          path: dist
-      - name: 核对更新清单和安装包
-        run: node apps/desktop/release-assets.cjs dist "${{ needs.target.outputs.version }}"
-      - name: 生成发布说明和 sha256 清单
-        run: |
-          node apps/desktop/release-notes.cjs dist "${{ needs.target.outputs.version }}" "${{ needs.target.outputs.test }}" "$XRAY_VERSION" > "$RUNNER_TEMP/notes.md"
-          (cd dist && sha256sum -- *.dmg *.zip *.exe *.AppImage > SHA256SUMS.txt)
-      - name: 作为草稿发布到 pigclaude/release
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
-          TAG: ${{ needs.target.outputs.tag }}
-          TEST: ${{ needs.target.outputs.test }}
-        run: |
-          if [ -z "$GH_TOKEN" ]; then echo "缺少 secret RELEASE_REPO_TOKEN" >&2; exit 1; fi
-          # 草稿可以重名，重跑会多出一份；已有同名发布或草稿时先由维护者处理掉旧的。
-          if gh release view "$TAG" --repo pigclaude/release >/dev/null 2>&1; then
-            echo "pigclaude/release 已有 $TAG 的发布或草稿" >&2
-            exit 1
-          fi
-          title="PigClaude ${{ needs.target.outputs.version }}"
-          extra=()
-          if [ "$TEST" = "true" ]; then title="测试发布 $TAG（不是正式版本）"; extra=(--prerelease); fi
-          gh release create "$TAG" dist/* --repo pigclaude/release --target main --draft \
-            --title "$title" --notes-file "$RUNNER_TEMP/notes.md" "${extra[@]}"
-          gh release view "$TAG" --repo pigclaude/release --json url,isDraft,assets \
-            --jq '"\(.url) draft=\(.isDraft) assets=\(.assets | length)"'

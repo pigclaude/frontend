@@ -121,6 +121,20 @@ it("macOS 系统通知不可用或报告失败时显示托盘角标", async () =
   notifications.dispose()
 })
 
+it("macOS ad hoc 安装包未收到原生失败事件时仍保留托盘提醒", async () => {
+  fixture.packaged = true
+  const { notifications, trayBadge, openSession } = await harness()
+  notifications.announce({ kind: "completed", sessionId: "session-a" })
+  expect(fixture.show).toHaveBeenCalledOnce()
+  expect(trayBadge).toHaveBeenCalledExactlyOnceWith(true)
+
+  fixture.items[0]?.emit("click")
+  expect(openSession).toHaveBeenCalledExactlyOnceWith("session-a")
+  notifications.windowFocused()
+  expect(trayBadge.mock.calls).toEqual([[true], [false]])
+  notifications.dispose()
+})
+
 it("Windows 横幅超时后仍可点击；退出时关闭其余原生通知", async () => {
   const { notifications, openSession } = await harness("win32")
   notifications.announce({ kind: "completed", sessionId: "session-a" })

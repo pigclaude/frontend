@@ -27,6 +27,8 @@ export type BackgroundNotificationPorts = {
   openSession: (id: string) => void
   openWindow: () => void
   trayBadge: (enabled: boolean) => void
+  /** 原生系统可能接收通知却不显示时，在窗口聚焦前保留托盘角标。 */
+  keepTrayBadge?: boolean
 }
 
 /** 把后台事件送给本机通知器，保证不依赖渲染进程或通知平台的状态。 */
@@ -49,6 +51,7 @@ export function createBackgroundNotifications(ports: BackgroundNotificationPorts
   }
   const announce = (notice: BackgroundNotice, session?: NotificationSession | null): boolean => {
     if (!canShow()) return false
+    if (ports.keepTrayBadge) setBadge(true)
     const sessionId = "sessionId" in notice ? notice.sessionId : null
     let handled = false
     const failed = () => {

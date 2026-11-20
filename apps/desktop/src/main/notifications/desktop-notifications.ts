@@ -2,7 +2,7 @@
 
 import { join } from "node:path"
 import { app, Notification } from "electron"
-import { appId } from "../../../electron-builder.json"
+import { appId, mac } from "../../../electron-builder.json"
 import { ProjectNameStore } from "../runtime/project-names"
 import type { SessionEnvelope } from "../session/session-envelope"
 import type { SessionStore } from "../session/session-store"
@@ -15,7 +15,9 @@ import {
 // 保留最近 20 条原生通知的点击句柄；系统静默清除通知时可能不发关闭事件。
 const retainedNotificationLimit = 20
 
-type DesktopNotificationPorts = Omit<BackgroundNotificationPorts, "show"> & { userDataPath: string }
+type DesktopNotificationPorts = Omit<BackgroundNotificationPorts, "show" | "keepTrayBadge"> & {
+  userDataPath: string
+}
 
 /** 创建本机通知适配器，原生对象保留到关闭、点击或失败，退出时统一销毁。 */
 export function createDesktopNotifications(ports: DesktopNotificationPorts) {
@@ -33,6 +35,8 @@ export function createDesktopNotifications(ports: DesktopNotificationPorts) {
   }
   const controller = createBackgroundNotifications({
     ...ports,
+    // ad hoc 包可能无法获得系统通知授权，Electron 仍会提交投递并且不触发 failed。
+    keepTrayBadge: ports.platform === "darwin" && app.isPackaged && mac.identity === "-",
     show(content, { click, failed }) {
       if (!Notification.isSupported()) return failed()
       const native = new Notification(content)

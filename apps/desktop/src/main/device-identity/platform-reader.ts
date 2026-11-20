@@ -9,6 +9,9 @@ export type DevicePlatform = "darwin" | "win32" | "linux"
 
 /** 原机器标识只在主进程读取与派生边界内短暂存在。 */
 export interface PlatformMachineIdReader {
+  /** 平台需要更长启动时间时，供上层使用同一读取期限。 */
+  readonly deadlineMs?: number
+
   /** 从平台唯一来源读取机器标识，不查询备用来源。 */
   read(): Promise<{ platform: DevicePlatform; machineId: string }>
 }
@@ -27,12 +30,12 @@ export class DeviceIdentityUnavailableError extends Error {
   }
 }
 
-// Windows 上第一次启动 PowerShell 查询 CIM 就要四五秒，期限要远大于这个时间。
 const MACHINE_ID_DEADLINE_MS = 20_000
 
-/** 在最多二十秒内完成读取，超时中止可取消的 IO，并擦除底层错误细节。 */
+/** 在读取期限内返回，超时中止可取消的 IO，并擦除底层错误细节。 */
 export async function withMachineIdDeadline<T>(
   operation: (signal: AbortSignal) => Promise<T>,
+  deadlineMs = MACHINE_ID_DEADLINE_MS,
 ): Promise<T> {
   const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -40,7 +43,7 @@ export async function withMachineIdDeadline<T>(
     timer = setTimeout(() => {
       controller.abort()
       reject(new DeviceIdentityUnavailableError())
-    }, MACHINE_ID_DEADLINE_MS)
+    }, deadlineMs)
   })
   try {
     return await Promise.race([operation(controller.signal), timeout])
@@ -52,7 +55,11 @@ export async function withMachineIdDeadline<T>(
 }
 
 /** 使用无 shell 的固定参数子进程读取，限制运行时间和内存输出。 */
-export function runMachineIdCommand(file: string, args: string[]): Promise<string> {
+export function runMachineIdCommand(
+  file: string,
+  args: string[],
+  deadlineMs = MACHINE_ID_DEADLINE_MS,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     try {
       execFile(
@@ -60,7 +67,7 @@ export function runMachineIdCommand(file: string, args: string[]): Promise<strin
         args,
         {
           encoding: "utf8",
-          timeout: MACHINE_ID_DEADLINE_MS,
+          timeout: deadlineMs,
           maxBuffer: 64 * 1024,
           windowsHide: true,
           shell: false,

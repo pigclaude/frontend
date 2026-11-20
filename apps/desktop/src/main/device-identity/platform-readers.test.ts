@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { MacOsMachineIdReader } from "./macos-reader"
 import { WindowsMachineIdReader } from "./windows-reader"
 import { LinuxMachineIdReader } from "./linux-reader"
+import { DeviceIdentityService } from "../device-identity"
 import { createDesktopComposition } from "../composition"
 import { profileApi, ProfileVault } from "../testing/profile-fixture"
 import { createPlatformMachineIdReader, runMachineIdCommand } from "./platform-reader"
@@ -95,6 +96,36 @@ describe("fixed platform readers", () => {
       "-Command",
       "(Get-CimInstance -ClassName Win32_ComputerSystemProduct -ErrorAction Stop).UUID",
     ])
+  })
+  it("derives the Windows identity when the fixed CIM query needs more than twenty seconds", async () => {
+    vi.useFakeTimers()
+    processFixture.exec.mockImplementationOnce((_file, _args, _options, callback) => {
+      setTimeout(() => callback(null, raw, ""), 26_000)
+    })
+    const outcome = new DeviceIdentityService(new WindowsMachineIdReader()).read().then(
+      (identity) => identity,
+      (error: unknown) => error,
+    )
+    await vi.advanceTimersByTimeAsync(26_000)
+    expect(await outcome).toMatchObject({
+      platform: "win32",
+      deviceId: "pcd_86de834472485a4f2cf6fa560e66733df761687e0a0f8e99dc5a865515f1efc4",
+    })
+  })
+  it("bounds a hung Windows CIM child and redacts the timeout", async () => {
+    vi.useFakeTimers()
+    let settled = false
+    processFixture.exec.mockImplementationOnce((_file, _args, options) => {
+      expect(options).toMatchObject({ timeout: 45_000, shell: false })
+    })
+    const outcome = new DeviceIdentityService(new WindowsMachineIdReader())
+      .read()
+      .catch((error: unknown) => error)
+      .finally(() => (settled = true))
+    await vi.advanceTimersByTimeAsync(44_999)
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(await outcome).toMatchObject({ message: "DEVICE_ID_UNAVAILABLE" })
   })
   it("reads only /etc/machine-id with cancellable UTF-8 file IO", async () => {
     const read = vi.fn(async () => "0123456789abcdef0123456789abcdef\n")

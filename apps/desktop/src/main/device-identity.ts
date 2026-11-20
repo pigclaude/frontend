@@ -29,7 +29,7 @@ export class DeviceIdentityService {
         .update(normalized, "utf8")
         .digest("hex")
       return { deviceId: `pcd_${digest}`, platform }
-    }).catch(() => {
+    }, this.reader.deadlineMs).catch(() => {
       this.#pending = undefined
       throw new DeviceIdentityUnavailableError()
     })

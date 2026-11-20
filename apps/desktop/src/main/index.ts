@@ -479,6 +479,7 @@ function createWindow(): void {
   mainWindow.on("focus", notifications.windowFocused)
   forwardFullScreen(mainWindow)
   guardMainWindowClose(mainWindow)
+  windowVisibility.trackFirstPaint(mainWindow, startup.attachWindow(mainWindow))
   workbench.track(mainWindow)
   const devRendererUrl = developmentRendererUrl(
     app.isPackaged,
@@ -490,7 +491,6 @@ function createWindow(): void {
     void mainWindow.loadFile(join(__dirname, "../renderer/index.html"))
   }
   applyGlassBackground(mainWindow, process.platform, nativeTheme.shouldUseDarkColors)
-  startup.attachWindow(mainWindow)
   mainWindow.once("closed", () => {
     mainWindow = null
   })

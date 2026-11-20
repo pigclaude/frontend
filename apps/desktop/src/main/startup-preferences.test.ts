@@ -21,9 +21,7 @@ it("首次登录启动隐藏窗口和 Dock，手动唤回后恢复偏好并能�
     const window = { once: events.once.bind(events), show: vi.fn(() => events.emit("show")) }
 
     await preferences.prepare([])
-    preferences.attachWindow(window)
-    events.emit("ready-to-show")
-    expect(window.show).not.toHaveBeenCalled()
+    expect(preferences.attachWindow(window)).toBe(false)
     expect(dock.apply).toHaveBeenCalledExactlyOnceWith(false)
     expect(login.set).not.toHaveBeenCalled()
     await expect(preferences.get()).resolves.toEqual({ openAtLogin: false, showInDock: true })

@@ -95,7 +95,7 @@ describe("三平台发布配置", () => {
       extraMetadata: {
         pigclaudeEndpoints: {
           rustBaseUrl: "https://api.pigclaude.com",
-          authOrigin: "https://pigclaude.com",
+          authOrigin: "https://www.pigclaude.com",
         },
       },
     })

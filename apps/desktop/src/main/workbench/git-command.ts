@@ -1,10 +1,13 @@
 // 负责工作台的 Git 子进程，限制执行时间、输出和外部 Git 扩展。
 import { execFile } from "node:child_process"
+import { platform } from "node:os"
 import { promisify } from "node:util"
 import { workbenchChildEnv } from "./child-env"
 
 const execute = promisify(execFile)
 const failedSubcommands = new WeakMap<object, string>()
+const repeatableReads = new Set(["rev-parse", "ls-files", "ls-tree"])
+const repeatableIndexWrites = new Set(["add", "write-tree"])
 
 /**
  * 工作台读写 Git 时只使用参数数组，避免 shell、分页器、钩子或 diff 程序改写请求。给了 input 时
@@ -17,7 +20,14 @@ export async function runWorkbenchGit(
   input?: string,
 ): Promise<string> {
   const options = ["--no-pager", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]
-  try {
+  const command = subcommand(args)
+  // 只有检查点的独立索引使用 GIT_INDEX_FILE。重试准备步骤不会改动用户的索引或工作树。
+  const repeatable =
+    platform() === "win32" &&
+    input === undefined &&
+    (repeatableReads.has(command) ||
+      (Boolean(overrides.GIT_INDEX_FILE) && repeatableIndexWrites.has(command)))
+  async function launch(): Promise<string> {
     const pending = execute("git", [...options, ...args], {
       cwd: root,
       env: {
@@ -33,10 +43,31 @@ export async function runWorkbenchGit(
     if (input !== undefined) pending.child.stdin?.end(input)
     const { stdout } = await pending
     return stdout
+  }
+
+  try {
+    return await launch().catch(async (error: unknown) => {
+      if (!repeatable || !isSilentGitExit(error)) throw error
+      const stdout = await launch()
+      if (process.env.CI) console.error("Workbench Git recovered", command)
+      return stdout
+    })
   } catch (error: unknown) {
-    if (typeof error === "object" && error !== null) failedSubcommands.set(error, subcommand(args))
+    if (typeof error === "object" && error !== null) failedSubcommands.set(error, command)
     throw error
   }
+}
+
+function isSilentGitExit(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false
+  return (
+    "code" in error &&
+    error.code === 1 &&
+    "stderr" in error &&
+    error.stderr === "" &&
+    (!("signal" in error) || error.signal === null || error.signal === undefined) &&
+    (!("killed" in error) || error.killed !== true)
+  )
 }
 
 function subcommand(args: string[]): string {

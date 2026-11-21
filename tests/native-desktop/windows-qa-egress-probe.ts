@@ -163,7 +163,8 @@ async function verify(): Promise<void> {
     assert.deepEqual(transport["denied-outside.localhost"], { origin: 0, proxy: 0 })
     assert.ok(transport["bound-proxy"].origin > 0 && transport["bound-proxy"].proxy > 0)
     assert.deepEqual(transport["stopped-proxy"], { origin: 0, proxy: 0 })
-    assert.ok(transport["direct-still-available"].origin > 0)
+    assert.ok(transport["direct-control"].origin > 0)
+    assert.equal(transport["direct-still-available"].proxy, 0)
     await writeFile("egress-result.json", JSON.stringify({
       passed: true,
       runtime: process.versions.electron,

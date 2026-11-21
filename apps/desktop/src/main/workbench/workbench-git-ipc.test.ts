@@ -3,7 +3,7 @@
 import { execFile } from "node:child_process"
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { join, win32 } from "node:path"
 import { promisify } from "node:util"
 import type { MembershipView } from "@pigclaude/contracts/membership"
 import type { IpcMainInvokeEvent } from "electron"
@@ -159,6 +159,21 @@ describe("workbench branch and worktree IPC", { timeout: 20_000 }, () => {
     const linked = join(directory, "linked")
     await git("worktree", "add", "-q", "-b", "linked", "--", linked)
 
+    const choices = (await call("worktrees", project)) as WorkbenchWorktree[]
+    const listed = choices.find(({ branch }) => branch === "linked")
+    expect(listed).toBeDefined()
+    if (listed !== undefined) {
+      console.log(
+        "WORKTREE_PATH_VARIANTS",
+        JSON.stringify({
+          sameString: listed.path === linked,
+          gitUsesForwardSlashes: listed.path.includes("/"),
+          inputUsesBackslashes: linked.includes("\\"),
+          sameWindowsSpelling: win32.normalize(listed.path) === win32.normalize(linked),
+          sameRealDirectory: (await realpath(listed.path)) === (await realpath(linked)),
+        }),
+      )
+    }
     await call("worktree-use", project, linked)
     expect(remembered).toEqual([[linked, project]])
 

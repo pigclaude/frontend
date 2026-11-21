@@ -55,12 +55,13 @@ export async function runWorkbenchGit(
     if (typeof error === "object" && error !== null) {
       failedSubcommands.set(error, subcommand(args))
       if (traceFile !== undefined) {
+        const finishedAt = Date.now()
         const stdout = "stdout" in error && typeof error.stdout === "string" ? error.stdout : ""
         const stderr = "stderr" in error && typeof error.stderr === "string" ? error.stderr : ""
         const trace = await describeTrace(traceFile)
         diagnosticDetails.set(
           error,
-          ` pid=${pid ?? 0} elapsedMs=${Date.now() - startedAt} stdoutBytes=${Buffer.byteLength(stdout)} stderrBytes=${Buffer.byteLength(stderr)} stderrKind=${classifyGitStderr(stderr)} ${trace}`,
+          ` pid=${pid ?? 0} elapsedMs=${finishedAt - startedAt} stdoutBytes=${Buffer.byteLength(stdout)} stderrBytes=${Buffer.byteLength(stderr)} stderrKind=${classifyGitStderr(stderr)} ${trace} startMs=${startedAt} endMs=${finishedAt}`,
         )
       }
     }
@@ -74,10 +75,19 @@ async function describeTrace(path: string): Promise<string> {
   let command = false
   let error = false
   let exit: number | null = null
+  let tracePid = 0
   for (const line of file.split("\n")) {
     if (!line) continue
     try {
-      const { event, code } = JSON.parse(line) as { event?: unknown; code?: unknown }
+      const { event, code, sid } = JSON.parse(line) as {
+        event?: unknown
+        code?: unknown
+        sid?: unknown
+      }
+      if (tracePid === 0 && typeof sid === "string") {
+        const match = sid.match(/-P([0-9a-f]{8})$/i)
+        if (match?.[1]) tracePid = Number.parseInt(match[1], 16)
+      }
       if (event === "start") started = true
       if (event === "cmd_name") command = true
       if (event === "error") error = true
@@ -86,7 +96,7 @@ async function describeTrace(path: string): Promise<string> {
       continue
     }
   }
-  return `traceStart=${Number(started)} traceCommand=${Number(command)} traceError=${Number(error)} traceExit=${exit ?? "none"}`
+  return `traceStart=${Number(started)} traceCommand=${Number(command)} traceError=${Number(error)} traceExit=${exit ?? "none"} tracePid=${tracePid}`
 }
 
 function classifyGitStderr(stderr: string): string {

@@ -64,6 +64,8 @@ jobs:
           src/main/session/claude-agent-adapter-retained-process.test.ts
           src/main/login-startup.test.ts
           src/main/xdg-autostart.integration.test.ts
+      - name: Verify workbench Git IPC
+        run: pnpm --filter @pigclaude/desktop exec vitest run src/main/workbench/workbench-git-ipc.test.ts
       - name: Verify native Electron on Windows
         if: runner.os == 'Windows'
         run: |

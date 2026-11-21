@@ -205,8 +205,10 @@ export class WorkbenchIpc {
     })
     handle("worktree-use", async (_window, _event, [root, path]) => {
       const target = string(path, 4096)
+      const requested = worktreePathForComparison(target)
       const worktrees = await listWorkbenchWorktrees(await project(root))
-      if (!worktrees.some((item) => item.path === target)) throw new Error("WORKBENCH_PATH_INVALID")
+      if (!worktrees.some((item) => worktreePathForComparison(item.path) === requested))
+        throw new Error("WORKBENCH_PATH_INVALID")
       await options.rememberWorktree(target, string(root, 4096))
     })
     handle("branches", async (_window, _event, [root]) => workbenchBranches(await project(root)))
@@ -381,6 +383,12 @@ export class WorkbenchIpc {
       this.#terminals.dispose(),
     ])
   }
+}
+
+// Git 在 Windows 的普通路径中使用正斜杠。设备路径仍按原文比较。
+function worktreePathForComparison(path: string): string {
+  if (process.platform !== "win32" || /^[\\/]{2}[?.][\\/]/.test(path)) return path
+  return path.replaceAll("\\", "/")
 }
 
 function string(value: unknown, limit: number): string {

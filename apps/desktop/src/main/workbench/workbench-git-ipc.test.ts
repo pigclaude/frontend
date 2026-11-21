@@ -156,14 +156,18 @@ describe("workbench branch and worktree IPC", { timeout: 20_000 }, () => {
 
   it("records an existing worktree of the project and refuses any other folder", async () => {
     await initRepository()
-    const linked = join(directory, "linked")
+    const linked = join(directory, "linked worktree")
     await git("worktree", "add", "-q", "-b", "linked", "--", linked)
 
-    await call("worktree-use", project, linked)
-    expect(remembered).toEqual([[linked, project]])
+    const spellings =
+      process.platform === "win32" ? [linked, linked.replaceAll("\\", "/")] : [linked]
+    for (const path of spellings) await call("worktree-use", project, path)
+    expect(remembered).toEqual(spellings.map((path) => [path, project]))
 
-    await expect(call("worktree-use", project, directory)).rejects.toThrow("WORKBENCH_PATH_INVALID")
+    const other = join(directory, "linked worktree extra")
+    await mkdir(other)
+    await expect(call("worktree-use", project, other)).rejects.toThrow("WORKBENCH_PATH_INVALID")
     await expect(call("worktree-use", project, 7)).rejects.toThrow("WORKBENCH_INPUT_INVALID")
-    expect(remembered).toHaveLength(1)
+    expect(remembered).toHaveLength(spellings.length)
   })
 })

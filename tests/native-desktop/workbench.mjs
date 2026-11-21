@@ -2,7 +2,7 @@
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
 import { createServer } from "node:http"
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { promisify } from "node:util"
@@ -163,6 +163,8 @@ export async function verifyWorkbench(page, application, output, provider = fals
       "PASS project settings disclose trust, appear in Diff, and restore from checkpoints",
     )
 
+    await verifyExistingWorktree(page, root, git)
+
     await open("浏览器")
     const address = panel.getByRole("textbox", { name: /输入网址/ })
     await address.fill(local)
@@ -243,6 +245,28 @@ export async function verifyWorkbench(page, application, output, provider = fals
       if (!failure) throw cleanupError
       console.error("Workbench fixture cleanup also failed", cleanupError.code ?? cleanupError.name)
     }
+  }
+}
+
+async function verifyExistingWorktree(page, root, git) {
+  const linked = await realpath(await mkdtemp(join(tmpdir(), "pigclaude-existing-worktree-")))
+  try {
+    await git(["worktree", "add", "-q", "--detach", "--", linked])
+    const selected = await page.evaluate(
+      async ({ root, linked }) => {
+        const { workspaces, workbench } = window.pigclaude
+        await workbench.useWorktree(root, linked)
+        const file = await workbench.read(linked, "example.txt")
+        const projects = await workspaces.worktreeProjects()
+        return { owner: projects[linked], contents: file.text }
+      },
+      { root, linked },
+    )
+    assert.deepEqual(selected, { owner: root, contents: "initial example\n" })
+    console.log("PASS existing Git worktree opens under its original project")
+  } finally {
+    await git(["worktree", "remove", "--", linked]).catch(() => undefined)
+    await rm(linked, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   }
 }
 

@@ -222,7 +222,7 @@ function screen(page, id) {
   return page.locator(`[data-main-window][data-screen="${id}"]`)
 }
 
-try {
+async function verify() {
   let page = await launch()
   report.environment = await nativeState()
   assert.equal(report.environment.encryption, true)
@@ -243,6 +243,11 @@ try {
   await capture(page, "onboarding")
   await page.getByRole("button", { name: "稍后再说" }).click()
   await expect(screen(page, "chat")).toBeVisible()
+  if (process.env.PIGCLAUDE_CI_CHECKPOINT_ONLY === "1") {
+    await setWidth(1000)
+    await verifyWorkbench(page, application, out, false, true)
+    return
+  }
   const platform = await page.evaluate(() => document.documentElement.dataset.platform)
   assert.equal(platform, process.platform)
   if (platform === "darwin") {
@@ -497,6 +502,10 @@ try {
     await expect.poll(() => processRunning(applicationPid)).toBe(false)
     pass("system close button exits when close-to-tray is off")
   }
+}
+
+try {
+  await verify()
 } catch (error) {
   report.error = String(error)
   const page = application?.windows()[0]

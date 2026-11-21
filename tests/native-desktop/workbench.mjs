@@ -13,7 +13,13 @@ import { verifyTerminalDrawer } from "./terminal-drawer.mjs"
 const exec = promisify(execFile)
 
 /** 使用隔离 Git 仓库、网页与显式启用的供应商，不使用现有用户项目。 */
-export async function verifyWorkbench(page, application, output, provider = false) {
+export async function verifyWorkbench(
+  page,
+  application,
+  output,
+  provider = false,
+  checkpointOnly = false,
+) {
   const root = await mkdtemp(join(tmpdir(), "pigclaude-workbench-test-"))
   let failure
   const site = createServer((request, response) => {
@@ -160,6 +166,7 @@ export async function verifyWorkbench(page, application, output, provider = fals
     console.log(
       "PASS project settings disclose trust, appear in Diff, and restore from checkpoints",
     )
+    if (checkpointOnly) return
 
     await open("浏览器")
     const address = panel.getByRole("textbox", { name: /输入网址/ })

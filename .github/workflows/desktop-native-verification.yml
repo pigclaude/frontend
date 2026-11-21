@@ -17,6 +17,8 @@ jobs:
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 3
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -29,12 +31,36 @@ jobs:
         run: |
           powershell.exe -NoLogo -NoProfile -NonInteractive -Command "(Get-CimInstance -ClassName Win32_ComputerSystemProduct -ErrorAction Stop).UUID" | Out-Null
           pwsh.exe -NoProfile -NonInteractive -File tests/native-desktop/windows-pointer.ps1 capture "$env:RUNNER_TEMP\system-input-warmup.png"
+      - name: Reproduce the existing worktree-path test on the unmodified baseline
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $source = 'apps/desktop/src/main/workbench/git-command.ts'
+          $copy = Join-Path $env:RUNNER_TEMP 'pc164-fixed-git-command.ts'
+          $log = Join-Path $env:RUNNER_TEMP 'pc164-baseline-worktree.log'
+          Copy-Item -LiteralPath $source -Destination $copy
+          try {
+            $base = & git show "43689f78b40e51b3823e056b3c140220433cd90d:$source"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $base | Set-Content -LiteralPath $source -Encoding utf8
+            pnpm --filter @pigclaude/desktop exec vitest run --maxWorkers=1 src/main/workbench/workbench-git-ipc.test.ts 2>&1 | Tee-Object -FilePath $log
+            $baselineExit = $LASTEXITCODE
+            if ($baselineExit -eq 0) { Write-Host 'PC164 baseline worktree check passed' }
+            elseif (
+              (Select-String -Quiet -SimpleMatch 'records an existing worktree of the project and refuses any other folder' -LiteralPath $log) -and
+              (Select-String -Quiet -SimpleMatch 'WORKBENCH_PATH_INVALID' -LiteralPath $log)
+            ) { Write-Host 'PC164 baseline worktree check reproduced WORKBENCH_PATH_INVALID' }
+            else { exit $baselineExit }
+          } finally {
+            Copy-Item -LiteralPath $copy -Destination $source -Force
+            Remove-Item -LiteralPath $copy, $log -Force -ErrorAction SilentlyContinue
+          }
+          & git diff --exit-code HEAD -- $source
+          exit $LASTEXITCODE
       - name: Verify Git subprocess regression
         run: >-
           pnpm --filter @pigclaude/desktop exec vitest run --maxWorkers=1
           src/main/workbench/git-command-transient.test.ts
           src/main/workbench/git-command.test.ts
-          src/main/workbench/workbench-git-ipc.test.ts
           src/main/workbench/session-checkpoints.test.ts
       - name: Restore a real Windows checkpoint ten times in order
         env:

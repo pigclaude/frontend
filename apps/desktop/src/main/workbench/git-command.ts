@@ -1,11 +1,14 @@
 // 负责工作台的 Git 子进程，限制执行时间、输出和外部 Git 扩展。
 import { execFile } from "node:child_process"
+import { readFile } from "node:fs/promises"
+import { join } from "node:path"
 import { promisify } from "node:util"
 import { workbenchChildEnv } from "./child-env"
 
 const execute = promisify(execFile)
 const failedSubcommands = new WeakMap<object, string>()
 const diagnosticDetails = new WeakMap<object, string>()
+let traceSequence = 0
 
 /**
  * 工作台读写 Git 时只使用参数数组，避免 shell、分页器、钩子或 diff 程序改写请求。给了 input 时
@@ -18,16 +21,27 @@ export async function runWorkbenchGit(
   input?: string,
 ): Promise<string> {
   const options = ["--no-pager", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]
+  const diagnosticTraceDir =
+    process.platform === "win32" && process.env.CI === "true"
+      ? process.env.PIGCLAUDE_CI_DIAG_164_TRACE_DIR
+      : undefined
+  const diagnosticGit =
+    diagnosticTraceDir === undefined ? undefined : process.env.PIGCLAUDE_CI_DIAG_164_NATIVE_GIT
+  const traceFile =
+    diagnosticTraceDir === undefined
+      ? undefined
+      : join(diagnosticTraceDir, `${process.pid}-${++traceSequence}.jsonl`).replaceAll("\\", "/")
   const startedAt = Date.now()
   let pid: number | undefined
   try {
-    const pending = execute("git", [...options, ...args], {
+    const pending = execute(diagnosticGit ?? "git", [...options, ...args], {
       cwd: root,
       env: {
         ...workbenchChildEnv(),
         GIT_TERMINAL_PROMPT: "0",
         GIT_OPTIONAL_LOCKS: "0",
         ...overrides,
+        ...(traceFile === undefined ? {} : { GIT_TRACE2_EVENT: traceFile }),
       },
       maxBuffer: 4 * 1024 * 1024,
       timeout: 15_000,
@@ -40,17 +54,39 @@ export async function runWorkbenchGit(
   } catch (error: unknown) {
     if (typeof error === "object" && error !== null) {
       failedSubcommands.set(error, subcommand(args))
-      if (process.env.PIGCLAUDE_CI_DIAG_164 === "1") {
+      if (traceFile !== undefined) {
         const stdout = "stdout" in error && typeof error.stdout === "string" ? error.stdout : ""
         const stderr = "stderr" in error && typeof error.stderr === "string" ? error.stderr : ""
+        const trace = await describeTrace(traceFile)
         diagnosticDetails.set(
           error,
-          ` pid=${pid ?? 0} elapsedMs=${Date.now() - startedAt} stdoutBytes=${Buffer.byteLength(stdout)} stderrBytes=${Buffer.byteLength(stderr)} stderrKind=${classifyGitStderr(stderr)}`,
+          ` pid=${pid ?? 0} elapsedMs=${Date.now() - startedAt} stdoutBytes=${Buffer.byteLength(stdout)} stderrBytes=${Buffer.byteLength(stderr)} stderrKind=${classifyGitStderr(stderr)} ${trace}`,
         )
       }
     }
     throw error
   }
+}
+
+async function describeTrace(path: string): Promise<string> {
+  const file = await readFile(path, "utf8").catch(() => "")
+  let started = false
+  let command = false
+  let error = false
+  let exit: number | null = null
+  for (const line of file.split("\n")) {
+    if (!line) continue
+    try {
+      const { event, code } = JSON.parse(line) as { event?: unknown; code?: unknown }
+      if (event === "start") started = true
+      if (event === "cmd_name") command = true
+      if (event === "error") error = true
+      if (event === "exit" && typeof code === "number" && Number.isSafeInteger(code)) exit = code
+    } catch {
+      continue
+    }
+  }
+  return `traceStart=${Number(started)} traceCommand=${Number(command)} traceError=${Number(error)} traceExit=${exit ?? "none"}`
 }
 
 function classifyGitStderr(stderr: string): string {

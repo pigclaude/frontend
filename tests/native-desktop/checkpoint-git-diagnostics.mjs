@@ -1,57 +1,27 @@
-// 只汇总 Windows 检查点诊断所需的 Git Trace2 状态，既不复制也不输出原始追踪。
+// 只汇总逐命令 Trace2 里的成功检查点操作，避免上传原始 Git 追踪。
 import { readFile, readdir } from "node:fs/promises"
 import { join } from "node:path"
 
-const [traceDir, acceptanceLog] = process.argv.slice(2)
-const traceFiles = await readdir(traceDir)
-const output = await readFile(acceptanceLog, "utf8")
-const failures = output.matchAll(
-  /Workbench IPC failed (checkpoint-[a-z-]+) git ([a-z-]+) code=(-?\w+) signal=(\w+) pid=(\d+) elapsedMs=(\d+) stdoutBytes=(\d+) stderrBytes=(\d+) stderrKind=(\w+)/g,
-)
-
-function summarize(events) {
-  const codeOf = (name) => {
-    const code = events.findLast((event) => event.event === name)?.code
-    return Number.isInteger(code) ? code : null
+const [directory] = process.argv.slice(2)
+let traceFiles = 0
+let successfulWriteTrees = 0
+for (const name of await readdir(directory)) {
+  if (!name.endsWith(".jsonl")) continue
+  const lines = (await readFile(join(directory, name), "utf8")).split("\n")
+  let wroteTree = false
+  let exitedNormally = false
+  traceFiles += 1
+  for (const line of lines) {
+    if (!line) continue
+    try {
+      const { event, name: command, code } = JSON.parse(line)
+      if (event === "cmd_name" && command === "write-tree") wroteTree = true
+      if (event === "exit" && code === 0) exitedNormally = true
+    } catch {
+      continue
+    }
   }
-  return {
-    start: events.some((event) => event.event === "start"),
-    startedCommand: events.some((event) => event.event === "cmd_name"),
-    sawError: events.some((event) => event.event === "error"),
-    exit: codeOf("exit"),
-    atexit: codeOf("atexit"),
-    lastEvent: events.at(-1)?.event ?? null,
-  }
+  if (wroteTree && exitedNormally) successfulWriteTrees += 1
 }
-
-console.log("PC164 traces", traceFiles.length)
-if (traceFiles.length === 0) process.exitCode = 2
-for (const [, phase, command, code, signal, pid, elapsed, stdout, stderr, stderrKind] of failures) {
-  const suffix = `-P${Number(pid).toString(16).padStart(8, "0")}`.toLowerCase()
-  const file = traceFiles.find((name) => name.toLowerCase().endsWith(suffix))
-  const events = (file ? await readFile(join(traceDir, file), "utf8") : "")
-    .split("\n")
-    .flatMap((line) => {
-      try {
-        const event = JSON.parse(line)
-        return typeof event.event === "string" && /^[a-z_]+$/.test(event.event) ? [event] : []
-      } catch {
-        return []
-      }
-    })
-  console.log(
-    "PC164 checkpoint failure",
-    JSON.stringify({
-      phase,
-      command,
-      code,
-      signal,
-      pid,
-      elapsed,
-      stdout,
-      stderr,
-      stderrKind,
-      ...summarize(events),
-    }),
-  )
-}
+console.log("PC164 trace summary", JSON.stringify({ traceFiles, successfulWriteTrees }))
+if (successfulWriteTrees === 0) process.exitCode = 2

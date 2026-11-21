@@ -15,7 +15,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-2022]
-        trial: [1, 2, 3, 4, 5]
+        gitEntry: [launcher, native]
+        trial: [1, 2, 3]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 18
     steps:
@@ -71,21 +72,32 @@ jobs:
           node tests/native-desktop/agent-browser-network.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $PSNativeCommandUseErrorActionPreference = $false
-          $env:PIGCLAUDE_CI_DIAG_164 = '1'
+          $entry = '${{ matrix.gitEntry }}'
+          $selectedGit = (Get-Command git.exe -CommandType Application | Select-Object -First 1).Source
+          $gitCore = & git --exec-path
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $gitRoot = Split-Path -Parent (Split-Path -Parent $gitCore)
+          $nativeGit = Join-Path $gitRoot 'bin\git.exe'
+          if (-not (Test-Path -LiteralPath $nativeGit -PathType Leaf)) { throw 'Native Git executable missing' }
+          $sameEntry = (Get-FileHash -LiteralPath $selectedGit).Hash -eq (Get-FileHash -LiteralPath $nativeGit).Hash
+          Write-Host "PC164 git entrance $entry defaultEqualsNative=$sameEntry"
+          if ($entry -eq 'native') {
+            & $nativeGit --version
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $env:PIGCLAUDE_CI_DIAG_164_NATIVE_GIT = $nativeGit
+          }
           for ($iteration = 1; $iteration -le 5; $iteration++) {
             Write-Host "PC164 attempt $iteration"
             $trace = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP "pc164-$iteration")
-            $log = Join-Path $trace.Parent.FullName "pc164-$iteration.log"
-            git config --global trace2.eventTarget ($trace.FullName.Replace('\', '/'))
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $env:PIGCLAUDE_CI_DIAG_164_TRACE_DIR = $trace.FullName
             try {
-              node tests/native-desktop/acceptance.mjs "test-results/native-desktop/$iteration" 2>&1 | Tee-Object -FilePath $log
+              node tests/native-desktop/acceptance.mjs "test-results/native-desktop/$iteration"
               $testExit = $LASTEXITCODE
-              node tests/native-desktop/checkpoint-git-diagnostics.mjs $trace.FullName $log
+              node tests/native-desktop/checkpoint-git-diagnostics.mjs $trace.FullName
               $traceExit = $LASTEXITCODE
             } finally {
-              git config --global --unset trace2.eventTarget
-              Remove-Item -LiteralPath $trace.FullName, $log -Force -Recurse -ErrorAction SilentlyContinue
+              Remove-Item Env:PIGCLAUDE_CI_DIAG_164_TRACE_DIR
+              Remove-Item -LiteralPath $trace.FullName -Force -Recurse -ErrorAction SilentlyContinue
             }
             if ($testExit -ne 0) { exit $testExit }
             if ($traceExit -ne 0) { exit $traceExit }
@@ -111,6 +123,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: desktop-native-${{ runner.os }}-${{ matrix.trial }}
+          name: desktop-native-${{ runner.os }}-${{ matrix.gitEntry }}-${{ matrix.trial }}
           path: test-results/native-desktop
           if-no-files-found: warn
